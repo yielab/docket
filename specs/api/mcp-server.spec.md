@@ -414,7 +414,7 @@ concern, not docket's — see Scope above).
   `list_pending`
 - `src/docket/tasks/application/answers.py`: `answer_task`
 - `src/docket/tasks/application/interruptions.py`: `record_pregrant`
-- `src/docket/operator/inbox.py`, `src/docket/operator/contract.py`: `build_inbox`, `InboxView`
+- `src/docket/operator/inbox.py`, `src/docket/kernel/operator_contract.py`: `build_inbox`, `InboxView`
 - `src/docket/tasks/application/runs.py`: `create_run`, `execute`, `get_run`, `list_runs`, `RunSource`
 - `src/docket/interfaces/http/routes/health.py`: `build_status`, `SERVE_API_VERSION`
 - `pyproject.toml`: the `mcp` extra

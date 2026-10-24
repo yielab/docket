@@ -18,7 +18,7 @@ from docket.interfaces.cli.commands import status as _status
 from docket.interfaces.http.routes import health as _health
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
-from docket.kernel.errors import InvalidInput
+from docket.kernel.errors import DispatchError, InvalidInput
 from docket.operator import inbox as _inbox
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import answers as _answers
@@ -27,7 +27,6 @@ from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import sweep as _sweep
-from docket.tasks.domain import task as _task
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
 # the 2.x line's `mcp.server.MCPServer`, the decorator/`add_tool`-based server
@@ -113,7 +112,7 @@ def tool_delegate(project: str, description: str, priority: str = "normal") -> d
         raise McpToolError(f"Invalid priority '{priority}'. Use: high | normal | low")
     try:
         return _queue.enqueue_task_once(project, description, priority, channel="mcp")[0]
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         raise McpToolError(str(exc)) from exc
 
 

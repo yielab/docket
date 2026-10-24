@@ -12,15 +12,16 @@ from docket.governance import profile as _profile
 from docket.governance import secrets as _secrets
 from docket.hops.application.record import _trace_locked, _UnitContext, _UnitOutcome
 from docket.hops.domain import gate_decisions as _decide
-from docket.hops.workspace import protected_paths as _protected
 from docket.hops.workspace.worktree import _task_worktree_dir
+from docket.kernel import operator_contract as _oc
+from docket.kernel import protected_paths as _protected
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models import selection as _models_policy
-from docket.operator import contract as _oc
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.queue import pod_full_roster, read_tasks
-from docket.tasks.domain.task import DispatchError, TaskResult
+from docket.tasks.domain.task import TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings

@@ -16,8 +16,8 @@ from docket.interfaces.cli.commands import status as _status
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import ApprovalView, InboxView, TaskView
 from docket.operator import inbox as _inbox
-from docket.operator.contract import ApprovalView, InboxView, TaskView
 from docket.platform import read_json, write_json
 from docket.tasks.application import queue as _queue
 

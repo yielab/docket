@@ -18,6 +18,7 @@ from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
 from docket.interfaces.cli.render import ui
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.observability import exporter as _exporter
 from docket.pipeline.application import steps as _steps
@@ -25,7 +26,6 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
-from docket.tasks.domain import task as _task
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
@@ -385,7 +385,7 @@ def cmd_plan(
         source = (
             f"file '{pipeline}'" if spec is not None else _steps.effective_pipeline_source(project)
         )
-    except _task.DispatchError as ex:
+    except DispatchError as ex:
         _fail(str(ex))
     plan = _orch.resolve_plan(effective, roster, registry=_arch.load_registry(project))
     ui.header("Pipeline plan", project)

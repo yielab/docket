@@ -19,8 +19,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from docket.kernel import clock as _clock
+from docket.kernel.operator_contract import CloudEvent
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import CloudEvent
 from docket.platform import open_same_origin
 
 

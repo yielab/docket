@@ -2298,7 +2298,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `TaskEvidence`, `EvidenceNotFound`
 - `src/docket/hops/workspace/prepare.py`: preparation resolution, cache and record (`resolve`,
   `needs_prepare`, `prepare_worktree`, `linked_entries`)
-- `src/docket/hops/workspace/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
+- `src/docket/kernel/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
 - `src/docket/teams/agent_memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,
   `DISPATCH_BLOCK_BEGIN`/`DISPATCH_BLOCK_END`
 - `src/docket/teams/conversations.py`: `touch_for_hop_durable`, `prune_closed_durable`
@@ -2311,7 +2311,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/agent/loop.py`: `run_agent_turn` (`trace_task_id`),
   `approval_unavailable_error`, `approval_parked_error`, the cooperative cancellation checks
 - `src/docket/agent/ports.py`: `RuntimeDriver`, `TurnResult`
-- `src/docket/operator/contract.py`: `Question`, `TaskBrief`, `validate_answer`,
+- `src/docket/kernel/operator_contract.py`: `Question`, `TaskBrief`, `validate_answer`,
   `canonical_args_digest`, `a2a_state`
 - `src/docket/governance/security.py`: `classify_command`
 - `src/docket/teams/pod_provisioning.py`: `provision_task_worktree`, `prune_task_worktrees`,

@@ -16,6 +16,7 @@ from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext, ToolResult, dispatch_tool
 from docket.kernel.home import current_home, use_home
 from docket.observability import trace as _trace
+from docket.platform import parked_question
 from docket.tasks.application import consult as _consult
 from docket.teams import roles as _arch
 
@@ -139,7 +140,7 @@ class TestRefuse:
     def test_pod_dispatch_parks_a_consult_and_leaves_its_question_for_dispatch(self) -> None:
         result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
         assert result.denial_kind == "approval_parked"
-        question = _consult.parked_question(result.approval_token)
+        question = parked_question(result.approval_token)
         assert question is not None and question.kind == "decision"
         assert not hasattr(_consult, "take_parked")
 
@@ -153,21 +154,21 @@ class TestRefuse:
         assert token == result.approval_token
         assert token is not None
         assert "message" not in token and len(token) < 40
-        question = _consult.parked_question(token)
+        question = parked_question(token)
         assert question is not None and token == f"consult:{question.id}"
-        assert _consult.parked_question(token) is None  # taken once, then gone
+        assert parked_question(token) is None  # taken once, then gone
         assert [o.id for o in question.options] == [o["id"] for o in _args()["options"]]
 
     def test_a_token_without_a_question_yields_none(self) -> None:
-        assert _consult.parked_question("consult:q_abc") is None
-        assert _consult.parked_question("approval-1") is None
+        assert parked_question("consult:q_abc") is None
+        assert parked_question("approval-1") is None
 
     def test_question_task_id_prefers_the_context_task_id(self) -> None:
         result = _call(_args(), _ctx(approval_mode="wait", consult_park=True, task_id="run-7"))
-        question = _consult.parked_question(result.approval_token)
+        question = parked_question(result.approval_token)
         assert question is not None and question.task_id == "run-7"
         bare = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
-        fallback = _consult.parked_question(bare.approval_token)
+        fallback = parked_question(bare.approval_token)
         assert fallback is not None and fallback.task_id == "agent:a1:default"
 
     def test_refuse_wins_over_pod_dispatch_parking(self) -> None:

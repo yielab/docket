@@ -14,9 +14,9 @@ initiates a conversation, only a one-shot push.
 from __future__ import annotations
 
 from docket.interfaces.telegram.client import send_message
+from docket.kernel.operator_contract import CloudEvent
 from docket.operator.adapters.webhook import DeliveryResult
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import CloudEvent
 from docket.operator.notify import render_text
 
 

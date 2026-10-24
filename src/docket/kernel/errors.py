@@ -30,6 +30,10 @@ class NotFound(DocketError, LookupError):
     """The thing asked about does not exist."""
 
 
+class DispatchError(InvalidInput):
+    """A pod cannot be dispatched (no pod, no lead, ...)."""
+
+
 class Conflict(DocketError):
     """The request is well formed but contradicts the current state, which has already moved."""
 

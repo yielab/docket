@@ -8,7 +8,8 @@ from typing import Any
 from pydantic import ValidationError
 
 from docket.interfaces.http.exchange import HttpExchange
-from docket.operator import contract as _oc
+from docket.kernel import operator_contract as _oc
+from docket.kernel.errors import DispatchError
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 
@@ -78,7 +79,7 @@ def post_task(h: HttpExchange, project: str) -> None:
     except _task.TaskRestrictionError as exc:
         h._send_json_error(str(exc), 422)
         return
-    except _task.DispatchError as exc:
+    except DispatchError as exc:
         msg = str(exc)
         # DispatchError here is: no pod (404), a wrongly shaped option or a `block`
         # pre_input verdict naming its policy id (400) -- never swallowed into 500.

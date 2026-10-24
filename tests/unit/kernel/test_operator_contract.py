@@ -12,7 +12,7 @@ from typing import get_args
 import pytest
 from pydantic import ValidationError
 
-from docket.operator.contract import (
+from docket.kernel.operator_contract import (
     EVENT_KINDS,
     A2AState,
     AnswerResult,
@@ -35,7 +35,7 @@ from docket.operator.contract import (
     validate_requested_schema,
 )
 
-SUBJECT = "docket.operator.contract"
+SUBJECT = "docket.kernel.operator_contract"
 
 _SCHEMA = {
     "type": "object",

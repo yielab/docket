@@ -30,8 +30,8 @@ from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import NotFound
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import Option
 from docket.observability import trace as _trace
-from docket.operator.contract import Option
 from docket.platform import read_modify_write, with_lock, write_json
 
 # The closed set of channels a grant/deny may be tagged with in the audit log

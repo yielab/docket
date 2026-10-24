@@ -823,7 +823,7 @@ Each JSONL line is a JSON object with these fields:
 
 ## Implementation
 
-- `src/docket/operator/contract.py`: `A2AState`, `EVENT_KINDS`, `a2a_state`, `TaskBrief`,
+- `src/docket/kernel/operator_contract.py`: `A2AState`, `EVENT_KINDS`, `a2a_state`, `TaskBrief`,
   `validate_requested_schema`, `QuestionSchema`, `new_question_id`, `Question`, `AnswerResult`,
   `QuestionKind`, `Option`, `Recommendation`, `QuestionV11`, `AnswerResultV11`,
   `validate_answer`, `validate_answer_v11`, `ApprovalView`, `TaskView`, `InboxView`,

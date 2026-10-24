@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from docket.governance.audit import audit_log
-from docket.hops.workspace import protected_paths as _protected
 from docket.kernel import clock as _clock
+from docket.kernel import protected_paths as _protected
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.platform import read_json, read_modify_write

@@ -14,8 +14,7 @@ from typing import Any
 import pytest
 
 from docket.kernel.home import current_home
-from docket.operator import notify as _notify
-from docket.operator.contract import (
+from docket.kernel.operator_contract import (
     ApprovalView,
     InboxView,
     Question,
@@ -23,6 +22,7 @@ from docket.operator.contract import (
     TaskBrief,
     TaskView,
 )
+from docket.operator import notify as _notify
 
 SUBJECT = "docket.operator.notify"
 

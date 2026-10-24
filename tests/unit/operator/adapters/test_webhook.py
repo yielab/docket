@@ -15,8 +15,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, ClassVar
 
+from docket.kernel.operator_contract import make_event
 from docket.operator.adapters import webhook
-from docket.operator.contract import make_event
 
 SUBJECT = "docket.operator.adapters.webhook"
 

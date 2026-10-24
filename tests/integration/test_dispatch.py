@@ -41,9 +41,9 @@ from docket.hops.application import runner as _runner
 from docket.hops.application.driver import DocketDriver
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel import operator_contract as _oc
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
-from docket.operator import contract as _oc
 from docket.pipeline.application import executor as _executor
 from docket.pipeline.application import steps as _steps_c
 from docket.pipeline.domain import spec as _pipeline

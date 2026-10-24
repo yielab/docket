@@ -12,12 +12,21 @@ import posixpath
 import shlex
 from collections.abc import Collection, Iterable
 
-from docket.hops.workspace import prepare as _prepare
 from docket.kernel.errors import InvalidInput
 from docket.kernel.ports import git as _git
 
+# Each lockfile and the install command it implies; the lockfiles are protected paths too.
+LOCKFILES: tuple[tuple[str, str], ...] = (
+    ("package-lock.json", "npm ci"),
+    ("pnpm-lock.yaml", "pnpm install --frozen-lockfile"),
+    ("yarn.lock", "yarn install --immutable"),
+    ("uv.lock", "uv sync --frozen"),
+    ("poetry.lock", "poetry install"),
+    ("Cargo.lock", "cargo fetch"),
+)
+
 DEFAULT_PATTERNS: tuple[str, ...] = (
-    *(name for name, _command in _prepare.LOCKFILES),
+    *(name for name, _command in LOCKFILES),
     "package.json",
     "pyproject.toml",
     "Cargo.toml",

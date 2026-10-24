@@ -7,6 +7,10 @@ stored data match on them, so each has its own function instead of one shared op
 
 from __future__ import annotations
 
+from docket.kernel.errors import InvalidInput
+
+MAX_COMMAND_CHARS = 1000
+
 
 def one_line(text: str) -> str:
     """Collapse every run of whitespace, newlines included, to a single space."""
@@ -34,3 +38,13 @@ def cut_output(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return f"{text[:limit]}\n\n[truncated: {len(text) - limit} more characters]"
+
+
+def check_command(value: object) -> str:
+    """The command as one stripped line; raises ``InvalidInput`` for a NUL, a newline or too long."""
+    text = str(value or "").strip()
+    if "\x00" in text or "\n" in text or "\r" in text:
+        raise InvalidInput("must be one line without a NUL byte")
+    if len(text) > MAX_COMMAND_CHARS:
+        raise InvalidInput(f"must be at most {MAX_COMMAND_CHARS} characters")
+    return text

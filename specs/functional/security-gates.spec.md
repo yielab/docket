@@ -1579,12 +1579,12 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/governance/network_posture.py`: `network_posture`, `global_posture`
 - `src/docket/governance/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
   `effective_profile`
-- `src/docket/hops/workspace/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
+- `src/docket/kernel/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
 - `src/docket/governance/review.py`: `review_code` and the reviewed digest
 - `src/docket/hops/workspace/prepare.py`: `LOCKFILES`, `linked_entries`
 - `src/docket/teams/apply/plan.py`: `REPO_REFUSED_COMMANDS`, `review_decision`, `apply_directory`
 - `src/docket/teams/pod_provisioning.py`: `provision_task_worktree`
-- `src/docket/operator/contract.py`: `canonical_args_digest`
+- `src/docket/kernel/operator_contract.py`: `canonical_args_digest`
 - `src/docket/teams/roles.py`: `registry_for_role`
 - `src/docket/agent/loop.py`: the `approval_parked` stop, `approval_parked_error`
 - `src/docket/interfaces/telegram/bot.py`: the `/approve` and `/deny` handlers

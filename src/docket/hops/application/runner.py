@@ -21,12 +21,13 @@ from docket.hops.gates.pre_hop import (
 )
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
 from docket.models import selection as _models_policy
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import runs as _runs
-from docket.tasks.domain.task import DispatchError, HopResult
+from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams.settings import _retries_for_role

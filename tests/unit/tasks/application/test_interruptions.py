@@ -16,8 +16,8 @@ from tests.support.pods import seed_pod as _seed_pod
 from docket.agent.ports import ToolCall
 from docket.agent.tools import builtin_tools
 from docket.agent.tools import registry as core_tools
+from docket.kernel import operator_contract as _oc
 from docket.kernel.home import current_home, use_home
-from docket.operator import contract as _oc
 from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet

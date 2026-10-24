@@ -15,9 +15,9 @@ import json
 import subprocess
 from typing import Any
 
+from docket.kernel.operator_contract import CloudEvent
 from docket.operator.adapters.webhook import DeliveryResult
 from docket.operator.channel import ChannelSpec
-from docket.operator.contract import CloudEvent
 
 _SUBPROCESS_TIMEOUT_S = 10
 

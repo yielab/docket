@@ -15,10 +15,10 @@ from typing import Any, ClassVar
 
 import pytest
 
+from docket.kernel.operator_contract import ApprovalView, make_event
 from docket.operator import adapters as channels
 from docket.operator import channel as _channel
 from docket.operator.adapters import desktop, email, ntfy
-from docket.operator.contract import ApprovalView, make_event
 
 SUBJECT = "docket.operator.adapters.ntfy"
 

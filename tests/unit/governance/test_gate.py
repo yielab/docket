@@ -13,7 +13,7 @@ from docket.governance import approval_pregrant as _pregrant
 from docket.governance import audit as _audit
 from docket.governance import gate as _gate
 from docket.kernel.gate import GateCall, GateDecision
-from docket.operator.contract import canonical_args_digest
+from docket.kernel.operator_contract import canonical_args_digest
 
 SUBJECT = "docket.governance.gate"
 

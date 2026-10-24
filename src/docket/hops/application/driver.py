@@ -53,6 +53,7 @@ from docket.hops.application.isolation_posture import (
     _resolve_posture,
 )
 from docket.hops.workspace import repo_view as _repo_view
+from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
@@ -64,7 +65,6 @@ from docket.observability.adapters import sinks as _exporters
 from docket.platform import read_json, write_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.domain.task import DispatchError
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod

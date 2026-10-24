@@ -6,9 +6,9 @@ import json
 import urllib.parse as _urlparse
 
 from docket.interfaces.http.exchange import HttpExchange
+from docket.kernel.errors import DispatchError
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
-from docket.tasks.domain import task as _task
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import report as _pod_report
 
@@ -28,7 +28,7 @@ def get_pod(h: HttpExchange, project: str) -> None:
         return
     try:
         detail = _pod_report.pod_detail(project)
-    except (_task.DispatchError, _pod_settings.PodSettingsError) as exc:
+    except (DispatchError, _pod_settings.PodSettingsError) as exc:
         h._send_json_error(str(exc), 500)
         return
     h._send(json.dumps(detail).encode("utf-8"), "application/json")

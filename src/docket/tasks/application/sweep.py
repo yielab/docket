@@ -17,6 +17,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from docket.hops.application.record import Runner, _persist_hop
+from docket.kernel.errors import DispatchError
 from docket.pipeline.application.executor import _record_task_run, _resolve_task_run, dispatch_task
 from docket.pipeline.application.steps import effective_pipeline, pod_pipeline
 from docket.pipeline.domain import spec as _pipeline
@@ -31,7 +32,7 @@ from docket.tasks.application.queue import (
     _refuse_claimed_task,
     _touch_claim,
 )
-from docket.tasks.domain.task import DispatchError, HopResult, TaskResult, TaskRunRefusal
+from docket.tasks.domain.task import HopResult, TaskResult, TaskRunRefusal
 
 
 def dispatch_pod(

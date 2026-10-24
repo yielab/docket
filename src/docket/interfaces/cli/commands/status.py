@@ -20,13 +20,13 @@ from docket.interfaces.cli.commands.setup_sandbox import (
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.pipeline.application import steps as _steps
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import report as _pod_report
@@ -190,7 +190,7 @@ def _project_summary(project: str) -> dict[str, Any]:
 def _unpriced_models(project: str) -> list[str]:
     try:
         return _steps.unpriced_budget_models(project)
-    except _task.DispatchError:
+    except DispatchError:
         return []
 
 

@@ -19,8 +19,8 @@ from docket.hops.workspace import repo_map as _repo_map
 from docket.hops.workspace.worktree import _task_worktree_dir
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
+from docket.kernel import operator_contract as _oc
 from docket.kernel.home import current_home
-from docket.operator import contract as _oc
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.actions import _mint_task_grant_pregrants

@@ -9,8 +9,8 @@ from tests.support.pods import build_pod
 
 from docket.governance import approval as _approval
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import ApprovalView, TaskView
 from docket.operator import inbox as _inbox
-from docket.operator.contract import ApprovalView, TaskView
 from docket.platform import store as _store
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_mod

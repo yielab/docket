@@ -31,9 +31,9 @@ from docket.kernel.gate import (
     GatedTool,
     Screened,
 )
+from docket.kernel.operator_contract import canonical_args_digest
 from docket.kernel.ports import git as _git
 from docket.observability.trace import redact as _redact
-from docket.operator.contract import canonical_args_digest
 
 
 @dataclass(frozen=True)

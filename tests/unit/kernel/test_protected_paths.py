@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from docket.hops.workspace import protected_paths as _pp
+from docket.kernel import protected_paths as _pp
 
-SUBJECT = "docket.hops.workspace.protected_paths"
+SUBJECT = "docket.kernel.protected_paths"
 
 
 @pytest.mark.parametrize(

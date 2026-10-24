@@ -6,7 +6,7 @@ from typing import Any
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
-from docket.kernel.errors import InvalidInput
+from docket.kernel.errors import DispatchError
 
 # The Reviewer/Tester verdict patterns live in exactly one place:
 # `pipeline/domain/spec.py`'s `default_pipeline()` declares them as real `VerdictGate`s, and gate
@@ -14,10 +14,6 @@ from docket.kernel.errors import InvalidInput
 # `isinstance(gate, _pipeline.VerdictGate)` branch and `pipeline.domain.plan.parse_verdict`)
 # instead of branching on a hardcoded role name. A second, independent copy of these patterns
 # here would drift from that single source of truth (see `tests/unit/pipeline/domain/test_spec__spec.py`).
-
-
-class DispatchError(InvalidInput):
-    """A pod cannot be dispatched (no pod, no lead, …)."""
 
 
 class TaskNotFoundError(DispatchError):

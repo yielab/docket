@@ -18,11 +18,13 @@ from docket.hops.workspace.worktree import _ensure_task_worktree
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
+from docket.kernel import operator_contract as _oc
+from docket.kernel import text as _text
+from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
 from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
-from docket.operator import contract as _oc
 from docket.platform import read_json, read_modify_write
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.runs import get_run, list_runs
@@ -30,7 +32,6 @@ from docket.tasks.domain import options as _task_options
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.refs import LEAD_STEP_ID, TaskRef, TaskRefError
 from docket.tasks.domain.task import (
-    DispatchError,
     HopResult,
     TaskRestrictionError,
     TaskResult,
@@ -115,7 +116,7 @@ def validate_task_options(**raw: Any) -> _task_options.TaskOptions:
     rules = _task_options.OptionRules(
         known_tools=builtin_tool_names(),
         check_policy=_policy.task_policy_document,
-        check_prepare=_prepare.check_command,
+        check_prepare=_text.check_command,
     )
     try:
         return _task_options.validate_task_options(rules=rules, **raw)

@@ -823,7 +823,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/tasks/application/escalation.py`: `count_escalation_metrics` (`docket_tasks_started_total`,
   `docket_questions_total`, `docket_decision_latency_seconds`)
 - `src/docket/operator/inbox.py`: `build_inbox`, `task_view`
-- `src/docket/operator/contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
+- `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
 - `src/docket/tasks/application/runs.py`: `create_run`, `list_runs`, `get_run`, `execute`, `cancel_run`, the
   run record and its `cancellation` lifecycle
 - `src/docket/tasks/application/queue.py`: `read_tasks`, `enqueue_task_once`

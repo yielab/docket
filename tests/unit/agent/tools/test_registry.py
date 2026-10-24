@@ -39,7 +39,7 @@ from docket.governance import approval_pregrant
 from docket.governance.gate import evaluate_tool_call
 from docket.governance.security import classify_command
 from docket.kernel.home import current_home, use_home
-from docket.operator.contract import canonical_args_digest
+from docket.kernel.operator_contract import canonical_args_digest
 
 _isolate_gates = _support_home.isolate_gates
 workspace = _support_pods.workspace_2
