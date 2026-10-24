@@ -1,8 +1,8 @@
 """Architecture: the allowed-dependency table of ADR 0030 as import-linter contracts.
 
-Each row of the table (``docs/adr/0030-organize-by-context-and-refactor-by-tool.md``, quoted in
-AGENTS.md) is one contract, checked against the real import graph of ``src/docket`` with
-function-local imports included. The rule for a row is one function in this file.
+Each row of the table (``docs/adr/0030-organize-by-context-and-refactor-by-tool.md``) is one
+contract, checked against the import graph of ``src/docket`` with function-local imports included.
+The contexts are layered (``LAYERS``): an import of a context above is a violation.
 
 ``import_contracts_baseline.txt`` lists every import breaking a row today as
 ``contract | importer -> imported``, fed to its contract as ``ignore_imports``. It only shrinks: a
@@ -41,6 +41,24 @@ TYPE_NAME = "docket_allowed_dependencies"
 # What each ADR row calls a layer inside a context.
 _INNER = {"domain", "application", "adapters"}
 
+# The contexts above `kernel`, bottom to top (ADR 0030, "The contexts are layered"). A context may
+# import a context lower in this tuple; importing one higher is an upward import, the violation the
+# baseline records. `interfaces` and `bootstrap` sit above all of them.
+LAYERS: tuple[str, ...] = (
+    "platform",
+    "governance",
+    "agent",
+    "models",
+    "observability",
+    "pipeline",
+    "teams",
+    "sandbox",
+    "operator",
+    "tasks",
+    "hops",
+)
+_RANK = {context: rank for rank, context in enumerate(LAYERS)}
+
 
 def _classify(module: str) -> tuple[str, str]:
     """(context, layer) of a module: layer is one of the ADR table's rows."""
@@ -57,6 +75,11 @@ def _classify(module: str) -> tuple[str, str]:
     if len(parts) > 1 and parts[1] in _INNER:
         return ctx, parts[1]
     return ctx, "flat"
+
+
+def _is_below(imported: str, importer: str) -> bool:
+    """True when ``imported`` belongs to a context lower in ``LAYERS`` than ``importer``'s."""
+    return _RANK.get(_classify(imported)[0], len(LAYERS)) < _RANK.get(_classify(importer)[0], -1)
 
 
 def _is_context_init(module: str) -> bool:
@@ -82,7 +105,7 @@ def _allowed_application(importer: str, imported: str) -> bool:
         return True
     if tc == ic:
         return tl != "adapters"
-    return tc != "interfaces" and _is_context_init(imported)
+    return _is_below(imported, importer)
 
 
 def _allowed_adapters(importer: str, imported: str) -> bool:
@@ -100,15 +123,14 @@ def _allowed_agent(importer: str, imported: str) -> bool:
 
 
 def _allowed_interfaces(importer: str, imported: str) -> bool:
-    tc = _classify(imported)[0]
-    return tc in {"kernel", "interfaces", "bootstrap"} or _is_context_init(imported)
+    return _classify(imported)[0] in {"kernel", "interfaces", "bootstrap", *LAYERS}
 
 
 # contract name -> (layers of the importing module it governs, rule)
 _CONTRACTS: dict[str, tuple[frozenset[str], Any]] = {
     "kernel imports nothing in docket": (frozenset({"kernel"}), _allowed_kernel),
     "domain imports kernel and its own domain": (frozenset({"domain"}), _allowed_domain),
-    "application imports kernel, its own context and other contexts' __init__": (
+    "application imports kernel, its own context and the contexts below it": (
         frozenset({"application", "flat"}),
         _allowed_application,
     ),
@@ -117,7 +139,7 @@ _CONTRACTS: dict[str, tuple[frozenset[str], Any]] = {
         _allowed_adapters,
     ),
     "agent imports kernel only": (frozenset({"agent"}), _allowed_agent),
-    "interfaces import kernel, bootstrap and contexts' __init__": (
+    "interfaces import kernel, bootstrap and any context": (
         frozenset({"interfaces"}),
         _allowed_interfaces,
     ),
@@ -235,6 +257,13 @@ def test_every_baselined_violation_still_breaks_its_contract() -> None:
     )
 
 
+def test_the_layers_are_the_contexts_of_the_tree() -> None:
+    # A context left out of LAYERS would be importable by nobody and importing nobody.
+    on_disk = {p.parent.name for p in (SRC / ROOT).glob("*/__init__.py")}
+    assert set(LAYERS) == on_disk - {"kernel", "interfaces"}
+    assert len(LAYERS) == len(set(LAYERS))
+
+
 def test_the_baseline_has_no_duplicates() -> None:
     lines = [ln for ln in BASELINE.read_text(encoding="utf-8").splitlines() if ln and ln[0] != "#"]
     assert len(lines) == len(set(lines))
@@ -255,7 +284,14 @@ _BITES: list[tuple[str, str, str, bool]] = [
     ("domain", "docket.tasks.domain.task", "docket.tasks.application.queue", False),
     ("domain", "docket.tasks.domain.task", "docket.governance", False),
     ("application", "docket.tasks.application.queue", "docket.governance", True),
-    ("application", "docket.tasks.application.queue", "docket.governance.policy", False),
+    ("application", "docket.tasks.application.queue", "docket.governance.policy", True),
+    ("application", "docket.tasks.application.queue", "docket.hops.application.runner", False),
+    ("application", "docket.hops.application.runner", "docket.tasks.application.queue", True),
+    ("application", "docket.hops.application.runner", "docket.models.catalog", True),
+    ("application", "docket.pipeline.application.executor", "docket.tasks.domain.task", False),
+    ("application", "docket.governance.policy", "docket.teams.settings", False),
+    ("application", "docket.governance.policy", "docket.platform.store", True),
+    ("application", "docket.models.catalog", "docket.models.adapters.openai_http", False),
     ("application", "docket.tasks.application.queue", "docket.tasks.adapters.json_store", False),
     ("application", "docket.tasks.application.queue", "docket.interfaces", False),
     ("adapters", "docket.models.adapters.openai_http", "docket.models.catalog", True),
@@ -263,12 +299,17 @@ _BITES: list[tuple[str, str, str, bool]] = [
     ("adapters", "docket.models.adapters.openai_http", "docket.tasks.application.queue", False),
     ("adapters", "docket.operator.adapters.ntfy", "docket.platform", True),
     ("adapters", "docket.operator.adapters.ntfy", "docket.platform.redirects", False),
+    ("adapters", "docket.platform.store", "docket.hops.application.runner", False),
+    ("adapters", "docket.platform.git", "docket.kernel.errors", True),
     ("agent", "docket.agent.loop", "docket.kernel.text", True),
     ("agent", "docket.agent.loop", "docket.platform", True),
     ("agent", "docket.agent.loop", "docket.platform.store", False),
     ("agent", "docket.agent.loop", "docket.governance.policy", False),
     ("interfaces", "docket.interfaces.cli.app", "docket.tasks", True),
-    ("interfaces", "docket.interfaces.cli.app", "docket.tasks.application.queue", False),
+    ("interfaces", "docket.interfaces.cli.app", "docket.tasks.application.queue", True),
+    ("interfaces", "docket.interfaces.cli.app", "docket.hops.application.runner", True),
+    ("interfaces", "docket.interfaces.http.server", "docket.bootstrap", True),
+    ("interfaces", "docket.interfaces.http.server", "docket.__main__", False),
 ]
 _RULES_BY_LAYER = {
     "kernel": _allowed_kernel,
