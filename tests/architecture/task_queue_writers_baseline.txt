@@ -1,0 +1,11 @@
+# modules that reach a pod's task queue without TaskRepository; shrink-only
+# delete a line in the commit that moves the module's last caller (Phase 49: P49-2..4)
+hops/application/answers.py
+hops/application/executor.py
+hops/application/interruptions.py
+tasks/application/actions.py
+tasks/application/lifecycle.py
+tasks/application/queue.py
+tasks/application/record.py
+tasks/domain/task.py
+teams/workspace/worktree.py

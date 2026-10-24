@@ -82,9 +82,7 @@ ALLOWED: frozenset[tuple[Status, Status]] = _REOPEN_EDGES | frozenset(
 
 @dataclass(frozen=True)
 class Transition:
-    """What moving a task to ``to`` does to its record: fields to set, fields to remove, both by
-    ``TaskRecord`` field name (``started_at``, not ``startedAt``).
-
+    """What a move does to a record: fields to set and to remove, by ``TaskRecord`` field name.
     Removals apply first, so a field both removed and set ends up set."""
 
     to: Status

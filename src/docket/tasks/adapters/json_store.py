@@ -25,10 +25,10 @@ class JsonTaskStore:
         return _records(read_json(self.path))
 
     def modify(self, fn: Callable[[list[TaskRecord]], bool]) -> list[TaskRecord]:
-        """Run *fn* on the tasks under the file's lock and write them back when it returns
-        ``True``; the file is left byte for byte as it was otherwise. Returns the tasks as they
-        stand afterwards. *fn* must not read the directory the file lives in (the lock is
-        per directory and not reentrant)."""
+        """Run *fn* on the tasks under the file's lock; write them back only if it returns ``True``
+        (otherwise the bytes are untouched). Returns the tasks as they stand afterwards."""
+        # *fn* must not read the directory the file lives in: the lock is per directory and not
+        # reentrant.
         records: list[TaskRecord] = []
 
         def _apply(doc: dict[str, Any]) -> dict[str, Any] | None:

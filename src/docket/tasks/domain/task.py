@@ -51,12 +51,11 @@ class TaskRestrictionError(DispatchError):
 
 
 class HopResult(BaseModel):
-    """One agent turn within a task's pipeline.
+    """One agent turn within a task's pipeline; its alias dump is the persisted hop."""
 
-    Its dump (``model_dump(by_alias=True)``) is the persisted hop (pod-dispatch.spec.md,
-    "Structured handoff artifacts" and "Hop evidence"). A stored hop that is partly invalid
-    degrades each of ``artifact``, ``verify``, ``evidence``, ``usage``, ``trace`` and
-    ``repo_files`` alone to its default, so one old bad hop never refuses its task."""
+    # A partly invalid stored hop degrades each of artifact, verify, evidence, usage, trace and
+    # repo_files alone to its default, so one old bad hop never refuses its task
+    # (pod-dispatch.spec.md, "Structured handoff artifacts" and "Hop evidence").
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -190,13 +189,12 @@ def _is_empty(value: object) -> bool:
 
 
 class TaskRecord(BaseModel):
-    """One task of a pod's queue, as the queue file stores it.
+    """One task of a pod's queue; its alias dump is the stored record."""
 
-    The dump (``model_dump(by_alias=True, mode="json")``) is the stored record. One rule for
-    absent against null: a key the queue always writes (``startedAt``, ``approvalToken``, ``hops``,
-    ``pregrants``, ...) dumps even when unset; every other key is absent until something writes it
-    and absent again after a drop (``exclude_if``), never ``null`` or ``[]``. No global
-    ``exclude_none`` or ``exclude_unset``: either would drop a key of the first kind."""
+    # One rule for absent against null. A key the queue always writes (startedAt, approvalToken,
+    # hops, pregrants, ...) dumps even when unset; every other key is absent until something writes
+    # it and absent again after a drop (exclude_if), never null or []. No global exclude_none or
+    # exclude_unset: either would drop a key of the first kind.
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True, validate_assignment=True)
 

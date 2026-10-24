@@ -19,12 +19,10 @@ __all__ = ["apply_to_task"]
 def apply_to_task(
     record: TaskRecord | dict[str, Any], to: _state.Status, **facts: Any
 ) -> _state.Transition:
-    """Move *record* to *to*: the field changes ``decide`` returns, then the status.
-
-    A dropped field goes back to its default (``None``, ``[]``, or ``""`` for ``reason``). Raises
-    ``IllegalTransition`` before touching the record. *facts* are ``decide``'s keywords. A stored
-    task dict, which the callers not yet moved onto ``TaskRecord`` still hold, is changed under
-    its alias keys instead."""
+    """Move *record* to *to*: ``decide``'s field changes, then the status; ``IllegalTransition``
+    comes before any change. A dropped field returns to its default (``None``, ``[]``, ``""``)."""
+    # A stored dict, which callers not yet moved onto TaskRecord still hold, changes under its
+    # alias keys instead.
     if isinstance(record, dict):
         return _apply_to_row(record, to, facts)
     transition = _state.decide(record.status, to, **facts)

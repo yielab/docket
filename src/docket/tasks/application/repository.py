@@ -119,9 +119,9 @@ class TaskRepository:
 
     def claim_next(self, *, resume: bool, skip: frozenset[str] = frozenset()) -> Claim | None:
         """Claim the next eligible task, highest priority first, in one locked change: it moves
-        to ``running`` and its ``gate_override_pipeline_index`` is cleared from the stored record
-        and handed back in the ``Claim``. ``pending`` is always eligible; a ``failed`` task with
-        a resumable ``failure_kind`` only when *resume*. A task id in *skip* is never picked."""
+        to ``running`` and its stored gate override is cleared and handed back in the ``Claim``."""
+        # Eligible: ``pending``; a ``failed`` task with a resumable kind only when *resume*; never
+        # an id in *skip*.
         claimed: list[Claim] = []
 
         def _fn(records: list[TaskRecord]) -> bool:
