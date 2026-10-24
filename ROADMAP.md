@@ -9,9 +9,12 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-24.** Every phase 0–47 is complete; no phase is active and no item is
-carried. A new phase starts from a measured trigger or a maintainer request (§7.1), never from this
-file.
+**Last updated: 2026-10-24.** Every phase 0–47 is complete. **Phase 48 is active** (D-67, D-68, §6):
+isolation on by default wherever the machine can jail, toolchain read grants proposed by `setup`,
+the pod's own queue and settings under `workspaces/pods/<pod>/`, a nested task record that
+remembers its pipeline, the startup contract without a daily log, and the positioning copy (D-69).
+Cards on `TODO.md`. A new phase starts from a measured trigger or a maintainer request, never from
+this file.
 
 **The last two phases** (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md))
 closed on branch `plan/phase-46-structure`, not yet merged into `develop` nor pushed (§7.1).
@@ -219,8 +222,9 @@ address exactly those.
 
 Every decision D-1…D-66 is answered. The table, with each question and answer, is archived verbatim
 in [docs/cycles-ended/roadmap-decisions.md](docs/cycles-ended/roadmap-decisions.md); from D-35 on,
-the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. A new decision is a new ADR and a
-row appended to that file. The decisions that act as standing rules today:
+the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. That file is byte-preserved, so a
+new decision gets its ADR and a row in the table below. The decisions that act as standing rules
+today:
 
 | Decision | The rule it set |
 | --- | --- |
@@ -230,9 +234,11 @@ row appended to that file. The decisions that act as standing rules today:
 | D-20, D-22, D-24 | A factory and an embeddable library, not a hosted SaaS; no tenant axis; build only for a measured need ([0003](docs/adr/0003-factory-first-then-embeddable-substrate.md), [0005](docs/adr/0005-prioritization-ruling-viable-vs-overengineering.md)) |
 | D-36, D-37 | Tests by lane; the README describes, specs require ([0007](docs/adr/0007-human-maintainability-lanes-comments-docs.md)) |
 | D-52 | Work on `develop`; `main` moves only by fast-forward for a release |
-| D-56 | Isolation is opt-in ([0021](docs/adr/0021-isolation-is-opt-in.md)); reopened in §7.1 |
 | D-57 | Nothing is kept for the past: no alias, shim, notice or migration ([0022](docs/adr/0022-one-cli-surface.md)) |
 | D-66 | One package per context, layered, checked by `tests/architecture/` ([0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md)) |
+| D-67 | Isolation is on by default where a backend is detected, off and said so where none is; a recorded `on` fails closed (supersedes D-56) |
+| D-68 | The pod owns its state: `workspaces/pods/<pod>/{tasks,settings}.json`, a nested task record, flattened on every wire; no migration is written while no user needs one, a consequence and not a principle |
+| D-69 | Positioning (2026-10-24): docket complements the governance coding agents ship by governing a team, not a session, and leads with its versatility: roles, pipelines and policies are configuration, so any team is a combination of files. No comparison against another product without a benchmark |
 
 ---
 
@@ -270,27 +276,10 @@ row appended to that file. The decisions that act as standing rules today:
 
 - **Integrate `plan/phase-46-structure` (Phases 46-47) into `develop` and push.** Until then the
   `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at the Phase 47 close (2026-10-24).
-- **Positioning against governance the coding agents now ship** (Claude Code hooks and managed settings,
-  Codex CLI approval gates and OS sandboxing; secondary sources in
-  `internal-docs/strategy/competitive-and-yaml-2026-10-24.md`). What docket still claims as distinct:
-  one chokepoint across tools, capability denials, a hash-chained audit log, an embeddable runtime,
-  team configuration in the repository. No independent benchmark exists on the same task; no public
-  comparison before one does. M-1 measured the policy half of the claim (`tests/fixtures/policy-corpus/`,
-  2026-10-24), and P47-12 fixed what text parsing can (82 bypasses now ask).
-- **The isolation default, with M-1's evidence.** With isolation off (the default since D-56) an
-  allowlisted interpreter runs any code: `python3 -c` with string concatenation removed a tree, wrote
-  `.env` and `.ssh/authorized_keys` and pushed to `main` with every layer allowing it, and a script
-  written then run does the same. No policy or parser can close that; only the jail contains it. Options:
-  keep opt-in and state the limit (the security spec states it since P47-12), take interpreters off the
-  allowlist when unjailed (agents lose `python -c` and `pytest` without an ask), or make isolation the
-  default again (reverses D-56). Summary by class in `internal-docs/audits/policy-corpus-2026-10-24.md`.
-- **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters and the adoption
-  benchmark are still public claims.
-- **P46-11, the persisted shapes** (a nested task record, `pods/<pod>/settings.json`): a redesign that
-  waits for a measured need. It would also place an answer to a `run --pipeline <file>` task against
-  that file's spec instead of the pod's pipeline.
-- **The memory seeds point at `memory/YYYY-MM-DD.md`** (`teams/agent_memory.py`), a path docket never
-  creates; changing it bumps `CONTRACT_VERSION`.
+- **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters (no consumer;
+  last changed 2026-09-01) and the adoption benchmark (`docs/ADOPTION-EVIDENCE.md`: fixture data a
+  driver writes, no policy hook runs) stay public claims. Recommended: keep `docket-runtime`, delete
+  the benchmark and the README link, delete the adapters until a product of ours uses one.
 - **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends
   hosted-model tokens on `fab-dev`, so it needs a go.
 - **A release.** `VERSION` is `0.2.0-beta.6`; the last tag is `v0.2.0-beta.4`. Cutting it publishes

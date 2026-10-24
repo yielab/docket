@@ -281,7 +281,9 @@ directly, and `docket_runtime/__init__.py` re-exports the same facade names. *Ex
 wheel installs and `tests/agent/release/test_runtime_package_boundary.py` passes with the hook gone.
 *Verified:* the release lane; `uv build` of the package in a clean venv importing the facade.
 
-**P46-11 — persisted shapes that the structure wants (allowed by D-57).** The task record is
+**P46-11 — persisted shapes that the structure wants (allowed by D-57).** *Scheduled as Phase 48 by
+D-68 (2026-10-24): the queue and settings move to `workspaces/pods/<pod>/`, and a task records
+the pipeline it ran under.* The task record is
 written as the nested shape `{spec, lifecycle, execution, pending}` with the same field names
 (camelCase) inside; pod settings move from the Lead's `.docket-meta.json` to `pods/<pod>/
 settings.json`; `TASK_LIST.json` stays one document per pod (one file per task waits for a
