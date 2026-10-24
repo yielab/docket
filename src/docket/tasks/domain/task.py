@@ -57,7 +57,7 @@ class HopResult(BaseModel):
     # repo_files alone to its default, so one old bad hop never refuses its task
     # (pod-dispatch.spec.md, "Structured handoff artifacts" and "Hop evidence").
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     role: str = ""
     member_id: str = Field("", alias="member")
@@ -110,6 +110,14 @@ class HopResult(BaseModel):
     # runtime driver reports no served model (pod-dispatch.spec.md, "Hop events and task usage").
     model: str = ""
     provider: str = ""
+
+    @field_validator("artifact", mode="before")
+    @classmethod
+    def _known_artifact_keys(cls, value: Any) -> Any:
+        # An artifact stored before a key was retired (``notes``) keeps the rest of its content.
+        if isinstance(value, dict):
+            return {k: v for k, v in value.items() if k in _handoff.HandoffArtifact.model_fields}
+        return value
 
     @field_validator("artifact", "verify", "evidence", "usage", "trace", "repo_files", mode="wrap")
     @classmethod
@@ -195,8 +203,10 @@ class TaskRecord(BaseModel):
     # hops, pregrants, ...) dumps even when unset; every other key is absent until something writes
     # it and absent again after a drop (exclude_if), never null or []. No global exclude_none or
     # exclude_unset: either would drop a key of the first kind.
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True, validate_assignment=True)
+    #
+    # An unknown key is ignored on read and not written back, so a queue written before a key was
+    # retired (claimId, source) still loads; one stray key never makes the whole queue unreadable.
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, validate_assignment=True)
 
     # The request: what was enqueued.
     id: str = Field(default_factory=lambda: _ids.new_id("task"))

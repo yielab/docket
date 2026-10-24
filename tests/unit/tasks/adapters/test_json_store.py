@@ -40,7 +40,7 @@ def test_load_reads_each_task_as_a_record(tmp_path: Path) -> None:
 
 def test_a_task_the_model_refuses_fails_the_load(tmp_path: Path) -> None:
     path = tmp_path / "TASK_LIST.json"
-    _seed(path, {"id": "task-1", "description": "a", "claimId": "gone"})
+    _seed(path, {"id": "task-1", "description": "a", "status": "in_progress"})
     with pytest.raises(ValidationError):
         JsonTaskStore(path).load()
 
@@ -58,7 +58,7 @@ def test_modify_writes_back_what_the_function_changed(tmp_path: Path) -> None:
     assert [r.id for r in after] == ["task-1", "task-2"]
     stored = json.loads(path.read_text())["tasks"]
     assert [t["description"] for t in stored] == ["b", "c"]
-    assert "claimId" not in stored[0] and stored[0]["startedAt"] is None
+    assert stored[0]["startedAt"] is None
 
 
 def test_a_function_that_returns_false_leaves_the_bytes_alone(tmp_path: Path) -> None:

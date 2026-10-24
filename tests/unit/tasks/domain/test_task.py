@@ -301,6 +301,23 @@ class TestHopResultModel:
         assert hop.artifact is not None
         assert hop.artifact.summary == "plan"
 
+    def test_an_artifact_stored_with_a_retired_key_keeps_the_rest_of_its_content(self) -> None:
+        stored = {
+            "summary": "done",
+            "files_changed": ["a.py"],
+            "diff": "+x",
+            "verdict": "pass",
+            "notes": "",
+        }
+        hop = _task.HopResult.model_validate({"role": "lead", "output": "done", "artifact": stored})
+        assert hop.artifact is not None
+        assert (hop.artifact.files_changed, hop.artifact.diff, hop.artifact.verdict) == (
+            ["a.py"],
+            "+x",
+            "pass",
+        )
+        assert "notes" not in hop.model_dump(by_alias=True)["artifact"]
+
     @pytest.mark.parametrize(
         ("key", "attribute", "default"),
         [
@@ -331,9 +348,9 @@ class TestHopResultModel:
         assert hop.verification_skipped is True
         assert "verification_skipped" not in hop.model_dump(by_alias=True)
 
-    def test_a_key_the_hop_does_not_have_is_refused(self) -> None:
-        with pytest.raises(ValidationError):
-            _task.HopResult.model_validate({"role": "lead", "typo": 1})
+    def test_a_key_the_hop_does_not_have_is_ignored_and_not_written_back(self) -> None:
+        hop = _task.HopResult.model_validate({"role": "lead", "typo": 1})
+        assert "typo" not in hop.model_dump(by_alias=True)
 
 
 def _dump(record: _task.TaskRecord) -> dict[str, Any]:
@@ -411,9 +428,11 @@ class TestTaskRecord:
         dumped = _dump(_task.TaskRecord(description="x", hops=[hop]))
         assert dumped["hops"] == [hop.model_dump(by_alias=True, mode="json")]
 
-    def test_a_key_the_record_does_not_have_is_refused(self) -> None:
-        with pytest.raises(ValidationError):
-            _task.TaskRecord.model_validate({"description": "x", "claimId": "c"})
+    def test_a_retired_key_is_ignored_on_read_and_not_written_back(self) -> None:
+        record = _task.TaskRecord.model_validate(
+            {"description": "x", "claimId": "c", "source": "operator"}
+        )
+        assert not {"claimId", "source"} & set(_dump(record))
 
     def test_a_status_the_queue_never_writes_is_refused(self) -> None:
         with pytest.raises(ValidationError):

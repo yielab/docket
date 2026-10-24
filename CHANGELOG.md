@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `pydantic` floor is `>=2.12`: a task record leaves an unset key out of its stored JSON with
+  `Field(exclude_if=...)`, which 2.12 introduced.
 - **`docket init` turns workspace isolation on where the machine can jail (D-67).** When no
   choice is recorded and Landlock or Seatbelt is detected, init records it on and audits
   `gates.isolate` as `on (detected <backend>)`. Without a backend it records nothing and says so;
