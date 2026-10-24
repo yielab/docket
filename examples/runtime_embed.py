@@ -16,11 +16,11 @@ def main() -> None:
     (policies / "embedding-approval.json").write_text(
         json.dumps(
             {
-                "id": "approve-embedded-tool",
-                "applies_to": ["*"],
-                "hook": "pre_tool_call",
-                "match": {"type": "regex", "pattern": "embedded_echo"},
-                "action": "require_approval",
+                "kind": "policy",
+                "name": "approve-embedded-tool",
+                "appliesTo": ["*"],
+                "when": {"tool": "embedded_echo"},
+                "then": "ask",
                 "message": "embedding host approval",
             }
         ),

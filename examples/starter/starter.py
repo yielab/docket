@@ -262,14 +262,12 @@ def _write_inputs(base: Path, workspace: Path) -> tuple[Path, Path]:
     )
     pipeline = base / "starter.pipeline.yaml"
     pipeline.write_text(
-        """name: docket-starter
+        """kind: pipeline
+name: docket-starter
 description: One approval-gated Implementer mutation.
 steps:
-  - id: implement
-    role: implementer
-    gate:
-      type: approval
-      message: Approve the starter file mutation.
+  - implement: implementer
+    approval: Approve the starter file mutation.
 """,
         encoding="utf-8",
     )
