@@ -30,7 +30,7 @@ from docket.teams import fleet as _fleet
 
 _hermetic = _support_home.hermetic_3
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.hops.gates.post_hop"
 
 # ── hermetic helpers (mirror test_pod_provisioning.py) ───────────────────────
 

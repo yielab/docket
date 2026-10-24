@@ -57,7 +57,7 @@ from docket.tasks.domain.task import DispatchError
 from docket.teams import agent_memory as _memory
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.hops.application.driver"
 
 
 @pytest.fixture(autouse=True)

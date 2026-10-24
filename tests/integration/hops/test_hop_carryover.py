@@ -31,7 +31,7 @@ from docket.tasks.application import sweep as _sweep
 
 _hermetic = _support_home.hermetic_2
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.hops.application.compose"
 
 # ── hermetic environment (mirrors test_dispatch.py / test_verify_gate.py) ─────────
 

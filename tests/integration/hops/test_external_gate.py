@@ -30,7 +30,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.hops.gates.post_hop"
 
 REASON = "zz-unique-reason-5521"
 

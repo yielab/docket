@@ -36,7 +36,7 @@ from docket.pipeline.application import executor as _executor
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket.teams"
+SUBJECT = "docket.hops.gates.post_hop"
 
 # ── TestResolveMemberCwd: pure unit tests for core/pod.resolve_member_cwd ────
 

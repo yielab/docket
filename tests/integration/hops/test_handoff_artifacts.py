@@ -39,7 +39,7 @@ from docket.tasks.domain import task as _task
 
 _hermetic = _support_home.hermetic_2
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.hops.application.compose"
 
 # ── HandoffArtifact: the pure model ──────────────────────────────────────────
 

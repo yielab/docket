@@ -34,7 +34,7 @@ from docket.teams import fleet as _fleet
 
 _hermetic = _support_home.hermetic_2
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.hops.workspace.worktree"
 
 # ── TestHopDiffProbeUnit: _hop_diff_probe in isolation ──────
 
