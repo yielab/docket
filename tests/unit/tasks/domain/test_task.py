@@ -31,6 +31,7 @@ from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
@@ -333,3 +334,151 @@ class TestHopResultModel:
     def test_a_key_the_hop_does_not_have_is_refused(self) -> None:
         with pytest.raises(ValidationError):
             _task.HopResult.model_validate({"role": "lead", "typo": 1})
+
+
+def _dump(record: _task.TaskRecord) -> dict[str, Any]:
+    dumped: dict[str, Any] = record.model_dump(by_alias=True, mode="json")
+    return dumped
+
+
+_ALWAYS_PRESENT = {
+    "id",
+    "description",
+    "priority",
+    "created",
+    "status",
+    "startedAt",
+    "completedAt",
+    "claimedAt",
+    "reason",
+    "approvalToken",
+    "pendingApprovalIndex",
+    "gateOverridePipelineIndex",
+    "hops",
+    "costUsd",
+    "pregrants",
+}
+
+
+class TestTaskRecord:
+    def test_a_new_record_dumps_only_the_keys_a_queue_always_writes(self) -> None:
+        dumped = _dump(_task.TaskRecord(description="ship it"))
+        assert set(dumped) == _ALWAYS_PRESENT
+        assert dumped["status"] == "pending"
+        assert dumped["priority"] == "normal"
+        assert dumped["hops"] == [] and dumped["pregrants"] == []
+        assert dumped["startedAt"] is None and dumped["approvalToken"] is None
+        assert dumped["id"].startswith("task-") and dumped["created"]
+
+    def test_an_option_is_absent_until_set_and_absent_again_when_dropped(self) -> None:
+        record = _task.TaskRecord(description="x", base_ref="main", max_tokens=5)
+        dumped = _dump(record)
+        assert (dumped["baseRef"], dumped["maxTokens"]) == ("main", 5)
+        record.base_ref = None
+        assert "baseRef" not in _dump(record)
+
+    def test_a_transition_drop_leaves_no_key_behind(self) -> None:
+        record = _task.TaskRecord(
+            description="x", failure_kind="gate_failed", check_changed=["a"], claim_pid=4
+        )
+        assert {"failureKind", "checkChanged", "claimPid"} <= set(_dump(record))
+        record.failure_kind = None
+        record.check_changed = []
+        record.claim_pid = None
+        assert not {"failureKind", "checkChanged", "claimPid"} & set(_dump(record))
+
+    def test_a_nested_part_dumps_under_its_camel_case_keys(self) -> None:
+        raw = {
+            "id": "task-1",
+            "description": "x",
+            "worktree": {"dir": "/w", "branch": "b", "baseCommit": "c"},
+            "gate": {"command": "make test"},
+            "restrictions": {"network": "none"},
+            "usage": {"input": 1, "cached": 0, "cacheWrite": 0, "output": 2, "byModel": {}},
+            "pregrants": [{"token": "t", "tool": "bash", "argsDigest": "d"}],
+            "gateApplied": True,
+            "pipelineSource": "default",
+            "consultations": 2,
+        }
+        dumped = _dump(_task.TaskRecord.model_validate(raw))
+        for key, value in raw.items():
+            assert dumped[key] == value
+        assert "timeoutS" not in dumped["gate"]
+        assert "deniedTools" not in dumped["restrictions"]
+
+    def test_a_hop_is_stored_as_the_hop_record(self) -> None:
+        hop = _task.HopResult(role="lead", member_id="m", ok=True, output="plan")
+        dumped = _dump(_task.TaskRecord(description="x", hops=[hop]))
+        assert dumped["hops"] == [hop.model_dump(by_alias=True, mode="json")]
+
+    def test_a_key_the_record_does_not_have_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            _task.TaskRecord.model_validate({"description": "x", "claimId": "c"})
+
+    def test_a_status_the_queue_never_writes_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            _task.TaskRecord.model_validate({"description": "x", "status": "in_progress"})
+
+    @pytest.mark.parametrize(
+        ("status", "terminal"),
+        [(s, s in {"done", "failed", "cancelled"}) for s in _state.Status],
+    )
+    def test_terminal_is_done_failed_or_cancelled(
+        self, status: _state.Status, terminal: bool
+    ) -> None:
+        assert _task.TaskRecord(description="x", status=status).is_terminal is terminal
+
+    def test_the_terminal_set_is_the_settle_targets_that_end_a_task(self) -> None:
+        open_ends = {
+            _state.Status.waiting_input,
+            _state.Status.waiting_approval,
+            _state.Status.blocked,
+        }
+        assert _state.SETTLE_TARGETS - open_ends == _state.Status.TERMINAL
+
+    def test_a_pending_task_with_a_pregrant_or_an_override_is_approved_ready(self) -> None:
+        grant = {"token": "t", "tool": "bash", "argsDigest": "d"}
+        plain = _task.TaskRecord(description="x")
+        assert plain.approved_ready is False
+        assert _task.TaskRecord(description="x", pregrants=[grant]).approved_ready is True
+        assert (
+            _task.TaskRecord(description="x", gate_override_pipeline_index=0).approved_ready is True
+        )
+        assert (
+            _task.TaskRecord(
+                description="x", status=_state.Status.running, pregrants=[grant]
+            ).approved_ready
+            is False
+        )
+
+    def test_the_worktree_dir_is_empty_unless_the_worktree_exists(self) -> None:
+        made = {"dir": "/w", "branch": "b", "baseCommit": "c"}
+        assert _task.TaskRecord(description="x").worktree_dir == ""
+        assert _task.TaskRecord(description="x", worktree=made).worktree_dir == "/w"
+        pruned = {**made, "prunedAt": "2026-10-24T00:00:00+00:00"}
+        assert _task.TaskRecord(description="x", worktree=pruned).worktree_dir == ""
+        fallback = {"dir": "", "branch": "", "baseCommit": "", "fallbackReason": "no repo"}
+        assert _task.TaskRecord(description="x", worktree=fallback).worktree_dir == ""
+
+    def test_only_an_agent_question_is_a_consultation(self) -> None:
+        base = {
+            "id": "q-1",
+            "taskId": "t",
+            "pod": "p",
+            "step": "s",
+            "message": "m",
+            "requestedSchema": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "required": [],
+            },
+            "createdAt": "2026-10-24T00:00:00+00:00",
+        }
+        for kind, expected in (("clarification", True), ("decision", True), ("approval", False)):
+            record = _task.TaskRecord.model_validate(
+                {"description": "x", "question": {**base, "kind": kind}}
+            )
+            assert record.question_is_consultation is expected
+        old = _task.TaskRecord.model_validate({"description": "x", "question": base})
+        assert old.question_is_consultation is False
+        assert _task.TaskRecord(description="x").question_is_consultation is False

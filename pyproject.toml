@@ -48,10 +48,13 @@ classifiers = [
 # first release that renders byte-identical to the committed schemas. Both were measured
 # with `pydantic-core` left to its own resolution (uv picks the newest compatible with
 # whichever pydantic is pinned), matching how `floors.txt` resolves it in CI.
+#
+# `pydantic>=2.12` (raised 2026-10-24, was `>=2.11`): the task record leaves a key out of its
+# dump with `Field(exclude_if=...)`, which pydantic added in 2.12.
 dependencies = [
     "typer>=0.17.5",
     "rich>=13",
-    "pydantic>=2.11",
+    "pydantic>=2.12",
     "pydantic-settings>=2",
     "filelock>=3.13",
     "pyyaml>=6",

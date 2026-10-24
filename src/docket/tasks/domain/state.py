@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import StrEnum, nonmember
 from typing import Any
 
 from docket.kernel.errors import Conflict
@@ -15,13 +15,15 @@ class Status(StrEnum):
 
     pending = "pending"
     running = "running"
-    in_progress = "in_progress"
     waiting_input = "waiting_input"
     waiting_approval = "waiting_approval"
     blocked = "blocked"
     failed = "failed"
     done = "done"
     cancelled = "cancelled"
+
+    # A task no run owns any more: nothing reclaims it short of a retry.
+    TERMINAL = nonmember(frozenset({"done", "failed", "cancelled"}))
 
 
 class FailureKind(StrEnum):
@@ -97,7 +99,6 @@ def decide(
     reason: str | None = None,
     failure_kind: str = "",
     blocked_reason: str = "",
-    claim_id: str = "",
     pid: int = 0,
     approval_token: str | None = None,
     pending_index: int | None = None,
@@ -128,7 +129,7 @@ def decide(
         drop.append("question")
 
     if to == Status.running:
-        fields.update(startedAt=now, claimId=claim_id, claimedAt=now, claimPid=pid)
+        fields.update(startedAt=now, claimedAt=now, claimPid=pid)
         drop.append("failureKind")
     elif to == Status.pending:
         drop.append("blockedReason")
@@ -136,7 +137,6 @@ def decide(
             drop += ["failureKind", "reason", "completedAt"]
     else:
         stale = failure_kind == FailureKind.stale_claim
-        fields["claimId"] = None
         if reason is not None:
             fields["reason"] = reason
         if not stale:

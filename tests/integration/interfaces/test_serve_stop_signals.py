@@ -176,7 +176,6 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
                     "description": "x",
                     "status": "running",
                     "pipeline": "two",
-                    "claimId": "c-1",
                     "claimPid": 2**22 + 12345,
                     "claimedAt": _clock.iso(),
                     "hops": [_record.hop_record(hop)],

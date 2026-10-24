@@ -18,7 +18,21 @@ from pydantic import (
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
+from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import DispatchError
+from docket.kernel.operator_contract import Question, QuestionV11
+from docket.tasks.domain.options import TaskGate, TaskRestrictions
+from docket.tasks.domain.parts import (
+    Answer,
+    ConsultAnswer,
+    Grant,
+    Prepared,
+    TaskGrant,
+    TaskUsage,
+    Worktree,
+    is_none,
+)
+from docket.tasks.domain.state import Status
 
 # The Reviewer/Tester verdict patterns live in exactly one place:
 # `pipeline/domain/spec.py`'s `default_pipeline()` declares them as real `VerdictGate`s, and gate
@@ -171,6 +185,100 @@ class TaskResult:
         return round(sum(h.cost_usd for h in self.hops), 6)
 
 
+def _is_empty(value: object) -> bool:
+    return not value
+
+
+class TaskRecord(BaseModel):
+    """One task of a pod's queue, as the queue file stores it.
+
+    The dump (``model_dump(by_alias=True, mode="json")``) is the stored record. One rule for
+    absent against null: a key the queue always writes (``startedAt``, ``approvalToken``, ``hops``,
+    ``pregrants``, ...) dumps even when unset; every other key is absent until something writes it
+    and absent again after a drop (``exclude_if``), never ``null`` or ``[]``. No global
+    ``exclude_none`` or ``exclude_unset``: either would drop a key of the first kind."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    # The request: what was enqueued.
+    id: str = Field(default_factory=lambda: _ids.new_id("task"))
+    description: str
+    priority: str = "normal"
+    created: str = Field(default_factory=_clock.iso)
+    channel: str = Field("", exclude_if=_is_empty)
+    brief: TaskBrief | None = Field(None, exclude_if=is_none)
+    external_ref: str | None = Field(None, alias="externalRef", exclude_if=is_none)
+    idempotency_key: str | None = Field(None, alias="idempotencyKey", exclude_if=is_none)
+    base_ref: str | None = Field(None, alias="baseRef", exclude_if=is_none)
+    pipeline: str | None = Field(None, exclude_if=is_none)
+    gate: TaskGate | None = Field(None, exclude_if=is_none)
+    max_tokens: int | None = Field(None, alias="maxTokens", exclude_if=is_none)
+    prepare: str | None = Field(None, exclude_if=is_none)
+    restrictions: TaskRestrictions | None = Field(None, exclude_if=is_none)
+
+    # The lifecycle: where the task stands.
+    status: Status = Status.pending
+    started_at: str | None = Field(None, alias="startedAt")
+    completed_at: str | None = Field(None, alias="completedAt")
+    claimed_at: str | None = Field(None, alias="claimedAt")
+    claim_pid: int | None = Field(None, alias="claimPid", exclude_if=is_none)
+    reason: str = ""
+    failure_kind: str | None = Field(None, alias="failureKind", exclude_if=is_none)
+    blocked_reason: str | None = Field(None, alias="blockedReason", exclude_if=is_none)
+    approval_token: str | None = Field(None, alias="approvalToken")
+    pending_approval_index: int | None = Field(None, alias="pendingApprovalIndex")
+    # Single-use handoff from a grant to the next claim of this task: read and cleared by that
+    # claim, so it never leaks into an unrelated later one.
+    gate_override_pipeline_index: int | None = Field(None, alias="gateOverridePipelineIndex")
+    question: QuestionV11 | Question | None = Field(None, exclude_if=is_none)
+    consult_answer: ConsultAnswer | None = Field(None, alias="consultAnswer", exclude_if=is_none)
+
+    # The execution: what running it produced.
+    hops: list[HopResult] = Field(default_factory=list)
+    cost_usd: float = Field(0.0, alias="costUsd")
+    worktree: Worktree | None = Field(None, exclude_if=is_none)
+    prepared: Prepared | None = Field(None, exclude_if=is_none)
+    # Validated where it is used: the domain may not import ``pipeline``.
+    pipeline_spec: dict[str, Any] | None = Field(None, alias="pipelineSpec", exclude_if=is_none)
+    pipeline_source: str | None = Field(None, alias="pipelineSource", exclude_if=is_none)
+    gate_applied: bool | None = Field(None, alias="gateApplied", exclude_if=is_none)
+    usage: TaskUsage | None = Field(None, exclude_if=is_none)
+    check_changed: list[str] = Field(
+        default_factory=list, alias="checkChanged", exclude_if=_is_empty
+    )
+    consultations: int = Field(0, exclude_if=_is_empty)
+    answers: list[Answer] = Field(default_factory=list, exclude_if=_is_empty)
+    pregrants: list[Grant] = Field(default_factory=list)
+    task_grants: list[TaskGrant] = Field(
+        default_factory=list, alias="taskGrants", exclude_if=_is_empty
+    )
+
+    @property
+    def worktree_dir(self) -> str:
+        """The task worktree's directory while it exists, else ``""`` (none made, or pruned)."""
+        wt = self.worktree
+        return wt.dir if wt is not None and wt.dir and not wt.pruned_at else ""
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status in Status.TERMINAL
+
+    @property
+    def approved_ready(self) -> bool:
+        """A pending task a human already approved: a pre-grant or a gate override is waiting."""
+        return self.status == Status.pending and (
+            bool(self.pregrants) or self.gate_override_pipeline_index is not None
+        )
+
+    @property
+    def question_is_consultation(self) -> bool:
+        """Whether the parked question is one an agent asked (a clarification or a decision)."""
+        return self.question is not None and getattr(self.question, "kind", None) in (
+            "clarification",
+            "decision",
+        )
+
+
 # Fields a task record may lack because enqueue_task_once does not write them.
 # ``hops`` is handled separately below — a shared mutable default would leak
 # the same list object across every backfilled task.
@@ -179,10 +287,8 @@ _TASK_SCALAR_DEFAULTS: dict[str, Any] = {
     "status": "pending",
     "startedAt": None,
     "completedAt": None,
-    "source": "operator",
     "reason": "",
     "costUsd": 0.0,
-    "claimId": None,
     "claimedAt": None,
     # Set together when a require_approval gate fires (status ->
     # "waiting_approval"); cleared on resolution (grant or deny) — see

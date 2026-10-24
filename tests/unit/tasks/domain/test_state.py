@@ -21,7 +21,6 @@ _FACTS = {
     "reason": "why",
     "failure_kind": "gate_failed",
     "blocked_reason": "resources",
-    "claim_id": "claim-1",
     "pid": 42,
     "approval_token": "tok",
     "pending_index": 2,
@@ -42,7 +41,6 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
     if to is S.running:
         assert fields == {
             "startedAt": _FACTS["now"],
-            "claimId": "claim-1",
             "claimedAt": _FACTS["now"],
             "claimPid": 42,
         }
@@ -50,7 +48,6 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
         assert fields == {}
         assert "blockedReason" in transition.drop
     else:
-        assert fields["claimId"] is None
         assert fields["reason"] == "why"
         assert "claimPid" in transition.drop
     if to is S.waiting_input:
@@ -85,8 +82,7 @@ def test_the_table_is_the_settle_edges_plus_the_reopen_edges() -> None:
         (S.waiting_input, S.pending),
         (S.waiting_approval, S.pending),
     }
-    # Nothing leads into in_progress, and nothing pulls a finished task back except a retry.
-    assert not [p for p in _state.ALLOWED if p[1] is S.in_progress]
+    # Nothing pulls a finished task back except a retry.
     assert not [p for p in _state.ALLOWED if p[0] is S.done and p[1] in (S.pending, S.running)]
 
 

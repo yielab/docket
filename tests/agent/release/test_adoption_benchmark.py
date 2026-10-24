@@ -151,11 +151,9 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
         "created": "2026-09-02T00:00:00+00:00",
         "startedAt": "2026-09-02T00:00:01+00:00",
         "completedAt": "2026-09-02T00:00:03+00:00",
-        "source": "operator",
         "reason": "",
         "hops": [retained_hop, invalid_handoff_hop],
         "costUsd": 0.0,
-        "claimId": None,
         "claimedAt": "2026-09-02T00:00:02+00:00",
     }
     task_path = home / "workspaces" / "projects" / "demo-lead" / "TASK_LIST.json"

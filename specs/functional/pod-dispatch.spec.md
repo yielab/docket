@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.5.0
+**Version**: 10.0.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -77,15 +77,17 @@ This specification does NOT cover:
 1. A newly queued task (`enqueue_task_once`) **MUST** be created with a unique `task-<uuid4>` id (not a
    timestamp: concurrent enqueues under the same millisecond would otherwise collide and leak
    false ordering), `status: "pending"`, a `created` timestamp, `priority` (`high`/`normal`/`low`;
-   any other value is stored as `normal`), `source`, `channel`, an empty `hops` array,
-   `costUsd: 0.0`, `reason: ""`, and `claimId`/`claimedAt`/`startedAt`/`completedAt` all unset.
+   any other value is stored as `normal`), `channel`, an empty `hops` array,
+   `costUsd: 0.0`, `reason: ""`, and `claimedAt`/`startedAt`/`completedAt` all unset. The record
+   carries no claim token: a stale claim is read from `claimPid` with `claimedAt`, and `channel`
+   says where the task came from.
    Enqueue screens the description through `pre_input` once: a `block` raises `DispatchError` and
    stores nothing; a `require_approval` stores the task `waiting_approval` with an `approvalToken`,
    `pendingApprovalIndex: 0` and an `approval_required` trace event (`security-gates.spec.md`).
    Enqueueing into a project with no pod raises `DispatchError`.
 2. Every read of a pod's queue (`read_tasks`) **MUST** fill each field enqueue does not write with
-   its default (`priority`, `status`, `startedAt`, `completedAt`, `source`, `reason`, `costUsd`,
-   `claimId`, `claimedAt`, `approvalToken`, `pendingApprovalIndex`,
+   its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`, `costUsd`,
+   `claimedAt`, `approvalToken`, `pendingApprovalIndex`,
    `gateOverridePipelineIndex`, a fresh empty `hops` and `pregrants` list, `created`, `id`); no
    separate migration step exists or is required.
 3. A task's status **MUST** be one of exactly eight values: `pending`, `running`,
@@ -149,10 +151,8 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
 1. Before a task's first hop runs, it **MUST** be **claimed**: a single locked read-modify-write
    of the pod's queue file (holding its filelock for the whole operation) that selects the next
    eligible task, flips its status to `running`, clears its `failureKind`, and persists
-   `startedAt`, a fresh `claimId` (a `uuid4` token, regenerated on every claim -- an identifying
-   and observability value, not compared on a later write; the concurrency guarantee comes from
-   the filelock held during the read-modify-write), `claimedAt`, and `claimPid` (the claiming
-   process's pid) -- all **before** the claim returns and before any hop is attempted.
+   `startedAt`, `claimedAt`, and `claimPid` (the claiming process's pid; the concurrency guarantee
+   comes from the filelock held during the read-modify-write, not from any token) -- all **before** the claim returns and before any hop is attempted.
 2. Because the read (which task is next), the mutation (flip to `running`) and the write all
    happen inside one lock acquisition, two concurrent `dispatch_pod` calls against the same pod
    (different threads, or different processes) **MUST NOT** be able to claim the same task: the
@@ -203,7 +203,7 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    than the one that claimed a task), any `running` task whose `claimedAt` is older than
    `CLAIM_STALE_TIMEOUT` (default 1800s, env-overridable) **MUST** be swept to `failed` with
    `failureKind: "stale_claim"`, reason `stale claim — dispatcher likely crashed mid-task`, and a
-   `stale_claim` trace event (payload: the task and its `claimedAt`), its `claimId` cleared, and
+   `stale_claim` trace event (payload: the task and its `claimedAt`), and
    its already-persisted `hops[]` left untouched. This is the presumption that the dispatcher which
    claimed it crashed mid-task.
 4. `docket run --resume` **MUST** reclaim a `stale_claim`-failed task (per the eligibility rule
@@ -249,7 +249,7 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    `dispatch_pod`.
 2. `dispatch_pod` therefore always settles this task exactly as it does any other terminal result:
    the stored task gets `status: "failed"`, the refusal `reason` and `failureKind:
-   "dispatch_refused"`, and its `claimId` is cleared -- the claim is settled, not orphaned -- and
+   "dispatch_refused"`, and the claim is settled, not orphaned -- and
    the loop **MUST** continue to the pod's next eligible task rather than aborting the whole
    dispatch run. Any hop that completed before the refusal (e.g. the Lead's) was already persisted
    incrementally and **MUST** remain in the task's `hops[]`.
@@ -852,7 +852,7 @@ wired agent's conversation current with the task it is working.
 5. **Terminal routes settle immediately.** A route resolving to `"fail"` (or an `on:` target that
    names no known step id, or a backward route whose cap is exhausted) moves the task straight to
    `failed`; one resolving to `"stop"` moves it to `done` -- both settled inside `answer_task`
-   itself, with `completedAt` set and `claimId` cleared, since answering happens with no live
+   itself, with `completedAt` set, since answering happens with no live
    dispatch context. Any other target (or no `on:` entry for the label at all) reopens the task
    `pending`, carrying the synthetic hop's `next_step` for the next claim to follow.
 6. **Resume.** Resume treats the synthetic `operator` hop like any other routed hop: `hop.next_step`
@@ -975,7 +975,7 @@ wired agent's conversation current with the task it is working.
    event on the task's own session; and transition the task to `waiting_approval` (reason `approval
    required before <role> hop (token=<token>)`) **without** running the gated hop's agent turn. The
    task's `approvalToken` and `pendingApprovalIndex` (the pipeline position the gate fired at)
-   **MUST** be persisted; its `claimId` **MUST** be cleared (no active claim while waiting).
+   **MUST** be persisted.
 3. A `waiting_approval` task **MUST NOT** be claimable by any dispatch run, with or without
    `--resume` -- only `pending` and a `RESUMABLE_FAILURE_KINDS`-tagged `failed` task are eligible. It
    re-enters `pending` only through a resolved approval (below), never automatically, and never via
@@ -993,7 +993,7 @@ wired agent's conversation current with the task it is working.
      turn needed to fail a task that never ran its gated hop), `failureKind: "approval_denied"`,
      `reason: "approval denied"` (or `approval denied: <reason>` when the decision carried the
      operator's reason, so the inbox's Failed entry and `task show` say why), `completedAt` set,
-     `claimId` cleared, `taskGrants` dropped. Never auto-retried by a later `dispatch_pod` call,
+     `taskGrants` dropped. Never auto-retried by a later `dispatch_pod` call,
      with or without `--resume`.
    - Each resolution traces `approval_resumed` (grant) or `approval_task_denied` (deny) on the
      task's session.
@@ -1616,7 +1616,7 @@ counts to attribute usage to.
      behind, and settle the task through the claim-time refusal (requirement 4b) with `failureKind:
      "base_ref"` and a reason naming the ref. No hop runs.
    - 4b. The claim-time refusal settles the claimed task `failed` with `failureKind`, `reason` and
-     `completedAt`, clears `claimId`, leaves the recorded `hops` untouched, re-syncs the ledger, and
+     `completedAt`, leaves the recorded `hops` untouched, re-syncs the ledger, and
      writes a `dispatch_refused` trace event whose payload carries the refusal `reason` and
      `failureKind`; `dispatch_pod` then continues to the next eligible task. `base_ref` is not in
      `RESUMABLE_FAILURE_KINDS`: a resume would refuse again, so the operator re-enqueues with a
@@ -1744,7 +1744,7 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    `and <n> more`), and traces `approval_required` with `kind: "check_changed"`.
    `pendingApprovalIndex` is `null`. No hop runs and no token is spent after the pipeline's last hop.
 4. `resolve_waiting_approval_detail` for a `check_changed` approval: a **grant** ends the task `done`
-   (reason `check_changed approved`, `completedAt` set, `claimId` cleared, `approvalToken` cleared,
+   (reason `check_changed approved`, `completedAt` set, `approvalToken` cleared,
    `checkChanged` kept as the record of what was granted) and never `pending` or a gate override; a
    **deny**, or an approval that expired, ends it `failed` with `failureKind: "check_changed"` and
    `reason` `approval denied[: <reason>]`, `checkChanged` kept. Either outcome re-syncs the ledger.
@@ -1914,7 +1914,7 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
     `cancelled` from whatever status the record holds (a stale sweep or a retry can race the run still
     finishing, and the record takes the run's outcome); a claim moves `pending` or `failed` to
     `running`; `blocked`, `failed`, `waiting_input` and `waiting_approval` move to `pending`. Nothing
-    else is a transition: no status leads into `in_progress`, and a `done` or `cancelled` task never
+    else is a transition: a `done` or `cancelled` task never
     moves to `pending` or `running`. A `stale_claim` failure is evidence of a lost claim: it stamps
     no `completedAt` and keeps the claim's pid and the task's grants. A `retry` move clears the
     previous outcome (`reason`, `failureKind`, `completedAt`, `blockedReason`); an `unblock` clears
@@ -2195,12 +2195,12 @@ queue.)
 
 ### Post-conditions
 
-- After a claim, the task's `status`, `startedAt`, `claimId`, `claimedAt` and `claimPid` **MUST** be
+- After a claim, the task's `status`, `startedAt`, `claimedAt` and `claimPid` **MUST** be
   persisted to the pod's `TASK_LIST.json` before the first hop runs.
 - After each hop, that hop's record (including `attempts`) **MUST** be persisted and `claimedAt`
   refreshed, before the next hop is attempted.
 - After a run reaches a terminal or waiting state, the task's `status`, `reason`, `hops`, `costUsd`
-  and `usage` **MUST** be persisted back, and its `claimId` cleared.
+  and `usage` **MUST** be persisted back.
 - A `blocked` task **MUST** stay `blocked` in storage -- it is never rewritten to `pending` by
   `dispatch_pod` itself.
 - A gate firing **MUST** persist the task's `approvalToken` and `pendingApprovalIndex` before

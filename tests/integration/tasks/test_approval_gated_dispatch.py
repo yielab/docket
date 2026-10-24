@@ -214,7 +214,7 @@ class TestGateFiresPreHop:
 
         task = _queue.read_tasks("myapp")[0]
         assert task["status"] == "waiting_approval"
-        assert task["claimId"] is None
+        assert "claimPid" not in task
         assert task["approvalToken"]
         assert task["approvalToken"].startswith("apr-")
         # Lean pod pipeline is [lead, implementer] -> implementer is index 1.

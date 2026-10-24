@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.2.0
+**Version**: 6.2.1
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-24
 
 ## Purpose
 
@@ -136,7 +136,7 @@ Query parameters:
 | Route | Parameter | Rule |
 |---|---|---|
 | `GET /tasks/<pod>` | `externalRef` | exact match; both parameters combine |
-| `GET /tasks/<pod>` | `status` | one of `pending`, `running`, `in_progress`, `waiting_input`, `waiting_approval`, `blocked`, `failed`, `done`, `cancelled`; any other value is `400` |
+| `GET /tasks/<pod>` | `status` | one of `pending`, `running`, `waiting_input`, `waiting_approval`, `blocked`, `failed`, `done`, `cancelled`; any other value is `400` |
 | `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
 
 ## Output

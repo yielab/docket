@@ -483,7 +483,7 @@ class TestReviewerReworkResume:
                 "reviewer",
                 "tester",
             ]
-            assert final["claimId"] is None
+            assert "claimPid" not in final
 
     def test_resumed_rework_implementer_message_still_carries_review_text(
         self, tmp_path: Path

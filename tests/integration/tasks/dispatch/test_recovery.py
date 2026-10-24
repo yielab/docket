@@ -215,7 +215,7 @@ class TestCrashRecovery:
                     "reviewer",
                     "tester",
                 ]
-                assert final["claimId"] is None
+                assert "claimPid" not in final
 
     def test_stale_claim_without_resume_is_not_reclaimed(self, tmp_path: Path) -> None:
         """The default (non-resume) dispatch never auto-retries a crashed task."""
@@ -271,7 +271,7 @@ class TestDeterministicRefusalSettlesTheClaim:
 
             tasks = _queue.read_tasks("demo")
             assert [t["status"] for t in tasks] == ["failed", "failed"]
-            assert all(t["claimId"] is None for t in tasks)  # settled, not orphaned
+            assert all("claimPid" not in t for t in tasks)  # settled, not orphaned
             assert all(t["failureKind"] == "dispatch_refused" for t in tasks)
             assert [h["role"] for h in tasks[0]["hops"]] == ["lead"]
 
@@ -369,7 +369,7 @@ class TestDeterministicRefusalSettlesTheClaim:
 
             task = _queue.read_tasks("demo")[0]
             assert task["status"] == "running"
-            assert task["claimId"] is not None
+            assert task["claimPid"]
 
 
 class TestResumeGateCountsRunningTasksTowardRecovery:

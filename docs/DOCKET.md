@@ -747,8 +747,8 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
 `waiting_approval` | `waiting_input` (plus `cancelled` via the run registry, below).
 
 - **Claiming is locked, not read-then-write.** `pending` → `running` is a single locked
-  read-modify-write (`platform/store.py`) that also persists `startedAt`, `claimId`, and
-  `claimedAt` — this is what stops two concurrent `dispatch_pod` calls on the same pod from
+  read-modify-write (`platform/store.py`) that also persists `startedAt`, `claimedAt`, and
+  `claimPid` — this is what stops two concurrent `dispatch_pod` calls on the same pod from
   double-running the *same* task (they may each claim and run *different* tasks concurrently,
   which is fine).
 - **Hops persist as they complete**, not only when the whole task finishes, so a crash mid-task

@@ -166,9 +166,8 @@ def enqueue_task_once(
         description = f"{description}\n\n## Pre-brief\n{_handoff.render_brief(parsed_brief)}"
 
     task_id = _ids.new_id("task")
-    source = "operator"
     session_id = f"agent:{project}:{task_id}"
-    effective_trusted = (source == "operator") if trusted is None else trusted
+    effective_trusted = True if trusted is None else trusted
 
     hit = _enqueue_pre_input_gate(
         project, session_id, task_id, description, trusted=effective_trusted
@@ -187,12 +186,10 @@ def enqueue_task_once(
         "created": _clock.iso(),
         "startedAt": None,
         "completedAt": None,
-        "source": source,
         "channel": channel,
         "hops": [],
         "reason": "",
         "costUsd": 0.0,
-        "claimId": None,
         "claimedAt": None,
     }
     if parsed_brief is not None:
@@ -439,7 +436,6 @@ def claim_next_task(
             t,
             _state.Status.running,
             now=_clock.iso(),
-            claim_id=_ids.new_uuid(),
             pid=_os.getpid(),
         )
         claimed = dict(t)

@@ -459,7 +459,7 @@ class TestTaskPipeline:
         assert stored["failureKind"] == "pipeline"
         assert "nope" in stored["reason"]
         assert stored["hops"] == []
-        assert stored["claimId"] is None
+        assert "claimPid" not in stored
         tf = current_home().traces_dir / "myapp" / "agent:myapp:task-1.jsonl"
         refused = [e for e in _trace.read_trace(tf) if e["event_type"] == "dispatch_refused"]
         assert len(refused) == 1

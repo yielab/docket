@@ -286,9 +286,7 @@ class TestStaleClaim:
         task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
         path = _settings.pod_task_list_path("demo")
         doc = json.loads(path.read_text())
-        doc["tasks"][0].update(
-            status="running", claimedAt="2000-01-01T00:00:00+00:00", claimId="gone"
-        )
+        doc["tasks"][0].update(status="running", claimedAt="2000-01-01T00:00:00+00:00")
         path.write_text(json.dumps(doc))
 
         _sweep.dispatch_pod("demo", runner=FakeDriver(), max_tasks=0)

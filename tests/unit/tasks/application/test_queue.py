@@ -342,7 +342,7 @@ class TestBaseRefRefusedAtClaim:
         assert first["failureKind"] == "base_ref"
         assert "nope" in first["reason"]
         assert first["hops"] == []
-        assert first["claimId"] is None
+        assert "claimPid" not in first
         assert first["completedAt"]
         assert "worktree" not in first
         assert second["status"] == "done"
@@ -382,7 +382,6 @@ class TestBaseRefRefusedAtClaim:
                 "id": "t1",
                 "description": "x",
                 "status": "running",
-                "claimId": "c",
                 "hops": [{"role": "lead"}],
             },
         )
@@ -398,7 +397,7 @@ class TestBaseRefRefusedAtClaim:
         assert stored["status"] == "failed"
         assert stored["failureKind"] == "pipeline"
         assert stored["reason"] == "no such pipeline"
-        assert stored["claimId"] is None
+        assert "claimPid" not in stored
         assert stored["hops"] == [{"role": "lead"}]
 
 
@@ -485,7 +484,6 @@ class TestStaleClaimReclaim:
             "id": "task-1",
             "description": "x",
             "status": "running",
-            "claimId": "c-1",
             "claimPid": claim_pid,
             "claimedAt": claimed_at,
         }

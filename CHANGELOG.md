@@ -204,6 +204,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The `claimId` and `source` keys of a task record, and the `in_progress` task status.** Nothing
+  read `claimId` (a stale claim is read from `claimPid` and `claimedAt`) or `source` (`channel`
+  says where a task came from), and nothing ever wrote `in_progress`. `GET /tasks/<pod>?status=
+  in_progress` is a `400` like any unknown value.
 - Four spent one-off maintenance scripts that nothing called: `remove_harness_mode.py`,
   `split_cli_registry.py`, `move_pod_report.py` and `strip_spec_changelogs.py`.
 - **The `inPlace` meta key**, which nothing wrote; `_ensure_task_worktree` no longer reads it.

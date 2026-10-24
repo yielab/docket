@@ -4,8 +4,8 @@ a single pod; invoked only by an explicit trigger or the opt-in ``serve --dispat
 Behavioral contract: specs/functional/pod-dispatch.spec.md (claiming, crash recovery, retries,
 timeouts, budget/auto-pause, require_approval/``waiting_approval``, verify/verdict/PASS-FAIL
 gates) and specs/functional/security-gates.spec.md (``pre_input``/``pre_output``/``pre_tool_call``).
-Load-bearing points not obvious from either: a ``claimId`` is identifying only -- the concurrency
-guarantee is the filelock held for the whole claim read-modify-write, never a claimId comparison.
+Load-bearing points not obvious from either: the concurrency guarantee of a claim is the
+filelock held for the whole claim read-modify-write, never a comparison of any claim value.
 ``pre_input`` fires once at enqueue, not per hop, so incoming text cannot re-trip a ``"*"``-scoped
 policy at every role. ``pod_gating_cost``'s token estimate is gating-only, never recorded spend
 (the driver can report ``cost_usd = 0.0``).

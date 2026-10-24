@@ -13,6 +13,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 
 from docket.kernel.errors import InvalidInput
+from docket.tasks.domain.parts import is_none
 from docket.tasks.domain.state import Status
 
 _GATE_LABELS = ("pass", "fail", "needs_human")
@@ -45,16 +46,16 @@ class TaskGate(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     command: StrictStr = Field(min_length=1)
-    timeout_s: StrictInt | None = Field(None, gt=0, alias="timeoutS")
-    exit_map: dict[StrictStr, StrictStr] | None = Field(None, alias="map")
+    timeout_s: StrictInt | None = Field(None, gt=0, alias="timeoutS", exclude_if=is_none)
+    exit_map: dict[StrictStr, StrictStr] | None = Field(None, alias="map", exclude_if=is_none)
 
 
 class TaskRestrictions(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    denied_tools: list[StrictStr] | None = Field(None, alias="deniedTools")
-    network: StrictStr | None = None
-    policies: list[dict[str, Any]] | None = None
+    denied_tools: list[StrictStr] | None = Field(None, alias="deniedTools", exclude_if=is_none)
+    network: StrictStr | None = Field(None, exclude_if=is_none)
+    policies: list[dict[str, Any]] | None = Field(None, exclude_if=is_none)
 
 
 class TaskOptions(BaseModel):

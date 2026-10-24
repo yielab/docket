@@ -58,17 +58,15 @@ def test_a_cli_enqueue_records_the_cli_channel() -> None:
     assert result.exit_code == 0, result.output
     task = _queue.read_tasks("demo")[0]
     assert task["channel"] == "cli"
-    assert task["source"] == "operator"
     assert "channel=cli" in str(_entries("task.enqueue")[0]["detail"])
 
 
-def test_an_http_enqueue_records_the_http_channel_and_keeps_source(live_server: str) -> None:
+def test_an_http_enqueue_records_the_http_channel(live_server: str) -> None:
     _seed()
     resp = _post(f"{live_server}/tasks/demo", {"description": "from http"})
     task = _queue.read_tasks("demo")[0]
     assert task["id"] == resp["task"]
     assert task["channel"] == "http"
-    assert task["source"] == "operator"
     detail = str(_entries("task.enqueue")[0]["detail"])
     assert "channel=http" in detail and resp["task"] in detail and "demo" in detail
 
