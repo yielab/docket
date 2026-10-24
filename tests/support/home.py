@@ -263,3 +263,16 @@ def fresh_default() -> Iterator[None]:
     reset_default()
     yield
     reset_default()
+
+
+@pytest.fixture()
+def schedule_file(tmp_path: Path) -> Iterator[Path]:
+    f = tmp_path / "docket-schedules.json"
+    with use_home(
+        dataclasses.replace(
+            current_home(),
+            schedule_file_override=f,
+            runs_file_override=tmp_path / "docket-runs.json",
+        )
+    ):
+        yield f
