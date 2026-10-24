@@ -20,6 +20,7 @@ from docket.agent.ports import bind_role_composer, bind_tool_gate
 from docket.governance import gate as _gate
 from docket.governance import secrets as _secrets
 from docket.governance import security as _security
+from docket.governance.ports import bind_approval_follow_up
 from docket.hops.application import driver as _driver
 from docket.kernel.home import Home
 from docket.kernel.ports import (
@@ -35,11 +36,15 @@ from docket.observability.adapters import otlp_http as _otlp_http
 from docket.observability.adapters.local_tracer import LocalTracer
 from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
+from docket.operator.ports import bind_task_reader
 from docket.platform import git as _git_adapter
 from docket.platform import process as _process_adapter
 from docket.platform import store as _store
 from docket.sandbox.launch import Launcher
+from docket.tasks.application import actions as _actions
+from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams.ports import bind_channel_documents
 from docket.teams.role_composer import TeamsRoleComposer
 
 DEFAULT_PORT = 7331
@@ -67,6 +72,9 @@ def bind_adapters() -> None:
     bind_role_composer(TeamsRoleComposer())
     bind_tool_gate(_gate)
     bind_tracer(LocalTracer())
+    bind_approval_follow_up(_actions)
+    bind_task_reader(_queue)
+    bind_channel_documents(_channel)
     bind_git(_git_adapter)
     bind_process(_process_adapter)
     bind_jail(

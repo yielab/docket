@@ -15,16 +15,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docket.governance import policy as _policy
-from docket.kernel.errors import InvalidInput
+from docket.kernel.errors import DocumentError, InvalidInput
 from docket.models import catalog as _provider
 from docket.observability import exporter as _exporter
-from docket.operator import ChannelError, ChannelSpec, load_channel_document
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import model_selection as _models_policy
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.apply import plan as _pod_apply
+from docket.teams.ports import channel_documents as _channel_documents
 
 KINDS: tuple[str, ...] = (
     "role",
@@ -145,7 +145,6 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "policy": PolicyDocument,
     "pod": PodDocument,
     "exporter": _exporter.ExporterSpec,
-    "channel": ChannelSpec,
     "mcp-server": _mcp_servers.McpServerDocument,
 }
 
@@ -336,8 +335,8 @@ def _validate_exporter(path: Path) -> None:
 
 def _validate_channel(path: Path) -> None:
     try:
-        load_channel_document(path)
-    except ChannelError as exc:
+        _channel_documents.load_channel_document(path)
+    except DocumentError as exc:
         raise ConfigDocError(path, str(exc)) from exc
 
 

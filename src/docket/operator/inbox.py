@@ -23,7 +23,7 @@ from docket.kernel.operator_contract import (
     TaskView,
     a2a_state,
 )
-from docket.tasks.application import queue as _queue
+from docket.operator.ports import task_reader as _tasks
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
@@ -126,7 +126,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     since_dt = _clock.parse_iso(since) if since else None
 
     for project in _all_projects():
-        for task in _queue.read_tasks(project):
+        for task in _tasks.read_tasks(project):
             view = task_view(project, task, now)
             latest = _newer(latest, view.updated_at)
             if view.status.startswith("waiting_") or view.status in _NEEDS_YOU_STATUSES:

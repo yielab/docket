@@ -11,6 +11,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.platform import read_modify_write
+from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.record import _UnitContext
 from docket.tasks.domain import state as _state
@@ -70,6 +71,17 @@ def resolve_waiting_approval_detail(
     check_changed = context.get("kind") == "check_changed"
     task_id = str(context.get("taskId", ""))
     project = str(rec.get("project", ""))
+    if decision == "denied" and reason and project and project != "operator":
+        # The denial reason joins the corrections ledger under the task the gate named (dispatch
+        # stores it in the record's context); an approval no task carries is keyed empty.
+        _corrections.record(
+            project,
+            "deny_reason",
+            task_id=str(rec.get("taskId") or task_id),
+            role=str(rec.get("role", "")) or "operator",
+            text=reason,
+            source=channel or "unknown",
+        )
     if not project or (not task_id and not parked):
         return False, ""
 
