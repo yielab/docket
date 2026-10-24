@@ -24,8 +24,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
 BASELINE = REPO / "tests/architecture/import_contracts_baseline.txt"
-# Edges another card owns: platform.git / platform.process, sandbox.*, any adapters/ module.
-OWNED_ELSEWHERE = ("docket.platform.git", "docket.platform.process", "docket.sandbox.")
 
 
 def module_path(name: str) -> Path:
@@ -55,7 +53,7 @@ def my_edges() -> list[tuple[str, str]]:
         if not contract.startswith(("application", "interfaces")):
             continue
         importer, _, imported = edge.partition(" -> ")
-        if imported.startswith(OWNED_ELSEWHERE) or ".adapters" in imported:
+        if ctx_of(importer) == ctx_of(imported):
             continue
         edges.append((importer, imported))
     return edges
