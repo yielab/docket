@@ -806,5 +806,13 @@
     "heading": "◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close",
     "bytes": 33386,
     "sha256": "40581e4cc2e2841eaaeb7b8fe3baedf27d892ca41ba698bcfb521e7b03a6b0cb"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-decisions.md",
+    "level": 2,
+    "heading": "6. Decisions (D-1…D-66)",
+    "bytes": 61528,
+    "sha256": "d4a4b8be2159d6d96d14f8cda62f7e51d37219ed36e4110377fdf5daa8a8675a"
   }
 ]

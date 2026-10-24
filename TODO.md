@@ -143,10 +143,8 @@ from `main`.
 - **Shell keywords are classified as binaries when unjailed** (`for`, `do`, `done`, `if`, `then`,
   `while` ask in `governance/security`). Trigger: an operator without isolation reports it.
 
-**Configuration (2026-10-24 comparison; the form, `maxReworkCycles` and policy findings are P47-12).**
+**Configuration.**
 
-- **Pipelines are linear with routing; the reference documents no parallel branch or fan-out.**
-  Trigger: a real task that needs fan-out (check `pipeline-format.spec.md` first).
 - **Parallel tasks in a pod:** ADR 0027 point 10 holds the trigger; a card would add a
   `maxParallelTasks` pod setting and a bounded pool in dispatch.
 - **A team's skills:** `hops/workspace/skills.py` reads only `<codebase>/.docket/skills`; a repository

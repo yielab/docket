@@ -118,7 +118,7 @@ move with the refactor:
    `agent/tools/registry.py`). docket's governance stack — the policy engine, the approval store, the
    high-risk classifier, the audit log — only means anything if there is exactly one place a tool
    can execute from. An AST test enforces this:
-   `tests/unit/agent/tools/test_registry.py::test_only_the_chokepoint_imports_the_handler_module`.
+   `tests/unit/agent/tools/test_registry__dispatch.py::test_only_the_chokepoint_imports_the_handler_module`.
 2. **docket-owned JSON goes through the one store module** (today `platform/store.py`: atomic write
    + filelock + `.bak` rotation + 0600 perms) — never write those files directly. The one
    documented exemption is append-only JSONL (`observability/trace.py`, `governance/audit.py`), which writes

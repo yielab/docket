@@ -1,7 +1,7 @@
 # Live context path invariants
 
 Read this for changes touching `hops/application/runner.py`, `hops/application/driver.py`,
-`agent/loop.py`, `agent/session.py`, `agent/context.py`, `agent/handoff.py`, identity/memory
+`agent/loop.py`, `agent/session.py`, `agent/context.py`, `kernel/handoff.py`, identity/memory
 composition, or MCP/tool output.
 
 ## Prove the wire

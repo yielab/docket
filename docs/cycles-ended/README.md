@@ -15,6 +15,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (74 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
+| [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
 
 ## Index by date (newest first)
@@ -127,6 +128,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19** | `roadmap-phases.md` | 4,538 |
 | ◆ CLOSED — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028) | `todo-waves.md` | 21,773 |
 | ◇ WAVE 120 — the defects the specs truth pass found (before P46-6; stages 1-3 above) | `todo-waves.md` | 33,069 |
+| 6. Decisions (D-1…D-66) | `roadmap-decisions.md` | 61,528 |
 <!-- archive-index:end -->
 
 ## Handoffs
