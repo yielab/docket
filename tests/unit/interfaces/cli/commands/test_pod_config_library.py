@@ -115,6 +115,46 @@ class TestPodApply:
             assert json.loads(result.output)["items"][0]["action"] == "add"
             assert not (current_home().pod_config_dir("demo") / "roles.json").exists()
 
+    @pytest.mark.parametrize(
+        ("name", "text", "key"),
+        [
+            (
+                "old-role.yaml",
+                "kind: role\nname: old\nmodelClass: cheap\nsoulTemplate: x\n",
+                "model",
+            ),
+            (
+                "old-policy.yaml",
+                "kind: policy\nname: old\napplies_to: ['*']\nthen: block\n",
+                "appliesTo",
+            ),
+        ],
+    )
+    def test_a_canonical_role_or_policy_file_exits_2_naming_the_short_form_key(
+        self, tmp_path: Path, name: str, text: str, key: str
+    ) -> None:
+        with _seed_pod(tmp_path):
+            path = tmp_path / name
+            path.write_text(text, encoding="utf-8")
+
+            result = _pod_run("update", str(path), "--pod", "demo")
+
+            assert result.exit_code == 2
+            assert f"`{key}`" in result.output
+
+    def test_a_canonical_file_inside_a_directory_exits_2(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            directory = tmp_path / "recipe"
+            (directory / "roles").mkdir(parents=True)
+            (directory / "roles" / "old.yaml").write_text(
+                "kind: role\nname: old\nmodelClass: cheap\n", encoding="utf-8"
+            )
+
+            result = _pod_run("update", str(directory), "--pod", "demo", "--dry-run")
+
+            assert result.exit_code == 2
+            assert "replace `modelClass` with `model`" in result.output
+
     def test_a_pod_yaml_with_a_rework_setting_and_a_pipeline_exits_2(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             directory = tmp_path / "recipe"

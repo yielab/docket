@@ -112,7 +112,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
         ui.error(f"Pipeline '{path_str}' is invalid:")
         for e in result.errors:
             ui.console.print(f"  [red]x[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(2 if result.canonical else 1)
 
     roster = pod.pod_full_roster(project)
     registry = _arch.load_registry(project)

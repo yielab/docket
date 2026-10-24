@@ -28,7 +28,7 @@ import docket.governance.plugin_api as _plugin_api
 import docket.kernel.templates as _templates
 from docket.governance import plugins as _plugins
 from docket.governance import policy_command as _command
-from docket.kernel.errors import InvalidInput
+from docket.kernel.errors import CanonicalFormRefused, InvalidInput
 from docket.kernel.home import current_home
 
 VALID_HOOKS: frozenset[str] = frozenset({"pre_input", "pre_tool_call", "pre_output"})
@@ -181,7 +181,7 @@ def normalize_policy(short: dict[str, Any]) -> dict[str, Any]:
     doc = dict(short)
     refusal = canonical_key_refusal(doc)
     if refusal:
-        raise InvalidInput(refusal)
+        raise CanonicalFormRefused(refusal)
 
     # A top-level `kind: policy` is accepted and stripped; any other value is refused, naming
     # the expected one.

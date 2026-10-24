@@ -21,7 +21,7 @@ class PodApplyError(InvalidInput):
     ``plan_apply``, before anything is written."""
 
 
-class PodApplyConflict(PodApplyError):
+class PodApplyRefused(PodApplyError):
     """A manifest asks for two things that cannot both hold (a pod-wide setting a bound pipeline
     would silently ignore); a usage error, exit 2."""
 

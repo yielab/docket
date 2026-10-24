@@ -293,7 +293,7 @@ class TestMaxReworkCyclesWithAPipeline:
                 },
             )
 
-            with pytest.raises(_model.PodApplyConflict, match=r"on: \{<label>: \{goto"):
+            with pytest.raises(_model.PodApplyRefused, match=r"on: \{<label>: \{goto"):
                 _pod_apply.plan_apply("demo", root)
 
     def test_a_named_pipeline_file_counts_too(self, tmp_path: Path) -> None:
@@ -308,7 +308,7 @@ class TestMaxReworkCyclesWithAPipeline:
                 },
             )
 
-            with pytest.raises(_model.PodApplyConflict):
+            with pytest.raises(_model.PodApplyRefused):
                 _pod_apply.plan_apply("demo", root)
 
     def test_the_setting_alone_is_planned_as_before(self, tmp_path: Path) -> None:
@@ -333,5 +333,5 @@ class TestMaxReworkCyclesWithAPipeline:
                 {"pod.yaml": "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 2\n"},
             )
 
-            with pytest.raises(_model.PodApplyConflict):
+            with pytest.raises(_model.PodApplyRefused):
                 _pod_apply.plan_apply("demo", root)

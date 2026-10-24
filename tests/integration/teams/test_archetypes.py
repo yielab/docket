@@ -343,18 +343,10 @@ class TestRolesCli:
     ) -> None:
         p = tmp_path / "bad.yaml"
         p.write_text(
-            "kind: role\n"
-            "name: bad\n"
-            "version: 1\n"
-            "scope: galaxy\n"
-            "modelClass: cheap\n"
-            "toolProfile: x\n"
-            "gateContract:\n"
-            "  kind: none\n"
-            'soulTemplate: "hi ${project}"\n'
-            'agentsTemplate: "hi ${project}"\n',
+            "kind: role\nname: bad\nversion: 1\nscope: galaxy\nmodel: cheap\ntoolProfile: x\n",
             encoding="utf-8",
         )
+        (tmp_path / "bad.md").write_text("hi ${project}\n", encoding="utf-8")
         assert self._run("update", str(p), "--pod", seeded_pod).exit_code == 1
 
     def test_list_rejects_unknown_flag(self, registry_file: Path) -> None:

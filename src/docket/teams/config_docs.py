@@ -15,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docket.governance import policy as _policy
-from docket.kernel.errors import DocumentError, InvalidInput
+from docket.kernel.errors import CanonicalFormRefused, DocumentError, InvalidInput
 from docket.models import catalog as _provider
 from docket.observability import exporter as _exporter
 from docket.pipeline.domain import spec as _pipeline
@@ -171,6 +171,12 @@ def _refine_with_model(
 ) -> ConfigDocError:
     """When *doc* also fails its kind's model, prefer the model's field name and valid values
     over *fallback*'s plain message; otherwise fall back to it unchanged."""
+    if isinstance(fallback, CanonicalFormRefused):
+        return (
+            ConfigDocError(path, str(fallback))
+            if not isinstance(fallback, ConfigDocError)
+            else fallback
+        )
     if isinstance(fallback, ConfigDocError):
         plain = fallback  # already names the path; wrapping it again would print it twice
     else:
@@ -238,6 +244,10 @@ class ConfigDocError(InvalidInput):
         return rendered
 
 
+class CanonicalFormError(ConfigDocError, CanonicalFormRefused):
+    """*path* is written in the canonical shape of its kind instead of the one short form."""
+
+
 def _line_for_key(text: str, key: str) -> int:
     """The 1-indexed source line of a top-level mapping *key*, or ``0`` when it cannot be
     found (PyYAML missing, the document composes to something other than a mapping, or no
@@ -297,7 +307,8 @@ def _load_role(path: Path) -> dict[str, Any]:
 def _validate_pipeline(path: Path, text: str) -> None:
     result = _pipeline.load_pipeline(text)
     if not result.ok:
-        raise ConfigDocError(path, "; ".join(result.errors))
+        error = CanonicalFormError if result.canonical else ConfigDocError
+        raise error(path, "; ".join(result.errors))
 
 
 def _validate_policy(path: Path) -> None:
@@ -394,7 +405,7 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
     else:
         refusal = ""
     if refusal:
-        raise ConfigDocError(p, refusal)
+        raise CanonicalFormError(p, refusal)
 
     try:
         if effective_kind == "role":
@@ -414,7 +425,7 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
         elif effective_kind == "mcp-server":
             _validate_mcp_server(p)
     except ConfigDocError as exc:
-        raise _refine_with_model(p, effective_kind, doc, exc) from exc
+        raise _refine_with_model(p, effective_kind, {"kind": effective_kind, **doc}, exc) from exc
 
     name = str(doc.get("name", p.stem))
     return Document(kind=effective_kind, name=name, path=p, doc=doc)

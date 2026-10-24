@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent.tools.registry import ToolKind
+from docket.kernel.errors import CanonicalFormRefused
 from docket.kernel.home import current_home
 from docket.platform import read_json, read_modify_write
 from docket.teams.builtin_roles import (
@@ -393,6 +394,10 @@ def canonical_key_refusal(doc: dict[str, Any]) -> str:
     )
 
 
+class CanonicalRoleRefused(ArchetypeError, CanonicalFormRefused):
+    """A role file carries a canonical-only key."""
+
+
 def load_role_file(path: str) -> dict[str, Any]:
     """Parse a role YAML file written in the short form into the canonical wire dict `from_wire`
     accepts. `kind: role` is accepted and stripped; a canonical key is refused, naming the
@@ -400,7 +405,7 @@ def load_role_file(path: str) -> dict[str, Any]:
     doc = parse_yaml_file(path)
     refusal = canonical_key_refusal(doc)
     if refusal:
-        raise ArchetypeError(f"{path}: {refusal}")
+        raise CanonicalRoleRefused(f"{path}: {refusal}")
     return normalize_role(doc, Path(path).parent)
 
 

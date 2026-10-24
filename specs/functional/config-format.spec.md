@@ -137,7 +137,12 @@ This specification does NOT cover:
    `action`, `match`) **MUST** raise `ConfigDocError` with the message
    `roles.canonical_key_refusal` / `policy.canonical_key_refusal` renders, before its kind's parser
    runs and without model refinement, so the message names the short-form key to write. A
-   pipeline step written with an `id:` key is refused the same way by `load_pipeline`.
+   pipeline step written with an `id:` key is refused the same way by `load_pipeline`
+   (`PipelineLoadResult.canonical`). The error is a `CanonicalFormError`
+   (`kernel.errors.CanonicalFormRefused`): a command that applies or runs the file refuses it as
+   written and exits 2 -- `docket pod update <file|dir>` and `docket init`, `docket run
+   --pipeline`, `docket pod set pipeline` -- while `docket pod validate` reports it like any
+   invalid file (exit 1, "`docket pod validate`").
 
 ### `ConfigDocError`
 

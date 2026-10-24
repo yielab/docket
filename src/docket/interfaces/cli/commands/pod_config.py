@@ -21,7 +21,7 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
 from docket.interfaces.cli.render import ui
 from docket.interfaces.cli.render.apply import _render_items, render_apply_header, render_apply_plan
-from docket.kernel.errors import DispatchError
+from docket.kernel.errors import CanonicalFormRefused, DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -137,7 +137,7 @@ def _apply_directory(
     try:
         directory = _recipes.resolve_recipe(target)
         plan = _pod_apply.plan_apply(project, directory)
-    except _model.PodApplyConflict as ex:
+    except _model.PodApplyRefused as ex:
         _fail(str(ex), code=2)
     except _model.PodApplyError as ex:
         _fail(str(ex))
@@ -164,7 +164,7 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _model.
     try:
         document = _config_docs.load_document(path)
     except _config_docs.ConfigDocError as exc:
-        _fail(str(exc))
+        _fail(str(exc), code=2 if isinstance(exc, CanonicalFormRefused) else 1)
     if document.kind == "role":
         roles = read_json(current_home().pod_config_dir(project) / "roles.json").get("roles", {})
         exists = document.name in roles

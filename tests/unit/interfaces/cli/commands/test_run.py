@@ -359,6 +359,19 @@ class TestRun:
             assert seen["spec"].name == "solo"
             assert seen["variables"] == {"k": "v"}
 
+    def test_a_pipeline_file_with_a_canonical_step_exits_2_naming_the_short_spelling(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _endpoint(monkeypatch, ok=True)
+            spec = tmp_path / "p.pipeline.yaml"
+            spec.write_text("name: solo\nsteps:\n  - id: plan\n    role: lead\n")
+
+            result = runner.invoke(_app, ["run", "--pod", "demo", "--pipeline", str(spec)])
+
+            assert result.exit_code == 2
+            assert "'- plan: <role>'" in result.output
+
     def test_resume_clears_the_budget_pause_and_unblocks_tasks(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

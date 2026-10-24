@@ -438,7 +438,7 @@ overlay, policies, members, pipeline binding, settings) into one command.
 14a. **A rework bound has one home per pod (`pod-dispatch.spec.md`, "Pod dispatch settings").** A
     manifest that declares `settings.maxReworkCycles` while it also binds a pipeline (a top-level
     `pipeline:`, a `pipeline.yaml` beside it, or a pod that already has one bound) **MUST** be
-    refused at planning with `PodApplyConflict`, before anything is written: `docket pod update`
+    refused at planning with `PodApplyRefused`, before anything is written: `docket pod update`
     and `docket init` exit 2 and the message names the pipeline's own `on: {<label>: {goto:
     <step>, max: <n>}}`.
 15. **One file, and no argument (ADR 0022).** `docket pod update <file>` with an existing file

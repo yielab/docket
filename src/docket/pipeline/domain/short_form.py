@@ -38,6 +38,10 @@ class _ShortFormError(ValueError):
     this into an ordinary entry in its ``errors`` list, same as any other load error."""
 
 
+class CanonicalStepError(_ShortFormError):
+    """A step is written in the canonical spelling (an ``id:`` key) instead of the short form."""
+
+
 def _get_on(entry: dict[Any, Any]) -> Any:
     # PyYAML's default resolver reads an unquoted `on:` key as the boolean `True`
     # (the same implicit-boolean "Norway problem" `rework.when`'s own name avoids) --
@@ -205,7 +209,7 @@ def _normalize_parallel_short_step(step_id: str, target: dict[Any, Any]) -> dict
         if not isinstance(child, dict):
             raise _ShortFormError(f"step {step_id!r}: a parallel child must be a mapping")
         if "id" in child:
-            raise _ShortFormError(_canonical_step_message(child["id"]))
+            raise CanonicalStepError(_canonical_step_message(child["id"]))
         unit = _normalize_short_step(child, seen_children)
         seen_children.append(str(unit["id"]))
         normalized.append(unit)
@@ -262,7 +266,7 @@ def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
     if not isinstance(entry, dict):
         return entry
     if "id" in entry:
-        raise _ShortFormError(_canonical_step_message(entry["id"]))
+        raise CanonicalStepError(_canonical_step_message(entry["id"]))
     normalized = _normalize_short_step(entry, seen_ids)
     seen_ids.append(str(normalized["id"]))
     return normalized

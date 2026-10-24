@@ -435,7 +435,8 @@ entry the pod overlay `<pod>/config/roles.json` persists, never an authored file
 carrying any canonical-only key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`,
 `agentsTemplate`) **MUST** be refused naming each canonical key and the short-form key to write
 instead (`model`, `cannot`, `verdict`/`verify`/`approval`, `instructions`); `canonical_key_refusal`
-is the one function that renders that message, shared by `load_role_file` and `load_document`.
+is the one function that renders that message, shared by `load_role_file` and `load_document`; the
+refusal exits 2 (`config-format.spec.md`, "Files without `kind:`").
 `kind: role` is accepted and stripped. An unknown key is refused. The persisted wire object has
 this shape:
 

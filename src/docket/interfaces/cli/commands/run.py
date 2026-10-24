@@ -23,7 +23,7 @@ from docket.interfaces.cli.render import progress as _progress
 from docket.interfaces.cli.render import ui
 from docket.interfaces.cli.render.apply import run_item_label
 from docket.kernel import clock as _clock
-from docket.kernel.errors import DispatchError
+from docket.kernel.errors import CanonicalFormRefused, DispatchError
 from docket.operator import flush, load_catalog, unreached_warning
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -111,12 +111,12 @@ def _parse_vars(values: list[str]) -> dict[str, str]:
 
 
 def _load_spec(path: Path) -> _pipeline.PipelineSpec:
-    """Load and validate a pipeline file; any problem exits 1."""
+    """Load and validate a pipeline file; a problem exits 1, a canonical step exits 2."""
     try:
         _config_docs.load_document(path, kind="pipeline")
     except _config_docs.ConfigDocError as exc:
         ui.error(f"Pipeline file is invalid: {exc}", f"Check it with docket pod validate {path}")
-        raise typer.Exit(1) from exc
+        raise typer.Exit(2 if isinstance(exc, CanonicalFormRefused) else 1) from exc
     result = _pipeline.load_pipeline(path.read_text(encoding="utf-8"))
     if result.spec is None or result.errors:
         for err in result.errors:

@@ -221,3 +221,18 @@ class TestPodSetMaxReworkCycles:
             bind_one_step_pipeline("demo")
 
             assert _invoke("unset", "maxReworkCycles")[0] == 0
+
+
+class TestPodSetPipelineCanonicalStep:
+    def test_a_canonical_step_is_refused_with_exit_2_and_binds_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            path = tmp_path / "old.yaml"
+            path.write_text("name: old\nsteps:\n  - id: plan\n    role: lead\n")
+
+            code, out = _invoke("set", "pipeline", str(path))
+
+            assert code == 2
+            assert "'- plan: <role>'" in out
+            assert not _meta("demo-lead").get("pipeline")
