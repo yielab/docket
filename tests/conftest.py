@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from docket import bootstrap
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, reset_default, use_home
 from docket.kernel.ports import git_port, jail_port, process_port, tracer_port
 from docket.observability.adapters.local_tracer import LocalTracer
 from docket.platform import git as _git_adapter
@@ -164,5 +164,10 @@ def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Ite
     home = Home(
         tmp_path / "_autouse_docket_home", fleet_file_override=tmp_path / "_autouse_fleet.json"
     )
+    # A thread started without this context, or a child process, falls back to the process
+    # default; it is this test's home too, never the developer's ~/.docket nor an earlier test's.
+    monkeypatch.setenv("DOCKET_HOME", str(home.root))
+    reset_default()
     with use_home(home):
         yield
+    reset_default()

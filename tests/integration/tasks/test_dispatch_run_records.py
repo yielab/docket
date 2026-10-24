@@ -611,6 +611,13 @@ class TestScheduleDispatchPath:
 # ── sweep loop dispatch path ──────────────────────────────────────────────────
 
 
+@pytest.fixture
+def _every_pod_has_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The sweep tests fake ``dispatch_pod``; a pod with no queued task would be skipped first."""
+    monkeypatch.setattr("docket.tasks.application.queue.has_claimable_work", lambda _p: True)
+
+
+@pytest.mark.usefixtures("_every_pod_has_work")
 class TestSweepDispatchPath:
     def test_sweep_dispatches_every_pod_and_records_a_run_each(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -664,6 +671,7 @@ class TestSweepDispatchPath:
                 assert len(b_records) == 1 and b_records[0]["state"] == "succeeded"
 
 
+@pytest.mark.usefixtures("_every_pod_has_work")
 class TestSweepWorkers:
     """The real ``_run_sweeps`` with a fake per-pod dispatch that blocks on an Event."""
 

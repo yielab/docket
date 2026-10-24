@@ -99,3 +99,15 @@ def test_the_secrets_files_follow_the_root(tmp_path: Path) -> None:
     home = Home(root=tmp_path)
     assert home.secrets_file == tmp_path / "secrets.json"
     assert home.secrets_meta_file == tmp_path / "secrets.meta.json"
+
+
+def test_a_bare_thread_sees_the_test_home_not_the_users(tmp_path: Path) -> None:
+    """A thread started without the test's context falls back to the process default home,
+    which must be the test's, or a server thread writes pods into the developer's ~/.docket."""
+    seen: list[Path] = []
+    thread = threading.Thread(target=lambda: seen.append(current_home().root))
+    thread.start()
+    thread.join()
+
+    assert seen == [tmp_path / "_autouse_docket_home"]
+    assert Path.home() / ".docket" not in seen
