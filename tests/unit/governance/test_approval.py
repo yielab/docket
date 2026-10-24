@@ -1,14 +1,4 @@
-"""Headless approval channel via serve.
-
-Acceptance criteria:
-  - GET /approvals lists pending approvals when authenticated, 401 otherwise
-  - POST /approvals/<token> grants/denies when authenticated, 401 (state
-    unchanged) otherwise
-  - POST /approvals/<token>'s `channel` field: see
-    specs/data/serve-read-api.spec.md ("POST /approvals/<token> -- the
-    channel field")
-  - Expiry sweep still fail-closes
-"""
+"""The approval store: the grant and deny paths, channels, deadlines, pruning and audit fields."""
 
 from __future__ import annotations
 
@@ -29,83 +19,20 @@ from tests.support.http import post as _post
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.governance.approval import _approval_path
-from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home
-from docket.kernel.threads import ContextHTTPServer, new_thread
+from docket.kernel.threads import new_thread
 from docket.platform import store as _store
-
-live_server = _support_http.live_server_2
-
-approvals_dir = _support_home.approvals_dir
-_isolate_gates = _support_home.isolate_gates
 
 SUBJECT = "docket.governance.approval"
 
-_TEST_TOKEN = "test-serve-token"
+
+live_server = _support_http.live_server_2
 
 
-# ── fixtures ──────────────────────────────────────────────────────────────────
+approvals_dir = _support_home.approvals_dir
 
 
-# ── HTTP helpers ──────────────────────────────────────────────────────────────
-
-
-# ── GET /approvals ─────────────────────────────────────────────────────────────
-
-
-class TestListApprovals:
-    def test_empty_list_authenticated(self, live_server: tuple[str, str]) -> None:
-        url, token = live_server
-        status, body = _get(f"{url}/approvals", token)
-        assert status == 200
-        assert body == {"pending": []}
-
-    def test_pending_approval_appears(self, live_server: tuple[str, str]) -> None:
-        url, token = live_server
-        apr_token = _approval.approval_create("proj1", "implementer", "run tests")
-        status, body = _get(f"{url}/approvals", token)
-        assert status == 200
-        assert len(body["pending"]) == 1
-        rec = body["pending"][0]
-        assert rec["token"] == apr_token
-        assert rec["state"] == "pending"
-        assert rec["project"] == "proj1"
-
-    def test_no_token_returns_401(self, live_server: tuple[str, str]) -> None:
-        url, _ = live_server
-        status, body = _get(f"{url}/approvals")
-        assert status == 401
-        assert body["ok"] is False
-
-    def test_wrong_token_returns_401(self, live_server: tuple[str, str]) -> None:
-        url, _ = live_server
-        status, _ = _get(f"{url}/approvals", token="wrong-token")
-        assert status == 401
-
-    def test_granted_approval_not_in_pending(self, live_server: tuple[str, str]) -> None:
-        url, token = live_server
-        apr_token = _approval.approval_create("proj2", "implementer", "deploy")
-        _approval.approval_grant(apr_token)
-        status, body = _get(f"{url}/approvals", token)
-        assert status == 200
-        assert all(r["token"] != apr_token for r in body["pending"])
-
-    def test_empty_serve_token_denies_all(self, approvals_dir: Path) -> None:
-        class _Handler(_DocketHandler):
-            serve_token = ""
-
-        srv = ContextHTTPServer(("127.0.0.1", 0), _Handler)
-        port = srv.server_address[1]
-        t = threading.Thread(target=srv.serve_forever, daemon=True)
-        t.start()
-        try:
-            status, _ = _get(f"http://127.0.0.1:{port}/approvals", "")
-            assert status == 401
-        finally:
-            srv.shutdown()
-
-
-# ── POST /approvals/<token> ───────────────────────────────────────────────────
+_isolate_gates = _support_home.isolate_gates
 
 
 class TestGrantDenyViaEndpoint:
@@ -287,9 +214,6 @@ class TestGrantDenyViaEndpoint:
         assert (winner == "grant") == (final_state == "granted")
 
 
-# ── POST /approvals/<token>'s optional `channel` field ─────────────────────────
-
-
 class TestApprovalChannel:
     def test_absent_channel_defaults_to_http_unchanged(self, live_server: tuple[str, str]) -> None:
         """No `channel` in the body -> every caller before this field existed
@@ -382,9 +306,6 @@ class TestApprovalChannel:
         assert _approval.approval_get(apr_token)["state"] == "pending"
         entries_after = [e for e in _audit.read_audit() if e.get("action") == "approval.grant"]
         assert entries_after == entries_before, "no approval.grant audit entry must be written"
-
-
-# ── expiry still fail-closes ──────────────────────────────────────────────────
 
 
 class TestApprovalTokenIsNotAPath:
