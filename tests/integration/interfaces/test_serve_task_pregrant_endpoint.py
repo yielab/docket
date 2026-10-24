@@ -20,7 +20,7 @@ live_server = _support_http.live_server
 
 pod_home = _support_pods.pod_home
 
-SUBJECT = "docket.interfaces"
+SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token"
 

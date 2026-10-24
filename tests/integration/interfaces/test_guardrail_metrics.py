@@ -29,7 +29,7 @@ from docket.interfaces.http.routes import metrics
 from docket.kernel.home import current_home, use_home
 from docket.observability.trace import trace_event
 
-SUBJECT = "docket.agent.tools.registry"
+SUBJECT = "docket.interfaces.http.routes.metrics"
 
 
 @pytest.fixture(autouse=True)

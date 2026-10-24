@@ -16,7 +16,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.interfaces.cli.commands.status"
 
 _runner = CliRunner()
 

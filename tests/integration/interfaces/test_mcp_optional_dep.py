@@ -24,7 +24,7 @@ from packaging.version import Version
 from docket.interfaces.cli.commands import mcp as _mcp
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.interfaces.cli.commands.mcp"
 
 
 class TestMissingSdkRealAbsence:
@@ -79,7 +79,7 @@ class TestUsage:
     def test_mcp_extra_lock_stays_outside_the_cryptography_cve_range(self) -> None:
         """The mcp-extra lock's transitive cryptography package stays outside
         CVE-2026-69247's affected ``>=44,<50`` range."""
-        root = Path(__file__).resolve().parents[2]
+        root = Path(__file__).resolve().parents[3]
         project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
         assert project["project"]["optional-dependencies"]["mcp"], "MCP extra was removed"
         lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))

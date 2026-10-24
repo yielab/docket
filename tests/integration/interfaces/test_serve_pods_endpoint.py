@@ -39,7 +39,7 @@ live_server = _support_http.live_server
 
 pod_home = _support_pods.pod_home
 
-SUBJECT = "docket.teams"
+SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token"
 

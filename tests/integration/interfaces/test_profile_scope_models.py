@@ -17,7 +17,7 @@ from tests.support.home import register_local_provider
 from tests.support.pods import setup_agent as _setup_agent
 from typer.testing import CliRunner
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.interfaces.cli.commands.setup_model"
 
 _runner = CliRunner()
 

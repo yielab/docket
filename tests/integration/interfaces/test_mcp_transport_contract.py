@@ -22,9 +22,9 @@ from docket.interfaces.cli.commands import mcp as _mcp
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 
-SUBJECT = "docket.governance"
+SUBJECT = "docket.interfaces.cli.commands.mcp"
 
-_PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
+_PYPROJECT = Path(__file__).resolve().parents[3] / "pyproject.toml"
 
 
 # ── 1. the pin itself ───────────────────────────────────────────────────────

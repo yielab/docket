@@ -19,7 +19,7 @@ from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.interfaces.cli.commands.status"
 
 _runner = CliRunner()
 

@@ -33,9 +33,9 @@ from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home, use_home
 from docket.teams import mcp_servers as _mcp_servers
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.interfaces.cli.commands.setup_mcp"
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(autouse=True)

@@ -42,7 +42,7 @@ from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.interfaces"
+SUBJECT = "docket.interfaces.telegram.bot"
 
 _ASK_PIPELINE_YAML = """\
 name: ask

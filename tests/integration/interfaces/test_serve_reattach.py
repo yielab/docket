@@ -39,7 +39,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.interfaces.http.server"
 
 _TOKEN = "test-serve-token-reattach"
 _CONSULT = {

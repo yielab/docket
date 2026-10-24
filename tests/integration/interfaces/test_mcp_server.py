@@ -37,7 +37,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.tasks"
+SUBJECT = "docket.interfaces.cli.commands.mcp"
 
 _ASK_PIPELINE_YAML = """\
 name: ask

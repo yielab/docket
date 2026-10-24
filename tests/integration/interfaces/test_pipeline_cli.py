@@ -15,7 +15,7 @@ from docket.tasks.application import queue as _queue
 
 _hermetic = _support_home.hermetic_6
 
-SUBJECT = "docket.interfaces"
+SUBJECT = "docket.interfaces.cli.commands.pod"
 
 _VALID_PIPELINE = """\
 kind: pipeline

@@ -17,7 +17,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.governance"
+SUBJECT = "docket.interfaces.http.server"
 
 _TOKEN = "test-serve-token-pods-config"
 

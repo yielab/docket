@@ -10,7 +10,7 @@ from docket.tasks.application import runs as _runs
 
 runs_file = _support_home.runs_file
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.interfaces.cli.commands.task"
 
 
 class TestRunsPruneCli:

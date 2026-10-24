@@ -23,7 +23,7 @@ from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.teams import agent_memory as _mem
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.interfaces.cli.commands.setup_check"
 
 # ── hermetic pod fixture (mirrors test_dispatch.py's _seed_pod) ─────────────────
 

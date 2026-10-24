@@ -14,7 +14,7 @@ from typing import Any
 from tests.support.cli import run_2 as _run
 from typer.testing import CliRunner
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.interfaces.cli.render.help"
 
 _runner = CliRunner()
 
