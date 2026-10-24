@@ -302,7 +302,7 @@ and every row left allowed carries a `limit:` reason that the security spec name
 
 ### P47-13 — the tests: one name per helper, no test imports another, no private-alias patch, no I/O in unit, configuration through `Home`
 
-**Status:** IN-PROGRESS (@sonnet, branch `p47-13-tests` from `7b4cbfdb`) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M
+**Status:** DONE (2026-10-24: 6 commits, merge `92129eb2`, json_output detector fix `bc83c37d`; suffixed helpers 35 -> 0, test-to-test imports 5 -> 0, foreign private patches 31 -> 0 with a planted guard, unit_io 5 -> 0, json_output 18 -> 0, setenv 56 -> 38 files each with a reason; run-alone failures 6 -> 0, 14 zero-test placeholders exit 5) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M
 
 - **Trigger (measured):**
   - ADR 0030 §"Phase acceptance" requires no patch on another module's private alias;
@@ -348,7 +348,7 @@ and every row left allowed carries a `limit:` reason that the security spec name
 
 ### P47-14 — close Phase 47
 
-**Status:** TODO after P47-13 · **Size:** M · **Owner:** integrator (not a docket task) · **Kind:** close
+**Status:** IN-PROGRESS (@integrator) · **Size:** M · **Owner:** integrator (not a docket task) · **Kind:** close
 
 - **Steps:**
   1. Amend ADR 0030 §"Phase acceptance": the `docket_runtime` clause becomes what the P47-3 run decided
