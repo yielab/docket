@@ -222,7 +222,7 @@ M-1 ─────────────────┘   (M-1 must finish be
 
 ### P47-12 — configuration: one authored form, no setting that silently does nothing, policies on the parsed command
 
-**Status:** IN-PROGRESS (@sonnet, branch `p47-12-config` from `296086f0`) · **Size:** L · **Model:** Sonnet, one run · **Kind:** B (named
+**Status:** DONE (2026-10-24: 5 commits, merge `8e298df6`; integrator follow-ups `058044ab` verdict routes before pass per pipeline-format, `74cc6a5b` pod set pipeline over a stored maxReworkCycles exits 2; corpus: 82 tool rows to asked, 12 to redacted, 0 weaker, 66 rows left allowed under five named limits) · **Size:** L · **Model:** Sonnet, one run · **Kind:** B (named
 behaviour changes) + T
 
 - **Trigger:** the maintainer's request (2026-10-24) to fold the configuration findings of the 2026-10-24
@@ -317,6 +317,11 @@ and every row left allowed carries a `limit:` reason that the security spec name
     (`test_client` for Telegram, `test_fetch`, `test_progress`, `test_plan`,
     `test_sweep__scheduled_and_webhook_dispatch`); `setenv` in 55 files; `in result.output` on a command
     that has `--json` in 18 files. ADR 0030 point 4: a test owns its `Home(tmp_path)`.
+  - Test files that fail when run alone (found 2026-10-24, already failing at `f662d2f1`):
+    `tests/integration/interfaces/test_pipeline_cli.py` and
+    `tests/unit/interfaces/cli/commands/test_pod_config_library.py` invoke `pod_app` directly, and
+    `pod_app` has no `validate`/`plan` until something imports the full CLI app; the suite passes only
+    because another file imported it first. 16 test files use `pod_app`.
 - **Goal:** each helper has one name that says what it does (variants that differ get names that say
   how; identical ones fold); no test module imports another (the helper moves to `tests/support/`); a
   patch on another module's `_name` becomes a fake bound through its port (`<port>.use(fake)`) or a patch
@@ -324,15 +329,18 @@ and every row left allowed carries a `limit:` reason that the security spec name
   cost and settings reads the gates use; unit files do no real I/O (a fake from `tests/support/fakes.py`,
   or the file moves to `integration/<context>/`); `setenv` stays only in the tests of environment parsing
   (an explicit list), the rest configure through `Home`; a command with `--json` is asserted on its
-  parsed JSON.
-- **Steps (one commit each):** (1) measure and list; (2) rename and fold helpers with a one-shot script,
+  parsed JSON; every test file passes when run alone.
+- **Steps (one commit each):** (1) measure and list, including one pass that runs each test file alone
+  (`git ls-files 'tests/unit/*.py' 'tests/integration/*.py' 'tests/guards/*.py' | rg '/test_' | xargs
+  -P 16 -I{} sh -c 'timeout 120 uv run pytest -q -p no:cacheprovider {} >/dev/null 2>&1 || echo {}'`,
+  once; fix each file it names by building the app the way the CLI does, never by import order); (2) rename and fold helpers with a one-shot script,
   deleted in the last commit; (3) move cross-test helpers to `tests/support/`; (4) the private-alias
   patches; (5) unit I/O; (6) `setenv` to `Home`; (7) `--json` asserts; (8) a guard in
   `tests/guards/test_suite_shape.py` refuses a `monkeypatch.setattr` or `mock.patch` on another module's
   `_name`, seen failing on a plant, and the three ratchets fall to 0 or each remaining entry is named
   with its reason.
 - **Non-goals:** what a test asserts; test speed (the parallel suite takes about 40 s).
-- **Acceptance:** no `_<digit>` helper name in `tests/support/`; no `from tests.(unit|integration|agent)`
+- **Acceptance:** the run-alone pass names no file; no `_<digit>` helper name in `tests/support/`; no `from tests.(unit|integration|agent)`
   import; the private-alias guard and the three ratchets at 0 or named; collected test ids unchanged
   except tests that moved path.
 - **Gate:** `uv run pytest tests/guards -q`, `pytest --co`, and the files each step touched; at the end,
