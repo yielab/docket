@@ -198,7 +198,7 @@ class TaskRecord(BaseModel):
     and absent again after a drop (``exclude_if``), never ``null`` or ``[]``. No global
     ``exclude_none`` or ``exclude_unset``: either would drop a key of the first kind."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, validate_assignment=True)
 
     # The request: what was enqueued.
     id: str = Field(default_factory=lambda: _ids.new_id("task"))

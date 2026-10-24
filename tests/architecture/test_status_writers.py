@@ -1,10 +1,10 @@
 """Architecture: a task record's ``status`` is assigned in exactly one place.
 
 ``tasks/domain/state.py`` decides every move and ``tasks/application/transitions.py::apply_to_task``
-performs it. A second ``task["status"] = ...`` is a second way to move a task that the transition
-table does not know about. The scan reads
-subscript assignments on the receiver names the task code uses for a record (``task``, ``t``,
-``claimed``), the shape a status assignment takes.
+performs it. A second ``task["status"] = ...`` or ``record.status = ...`` is a second way to move a
+task that the transition table does not know about. The scan reads subscript and attribute
+assignments on the receiver names the task code uses for a record (``task``, ``t``, ``claimed``,
+``record``), the shapes a status assignment takes.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pathlib import Path
 SUBJECT = "docket"
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "docket"
-RECEIVERS = frozenset({"task", "t", "claimed"})
+RECEIVERS = frozenset({"task", "t", "claimed", "record"})
 WRITER = ("tasks/application/transitions.py", "apply_to_task")
 BASELINE = 1
 
@@ -40,6 +40,12 @@ def status_writes(source: str) -> list[tuple[int, str]]:
 
 
 def _is_status_target(target: ast.expr) -> bool:
+    if isinstance(target, ast.Attribute):
+        return (
+            target.attr == "status"
+            and isinstance(target.value, ast.Name)
+            and target.value.id in RECEIVERS
+        )
     return (
         isinstance(target, ast.Subscript)
         and isinstance(target.value, ast.Name)
@@ -65,4 +71,6 @@ def test_the_scan_sees_a_stray_writer() -> None:
     # A guard is not evidence until it has seen a violation.
     stray = 'def reopen(t):\n    t["status"] = "pending"\n'
     assert status_writes(stray) == [(2, "reopen")]
+    assert status_writes('def reopen(t):\n    t.status = "pending"\n') == [(2, "reopen")]
     assert status_writes('def f(doc):\n    doc["status"] = 1\n') == []
+    assert status_writes("def f(run):\n    run.status = 1\n") == []

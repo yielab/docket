@@ -40,28 +40,28 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
     fields = transition.fields
     if to is S.running:
         assert fields == {
-            "startedAt": _FACTS["now"],
-            "claimedAt": _FACTS["now"],
-            "claimPid": 42,
+            "started_at": _FACTS["now"],
+            "claimed_at": _FACTS["now"],
+            "claim_pid": 42,
         }
     elif to is S.pending:
         assert fields == {}
-        assert "blockedReason" in transition.drop
+        assert "blocked_reason" in transition.drop
     else:
         assert fields["reason"] == "why"
-        assert "claimPid" in transition.drop
+        assert "claim_pid" in transition.drop
     if to is S.waiting_input:
         assert fields["question"] == {"id": "q-1"}
     if to is S.waiting_approval:
-        assert (fields["approvalToken"], fields["pendingApprovalIndex"]) == ("tok", 2)
+        assert (fields["approval_token"], fields["pending_approval_index"]) == ("tok", 2)
     if to is S.blocked:
-        assert fields["blockedReason"] == "resources"
+        assert fields["blocked_reason"] == "resources"
     if to in {_state.Status.done, _state.Status.failed, _state.Status.cancelled}:
-        assert fields["completedAt"] == _FACTS["now"]
-        assert fields["failureKind"] == "gate_failed"
-        assert "taskGrants" in transition.drop
+        assert fields["completed_at"] == _FACTS["now"]
+        assert fields["failure_kind"] == "gate_failed"
+        assert "task_grants" in transition.drop
     if frm is S.waiting_approval and to is not S.waiting_approval:
-        assert {"approvalToken", "pendingApprovalIndex"} <= set(transition.drop)
+        assert {"approval_token", "pending_approval_index"} <= set(transition.drop)
     if frm is S.waiting_input and to is not S.waiting_input:
         assert "question" in transition.drop
 
@@ -94,23 +94,23 @@ def test_a_status_the_enum_does_not_know_can_still_be_settled() -> None:
 
 def test_a_retry_clears_the_previous_outcome_and_an_unblock_does_not() -> None:
     assert set(_state.decide("failed", S.pending, retry=True).drop) >= {
-        "blockedReason",
-        "failureKind",
+        "blocked_reason",
+        "failure_kind",
         "reason",
-        "completedAt",
+        "completed_at",
     }
-    assert _state.decide("blocked", S.pending).drop == ("blockedReason",)
+    assert _state.decide("blocked", S.pending).drop == ("blocked_reason",)
 
 
 def test_a_stale_claim_is_evidence_not_a_finished_task() -> None:
     stale = _state.decide("running", S.failed, now="t", failure_kind=_state.FailureKind.stale_claim)
-    assert "completedAt" not in stale.fields
-    assert "claimPid" not in stale.drop
-    assert "taskGrants" not in stale.drop
+    assert "completed_at" not in stale.fields
+    assert "claim_pid" not in stale.drop
+    assert "task_grants" not in stale.drop
 
 
 def test_a_terminal_result_without_a_failure_kind_clears_a_stale_marker() -> None:
-    assert "failureKind" in _state.decide("running", S.done, now="t").drop
+    assert "failure_kind" in _state.decide("running", S.done, now="t").drop
 
 
 def test_resumable_failure_kinds_are_the_two_claims_resume_may_reclaim() -> None:
