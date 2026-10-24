@@ -302,7 +302,7 @@ and every row left allowed carries a `limit:` reason that the security spec name
 
 ### P47-13 — the tests: one name per helper, no test imports another, no private-alias patch, no I/O in unit, configuration through `Home`
 
-**Status:** TODO after P47-12 · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M
+**Status:** IN-PROGRESS (@sonnet, branch `p47-13-tests` from `7b4cbfdb`) · **Size:** L · **Model:** Sonnet, one run (may park once) · **Kind:** M
 
 - **Trigger (measured):**
   - ADR 0030 §"Phase acceptance" requires no patch on another module's private alias;
