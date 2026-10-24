@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
@@ -50,7 +51,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
 
 
 def _pod_run(*args: str):  # type: ignore[no-untyped-def]
-    return _runner.invoke(_pod.pod_app, list(args))
+    return invoke_pod(list(args))
 
 
 def _summary(**overrides: object) -> _recipes.RecipeSummary:

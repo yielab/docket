@@ -81,7 +81,7 @@ class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)  # type: ignore[arg-type]
 
 
-def _allowed_domains() -> frozenset[str]:
+def allowed_domains() -> frozenset[str]:
     return frozenset(current_home().fetch_allowed_domains)
 
 
@@ -124,7 +124,7 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     if not host:
         return ToolOutcome(False, error=f"could not parse a host out of {url!r}")
 
-    allowed = _allowed_domains()
+    allowed = allowed_domains()
     if host not in allowed:
         shown = ", ".join(sorted(allowed)) or "none configured"
         return ToolOutcome(

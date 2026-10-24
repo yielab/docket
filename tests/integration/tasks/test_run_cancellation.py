@@ -137,9 +137,9 @@ class TestCancelRun:
         from docket.interfaces.http import sweeps as _sweeps
 
         record = _runs.create_run("sweep", "myapp")
-        monkeypatch.setattr(_sweeps, "_sweep_run_ids", {"myapp": record["id"]})
-        monkeypatch.setattr(_sweeps, "_sweep_inflight", {})
-        monkeypatch.setattr(_server, "_sweep_pool", None)
+        monkeypatch.setattr(_sweeps, "sweep_run_ids", {"myapp": record["id"]})
+        monkeypatch.setattr(_sweeps, "sweep_inflight", {})
+        monkeypatch.setattr(_server, "sweep_pool", None)
         _server._abandon_sweeps(wait_s=0.1)
         persisted = _runs.get_run(record["id"])
         assert persisted is not None and persisted["state"] == "cancelled"

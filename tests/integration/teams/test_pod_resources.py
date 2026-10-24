@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 from tests.support.pods import build_pod
-from tests.support.pods import meta_2 as _meta
-from tests.support.pods import seed_2 as _seed
+from tests.support.pods import meta as _meta
+from tests.support.pods import seed_empty_home as _seed
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home

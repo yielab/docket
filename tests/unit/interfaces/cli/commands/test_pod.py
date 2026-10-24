@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from tests.support.cli import invoke_pod
 from tests.support.pods import bind_one_step_pipeline
-from tests.support.pods import seed_pod_4 as _seed_pod
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
-from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.platform import store as _store
 from docket.teams import pod_provisioning as _pp
@@ -48,9 +48,8 @@ def _give_options(project: str, task_id: str) -> None:
 
 
 def _invoke(*args: str, project: str = "demo") -> tuple[int, str]:
-    from typer.testing import CliRunner
 
-    result = CliRunner().invoke(_pod.pod_app, [*args, "--pod", project])
+    result = invoke_pod([*args, "--pod", project])
     return result.exit_code, result.output
 
 

@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
-from tests.support.pods import seed as _seed
+from tests.support.pods import seed_empty_home as _seed
 
 from docket.agent import ports as _rd
 from docket.hops.application import sweep as _sweep

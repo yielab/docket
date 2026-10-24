@@ -128,7 +128,7 @@ def _member_agents(member: pod.PodMember, project: str) -> str:
     return _role_schema.render(arch.agents_template, variables)
 
 
-def _write_member_workspace(
+def write_member_workspace(
     member: pod.PodMember,
     codebase: str,
     stack: str,
@@ -253,7 +253,7 @@ def provision_member(
 
     ``work_dir``/``blueprint_name``/``budget_usd`` are all no-ops (no new meta
     keys) when unset, which is every non-blueprint caller."""
-    _write_member_workspace(
+    write_member_workspace(
         member,
         codebase,
         stack,

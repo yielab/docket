@@ -142,7 +142,7 @@ def _run_hop_turn(
     return run_res, attempt
 
 
-def _execute_unit(
+def execute_unit(
     ctx: UnitContext,
     node: _orch.PlannedUnit,
     *,
@@ -207,7 +207,7 @@ def _execute_unit(
     )
 
 
-def _when_cwd(ctx: UnitContext, prior: list[HopResult]) -> str:
+def when_cwd(ctx: UnitContext, prior: list[HopResult]) -> str:
     """Working tree a ``when: {changed: ...}`` predicate and a command step's own command
     both run against: the task's own worktree, falling back to the pod Lead's own codebase
     (the task runs in place, or the pod has no Implementer)."""

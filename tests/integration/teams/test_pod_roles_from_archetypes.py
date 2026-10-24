@@ -16,10 +16,10 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.pods import build_pod
 from tests.support.pods import ids as _ids
-from tests.support.pods import seed_2 as _seed
-from typer.testing import CliRunner
+from tests.support.pods import seed_empty_home as _seed
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_members as _pod_members
@@ -149,7 +149,7 @@ class TestPodAddStarterRole:
             _pod_members.add_members("demo", "researcher")
             capsys.readouterr()
 
-            result = CliRunner().invoke(_pod.pod_app, ["show", "--pod", "demo", "--json"])
+            result = invoke_pod(["show", "--pod", "demo", "--json"])
             assert result.exit_code == 0, result.output
             roles = [m["role"] for m in json.loads(result.stdout)["members"]]
             assert "researcher" in roles

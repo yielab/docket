@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 from tests.support.git import git as _git
-from tests.support.pods import bind_pipeline_3 as _bind_pipeline
+from tests.support.pods import bind_demo_pipeline as _bind_pipeline
 from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
@@ -61,8 +61,6 @@ def _init_repo(path: Path, lock: str = _LOCK) -> None:
 
 @pytest.fixture(autouse=True)
 def npm_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
     bin_dir = tmp_path / "fakebin"
     bin_dir.mkdir()
     npm = bin_dir / "npm"

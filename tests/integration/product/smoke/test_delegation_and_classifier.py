@@ -87,7 +87,6 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     (home / "workspaces" / "projects").mkdir(parents=True)
     codebase.mkdir()
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     with use_home(Home(home)):
         record_isolation_off(home)
         build_pod(

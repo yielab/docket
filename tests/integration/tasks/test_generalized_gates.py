@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from tests.support import home as _support_home
 from tests.support.fakes import FakeGit
-from tests.support.pods import write_meta_4 as _write_meta
+from tests.support.pods import write_meta as _write_meta
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
@@ -30,7 +30,7 @@ from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
 
-_hermetic = _support_home.hermetic_3
+_hermetic = _support_home.hermetic_trace_on
 
 SUBJECT = "docket.hops.application.sweep"
 

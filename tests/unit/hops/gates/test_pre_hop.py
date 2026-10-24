@@ -6,7 +6,7 @@ like ``/dispatch/`` and ``/runs``), TestBadRequests (malformed/invalid
 bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 404, not 500), TestPolicyGates (``pre_input`` gate behaves as the CLI
 path does, since this route calls the same ``enqueue_task_once``),
-TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
+TestSuccess (happy path), and TestExecuteUnitDirectly (``execute_unit``
 and two extracted phases, called directly with a hand-built
 ``UnitContext``/``PlannedUnit``).
 """
@@ -28,7 +28,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.hops.gates.pre_hop"
 
@@ -36,11 +36,11 @@ SUBJECT = "docket.hops.gates.pre_hop"
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 
-# ── _execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
+# ── execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
 
 
 class TestExecuteUnitDirectly:
-    """Direct unit coverage of ``_execute_unit`` and two extracted phase
+    """Direct unit coverage of ``execute_unit`` and two extracted phase
     functions -- reachable by name since they are module-level, not a
     closure only ``dispatch_task`` could call."""
 
@@ -91,7 +91,7 @@ class TestExecuteUnitDirectly:
         ctx = _unit_context(run=_fake_run, on_hop=persisted.append)
         node = _planned_unit("myapp-implementer", gate=_gates.MechanicalGate(command=None))
 
-        outcome = _runner._execute_unit(
+        outcome = _runner.execute_unit(
             ctx,
             node,
             prior_snapshot=[],
@@ -113,7 +113,7 @@ class TestExecuteUnitDirectly:
         node = _planned_unit("otherapp-implementer")
 
         with pytest.raises(_task.DispatchError, match="refusing cross-pod dispatch"):
-            _runner._execute_unit(
+            _runner.execute_unit(
                 ctx,
                 node,
                 prior_snapshot=[],

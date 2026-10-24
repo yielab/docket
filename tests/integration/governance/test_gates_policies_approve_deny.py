@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -28,6 +28,7 @@ from docket.governance.audit import read_audit
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
+from docket.sandbox.launch import Launcher
 
 SUBJECT = "docket.governance.policy"
 
@@ -44,7 +45,9 @@ _FLEET_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture()
-def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def oc_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bind_launcher: Callable[..., Launcher]
+) -> Iterator[Path]:
     """Temp DOCKET_HOME with config paths repointed; docker stubbed off PATH."""
     d = tmp_path / ".docket"
     (d / "policies").mkdir(parents=True)
@@ -56,7 +59,7 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
         # Never touch systemctl.
         # No real backend probing from these tests: default to "no backend usable".
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+        bind_launcher(landlock=False, seatbelt=False)
         yield d
 
 
@@ -114,9 +117,13 @@ class TestHighRiskPatterns:
 
 class TestGatesStatus:
     def test_status_unset(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        oc_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        bind_launcher(landlock=True)
         rc = _setup_sandbox.status()
         out = capsys.readouterr().out
         assert rc == 0
@@ -166,9 +173,13 @@ class TestGatesIsolate:
         assert "setup sandbox backend docker" in err
 
     def test_isolate_on_applies_when_a_backend_is_usable(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        oc_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        bind_launcher(landlock=True)
         rc = _setup_sandbox.isolate("on")
         out = capsys.readouterr().out
         assert rc == 0
@@ -178,9 +189,13 @@ class TestGatesIsolate:
         assert "Isolation on" in out
 
     def test_isolate_off(
-        self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        oc_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        bind_launcher(landlock=True)
         _setup_sandbox.isolate("on")
         capsys.readouterr()
         rc = _setup_sandbox.isolate("off")

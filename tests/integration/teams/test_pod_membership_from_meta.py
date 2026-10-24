@@ -4,7 +4,7 @@ A custom role named `security-reviewer` (registered via the archetype user-overl
 provisionable via `docket pod add`, but its member id (`<project>-security-reviewer`) can
 make `teams/pod.py::pod_of` mis-parse the tail `reviewer` as the role, answering the wrong
 (nonexistent) project and tripping the cross-pod dispatch refusal in
-`hops/application/runner.py::_execute_unit`. See pod-dispatch.spec.md ("Pipeline order and participation",
+`hops/application/runner.py::execute_unit`. See pod-dispatch.spec.md ("Pipeline order and participation",
 requirement 3) and role-archetypes.spec.md ("Built-in archetypes and legacy fidelity",
 requirement 5).
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
-from tests.support.pods import seed as _seed
+from tests.support.pods import seed_empty_home as _seed
 
 from docket.agent import ports as _rd
 from docket.hops.application import sweep as _sweep

@@ -11,11 +11,11 @@ from docket.interfaces.telegram import bot as _telegram
 # (a bare `contextlib.suppress(Exception)` around dispatch is banned; a
 # delegate action reaching `tasks.application.queue.enqueue_task_once` is exactly that
 # "dispatch" this loop must not hide a failure from).
-_TELEGRAM_UNCONFIGURED_BACKOFF_S = 30
-_TELEGRAM_ERROR_BACKOFF_S = 5
+TELEGRAM_UNCONFIGURED_BACKOFF_S = 30
+TELEGRAM_ERROR_BACKOFF_S = 5
 
 
-def _telegram_poll_loop(stop: threading.Event) -> None:
+def telegram_poll_loop(stop: threading.Event) -> None:
     """Long-poll Telegram (one batch per call) until *stop* is set.
 
     Paced by Telegram's own blocking `getUpdates` wait when a bot token is configured and the
@@ -32,7 +32,7 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
             summary = _telegram.poll_once()
         except Exception as exc:  # pragma: no cover - backstop, see docstring above
             print(f"[serve] telegram: poll failed: {type(exc).__name__}: {exc}")
-            if stop.wait(_TELEGRAM_ERROR_BACKOFF_S):
+            if stop.wait(TELEGRAM_ERROR_BACKOFF_S):
                 return
             continue
 
@@ -43,7 +43,7 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
                     "(docket setup notify enable telegram) -- channel idle"
                 )
                 printed_unconfigured = True
-            if stop.wait(_TELEGRAM_UNCONFIGURED_BACKOFF_S):
+            if stop.wait(TELEGRAM_UNCONFIGURED_BACKOFF_S):
                 return
             continue
 
@@ -53,5 +53,5 @@ def _telegram_poll_loop(stop: threading.Event) -> None:
             printed_timeout_warning = True
         if not summary.ok:
             print(f"[serve] telegram: {summary.error}")
-            if stop.wait(_TELEGRAM_ERROR_BACKOFF_S):
+            if stop.wait(TELEGRAM_ERROR_BACKOFF_S):
                 return

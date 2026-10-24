@@ -16,7 +16,6 @@ import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
-from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import Home, current_home, use_home
 from docket.operator import channel as _channel
@@ -32,7 +31,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
-from tests.support.fakes import FakeDriver
+from tests.support.fakes import FakeDriver, landlock_host
 from tests.support.home import point_config_at, record_isolation_off
 
 
@@ -223,7 +222,7 @@ def workspace(tmp_path: Path) -> Path:
 
 
 @contextmanager
-def seed_pod_2(
+def seed_pod_isolation_off(
     tmp_path: Path,
     project: str = "demo",
     roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
@@ -263,18 +262,7 @@ def lead_ws(project: str = "demo") -> Path:
     return current_home().workspace_dir(f"{project}-lead")
 
 
-@contextmanager
-def seed(
-    tmp_path: Path,
-) -> Iterator[None]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        yield
-
-
-def write_meta_2(agent_id: str, **overrides: object) -> Path:
+def write_meta_overrides(agent_id: str, **overrides: object) -> Path:
     """Write a real `.docket-meta.json` for *agent_id* and return its workspace dir."""
     ws = current_home().workspace_dir(agent_id)
     ws.mkdir(parents=True, exist_ok=True)
@@ -284,53 +272,11 @@ def write_meta_2(agent_id: str, **overrides: object) -> Path:
     return ws
 
 
-def write_meta_3(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.split("-")[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-06-25T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
-
-
 def spec(text: str) -> _pipeline.PipelineSpec:
     loaded = _pipeline.load_pipeline(text)
     assert loaded.ok, loaded.errors
     assert loaded.spec is not None
     return loaded.spec
-
-
-def write_meta_4(member_id: str, extra: dict[str, Any] | None = None) -> None:
-    ws = current_home().projects_dir / member_id
-    ws.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "project",
-        "scope": "project",
-        "role": member_id.rsplit("-", 1)[-1],
-        "name": member_id,
-        "codebase": str(ws),
-        "model": "anthropic/claude-haiku-4-5",
-        "sessionKey": f"agent:{member_id}:default",
-        "projectKey": "default",
-        "created": "2026-07-30T00:00:00+00:00",
-    }
-    if extra:
-        meta.update(extra)
-    (ws / ".docket-meta.json").write_text(json.dumps(meta))
-    _fleet.add_agent(member_id)
 
 
 def seed_lean_pod(project: str = "myapp") -> None:
@@ -367,16 +313,6 @@ def members() -> list[str]:
     return sorted(p.name for p in current_home().projects_dir.iterdir())
 
 
-@contextmanager
-def seed_pod_3(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod(project, _pod_cli.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
 def setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
@@ -388,7 +324,7 @@ def setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
 
 
 @contextmanager
-def seed_2(
+def seed_empty_home(
     tmp_path: Path,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
@@ -413,11 +349,6 @@ def section(*lines: str) -> str:
     return "Done.\n\n## Memory\n" + "\n".join(lines) + "\n"
 
 
-def meta_2(home: Path, member_id: str) -> dict:
-    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
-    return json.loads(p.read_text())
-
-
 @contextmanager
 def seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     home = tmp_path / ".docket"
@@ -438,25 +369,17 @@ def pod_home(tmp_path: Path) -> Iterator[Path]:
         yield home
 
 
-def bind_pipeline_2(project: str, text: str) -> None:
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    path = _pod.pod.bound_pipeline_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    _fleet.meta_set(_pod.pod.member_id(project, "lead"), "pipeline", digest)
-
-
 def seed_parked_task(project: str = "demo") -> dict[str, Any]:
     """A real pod with a real ``waiting_input`` task, reached by actually dispatching
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    bind_pipeline_2(project, _ASK_PIPELINE_YAML)
+    bind_pipeline(project, _ASK_PIPELINE_YAML)
     _queue.enqueue_task_once(project, "needs a decision", channel="cli")
     _sweep.dispatch_pod(project, runner=FakeDriver())
     return _queue.read_tasks(project)[0]
 
 
-def bind_pipeline_3(text: str) -> None:
+def bind_demo_pipeline(text: str) -> None:
     path = _pod.pod.bound_pipeline_path("demo")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -478,7 +401,7 @@ def pod_input_policy(tmp_path: Path) -> Iterator[Path]:
 
 
 @pytest.fixture
-def workspace_2(tmp_path: Path) -> Path:
+def workspace_with_files(tmp_path: Path) -> Path:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "main.py").write_text("print('hello')\n")
     (tmp_path / "notes.md").write_text("alpha\nbeta\ngamma\n")
@@ -500,7 +423,7 @@ def unit(step_id: str, **extra: Any) -> _orch.PlannedUnit:
 
 
 @pytest.fixture()
-def pod_home_2(tmp_path: Path) -> Iterator[Path]:
+def pod_home_bare(tmp_path: Path) -> Iterator[Path]:
     """A hermetic DOCKET_HOME with the directories enqueue_task_once touches."""
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
@@ -554,7 +477,7 @@ def planned_unit(
 
 
 @contextmanager
-def seed_3(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
+def seed_lead_implementer_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -564,18 +487,7 @@ def seed_3(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
 
 
 @contextmanager
-def seed_pod_4(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        record_isolation_off(home)
-        build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-        yield home
-
-
-@contextmanager
-def seed_4(
+def seed_setup_check_home(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -613,8 +525,7 @@ def seed_4(
         sfile.write_text(json.dumps(secrets))
         sfile.chmod(0o600)
 
-    with point_config_at(home):
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+    with point_config_at(home), landlock_host():
         if notify:
             _channel.enable_channel("desktop")
         yield home
@@ -642,7 +553,7 @@ def load(text: str) -> PipelineSpec:
     return loaded.spec
 
 
-def spec_2(**variables: _pipeline.Variable) -> _pipeline.PipelineSpec:
+def spec_with_variables(**variables: _pipeline.Variable) -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="t",
         variables=variables,
@@ -668,13 +579,23 @@ def bind_ask_pipeline(project: str, text: str = _ASK_PIPELINE_YAML) -> None:
 
 
 @contextmanager
-def seed_parked_task_2(
+def parked_task_in_pod(
     tmp_path: Path,
 ) -> Iterator[dict[str, Any]]:
     """A real pod with a real ``waiting_input`` task, reached by actually dispatching
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
-    with seed_pod_4(tmp_path):
+    with seed_pod_isolation_off(tmp_path):
         bind_ask_pipeline("demo")
         _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
         _sweep.dispatch_pod("demo", runner=FakeDriver())
         yield _queue.read_tasks("demo")[0]
+
+
+@contextmanager
+def seed_pod_at_codebase(tmp_path: Path, codebase: Path) -> Iterator[None]:
+    home = tmp_path / ".docket"
+    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    with use_home(Home(home)):
+        build_pod("demo", pod.DEFAULT_POD_ROLES, codebase=str(codebase))
+        yield

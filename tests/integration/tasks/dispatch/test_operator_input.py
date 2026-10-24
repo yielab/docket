@@ -14,7 +14,7 @@ from tests.support.fakes import FakeDriver
 from tests.support.llm import final_response as _final_response
 from tests.support.pods import bind_intake_pipeline as _bind_intake_pipeline
 from tests.support.pods import bind_pipeline as _bind_pipeline
-from tests.support.pods import seed_pod_2 as _seed_pod
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
 from docket.agent import ports as _rd
 from docket.governance import secrets as _secrets

@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import Thread
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
@@ -183,7 +184,6 @@ class TestPodShowExporters:
     def test_pod_show_json_reports_enabled_state(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        from docket.interfaces.cli.commands import pod as _pod_cli
 
         with _seed(tmp_path):
             (current_home().root / "workspaces" / "projects").mkdir(parents=True)
@@ -196,9 +196,7 @@ class TestPodShowExporters:
                 )
             assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
 
-            shown = _runner.invoke(
-                _pod_cli.pod_app, ["show", "demo-lead", "--pod", "demo", "--json"]
-            )
+            shown = invoke_pod(["show", "demo-lead", "--pod", "demo", "--json"])
             assert shown.exit_code == 0, shown.output
             report = json.loads(shown.stdout)
             by_name = {e["name"]: e for e in report["exporters"]}

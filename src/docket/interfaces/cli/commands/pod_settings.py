@@ -145,7 +145,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
 
 # Two writers for one logical value, same as `pipeline` above: `docket-schedules.json`
 # (`Home.schedule_file`) is this schedule's real source of truth -- it is the file
-# `interfaces/http/server.py::_check_schedules` actually reads to fire a dispatch -- while the Lead's meta
+# `interfaces/http/server.py::check_schedules` actually reads to fire a dispatch -- while the Lead's meta
 # copy exists only so `config get`/`list` can report it through the same generic
 # `PodSettings.value_and_source` every other setting uses, instead of a bespoke display path.
 def _pod_config_set_schedule(project: str, lead_id: str, spec: str) -> None:

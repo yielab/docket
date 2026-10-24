@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.pods import seed_3 as _seed
+from tests.support.pods import seed_lead_implementer_pod as _seed
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import status as _status
 from docket.kernel.home import current_home
 from docket.platform import store as _store
+from docket.sandbox.launch import Launcher
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.status"
@@ -52,10 +54,13 @@ def _json(*args: str) -> Any:
 
 class TestTheSandboxOpensTheOutput:
     def test_the_first_line_is_the_sandbox_posture(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         with _seed(tmp_path):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+            bind_launcher(landlock=True)
 
             lines = runner.invoke(_app, ["status", "--pod", "demo"]).output.splitlines()
             first = next(ln for ln in lines if ln.strip())
@@ -63,9 +68,14 @@ class TestTheSandboxOpensTheOutput:
             assert first.startswith("Sandbox   off. The agent's commands run with your user's")
             assert "Isolation" not in "\n".join(lines)
 
-    def test_all_opens_with_it_too(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_all_opens_with_it_too(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
+    ) -> None:
         with _seed(tmp_path):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+            bind_launcher(landlock=True)
 
             out = runner.invoke(_app, ["status", "--all"]).output
 
@@ -231,11 +241,14 @@ class TestParkedQuestionAndSandbox:
             assert _json("--pod", "demo")["isolation"] == "on (docker, network none)"
 
     def test_isolation_off_says_the_network_is_not_enforced(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        bind_launcher: Callable[..., Launcher],
     ) -> None:
         """A fresh home has isolation off, so `network none` would read as a cut it is not."""
         with _seed(tmp_path):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+            bind_launcher(landlock=True)
 
             phrase = _json("--pod", "demo")["isolation"]
 

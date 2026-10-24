@@ -27,18 +27,8 @@ def audit_actions() -> list[str]:
     return [e["action"] for e in _audit.read_audit()]
 
 
-def audit_actions_2(action: str) -> list[dict[str, Any]]:
+def audit_entries(action: str) -> list[dict[str, Any]]:
     return [e for e in _audit.read_audit() if e["action"] == action]
-
-
-def trace_events_2(project: str) -> list[dict[str, object]]:
-    events: list[dict[str, object]] = []
-    traces_dir = current_home().traces_dir / project
-    if not traces_dir.is_dir():
-        return events
-    for f in traces_dir.glob("*.jsonl"):
-        events.extend(_trace.read_trace(f))
-    return events
 
 
 def write_trace(pdir: Path, name: str, lines: list[dict[str, object]]) -> Path:

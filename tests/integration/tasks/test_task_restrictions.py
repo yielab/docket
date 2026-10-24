@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
-from tests.support.git import git_4 as _git
+from tests.support.git import git_quiet as _git
 from tests.support.home import record_isolation_off, register_local_provider
 from tests.support.llm import _final_response, _ScriptedLLMServer, _tool_call_response
 from tests.support.pods import build_pod
@@ -27,7 +27,7 @@ from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.tasks.application.queue"
 

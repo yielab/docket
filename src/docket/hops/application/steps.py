@@ -13,7 +13,7 @@ import docket.kernel.templates as _templates
 from docket.governance import secrets as _secrets
 from docket.governance import security as _sec
 from docket.hops.application.compose import _brief_from_step, _brief_questions_schema, _gate_report
-from docket.hops.application.runner import _when_cwd
+from docket.hops.application.runner import when_cwd
 from docket.hops.gates.post_hop import _match_on_route, _run_in_envelope, _task_command_env
 from docket.hops.gates.pre_hop import _gate_pre_hop_approval, _unpriced
 from docket.kernel import clock as _clock
@@ -277,7 +277,7 @@ def _run_command_step(
         if approval_outcome is not None:
             return approval_outcome
 
-    cwd = _when_cwd(ctx, prior)
+    cwd = when_cwd(ctx, prior)
     timeout = node.timeout or ctx.resolved_verify_timeout
     code, raw_output = _run_in_envelope(
         ctx.project, "run", cmd, cwd, timeout, env=_task_command_env(ctx, prior, node.env)

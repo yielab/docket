@@ -102,7 +102,6 @@ _TWO = "name: two\nsteps:\n  - kickoff: lead\n  - assemble: implementer\n"
 
 @pytest.fixture()
 def sweep_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -137,7 +136,7 @@ def test_first_signal_finishes_only_the_running_task(
 ) -> None:
     """With the stop set during the first hop, one task ends terminal and two stay pending."""
     stop = threading.Event()
-    monkeypatch.setattr(_server, "_sweep_stop", stop)
+    monkeypatch.setattr(_server, "sweep_stop", stop)
     server = _ScriptedLLMServer([_final_response("done")], on_request=lambda _r: stop.set())
     try:
         _wire(sweep_home, server)
@@ -161,7 +160,7 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
     sweep_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A running task with a dead claimant is settled stale and continued from hop two."""
-    monkeypatch.setattr(_server, "_sweep_stop", threading.Event())
+    monkeypatch.setattr(_server, "sweep_stop", threading.Event())
     server = _ScriptedLLMServer([_final_response("done")])
     try:
         _wire(sweep_home, server)

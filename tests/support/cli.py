@@ -22,11 +22,17 @@ def run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProce
     return subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=True)
 
 
+def invoke_pod(args: list[str]) -> Any:
+    """Run the ``pod`` group as the CLI builds it: its commands are added to it by the registry
+    module imported above, so a file that never imports the app still sees every command."""
+    return _runner.invoke(_pod.pod_app, args)
+
+
 def pod_cli(*args: str) -> Any:
-    return CliRunner().invoke(_pod.pod_app, list(args))
+    return invoke_pod(list(args))
 
 
-def run_2(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
+def run_cli_in_home(args: list[str], oc_dir: Path) -> tuple[int, str, str]:
     """Invoke the CLI in-process against *oc_dir* as an isolated DOCKET_HOME."""
     with use_home(Home(oc_dir)):
         result = _runner.invoke(_app, args)

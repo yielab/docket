@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-from tests.support.http import get_2 as _get
+from tests.support.http import get as _get
 from tests.support.pods import seed_pod as _seed_pod
 
 from docket.interfaces.http.server import _DocketHandler

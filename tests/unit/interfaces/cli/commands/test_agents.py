@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.home import Home, current_home, use_home
+from docket.sandbox.launch import Launcher
 
 SUBJECT = "docket.interfaces.cli.commands.agents"
 
@@ -105,12 +107,15 @@ class TestInitInstallsTheBaselinePolicies:
 
 
 def test_init_closes_with_the_sandbox_line(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    bind_launcher: Callable[..., Launcher],
 ) -> None:
     """The output ends with a `This machine` block naming the sandbox posture."""
 
     with use_home(Home(tmp_path / "home")):
-        monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        bind_launcher(landlock=True)
         code = tmp_path / "code"
         code.mkdir()
         assert _agents.run_init(_agents.InitRequest(name="demo", location=str(code))) == 0

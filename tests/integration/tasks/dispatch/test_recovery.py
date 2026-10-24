@@ -16,7 +16,7 @@ from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off
 from tests.support.llm import final_response as _final_response
 from tests.support.pods import build_pod
-from tests.support.pods import seed_pod_2 as _seed_pod
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
 from docket.agent import ports as _rd
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
@@ -102,7 +102,7 @@ class _VerdictAwareRunner:
 
 def _alien_step_spec() -> _pipeline.PipelineSpec:
     """Lead, then a step targeting a member id that belongs to no real pod -- deterministically
-    trips the cross-pod refusal in ``_execute_unit`` mid-task, after the lead hop persists."""
+    trips the cross-pod refusal in ``execute_unit`` mid-task, after the lead hop persists."""
     return _pipeline.PipelineSpec(
         name="alien-step",
         steps=[

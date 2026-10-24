@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.fakes import landlock_host
 from tests.support.home import point_config_at as _point_config_at
 from tests.support.pods import build_pod
-from tests.support.pods import seed_4 as _seed
+from tests.support.pods import seed_setup_check_home as _seed
 
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services
@@ -154,7 +155,7 @@ class TestSummaryCountsOnlyCrosses:
             _setup_check.ui.warn("  something advisory")
             return 1
 
-        monkeypatch.setattr(_setup_check_services, "_check_exporters", _check)
+        monkeypatch.setattr(_setup_check_services, "check_exporters", _check)
 
     def test_a_warning_alone_is_not_critical(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -189,8 +190,7 @@ class TestJsonCoversEveryTextCheck:
         home = tmp_path / ".docket"
         (home / "workspaces" / "projects").mkdir(parents=True)
         (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-        with _point_config_at(home):
-            monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+        with _point_config_at(home), landlock_host():
             _channel.enable_channel("desktop")
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home

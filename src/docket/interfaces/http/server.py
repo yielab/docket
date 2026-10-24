@@ -35,11 +35,11 @@ from docket.interfaces.http.routing import find_route
 from docket.interfaces.http.sweeps import (
     _SWEEP_LOCK,
     SWEEP_ABANDON_WAIT_S,
-    _check_schedules,
     _drain_sweeps,
     _StopController,
+    check_schedules,
 )
-from docket.interfaces.telegram.poll import _telegram_poll_loop
+from docket.interfaces.telegram.poll import telegram_poll_loop
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
@@ -57,22 +57,22 @@ DEFAULT_INTERVAL = _bootstrap.DEFAULT_INTERVAL
 def render_health(dispatch_on: bool = False) -> str:
     """Render the /health body: status, API version and the dispatch block."""
     with _SWEEP_LOCK:
-        inflight = sorted(_sweeps._sweep_inflight)
+        inflight = sorted(_sweeps.sweep_inflight)
     body = {
         "status": "ok",
         "apiVersion": SERVE_API_VERSION,
         "dispatch": {
             "on": dispatch_on,
             "inflight": inflight,
-            "stopping": _sweep_stop.is_set(),
+            "stopping": sweep_stop.is_set(),
             "workers": current_home().dispatch_sweep_workers,
         },
     }
     return json.dumps(body, separators=(",", ":")) + "\n"
 
 
-_sweep_pool: tuple[int, concurrent.futures.ThreadPoolExecutor] | None = None
-_sweep_stop = threading.Event()
+sweep_pool: tuple[int, concurrent.futures.ThreadPoolExecutor] | None = None
+sweep_stop = threading.Event()
 
 
 def _sweep_one_pod(project: str) -> None:
@@ -84,7 +84,7 @@ def _sweep_one_pod(project: str) -> None:
     try:
         record = _runs.create_run("sweep", project)
         with _SWEEP_LOCK:
-            _sweeps._sweep_run_ids[project] = record["id"]
+            _sweeps.sweep_run_ids[project] = record["id"]
         _runs.execute(
             record["id"],
             lambda: _sweep.dispatch_pod(
@@ -93,15 +93,15 @@ def _sweep_one_pod(project: str) -> None:
                 verify_timeout=current_home().dispatch_verify_timeout_s,
                 approval_default="park",
                 resume=True,
-                stop=_sweep_stop.is_set,
+                stop=sweep_stop.is_set,
             ),
         )
     except Exception as exc:
         print(f"[serve] sweep: pod {project} failed: {exc}")
     finally:
         with _SWEEP_LOCK:
-            _sweeps._sweep_inflight.pop(project, None)
-            _sweeps._sweep_run_ids.pop(project, None)
+            _sweeps.sweep_inflight.pop(project, None)
+            _sweeps.sweep_run_ids.pop(project, None)
 
 
 def _submit_pod_sweep(project: str) -> bool:
@@ -109,21 +109,21 @@ def _submit_pod_sweep(project: str) -> bool:
 
     The pool holds ``DISPATCH_SWEEP_WORKERS`` threads; a pod past that limit is claimed but
     waits for a free worker. Returns whether a sweep was started."""
-    global _sweep_pool
+    global sweep_pool
     workers = max(1, current_home().dispatch_sweep_workers)
     stale = None
     with _SWEEP_LOCK:
-        if project in _sweeps._sweep_inflight:
+        if project in _sweeps.sweep_inflight:
             return False
-        if _sweep_pool is None or _sweep_pool[0] != workers:
-            stale = _sweep_pool
-            _sweep_pool = (
+        if sweep_pool is None or sweep_pool[0] != workers:
+            stale = sweep_pool
+            sweep_pool = (
                 workers,
                 concurrent.futures.ThreadPoolExecutor(
                     max_workers=workers, thread_name_prefix="docket-sweep"
                 ),
             )
-        _sweeps._sweep_inflight[project] = _threads.submit(_sweep_pool[1], _sweep_one_pod, project)
+        _sweeps.sweep_inflight[project] = _threads.submit(sweep_pool[1], _sweep_one_pod, project)
     if stale is not None:
         stale[1].shutdown(wait=False)
     return True
@@ -134,8 +134,8 @@ def _abandon_sweeps(wait_s: float = SWEEP_ABANDON_WAIT_S) -> bool:
     *wait_s* for the running ones to settle; True when none remain."""
 
     with _SWEEP_LOCK:
-        run_ids = list(_sweeps._sweep_run_ids.values())
-        pool = _sweep_pool
+        run_ids = list(_sweeps.sweep_run_ids.values())
+        pool = sweep_pool
     if pool is not None:
         pool[1].shutdown(wait=False, cancel_futures=True)
     for run_id in run_ids:
@@ -192,7 +192,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
         for project in pods_to_dispatch:
             _submit_pod_sweep(project)
         try:
-            _check_schedules(_clock.epoch())
+            check_schedules(_clock.epoch())
         except Exception as exc:
             print(f"[serve] sweep: schedule check failed: {exc}")
 
@@ -288,8 +288,8 @@ def run_serve(
         serve_token = plan.token
         dispatch_on = plan.dispatch
 
-    global _sweep_stop
-    stop = _sweep_stop = threading.Event()
+    global sweep_stop
+    stop = sweep_stop = threading.Event()
     server_ready = threading.Event()
     servers: list[_threads.ContextHTTPServer] = []
 
@@ -303,7 +303,7 @@ def run_serve(
     sweeper = _threads.start_thread(_sweep_loop, (interval, stop, dispatch))
 
     if telegram:
-        _threads.start_thread(_telegram_poll_loop, (stop,))
+        _threads.start_thread(telegram_poll_loop, (stop,))
 
     server = _threads.ContextHTTPServer((bind, actual_port), _BoundHandler)
     servers.append(server)
@@ -342,6 +342,6 @@ def run_serve(
             sys.stdout.flush()
             os._exit(controller.exit_code)
         server.server_close()
-        _sweep_stop = threading.Event()
+        sweep_stop = threading.Event()
         for signum, handler in previous.items():
             signal.signal(signum, handler)

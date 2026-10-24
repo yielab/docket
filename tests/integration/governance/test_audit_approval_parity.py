@@ -81,17 +81,17 @@ def _last_audit_entry(action: str) -> dict[str, object]:
 def _race_pending_transitions(
     monkeypatch: pytest.MonkeyPatch, *calls: object
 ) -> list[BaseException | None]:
-    """Starts two public decisions together at the race window around ``_set_state`` (both
+    """Starts two public decisions together at the race window around ``set_state`` (both
     callers have already read ``pending``); the implementation re-checks state under the
     store lock, so exactly one caller may return normally."""
-    original = _ap._set_state
+    original = _ap.set_state
     barrier = threading.Barrier(2, timeout=2)
 
     def synchronized_set_state(token: str, state: str) -> dict[str, object]:
         barrier.wait()
         return original(token, state)
 
-    monkeypatch.setattr(_ap, "_set_state", synchronized_set_state)
+    monkeypatch.setattr(_ap, "set_state", synchronized_set_state)
     errors: list[BaseException | None] = [None, None]
 
     def run(index: int, call: object) -> None:
@@ -299,7 +299,7 @@ class TestAtomicApprovalDecisions:
         record["expiresAt"] = record["created"]
         _store.write_json(_ap._approval_path(token), record)
         sweep_counts: list[int] = []
-        real_set_state = _ap._set_state
+        real_set_state = _ap.set_state
 
         errors = _race_pending_transitions(
             monkeypatch,
@@ -323,7 +323,7 @@ class TestAtomicApprovalDecisions:
 
         # A terminal record is not swept a second time, and an unknown token
         # remains an error with no trace/audit side effect.
-        monkeypatch.setattr(_ap, "_set_state", real_set_state)
+        monkeypatch.setattr(_ap, "set_state", real_set_state)
         assert _ap.approval_sweep_expired() == 0
         with pytest.raises(_ap.ApprovalError):
             _ap.approval_grant("apr-unknown-atomic", channel="cli")

@@ -8,23 +8,21 @@ the hop records is real git output, not a canned answer.
 from __future__ import annotations
 
 import hashlib
-import json
-import subprocess
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from tests.support import home as _support_home
 from tests.support.git import git as _git
-from tests.support.pods import bind_pipeline_3 as _bind_pipeline
-from tests.support.pods import build_pod
+from tests.support.git import init_repo as _init_repo
+from tests.support.pods import bind_demo_pipeline as _bind_pipeline
+from tests.support.pods import seed_pod_at_codebase as _seed_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.hops.application import answers as _answers
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import current_home
 from docket.platform import git as _platform_git
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import worktree_prune as _worktree_prune
@@ -33,7 +31,7 @@ from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings
 from docket.teams import task_worktrees as _task_worktrees
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -75,26 +73,6 @@ steps:
   - coordinates:
       run: 'echo "id=$DOCKET_TASK_ID base=$DOCKET_BASE_COMMIT head=$DOCKET_HEAD_COMMIT"'
 """
-
-
-def _init_repo(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", str(path)], check=True, capture_output=True)
-    _git(path, "config", "user.email", "t@t.test")
-    _git(path, "config", "user.name", "T")
-    (path / "README.md").write_text("hello\n")
-    _git(path, "add", ".")
-    _git(path, "commit", "-m", "init")
-
-
-@contextmanager
-def _seed_pod(tmp_path: Path, codebase: Path) -> Iterator[None]:
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    with use_home(Home(home)):
-        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
-        yield
 
 
 class _Runner:

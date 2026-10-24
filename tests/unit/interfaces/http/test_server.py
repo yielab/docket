@@ -30,8 +30,8 @@ class TestRenderHealth:
     def test_health_dispatch_block(self, fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """The dispatch block reports the flag, in-flight pods, the stop state and the pool size."""
         stop = threading.Event()
-        monkeypatch.setattr(http_server, "_sweep_stop", stop)
-        monkeypatch.setattr(sweeps, "_sweep_inflight", {"demo": None})
+        monkeypatch.setattr(http_server, "sweep_stop", stop)
+        monkeypatch.setattr(sweeps, "sweep_inflight", {"demo": None})
         assert json.loads(http_server.render_health(True))["dispatch"] == {
             "on": True,
             "inflight": ["demo"],

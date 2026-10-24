@@ -49,7 +49,6 @@ _QUESTION = {
 
 @pytest.fixture()
 def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))

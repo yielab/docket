@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import time as _time
-import types
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -163,12 +161,7 @@ def _answer_with(monkeypatch: pytest.MonkeyPatch, option: str | None) -> None:
             _approval.approval_set_option(token, option)
         _approval.approval_grant(token, "cli")
 
-    monkeypatch.setattr(
-        _approval,
-        "_time",
-        types.SimpleNamespace(sleep=answer, monotonic=_time.monotonic),
-        raising=True,
-    )
+    monkeypatch.setattr(_approval, "pause", answer)
 
 
 class TestApproveTask:

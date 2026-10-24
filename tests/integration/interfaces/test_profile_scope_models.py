@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.cli import run_2 as _run
+from tests.support.cli import run_cli_in_home as _run
 from tests.support.home import register_local_provider
 from tests.support.pods import setup_agent as _setup_agent
 from typer.testing import CliRunner

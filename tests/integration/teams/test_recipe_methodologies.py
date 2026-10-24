@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
-from tests.support.trace import trace_events_2 as _trace_events
+from tests.support.trace import trace_events as _trace_events
 
 import docket.kernel.templates as _templates
 from docket.agent import ports as _rd

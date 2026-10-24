@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,13 @@ from docket.agent.ports import (
 )
 from docket.governance import security as _security
 from docket.kernel.errors import InvalidInput
-from docket.kernel.ports import JailLaunch, JailPolicy, SandboxAvailability, SandboxBackend
+from docket.kernel.ports import (
+    JailLaunch,
+    JailPolicy,
+    SandboxAvailability,
+    SandboxBackend,
+    jail_port,
+)
 from docket.sandbox.launch import Launcher, cache_environment, tmp_environment
 from docket.teams import fleet as _fleet
 
@@ -461,3 +468,13 @@ def launcher_with(
         high_risk=_security.match_high_risk,
         **probes,
     )
+
+
+@contextmanager
+def landlock_host() -> Iterator[None]:
+    """A host whose landlock probe answers yes, unless the test already bound its own jail fake."""
+    if isinstance(jail_port.current(), Launcher):
+        with jail_port.use(launcher_with(landlock=True)):
+            yield
+    else:
+        yield

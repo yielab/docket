@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import contextvars
 import threading
-import time
 
 import pytest
 
@@ -222,12 +221,15 @@ class TestRunGroup:
     def test_results_preserve_declaration_order_not_completion_order(self) -> None:
         order: list[str] = []
         lock = threading.Lock()
+        others_done = threading.Event()
 
         def _run(unit: _orch.PlannedUnit) -> str:
             if unit.step_id == "c0":
-                time.sleep(0.05)  # c0 finishes LAST despite being declared first
+                others_done.wait(5)  # c0 finishes LAST despite being declared first
             with lock:
                 order.append(unit.step_id)
+                if len(order) == 2:
+                    others_done.set()
             return unit.step_id
 
         children = tuple(_unit(f"c{i}") for i in range(3))
@@ -238,9 +240,10 @@ class TestRunGroup:
     def test_all_children_are_joined_even_when_one_raises(self) -> None:
         joined: list[str] = []
         lock = threading.Lock()
+        all_running = threading.Barrier(3)
 
         def _run(unit: _orch.PlannedUnit) -> str:
-            time.sleep(0.02)
+            all_running.wait(5)
             with lock:
                 joined.append(unit.step_id)
             if unit.step_id == "c1":

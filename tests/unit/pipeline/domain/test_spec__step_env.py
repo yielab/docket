@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 import yaml
-from tests.unit.hops.application.test_steps import _unit_context
+from tests.support.pods import unit_context as _unit_context
 
 from docket.hops.application import compose as _compose_c
 from docket.hops.application import executor as _executor_c
@@ -70,9 +70,9 @@ class TestExecution:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         events: list[tuple[Any, ...]] = []
-        monkeypatch.setattr(_runner, "_when_cwd", lambda ctx, prior: str(tmp_path))
-        monkeypatch.setattr(_steps, "_when_cwd", lambda ctx, prior: str(tmp_path))
-        monkeypatch.setattr(_executor_c, "_when_cwd", lambda ctx, prior: str(tmp_path))
+        monkeypatch.setattr(_runner, "when_cwd", lambda ctx, prior: str(tmp_path))
+        monkeypatch.setattr(_steps, "when_cwd", lambda ctx, prior: str(tmp_path))
+        monkeypatch.setattr(_executor_c, "when_cwd", lambda ctx, prior: str(tmp_path))
         monkeypatch.setattr(_record, "trace_locked", lambda *a, **k: events.append(a))
         monkeypatch.setattr(_compose_c, "trace_locked", lambda *a, **k: events.append(a))
         monkeypatch.setattr(_runner, "trace_locked", lambda *a, **k: events.append(a))

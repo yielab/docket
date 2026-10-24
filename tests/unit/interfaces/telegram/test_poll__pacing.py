@@ -24,7 +24,7 @@ SUBJECT = "docket.interfaces.telegram.poll"
 
 
 def _run_loop_until(stop: threading.Event, n_calls: int, timeout: float = 5.0) -> None:
-    t = new_thread(target=poll._telegram_poll_loop, args=(stop,), daemon=True)
+    t = new_thread(target=poll.telegram_poll_loop, args=(stop,), daemon=True)
     t.start()
     t.join(timeout=timeout)
     assert not t.is_alive(), f"telegram poll loop did not stop after {n_calls} calls"

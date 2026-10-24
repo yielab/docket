@@ -18,7 +18,7 @@ import datetime as _dt
 import json
 import os
 import re
-import time as _time
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -166,7 +166,7 @@ def _record_project(token: str) -> str:
         return ""
 
 
-def _set_state(token: str, new_state: str) -> dict[str, Any]:
+def set_state(token: str, new_state: str) -> dict[str, Any]:
     """Conditionally make one pending record terminal under the store lock; the caller must
     use the returned record for side effects. Checking state inside ``read_modify_write``
     (not before) makes one decision the sole transition winner under concurrent callers."""
@@ -304,7 +304,7 @@ def approval_grant(
         if hit.action == "block":
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
 
-    data = _set_state(token, "granted")
+    data = set_state(token, "granted")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
 
@@ -339,7 +339,7 @@ def approval_deny(
         if hit.action == "block":
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
 
-    data = _set_state(token, "denied")
+    data = set_state(token, "denied")
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
 
@@ -428,7 +428,7 @@ def _resolve_timeout_as_denied(token: str) -> bool:
     only for the transition winner, which writes the audit entry and notifies ``tasks/application/actions.py``;
     a grant, deny, expiry, or deletion winning first is a harmless ``False``, not an overwrite."""
     try:
-        data = _set_state(token, "denied")
+        data = set_state(token, "denied")
     except (ApprovalError, ApprovalNoop):
         return False
     project = str(data.get("project", "")) or "operator"
@@ -454,7 +454,7 @@ def _expiry_deadline(data: dict[str, Any]) -> float | None:
 
 def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
     """Fail-closed: deny an unconsumed pre-grant once past its own ``expiresAt``.
-    Unlike ``_resolve_timeout_as_denied`` this skips ``_set_state``: a pre-grant is
+    Unlike ``_resolve_timeout_as_denied`` this skips ``set_state``: a pre-grant is
     *born* ``granted``, so this prunes an unused offer, not a grant/deny race."""
     path = _approval_path(token)
     expired = False
@@ -528,6 +528,11 @@ class ApprovalWaitResult:
     cancelled: bool = False
 
 
+def pause(seconds: float) -> None:
+    """Wait between two polls of a pending approval."""
+    time.sleep(seconds)
+
+
 def wait_for_approval(
     token: str,
     *,
@@ -551,17 +556,16 @@ def wait_for_approval(
     never left dangling in ``pending``.
 
     ``sleep``/``clock`` are injectable two ways, both exercised by the suite: pass them
-    explicitly for a direct unit test, or leave them ``None`` and monkeypatch the module's
-    ``_time`` reference (the real callers pass no override, so an end-to-end test fakes time
-    this second way). The fallback is resolved in the body rather than as a default-argument
-    value because a default bound at definition time would capture the real ``time.sleep``
-    once and never see a later monkeypatch of the module attribute.
+    explicitly for a direct unit test, or leave them ``None`` and replace the module's ``pause``
+    (the real callers pass no override, so an end-to-end test answers the pending call from
+    there). The fallback is resolved in the body rather than as a default-argument value so a
+    later replacement of ``pause`` is seen.
     """
     effective_timeout = current_home().tool_approval_timeout if timeout is None else timeout
     effective_poll = (
         current_home().tool_approval_poll_interval_s if poll_interval is None else poll_interval
     )
-    do_sleep = sleep if sleep is not None else _time.sleep
+    do_sleep = sleep if sleep is not None else pause
     do_clock = clock if clock is not None else _clock.monotonic
     deadline = do_clock() + effective_timeout
 

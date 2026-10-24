@@ -11,17 +11,18 @@ all. No real subprocess.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 from tests.support import home as _support_home
 from tests.support import pods as _support_pods
-from tests.support.pods import write_meta_2 as _write_meta
+from tests.support.llm import RecordingScriptedBackend as _ScriptedBackend
+from tests.support.llm import final as _final
+from tests.support.pods import write_meta_overrides as _write_meta
 
 import docket.kernel.templates as _templates
-from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
+from docket.agent.ports import ChatResponse, TokenUsage, assistant
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.builtins.toolbox import ToolOutcome
@@ -36,35 +37,6 @@ _isolate_stores = _support_home.isolate_stores
 pod_input_policy = _support_pods.pod_input_policy
 
 SUBJECT = "docket.agent.tools.mcp_tools"
-
-
-class _ScriptedBackend:
-    """Redefined locally, matching this suite's per-file convention (see
-    test_docket_driver.py's identical docstring note)."""
-
-    def __init__(self, responses: Sequence[ChatResponse]) -> None:
-        self._responses = list(responses)
-        self.calls: list[list[ChatMessage]] = []
-        self.tools_seen: list[Sequence[ToolSpec]] = []
-
-    def complete(
-        self,
-        messages: Sequence[ChatMessage],
-        *,
-        tools: Sequence[ToolSpec] = (),
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-        timeout: int = 120,
-    ) -> ChatResponse:
-        self.calls.append(list(messages))
-        self.tools_seen.append(tools)
-        return self._responses.pop(0)
-
-
-def _final(text: str = "done") -> ChatResponse:
-    return ChatResponse(
-        ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
-    )
 
 
 def _remote(name: str = "danger_write") -> _mcp_types.McpRemoteTool:

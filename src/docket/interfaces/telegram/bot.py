@@ -461,14 +461,14 @@ class PollSummary:
     warning: str = ""
 
 
-def _load_token() -> str:
+def load_token() -> str:
     return _secrets.secret_value(current_home().telegram_bot_token_key) or ""
 
 
 def wire_discovery_configured() -> bool:
     """Whether guided Telegram discovery can use a stored bot token."""
 
-    return bool(_load_token())
+    return bool(load_token())
 
 
 def _load_offset() -> int:
@@ -506,7 +506,7 @@ def discover_wire_groups(
     starts at the poller's durable offset but never advances it, routes, or
     replies; the one-time challenge stops stale activity becoming a binding."""
 
-    token = _load_token()
+    token = load_token()
     if not token:
         return WireDiscoveryResult(ok=True, configured=False)
 
@@ -578,7 +578,7 @@ def poll_once(
     a typed, non-``ok``/non-``configured`` summary for the caller to log and
     back off on, instead of raising.
     """
-    token = _load_token()
+    token = load_token()
     if not token:
         return PollSummary(ok=True, configured=False)
 

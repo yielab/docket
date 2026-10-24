@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.git import git_3 as _git
+from tests.support.git import git_identity_flags as _git
 from tests.support.pods import build_pod
 
 from docket.agent import ports as _ports

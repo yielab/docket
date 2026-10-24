@@ -206,14 +206,14 @@ class TestApproveDeny:
     ) -> None:
         _bind("security", "-100200")
         token = _approval.approval_create("security", "security", "delete prod bucket")
-        original = _approval._set_state
+        original = _approval.set_state
         barrier = threading.Barrier(2, timeout=2)
 
         def synchronized_set_state(record_token: str, state: str) -> dict[str, object]:
             barrier.wait()
             return original(record_token, state)
 
-        monkeypatch.setattr(_approval, "_set_state", synchronized_set_state)
+        monkeypatch.setattr(_approval, "set_state", synchronized_set_state)
         outcomes: list[_tg.TelegramActionResult] = []
 
         def decide(command: str, update_id: int) -> None:

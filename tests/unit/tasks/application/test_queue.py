@@ -6,7 +6,7 @@ like ``/dispatch/`` and ``/runs``), TestBadRequests (malformed/invalid
 bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 404, not 500), TestPolicyGates (``pre_input`` gate behaves as the CLI
 path does, since this route calls the same ``enqueue_task_once``),
-TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
+TestSuccess (happy path), and TestExecuteUnitDirectly (``execute_unit``
 and two extracted phases, called directly with a hand-built
 ``_UnitContext``/``PlannedUnit``).
 """
@@ -37,7 +37,7 @@ from docket.teams import settings as _settings
 
 live_server = _support_http.live_server
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -352,7 +352,6 @@ class TestBaseRefRefusedAtClaim:
     def test_the_refusal_is_traced_as_dispatch_refused_naming_the_ref(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("DOCKET_NO_TRACE", "0")
         _seed_lean_pod("myapp")
         _queue.enqueue_task_once("myapp", "needs a base", channel="cli")
         queue = _queue.read_tasks("myapp")

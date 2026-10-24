@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
@@ -72,7 +73,6 @@ steps:
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -93,7 +93,7 @@ def _seed_pod(tmp_path: Path, roles: tuple[str, ...] = ("lead", "implementer")) 
 
 
 def _pod_run(*args: str) -> Any:
-    return _runner.invoke(_pod.pod_app, list(args))
+    return invoke_pod(list(args))
 
 
 def _seed_auditor_pod(tmp_path: Path) -> None:

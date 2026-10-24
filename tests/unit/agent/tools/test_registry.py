@@ -23,10 +23,10 @@ SUBJECT = "docket.agent.tools.registry"
 _isolate_gates = _support_home.isolate_gates
 
 
-workspace = _support_pods.workspace_2
+workspace = _support_pods.workspace_with_files
 
 
-ctx = _support_llm.ctx_2
+ctx = _support_llm.ctx_in_workspace
 
 
 pod_input_policy = _support_pods.pod_input_policy

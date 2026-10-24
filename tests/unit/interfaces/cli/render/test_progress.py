@@ -9,7 +9,6 @@ import dataclasses
 import io
 import json
 import queue
-import time
 from pathlib import Path
 from typing import Any
 
@@ -262,11 +261,7 @@ class TestDispatchWithProgress:
                     _trace.trace_event("demo", _TASK_SESSION, "implementer", "tool_call", hop)
                     token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
                     granted_token["token"] = token
-                    deadline = time.monotonic() + 1.5
-                    while time.monotonic() < deadline:
-                        if _ap.approval_get(token)["state"] != "pending":
-                            break
-                        time.sleep(0.02)
+                    _ap.wait_for_approval(token, timeout=1.5, poll_interval=0.02)
                     end = json.dumps({"status": "done"})
                     _trace.trace_event("demo", _TASK_SESSION, "lead", "session_end", end)
                     return []

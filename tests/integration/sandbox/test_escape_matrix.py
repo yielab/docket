@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support.git import git_2 as _git
+from tests.support.git import git_identity_env as _git
 
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel.home import current_home, use_home

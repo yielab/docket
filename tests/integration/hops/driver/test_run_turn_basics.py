@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import time as _time
-import types
 from pathlib import Path
 
 import pytest
@@ -16,7 +14,7 @@ from tests.support.driver_harness import (
     _read_call_response,
     _ScriptedBackend,
 )
-from tests.support.pods import write_meta_2 as _write_meta
+from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.ports import (
     ChatResponse,
@@ -209,12 +207,7 @@ class TestRunTurn:
                 assert len(pending) == 1
                 _approval.approval_deny(str(pending[0]["token"]))
 
-            monkeypatch.setattr(
-                _approval,
-                "_time",
-                types.SimpleNamespace(sleep=deny_pending, monotonic=_time.monotonic),
-                raising=True,
-            )
+            monkeypatch.setattr(_approval, "pause", deny_pending)
             handler_calls: list[str] = []
             registry = ToolRegistry()
             registry.register(

@@ -18,7 +18,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
-from tests.support.pods import write_meta_3 as _write_meta
+from tests.support.pods import write_meta as _write_meta
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
@@ -28,7 +28,7 @@ from docket.sandbox.launch import _VERIFY_MAX_OUTPUT
 from docket.tasks.application import record as _record
 from docket.teams import fleet as _fleet
 
-_hermetic = _support_home.hermetic_3
+_hermetic = _support_home.hermetic_trace_on
 
 SUBJECT = "docket.hops.gates.post_hop"
 

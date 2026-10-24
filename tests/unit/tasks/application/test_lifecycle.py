@@ -6,7 +6,7 @@ like ``/dispatch/`` and ``/runs``), TestBadRequests (malformed/invalid
 bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 404, not 500), TestPolicyGates (``pre_input`` gate behaves as the CLI
 path does, since this route calls the same ``enqueue_task_once``),
-TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
+TestSuccess (happy path), and TestExecuteUnitDirectly (``execute_unit``
 and two extracted phases, called directly with a hand-built
 ``_UnitContext``/``PlannedUnit``).
 """
@@ -25,7 +25,7 @@ from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
-pod_home = _support_pods.pod_home_2
+pod_home = _support_pods.pod_home_bare
 
 SUBJECT = "docket.tasks.application.lifecycle"
 

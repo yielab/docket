@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
-from tests.support.pods import write_meta_3 as _write_meta
+from tests.support.pods import write_meta as _write_meta
 
 from docket.agent import ports as _rd
 from docket.hops.application import executor as _executor
@@ -25,7 +25,7 @@ from docket.pipeline.domain import step as _step
 from docket.sandbox import landlock as _landlock
 from docket.teams import fleet as _fleet
 
-_hermetic = _support_home.hermetic_3
+_hermetic = _support_home.hermetic_trace_on
 
 SUBJECT = "docket.tasks.application.queue"
 

@@ -16,12 +16,11 @@ from pathlib import Path
 
 import pytest
 import typer
+from tests.support.cli import invoke_pod
 from tests.support.pods import build_pod
-from tests.support.pods import seed as _seed
-from typer.testing import CliRunner
+from tests.support.pods import seed_empty_home as _seed
 
 from docket.hops.application import steps as _steps
-from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.interfaces.http import sweeps as _sweeps
 from docket.kernel.home import current_home
@@ -46,7 +45,7 @@ def _lead_meta(project: str) -> dict[str, object]:
 
 
 def _show(project: str = "proj") -> tuple[int, str]:
-    result = CliRunner().invoke(_pod.pod_app, ["show", "--pod", project, "--json"])
+    result = invoke_pod(["show", "--pod", project, "--json"])
     return result.exit_code, result.output
 
 
@@ -278,7 +277,7 @@ class TestConfigSetSchedule:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Acceptance oracle: `config set schedule` writes exactly what
-        `interfaces/http/server.py::_check_schedules` reads -- no separate wiring needed for the sweep to
+        `interfaces/http/server.py::check_schedules` reads -- no separate wiring needed for the sweep to
         pick it up."""
         import time as _time
 
@@ -291,7 +290,7 @@ class TestConfigSetSchedule:
                 "docket.hops.application.sweep.dispatch_pod",
                 lambda proj, **kw: dispatched.append(proj) or [],
             )
-            _sweeps._check_schedules(_time.time())
+            _sweeps.check_schedules(_time.time())
             deadline = _time.time() + 2
             while not dispatched and _time.time() < deadline:
                 _time.sleep(0.05)

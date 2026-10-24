@@ -6,7 +6,7 @@ like ``/dispatch/`` and ``/runs``), TestBadRequests (malformed/invalid
 bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 404, not 500), TestPolicyGates (``pre_input`` gate behaves as the CLI
 path does, since this route calls the same ``enqueue_task_once``),
-TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
+TestSuccess (happy path), and TestExecuteUnitDirectly (``execute_unit``
 and two extracted phases, called directly with a hand-built
 ``UnitContext``/``PlannedUnit``).
 """
@@ -63,7 +63,6 @@ class TestHopEvents:
         with use_home(Home(home)):
             record_isolation_off(home)
             build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
-            monkeypatch.setenv("DOCKET_NO_TRACE", "0")
             backend = _ScriptedBackend(["lead plan", "implementer done"])
             driver = _drt.DocketDriver(backend_factory=lambda model: backend)
             monkeypatch.setattr(_drt, "default_driver", lambda: driver)

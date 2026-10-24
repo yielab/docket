@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from tests.support import traces_cursor_harness as _shared
-from tests.support.http import get_2 as _get
+from tests.support.http import get as _get
 from tests.support.traces_cursor_harness import (
     _ClockedHandler,
     _FakeClock,

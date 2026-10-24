@@ -29,7 +29,7 @@ from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home
 from docket.tasks.application import queue as _queue
 
-_hermetic = _support_home.hermetic_2
+_hermetic = _support_home.trace_on_env
 
 SUBJECT = "docket.hops.application.compose"
 

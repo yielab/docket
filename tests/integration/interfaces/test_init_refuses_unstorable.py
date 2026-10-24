@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app
 from docket.teams import fleet as _fleet
 
-_hermetic = _support_home.hermetic_4
+_hermetic = _support_home.hermetic_no_tty
 
 SUBJECT = "docket.interfaces.cli.commands.agents"
 

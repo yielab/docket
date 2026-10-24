@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from tests.support.fakes import FakeGit
-from tests.support.git import git_2
+from tests.support.git import git_identity_env
 
 from docket.kernel.ports import Git
 from docket.platform import git as real_git
@@ -31,11 +31,11 @@ class World:
 def _real_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     def make_repo(path: Path) -> tuple[str, str]:
         path.mkdir()
-        git_2(path, "init", "-q", "-b", "main")
+        git_identity_env(path, "init", "-q", "-b", "main")
         (path / "tracked.txt").write_text("one\n")
-        git_2(path, "add", "tracked.txt")
-        git_2(path, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "first")
-        return "main", git_2(path, "rev-parse", "HEAD")
+        git_identity_env(path, "add", "tracked.txt")
+        git_identity_env(path, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "first")
+        return "main", git_identity_env(path, "rev-parse", "HEAD")
 
     def lose_git() -> None:
         empty = tmp_path / "no-bin"

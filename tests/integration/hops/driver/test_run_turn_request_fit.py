@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from tests.support.driver_harness import (
     _final_response,
 )
-from tests.support.pods import write_meta_2 as _write_meta
+from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent import session as _session
 from docket.agent import session_units as _session_units

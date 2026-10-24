@@ -45,8 +45,8 @@ class TestRunServeTelegramFlag:
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
 
         started = threading.Event()
-        monkeypatch.setattr(poll, "_telegram_poll_loop", lambda stop: started.set(), raising=True)
-        monkeypatch.setattr(server, "_telegram_poll_loop", lambda stop: started.set())
+        monkeypatch.setattr(poll, "telegram_poll_loop", lambda stop: started.set(), raising=True)
+        monkeypatch.setattr(server, "telegram_poll_loop", lambda stop: started.set())
 
         server.run_serve(port=0, interval=30, telegram=True)
         assert started.wait(timeout=2), "telegram=True must start the poll loop thread"
@@ -59,8 +59,8 @@ class TestRunServeTelegramFlag:
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
 
         started = threading.Event()
-        monkeypatch.setattr(poll, "_telegram_poll_loop", lambda stop: started.set(), raising=True)
-        monkeypatch.setattr(server, "_telegram_poll_loop", lambda stop: started.set())
+        monkeypatch.setattr(poll, "telegram_poll_loop", lambda stop: started.set(), raising=True)
+        monkeypatch.setattr(server, "telegram_poll_loop", lambda stop: started.set())
 
         server.run_serve(port=0, interval=30, telegram=False)
         assert not started.wait(timeout=0.5)
@@ -70,8 +70,8 @@ class TestRunServeTelegramFlag:
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
         monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setattr(poll, "_telegram_poll_loop", lambda stop: None, raising=True)
-        monkeypatch.setattr(server, "_telegram_poll_loop", lambda stop: None)
+        monkeypatch.setattr(poll, "telegram_poll_loop", lambda stop: None, raising=True)
+        monkeypatch.setattr(server, "telegram_poll_loop", lambda stop: None)
         monkeypatch.setenv("DOCKET_SERVE_TOKEN", "test-token")
 
         server.run_serve(port=0, interval=30, telegram=True)

@@ -37,7 +37,7 @@ from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home, use_home
 from docket.teams import mcp_servers as _mcp_servers
 
-_hermetic = _support_home.hermetic_5
+_hermetic = _support_home.hermetic_no_approval_wait
 
 SUBJECT = "docket.agent.tools.mcp_client"
 
@@ -419,16 +419,7 @@ class TestGatedExactlyLikeABuiltin:
                 assert pending
                 _approval.approval_grant(pending[0]["token"])
 
-            import time as _real_time
-
-            monkeypatch.setattr(
-                _approval,
-                "_time",
-                types.SimpleNamespace(
-                    sleep=_grant_the_pending_call, monotonic=_real_time.monotonic
-                ),
-                raising=True,
-            )
+            monkeypatch.setattr(_approval, "pause", _grant_the_pending_call)
 
             res = dispatch_tool(
                 ToolCall(

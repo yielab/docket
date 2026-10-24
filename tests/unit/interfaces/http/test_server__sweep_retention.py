@@ -177,7 +177,7 @@ class TestSweepRefreshesObservedModels:
             _provider_lifecycle, "refresh_observed_models_due", lambda: calls.append(1) or []
         )
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: [])
-        monkeypatch.setattr(_sweeps, "_check_schedules", lambda now: None)
+        monkeypatch.setattr(_sweeps, "check_schedules", lambda now: None)
         return calls
 
     def test_only_a_dispatching_sweep_refreshes_the_providers_limits(
@@ -201,6 +201,6 @@ class TestSweepRefreshesObservedModels:
         seen: list[int] = []
         monkeypatch.setattr(_provider_lifecycle, "refresh_observed_models_due", boom)
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: seen.append(1) or [])
-        monkeypatch.setattr(_sweeps, "_check_schedules", lambda now: None)
+        monkeypatch.setattr(_sweeps, "check_schedules", lambda now: None)
         _server._run_sweeps(dispatch=True)
         assert seen == [1]

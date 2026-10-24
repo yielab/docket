@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,7 @@ from docket.agent.ports import (
     ChatResponse,
     TokenUsage,
     ToolCall,
+    ToolSpec,
     TurnResult,
     assistant,
     tool_result,
@@ -130,10 +131,32 @@ def ctx(tmp_path: Path) -> ToolContext:
     )
 
 
-def final(text: str) -> ChatResponse:
+def final(text: str = "done") -> ChatResponse:
     return ChatResponse(
         ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
     )
+
+
+class RecordingScriptedBackend:
+    """Replays scripted responses and records each call's messages and the tools offered."""
+
+    def __init__(self, responses: Sequence[ChatResponse]) -> None:
+        self._responses = list(responses)
+        self.calls: list[list[ChatMessage]] = []
+        self.tools_seen: list[Sequence[ToolSpec]] = []
+
+    def complete(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        timeout: int = 120,
+    ) -> ChatResponse:
+        self.calls.append(list(messages))
+        self.tools_seen.append(tools)
+        return self._responses.pop(0)
 
 
 def final_response(text: str) -> ChatResponse:
@@ -173,11 +196,11 @@ def tool_call_turn(
 
 
 @pytest.fixture
-def ctx_2(workspace: Path) -> ToolContext:
+def ctx_in_workspace(workspace: Path) -> ToolContext:
     return ToolContext(agent_id="demo-implementer", roots=(workspace,), timeout=10)
 
 
 @pytest.fixture(autouse=True)
 def fast_backoffs(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(poll, "_TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
-    monkeypatch.setattr(poll, "_TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)
+    monkeypatch.setattr(poll, "TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
+    monkeypatch.setattr(poll, "TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)

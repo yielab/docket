@@ -33,7 +33,7 @@ META: dict[str, Any] = {
 }
 
 
-FLEET_CONFIG_2: dict[str, Any] = {
+API_FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "apitest"}],
     "bindings": [],
     "security": {"gatesEnabled": False, "isolationEnabled": False},
@@ -41,7 +41,7 @@ FLEET_CONFIG_2: dict[str, Any] = {
 }
 
 
-META_2: dict[str, Any] = {
+API_META: dict[str, Any] = {
     "schemaVersion": 1,
     "kind": "project",
     "name": "Api Test Agent",
@@ -53,7 +53,6 @@ META_2: dict[str, Any] = {
 
 @pytest.fixture(autouse=True)
 def hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
 
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
@@ -64,14 +63,12 @@ def hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
-def hermetic_2(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
+def trace_on_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
 
 
 @pytest.fixture(autouse=True)
-def hermetic_3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
+def hermetic_trace_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
@@ -81,8 +78,7 @@ def hermetic_3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None
 
 
 @pytest.fixture(autouse=True)
-def hermetic_4(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
+def hermetic_no_tty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setattr(_contract, "is_tty", lambda: False)
     home = tmp_path / "home"
     (home / "workspaces" / "projects").mkdir(parents=True)
@@ -92,7 +88,7 @@ def hermetic_4(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
 
 
 @pytest.fixture(autouse=True)
-def hermetic_5(tmp_path: Path) -> Iterator[None]:
+def hermetic_no_approval_wait(tmp_path: Path) -> Iterator[None]:
     with (
         use_home(Home(tmp_path)),
         use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
@@ -106,20 +102,6 @@ def isolate_stores(tmp_path: Path) -> Iterator[None]:
         record_isolation_off(tmp_path / "docket")
         with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
             yield
-
-
-@pytest.fixture(autouse=True)
-def hermetic_6(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
-    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
-    monkeypatch.setenv("DOCKET_NO_TRACE", "0")
-
-    home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    fleet_file = home / "fleet.json"
-    fleet_file.write_text(json.dumps({"agents": [], "bindings": []}))
-
-    with use_home(Home(home)):
-        yield
 
 
 @pytest.fixture()
@@ -217,9 +199,9 @@ def api_home(tmp_path: Path) -> Iterator[Path]:
     home.mkdir()
     ws = home / "workspaces" / "projects" / "apitest"
     ws.mkdir(parents=True)
-    (ws / ".docket-meta.json").write_text(json.dumps(META_2))
+    (ws / ".docket-meta.json").write_text(json.dumps(API_META))
 
-    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG_2))
+    (home / "fleet.json").write_text(json.dumps(API_FLEET_CONFIG))
 
     # repoint_docket_home points APPROVALS_DIR at home/"approvals" without
     # creating it, so list_pending() still returns [] gracefully.
@@ -277,3 +259,16 @@ def fresh_default() -> Iterator[None]:
     reset_default()
     yield
     reset_default()
+
+
+@pytest.fixture()
+def schedule_file(tmp_path: Path) -> Iterator[Path]:
+    f = tmp_path / "docket-schedules.json"
+    with use_home(
+        dataclasses.replace(
+            current_home(),
+            schedule_file_override=f,
+            runs_file_override=tmp_path / "docket-runs.json",
+        )
+    ):
+        yield f
