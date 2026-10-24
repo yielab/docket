@@ -47,7 +47,7 @@ SUBJECT = "docket.sandbox.jail"
 SECRET = "ESCAPE-MATRIX-SECRET-7f3a"
 SEED_KEY = "ESCAPE_MATRIX_PARENT_SEED"
 SEED_VALUE = "parent-environ-seed-91c2"
-_CHECKOUT = Path(__file__).resolve().parents[2]
+_CHECKOUT = Path(__file__).resolve().parents[3]
 
 
 def _git_image_or_skip() -> str:
