@@ -4,7 +4,7 @@ unit_io unit/interfaces/cli/render/test_progress.py
 unit_io unit/interfaces/telegram/test_client.py
 unit_io unit/pipeline/domain/test_plan.py
 unit_io unit/platform/test_fetch.py
-unit_io unit/tasks/application/test_sweep__scheduled_and_webhook_dispatch.py
+unit_io unit/hops/application/test_sweep__scheduled_and_webhook_dispatch.py
 setenv integration/agent/test_bash_cancellation.py 1
 setenv integration/agent/test_mcp_stdio_jail.py 6
 setenv integration/agent/test_mcp_stdio_root.py 2

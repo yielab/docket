@@ -13,17 +13,17 @@ from tests.support.pods import seed_parked_task as _seed_parked_task
 
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
+from docket.hops.application import answers as _answers
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.platform import store as _store
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import escalation as _escalation
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import settings as _settings
 
-SUBJECT = "docket.tasks.application.answers"
+SUBJECT = "docket.hops.application.answers"
 
 _ASK_PIPELINE_YAML = """\
 name: ask

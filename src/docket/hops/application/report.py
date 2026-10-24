@@ -11,17 +11,17 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.governance import network_posture as _network_posture
 from docket.governance import policy as _policy
-from docket.governance import profile as _profile
+from docket.hops.application import builtin_tools as _builtin_tools
+from docket.hops.application import steps as _steps
+from docket.hops.gates import profile as _profile
 from docket.hops.workspace import skills as _skills
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.adapters import openai_http as _llm
 from docket.observability import exporter as _exporter
-from docket.pipeline.application import steps as _steps
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet

@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from docket.pipeline.application import steps as _steps
+from docket.hops.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain.gates import MechanicalGate, VerdictGate
 from docket.pipeline.domain.spec import (

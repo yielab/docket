@@ -21,8 +21,8 @@ import pytest
 
 import docket.kernel.templates as _templates
 from docket.agent.ports import ToolCall
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext, dispatch_tool
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import fetch as _fetch
 
@@ -368,7 +368,7 @@ class TestFetchResultScreening:
                 ),  # handler replaces with injection
             )
             # Monkey-patch the fetch handler to return a response with injection
-            from docket.agent.tools import builtin_tools as _builtin_tools_module
+            from docket.hops.application import builtin_tools as _builtin_tools_module
 
             original_fetch = _builtin_tools_module.fetch_url
 
@@ -397,7 +397,7 @@ class TestFetchResultScreening:
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
-            from docket.agent.tools import builtin_tools as _builtin_tools_module
+            from docket.hops.application import builtin_tools as _builtin_tools_module
 
             original_fetch = _builtin_tools_module.fetch_url
 
@@ -426,7 +426,7 @@ class TestFetchResultScreening:
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
-            from docket.agent.tools import builtin_tools as _builtin_tools_module
+            from docket.hops.application import builtin_tools as _builtin_tools_module
 
             original_fetch = _builtin_tools_module.fetch_url
             secret = "sk-" + "a1b2c3d4e5" * 4
@@ -468,7 +468,7 @@ class TestFetchResultScreening:
 
             ctx = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer")
 
-            from docket.agent.tools import builtin_tools as _builtin_tools_module
+            from docket.hops.application import builtin_tools as _builtin_tools_module
             from docket.platform import fetch as _fetch_module
 
             def _fetch_error(url: str, timeout: int = 0) -> object:

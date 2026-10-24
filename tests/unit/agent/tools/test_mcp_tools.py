@@ -23,9 +23,9 @@ from tests.support.pods import write_meta_2 as _write_meta
 import docket.kernel.templates as _templates
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolSpec, assistant
 from docket.agent.tools import mcp_tools as _mt
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolRegistry
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.hops.application.driver import DocketDriver, _load_mcp_tools
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home

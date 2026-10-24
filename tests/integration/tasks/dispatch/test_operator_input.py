@@ -18,16 +18,16 @@ from tests.support.pods import seed_pod_2 as _seed_pod
 
 from docket.agent import ports as _rd
 from docket.governance import secrets as _secrets
+from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import operator_contract as _oc
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"

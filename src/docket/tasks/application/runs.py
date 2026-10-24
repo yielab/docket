@@ -15,11 +15,11 @@ docket-owned JSON document, one list of records) through
 the pod task queue, since multiple threads (webhook handler, schedule thread,
 sweep loop) and the CLI can all be appending/updating concurrently.
 
-This module never imports ``tasks/application/sweep.py`` — ``execute()`` takes an
+This module never imports ``hops/application/sweep.py`` — ``execute()`` takes an
 arbitrary zero-arg callable and duck-types a ``task_id`` attribute off
 whatever it returns (matching ``dispatch.TaskResult`` without a hard
 dependency), so the run registry stays agnostic of what it is recording and
-``tasks/application/sweep.py`` only needs to return its typed task outcomes; this module
+``hops/application/sweep.py`` only needs to return its typed task outcomes; this module
 does not import or reinterpret dispatch internals.
 
 Cancellation: ``execute()`` publishes "which

@@ -1,7 +1,3 @@
-# P47-11: whole-module moves that put each module in the context whose data it reads or writes.
-# Reviewed from the plan_layers.py output; one line of reason each.
-
-# --- hops: the top layer drives dispatch, so what drives hops lives there
 [[module]]  # drives hops through hops' private record, gates and runner
 from = "docket.pipeline.application.executor"
 to = "docket.hops.application.executor"
@@ -35,23 +31,3 @@ from = "docket.agent.tools.builtin_tools"
 to = "docket.hops.application.builtin_tools"
 
 # --- tasks: a hop's result is persisted onto the task
-[[module]]
-from = "docket.hops.application.record"
-to = "docket.tasks.application.record"
-
-# --- teams: modules that read or write pod, fleet, role and settings data
-[[module]]  # role -> model resolution reads fleet, pod, roles, builtin roles and writes agents
-from = "docket.models.selection"
-to = "docket.teams.model_selection"
-
-[[module]]  # the pod's task worktrees, prepare, skills and repo view: keyed on pod config
-from = "docket.hops.workspace"
-to = "docket.teams.workspace"
-
-[[module]]  # resolves a hop's jail policy from pod settings and the fleet
-from = "docket.hops.application.isolation_posture"
-to = "docket.teams.isolation_posture"
-
-[[module]]  # words the network mode that teams.pod decides
-from = "docket.governance.network_posture"
-to = "docket.teams.network_posture"

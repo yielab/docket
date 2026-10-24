@@ -446,7 +446,7 @@ Where the names above live today. Phase 46 rewrites this section and nothing els
 - `src/docket/interfaces/cli/commands/agents.py`: `docket init`
 - `src/docket/interfaces/cli/commands/task.py`, `src/docket/interfaces/cli/commands/run.py`: `docket task`, `docket run`
 - `src/docket/interfaces/cli/commands/setup.py`, `src/docket/interfaces/cli/commands/setup_check.py`: `docket setup`, `docket setup --fix`
-- `src/docket/tasks/application/sweep.py`: pod dispatch
+- `src/docket/hops/application/sweep.py`: pod dispatch
 - `src/docket/hops/gates/pre_hop.py`: budget gate
 - `src/docket/tasks/application/lifecycle.py`: `unblock_pod`, `retry_task`
 - `src/docket/interfaces/telegram/bot.py`: the Telegram bot commands

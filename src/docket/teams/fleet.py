@@ -68,7 +68,7 @@ class FleetSecurity(BaseModel):
     network_mode: str = Field("unset", alias="networkMode")
     # 'auto' (landlock on Linux, seatbelt on macOS) | 'docker' (docker only, once chosen).
     sandbox_backend: str = Field("auto", alias="sandboxBackend")
-    # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; governance/profile.py).
+    # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; hops/gates/profile.py).
     profile: str = Field("unset", alias="profile")
     # Resolved absolute paths every jail reads and executes, never writes (the toolchain).
     read_only: list[str] = Field(default_factory=list, alias="readOnly")

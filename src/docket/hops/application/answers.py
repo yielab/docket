@@ -18,7 +18,9 @@ from pydantic import ValidationError
 
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
+from docket.hops.application import executor as _executor
 from docket.hops.application import record as _record
+from docket.hops.application import steps as _steps
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, Refused
@@ -32,8 +34,6 @@ from docket.kernel.operator_contract import (
     validate_answer_v11,
 )
 from docket.observability import trace as _trace
-from docket.pipeline.application import executor as _executor
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult

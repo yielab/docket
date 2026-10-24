@@ -200,7 +200,7 @@ class TestPodLocalPipelines:
     """``pipelines/<name>.yaml`` travels with ``update`` and ``export``; dispatch reads the copy."""
 
     def test_update_copies_the_file_where_a_task_resolves_it(self, tmp_path: Path) -> None:
-        from docket.pipeline.application import steps as _steps
+        from docket.hops.application import steps as _steps
 
         with _seed_fixture_pod(tmp_path, "demo"):
             root = _repo_dir(tmp_path, {"pipelines/fast.yaml": _FAST})

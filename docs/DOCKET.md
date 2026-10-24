@@ -739,7 +739,7 @@ Tester:      ✓ Behavior-only validation
 queued tasks through its pipeline, one real, costed agent turn per hop. Earlier drafts of this
 document sketched a memory-file signaling protocol (`TASK.md`/`DONE.md`/`APPROVED.md`/
 `VALIDATED.md`) with Telegram polling and a fixed 3-retry escalation — that was never what
-dispatch (`pipeline/application/executor.py`, `hops/`, `tasks/`) implements. This section replaces it with the mechanism as it actually ships,
+dispatch (`hops/application/executor.py`, `hops/`, `tasks/`) implements. This section replaces it with the mechanism as it actually ships,
 resolved against a declarative pipeline by `pipeline/domain/plan.py`.
 
 ### Task state machine

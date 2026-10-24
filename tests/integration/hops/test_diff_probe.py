@@ -24,12 +24,12 @@ from tests.support import home as _support_home
 from tests.support.fakes import FakeGit
 from tests.support.pods import build_pod
 
+from docket.hops.application import executor as _executor
+from docket.hops.application import sweep as _sweep
 from docket.hops.workspace import worktree as _worktree
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.pipeline.application import executor as _executor
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 _hermetic = _support_home.hermetic_2

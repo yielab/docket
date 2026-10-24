@@ -10,18 +10,18 @@ from typing import Any, NoReturn
 import typer
 from rich.markup import escape
 
-from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.agent.tools import registry as _tools
 from docket.governance import gate as _gate
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
+from docket.hops.application import builtin_tools as _builtin_tools
+from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.observability import exporter as _exporter
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json

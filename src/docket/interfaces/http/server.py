@@ -24,6 +24,8 @@ from pathlib import Path
 
 from docket import bootstrap as _bootstrap
 from docket.governance import approval
+from docket.hops.application import answers
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.auth import authorize
 from docket.interfaces.http.exchange import HttpExchange
@@ -44,10 +46,8 @@ from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
 from docket.operator import flush_notify_channels as flush_notify_channels
-from docket.tasks.application import answers
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
 from docket.teams import conversations
 
 DEFAULT_PORT = _bootstrap.DEFAULT_PORT

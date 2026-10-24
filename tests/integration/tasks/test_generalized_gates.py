@@ -22,17 +22,17 @@ from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.governance import approval as _ap
-from docket.pipeline.application import executor as _executor
+from docket.hops.application import executor as _executor
+from docket.hops.application import sweep as _sweep
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 
 _hermetic = _support_home.hermetic_3
 
-SUBJECT = "docket.tasks.application.sweep"
+SUBJECT = "docket.hops.application.sweep"
 
 
 class _RoleRunner:

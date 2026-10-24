@@ -14,6 +14,9 @@ from typing import Any
 
 from docket.governance import approval as _approval
 from docket.governance.audit import audit_log
+from docket.hops.application import answers as _answers
+from docket.hops.application import interruptions as _interruptions
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import status as _status
 from docket.interfaces.http.routes import health as _health
 from docket.kernel import clock as _clock
@@ -21,12 +24,9 @@ from docket.kernel import threads as _threads
 from docket.kernel.errors import DispatchError, InvalidInput
 from docket.operator import build_inbox
 from docket.tasks.application import actions as _actions
-from docket.tasks.application import answers as _answers
-from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
 # the 2.x line's `mcp.server.MCPServer`, the decorator/`add_tool`-based server

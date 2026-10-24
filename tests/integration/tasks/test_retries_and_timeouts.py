@@ -23,23 +23,23 @@ from tests.support.pods import build_pod
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
+from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _application_runner
+from docket.hops.application import steps as _steps_c
+from docket.hops.application import sweep as _sweep
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home, use_home
 from docket.kernel.ports import jail as _jail
-from docket.pipeline.application import executor as _executor
-from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
 _hermetic = _support_home.hermetic_6
 
-SUBJECT = "docket.tasks.application.sweep"
+SUBJECT = "docket.hops.application.sweep"
 
 # ── hermetic environment (mirrors test_verify_gate.py / test_hop_carryover.py) ──
 

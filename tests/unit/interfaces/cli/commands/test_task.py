@@ -15,9 +15,9 @@ from tests.support.task_unit_harness import (
     _runner,
 )
 
+from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.cli.app import app
 from docket.kernel.home import current_home
-from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.teams import settings as _settings

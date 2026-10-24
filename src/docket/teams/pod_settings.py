@@ -97,7 +97,7 @@ class PodSettings(BaseModel):
     # sha256 hex digest of the docket-owned bound-pipeline copy in the Lead's workspace
     # (``bound_pipeline_path``) -- never the operator's original file path. Set only by
     # ``docket pod set pipeline <file>``, which validates the file and
-    # writes the copy before this ever gets written (see pipeline/application/steps.py's
+    # writes the copy before this ever gets written (see hops/application/steps.py's
     # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
     pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
     # An `@every`/`HH:MM`/cron spec (pipeline/application/schedule.py). Mirrors the value the dedicated
@@ -160,7 +160,7 @@ class PodSettings(BaseModel):
     # defaults and never remove one. Comma-joined in storage, like allowCommands.
     protects: tuple[str, ...] = Field((), alias="protects")
 
-    # 'attended' (the default) or 'lights-out' (governance/profile.py): a pod may only move toward
+    # 'attended' (the default) or 'lights-out' (hops/gates/profile.py): a pod may only move toward
     # stricter than the fleet's recorded profile -- ``coerce`` refuses a weaker write.
     profile: str = Field("attended", alias="profile")
 

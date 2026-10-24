@@ -78,7 +78,7 @@ class AgentMeta(BaseModel):
         """Coerce a raw (possibly stringified) ``paused`` value to a real ``bool``. Guards a
         type bug: comparing a JSON boolean against the *string* ``"true"`` is never equal
         to Python ``True``, so a paused agent could silently display as not-paused. Every
-        raw-dict read site (and ``tasks/application/sweep.py``'s claim-time refusal) should call
+        raw-dict read site (and ``hops/application/sweep.py``'s claim-time refusal) should call
         this instead of re-implementing the comparison; tolerates both forms
         (case-insensitive)."""
         if isinstance(value, bool):

@@ -14,10 +14,10 @@ from tests.support.home import record_isolation_off, register_local_provider
 from tests.support.llm import _final_response, _tool_call_response
 from tests.support.pods import build_pod
 
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"

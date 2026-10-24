@@ -86,7 +86,7 @@ def test_a_telegram_delegate_records_the_telegram_channel() -> None:
 def test_a_dispatch_post_writes_a_run_dispatch_entry(
     live_server: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", lambda proj, **kw: [])
+    monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
     resp = _post(f"{live_server}/dispatch/demo", {})
     detail = str(_entries("run.dispatch")[0]["detail"])
     assert resp["run"] in detail and "demo" in detail and "channel=http" in detail

@@ -44,9 +44,9 @@ from docket.agent.ports import (
     UsageTotals,
 )
 from docket.agent.tools import mcp_tools as _mcp
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.hops.application.isolation_posture import (
     _hop_read_only,
     _jail_cache_dir,
@@ -411,7 +411,7 @@ class DocketDriver:
         exception: ``DispatchError`` for a deterministic refusal -- a refused isolation or
         network posture (``_resolve_posture``), or ``self.mcp_loader`` finding an ``mcpServers``
         name absent from the live catalog (see ``_load_mcp_tools``'s own docstring). A caller
-        misconfiguration, not an ordinary turn failure, and every production call site (``pipeline/application/executor.py``'s
+        misconfiguration, not an ordinary turn failure, and every production call site (``hops/application/executor.py``'s
         pipeline runner) already lets a raised ``DispatchError``
         propagate to its own settle/fail path rather than treating this driver as
         exception-free. ``on_spawn`` is ignored: this driver backs onto no OS process to

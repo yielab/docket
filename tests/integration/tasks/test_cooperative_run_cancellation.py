@@ -21,6 +21,7 @@ from docket.agent import loop_steps as _loop_steps
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.governance import audit as _audit
 from docket.hops.application import driver as _dr
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
@@ -29,7 +30,6 @@ from docket.observability import trace as _trace
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 

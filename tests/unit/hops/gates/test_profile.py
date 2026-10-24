@@ -1,12 +1,12 @@
-"""The lights-out decision is a pure function over its facts (governance/profile.py)."""
+"""The lights-out decision is a pure function over its facts (hops/gates/profile.py)."""
 
 from __future__ import annotations
 
 import dataclasses
 
-from docket.governance.profile import Facts, as_json, lights_out_violations
+from docket.hops.gates.profile import Facts, as_json, lights_out_violations
 
-SUBJECT = "docket.governance.profile"
+SUBJECT = "docket.hops.gates.profile"
 
 _MET = Facts(
     isolation_on=True,

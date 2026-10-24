@@ -31,16 +31,16 @@ from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
+from docket.hops.application import steps as _steps
+from docket.hops.application import sweep as _sweep
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -49,7 +49,7 @@ from docket.teams import settings as _settings
 
 pod_home = _support_pods.pod_home_2
 
-SUBJECT = "docket.pipeline.application.steps"
+SUBJECT = "docket.hops.application.steps"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────

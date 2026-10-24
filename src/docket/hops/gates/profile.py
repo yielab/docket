@@ -134,7 +134,7 @@ def gather_facts(
     """Read the live state. *nodes* are the planned steps a dispatch is about to run; omitted, the
     pod's own pipeline is planned (``doctor`` and ``status``)."""
     if nodes is None:
-        from docket.pipeline.application import executor as _executor
+        from docket.hops.application import executor as _executor
 
         nodes = _executor._resolve_pipeline_steps(project, spec)[0]
     mode, scope = _pod_settings.effective_network(project)

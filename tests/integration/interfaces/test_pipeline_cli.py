@@ -9,8 +9,8 @@ from tests.support import home as _support_home
 from tests.support.pods import write_meta_4 as _write_meta
 from typer.testing import CliRunner
 
+from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands import pod as _pod
-from docket.pipeline.application import steps as _steps
 from docket.tasks.application import queue as _queue
 
 _hermetic = _support_home.hermetic_6

@@ -21,16 +21,16 @@ from docket.agent import ports as _rd
 from docket.agent import session as _session
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.hops.application import driver as _dr
+from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _runner
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
-from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"

@@ -21,11 +21,11 @@ from tests.support.pods import build_pod
 from tests.support.pods import spec as _spec
 
 from docket.hops.application import compose as _compose
+from docket.hops.application import executor as _executor
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.pipeline.application import executor as _executor
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 

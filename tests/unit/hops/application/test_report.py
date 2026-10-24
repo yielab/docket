@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from docket.hops.application import report as pod_report
 from docket.kernel.home import Home, current_home, use_home
-from docket.teams import report as pod_report
 from docket.teams.models import AgentMeta
 
-SUBJECT = "docket.teams.report"
+SUBJECT = "docket.hops.application.report"
 
 
 class TestRootsFor:

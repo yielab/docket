@@ -21,12 +21,12 @@ from tests.support.pods import bind_pipeline_3 as _bind_pipeline
 from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.hops.application import answers as _answers
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import git as _platform_git
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
 from docket.teams import settings as _settings

@@ -363,7 +363,7 @@ Where the names above live today:
   `telegram_poll_timeout_s`, `telegram_request_timeout_s`
 - `src/docket/teams/fleet.py`: `find_binding`, `upsert_binding`, `remove_binding`
 - `src/docket/governance/approval.py`, `src/docket/tasks/application/actions.py`,
-  `src/docket/tasks/application/queue.py`, `src/docket/tasks/application/answers.py`,
+  `src/docket/tasks/application/queue.py`, `src/docket/hops/application/answers.py`,
   `src/docket/operator/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`
   and `enqueue_task_once`, `answer_task`, `build_inbox`
 - `src/docket/templates/channels/07-telegram.yaml`: the built-in `telegram` channel document

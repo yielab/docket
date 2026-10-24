@@ -28,9 +28,9 @@ from tests.support.git import pgrep_count as _pgrep_count
 from docket.agent import loop as _loop
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.agent.session import load_messages
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.registry import ToolContext
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.threads import new_thread
 from docket.observability import trace as _trace
 from docket.sandbox import landlock as _landlock

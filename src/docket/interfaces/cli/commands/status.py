@@ -9,8 +9,11 @@ import typer
 
 from docket.agent.ports import UsageDay
 from docket.governance import network_posture as _np
-from docket.governance import profile as _profile
 from docket.governance import review as _reviewed
+from docket.hops.application import report as _pod_report
+from docket.hops.application import steps as _steps
+from docket.hops.application.report import unpriced_text
+from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.setup_sandbox import (
     _off_label,
@@ -23,16 +26,13 @@ from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
-from docket.pipeline.application import steps as _steps
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
-from docket.teams import report as _pod_report
 from docket.teams.apply import review as _review
 from docket.teams.models import AgentMeta
-from docket.teams.report import unpriced_text
 from docket.teams.utils import (
     aggregate_cost,
     cost_history,

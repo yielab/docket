@@ -14,15 +14,15 @@ from tests.support.pods import bind_pipeline_2 as _bind_pipeline
 from tests.support.pods import seed_pod as _seed_pod
 
 from docket.agent.ports import ToolCall
-from docket.agent.tools import builtin_tools
 from docket.agent.tools import registry as core_tools
+from docket.hops.application import builtin_tools
+from docket.hops.application import interruptions as _interruptions
 from docket.kernel import operator_contract as _oc
 from docket.kernel.home import current_home, use_home
-from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.tasks.application.interruptions"
+SUBJECT = "docket.hops.application.interruptions"
 
 _GATED_PIPELINE_YAML = """\
 name: gated

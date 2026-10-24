@@ -561,7 +561,7 @@ Where the names above live today (the only place paths appear):
 - `src/docket/teams/utils.py`: `estimate_cost_usd`, `project_ids`
 - `src/docket/agent/ports.py`: `Endpoint`
 - `src/docket/teams/fleet.py`: `set_model_both`
-- `src/docket/teams/report.py`: the `docket pod show <member> --json` report
+- `src/docket/hops/application/report.py`: the `docket pod show <member> --json` report
 - `src/docket/hops/application/runner.py`, `src/docket/hops/gates/pre_hop.py`,
   `src/docket/teams/config_docs.py`: step-model resolution at a hop and in `docket pod validate`
 - `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`, `endpoint_from_spec`, `client_for`,

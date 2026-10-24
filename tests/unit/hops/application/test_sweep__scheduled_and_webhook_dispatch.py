@@ -32,7 +32,7 @@ from docket.tasks.application import runs as _runs
 
 live_server = _support_http.live_server_3
 
-SUBJECT = "docket.tasks.application.sweep"
+SUBJECT = "docket.hops.application.sweep"
 
 _TEST_TOKEN = "test-serve-token"
 
@@ -213,7 +213,7 @@ class TestCheckSchedules:
             dispatched.append(proj)
             return []
 
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _record_and_return)
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record_and_return)
         _sweeps._check_schedules(time.time())
         # Allow daemon thread to run
         deadline = time.time() + 2
@@ -234,7 +234,7 @@ class TestCheckSchedules:
             dispatched.append(proj)
             return []
 
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _record_and_return)
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record_and_return)
         # last run was just now — not due
         _sched.record_last_run(current_home().schedule_file, "projB", time.time())
         _sweeps._check_schedules(time.time())
@@ -260,7 +260,7 @@ class TestCheckSchedules:
             dispatched.append(proj)
             return []
 
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _record_and_return)
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record_and_return)
         _sweeps._check_schedules(time.time())
         time.sleep(0.1)
         out = capsys.readouterr().out
@@ -280,7 +280,7 @@ class TestCheckSchedules:
             encoding="utf-8",
         )
         monkeypatch.setattr(
-            "docket.tasks.application.sweep.dispatch_pod",
+            "docket.hops.application.sweep.dispatch_pod",
             lambda proj, **kw: [],
         )
         before = time.time()
@@ -317,7 +317,7 @@ class TestCheckSchedules:
             dispatched.append(proj)
             return []
 
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _record_and_return)
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record_and_return)
         now = time.time()
         _sched.record_last_run(current_home().schedule_file, "projD", now)
 
@@ -346,7 +346,7 @@ class TestWebhookDispatch:
             event.set()
             return []
 
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
         status, body = _post(f"{url}/dispatch/myproject", token=token)
         assert status == 200

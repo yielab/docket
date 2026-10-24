@@ -20,13 +20,13 @@ from tests.support import pods as _support_pods
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
 
 from docket.agent import ports as _rd
-from docket.pipeline.application import executor as _executor
+from docket.hops.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 
 pod_home = _support_pods.pod_home_2
 
-SUBJECT = "docket.pipeline.application.executor"
+SUBJECT = "docket.hops.application.executor"
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────

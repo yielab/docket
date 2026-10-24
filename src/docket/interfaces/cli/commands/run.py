@@ -11,6 +11,9 @@ from rich.markup import escape
 from docket import bootstrap as _bootstrap
 from docket.governance import review as _reviewed
 from docket.governance.audit import audit_log
+from docket.hops.application import report as _report
+from docket.hops.application import steps as _steps
+from docket.hops.application import sweep as _sweep
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.pod_config import run_item_label
@@ -21,18 +24,15 @@ from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.operator import flush, load_catalog, unreached_warning
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import models as _models
 from docket.teams import pod as _pod_core
-from docket.teams import report as _report
 from docket.teams import roles as _arch
 from docket.teams import settings as _settings
 from docket.teams.apply import model as _model

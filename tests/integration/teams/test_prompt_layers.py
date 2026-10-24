@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from tests.support.pods import build_pod
 
-from docket.agent.tools import builtin_tools as _builtin_tools
+from docket.hops.application import builtin_tools as _builtin_tools
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.teams import identity as _identity

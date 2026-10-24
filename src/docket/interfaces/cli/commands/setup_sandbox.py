@@ -10,9 +10,9 @@ from enum import StrEnum
 import typer
 
 from docket.governance import network_posture as _np
-from docket.governance import profile as _profile
 from docket.governance import security as _sec
 from docket.governance.audit import audit_log
+from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
 from docket.kernel.ports import SandboxAvailability

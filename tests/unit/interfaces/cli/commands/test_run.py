@@ -23,6 +23,7 @@ from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, 
 from docket.governance import audit as _audit
 from docket.governance.policy import install_policies
 from docket.hops.application import driver as _dr
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
@@ -33,7 +34,6 @@ from docket.interfaces.cli.commands import setup as _setup
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_core
 

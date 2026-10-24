@@ -1077,8 +1077,8 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`
 - `src/docket/teams/pod.py`: `PodSettings`, member ids
 - `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskBrief`
-- `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
-- `src/docket/tasks/application/answers.py`: `answer_task`
+- `src/docket/hops/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
+- `src/docket/hops/application/answers.py`: `answer_task`
 - `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `ApprovalNoop`
 - `src/docket/tasks/application/queue.py`: task enqueue
 - `src/docket/tasks/application/lifecycle.py`: `task_diff`, retry, cancel of a parked task,

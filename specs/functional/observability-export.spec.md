@@ -977,7 +977,7 @@ ok Exporter privacy updated: langfuse
   `read_modify_write`)
 - `src/docket/hops/application/compose.py`, `src/docket/hops/application/record.py`: the hop
   marker and hop reply (requirement 108)
-- `src/docket/pipeline/application/executor.py`: the `session_end` write (requirement 106)
+- `src/docket/hops/application/executor.py`: the `session_end` write (requirement 106)
 - `src/docket/kernel/home.py`: the `Home` members `exporters_file`, `exporters_health_file`,
   `export_queue_max`, `export_flush_timeout_s`, `dispatch_retry_max_wait_s`, `traces_dir`
 - `src/docket/kernel/templates.py`: `EXPORTER_TEMPLATES_DIR`
@@ -986,7 +986,7 @@ ok Exporter privacy updated: langfuse
 - `src/docket/templates/exporters/`: the five built-in documents
 - `src/docket/interfaces/cli/commands/setup_export.py`: `docket setup export` (requirements 60-63, 90-102)
 - `src/docket/interfaces/cli/commands/setup_check.py`: the `docket setup` exporter lines (requirement 97)
-- `src/docket/interfaces/cli/commands/pod_show.py`, `src/docket/teams/report.py`: `docket pod show`'s exporters
+- `src/docket/interfaces/cli/commands/pod_show.py`, `src/docket/hops/application/report.py`: `docket pod show`'s exporters
   report (requirement 97)
 - `tests/fixtures/traces/dispatch-3-hops.jsonl`, `tests/fixtures/otlp-v1/dispatch-3-hops.json`:
   the fixture trace and its OTLP golden

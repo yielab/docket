@@ -14,6 +14,7 @@ from collections.abc import Callable
 import typer
 from rich.markup import escape
 
+from docket.hops.application import report as _report
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod_show as _show
 from docket.interfaces.cli.commands.pod_members import (
@@ -34,7 +35,6 @@ from docket.teams import memory as _pod_memory
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
-from docket.teams import report as _report
 
 pod_app = typer.Typer(
     name="pod",

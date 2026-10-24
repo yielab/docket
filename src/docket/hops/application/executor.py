@@ -16,6 +16,15 @@ from docket.hops.application.record import (
     _UnitOutcome,
 )
 from docket.hops.application.runner import _execute_unit, _when_cwd
+from docket.hops.application.steps import (
+    _run_command_step,
+    _run_input_step,
+    _task_gate,
+    _task_gate_step_id,
+    _task_pipeline,
+    effective_pipeline,
+    pod_pipeline,
+)
 from docket.hops.gates.post_hop import (
     _external_failure_kind,
     _latest_implementer_evidence,
@@ -31,15 +40,6 @@ from docket.hops.gates.pre_hop import (
 from docket.kernel.errors import DispatchError
 from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
-from docket.pipeline.application.steps import (
-    _run_command_step,
-    _run_input_step,
-    _task_gate,
-    _task_gate_step_id,
-    _task_pipeline,
-    effective_pipeline,
-    pod_pipeline,
-)
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_modify_write

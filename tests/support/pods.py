@@ -15,6 +15,7 @@ from rich.markup import escape
 import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
 from docket.hops.application import record as _record
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.interfaces.cli.render import ui
@@ -27,7 +28,6 @@ from docket.pipeline.domain import step as _step
 from docket.pipeline.domain.spec import PipelineSpec, load_pipeline
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp

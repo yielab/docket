@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from docket.governance import policy as _pol
-from docket.governance import profile as _profile
+from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import read_json

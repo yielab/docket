@@ -256,7 +256,7 @@ def resolve_member_cwd(member_id: str, task_worktree: str = "", codebase: str = 
 # Lead's own workspace -- alongside SOUL.md/AGENTS.md/HEARTBEAT.md -- never at the
 # operator's original path, which can drift or disappear. ``PodSettings.pipeline`` stores
 # only that copy's sha256 hex digest, so a hand-edited or stale copy is detected rather
-# than silently trusted (see pipeline/application/steps.py's ``_blueprint_pipeline``).
+# than silently trusted (see hops/application/steps.py's ``_blueprint_pipeline``).
 BOUND_PIPELINE_FILENAME = "PIPELINE.yaml"
 
 

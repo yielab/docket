@@ -16,7 +16,7 @@ import shutil
 from typing import Any
 
 from docket.governance import network_posture as _np
-from docket.governance import profile as _profile
+from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands.setup_check_budget import (
     _batch_cost,
     _batch_gating_cost,

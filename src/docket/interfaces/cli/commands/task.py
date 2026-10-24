@@ -14,6 +14,9 @@ from pydantic import ValidationError
 from rich.markup import escape
 
 from docket.governance import approval as _ap
+from docket.hops.application import answers as _answers
+from docket.hops.application import interruptions as _interruptions
+from docket.hops.application import report as _report
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.commands.task_approval import (
@@ -38,15 +41,12 @@ from docket.kernel import operator_contract as _oc
 from docket.kernel.errors import DispatchError
 from docket.observability import trace as _trace
 from docket.tasks.application import actions as _actions
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import evidence as _evidence
-from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
-from docket.teams import report as _report
 from docket.teams import task_worktrees as _task_worktrees
 
 task_app = typer.Typer(

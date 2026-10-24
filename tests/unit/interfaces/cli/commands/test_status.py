@@ -156,7 +156,7 @@ class TestQueueCounts:
     def test_the_task_block_is_the_pod_reports_queue_counts_plus_approved_ready(
         self, tmp_path: Path
     ) -> None:
-        from docket.teams import report as _pod_report
+        from docket.hops.application import report as _pod_report
 
         with _seed(tmp_path):
             _tasks("demo", "pending", "pending", "running", "waiting_approval", "failed", "done")

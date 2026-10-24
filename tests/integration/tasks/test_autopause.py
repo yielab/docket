@@ -22,21 +22,21 @@ from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
+from docket.hops.application import executor as _executor_c
+from docket.hops.application import steps as _steps_c
+from docket.hops.application import sweep as _sweep
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, current_home, use_home
 from docket.models import selection as _mp
-from docket.pipeline.application import executor as _executor_c
-from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _podcore
 from docket.teams import settings as _settings
 from docket.teams import utils as _utils
 from docket.teams.models import AgentMeta
 
-SUBJECT = "docket.tasks.application.sweep"
+SUBJECT = "docket.hops.application.sweep"
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
 
@@ -308,7 +308,7 @@ class TestUnpricedModelSurfaces:
             yield model
 
     def test_the_pod_report_names_the_unpriced_model(self, tmp_path: Path) -> None:
-        from docket.teams import report as pod_report
+        from docket.hops.application import report as pod_report
 
         with self._budgeted_pod(tmp_path) as model:
             assert pod_report.pod_report("demo")["budgetUnpriced"] == [model]

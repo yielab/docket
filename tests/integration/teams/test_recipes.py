@@ -28,13 +28,13 @@ from docket.agent import ports as _rd
 from docket.governance import audit as _audit
 from docket.governance import gate as _gate
 from docket.governance import policy as _policy
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _commands_pod_settings
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch

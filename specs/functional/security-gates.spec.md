@@ -1521,7 +1521,7 @@ $ git clone https://anywhere.example/repo.git
 
 - `src/docket/agent/tools/registry.py`: `dispatch_tool` (the one chokepoint; it asks the `ToolGate`
   port of `agent/ports.py`), `ToolContext`, `ToolResult`, `Pregrant`; `agent/tools/screening.py`:
-  `screen_tool_result`; `agent/tools/builtin_tools.py`: `builtin_registry` (the `bash`, `consult` and
+  `screen_tool_result`; `hops/application/builtin_tools.py`: `builtin_registry` (the `bash`, `consult` and
   `fetch` registrations)
 - `src/docket/governance/gate.py`: `govern`, `evaluate_tool_call`, `render_tool_call`, `ToolVerdict`,
   the wait, park, pre-grant and `approve_task` handling, the `tool.*` audit entries;
@@ -1542,14 +1542,14 @@ $ git clone https://anywhere.example/repo.git
   `ToolCall`, `PolicyContext`, `REGISTRY`)
 - `src/docket/governance/plugins.py`: `discover`, `evaluate`, `PluginError`, `LoadedPredicate`
 - `src/docket/tasks/application/queue.py`: `enqueue_task_once` (the `pre_input` gate)
-- `src/docket/pipeline/application/executor.py`: `dispatch_task` (the `pre_output` scan)
+- `src/docket/hops/application/executor.py`: `dispatch_task` (the `pre_output` scan)
 - `src/docket/hops/gates/pre_hop.py`: the profile check
 - `src/docket/teams/settings.py`: `pod_approval_mode`
 - `src/docket/hops/application/compose.py`: hop composition
   (`DOCKET_APPROVAL_MODE`, `DOCKET_APPROVAL_EXPIRES_AT`, the task restriction keys, the hop
   network)
 - `src/docket/hops/gates/post_hop.py`: the verify launch
-- `src/docket/pipeline/application/steps.py`: the `run:` launch
+- `src/docket/hops/application/steps.py`: the `run:` launch
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`
 - `src/docket/agent/ports.py`: `DOCKET_APPROVAL_MODE`, `DOCKET_TASK_DENIED_TOOLS`,
   `DOCKET_TASK_NETWORK`, `DOCKET_TASK_POLICIES`
@@ -1577,7 +1577,7 @@ $ git clone https://anywhere.example/repo.git
   `set_profile`
 - `src/docket/teams/pod.py`: `PodSettings`, `effective_network`, `effective_read_only`, `pod_of`
 - `src/docket/governance/network_posture.py`: `network_posture`, `global_posture`
-- `src/docket/governance/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
+- `src/docket/hops/gates/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
   `effective_profile`
 - `src/docket/kernel/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
 - `src/docket/governance/review.py`: `review_code` and the reviewed digest

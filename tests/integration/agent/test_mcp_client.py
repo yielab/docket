@@ -28,10 +28,10 @@ from tests.support.trace import audit_actions as _audit_actions
 
 from docket.agent.ports import ToolCall
 from docket.agent.tools import mcp_tools as _mt
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolContext, ToolRegistry, dispatch_tool
 from docket.governance import approval as _approval
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home, use_home
 from docket.teams import mcp_servers as _mcp_servers

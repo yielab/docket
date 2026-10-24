@@ -20,11 +20,11 @@ from tests.support.pods import build_pod
 from tests.support.pods import seed as _seed
 from typer.testing import CliRunner
 
+from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.interfaces.http import sweeps as _sweeps
 from docket.kernel.home import current_home
-from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.teams import pod, pod_settings
@@ -280,7 +280,7 @@ class TestConfigSetSchedule:
 
             dispatched: list[str] = []
             monkeypatch.setattr(
-                "docket.tasks.application.sweep.dispatch_pod",
+                "docket.hops.application.sweep.dispatch_pod",
                 lambda proj, **kw: dispatched.append(proj) or [],
             )
             _sweeps._check_schedules(_time.time())

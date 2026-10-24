@@ -18,8 +18,8 @@ from tests.support import home as _support_home
 from tests.support.pods import write_meta_3 as _write_meta
 
 from docket.agent import ports as _rd
+from docket.hops.application import executor as _executor
 from docket.kernel.home import current_home
-from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.sandbox import landlock as _landlock

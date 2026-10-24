@@ -2241,7 +2241,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `validate_task_options`, `RESUMABLE_FAILURE_KINDS`, `pod_full_roster`, `dispatchable_pods`,
   `pod_roster`; the claim (`_claim_next_task`, `_eligible_for_claim`, `_refuse_claimed_task`,
   `_prepare_claimed_task`), `_touch_claim`
-- `src/docket/tasks/application/sweep.py`: `dispatch_pod`
+- `src/docket/hops/application/sweep.py`: `dispatch_pod`
 - `src/docket/tasks/application/lifecycle.py`: `reclaim_stale_running`, `retry_task`, `cancel_task`,
   `cancel_parked_task`, `task_diff`, `unblock_pod`; `_finalize_task`, `_apply_result`,
   `_sweep_stale_claims`
@@ -2252,10 +2252,10 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/teams/settings.py`: `pod_task_list_path`, `DEFAULT_TIMEOUT`, `pod_budget`,
   `pod_max_rework_cycles`, `pod_turn_timeout`, `pod_verify_timeout`, `pod_approval_mode`,
   `pod_approval_mode_is_set`, `pod_recorded_cost`
-- `src/docket/pipeline/application/steps.py`: `PIPELINE_ORDER`, `TASK_PIPELINE_NAME`,
+- `src/docket/hops/application/steps.py`: `PIPELINE_ORDER`, `TASK_PIPELINE_NAME`,
   `pod_pipeline`, `effective_pipeline`, `effective_pipeline_source`, `unpriced_budget_models`;
   the step loop's `_run_command_step`, `_run_input_step`
-- `src/docket/pipeline/application/executor.py`: `dispatch_task`; the step loop's `_run_pipeline`,
+- `src/docket/hops/application/executor.py`: `dispatch_task`; the step loop's `_run_pipeline`,
   `_run_group_node`, `_step_skipped`, `_route_outcome`
 - `src/docket/hops/application/runner.py`: `step_session_key`; the hop's `_run_hop_turn`,
   and the step loop's `_execute_unit`
@@ -2283,9 +2283,9 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/teams/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`,
   `value_and_source`), `PodSettingsError`, `pod_of`, `members_of`, `member_id`, `session_key`,
   `resolve_member_cwd`, `bound_pipeline_path`, `effective_network`, `effective_read_only`
-- `src/docket/tasks/application/answers.py`: `answer_task`, `sweep_expired_questions`, `AnswerError`,
+- `src/docket/hops/application/answers.py`: `answer_task`, `sweep_expired_questions`, `AnswerError`,
   `AnswerRejected`
-- `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
+- `src/docket/hops/application/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
 - `src/docket/kernel/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
   `from_output`), `parse_brief`, `render_brief`, `cap_diff`
 - `src/docket/agent/context.py`: `compile_artifact`, `budget_for_role`, `hop_share`,

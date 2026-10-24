@@ -78,6 +78,7 @@ from docket.governance import approval as _approval
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
+from docket.hops.application import answers as _answers
 from docket.interfaces.telegram import client as _client
 from docket.interfaces.telegram.client import GetUpdatesResult
 from docket.kernel import clock as _clock
@@ -87,7 +88,6 @@ from docket.kernel.home import current_home
 from docket.operator import build_inbox
 from docket.platform import read_json, write_json
 from docket.tasks.application import actions as _actions
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod

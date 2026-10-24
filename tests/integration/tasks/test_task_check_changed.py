@@ -21,12 +21,12 @@ from tests.support.pods import build_pod
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
-from docket.governance import profile as _profile
+from docket.hops.application import sweep as _sweep
+from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"

@@ -13,9 +13,9 @@ from tests.support.role_tools_harness import (
 
 from docket.agent import loop as _loop
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry, dispatch_tool
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import role_schema as _role_schema

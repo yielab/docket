@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from docket.governance import policy as _policy
 from docket.governance import review as _reviewed
+from docket.hops.application import steps as _steps
 from docket.kernel import mcp as _mcp
 from docket.kernel import protected_paths as _protected
 from docket.kernel.errors import DispatchError
@@ -27,7 +28,6 @@ from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
 from docket.models import selection as _mp
 from docket.observability import exporter as _exporter
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue

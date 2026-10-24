@@ -25,7 +25,6 @@ from tests.support import home as _support_home
 from tests.support.cli import call as _call
 from tests.support.trace import audit_actions as _audit_actions
 
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import (
     Tool,
@@ -37,6 +36,7 @@ from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.governance.gate import evaluate_tool_call, render_tool_call
 from docket.governance.policy import install_policies
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 
 _hermetic = _support_home.hermetic_5

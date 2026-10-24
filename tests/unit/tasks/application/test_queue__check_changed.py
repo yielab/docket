@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from tests.support.pods import unit as _unit
 
+from docket.hops.application import executor as _executor_c
 from docket.hops.gates import pre_hop as _pre_hop
-from docket.pipeline.application import executor as _executor_c
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import queue as _queue

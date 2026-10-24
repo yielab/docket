@@ -23,17 +23,17 @@ from docket.agent import ports as _rd
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import audit as _audit
 from docket.hops.application import driver as _dr
+from docket.hops.application import executor as _executor
+from docket.hops.application import steps as _steps_c
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
-from docket.pipeline.application import executor as _executor
-from docket.pipeline.application import steps as _steps_c
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 from docket.teams.models import AgentMeta as _AgentMeta

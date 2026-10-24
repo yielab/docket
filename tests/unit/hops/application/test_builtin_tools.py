@@ -17,19 +17,19 @@ from tests.support import llm as _support_llm
 from tests.support import pods as _support_pods
 from tests.support.cli import call as _call
 
-from docket.agent.tools import builtin_tools
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import (
     ToolContext,
     dispatch_tool,
 )
+from docket.hops.application import builtin_tools
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 
 _isolate_gates = _support_home.isolate_gates
 workspace = _support_pods.workspace_2
 ctx = _support_llm.ctx_2
 
-SUBJECT = "docket.agent.tools.builtin_tools"
+SUBJECT = "docket.hops.application.builtin_tools"
 
 
 class TestRegistry:

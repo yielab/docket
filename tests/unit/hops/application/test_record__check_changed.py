@@ -8,9 +8,9 @@ from typing import Any
 import pytest
 from tests.support.pods import unit as _unit
 
+from docket.hops.application import executor as _executor
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
-from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import plan as _orch
 
 SUBJECT = "docket.hops.application.record"

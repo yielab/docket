@@ -10,15 +10,15 @@ from typing import Any
 
 import pytest
 import yaml
-from tests.unit.pipeline.application.test_steps import _unit_context
+from tests.unit.hops.application.test_steps import _unit_context
 
 from docket.hops.application import compose as _compose_c
+from docket.hops.application import executor as _executor_c
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
+from docket.hops.application import steps as _steps
 from docket.hops.gates import post_hop as _post_hop_c
 from docket.hops.gates import pre_hop as _pre_hop_c
-from docket.pipeline.application import executor as _executor_c
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain.short_form import normalize_pipeline

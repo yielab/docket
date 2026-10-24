@@ -7,12 +7,12 @@ from pathlib import Path
 import typer
 
 from docket.governance.audit import audit_log
+from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands.pod_members import _implementer_member
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json, write_json
@@ -99,7 +99,7 @@ def _budget_changed(project: str, lead_id: str) -> None:
 
 
 # Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the
-# operator's original path, which can drift or disappear -- pipeline/application/steps.py's
+# operator's original path, which can drift or disappear -- hops/application/steps.py's
 # effective_pipeline verifies the copy against this hash on every read.
 def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
     """``docket pod set pipeline <file>``: validate *path_str* and

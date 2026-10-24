@@ -22,21 +22,21 @@ from tests.support.pods import write_meta as _write_meta
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
+from docket.hops.application import executor as _executor
 from docket.hops.application import record as _record
+from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home, use_home
-from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
 _hermetic = _support_home.hermetic_3
 
-SUBJECT = "docket.pipeline.application.executor"
+SUBJECT = "docket.hops.application.executor"
 
 # ── hermetic helpers (mirror test_verify_gate.py) ─────────────────────────────
 
