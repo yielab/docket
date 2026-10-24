@@ -24,8 +24,8 @@ def test_a_group_keeps_the_failure_kind_of_the_child_that_failed(
             return _record.UnitOutcome(kind="failed", reason="spent", failure_kind="budget")
         return _record.UnitOutcome(kind="advance")
 
-    monkeypatch.setattr(_runner, "_execute_unit", fake)
-    monkeypatch.setattr(_executor, "_execute_unit", fake)
+    monkeypatch.setattr(_runner, "execute_unit", fake)
+    monkeypatch.setattr(_executor, "execute_unit", fake)
     group = _orch.PlannedGroup(step_id="par", children=(_unit("a"), _unit("b")))
 
     outcome = _executor._run_group_node(SimpleNamespace(), group, [], 0)

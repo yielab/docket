@@ -278,7 +278,7 @@ class TestConfigSetSchedule:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Acceptance oracle: `config set schedule` writes exactly what
-        `interfaces/http/server.py::_check_schedules` reads -- no separate wiring needed for the sweep to
+        `interfaces/http/server.py::check_schedules` reads -- no separate wiring needed for the sweep to
         pick it up."""
         import time as _time
 
@@ -291,7 +291,7 @@ class TestConfigSetSchedule:
                 "docket.hops.application.sweep.dispatch_pod",
                 lambda proj, **kw: dispatched.append(proj) or [],
             )
-            _sweeps._check_schedules(_time.time())
+            _sweeps.check_schedules(_time.time())
             deadline = _time.time() + 2
             while not dispatched and _time.time() < deadline:
                 _time.sleep(0.05)

@@ -202,5 +202,5 @@ def ctx_in_workspace(workspace: Path) -> ToolContext:
 
 @pytest.fixture(autouse=True)
 def fast_backoffs(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(poll, "_TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
-    monkeypatch.setattr(poll, "_TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)
+    monkeypatch.setattr(poll, "TELEGRAM_UNCONFIGURED_BACKOFF_S", 0, raising=True)
+    monkeypatch.setattr(poll, "TELEGRAM_ERROR_BACKOFF_S", 0, raising=True)

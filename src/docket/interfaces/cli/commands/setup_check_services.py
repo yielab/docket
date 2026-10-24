@@ -37,7 +37,7 @@ def _exporter_report() -> list[dict[str, Any]]:
     return rows
 
 
-def _check_exporters() -> int:
+def check_exporters() -> int:
     """Warn for every enabled exporter whose health shows a failure since its last success,
     plus informational lines (not counted as issues) for a `conversation`/`full` exporter
     reaching a non-loopback host."""

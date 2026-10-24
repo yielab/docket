@@ -15,8 +15,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import time as _real_time
-import types
 from pathlib import Path
 from typing import Any
 
@@ -386,14 +384,7 @@ class TestDispatchToolApprovalRouting:
                 assert 'custom x="launch-codes"' in pending[0]["action"]
                 _approval.approval_grant(pending[0]["token"])
 
-            monkeypatch.setattr(
-                _approval,
-                "_time",
-                types.SimpleNamespace(
-                    sleep=_grant_the_pending_call, monotonic=_real_time.monotonic
-                ),
-                raising=True,
-            )
+            monkeypatch.setattr(_approval, "pause", _grant_the_pending_call)
 
             ran = {"handler": False}
             registry = ToolRegistry()
@@ -414,12 +405,7 @@ class TestDispatchToolApprovalRouting:
                 pending = _approval.list_pending()
                 _approval.approval_deny(pending[0]["token"])
 
-            monkeypatch.setattr(
-                _approval,
-                "_time",
-                types.SimpleNamespace(sleep=_deny_the_pending_call, monotonic=_real_time.monotonic),
-                raising=True,
-            )
+            monkeypatch.setattr(_approval, "pause", _deny_the_pending_call)
 
             ran = {"handler": False}
             registry = ToolRegistry()

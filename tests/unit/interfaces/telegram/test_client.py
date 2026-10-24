@@ -230,7 +230,7 @@ class TestPoisonUpdateDoesNotWedgeThePoller:
         from docket.interfaces.telegram.client import GetUpdatesResult, TelegramUpdate
 
         with use_home(Home(tmp_path / "home")):
-            monkeypatch.setattr(_core_tg, "_load_token", lambda: "123:token")
+            monkeypatch.setattr(_core_tg, "load_token", lambda: "123:token")
             updates = (
                 TelegramUpdate(update_id=50, chat_id="1", user_id="1", text="/status"),
                 TelegramUpdate(update_id=51, chat_id="1", user_id="1", text="/status"),

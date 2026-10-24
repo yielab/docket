@@ -6,7 +6,7 @@ like ``/dispatch/`` and ``/runs``), TestBadRequests (malformed/invalid
 bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 404, not 500), TestPolicyGates (``pre_input`` gate behaves as the CLI
 path does, since this route calls the same ``enqueue_task_once``),
-TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
+TestSuccess (happy path), and TestExecuteUnitDirectly (``execute_unit``
 and two extracted phases, called directly with a hand-built
 ``UnitContext``/``PlannedUnit``).
 """
@@ -55,7 +55,7 @@ SUBJECT = "docket.hops.application.steps"
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 
-# ── _execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
+# ── execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
 
 
 _UNPRICED = "ai-gateway/acme/model-x"
@@ -69,7 +69,7 @@ def _budget_warnings() -> list[dict[str, Any]]:
 
 def _run_one_hop(cap: float, node: _orch.PlannedUnit) -> _record.UnitOutcome:
     ctx = _unit_context(cap=cap, run=lambda *a, **k: _rd.TurnResult(True, "done", 0.0, {}))
-    return _runner._execute_unit(
+    return _runner.execute_unit(
         ctx, node, prior_snapshot=[], rework_hop=None, check_approval=True, index_for_context=0
     )
 

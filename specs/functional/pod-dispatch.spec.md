@@ -2266,7 +2266,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/hops/application/executor.py`: `dispatch_task`; the step loop's `_run_pipeline`,
   `_run_group_node`, `_step_skipped`, `_route_outcome`
 - `src/docket/hops/application/runner.py`: `step_session_key`; the hop's `_run_hop_turn`,
-  and the step loop's `_execute_unit`
+  and the step loop's `execute_unit`
 - `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
   `_gate_failed_section`
 - `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,
@@ -2340,7 +2340,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `verify_evidence_tail_chars`, `prepare_timeout_s`, `trace_retention_s`, `pod_cache_dir`
 - `src/docket/interfaces/http/server.py`: the periodic sweep (`_run_sweeps`, `_sweep_one_pod`,
   `_abandon_sweeps`)
-- `src/docket/interfaces/http/sweeps.py`: `_check_schedules`, `SWEEP_ABANDON_WAIT_S`
+- `src/docket/interfaces/http/sweeps.py`: `check_schedules`, `SWEEP_ABANDON_WAIT_S`
 - `src/docket/interfaces/http/routes/dispatch.py`: `POST /dispatch/<project>`
 - `src/docket/interfaces/http/routes/approvals.py`: `POST /approvals/<token>`
 - `src/docket/interfaces/http/routes/tasks.py`: `GET /tasks/<pod>/<id>/evidence`

@@ -10,7 +10,7 @@ from docket.kernel.errors import DispatchError
 
 # The Reviewer/Tester verdict patterns live in exactly one place:
 # `pipeline/domain/spec.py`'s `default_pipeline()` declares them as real `VerdictGate`s, and gate
-# execution reads a step's *resolved* gate generically (see `_execute_unit`'s
+# execution reads a step's *resolved* gate generically (see `execute_unit`'s
 # `isinstance(gate, _pipeline.VerdictGate)` branch and `pipeline.domain.plan.parse_verdict`)
 # instead of branching on a hardcoded role name. A second, independent copy of these patterns
 # here would drift from that single source of truth (see `tests/unit/pipeline/domain/test_spec__spec.py`).

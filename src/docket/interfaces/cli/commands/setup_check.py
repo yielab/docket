@@ -47,11 +47,11 @@ from docket.interfaces.cli.commands.setup_check_providers import (
     _provider_catalog_problems,
 )
 from docket.interfaces.cli.commands.setup_check_services import (
-    _check_exporters,
     _check_notifications,
     _check_security_gates,
     _docker_image_has_git,
     _exporter_report,
+    check_exporters,
 )
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
@@ -482,7 +482,7 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     _check_key_hygiene()
     _check_provider_coverage(ids)
     _check_provider_catalog()
-    _check_exporters()
+    check_exporters()
     _check_notifications(ids)
     _check_security_gates(ids)
     _check_profiles()

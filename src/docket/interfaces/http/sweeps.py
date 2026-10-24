@@ -13,13 +13,13 @@ from docket.pipeline.application import schedule as _sched
 from docket.tasks.application import runs as _runs
 
 _SWEEP_LOCK = threading.Lock()
-_sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}
-_sweep_run_ids: dict[str, str] = {}
+sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}
+sweep_run_ids: dict[str, str] = {}
 # How long a second stop signal waits for cancelled sweep runs to settle before exiting anyway.
 SWEEP_ABANDON_WAIT_S = 5.0
 
 
-def _check_schedules(now_ts: float) -> None:
+def check_schedules(now_ts: float) -> None:
     """Trigger dispatch for pods whose schedule spec is due (also recognizes a standard 5-field
     cron expression, not just ``@every``/``HH:MM`` -- see ``pipeline/application/schedule.py``). The last-run
     timestamp is read from, and written back into, ``Home.schedule_file`` itself rather than an
@@ -64,14 +64,14 @@ def _check_schedules(now_ts: float) -> None:
 def _drain_sweeps(timeout: float | None = None) -> bool:
     """Wait for every in-flight pod sweep; True when none remain within *timeout*."""
     with _SWEEP_LOCK:
-        pending = list(_sweep_inflight.values())
+        pending = list(sweep_inflight.values())
     _done, not_done = concurrent.futures.wait(pending, timeout=timeout)
     return not not_done
 
 
 def _pending_sweeps() -> int:
     with _SWEEP_LOCK:
-        return len(_sweep_inflight)
+        return len(sweep_inflight)
 
 
 class _StopController:

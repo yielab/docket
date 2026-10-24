@@ -334,7 +334,7 @@ class TestRefusedShapes:
     def test_parallel_child_refuses_a_field_the_group_never_runs(
         self, child_yaml: str, field: str
     ) -> None:
-        # The group's children run through `_execute_unit`, which acts on none of these.
+        # The group's children run through `execute_unit`, which acts on none of these.
         body = _UNIT_A + "  - g:\n      parallel:\n" + child_yaml
         _refused(body, "'c'", f"'{field}'", "parallel")
 

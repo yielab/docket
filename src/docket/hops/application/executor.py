@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from docket.hops.application import driver as _dr
-from docket.hops.application.runner import _execute_unit, _when_cwd
+from docket.hops.application.runner import execute_unit, when_cwd
 from docket.hops.application.steps import (
     _run_command_step,
     _run_input_step,
@@ -109,7 +109,7 @@ def _run_group_node(
     prior_snapshot = list(prior)
     child_outcomes = _orch.run_group(
         node.children,
-        lambda child: _execute_unit(
+        lambda child: execute_unit(
             ctx,
             child,
             prior_snapshot=prior_snapshot,
@@ -191,7 +191,7 @@ def _step_skipped(ctx: UnitContext, node: _orch.PlannedUnit, prior: list[HopResu
         return False
     matched = True
     if "changed" in when:
-        cwd = _when_cwd(ctx, prior)
+        cwd = when_cwd(ctx, prior)
         changed_files = _git.git_changed_files(cwd) if cwd else []
         evidence = _latest_implementer_evidence(prior)
         base, head = evidence.get("baseCommit"), evidence.get("commit")
@@ -313,7 +313,7 @@ def _run_pipeline(
             outcome = _run_input_step(ctx, node, prior, pipeline_index)
         else:
             rework_hop = pending_rework_by_index.pop(pipeline_index, None)
-            outcome = _execute_unit(
+            outcome = execute_unit(
                 ctx,
                 node,
                 prior_snapshot=prior,
@@ -418,7 +418,7 @@ def dispatch_task(
     ``approvalMode`` (``pod_approval_mode``); an explicit pod value always wins over it.
 
     A ``DispatchError`` raised anywhere on this claimed task's path (the membership check near
-    the top of ``_execute_unit``, or this function's own up-front ``pod_pipeline`` revalidation)
+    the top of ``execute_unit``, or this function's own up-front ``pod_pipeline`` revalidation)
     is caught here and folded into a ``"failed"`` result tagged ``failure_kind="dispatch_refused"``
     instead of propagating -- the caller (``dispatch_pod``) always finalizes and settles the
     claim, and a crash (any *other* exception) still propagates unchanged, leaving the task

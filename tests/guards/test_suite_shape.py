@@ -3,8 +3,9 @@
 No helper or fixture is defined, with an identical body, in two test files: a shared helper has
 one owner under ``tests/support/`` and a second file imports it. Beyond that: a unit file opens
 no socket or process and does not sleep; ``SUBJECT`` names a module; a test file is at most 800
-lines; ``setenv`` and ``in result.output`` on a ``--json`` command only shrink. The ratchets
-read ``suite_shape_baseline.txt``; a line there that no longer offends must be deleted.
+lines; no test file imports another; a test patches a ``_name`` only on the module its
+``SUBJECT`` names; ``setenv`` and ``in result.output`` on a ``--json`` command only shrink. The
+ratchets read ``suite_shape_baseline.txt``; a line there that no longer offends must be deleted.
 """
 
 from __future__ import annotations
@@ -336,6 +337,108 @@ def test_json_commands_are_asserted_through_json_not_output_substrings() -> None
     assert found == [], "parse the --json document instead:\n" + "\n".join(found)
 
 
+# ── no test imports another test, no patch on another module's private name ─────────────────
+
+
+def cross_test_imports(root: Path) -> list[str]:
+    """Return one line per import of a test module from another test file."""
+    out = []
+    for path in sorted(root.rglob("*.py")):
+        if _SKIPPED_DIRS & set(path.relative_to(root).parts):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            names = (
+                [a.name for a in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+                if isinstance(node, ast.ImportFrom) and node.level == 0
+                else []
+            )
+            for name in names:
+                if re.match(r"tests\.(unit|integration|agent|guards|contracts|e2e)\b", name):
+                    out.append(f"{_rel(path, root)}:{node.lineno} imports {name}")
+    return out
+
+
+def _dotted(expr: ast.expr) -> list[str] | None:
+    parts: list[str] = []
+    while isinstance(expr, ast.Attribute):
+        parts.append(expr.attr)
+        expr = expr.value
+    return [expr.id, *reversed(parts)] if isinstance(expr, ast.Name) else None
+
+
+def _import_targets(tree: ast.AST) -> dict[str, str]:
+    bound: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                bound[a.asname or a.name.split(".")[0]] = (
+                    a.name if a.asname else a.name.split(".")[0]
+                )
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            for a in node.names:
+                bound[a.asname or a.name] = f"{node.module}.{a.name}"
+    return bound
+
+
+def _private_patch_target(call: ast.Call, bound: dict[str, str]) -> tuple[str, str] | None:
+    """Return (module, private name) when *call* patches a ``_name`` of a docket module."""
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    attr, args, recv = call.func.attr, call.args, ast.unparse(call.func.value)
+    target: str | None = None
+    name: object = None
+    if attr == "setattr" and recv.endswith(("monkeypatch", "mp")):
+        if len(args) >= 3 and isinstance(args[1], ast.Constant):
+            chain = _dotted(args[0])
+            if chain and chain[0] in bound:
+                target = ".".join([bound[chain[0]], *chain[1:]])
+            name = args[1].value
+        elif args and isinstance(args[0], ast.Constant) and isinstance(args[0].value, str):
+            target, _, name = args[0].value.rpartition(".")
+    elif attr == "patch" and args and isinstance(args[0], ast.Constant):
+        target, _, name = str(args[0].value).rpartition(".")
+    elif attr == "object" and recv.endswith("patch") and len(args) >= 2:
+        chain = _dotted(args[0])
+        if chain and chain[0] in bound and isinstance(args[1], ast.Constant):
+            target = ".".join([bound[chain[0]], *chain[1:]])
+            name = args[1].value
+    if not (target and target.startswith("docket") and isinstance(name, str)):
+        return None
+    return (target, name) if name.startswith("_") and not name.startswith("__") else None
+
+
+def foreign_private_patches(root: Path) -> list[str]:
+    """Return one line per patch of a private name on a docket module the file does not drive."""
+    out = []
+    for path in sorted(root.rglob("*.py")):
+        if _SKIPPED_DIRS & set(path.relative_to(root).parts):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        found = re.search(r'^SUBJECT = "([^"]+)"', path.read_text(encoding="utf-8"), re.M)
+        subject = found.group(1) if found else None
+        bound = _import_targets(tree)
+        for node in ast.walk(tree):
+            hit = _private_patch_target(node, bound) if isinstance(node, ast.Call) else None
+            if hit and hit[0] != subject:
+                out.append(f"{_rel(path, root)}:{node.lineno} patches {hit[0]}.{hit[1]}")
+    return out
+
+
+def test_no_test_file_imports_another_test_file() -> None:
+    found = cross_test_imports(TESTS)
+    assert found == [], "move the helper to tests/support/:\n" + "\n".join(found)
+
+
+def test_a_private_name_is_patched_only_in_the_tests_of_its_own_module() -> None:
+    found = foreign_private_patches(TESTS)
+    assert found == [], (
+        "patch the public binding the module under test reads, or bind a fake through a port:\n"
+        + "\n".join(found)
+    )
+
+
 # ── each check is seen to fail on a plant ────────────────────────────────────
 
 
@@ -399,4 +502,30 @@ def test_the_ratchet_reports_growth_and_a_stale_line(tmp_path: Path) -> None:
         "grew a.py: 3 (baseline 2)",
         "grew new.py: 1 (baseline 0)",
         "lower the baseline gone.py: baseline 1, now 0",
+    ]
+
+
+def test_the_import_check_sees_a_planted_test_import(tmp_path: Path) -> None:
+    (tmp_path / "test_a.py").write_text("from tests.unit.x.test_b import _h\n", encoding="utf-8")
+    (tmp_path / "test_c.py").write_text("from tests.support.pods import h\n", encoding="utf-8")
+
+    assert cross_test_imports(tmp_path) == ["test_a.py:1 imports tests.unit.x.test_b"]
+
+
+def test_the_private_patch_check_sees_a_planted_foreign_patch(tmp_path: Path) -> None:
+    body = (
+        "from docket.governance import approval as _approval\n"
+        "from docket.platform import fetch\n"
+        "SUBJECT = 'docket.governance.approval'\n"
+        "def t(monkeypatch):\n"
+        "    monkeypatch.setattr(_approval, '_own', 1)\n"
+        "    monkeypatch.setattr(fetch, '_alias', 1)\n"
+        "    monkeypatch.setattr('docket.platform.fetch._other', 1)\n"
+        "    monkeypatch.setattr(fetch, 'public', 1)\n"
+    )
+    (tmp_path / "test_a.py").write_text(body.replace("'", '"'), encoding="utf-8")
+
+    assert foreign_private_patches(tmp_path) == [
+        "test_a.py:6 patches docket.platform.fetch._alias",
+        "test_a.py:7 patches docket.platform.fetch._other",
     ]

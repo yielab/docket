@@ -196,7 +196,7 @@ class TestLastRunPersistence:
         assert reloaded["proj1"] == 555.0
 
 
-# ── _check_schedules integration ──────────────────────────────────────────────
+# ── check_schedules integration ──────────────────────────────────────────────
 
 
 class TestCheckSchedules:
@@ -214,7 +214,7 @@ class TestCheckSchedules:
             return []
 
         monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record_and_return)
-        _sweeps._check_schedules(time.time())
+        _sweeps.check_schedules(time.time())
         # Allow daemon thread to run
         deadline = time.time() + 2
         while not dispatched and time.time() < deadline:
@@ -237,7 +237,7 @@ class TestCheckSchedules:
         monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record_and_return)
         # last run was just now — not due
         _sched.record_last_run(current_home().schedule_file, "projB", time.time())
-        _sweeps._check_schedules(time.time())
+        _sweeps.check_schedules(time.time())
         time.sleep(0.1)
         assert dispatched == []
 
@@ -261,7 +261,7 @@ class TestCheckSchedules:
             return []
 
         monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record_and_return)
-        _sweeps._check_schedules(time.time())
+        _sweeps.check_schedules(time.time())
         time.sleep(0.1)
         out = capsys.readouterr().out
         assert dispatched == []
@@ -284,7 +284,7 @@ class TestCheckSchedules:
             lambda proj, **kw: [],
         )
         before = time.time()
-        _sweeps._check_schedules(before)
+        _sweeps.check_schedules(before)
         last_run = _sched.load_last_run(current_home().schedule_file)
         assert last_run.get("projC", 0.0) >= before
 
@@ -305,7 +305,7 @@ class TestCheckSchedules:
         self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A restart MUST NOT reset last-run to 0.0 and make every schedule
-        look newly-due. Simulates a restart via `_check_schedules` with
+        look newly-due. Simulates a restart via `check_schedules` with
         only the FILE as state (no shared process memory)."""
         schedule_file.write_text(
             json.dumps({"schedules": {"projD": "@every 3600s"}}),
@@ -323,7 +323,7 @@ class TestCheckSchedules:
 
         # "Restart": nothing in memory survives — load_last_run must read the
         # persisted value straight back off disk.
-        _sweeps._check_schedules(now + 1)
+        _sweeps.check_schedules(now + 1)
         time.sleep(0.1)
         assert dispatched == [], "schedule re-fired immediately after a simulated restart"
 

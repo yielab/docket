@@ -419,16 +419,7 @@ class TestGatedExactlyLikeABuiltin:
                 assert pending
                 _approval.approval_grant(pending[0]["token"])
 
-            import time as _real_time
-
-            monkeypatch.setattr(
-                _approval,
-                "_time",
-                types.SimpleNamespace(
-                    sleep=_grant_the_pending_call, monotonic=_real_time.monotonic
-                ),
-                raising=True,
-            )
+            monkeypatch.setattr(_approval, "pause", _grant_the_pending_call)
 
             res = dispatch_tool(
                 ToolCall(

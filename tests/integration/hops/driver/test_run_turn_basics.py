@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import time as _time
-import types
 from pathlib import Path
 
 import pytest
@@ -209,12 +207,7 @@ class TestRunTurn:
                 assert len(pending) == 1
                 _approval.approval_deny(str(pending[0]["token"]))
 
-            monkeypatch.setattr(
-                _approval,
-                "_time",
-                types.SimpleNamespace(sleep=deny_pending, monotonic=_time.monotonic),
-                raising=True,
-            )
+            monkeypatch.setattr(_approval, "pause", deny_pending)
             handler_calls: list[str] = []
             registry = ToolRegistry()
             registry.register(

@@ -32,5 +32,5 @@ class TestTelegramHint:
             return _telegram.PollSummary(ok=False, configured=False)
 
         monkeypatch.setattr(_telegram, "poll_once", _unconfigured)
-        poll._telegram_poll_loop(stop)
+        poll.telegram_poll_loop(stop)
         assert "docket setup notify enable telegram" in capsys.readouterr().out

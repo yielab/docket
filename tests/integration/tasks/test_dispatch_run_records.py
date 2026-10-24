@@ -1,7 +1,7 @@
 """Every dispatch path yields a queryable run record.
 
 Covers the four ways a pod dispatch can be triggered -- CLI, the serve webhook (`POST
-/dispatch/<project>`), a due schedule (`serve._check_schedules`), and the sweep loop
+/dispatch/<project>`), a due schedule (`serve.check_schedules`), and the sweep loop
 (`serve._run_sweeps(dispatch=True)`) -- and proves each one creates a run record in
 ``tasks.application.runs`` (queryable via ``get_run``/``list_runs``), records a success outcome when
 dispatch succeeds, and records a failure outcome (with the exception text) when dispatch
@@ -566,7 +566,7 @@ class TestScheduleDispatchPath:
 
             monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
-            _sweeps._check_schedules(time.time())
+            _sweeps.check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -594,7 +594,7 @@ class TestScheduleDispatchPath:
 
             monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _boom)
 
-            _sweeps._check_schedules(time.time())
+            _sweeps.check_schedules(time.time())
 
             deadline = time.time() + 2
             records: list[dict[str, Any]] = []
@@ -776,7 +776,7 @@ class TestSweepWorkers:
                 return []
 
             monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake)
-            monkeypatch.setattr(_sweeps, "_check_schedules", lambda _now: None)
+            monkeypatch.setattr(_sweeps, "check_schedules", lambda _now: None)
             stop = threading.Event()
             loop = new_thread(target=_server._sweep_loop, args=(0.01, stop, True), daemon=True)
             loop.start()

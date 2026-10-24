@@ -154,7 +154,7 @@ class TestSummaryCountsOnlyCrosses:
             _setup_check.ui.warn("  something advisory")
             return 1
 
-        monkeypatch.setattr(_setup_check_services, "_check_exporters", _check)
+        monkeypatch.setattr(_setup_check_services, "check_exporters", _check)
 
     def test_a_warning_alone_is_not_critical(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

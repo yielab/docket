@@ -137,14 +137,14 @@ class TestGrantDenyViaEndpoint:
         """Two real HTTP handlers meeting at a pending record cannot both win."""
         url, token = live_server
         apr_token = _approval.approval_create("proj-race", "implementer", "deploy")
-        original = _approval._set_state
+        original = _approval.set_state
         barrier = threading.Barrier(2, timeout=2)
 
         def synchronized_set_state(record_token: str, state: str) -> dict[str, object]:
             barrier.wait()
             return original(record_token, state)
 
-        monkeypatch.setattr(_approval, "_set_state", synchronized_set_state)
+        monkeypatch.setattr(_approval, "set_state", synchronized_set_state)
         replies: list[tuple[int, dict]] = []
 
         def decide(action: str) -> None:
@@ -167,9 +167,9 @@ class TestGrantDenyViaEndpoint:
         self, approvals_dir: Path, monkeypatch: pytest.MonkeyPatch, start_grant_first: bool
     ) -> None:
         """Analogue of the flaky agent-loop cancellation test: forces a grant to
-        collide, via a barrier on ``_set_state``, with the in-turn cancellation
+        collide, via a barrier on ``set_state``, with the in-turn cancellation
         self-deny at one pending record, in both start orders."""
-        original = _approval._set_state
+        original = _approval.set_state
         apr_token = _approval.approval_create("proj-race-cancel", "implementer", "x")
         barrier = threading.Barrier(2, timeout=2)
 
@@ -177,7 +177,7 @@ class TestGrantDenyViaEndpoint:
             barrier.wait()
             return original(record_token, state)
 
-        monkeypatch.setattr(_approval, "_set_state", synchronized_set_state)
+        monkeypatch.setattr(_approval, "set_state", synchronized_set_state)
         outcomes: dict[str, str] = {}
 
         def grant() -> None:

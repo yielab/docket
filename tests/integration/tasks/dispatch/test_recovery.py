@@ -102,7 +102,7 @@ class _VerdictAwareRunner:
 
 def _alien_step_spec() -> _pipeline.PipelineSpec:
     """Lead, then a step targeting a member id that belongs to no real pod -- deterministically
-    trips the cross-pod refusal in ``_execute_unit`` mid-task, after the lead hop persists."""
+    trips the cross-pod refusal in ``execute_unit`` mid-task, after the lead hop persists."""
     return _pipeline.PipelineSpec(
         name="alien-step",
         steps=[
