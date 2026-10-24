@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from docket.governance import approval as _ap
+from docket.governance import secrets as _secrets
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 
@@ -105,14 +106,14 @@ class TestStoredSecretRedaction:
         # File-backend secrets.json maps KEY -> value.
         secret = "supersecretvalue1234567890"
         (home / "secrets.json").write_text(json.dumps({"MY_TOKEN": secret}))
-        out = _trace.redact(f"the token is {secret} ok")
+        out = _secrets.redact(f"the token is {secret} ok")
         assert secret not in out
         assert "[REDACTED]" in out
 
     def test_short_stored_value_not_redacted(self, home: Path) -> None:
         # redact.sh only redacts stored values longer than 8 chars.
         (home / "secrets.json").write_text(json.dumps({"SHORT": "abc123"}))
-        assert _trace.redact("value abc123 here") == "value abc123 here"
+        assert _secrets.redact("value abc123 here") == "value abc123 here"
 
     def test_redaction_in_trace_event(self, home: Path) -> None:
         secret = "anothersecretvalue0987654321"

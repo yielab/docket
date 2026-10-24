@@ -11,6 +11,7 @@ from pydantic import ValidationError as _ValidationError
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
+from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
@@ -180,7 +181,7 @@ def enqueue_task_once(
 
     task: dict[str, Any] = {
         "id": task_id,
-        "description": _trace.redact(description) if hit.action == "redact" else description,
+        "description": _secrets.redact(description) if hit.action == "redact" else description,
         "priority": priority if priority in ("high", "normal", "low") else "normal",
         "status": "pending",
         "created": _clock.iso(),
@@ -236,17 +237,6 @@ def enqueue_task_once(
         return existing[0], False
     _audit.audit_log("task.enqueue", f"project={project} task={task_id} channel={channel}")
     return task, True
-
-
-def pod_full_roster(project: str) -> dict[str, str]:
-    """Every role this pod has, first member per role (``role -> member_id``). Unlike
-    :func:`pod_pipeline` (fixed to ``PIPELINE_ORDER``), this covers every role name so a
-    custom :class:`~docket.pipeline.domain.spec.PipelineSpec` can target a role outside the default four."""
-    all_ids = [a.id for a in _fleet.list_agents()]
-    by_role: dict[str, str] = {}
-    for mid, role, _idx in _pod.members_of(all_ids, project):
-        by_role.setdefault(role, mid)
-    return by_role
 
 
 def _eligible_for_claim(t: dict[str, Any], *, resume: bool) -> bool:
@@ -325,7 +315,7 @@ def _run_prepare_command(project: str, cmd: str, cwd: str) -> tuple[int | None, 
 
 def _prepare_reason(command: str, outcome: _prepare.PrepareOutcome) -> str:
     status = f"exit {outcome.exit_code}" if outcome.exit_code is not None else "no exit status"
-    tail = _trace.redact(outcome.output)[-current_home().verify_evidence_tail_chars :]
+    tail = _secrets.redact(outcome.output)[-current_home().verify_evidence_tail_chars :]
     return f"prepare failed: {command} ({status}): {tail}"
 
 

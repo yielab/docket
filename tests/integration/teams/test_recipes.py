@@ -142,7 +142,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(recipe_dir: Path, tmp_path: Pat
         result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        roster = _queue.pod_full_roster(project)
+        roster = pod.pod_full_roster(project)
         registry = _arch.load_registry(project)
         plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
@@ -160,7 +160,7 @@ def test_pod_apply_resolves_a_shipped_recipe_by_name(tmp_path: Path) -> None:
     with _seed_fixture_pod(tmp_path, project):
         assert _pod_cli("update", "secure-build", "--pod", project).exit_code == 0
 
-        assert "security-vetter" in _queue.pod_full_roster(project)
+        assert "security-vetter" in pod.pod_full_roster(project)
 
 
 def test_apply_with_an_invalid_setting_writes_nothing(tmp_path: Path) -> None:

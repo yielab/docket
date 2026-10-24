@@ -12,6 +12,7 @@ from docket.governance import review as _reviewed
 from docket.hops.application import report as _pod_report
 from docket.hops.application import steps as _steps
 from docket.hops.application.report import unpriced_text
+from docket.hops.application.usage import aggregate_cost, cost_history, gating_cost, last_activity
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.setup_sandbox import (
@@ -33,14 +34,7 @@ from docket.teams import network_posture as _np
 from docket.teams import pod as _pod
 from docket.teams.apply import review as _review
 from docket.teams.models import AgentMeta
-from docket.teams.utils import (
-    aggregate_cost,
-    cost_history,
-    gating_cost,
-    last_activity,
-    project_ids,
-    si_format,
-)
+from docket.teams.utils import project_ids, si_format
 
 
 def pod_ids() -> list[str]:

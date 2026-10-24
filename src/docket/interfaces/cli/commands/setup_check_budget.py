@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from docket.hops.application.usage import aggregate_cost, gating_cost
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
-from docket.teams.utils import aggregate_cost, gating_cost
 
 
 def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from docket.governance import policy as _policy
+from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
@@ -107,7 +108,7 @@ def _redact(text: str) -> str:
     never break approval, so any error returns the original text unchanged; the local
     import avoids a cycle with trace."""
     try:
-        return _trace.redact(text)
+        return _secrets.redact(text)
     except Exception:
         return text
 

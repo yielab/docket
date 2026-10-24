@@ -19,8 +19,6 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
-from docket.teams import fleet as _fleet
-
 # Curated set of common, lower-risk binaries `classify_command` allows
 # unattended. Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and
 # shell interpreters are deliberately OMITTED so they fall through to `ask`.
@@ -639,20 +637,3 @@ def classify_command(
         "all binaries allowlisted, no high-risk class matched",
         bin_name=os.path.basename(segments[0].tokens[0]),
     )
-
-
-def apply_workspace_isolation() -> None:
-    """Record that per-agent Docker sandbox isolation is desired.
-
-    The Docker capability check at ``docket setup sandbox on`` time is the
-    caller's responsibility. Writes fleet.json's isolation mode, read by
-    ``DocketDriver`` on every turn to decide real landlock, seatbelt or docker containment
-    when a backend is usable, or an audited refusal instead of an
-    unsandboxed run when none is.
-    """
-    _fleet.set_sandbox_isolation(mode="non-main")
-
-
-def disable_workspace_isolation() -> None:
-    """Turn the recorded sandbox-isolation mode off (mode: off)."""
-    _fleet.disable_sandbox_isolation()

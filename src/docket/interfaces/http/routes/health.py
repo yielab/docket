@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from docket.hops.application import usage
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
@@ -28,14 +29,14 @@ def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
 
 def _last_activity_or_never(agent_id: str) -> str:
     """Like utils.last_activity but returns 'never' (cmd_snapshot's sentinel)."""
-    val = utils.last_activity(agent_id)
+    val = usage.last_activity(agent_id)
     return "never" if val == "—" else val
 
 
 def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
     meta_path = current_home().meta_path(agent_id)
     meta: dict[str, Any] = read_json(meta_path) if meta_path.exists() else {}
-    cost = round(utils.aggregate_cost(agent_id).cost_usd, 6)
+    cost = round(usage.aggregate_cost(agent_id).cost_usd, 6)
     budget_raw = meta.get("budgetUsd")
     budget: float | None = (
         float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None

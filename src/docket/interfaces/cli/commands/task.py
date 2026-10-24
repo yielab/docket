@@ -46,8 +46,8 @@ from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application import worktree_prune as _worktree_prune
 from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
-from docket.teams import task_worktrees as _task_worktrees
 
 task_app = typer.Typer(
     name="task",
@@ -289,7 +289,7 @@ def cmd_trace(
 
 
 def _prune_worktrees(project: str, force: bool, dry_run: bool) -> None:
-    entries = _task_worktrees.prune_task_worktrees(project, force=force, dry_run=dry_run)
+    entries = _worktree_prune.prune_task_worktrees(project, force=force, dry_run=dry_run)
     if not entries:
         ui.info("No finished task worktrees to prune.")
     for e in entries:

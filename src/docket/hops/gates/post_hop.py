@@ -9,12 +9,12 @@ from typing import Any
 from docket.agent import ports as _rd
 from docket.agent.tools import screening as _tools
 from docket.governance import policy as _policy
+from docket.governance import secrets as _secrets
 from docket.governance import security as _sec
 from docket.hops.domain import gate_decisions as _decide
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import jail as _jail
-from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import corrections as _corrections
@@ -65,7 +65,7 @@ def _apply_output_guardrails(
         if decision.trace_check:
             _trace_locked(ctx.project, ctx.session_id, role, "guardrail_check", payload)
         if decision.redact:
-            hop_output = _trace.redact(hop_output)
+            hop_output = _secrets.redact(hop_output)
         elif decision.block:
             _trace_locked(ctx.project, ctx.session_id, role, "guardrail_block", payload)
             if decision.fail_hop:
@@ -116,7 +116,7 @@ def _run_gate_command(
     start = _clock.monotonic()
     code, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
     duration_s = _clock.monotonic() - start
-    return _GateRun(code, _trace.redact(raw_output), duration_s)
+    return _GateRun(code, _secrets.redact(raw_output), duration_s)
 
 
 def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
@@ -238,7 +238,7 @@ def _screen_gate_text(ctx: _UnitContext, role: str, text: str) -> str | None:
         warn_action="gate.reasons_warn",
         project=ctx.project,
     )
-    return _trace.redact(screened.content) if screened.ok else None
+    return _secrets.redact(screened.content) if screened.ok else None
 
 
 def _parse_gate_reasons(
@@ -365,7 +365,7 @@ def _evaluate_verdict_gate(
             ctx.session_id,
             role,
             event,
-            _json.dumps({**decision.detail, "output": _trace.redact(hop.output)}),
+            _json.dumps({**decision.detail, "output": _secrets.redact(hop.output)}),
         )
     if decision.kind == "rework":
         ctx.rework_counts[node.step_id] = cycles_so_far + 1

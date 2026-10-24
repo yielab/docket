@@ -12,8 +12,8 @@ import pytest
 from tests.support.git import git_4 as _git
 
 from docket.governance import review as _reviewed
+from docket.governance.review import RunItem
 from docket.teams.apply import review as _review
-from docket.teams.apply.review import RunItem
 
 SUBJECT = "docket.governance.review"
 

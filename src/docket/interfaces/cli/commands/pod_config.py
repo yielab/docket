@@ -13,6 +13,7 @@ from rich.markup import escape
 from docket.agent.tools import registry as _tools
 from docket.governance import gate as _gate
 from docket.governance import policy as _policy
+from docket.governance import review as _governance_review
 from docket.governance.audit import audit_log
 from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import steps as _steps
@@ -25,7 +26,6 @@ from docket.observability import exporter as _exporter
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json
-from docket.tasks.application import queue as _queue
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
@@ -88,12 +88,12 @@ _RUN_LABELS = {
 }
 
 
-def run_item_label(item: _review.RunItem) -> str:
+def run_item_label(item: _governance_review.RunItem) -> str:
     """The console label of one run-on-this-machine item."""
     return _RUN_LABELS.get(item.kind, item.kind).format(item.name)
 
 
-def render_run_items(items: tuple[_review.RunItem, ...]) -> None:
+def render_run_items(items: tuple[_governance_review.RunItem, ...]) -> None:
     """Print the numbered ``Runs on this machine`` list, one exact command per item."""
     width = max((len(run_item_label(i)) for i in items), default=0)
     ui.console.print("Runs on this machine")
@@ -379,8 +379,8 @@ def cmd_plan(
     project = _contract.require_pod(pod)
     spec = _plan_spec(pipeline) if pipeline else None
     try:
-        _steps.pod_pipeline(project)
-        roster = _queue.pod_full_roster(project)
+        _pod_core.pod_pipeline(project)
+        roster = _pod_core.pod_full_roster(project)
         effective = spec if spec is not None else _steps.effective_pipeline(project, None)
         source = (
             f"file '{pipeline}'" if spec is not None else _steps.effective_pipeline_source(project)

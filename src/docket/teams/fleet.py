@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.platform import read_json, write_json
+from docket.teams import fleet as _fleet
 from docket.teams.models import AgentMeta
 
 _LENIENT = ConfigDict(extra="allow", populate_by_name=True)
@@ -374,3 +375,20 @@ def set_model_both(agent_id: str, model: str) -> None:
     agent's model, so despite the name there is only one write to make.
     """
     meta_set(agent_id, "model", model)
+
+
+def apply_workspace_isolation() -> None:
+    """Record that per-agent Docker sandbox isolation is desired.
+
+    The Docker capability check at ``docket setup sandbox on`` time is the
+    caller's responsibility. Writes fleet.json's isolation mode, read by
+    ``DocketDriver`` on every turn to decide real landlock, seatbelt or docker containment
+    when a backend is usable, or an audited refusal instead of an
+    unsandboxed run when none is.
+    """
+    _fleet.set_sandbox_isolation(mode="non-main")
+
+
+def disable_workspace_isolation() -> None:
+    """Turn the recorded sandbox-isolation mode off (mode: off)."""
+    _fleet.disable_sandbox_isolation()

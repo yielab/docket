@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import docket.kernel.templates as _templates
+from docket.governance.review import RunItem
 from docket.kernel.home import current_home
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import roles as _arch
@@ -13,16 +14,6 @@ from docket.teams.apply.recipes import _config_glob, _declared_servers, _named_p
 from docket.teams.workspace import prepare as _prepare
 
 REPO_REFUSED_COMMANDS: tuple[str, ...] = ("sh", "bash", "zsh", "dash", "sudo", "ssh", "nc", "socat")
-
-
-@dataclass(frozen=True)
-class RunItem:
-    """One thing a directory would run on this machine: its ``kind``, ``name`` and the
-    exact ``runs`` text the operator is asked to allow."""
-
-    kind: str
-    name: str
-    runs: str
 
 
 @dataclass(frozen=True)

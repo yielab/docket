@@ -171,7 +171,7 @@ def status(json_out: bool = False) -> int:
 def isolate(want: str) -> int:
     """Turn workspace isolation on or off; ``on`` needs a usable backend."""
     if want == "off":
-        _sec.disable_workspace_isolation()
+        _fleet.disable_workspace_isolation()
         audit_log("gates.isolate", "off")
         ui.success("Isolation off; tools run on the host")
         return 0
@@ -179,7 +179,7 @@ def isolate(want: str) -> int:
     if avail.backend == "none":
         ui.error("No sandbox backend is usable", NO_BACKEND_HINT)
         return 1
-    _sec.apply_workspace_isolation()
+    _fleet.apply_workspace_isolation()
     audit_log("gates.isolate", "on")
     ui.success(f"Isolation on (backend {avail.backend})")
     ui.dim("A turn with no usable backend is refused and audited, never run unsandboxed.")

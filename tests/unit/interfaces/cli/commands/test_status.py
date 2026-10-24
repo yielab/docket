@@ -247,7 +247,7 @@ class TestCommandsRows:
 
     def _reviewed(self, tmp_path: Path, run: str) -> Path:
         from docket.governance import review as _rr
-        from docket.teams.apply.review import RunItem
+        from docket.governance.review import RunItem
 
         code = tmp_path / "code"
         (code / ".docket").mkdir(parents=True)

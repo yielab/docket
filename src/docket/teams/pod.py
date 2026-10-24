@@ -12,13 +12,15 @@ one function here with I/O — it reads a member's recorded meta via `teams/flee
 
 from __future__ import annotations
 
+import re as _re
 from dataclasses import dataclass
 from pathlib import Path
 
-from docket.kernel.errors import InvalidInput
+from docket.kernel.errors import DispatchError, InvalidInput
 from docket.kernel.home import current_home
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _mp
+from docket.teams import pod as _pod
 from docket.teams import roles as _archetypes
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
@@ -263,3 +265,37 @@ BOUND_PIPELINE_FILENAME = "PIPELINE.yaml"
 def bound_pipeline_path(project: str) -> Path:
     """Where a pod's bound pipeline copy lives, if ``PodSettings.pipeline`` is set."""
     return current_home().workspace_dir(member_id(project, "lead")) / BOUND_PIPELINE_FILENAME
+
+
+def pod_full_roster(project: str) -> dict[str, str]:
+    """Every role this pod has, first member per role (``role -> member_id``). Unlike
+    :func:`pod_pipeline` (fixed to ``PIPELINE_ORDER``), this covers every role name so a
+    custom :class:`~docket.pipeline.domain.spec.PipelineSpec` can target a role outside the default four."""
+    all_ids = [a.id for a in _fleet.list_agents()]
+    by_role: dict[str, str] = {}
+    for mid, role, _idx in _pod.members_of(all_ids, project):
+        by_role.setdefault(role, mid)
+    return by_role
+
+
+# Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
+PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
+
+
+def pod_pipeline(project: str) -> list[tuple[str, str]]:
+    """Present pod roles in pipeline order, as ``(role, member_id)``; raises DispatchError
+    with no Lead. Duplicate implementers collapse to the first (one doer per role).
+    """
+    all_ids = [a.id for a in _fleet.list_agents()]
+    members = _pod.members_of(all_ids, project)
+    if not members:
+        raise DispatchError(f"no pod found for '{project}'")
+    by_role: dict[str, str] = {}
+    for mid, role, _idx in members:
+        by_role.setdefault(role, mid)  # first member of each role wins
+    if "lead" not in by_role:
+        raise DispatchError(f"pod '{project}' has no lead — cannot dispatch")
+    return [(role, by_role[role]) for role in PIPELINE_ORDER if role in by_role]
+
+
+TASK_PIPELINE_NAME = _re.compile(r"^[a-z0-9][a-z0-9._-]*$")

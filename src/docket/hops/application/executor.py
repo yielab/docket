@@ -15,7 +15,6 @@ from docket.hops.application.steps import (
     _task_gate_step_id,
     _task_pipeline,
     effective_pipeline,
-    pod_pipeline,
 )
 from docket.hops.gates.post_hop import (
     _external_failure_kind,
@@ -35,7 +34,6 @@ from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_modify_write
-from docket.tasks.application.queue import pod_full_roster
 from docket.tasks.application.record import (
     Runner,
     _is_gate_failure_carryover,
@@ -46,6 +44,7 @@ from docket.tasks.application.record import (
 )
 from docket.tasks.domain.task import HopResult, TaskResult, TaskRunRefusal
 from docket.teams import roles as _archetypes
+from docket.teams.pod import pod_full_roster, pod_pipeline
 from docket.teams.settings import (
     _resolve_timeout,
     pod_budget,

@@ -14,6 +14,7 @@ from docket.governance.audit import audit_log
 from docket.hops.application import report as _report
 from docket.hops.application import steps as _steps
 from docket.hops.application import sweep as _sweep
+from docket.hops.application.usage import aggregate_cost
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.pod_config import run_item_label
@@ -39,7 +40,6 @@ from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import review as _review
 from docket.teams.apply import write as _write
-from docket.teams.utils import aggregate_cost
 
 
 def _repo_dir(project: str) -> Path | None:
@@ -237,10 +237,10 @@ def _pod_dispatch(
     Recorded in the run registry (source ``cli``), so a failure shows in ``docket log``."""
 
     try:
-        _steps.pod_pipeline(project)
+        _pod_core.pod_pipeline(project)
         effective = spec if spec is not None else _steps.effective_pipeline(project, None)
         plan = _orch.resolve_plan(
-            effective, _queue.pod_full_roster(project), registry=_arch.load_registry(project)
+            effective, _pod_core.pod_full_roster(project), registry=_arch.load_registry(project)
         )
         cap = _settings.pod_budget(project)
     except DispatchError as ex:
@@ -369,10 +369,10 @@ def cmd_run(
 def _dry_run(project: str, spec: _pipeline.PipelineSpec | None) -> None:
     """Print the plan the executor renders for *project*; nothing is claimed or recorded."""
     try:
-        _steps.pod_pipeline(project)
+        _pod_core.pod_pipeline(project)
         effective = spec if spec is not None else _steps.effective_pipeline(project, None)
         plan = _orch.resolve_plan(
-            effective, _queue.pod_full_roster(project), registry=_arch.load_registry(project)
+            effective, _pod_core.pod_full_roster(project), registry=_arch.load_registry(project)
         )
     except DispatchError as ex:
         ui.error(str(ex))

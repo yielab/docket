@@ -10,7 +10,6 @@ from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
-from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import member_workspace as _member_workspace
@@ -156,7 +155,7 @@ def _export_manifest(project: str, directory: Path) -> None:
     """Write ``pod.yaml`` with ``members``, ``settings`` (every non-default ``PodSettings``
     key), and ``exporters`` (this pod's recorded destinations, ADR 0014 rule 7, when set) --
     never a ``pipeline`` key (see ``_export_pipeline``'s docstring)."""
-    roster = _queue.pod_full_roster(project)
+    roster = pod.pod_full_roster(project)
     members = [role for role, _mid in sorted(roster.items()) if role != "lead"]
 
     settings_doc = _pod_settings.PodSettings.load_for(project)

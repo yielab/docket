@@ -9,7 +9,6 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams import roles as _roles
-from docket.teams import utils as _utils
 
 DEFAULT_TIMEOUT = 300
 
@@ -25,15 +24,6 @@ def pod_task_list_path(project: str) -> Path:
     """
     lead_id = _pod.member_id(project, "lead")
     return current_home().workspace_dir(lead_id) / "TASK_LIST.json"
-
-
-def pod_recorded_cost(project: str) -> float:
-    """Sum each pod member's recorded USD spend (always 0.0 today — see ``pod_gating_cost``)."""
-    all_ids = [a.id for a in _fleet.list_agents()]
-    total = 0.0
-    for mid, _role, _idx in _pod.members_of(all_ids, project):
-        total += float(_utils.aggregate_cost(mid).cost_usd)
-    return round(total, 6)
 
 
 def _pod_settings(project: str) -> _teams_pod_settings.PodSettings:

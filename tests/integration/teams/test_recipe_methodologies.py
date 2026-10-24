@@ -101,7 +101,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        roster = _queue.pod_full_roster(project)
+        roster = pod.pod_full_roster(project)
         registry = _arch.load_registry(project)
         exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
@@ -142,7 +142,7 @@ def test_dual_review_plan_has_one_planned_group(tmp_path: Path) -> None:
         result = _pipeline.load_pipeline(text)
         assert result.spec is not None, result.errors
 
-        roster = _queue.pod_full_roster(project)
+        roster = pod.pod_full_roster(project)
         registry = _arch.load_registry(project)
         exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 

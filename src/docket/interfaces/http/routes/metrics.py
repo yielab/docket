@@ -6,6 +6,7 @@ from typing import Any
 
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
+from docket.hops.application import usage as _usage
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
@@ -24,7 +25,7 @@ def _cost_json() -> dict[str, Any]:
     for pid in utils.project_ids():
         raw = read_json(current_home().meta_path(pid))
         model = str(raw.get("model", current_home().default_model))
-        totals = utils.aggregate_cost(pid)
+        totals = _usage.aggregate_cost(pid)
         cost = totals.cost_usd
         total += cost
         agents.append(

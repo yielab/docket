@@ -564,7 +564,7 @@ class TestTaskGate:
             ],
         )
         plan = _orch.resolve_plan(
-            spec, _queue.pod_full_roster("myapp"), registry=_archetypes.load_registry()
+            spec, _pod.pod_full_roster("myapp"), registry=_archetypes.load_registry()
         )
 
         assert _steps._task_gate_step_id(plan.runnable_nodes()) == "b"
@@ -578,7 +578,7 @@ class TestTaskGate:
             steps=[_step.Step(id="a", role="lead"), _step.Step(id="r", run="true")],
         )
         plan = _orch.resolve_plan(
-            spec, _queue.pod_full_roster("myapp"), registry=_archetypes.load_registry()
+            spec, _pod.pod_full_roster("myapp"), registry=_archetypes.load_registry()
         )
 
         assert _steps._task_gate_step_id(plan.runnable_nodes()) == "a"

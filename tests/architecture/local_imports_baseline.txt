@@ -1,3 +1,3 @@
 # function-local `docket.*` imports under src/docket; shrink-only
 # lower it in the same commit that removes an import: edit this number to the new count
-local_imports 19
+local_imports 16

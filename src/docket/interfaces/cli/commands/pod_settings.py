@@ -7,7 +7,6 @@ from pathlib import Path
 import typer
 
 from docket.governance.audit import audit_log
-from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands.pod_members import _implementer_member
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import DispatchError
@@ -17,7 +16,6 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json, write_json
 from docket.tasks.application import lifecycle as _lifecycle
-from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
@@ -82,7 +80,7 @@ def _unset_member_verify(project: str, member_id: str) -> None:
 def _lead_for_settings(project: str) -> str:
     """The Lead's member id, after checking the pod exists and has one."""
     try:
-        _steps.pod_pipeline(project)
+        pod.pod_pipeline(project)
     except DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
@@ -116,7 +114,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
             ui.console.print(f"  [red]x[/red] {e}")
         raise typer.Exit(1)
 
-    roster = _queue.pod_full_roster(project)
+    roster = pod.pod_full_roster(project)
     registry = _arch.load_registry(project)
     plan = _orch.resolve_plan(result.spec, roster, registry=registry)
     problems = _recipes.unresolvable_pipeline_steps(plan, project)

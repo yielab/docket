@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib as _hashlib
 import json as _json
-import re as _re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -11,6 +10,7 @@ from typing import Any
 from pydantic import ValidationError as _ValidationError
 
 import docket.kernel.templates as _templates
+from docket.governance import secrets as _secrets
 from docket.governance import security as _sec
 from docket.hops.application.compose import _brief_from_step, _brief_questions_schema, _gate_report
 from docket.hops.application.runner import _when_cwd
@@ -20,7 +20,6 @@ from docket.kernel import clock as _clock
 from docket.kernel import operator_contract as _oc
 from docket.kernel.errors import DispatchError, InvalidInput
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -30,32 +29,13 @@ from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
+from docket.teams.pod import TASK_PIPELINE_NAME
 from docket.teams.settings import (
     _pod_settings,
     pod_approval_mode,
     pod_budget,
     pod_max_rework_cycles,
 )
-
-# Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
-PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
-
-
-def pod_pipeline(project: str) -> list[tuple[str, str]]:
-    """Present pod roles in pipeline order, as ``(role, member_id)``; raises DispatchError
-    with no Lead. Duplicate implementers collapse to the first (one doer per role).
-    """
-    all_ids = [a.id for a in _fleet.list_agents()]
-    members = _pod.members_of(all_ids, project)
-    if not members:
-        raise DispatchError(f"no pod found for '{project}'")
-    by_role: dict[str, str] = {}
-    for mid, role, _idx in members:
-        by_role.setdefault(role, mid)  # first member of each role wins
-    if "lead" not in by_role:
-        raise DispatchError(f"pod '{project}' has no lead — cannot dispatch")
-    return [(role, by_role[role]) for role in PIPELINE_ORDER if role in by_role]
-
 
 _BOUND_PIPELINE_SOURCE_PREFIX = "bound pipeline"
 
@@ -148,9 +128,6 @@ def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pi
             changed = True
         new_steps.append(step)
     return builtin.model_copy(update={"steps": new_steps}) if changed else builtin
-
-
-TASK_PIPELINE_NAME = _re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
 def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
@@ -306,7 +283,7 @@ def _run_command_step(
         ctx.project, "run", cmd, cwd, timeout, env=_task_command_env(ctx, prior, node.env)
     )
     passed = code == 0
-    redacted = _trace.redact(raw_output)
+    redacted = _secrets.redact(raw_output)
     _trace_locked(
         ctx.project,
         ctx.session_id,

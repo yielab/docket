@@ -350,7 +350,7 @@ def caller_default() -> Literal["wait", "park"]:
 def pod_report(project: str) -> dict[str, Any]:
     """The pod as one report; raises ``DispatchError``/``PodSettingsError`` when it is missing
     or its stored settings are invalid."""
-    _steps.pod_pipeline(project)
+    _pod.pod_pipeline(project)
     settings = _pod_settings.PodSettings.load_for(project)
     ids = [a.id for a in _fleet.list_agents()]
     members = [

@@ -6,7 +6,6 @@ import sys
 
 import pytest
 
-from docket.hops.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain.gates import MechanicalGate, VerdictGate
 from docket.pipeline.domain.spec import (
@@ -15,6 +14,7 @@ from docket.pipeline.domain.spec import (
     load_pipeline,
 )
 from docket.pipeline.domain.step import Step
+from docket.teams import pod as _pod
 from docket.teams import roles as _archetypes
 
 SUBJECT = "docket.pipeline.domain.spec"
@@ -52,7 +52,7 @@ class TestZeroMigration:
 
     def test_builtin_role_order_matches_dispatch_pipeline_order(self) -> None:
         spec = default_pipeline()
-        assert tuple(s.role for s in spec.steps) == _steps.PIPELINE_ORDER
+        assert tuple(s.role for s in spec.steps) == _pod.PIPELINE_ORDER
 
     def test_builtin_lead_has_no_gate(self) -> None:
         spec = default_pipeline()

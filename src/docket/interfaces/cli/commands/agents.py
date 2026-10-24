@@ -196,7 +196,7 @@ def _stopped(command: str) -> str:
     return "Not set up" if command == "docket init" else "Not updated"
 
 
-def _label(item: _review.RunItem) -> str:
+def _label(item: _reviewed.RunItem) -> str:
     return run_item_label(item)
 
 

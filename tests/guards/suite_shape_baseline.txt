@@ -38,6 +38,7 @@ setenv integration/tasks/test_consult_park.py 1
 setenv integration/tasks/test_envelope_commands.py 3
 setenv integration/tasks/test_pod_rules_every_screen.py 1
 setenv integration/teams/test_base_commit_repo_files.py 1
+setenv unit/governance/test_secrets.py 2
 setenv unit/interfaces/cli/commands/test_agents.py 1
 setenv unit/interfaces/cli/commands/test_contract.py 2
 setenv unit/interfaces/cli/commands/test_setup_check.py 1
@@ -51,7 +52,7 @@ setenv unit/interfaces/cli/render/test_ui.py 1
 setenv unit/interfaces/http/test_server__auth.py 6
 setenv unit/interfaces/http/test_server__notify_posture.py 1
 setenv unit/interfaces/http/test_server__telegram_and_keys.py 3
-setenv unit/observability/test_trace.py 5
+setenv unit/observability/test_trace.py 3
 setenv unit/operator/adapters/test_ntfy__desktop__email.py 6
 setenv unit/platform/test_process.py 11
 setenv unit/sandbox/test_landlock.py 2
