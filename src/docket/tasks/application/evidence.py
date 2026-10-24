@@ -13,7 +13,8 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 from docket.kernel.errors import InvalidInput, NotFound
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import HopResult
 
 EVIDENCE_V1_1: Literal["1.1.0"] = "1.1.0"
 EvidenceVersion = Literal["1.1.0"]
@@ -120,59 +121,48 @@ class TaskEvidence11(TaskEvidence):
         return data
 
 
-def _as_dict(value: Any) -> dict[str, Any] | None:
-    return value if isinstance(value, dict) else None
-
-
-def _hop_evidence(rec: dict[str, Any]) -> HopEvidence:
-    """One persisted hop record -> ``HopEvidence``. Every optional block degrades to ``None`` when
-    absent or malformed, so a record written before these fields existed still builds."""
-    verify_raw = _as_dict(rec.get("verify"))
+def _hop_evidence(hop: HopResult) -> HopEvidence:
+    """One stored hop -> ``HopEvidence``. Every optional block degrades to ``None`` when absent or
+    malformed, so a record written before these fields existed still builds."""
     verify: VerifyEvidence | None = None
-    if verify_raw is not None:
+    if hop.verify is not None:
         try:
             verify = VerifyEvidence.model_validate(
-                {k: verify_raw[k] for k in ("cmd", "exitCode", "durationS", "outputTail")}
+                {k: hop.verify[k] for k in ("cmd", "exitCode", "durationS", "outputTail")}
             )
         except (KeyError, ValueError):
             verify = None
 
-    git = _as_dict(rec.get("evidence")) or {}
+    git = hop.evidence or {}
     diff_stat: DiffStat | None = None
-    stat_raw = _as_dict(git.get("diffStat"))
-    if stat_raw is not None:
+    if git.get("diffStat") is not None:
         try:
-            diff_stat = DiffStat.model_validate(stat_raw)
+            diff_stat = DiffStat.model_validate(git["diffStat"])
         except ValueError:
             diff_stat = None
 
     usage: UsageEvidence | None = None
-    usage_raw = _as_dict(rec.get("usage"))
-    if usage_raw is not None:
+    if hop.usage is not None:
         try:
             usage = UsageEvidence.model_validate(
-                {key: usage_raw[key] for key in ("input", "output") if key in usage_raw}
+                {key: hop.usage[key] for key in ("input", "output") if key in hop.usage}
             )
         except ValueError:
             usage = None
 
     trace: TraceLink | None = None
-    trace_raw = _as_dict(rec.get("trace"))
-    if trace_raw is not None:
+    if hop.trace is not None:
         try:
-            trace = TraceLink.model_validate(trace_raw)
+            trace = TraceLink.model_validate(hop.trace)
         except ValueError:
             trace = None
 
-    artifact = _as_dict(rec.get("artifact")) or {}
-    verdict = artifact.get("verdict")
-    role = str(rec.get("role", ""))
     commit, base_commit = git.get("commit"), git.get("baseCommit")
     return HopEvidence(
-        role=role,
-        step_id=str(rec.get("stepId", "") or role),
-        ok=bool(rec.get("ok", False)),
-        verdict=verdict if isinstance(verdict, str) else None,
+        role=hop.role,
+        step_id=hop.step_id or hop.role,
+        ok=hop.ok,
+        verdict=hop.artifact.verdict if hop.artifact is not None else None,
         verify=verify,
         commit=commit if isinstance(commit, str) else None,
         base_commit=base_commit if isinstance(base_commit, str) else None,
@@ -182,9 +172,9 @@ def _hop_evidence(rec: dict[str, Any]) -> HopEvidence:
     )
 
 
-def _gate_evidence(rec: dict[str, Any]) -> GateEvidence | None:
+def _gate_evidence(hop: HopResult) -> GateEvidence | None:
     """The hop's external-gate block: only a ``verify`` that carries a ``label`` ran one."""
-    verify = _as_dict(rec.get("verify"))
+    verify = hop.verify
     if verify is None or not isinstance(verify.get("label"), str):
         return None
     try:
@@ -199,14 +189,12 @@ def _gate_evidence(rec: dict[str, Any]) -> GateEvidence | None:
         return None
 
 
-def _directives(records: list[dict[str, Any]]) -> list[DirectiveEvidence]:
+def _directives(hops: list[HopResult]) -> list[DirectiveEvidence]:
     """Distinct ``(path, sha256)`` pairs the hops recorded, in first-seen order."""
     seen: dict[tuple[str, str], None] = {}
-    for rec in records:
-        files = _as_dict(rec.get("repoFiles")) or {}
-        for path, digest in files.items():
-            if isinstance(path, str) and isinstance(digest, str):
-                seen.setdefault((path, digest))
+    for hop in hops:
+        for path, digest in hop.repo_files.items():
+            seen.setdefault((path, digest))
     return [DirectiveEvidence(path=p, sha256=d) for p, d in seen]
 
 
@@ -215,19 +203,16 @@ def task_evidence(project: str, task_id: str, version: EvidenceVersion) -> TaskE
     Raises ``EvidenceNotFound`` for an unknown task and ``ValueError`` for an unknown version."""
     if version != EVIDENCE_V1_1:
         raise InvalidInput(f"unknown evidence version {version!r}")
-    for task in _queue.read_tasks(project):
-        if task.get("id") == task_id:
-            records = [h for h in task.get("hops", []) if isinstance(h, dict)]
-            hops = [_hop_evidence(h) for h in records]
-            status = str(task.get("status", ""))
-            return TaskEvidence11(
-                pod=project,
-                task_id=task_id,
-                status=status,
-                hops=[
-                    HopEvidence11(**dict(hop), gate=_gate_evidence(rec))
-                    for hop, rec in zip(hops, records, strict=True)
-                ],
-                directives=_directives(records) or None,
-            )
+    task = TaskRepository.for_pod(project).get(task_id)
+    if task is not None:
+        return TaskEvidence11(
+            pod=project,
+            task_id=task_id,
+            status=task.status.value,
+            hops=[
+                HopEvidence11(**dict(_hop_evidence(hop)), gate=_gate_evidence(hop))
+                for hop in task.hops
+            ],
+            directives=_directives(task.hops) or None,
+        )
     raise EvidenceNotFound(f"no task {task_id!r} in pod {project!r}")

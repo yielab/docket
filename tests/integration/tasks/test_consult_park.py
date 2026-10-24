@@ -27,12 +27,15 @@ from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.operator_contract import Question, QuestionV11
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record_mod
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
 
@@ -128,14 +131,16 @@ def _start(
     monkeypatch.setattr(_dr, "default_driver", lambda: driver)
     queued = _queue.enqueue_task_once("demo", "in-place task", channel="cli")[0]
     _sweep.dispatch_pod("demo", turn_timeout=60, max_tasks=1)
-    return _Run("demo", str(queued["id"]))
+    return _Run("demo", str(queued.id))
 
 
-def _task(run: _Run) -> dict[str, Any]:
-    return next(t for t in _queue.read_tasks(run.project) if t["id"] == run.task_id)
+def _task(run: _Run) -> TaskRecord:
+    record = TaskRepository.for_pod(run.project).get(run.task_id)
+    assert record is not None
+    return record
 
 
-def _resume(run: _Run) -> dict[str, Any]:
+def _resume(run: _Run) -> TaskRecord:
     _sweep.dispatch_pod(run.project, turn_timeout=60, max_tasks=1)
     return _task(run)
 
@@ -151,19 +156,19 @@ class TestPark:
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
 
         task = _task(run)
-        assert task["status"] == "waiting_input"
-        question = task["question"]
-        assert question["kind"] == "decision"
-        assert question["taskId"] == task["id"]
-        assert question["step"] == "implementer"
-        assert [o["id"] for o in question["options"]] == ["redis", "sqlite"]
-        assert question["recommendation"]["optionId"] == "sqlite"
-        assert task["consultations"] == 1
+        assert task.status == "waiting_input"
+        question = task.question
+        assert isinstance(question, QuestionV11)
+        assert question.kind == "decision"
+        assert question.task_id == task.id
+        assert question.step == "implementer"
+        assert [o.id for o in question.options] == ["redis", "sqlite"]
+        assert question.recommendation is not None
+        assert question.recommendation.option_id == "sqlite"
+        assert task.consultations == 1
 
         view = _inbox.build_inbox(now=_clock.iso())
-        assert [v.id for v in view.needs_you if getattr(v, "pod", "") == run.project] == [
-            task["id"]
-        ]
+        assert [v.id for v in view.needs_you if getattr(v, "pod", "") == run.project] == [task.id]
 
     def test_the_parked_question_and_its_options_reach_a_conversation_notification(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -184,8 +189,8 @@ class TestPark:
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
 
         task = _task(run)
-        assert task["status"] == "failed"
-        assert "consult_question_missing" in json.dumps(task)
+        assert task.status == "failed"
+        assert "consult_question_missing" in task.reason
 
     def test_refuse_still_fails_the_task_blocked(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -193,8 +198,8 @@ class TestPark:
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]), "refuse")
 
         task = _task(run)
-        assert task["status"] != "waiting_input"
-        assert "approval_unavailable" in json.dumps(task["hops"])
+        assert task.status != "waiting_input"
+        assert any("approval_unavailable" in (hop.output + hop.error) for hop in task.hops)
 
 
 _ASK_EXPIRES_YAML = """\
@@ -209,8 +214,10 @@ steps:
 """
 
 
-def _hours_from_now(stamp: str) -> float:
-    return (dt.datetime.fromisoformat(stamp) - dt.datetime.now(dt.UTC)).total_seconds() / 3600
+def _hours_from_now(question: Question | QuestionV11 | None) -> float:
+    assert question is not None and question.expires_at is not None
+    stamp = dt.datetime.fromisoformat(question.expires_at)
+    return (stamp - dt.datetime.now(dt.UTC)).total_seconds() / 3600
 
 
 class TestParkedQuestionExpiry:
@@ -220,7 +227,7 @@ class TestParkedQuestionExpiry:
         backend = _Backend([_final("plan"), _consult()])
         run = _start(tmp_path, monkeypatch, backend, expiry_hours=1)
 
-        assert _hours_from_now(_task(run)["question"]["expiresAt"]) == pytest.approx(1, abs=0.02)
+        assert _hours_from_now(_task(run).question) == pytest.approx(1, abs=0.02)
 
     def test_an_input_step_keeps_its_own_expires_hours(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -231,8 +238,8 @@ class TestParkedQuestionExpiry:
         )
 
         task = _task(run)
-        assert task["status"] == "waiting_input"
-        assert _hours_from_now(task["question"]["expiresAt"]) == pytest.approx(2, abs=0.02)
+        assert task.status == "waiting_input"
+        assert _hours_from_now(task.question) == pytest.approx(2, abs=0.02)
 
     def test_the_sweep_blocks_an_expired_consultation_and_retry_reopens_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -242,9 +249,9 @@ class TestParkedQuestionExpiry:
 
         assert _answers.sweep_expired_questions(later) == 1
         task = _task(run)
-        assert (task["status"], task["blockedReason"]) == ("blocked", "input_expired")
+        assert (task.status, task.blocked_reason) == ("blocked", "input_expired")
         assert _lifecycle.retry_task(run.project, run.task_id)
-        assert _task(run)["status"] == "pending"
+        assert _task(run).status == "pending"
 
 
 class TestAnswer:
@@ -255,16 +262,16 @@ class TestAnswer:
         run = _start(tmp_path, monkeypatch, backend)
 
         _answer(run, "accept", {"optionId": "redis"})
-        assert _task(run)["status"] == "pending"
+        assert _task(run).status == "pending"
         task = _resume(run)
 
-        assert task["status"] == "done"
+        assert task.status == "done"
         resumed = backend.calls[-1][-1]
         assert resumed.role == "user"
         assert "Operator answered your consultation" in resumed.content
         assert "option redis (Redis)" in resumed.content
-        assert task["answers"][0]["step"] == "implementer"
-        assert "consultAnswer" not in task
+        assert task.answers[0].step == "implementer"
+        assert task.consult_answer is None
 
     def test_defect_39_consult_answer_is_blocked_by_a_pod_only_policy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -281,7 +288,7 @@ class TestAnswer:
         with pytest.raises(_answers.AnswerRejected):
             _answer(run, "accept", {"optionId": "redis", "note": "CANARY-PHRASE"})
 
-        assert _task(run)["status"] == "waiting_input"
+        assert _task(run).status == "waiting_input"
 
     def test_a_declined_answer_resumes_with_declined_and_records_one_correction(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -292,7 +299,7 @@ class TestAnswer:
         _answer(run, "decline", None)
         task = _resume(run)
 
-        assert task["status"] == "done"
+        assert task.status == "done"
         assert "declined" in backend.calls[-1][-1].content
         assert len(_corrections.read(run.project)) == 1
 
@@ -307,8 +314,8 @@ class TestAnswer:
             _answer(run, "accept", {"optionId": "mongo"})
 
         task = _task(run)
-        assert task["status"] == "waiting_input"
-        assert task.get("answers", []) == []
+        assert task.status == "waiting_input"
+        assert task.answers == []
 
 
 class TestTaskWideCap:
@@ -329,12 +336,12 @@ class TestTaskWideCap:
         for expected in (1, 2):
             _answer(run, "accept", {"optionId": "redis"})
             task = _resume(run)
-            assert task["status"] == "waiting_input"
-            assert task["consultations"] == expected + 1
+            assert task.status == "waiting_input"
+            assert task.consultations == expected + 1
         _answer(run, "accept", {"optionId": "sqlite"})
         task = _resume(run)
 
-        assert task["status"] == "done"
-        assert task["consultations"] == 3
+        assert task.status == "done"
+        assert task.consultations == 3
         tool_msgs = [m.content for m in backend.calls[-1] if m.role == "tool"]
         assert "consultation budget exhausted; decide yourself" in tool_msgs[-1]

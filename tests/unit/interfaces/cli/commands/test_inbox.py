@@ -10,23 +10,34 @@ from pathlib import Path
 from typing import Any
 
 from tests.support.pods import seed_lead_implementer_pod as _seed
+from tests.support.tasks import put_task, put_tasks, task
 from typer.testing import CliRunner
 
 from docket.governance import approval as _approval
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import Option, QuestionV11, Recommendation
 from docket.platform import store as _store
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.inbox"
 
 runner = CliRunner()
 
 
-def _tasks(project: str, *tasks: dict[str, Any]) -> None:
-    base = {"description": "ship it", "created": "2026-09-28T00:00:00+00:00"}
-    _store.write_json(
-        _settings.pod_task_list_path(project), {"tasks": [{**base, **t} for t in tasks]}
+_SCHEMA = {"type": "object", "properties": {"note": {"type": "string"}}}
+
+
+def _question(task_id: str, qid: str, message: str, *options: Option) -> QuestionV11:
+    return QuestionV11(
+        id=qid,
+        task_id=task_id,
+        pod="demo",
+        step="lead",
+        message=message,
+        requested_schema=_SCHEMA,
+        created_at="2026-09-28T00:00:00Z",
+        kind="clarification",
+        options=list(options),
     )
 
 
@@ -39,31 +50,15 @@ class TestHumanView:
         self, tmp_path: Path
     ) -> None:
         with _seed(tmp_path):
-            _tasks(
-                "demo",
-                {
-                    "id": "task-q",
-                    "status": "waiting_input",
-                    "question": {
-                        "id": "q-1",
-                        "taskId": "task-q",
-                        "pod": "demo",
-                        "step": "lead",
-                        "message": "Where is README.md?",
-                        "requestedSchema": {
-                            "type": "object",
-                            "properties": {"note": {"type": "string"}},
-                        },
-                        "createdAt": "2026-09-28T00:00:00Z",
-                        "kind": "clarification",
-                        "options": [
-                            {"id": "opt1", "label": "Root", "description": "At the root."},
-                            {"id": "opt2", "label": "Search", "description": "Search."},
-                        ],
-                        "recommendation": {"optionId": "opt2", "rationale": "safer"},
-                    },
-                },
+            question = _question(
+                "task-q",
+                "q-1",
+                "Where is README.md?",
+                Option(id="opt1", label="Root", description="At the root."),
+                Option(id="opt2", label="Search", description="Search."),
             )
+            question.recommendation = Recommendation(option_id="opt2", rationale="safer")
+            put_task("demo", task(id="task-q", status="waiting_input", question=question))
 
             out = _inbox("--peek").output
 
@@ -73,27 +68,13 @@ class TestHumanView:
 
     def test_a_multi_line_question_indents_every_continuation_line(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _tasks(
-                "demo",
-                {
-                    "id": "task-m",
-                    "status": "waiting_input",
-                    "question": {
-                        "id": "q-2",
-                        "taskId": "task-m",
-                        "pod": "demo",
-                        "step": "lead",
-                        "message": "First line?\nSecond line.\nThird line.",
-                        "requestedSchema": {
-                            "type": "object",
-                            "properties": {"note": {"type": "string"}},
-                        },
-                        "createdAt": "2026-09-28T00:00:00Z",
-                        "kind": "clarification",
-                        "options": [{"id": "opt1", "label": "Root", "description": "At the root."}],
-                    },
-                },
+            question = _question(
+                "task-m",
+                "q-2",
+                "First line?\nSecond line.\nThird line.",
+                Option(id="opt1", label="Root", description="At the root."),
             )
+            put_task("demo", task(id="task-m", status="waiting_input", question=question))
 
             out = _inbox("--peek").output
 
@@ -110,7 +91,7 @@ class TestHumanView:
             token = _approval.approval_create(
                 "demo", "implementer", action, context={"tool": "bash", "parked": True}
             )
-            _tasks("demo", {"id": "task-a", "status": "waiting_approval", "approvalToken": token})
+            put_task("demo", task(id="task-a", status="waiting_approval", approval_token=token))
 
             out = _inbox("--peek").output
 
@@ -123,10 +104,10 @@ class TestHumanView:
 class TestJsonView:
     def test_items_carry_state_and_command_and_no_escape_codes(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _tasks(
+            put_tasks(
                 "demo",
-                {"id": "t-done", "status": "done", "completedAt": "2026-09-28T01:00:00+00:00"},
-                {"id": "t-failed", "status": "failed", "reason": "boom"},
+                task(id="t-done", status="done", completed_at="2026-09-28T01:00:00+00:00"),
+                task(id="t-failed", status="failed", reason="boom"),
             )
 
             result = _inbox("--json", "--peek")
@@ -139,7 +120,7 @@ class TestJsonView:
 
     def test_a_granted_task_is_approved_ready_and_points_at_run(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _tasks("demo", {"id": "t-ok", "status": "pending", "gateOverridePipelineIndex": 2})
+            put_task("demo", task(id="t-ok", gate_override_pipeline_index=2))
 
             body = json.loads(_inbox("--json", "--peek").stdout)
 
@@ -149,7 +130,7 @@ class TestJsonView:
 
     def test_a_plain_pending_task_is_not_listed(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _tasks("demo", {"id": "t-new", "status": "pending"})
+            put_task("demo", task(id="t-new"))
             assert json.loads(_inbox("--json", "--peek").stdout)["needsYou"] == []
 
 
@@ -164,9 +145,7 @@ class TestUsage:
 class TestCursor:
     def test_a_plain_call_advances_it_and_a_repeat_shows_no_done_item(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _tasks(
-                "demo", {"id": "t1", "status": "done", "completedAt": "2026-09-28T01:00:00+00:00"}
-            )
+            put_task("demo", task(id="t1", status="done", completed_at="2026-09-28T01:00:00+00:00"))
 
             first = json.loads(_inbox("--json").stdout)
             second = json.loads(_inbox("--json").stdout)
@@ -180,9 +159,7 @@ class TestCursor:
 
     def test_peek_and_explicit_since_leave_no_cursor(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _tasks(
-                "demo", {"id": "t1", "status": "done", "completedAt": "2026-09-28T01:00:00+00:00"}
-            )
+            put_task("demo", task(id="t1", status="done", completed_at="2026-09-28T01:00:00+00:00"))
 
             _inbox("--json", "--peek")
             body = json.loads(_inbox("--json", "--since", "2026-09-28T05:00:00+00:00").stdout)

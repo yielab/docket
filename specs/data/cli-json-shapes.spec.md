@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.0.0
+**Version**: 4.0.1
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-10-24
 
@@ -617,5 +617,5 @@ snake_case.
 - `src/docket/tasks/application/runs.py`: `create_run`, the run record
 - `src/docket/hops/gates/profile.py`: `as_json`
 - `src/docket/kernel/operator_contract.py`: `InboxView`
-- `src/docket/tasks/application/queue.py`: `read_tasks`
+- `src/docket/tasks/application/repository.py`: `TaskRepository.list`
 - `src/docket/tasks/application/lifecycle.py`: `task_diff`

@@ -36,6 +36,7 @@ from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.teams.identity"
@@ -134,10 +135,10 @@ class _Runner:
             _git(root, "commit", "-m", "rewrite instructions")
             (root / ".git").write_text("gitdir: /nonexistent\n")  # the agent owns this file
             return TurnResult(True, "done", 0.0, {})
-        task = next(t for t in _queue.read_tasks("demo") if t.get("worktree"))
+        task = next(t for t in TaskRepository.for_pod("demo").list() if t.worktree)
         result = self.driver.run_turn(
             agent_id, session_key, message, timeout, env,
-            trace_project="demo", trace_task_id=task["id"],
+            trace_project="demo", trace_task_id=task.id,
         )  # fmt: skip
         self.prompts[agent_id] = self.backend.calls[-1][0].content
         return result

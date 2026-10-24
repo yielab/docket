@@ -20,7 +20,7 @@ from tests.support.trace import audit_entries as _audit_actions
 from docket.governance import approval as _approval
 from docket.interfaces.cli.commands import mcp as _mcp
 from docket.kernel.home import Home, use_home
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 
 SUBJECT = "docket.interfaces.cli.commands.mcp"
 
@@ -188,8 +188,8 @@ class TestNoBypassThroughRealTransport:
             assert result.is_error is False
             assert result.structured_content["description"] == "ship the migration"
 
-            tasks = _queue.read_tasks("demo")
-            assert [t["description"] for t in tasks] == ["ship the migration"]
+            tasks = TaskRepository.for_pod("demo").list()
+            assert [t.description for t in tasks] == ["ship the migration"]
 
     def test_approvals_grant_through_the_real_sdk_calls_the_same_core_function(
         self, tmp_path: Path

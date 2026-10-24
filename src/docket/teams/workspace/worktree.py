@@ -10,28 +10,32 @@ from docket.teams import pod as _pod
 from docket.teams import task_worktrees as _task_worktrees
 
 
-def task_worktree_dir(task: dict[str, Any]) -> str:
-    """The directory of the worktree recorded on *task* at claim, or empty when the task runs in
-    place (no recorded worktree, or a recorded fallback). It also tells host-side git the git dir
-    docket recorded for that worktree, so nothing the agent wrote at ``.git`` is ever read."""
-    record = task.get("worktree")
-    if not isinstance(record, dict):
-        return ""
-    wt_dir = str(record.get("dir") or "")
-    _git.trust_worktree(wt_dir, str(record.get("gitDir") or ""), str(record.get("commonDir") or ""))
-    return wt_dir
+def trusted_worktree_dir(directory: str, git_dir: str, common_dir: str) -> str:
+    """*directory*, the worktree recorded on a claimed task (``""`` when it runs in place), after
+    telling host-side git the *git_dir* and *common_dir* docket recorded for it, so nothing the
+    agent wrote at ``.git`` is ever read."""
+    _git.trust_worktree(directory, git_dir, common_dir)
+    return directory
 
 
 def hop_diff_probe(
-    member_id: str, role: str, task: dict[str, Any], prior_diff: str = ""
+    member_id: str,
+    role: str,
+    *,
+    task_id: str,
+    description: str,
+    worktree_dir: str,
+    base_commit: str,
+    prior_diff: str = "",
 ) -> tuple[list[str], str | None, dict[str, Any] | None, str]:
-    """``(files_changed, diff_ref, evidence, diff)`` for a hop; ``diff_ref``/``evidence`` are the
-    Implementer's, and a non-Implementer hop whose diff equals *prior_diff* changed nothing.
-    See pod-dispatch.spec.md, "Implementer diff producer" and "Hop evidence"."""
+    """``(files_changed, diff_ref, evidence, diff)`` for a hop of task *task_id* (*description* is
+    the subject of the commit pinning the tree); ``diff_ref``/``evidence`` are the Implementer's,
+    and a non-Implementer hop whose diff equals *prior_diff* changed nothing. *worktree_dir* is
+    the task's worktree (``""`` when it runs in place) and *base_commit* the commit it started
+    from. See pod-dispatch.spec.md, "Implementer diff producer" and "Hop evidence"."""
     implementer = role == "implementer"
-    task_dir = task_worktree_dir(task)
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
-    cwd = _pod.resolve_member_cwd(member_id, task_dir, member_codebase)
+    cwd = _pod.resolve_member_cwd(member_id, worktree_dir, member_codebase)
     if not _git.git_available() or not _git.git_is_repo(cwd):
         empty = {"commit": None, "baseCommit": None, "diffStat": None} if implementer else None
         return [], None, empty, ""
@@ -40,20 +44,18 @@ def hop_diff_probe(
     if not implementer:
         if not diff or diff == prior_diff:
             return [], None, None, ""
-        if task_dir:
-            _pin_hop_tree(cwd, task, role, in_worktree=True)
+        if worktree_dir:
+            _pin_hop_tree(cwd, task_id, description, role, in_worktree=True)
         return files_changed, None, None, diff
     diff_ref = _git.git_current_branch(cwd) or None
-    commit = _pin_hop_tree(cwd, task, role, in_worktree=bool(task_dir))
-    recorded = task.get("worktree")
-    base_commit: str | None = None
-    if task_dir and isinstance(recorded, dict):
-        base_commit = str(recorded.get("baseCommit") or "") or None
+    commit = _pin_hop_tree(cwd, task_id, description, role, in_worktree=bool(worktree_dir))
+    if worktree_dir:
+        base: str | None = base_commit or None
     else:
         base_branch = _git.git_current_branch(member_codebase or cwd) or None
-        base_commit = _git.git_merge_base(cwd, base_branch) if base_branch else None
-    diff_stat = _git.git_diff_stat(cwd, base_commit, commit) if base_commit and commit else None
-    evidence = {"commit": commit, "baseCommit": base_commit, "diffStat": diff_stat}
+        base = _git.git_merge_base(cwd, base_branch) if base_branch else None
+    diff_stat = _git.git_diff_stat(cwd, base, commit) if base and commit else None
+    evidence = {"commit": commit, "baseCommit": base, "diffStat": diff_stat}
     return files_changed, diff_ref, evidence, "" if diff == prior_diff else diff
 
 
@@ -77,12 +79,13 @@ def _cut_at_word(text: str, limit: int) -> str:
     return head[:cut].rstrip() if cut > 0 else head
 
 
-def _pin_hop_tree(cwd: str, task: dict[str, Any], role: str, *, in_worktree: bool) -> str | None:
+def _pin_hop_tree(
+    cwd: str, task_id: str, description: str, role: str, *, in_worktree: bool
+) -> str | None:
     """Pin the tree a hop left in a commit and return its sha, ``None`` on failure: committed on
     the task branch in a task worktree, a branchless snapshot in place. An agent normally leaves
     its work uncommitted, and the task branch would then stay at its base commit."""
-    task_id = str(task.get("id") or "")
-    first_line = str(task.get("description") or "").strip().split("\n", 1)[0].strip()
+    first_line = description.strip().split("\n", 1)[0].strip()
     subject = _cut_at_word(first_line, 72) or f"docket task {task_id}"
     message = f"{subject}\n\ndocket task {task_id}, {role} hop"
     if in_worktree:

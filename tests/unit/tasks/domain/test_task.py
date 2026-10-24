@@ -96,7 +96,7 @@ class TestHopEvents:
                 ("local/served-model", "local")
             }
             raw = json.loads(_settings.pod_task_list_path("demo").read_text())
-            (stored,) = [t for t in raw["tasks"] if t["id"] == str(task["id"])]
+            (stored,) = [t for t in raw["tasks"] if t["id"] == str(task.id)]
             assert [(h["model"], h["provider"]) for h in stored["hops"]] == [
                 ("local/served-model", "local"),
                 ("local/served-model", "local"),
@@ -120,7 +120,7 @@ class TestHopEvents:
             record_isolation_off(home)
             build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
             task = _queue.enqueue_task_once("demo", "usage", channel="cli")[0]
-            task_id = str(task["id"])
+            task_id = str(task.id)
             hops = [
                 _task.HopResult(
                     role="lead",

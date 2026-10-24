@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import threading
-from typing import Any
 
 import pytest
 from tests.support.pods import build_pod
 from tests.support.pods import seed_parked_task as _seed_parked_task
+from tests.support.tasks import put_task, task
 from tests.support.telegram_harness import (
     _bind,
     _read_audit,
@@ -20,9 +20,10 @@ from docket.interfaces.telegram import bot as _tg
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import QuestionV11
 from docket.kernel.threads import new_thread
-from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
-from docket.teams import settings as _settings
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.state import Status
+from docket.tasks.domain.task import TaskRecord
 
 SUBJECT = "docket.interfaces.telegram.bot"
 
@@ -35,15 +36,14 @@ def _msg(chat_id: str, text: str, update_id: int = 1, user_id: str = "999") -> _
     return _tg.InboundMessage(chat_id=chat_id, user_id=user_id, text=text, update_id=update_id)
 
 
-def _park_consult(project: str = "demo") -> dict[str, Any]:
+def _park_consult(project: str = "demo") -> TaskRecord:
     """A real pod whose one task is parked on a v1.1 consult question with two options."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
-    _queue.enqueue_task_once(project, "pick a design", channel="cli")
-    tasks = _queue.read_tasks(project)
+    record = task(description="pick a design")
     question = QuestionV11.model_validate(
         {
             "id": "q-consult00001",
-            "taskId": tasks[0]["id"],
+            "taskId": record.id,
             "pod": project,
             "step": "implementer",
             "message": "Which design?",
@@ -57,10 +57,10 @@ def _park_consult(project: str = "demo") -> dict[str, Any]:
             "recommendation": {"optionId": "iterative", "rationale": "safer"},
         }
     )
-    tasks[0]["status"] = "waiting_input"
-    tasks[0]["question"] = question.model_dump(by_alias=True, mode="json")
-    _store.write_json(_settings.pod_task_list_path(project), {"tasks": tasks})
-    return tasks[0]
+    record.status = Status.waiting_input
+    record.question = question
+    put_task(project, record)
+    return record
 
 
 class TestUnauthorizedSenderIsRefused:
@@ -313,16 +313,13 @@ class TestStatus:
     def test_status_shows_a_blocked_task_scoped_to_this_pod(self) -> None:
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
-        _queue.enqueue_task_once("demo", "Do the thing", channel="cli")
-        tasks = _queue.read_tasks("demo")
-        tasks[0]["status"] = "blocked"
-        tasks[0]["blockedReason"] = "budget"
-        _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": tasks})
+        blocked = task(status="blocked", blocked_reason="budget")
+        put_task("demo", blocked)
 
         outcome = _tg.handle_message(_msg("-100300", "/status"))
 
         assert outcome.ok
-        assert tasks[0]["id"] in outcome.reply
+        assert blocked.id in outcome.reply
 
 
 class TestDelegate:
@@ -334,9 +331,9 @@ class TestDelegate:
 
         assert outcome.ok
         assert outcome.action == "delegate"
-        tasks = _queue.read_tasks("demo")
+        tasks = TaskRepository.for_pod("demo").list()
         assert len(tasks) == 1
-        assert tasks[0]["description"] == "fix the login bug"
+        assert tasks[0].description == "fix the login bug"
 
     def test_delegate_is_refused_for_a_non_lead_binding(self) -> None:
         _bind("security", "-100200")  # an org specialist, not a pod Lead
@@ -351,7 +348,7 @@ class TestDelegate:
         outcome = _tg.handle_message(_msg("-100300", "/delegatefoo bar"))
 
         assert outcome.action == "unparseable"
-        assert _queue.read_tasks("demo") == []
+        assert TaskRepository.for_pod("demo").list() == []
 
     def test_delegate_accepts_the_bot_suffix_and_a_multiline_description(self) -> None:
         _seed_pod("demo")
@@ -360,7 +357,7 @@ class TestDelegate:
         outcome = _tg.handle_message(_msg("-100300", "/delegate@docket_bot\nline one\nline two"))
 
         assert outcome.ok
-        assert _queue.read_tasks("demo")[0]["description"] == "line one\nline two"
+        assert TaskRepository.for_pod("demo").list()[0].description == "line one\nline two"
 
     def test_a_bare_delegate_gets_the_usage_reply(self) -> None:
         _seed_pod("demo")
@@ -404,7 +401,7 @@ class TestDelegate:
 
         assert not outcome.ok
         assert "blocked by policy" in outcome.reply
-        tasks = _queue.read_tasks("demo")
+        tasks = TaskRepository.for_pod("demo").list()
         assert tasks == []
         blocked = [e for e in _read_audit() if e.get("action") == "telegram.delegate_blocked"]
         assert len(blocked) == 1
@@ -430,7 +427,7 @@ class TestDelegate:
         outcome = _tg.handle_message(_msg("-100300", "/delegate this needs-a-human review"))
 
         assert not outcome.ok
-        assert _queue.read_tasks("demo") == []
+        assert TaskRepository.for_pod("demo").list() == []
 
     def test_a_warn_policy_allows_but_still_audits(self) -> None:
         _seed_pod("demo")
@@ -445,25 +442,25 @@ class TestDelegate:
         )
 
         assert outcome.ok
-        assert len(_queue.read_tasks("demo")) == 1
+        assert len(TaskRepository.for_pod("demo").list()) == 1
         warns = [e for e in _read_audit() if e.get("action") == "telegram.delegate_warn"]
         assert len(warns) == 1
 
 
 class TestAnswer:
     def test_answer_resolves_a_single_property_question_and_replies_with_the_task_id(self) -> None:
-        task = _seed_parked_task("demo")
+        parked = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
 
-        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} ship it"))
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {parked.id} ship it"))
 
         assert outcome.ok
         assert outcome.action == "answer"
-        assert task["id"] in outcome.reply
-        after = _queue.read_tasks("demo")[0]
-        assert after["status"] == "pending"
-        assert after["answers"][0]["content"] == {"answer": "ship it"}
-        assert after["answers"][0]["channel"] == "telegram"
+        assert parked.id in outcome.reply
+        after = TaskRepository.for_pod("demo").list()[0]
+        assert after.status == "pending"
+        assert after.answers[0].content == {"answer": "ship it"}
+        assert after.answers[0].channel == "telegram"
 
     def test_missing_task_id_and_text_replies_with_usage(self) -> None:
         _bind("security", "-100200")
@@ -489,32 +486,32 @@ class TestAnswer:
         other = _seed_parked_task("other")
         _bind("demo-lead", "-100300")
 
-        outcome = _tg.handle_message(_msg("-100300", f"/answer {other['id']} ship it"))
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {other.id} ship it"))
 
         assert not outcome.ok
         assert "not found" in outcome.reply
-        assert _queue.read_tasks("other")[0]["status"] == "waiting_input"
+        assert TaskRepository.for_pod("other").list()[0].status == "waiting_input"
 
     def test_a_multi_property_question_is_refused_with_cli_guidance(self) -> None:
         """A bare chat message cannot be split across fields -- mirrors ``interfaces/cli/commands/task.py``'s
         ``_task_answer`` bare-text refusal for the same case."""
-        task = _seed_parked_task("demo")
+        parked = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
-        tasks = _queue.read_tasks("demo")
-        tasks[0]["question"]["requestedSchema"]["properties"]["confirm"] = {"type": "boolean"}
-        _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": tasks})
+        assert parked.question is not None
+        parked.question.requested_schema["properties"]["confirm"] = {"type": "boolean"}
+        put_task("demo", parked)
 
-        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} ship it"))
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {parked.id} ship it"))
 
         assert not outcome.ok
         assert "docket task answer" in outcome.reply
-        assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
+        assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
     def test_a_block_policy_refuses_before_the_answer_is_ever_written(self) -> None:
         """Mirrors ``TestDelegate``'s block test: a real installed policy, not a patched
         evaluator -- proving `answer_task`'s own `pre_input` screen (not this module) is what
         refuses."""
-        task = _seed_parked_task("demo")
+        parked = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
         current_home().policies_dir.mkdir(parents=True, exist_ok=True)
         policy = {
@@ -530,39 +527,39 @@ class TestAnswer:
         (current_home().policies_dir / "test-block-answer.json").write_text(json.dumps(policy))
 
         outcome = _tg.handle_message(
-            _msg("-100300", f"/answer {task['id']} this has a forbidden-phrase in it")
+            _msg("-100300", f"/answer {parked.id} this has a forbidden-phrase in it")
         )
 
         assert not outcome.ok
         assert "blocked by policy" in outcome.reply
-        after = _queue.read_tasks("demo")[0]
-        assert after["status"] == "waiting_input"
-        assert after.get("answers", []) == []
+        after = TaskRepository.for_pod("demo").list()[0]
+        assert after.status == "waiting_input"
+        assert after.answers == []
         blocked = [e for e in _read_audit() if e.get("action") == "telegram.answer_blocked"]
         assert len(blocked) == 1
 
 
 class TestAnswerPicksAnOption:
     def test_an_exact_option_id_records_the_option(self) -> None:
-        task = _park_consult()
+        parked = _park_consult()
         _bind("demo-lead", "-100300")
 
-        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} iterative"))
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {parked.id} iterative"))
 
         assert outcome.ok, outcome.reply
-        after = _queue.read_tasks("demo")[0]
-        assert after["status"] == "pending"
-        assert after["answers"][0]["optionId"] == "iterative"
-        assert after["answers"][0]["channel"] == "telegram"
+        after = TaskRepository.for_pod("demo").list()[0]
+        assert after.status == "pending"
+        assert after.answers[0].option_id == "iterative"
+        assert after.answers[0].channel == "telegram"
 
     def test_text_that_is_not_an_option_id_keeps_the_free_text_path(self) -> None:
-        task = _park_consult()
+        parked = _park_consult()
         _bind("demo-lead", "-100300")
 
-        outcome = _tg.handle_message(_msg("-100300", f"/answer {task['id']} do the first one"))
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {parked.id} do the first one"))
 
         assert not outcome.ok
-        assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
+        assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
 
 class TestUnrecognizedInput:

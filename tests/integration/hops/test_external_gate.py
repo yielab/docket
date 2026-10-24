@@ -28,6 +28,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.hops.gates.post_hop"
@@ -127,7 +128,7 @@ class TestExitMapping:
             verify = _build_hops(res)[0].verify
             assert verify["label"] == label
             assert verify["exitCode"] == code
-            assert _queue.read_tasks("demo")[0]["failureKind"] == kind
+            assert TaskRepository.for_pod("demo").list()[0].failure_kind == kind
 
     def test_the_exit_code_cannot_be_forged_from_inside_the_command(self, tmp_path: Path) -> None:
         # The command (agent-written tests, in practice) plants a "0" anywhere docket might read
@@ -229,7 +230,7 @@ class TestReasons:
     def test_a_pre_existing_reasons_file_is_deleted_and_never_read(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
-            planted = _post_hop._gate_reasons_path("demo", task["id"], "build")
+            planted = _post_hop._gate_reasons_path("demo", task.id, "build")
             planted.parent.mkdir(parents=True, exist_ok=True)
             planted.write_text(json.dumps({"reasons": [{"summary": "PLANTED"}]}), encoding="utf-8")
             script = _script(
@@ -252,7 +253,9 @@ class TestReasons:
             _queue.enqueue_task_once("demo", "Ship it", channel="cli")
             res = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_spec(script))[0]
 
-            persisted = json.dumps(_queue.read_tasks("demo")[0]["hops"])
+            persisted = "".join(
+                hop.model_dump_json() for hop in TaskRepository.for_pod("demo").list()[0].hops
+            )
             assert canary not in persisted
             assert "[REDACTED]" in persisted
             assert res.status == "failed"
@@ -321,7 +324,7 @@ class TestNeedsHumanSeam:
             assert len(_implementer_messages(driver)) == 1
 
             _answers.answer_task(
-                "demo", task["id"], "accept", {"answer": "go"}, channel="cli", actor="op"
+                "demo", task.id, "accept", {"answer": "go"}, channel="cli", actor="op"
             )
             final = _sweep.dispatch_pod("demo", runner=driver)[0]
 
@@ -346,12 +349,12 @@ class TestNeedsHumanSeam:
             driver = FakeDriver()
 
             _sweep.dispatch_pod("demo", runner=driver)
-            question = _queue.read_tasks("demo")[0]["question"]
-            assert REASON in question["message"], "the operator must see why the verifier asked"
+            question = TaskRepository.for_pod("demo").list()[0].question
+            assert REASON in question.message, "the operator must see why the verifier asked"
 
             note = "zz-operator-note-8812"
             _answers.answer_task(
-                "demo", task["id"], "accept", {"answer": note}, channel="cli", actor="op"
+                "demo", task.id, "accept", {"answer": note}, channel="cli", actor="op"
             )
             _sweep.dispatch_pod("demo", runner=driver)
             retry = _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
@@ -365,10 +368,10 @@ class TestNeedsHumanSeam:
             driver = FakeDriver()
 
             assert _sweep.dispatch_pod("demo", runner=driver)[0].status == "waiting_input"
-            _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
+            _answers.answer_task("demo", task.id, "decline", None, channel="cli", actor="op")
 
-            persisted = _queue.read_tasks("demo")[0]
-            assert persisted["status"] == "failed"
+            persisted = TaskRepository.for_pod("demo").list()[0]
+            assert persisted.status == "failed"
 
 
 def test_the_gate_a_dispatch_ran_is_the_gate_evidence_reports(tmp_path: Path) -> None:

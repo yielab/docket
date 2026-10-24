@@ -26,9 +26,10 @@ from docket.kernel.home import current_home
 from docket.platform import git as _platform_git
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import worktree_prune as _worktree_prune
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod_provisioning as _pp
-from docket.teams import settings as _settings
 from docket.teams import task_worktrees as _task_worktrees
 
 _hermetic = _support_home.trace_on_env
@@ -122,8 +123,8 @@ class _UncommittedRunner:
         return TurnResult(True, "done", 0.0, {})
 
 
-def _implementer_hop(task: dict[str, Any]) -> dict[str, Any]:
-    return next(h for h in task["hops"] if h["role"] == "implementer")
+def _implementer_hop(task: TaskRecord) -> HopResult:
+    return next(h for h in task.hops if h.role == "implementer")
 
 
 def _plain_runner(
@@ -169,25 +170,23 @@ def test_two_tasks_back_to_back_each_get_their_own_branch_and_directory(tmp_path
         (res_two,) = _sweep.dispatch_pod("demo", runner=runner_two, max_tasks=1)
         assert res_two.status == "done", res_two.reason
 
-        tasks = {t["id"]: t for t in _queue.read_tasks("demo")}
-        wt_one = tasks[first["id"]]["worktree"]
-        wt_two = tasks[second["id"]]["worktree"]
+        tasks = {t.id: t for t in TaskRepository.for_pod("demo").list()}
+        wt_one = tasks[first.id].worktree
+        wt_two = tasks[second.id].worktree
         tasks_dir = current_home().projects_dir / "demo-implementer" / "tasks"
-        assert wt_one["dir"] == str(tasks_dir / first["id"])
-        assert wt_two["dir"] == str(tasks_dir / second["id"])
-        assert wt_one["branch"] == f"docket/demo/{first['id']}"
-        assert wt_two["branch"] == f"docket/demo/{second['id']}"
-        assert runner_one.roots == [wt_one["dir"]]
-        assert runner_two.roots == [wt_two["dir"]]
+        assert wt_one.dir == str(tasks_dir / first.id)
+        assert wt_two.dir == str(tasks_dir / second.id)
+        assert wt_one.branch == f"docket/demo/{first.id}"
+        assert wt_two.branch == f"docket/demo/{second.id}"
+        assert runner_one.roots == [wt_one.dir]
+        assert runner_two.roots == [wt_two.dir]
 
-        evidence = next(h for h in tasks[second["id"]]["hops"] if h["role"] == "implementer")[
-            "evidence"
-        ]
-        assert evidence["baseCommit"] == wt_two["baseCommit"] == head_at_task_two
-        assert evidence["commit"] == _platform_git.git_head_sha(wt_two["dir"])
+        evidence = next(h for h in tasks[second.id].hops if h.role == "implementer").evidence
+        assert evidence["baseCommit"] == wt_two.base_commit == head_at_task_two
+        assert evidence["commit"] == _platform_git.git_head_sha(wt_two.dir)
         # Task 1's commit is on task 1's branch only: task 2's stat is its own file.
         assert evidence["diffStat"] == {"files": 1, "insertions": 1, "deletions": 0}
-        assert "one.txt" not in _git(repo, "ls-tree", "--name-only", wt_two["branch"])
+        assert "one.txt" not in _git(repo, "ls-tree", "--name-only", wt_two.branch)
 
 
 def test_a_parked_then_answered_task_resumes_in_the_same_worktree(tmp_path: Path) -> None:
@@ -204,18 +203,18 @@ def test_a_parked_then_answered_task_resumes_in_the_same_worktree(tmp_path: Path
         runner = _Runner("answer.txt")
         (parked,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
         assert parked.status == "waiting_input"
-        recorded = _queue.read_tasks("demo")[0]["worktree"]
-        assert Path(recorded["dir"]).is_dir()
+        recorded = TaskRepository.for_pod("demo").list()[0].worktree
+        assert Path(recorded.dir).is_dir()
         assert runner.roots == []
 
         _answers.answer_task(
-            "demo", queued["id"], "accept", {"answer": "yes"}, channel="cli", actor="op"
+            "demo", queued.id, "accept", {"answer": "yes"}, channel="cli", actor="op"
         )
         (done,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert done.status == "done", done.reason
-        assert runner.roots == [recorded["dir"]]
-        assert _queue.read_tasks("demo")[0]["worktree"] == recorded
+        assert runner.roots == [recorded.dir]
+        assert TaskRepository.for_pod("demo").list()[0].worktree == recorded
         assert len([p for p in _worktree_paths(repo) if "/tasks/" in p]) == 1
 
 
@@ -259,20 +258,15 @@ def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
-        record = _queue.read_tasks("demo")[0]["worktree"]
-        assert record["dir"] == ""
-        assert "disk full" in record["fallbackReason"]
+        record = TaskRepository.for_pod("demo").list()[0].worktree
+        assert record.dir == ""
+        assert "disk full" in record.fallback_reason
         implementer_env = next(env for agent, env in seen if agent.endswith("-implementer"))
         assert PIPELINE_WORKTREE_ENV not in (implementer_env or {})
 
 
 def _enqueue_with_base_ref(base_ref: str) -> None:
-    from docket.platform import store as _store
-
-    _queue.enqueue_task_once("demo", "continue the work", channel="cli")
-    queue = _queue.read_tasks("demo")
-    queue[0]["baseRef"] = base_ref
-    _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": queue})
+    _queue.enqueue_task_once("demo", "continue the work", channel="cli", base_ref=base_ref)
 
 
 def test_a_task_with_a_base_ref_starts_its_worktree_there(tmp_path: Path) -> None:
@@ -290,10 +284,10 @@ def test_a_task_with_a_base_ref_starts_its_worktree_there(tmp_path: Path) -> Non
         (res,) = _sweep.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
 
         assert res.status == "done", res.reason
-        record = _queue.read_tasks("demo")[0]["worktree"]
-        assert record["baseRef"] == "prev"
-        assert record["baseCommit"] == prev_sha
-        assert (Path(record["dir"]) / "prev.txt").is_file()
+        record = TaskRepository.for_pod("demo").list()[0].worktree
+        assert record.base_ref == "prev"
+        assert record.base_commit == prev_sha
+        assert (Path(record.dir) / "prev.txt").is_file()
 
 
 def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(tmp_path: Path) -> None:
@@ -305,16 +299,16 @@ def test_an_unresolvable_base_ref_fails_the_task_before_any_hop(tmp_path: Path) 
 
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-        task = _queue.read_tasks("demo")[0]
+        task = TaskRepository.for_pod("demo").list()[0]
         assert (res.status, res.failure_kind) == ("failed", "base_ref")
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "base_ref"
-        assert "nope" in task["reason"]
-        assert task["hops"] == []
-        assert "worktree" not in task
+        assert task.status == "failed"
+        assert task.failure_kind == "base_ref"
+        assert "nope" in task.reason
+        assert task.hops == []
+        assert task.worktree is None
         assert runner.roots == []
-        assert not (_task_worktrees.task_worktrees_dir("demo-implementer") / task["id"]).exists()
-        assert _task_worktrees.worktree_branch("demo", task["id"]) not in _git(
+        assert not (_task_worktrees.task_worktrees_dir("demo-implementer") / task.id).exists()
+        assert _task_worktrees.worktree_branch("demo", task.id) not in _git(
             repo, "branch", "--list"
         )
 
@@ -331,7 +325,7 @@ def test_a_failed_worktree_add_with_a_base_ref_does_not_run_in_place(
         (res,) = _sweep.dispatch_pod("demo", runner=_Runner("b.txt"), max_tasks=1)
 
         assert (res.status, res.failure_kind) == ("failed", "base_ref")
-        assert "disk full" in _queue.read_tasks("demo")[0]["reason"]
+        assert "disk full" in TaskRepository.for_pod("demo").list()[0].reason
 
 
 def test_a_command_step_gets_the_task_id_and_the_evidence_commits(tmp_path: Path) -> None:
@@ -344,13 +338,13 @@ def test_a_command_step_gets_the_task_id_and_the_evidence_commits(tmp_path: Path
         (res,) = _sweep.dispatch_pod("demo", runner=_Runner("work.txt"), max_tasks=1)
 
         assert res.status == "done", res.reason
-        task = _queue.read_tasks("demo")[0]
-        evidence = next(h for h in task["hops"] if h["role"] == "implementer")["evidence"]
-        command = next(h for h in task["hops"] if h["role"] == "coordinates")
+        task = TaskRepository.for_pod("demo").list()[0]
+        evidence = next(h for h in task.hops if h.role == "implementer").evidence
+        command = next(h for h in task.hops if h.role == "coordinates")
         assert evidence["baseCommit"] and evidence["commit"]
-        assert evidence["baseCommit"] == task["worktree"]["baseCommit"]
-        assert command["output"].strip() == (
-            f"id={queued['id']} base={evidence['baseCommit']} head={evidence['commit']}"
+        assert evidence["baseCommit"] == task.worktree.base_commit
+        assert command.output.strip() == (
+            f"id={queued.id} base={evidence['baseCommit']} head={evidence['commit']}"
         )
 
 
@@ -365,9 +359,9 @@ def test_a_command_step_without_an_implementer_hop_gets_empty_commits(tmp_path: 
 
         assert res.status == "done", res.reason
         command = next(
-            h for h in _queue.read_tasks("demo")[0]["hops"] if h["role"] == "coordinates"
+            h for h in TaskRepository.for_pod("demo").list()[0].hops if h.role == "coordinates"
         )
-        assert command["output"].strip() == f"id={queued['id']} base= head="
+        assert command.output.strip() == f"id={queued.id} base= head="
 
 
 def test_uncommitted_work_is_committed_on_the_task_branch(tmp_path: Path) -> None:
@@ -380,17 +374,17 @@ def test_uncommitted_work_is_committed_on_the_task_branch(tmp_path: Path) -> Non
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
-        task = _queue.read_tasks("demo")[0]
-        record = task["worktree"]
+        task = TaskRepository.for_pod("demo").list()[0]
+        record = task.worktree
         hop = _implementer_hop(task)
-        evidence = hop["evidence"]
-        assert evidence["commit"] != evidence["baseCommit"] == record["baseCommit"]
-        assert evidence["commit"] == _git(repo, "rev-parse", record["branch"])
-        assert _git(repo, "log", "-1", "--format=%s", record["branch"]) == "Add the notes file"
+        evidence = hop.evidence
+        assert evidence["commit"] != evidence["baseCommit"] == record.base_commit
+        assert evidence["commit"] == _git(repo, "rev-parse", record.branch)
+        assert _git(repo, "log", "-1", "--format=%s", record.branch) == "Add the notes file"
         assert evidence["diffStat"] == {"files": 2, "insertions": 2, "deletions": 1}
-        assert hop["artifact"]["files_changed"] == ["README.md", "notes.txt"]
-        assert _git(Path(record["dir"]), "status", "--porcelain") == ""
-        _git(repo, "merge", record["branch"])
+        assert hop.artifact.files_changed == ["README.md", "notes.txt"]
+        assert _git(Path(record.dir), "status", "--porcelain") == ""
+        _git(repo, "merge", record.branch)
         assert (repo / "notes.txt").read_text() == "new\n"
 
 
@@ -406,7 +400,7 @@ class _LeadWritesRunner:
         env: dict[str, str] | None = None,
     ) -> TurnResult:
         if agent_id.endswith("-lead"):
-            root = Path(_queue.read_tasks("demo")[0]["worktree"]["dir"])
+            root = Path(TaskRepository.for_pod("demo").list()[0].worktree.dir)
             (root / "research").mkdir(exist_ok=True)
             (root / "research" / "notes.md").write_text("findings\n")
         return TurnResult(True, "done", 0.0, {})
@@ -423,16 +417,16 @@ def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(tmp_p
         (res,) = _sweep.dispatch_pod("demo", runner=_LeadWritesRunner(), max_tasks=1)
 
         assert res.status == "done", res.reason
-        task = _queue.read_tasks("demo")[0]
-        record = task["worktree"]
-        head = _git(repo, "rev-parse", record["branch"])
-        assert head != record["baseCommit"]
+        task = TaskRepository.for_pod("demo").list()[0]
+        record = task.worktree
+        head = _git(repo, "rev-parse", record.branch)
+        assert head != record.base_commit
         assert _git(repo, "show", f"{head}:research/notes.md") == "findings"
-        assert "lead hop" in _git(repo, "log", "-1", "--format=%b", record["branch"])
-        assert _git(Path(record["dir"]), "status", "--porcelain") == ""
-        (hop,) = task["hops"]
-        assert hop["artifact"]["files_changed"] == ["research/"]
-        assert hop["evidence"] is None
+        assert "lead hop" in _git(repo, "log", "-1", "--format=%b", record.branch)
+        assert _git(Path(record.dir), "status", "--porcelain") == ""
+        (hop,) = task.hops
+        assert hop.artifact.files_changed == ["research/"]
+        assert hop.evidence is None
 
 
 def test_an_unmerged_pinned_task_survives_prune_without_force(tmp_path: Path) -> None:
@@ -446,7 +440,7 @@ def test_an_unmerged_pinned_task_survives_prune_without_force(tmp_path: Path) ->
 
         assert entry.action == "kept"
         assert "not merged" in entry.reason
-        assert Path(_queue.read_tasks("demo")[0]["worktree"]["dir"], "only-new.txt").is_file()
+        assert Path(TaskRepository.for_pod("demo").list()[0].worktree.dir, "only-new.txt").is_file()
 
 
 def test_a_hop_that_changed_nothing_adds_no_commit(tmp_path: Path) -> None:
@@ -457,10 +451,10 @@ def test_a_hop_that_changed_nothing_adds_no_commit(tmp_path: Path) -> None:
 
         _sweep.dispatch_pod("demo", runner=_plain_runner, max_tasks=1)
 
-        task = _queue.read_tasks("demo")[0]
-        evidence = _implementer_hop(task)["evidence"]
+        task = TaskRepository.for_pod("demo").list()[0]
+        evidence = _implementer_hop(task).evidence
         assert evidence["commit"] == evidence["baseCommit"]
-        assert _git(repo, "rev-parse", task["worktree"]["branch"]) == evidence["baseCommit"]
+        assert _git(repo, "rev-parse", task.worktree.branch) == evidence["baseCommit"]
 
 
 def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
@@ -478,16 +472,16 @@ def test_in_place_work_is_pinned_in_a_snapshot_without_touching_the_checkout(
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
-        task = _queue.read_tasks("demo")[0]
-        evidence = _implementer_hop(task)["evidence"]
+        task = TaskRepository.for_pod("demo").list()[0]
+        evidence = _implementer_hop(task).evidence
         assert evidence["baseCommit"] == head != evidence["commit"]
         assert _git(repo, "show", f"{evidence['commit']}:notes.txt") == "new"
         assert _git(repo, "rev-parse", "HEAD") == head
         assert _git(repo, "diff", "--cached", "--name-only") == ""
         assert _git(repo, "diff", "--name-only") == "README.md"
         assert _git(repo, "ls-files", "--others") == "notes.txt"
-        command = next(h for h in task["hops"] if h["role"] == "coordinates")
-        assert f"head={evidence['commit']}" in command["output"]
+        command = next(h for h in task.hops if h.role == "coordinates")
+        assert f"head={evidence['commit']}" in command.output
 
 
 def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(tmp_path: Path) -> None:
@@ -499,7 +493,7 @@ def test_the_changed_predicate_sees_work_the_hop_left_uncommitted(tmp_path: Path
 
         _sweep.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
 
-        assert [h["role"] for h in _queue.read_tasks("demo")[0]["hops"]][-1] == "on-text"
+        assert [h.role for h in TaskRepository.for_pod("demo").list()[0].hops][-1] == "on-text"
 
 
 def test_a_failed_pin_records_no_commit_and_an_empty_head(
@@ -514,11 +508,9 @@ def test_a_failed_pin_records_no_commit_and_an_empty_head(
 
         _sweep.dispatch_pod("demo", runner=_UncommittedRunner({"notes.txt": "x\n"}), max_tasks=1)
 
-        task = _queue.read_tasks("demo")[0]
-        evidence = _implementer_hop(task)["evidence"]
+        task = TaskRepository.for_pod("demo").list()[0]
+        evidence = _implementer_hop(task).evidence
         assert evidence["commit"] is None
         assert evidence["diffStat"] is None
-        command = next(h for h in task["hops"] if h["role"] == "coordinates")
-        assert command["output"].strip() == (
-            f"id={queued['id']} base={evidence['baseCommit']} head="
-        )
+        command = next(h for h in task.hops if h.role == "coordinates")
+        assert command.output.strip() == (f"id={queued.id} base={evidence['baseCommit']} head=")

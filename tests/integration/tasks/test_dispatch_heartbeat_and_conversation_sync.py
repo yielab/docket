@@ -76,7 +76,7 @@ class TestHeartbeatLedgerLifecycle:
 
             _sweep.dispatch_pod("demo", runner=runner)
 
-            assert seen_mid_flight[0] == [task["id"]]  # present before the very first hop
+            assert seen_mid_flight[0] == [task.id]  # present before the very first hop
             assert _mem.read_dispatch_task_ids(ws) == []  # cleared once the task finished
 
     def test_entry_cleared_after_failure_too(self, tmp_path: Path) -> None:
@@ -205,7 +205,7 @@ class TestConversationAutoPopulation:
             reg = _conv.load()
             conv = _conv.get(reg, _conv.make_id("demo-lead", "-100"))
             assert conv is not None
-            assert conv.task_ref == task["id"]
+            assert conv.task_ref == task.id
             assert "done by demo-lead" in conv.last_message
             assert conv.updated != "2026-01-01T00:00:00"
 
@@ -221,8 +221,8 @@ class TestConversationAutoPopulation:
             lead_conv = _conv.get(reg, _conv.make_id("demo-lead", "-100"))
             impl_conv = _conv.get(reg, _conv.make_id("demo-implementer", "-200"))
             assert lead_conv is not None and impl_conv is not None
-            assert lead_conv.task_ref == task["id"]
-            assert impl_conv.task_ref == task["id"]
+            assert lead_conv.task_ref == task.id
+            assert impl_conv.task_ref == task.id
             assert "done by demo-lead" in lead_conv.last_message
             assert "done by demo-implementer" in impl_conv.last_message
 
@@ -253,8 +253,7 @@ class TestConversationAutoPopulation:
                 ),
             )
             threads = [
-                new_thread(target=_record.persist_hop, args=("demo", task["id"], hop))
-                for hop in hops
+                new_thread(target=_record.persist_hop, args=("demo", task.id, hop)) for hop in hops
             ]
             for thread in threads:
                 thread.start()

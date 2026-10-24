@@ -24,13 +24,14 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
+from docket.kernel.operator_contract import Question
 from docket.kernel.threads import ContextHTTPServer
-from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import worktree_prune as _worktree_prune
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
-from docket.teams import settings as _settings
 
 _hermetic = _support_home.trace_on_env
 
@@ -105,17 +106,17 @@ def _seed_pod(tmp_path: Path, base_url: str = "") -> Iterator[Path]:
 
 
 def _set_task(task_id: str, **fields: Any) -> None:
-    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
-        for entry in doc["tasks"]:
-            if entry["id"] == task_id:
-                entry.update(fields)
-        return {"tasks": doc["tasks"]}
+    def _apply(record: TaskRecord) -> None:
+        for name, value in fields.items():
+            setattr(record, name, value)
 
-    _store.read_modify_write(_settings.pod_task_list_path("demo"), _fn)
+    TaskRepository.for_pod("demo").update(task_id, _apply)
 
 
 def _status(task_id: str) -> str:
-    return next(t["status"] for t in _queue.read_tasks("demo") if t["id"] == task_id)
+    stored = TaskRepository.for_pod("demo").get(task_id)
+    assert stored is not None
+    return stored.status
 
 
 def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_server: Any) -> None:
@@ -130,17 +131,19 @@ def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_serve
         task = _queue.enqueue_task_once("demo", "write a file", channel="cli")[0]
         (result,) = _sweep.dispatch_pod("demo", max_tasks=1)
         assert result.status == "done", result.reason
-        record = next(t for t in _queue.read_tasks("demo") if t["id"] == task["id"])["worktree"]
-        (Path(record["dir"]) / "loose.txt").write_text("not added\n")
-        url = f"{live_server}/tasks/demo/{task['id']}/diff"
+        stored = TaskRepository.for_pod("demo").get(task.id)
+        assert stored is not None and stored.worktree is not None
+        record = stored.worktree
+        (Path(record.dir) / "loose.txt").write_text("not added\n")
+        url = f"{live_server}/tasks/demo/{task.id}/diff"
 
         status, body = _call("GET", url)
 
         assert status == 200, body
-        assert body["task"] == task["id"]
-        assert body["branch"] == record["branch"]
-        assert body["baseCommit"] == record["baseCommit"]
-        assert body["head"] == _git(codebase, "rev-parse", record["branch"])
+        assert body["task"] == task.id
+        assert body["branch"] == record.branch
+        assert body["baseCommit"] == record.base_commit
+        assert body["head"] == _git(codebase, "rev-parse", record.branch)
         assert "out.txt" in body["patch"] and "+made" in body["patch"]
         assert body["untracked"] == ["loose.txt"]
         assert body["worktreePresent"] is True
@@ -161,7 +164,7 @@ def test_diff_of_an_in_place_task_is_a_conflict_with_a_reason(tmp_path: Path) ->
     with _seed_pod(tmp_path), _live_server() as live_server:
         task = _queue.enqueue_task_once("demo", "plain", channel="cli")[0]
 
-        status, body = _call("GET", f"{live_server}/tasks/demo/{task['id']}/diff")
+        status, body = _call("GET", f"{live_server}/tasks/demo/{task.id}/diff")
 
         assert status == 409
         assert body["reason"] == "task ran in place"
@@ -179,7 +182,7 @@ def test_lifecycle_routes_need_the_bearer_token(tmp_path: Path) -> None:
     """No token is 401 before anything else is looked at."""
     with _seed_pod(tmp_path), _live_server() as live_server:
         task = _queue.enqueue_task_once("demo", "plain", channel="cli")[0]
-        base = f"{live_server}/tasks/demo/{task['id']}"
+        base = f"{live_server}/tasks/demo/{task.id}"
 
         assert _call("GET", f"{base}/diff", token=None)[0] == 401
         assert _call("POST", f"{base}/cancel", token=None)[0] == 401
@@ -190,16 +193,16 @@ def test_cancel_stops_the_live_run_of_a_running_task_and_audits_the_channel(tmp_
     """A running task with a live run is cancelled over HTTP; the audit names channel and reason."""
     with _seed_pod(tmp_path), _live_server() as live_server:
         task = _queue.enqueue_task_once("demo", "long", channel="cli")[0]
-        _set_task(task["id"], status="running", claimPid=os.getpid())
+        _set_task(task.id, status="running", claim_pid=os.getpid())
         run = _runs.create_run("cli", "demo")
         assert _runs.mark_running(run["id"])
 
         status, body = _call(
-            "POST", f"{live_server}/tasks/demo/{task['id']}/cancel", body={"reason": "wrong repo"}
+            "POST", f"{live_server}/tasks/demo/{task.id}/cancel", body={"reason": "wrong repo"}
         )
 
         assert status == 200, body
-        assert body == {"ok": True, "task": task["id"], "status": "cancelled"}
+        assert body == {"ok": True, "task": task.id, "status": "cancelled"}
         assert _runs.get_run(run["id"])["cancellation"]["requestedAt"]
         cancels = [e for e in _audit.read_audit() if e.get("action") == "task.cancel"]
         assert len(cancels) == 1
@@ -210,12 +213,12 @@ def test_cancel_with_nothing_in_flight_is_a_conflict(tmp_path: Path) -> None:
     """A terminal task has nothing to cancel: 409 and the status unchanged."""
     with _seed_pod(tmp_path), _live_server() as live_server:
         task = _queue.enqueue_task_once("demo", "done already", channel="cli")[0]
-        _set_task(task["id"], status="done")
+        _set_task(task.id, status="done")
 
-        status, _body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
+        status, _body = _call("POST", f"{live_server}/tasks/demo/{task.id}/cancel")
 
         assert status == 409
-        assert _status(task["id"]) == "done"
+        assert _status(task.id) == "done"
 
 
 def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
@@ -223,24 +226,24 @@ def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
     with _seed_pod(tmp_path), _live_server() as live_server:
         task = _queue.enqueue_task_once("demo", "ask", channel="cli")[0]
         _set_task(
-            task["id"],
+            task.id,
             status="waiting_input",
-            question={
-                "id": "q-1",
-                "taskId": task["id"],
-                "pod": "demo",
-                "step": "s",
-                "message": "which?",
-                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
-                "createdAt": "2020-01-01T00:00:00+00:00",
-            },
+            question=Question(
+                id="q-1",
+                task_id=task.id,
+                pod="demo",
+                step="s",
+                message="which?",
+                requested_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+                created_at="2020-01-01T00:00:00+00:00",
+            ),
         )
 
-        status, body = _call("POST", f"{live_server}/tasks/demo/{task['id']}/cancel")
+        status, body = _call("POST", f"{live_server}/tasks/demo/{task.id}/cancel")
 
         assert status == 200, body
         assert body["status"] == "cancelled"
-        assert _status(task["id"]) == "cancelled"
+        assert _status(task.id) == "cancelled"
         assert any(
             e.get("action") == "task.cancel" and "channel=http" in e["detail"]
             for e in _audit.read_audit()
@@ -252,12 +255,12 @@ def test_retry_requeues_a_failed_task_and_refuses_a_done_one(tmp_path: Path) -> 
     with _seed_pod(tmp_path), _live_server() as live_server:
         failed = _queue.enqueue_task_once("demo", "broke", channel="cli")[0]
         done = _queue.enqueue_task_once("demo", "fine", channel="cli")[0]
-        _set_task(failed["id"], status="failed")
-        _set_task(done["id"], status="done")
+        _set_task(failed.id, status="failed")
+        _set_task(done.id, status="done")
 
-        status, body = _call("POST", f"{live_server}/tasks/demo/{failed['id']}/retry")
+        status, body = _call("POST", f"{live_server}/tasks/demo/{failed.id}/retry")
 
-        assert (status, body) == (200, {"ok": True, "task": failed["id"], "status": "pending"})
-        assert _status(failed["id"]) == "pending"
-        assert _call("POST", f"{live_server}/tasks/demo/{done['id']}/retry")[0] == 409
-        assert _status(done["id"]) == "done"
+        assert (status, body) == (200, {"ok": True, "task": failed.id, "status": "pending"})
+        assert _status(failed.id) == "pending"
+        assert _call("POST", f"{live_server}/tasks/demo/{done.id}/retry")[0] == 409
+        assert _status(done.id) == "done"

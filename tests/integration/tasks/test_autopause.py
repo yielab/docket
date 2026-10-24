@@ -30,6 +30,7 @@ from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _mp
 from docket.teams import pod as _podcore
@@ -168,7 +169,7 @@ class TestAutoPauseDispatch:
             results = _sweep.dispatch_pod("demo", runner=runner)
             assert results == []
             assert runner.calls == []
-            tasks = {t["description"]: t["status"] for t in _queue.read_tasks("demo")}
+            tasks = {t.description: t.status for t in TaskRepository.for_pod("demo").list()}
             assert tasks["Two"] == "pending"
 
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))

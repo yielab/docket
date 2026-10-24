@@ -28,6 +28,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.teams.workspace.prepare"
@@ -126,16 +127,16 @@ def test_the_implementer_hop_finds_the_installed_tool_and_the_task_records_it(
 
         assert res.status == "done", res.reason
         assert [s["tool"] for s in runner.seen] == [True]
-        task = _queue.read_tasks("demo")[0]
-        assert task["prepared"]["command"] == "npm ci"
-        assert task["prepared"]["source"] == "lockfile"
-        assert task["prepared"]["cacheHit"] is False
-        assert task["prepared"]["lockHash"] == hashlib.sha256(_LOCK.encode()).hexdigest()
-        (event,) = _prepare_events(task["id"])
+        task = TaskRepository.for_pod("demo").list()[0]
+        assert task.prepared.command == "npm ci"
+        assert task.prepared.source == "lockfile"
+        assert task.prepared.cache_hit is False
+        assert task.prepared.lock_hash == hashlib.sha256(_LOCK.encode()).hexdigest()
+        (event,) = _prepare_events(task.id)
         assert event["payload"]["command"] == "npm ci"
         assert event["payload"]["cacheHit"] is False
         assert event["payload"]["exit"] == 0
-        wt = Path(task["worktree"]["dir"])
+        wt = Path(task.worktree.dir)
         assert (wt / "node_modules").is_symlink()
         assert _git(wt, "status", "--porcelain") == ""
 
@@ -153,10 +154,10 @@ def test_a_second_task_with_the_same_lockfile_is_a_cache_hit(tmp_path: Path, npm
         assert [r.status for r in results] == ["done", "done"]
         assert [s["tool"] for s in runner.seen] == [True, True]
         assert _npm_calls(npm_log) == ["ci"]
-        tasks = _queue.read_tasks("demo")
-        assert sorted(t["prepared"]["cacheHit"] for t in tasks) == [False, True]
-        hit = next(t for t in tasks if t["prepared"]["cacheHit"])
-        (event,) = _prepare_events(hit["id"])
+        tasks = TaskRepository.for_pod("demo").list()
+        assert sorted(t.prepared.cache_hit for t in tasks) == [False, True]
+        hit = next(t for t in tasks if t.prepared.cache_hit)
+        (event,) = _prepare_events(hit.id)
         assert event["payload"]["cacheHit"] is True and event["payload"]["exit"] is None
 
 
@@ -169,14 +170,14 @@ def test_a_broken_lockfile_fails_the_task_before_any_hop(tmp_path: Path) -> None
 
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
-        task = _queue.read_tasks("demo")[0]
+        task = TaskRepository.for_pod("demo").list()[0]
         assert (res.status, res.failure_kind) == ("failed", "prepare")
-        assert task["failureKind"] == "prepare"
-        assert "lockfile is broken" in task["reason"] and "npm ci" in task["reason"]
-        assert task["hops"] == [] and runner.seen == []
-        assert "prepared" not in task
+        assert task.failure_kind == "prepare"
+        assert "lockfile is broken" in task.reason and "npm ci" in task.reason
+        assert task.hops == [] and runner.seen == []
+        assert task.prepared is None
         assert [p for p in current_home().prepare_cache_dir.glob("*/*") if p.is_dir()] == []
-        (event,) = _prepare_events(task["id"])
+        (event,) = _prepare_events(task.id)
         assert event["payload"]["exit"] == 1
 
 
@@ -192,8 +193,8 @@ def test_a_blank_task_prepare_skips_the_install(tmp_path: Path, npm_log: Path) -
         assert res.status == "done", res.reason
         assert [s["tool"] for s in runner.seen] == [False]
         assert _npm_calls(npm_log) == []
-        task = _queue.read_tasks("demo")[0]
-        assert "prepared" not in task and _prepare_events(task["id"]) == []
+        task = TaskRepository.for_pod("demo").list()[0]
+        assert task.prepared is None and _prepare_events(task.id) == []
 
 
 def test_a_pods_prepare_setting_wins_over_the_lockfile(tmp_path: Path, npm_log: Path) -> None:

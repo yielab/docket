@@ -66,6 +66,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
@@ -213,30 +214,30 @@ class TestGateFiresPreHop:
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "waiting_approval"
-        assert "claimPid" not in task
-        assert task["approvalToken"]
-        assert task["approvalToken"].startswith("apr-")
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "waiting_approval"
+        assert task.claim_pid is None
+        assert task.approval_token
+        assert task.approval_token.startswith("apr-")
         # Lean pod pipeline is [lead, implementer] -> implementer is index 1.
-        assert task["pendingApprovalIndex"] == 1
+        assert task.pending_approval_index == 1
         # Only the lead hop is on record; the implementer hop never ran.
-        assert [h["role"] for h in task["hops"]] == ["lead"]
+        assert [h.role for h in task.hops] == ["lead"]
 
     def test_gate_creates_a_real_approval_record(self) -> None:
         _seed_lean_pod(gated=True)
         task = _queue.enqueue_task_once("myapp", "Ship it", channel="cli")[0]
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
 
-        stored = _queue.read_tasks("myapp")[0]
-        token = stored["approvalToken"]
+        stored = TaskRepository.for_pod("myapp").list()[0]
+        token = stored.approval_token
         pending = _ap.list_pending()
         assert any(p["token"] == token for p in pending)
         rec = _ap.approval_get(token)
         assert rec["project"] == "myapp"
         assert rec["role"] == "implementer"
         assert rec["state"] == "pending"
-        assert rec["context"] == {"taskId": task["id"], "pipelineIndex": 1}
+        assert rec["context"] == {"taskId": task.id, "pipelineIndex": 1}
 
     def test_approval_required_trace_event_emitted(self) -> None:
         _seed_lean_pod(gated=True)
@@ -265,13 +266,13 @@ class TestNotClaimableConcurrently:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        assert _queue.read_tasks("myapp")[0]["status"] == "waiting_approval"
+        assert TaskRepository.for_pod("myapp").list()[0].status == "waiting_approval"
 
         runner2 = _RecordingRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner2)
         assert results == []
         assert runner2.calls == []
-        assert _queue.read_tasks("myapp")[0]["status"] == "waiting_approval"
+        assert TaskRepository.for_pod("myapp").list()[0].status == "waiting_approval"
 
     def test_claim_next_task_directly_returns_none(self) -> None:
         _seed_lean_pod(gated=True)
@@ -293,7 +294,7 @@ class TestNotClaimableConcurrently:
         # sweep only ever looks at status == "running".
         with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
             _lifecycle.sweep_stale_claims("myapp")
-            assert _queue.read_tasks("myapp")[0]["status"] == "waiting_approval"
+            assert TaskRepository.for_pod("myapp").list()[0].status == "waiting_approval"
 
 
 # ── grant resumes at the exact hop ────────────────────────────────────────────────
@@ -304,7 +305,7 @@ class TestGrantResumesAtHop:
         _seed_full_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = _queue.read_tasks("myapp")[0]["approvalToken"]
+        token = TaskRepository.for_pod("myapp").list()[0].approval_token
         return token
 
     def test_resolve_waiting_approval_flips_to_pending_with_override(self) -> None:
@@ -313,11 +314,11 @@ class TestGrantResumesAtHop:
         updated = _actions.resolve_waiting_approval(token, "granted")
         assert updated is True
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "pending"
-        assert task["approvalToken"] is None
-        assert task["pendingApprovalIndex"] is None
-        assert task["gateOverridePipelineIndex"] == 1
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "pending"
+        assert task.approval_token is None
+        assert task.pending_approval_index is None
+        assert task.gate_override_pipeline_index == 1
 
     def test_next_dispatch_continues_from_the_gated_hop(self) -> None:
         token = self._gate_then_grant()
@@ -331,15 +332,15 @@ class TestGrantResumesAtHop:
         # The lead hop is NOT re-run; only implementer/reviewer/tester continue.
         assert runner.calls == ["implementer", "reviewer", "tester"]
 
-        final = _queue.read_tasks("myapp")[0]
-        assert [h["role"] for h in final["hops"]] == [
+        final = TaskRepository.for_pod("myapp").list()[0]
+        assert [h.role for h in final.hops] == [
             "lead",
             "implementer",
             "reviewer",
             "tester",
         ]
-        assert final["approvalToken"] is None
-        assert final["gateOverridePipelineIndex"] is None
+        assert final.approval_token is None
+        assert final.gate_override_pipeline_index is None
 
     def test_grant_via_cli_approve_resumes_dispatch(
         self, capsys: pytest.CaptureFixture[str]
@@ -349,9 +350,9 @@ class TestGrantResumesAtHop:
         assert rc == 0
         capsys.readouterr()
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "pending"
-        assert task["gateOverridePipelineIndex"] == 1
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "pending"
+        assert task.gate_override_pipeline_index == 1
 
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -375,7 +376,7 @@ class TestDenyFailsTerminally:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        return str(_queue.read_tasks("myapp")[0]["approvalToken"])
+        return str(TaskRepository.for_pod("myapp").list()[0].approval_token)
 
     def test_resolve_waiting_approval_fails_task_immediately(self) -> None:
         token = self._gate()
@@ -383,13 +384,13 @@ class TestDenyFailsTerminally:
         updated = _actions.resolve_waiting_approval(token, "denied")
         assert updated is True
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "approval_denied"
-        assert task["reason"] == "approval denied"
-        assert task["approvalToken"] is None
-        assert task["pendingApprovalIndex"] is None
-        assert task["completedAt"]
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "failed"
+        assert task.failure_kind == "approval_denied"
+        assert task.reason == "approval denied"
+        assert task.approval_token is None
+        assert task.pending_approval_index is None
+        assert task.completed_at
 
     def test_denied_task_is_never_reclaimed_even_with_resume(self) -> None:
         token = self._gate()
@@ -400,7 +401,7 @@ class TestDenyFailsTerminally:
         results = _sweep.dispatch_pod("myapp", runner=runner, resume=True)
         assert results == []
         assert runner.calls == []
-        assert _queue.read_tasks("myapp")[0]["status"] == "failed"
+        assert TaskRepository.for_pod("myapp").list()[0].status == "failed"
 
     def test_deny_via_cli_deny_fails_dispatch_task(
         self, capsys: pytest.CaptureFixture[str]
@@ -410,9 +411,9 @@ class TestDenyFailsTerminally:
         assert rc == 0
         capsys.readouterr()
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "approval_denied"
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "failed"
+        assert task.failure_kind == "approval_denied"
 
     def test_deny_trace_event_emitted(self) -> None:
         token = self._gate()
@@ -462,7 +463,7 @@ class TestExpirySweepDenies:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = str(_queue.read_tasks("myapp")[0]["approvalToken"])
+        token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
 
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
@@ -472,9 +473,9 @@ class TestExpirySweepDenies:
         swept = _ap.approval_sweep_expired()
         assert swept == 1
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "approval_denied"
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "failed"
+        assert task.failure_kind == "approval_denied"
 
 
 # ── HTTP POST /approvals/<token> genuinely resumes/kills ─────────────────────────
@@ -512,15 +513,15 @@ class TestHttpApprovalEndpoint:
         _seed_full_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = str(_queue.read_tasks("myapp")[0]["approvalToken"])
+        token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
 
         status, body = _post(f"{live_server}/approvals/{token}", {"action": "grant"}, _TEST_TOKEN)
         assert status == 200
         assert body["state"] == "granted"
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "pending"
-        assert task["gateOverridePipelineIndex"] == 1
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "pending"
+        assert task.gate_override_pipeline_index == 1
 
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -531,15 +532,15 @@ class TestHttpApprovalEndpoint:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = str(_queue.read_tasks("myapp")[0]["approvalToken"])
+        token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
 
         status, body = _post(f"{live_server}/approvals/{token}", {"action": "deny"}, _TEST_TOKEN)
         assert status == 200
         assert body["state"] == "denied"
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "approval_denied"
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "failed"
+        assert task.failure_kind == "approval_denied"
 
 
 # ── the single-use override is consumed exactly once ─────────────────────────────
@@ -550,7 +551,7 @@ class TestReworkReGatesAfterResume:
         _seed_full_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        first_token = str(_queue.read_tasks("myapp")[0]["approvalToken"])
+        first_token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
         assert first_token
 
         _ap.approval_grant(first_token, channel="cli")
@@ -565,11 +566,11 @@ class TestReworkReGatesAfterResume:
         assert results[0].status == "waiting_approval"
         assert runner.calls == ["implementer", "reviewer"]
 
-        second_task = _queue.read_tasks("myapp")[0]
-        second_token = second_task["approvalToken"]
+        second_task = TaskRepository.for_pod("myapp").list()[0]
+        second_token = second_task.approval_token
         assert second_token
         assert second_token != first_token
-        assert second_task["pendingApprovalIndex"] == 1  # same implementer index
+        assert second_task.pending_approval_index == 1  # same implementer index
 
         # Grant the second gate too and let the task finish.
         _ap.approval_grant(second_token, channel="cli")

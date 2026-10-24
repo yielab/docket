@@ -18,28 +18,20 @@ from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
-from docket.teams.workspace.worktree import hop_diff_probe, task_worktree_dir
+from docket.teams.workspace.worktree import hop_diff_probe, trusted_worktree_dir
 
 # Injectable runner for tests (matches the RuntimeDriver port's ``run_turn`` signature). The
 # 4th positional arg is always the *agent-turn* timeout (never the verify timeout).
 Runner = Callable[[str, str, str, int, dict[str, str] | None], _rd.TurnResult]
 
 
-def worktree_view(task: TaskRecord) -> dict[str, Any]:
-    """The slice of *task* ``teams/workspace/worktree.py`` reads, as the dict it takes: ``teams``
-    sits below ``tasks`` and cannot name the record."""
-    wt = task.worktree
-    return {
-        "id": task.id,
-        "description": task.description,
-        "worktree": wt.model_dump(by_alias=True, mode="json") if wt is not None else None,
-    }
-
-
 def claimed_worktree_dir(task: TaskRecord) -> str:
     """The directory of *task*'s recorded worktree, ``""`` when it runs in place (see
-    ``task_worktree_dir``, which also tells git the git dir docket recorded for it)."""
-    return task_worktree_dir(worktree_view(task))
+    ``trusted_worktree_dir``, which also tells git the git dir docket recorded for it)."""
+    wt = task.worktree
+    if wt is None:
+        return ""
+    return trusted_worktree_dir(wt.dir, wt.git_dir or "", wt.common_dir or "")
 
 
 def gate_did_not_pass(verify: dict[str, Any] | None) -> bool:
@@ -344,8 +336,15 @@ def build_hop_result(
         prior_diff = next(
             (h.artifact.diff for h in reversed(prior or []) if h.artifact and h.artifact.diff), ""
         )
+        wt = ctx.task.worktree
         files_changed, diff_ref, evidence, diff = hop_diff_probe(
-            member_id, role, worktree_view(ctx.task), prior_diff
+            member_id,
+            role,
+            task_id=ctx.task.id,
+            description=ctx.task.description,
+            worktree_dir=claimed_worktree_dir(ctx.task),
+            base_commit=wt.base_commit if wt is not None else "",
+            prior_diff=prior_diff,
         )
     # A hop's raw text carrying a parseable TaskBrief (ADR 0016 §4) is never limited to
     # the Lead role by construction -- any hop's reply can end in one -- but is `None`

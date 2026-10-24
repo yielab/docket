@@ -5,28 +5,29 @@ approval-to-task linking rule, the `since` cursor semantics, and paused-pod incl
 
 from __future__ import annotations
 
+from typing import Any
+
 from tests.support.pods import build_pod
+from tests.support.tasks import task as _make_task
 
 from docket.governance import approval as _approval
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import ApprovalView, TaskView
 from docket.operator import inbox as _inbox
 from docket.platform import store as _store
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_mod
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.operator.inbox"
 
 _NOW = "2026-09-28T12:00:00+00:00"
 
 
-def _seed_task(project: str, task_id: str, **fields: object) -> None:
-    path = _settings.pod_task_list_path(project)
-    doc = _store.read_json(path)
-    tasks = doc.get("tasks", []) if isinstance(doc.get("tasks"), list) else []
-    tasks.append({"id": task_id, "description": f"work on {task_id}", **fields})
-    _store.write_json(path, {"tasks": tasks})
+def _seed_task(project: str, task_id: str, **fields: Any) -> None:
+    TaskRepository.for_pod(project).add(
+        _make_task(id=task_id, description=f"work on {task_id}", **fields)
+    )
 
 
 class TestBuildInboxSections:
@@ -40,21 +41,21 @@ class TestBuildInboxSections:
             "alpha",
             "task-wa",
             status="waiting_approval",
-            approvalToken="apr-linked",
+            approval_token="apr-linked",
             created="2026-09-28T01:00:00+00:00",
         )
         _seed_task(
             "alpha",
             "task-blocked",
             status="blocked",
-            blockedReason="budget",
+            blocked_reason="budget",
             created="2026-09-28T01:00:00+00:00",
         )
         _seed_task(
             "beta",
             "task-failed",
             status="failed",
-            failureKind="stale_claim",
+            failure_kind="stale_claim",
             created="2026-09-28T01:00:00+00:00",
         )
         _seed_task(
@@ -62,7 +63,7 @@ class TestBuildInboxSections:
             "task-done",
             status="done",
             created="2026-09-28T01:00:00+00:00",
-            completedAt="2026-09-28T02:00:00+00:00",
+            completed_at="2026-09-28T02:00:00+00:00",
         )
         # No live path produces `waiting_input` yet (operator-loop.spec.md requirement area 7,
         # owned by a later card) -- written by hand so the inbox's classification is
@@ -111,7 +112,7 @@ class TestBuildInboxSections:
             "gamma",
             "task-parked",
             status="waiting_approval",
-            approvalToken=token,
+            approval_token=token,
             created="2026-09-28T01:00:00+00:00",
         )
 
@@ -162,7 +163,7 @@ class TestNextTimestamp:
             "task-late",
             status="done",
             created="2026-09-28T01:00:00+00:00",
-            completedAt="2026-09-28T02:00:00+00:00",
+            completed_at="2026-09-28T02:00:00+00:00",
         )
 
         view = _inbox.build_inbox(now=_NOW)
@@ -173,7 +174,7 @@ class TestNextTimestamp:
 class TestPausedPodsAreIncluded:
     def test_a_paused_pods_tasks_still_appear(self) -> None:
         build_pod("gamma", ("lead", "implementer"), codebase="/src/gamma")
-        _seed_task("gamma", "task-g1", status="blocked", blockedReason="budget")
+        _seed_task("gamma", "task-g1", status="blocked", blocked_reason="budget")
         lead_id = _pod_mod.member_id("gamma", "lead")
         _fleet.meta_set(lead_id, "paused", True)
 

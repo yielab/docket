@@ -21,6 +21,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.parts import Worktree
 from docket.tasks.domain.task import TaskRecord
@@ -43,7 +44,9 @@ class TestTaskAddCliBoundary:
             result = CliRunner().invoke(app, ["task", "add", description, "--pod", "demo"])
 
             assert result.exit_code == 0, result.output
-            assert [task["description"] for task in _queue.read_tasks("demo")] == [description]
+            assert [task.description for task in TaskRepository.for_pod("demo").list()] == [
+                description
+            ]
 
     @pytest.mark.parametrize(
         ("args", "code"),
@@ -65,7 +68,7 @@ class TestTaskAddCliBoundary:
             result = CliRunner().invoke(app, args)
 
             assert result.exit_code == code
-            assert _queue.read_tasks("demo") == []
+            assert TaskRepository.for_pod("demo").list() == []
 
     def test_length_limit_applies_to_the_text(self, tmp_path: Path) -> None:
         from typer.testing import CliRunner
@@ -77,7 +80,7 @@ class TestTaskAddCliBoundary:
 
             assert result.exit_code == 1
             assert "501 chars" in result.output
-            assert _queue.read_tasks("demo") == []
+            assert TaskRepository.for_pod("demo").list() == []
 
 
 class TestEnqueueTaskPreBrief:
@@ -92,11 +95,11 @@ class TestEnqueueTaskPreBrief:
                 channel="cli",
             )[0]
 
-            assert "## Pre-brief" in task["description"]
-            assert "429 after 100 req/min" in task["description"]
-            assert task["brief"]["objective"] == "add rate limiting"
-            stored = _queue.read_tasks("demo")[0]
-            assert stored["brief"]["objective"] == "add rate limiting"
+            assert "## Pre-brief" in task.description
+            assert "429 after 100 req/min" in task.description
+            assert task.brief.objective == "add rate limiting"
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.brief.objective == "add rate limiting"
 
     def test_an_invalid_brief_raises_and_persists_nothing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -108,13 +111,13 @@ class TestEnqueueTaskPreBrief:
                 pass
             else:
                 raise AssertionError("an empty objective should have raised DispatchError")
-            assert _queue.read_tasks("demo") == []
+            assert TaskRepository.for_pod("demo").list() == []
 
     def test_no_brief_leaves_the_description_and_task_shape_unchanged(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _queue.enqueue_task_once("demo", "plain task, no brief", channel="cli")[0]
 
-            assert task["description"] == "plain task, no brief"
+            assert task.description == "plain task, no brief"
             assert "brief" not in task
 
 
@@ -272,10 +275,10 @@ class TestPipeline:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "Ship it", channel="cli")
             _sweep.dispatch_pod("demo", runner=FakeDriver(cost=0.05))
-            tasks = _queue.read_tasks("demo")
-            assert tasks[0]["status"] == "done"
-            assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
-            assert tasks[0]["costUsd"] == pytest.approx(0.10)
+            tasks = TaskRepository.for_pod("demo").list()
+            assert tasks[0].status == "done"
+            assert [h.role for h in tasks[0].hops] == ["lead", "implementer"]
+            assert tasks[0].cost_usd == pytest.approx(0.10)
 
     def test_traces_written_per_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
@@ -325,11 +328,11 @@ class TestPipeline:
             result = _sweep.dispatch_pod("demo", runner=runner)[0]
 
             assert calls == 1
-            assert result.task_id == task["id"]
+            assert result.task_id == task.id
             assert result.status == "cancelled"
-            persisted = _queue.read_tasks("demo")[0]
-            assert persisted["status"] == "cancelled"
-            assert persisted["completedAt"]
+            persisted = TaskRepository.for_pod("demo").list()[0]
+            assert persisted.status == "cancelled"
+            assert persisted.completed_at
 
     def test_budget_blocks_before_first_hop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -347,7 +350,7 @@ class TestPipeline:
             assert runner.calls == []  # nothing dispatched
             # A blocked task stays blocked (it is never silently rewritten back
             # to pending) — it only re-enters pending via unblock_pod/retry_task.
-            assert _queue.read_tasks("demo")[0]["status"] == "blocked"
+            assert TaskRepository.for_pod("demo").list()[0].status == "blocked"
 
     def test_no_cross_pod_dispatch(self, tmp_path: Path) -> None:
         # Two pods exist; dispatching 'demo' must never touch 'other'.
@@ -381,9 +384,9 @@ class TestHopEvidence:
             res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
             assert res.status == "done"
-            persisted = _queue.read_tasks("demo")[0]
-            implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
-            verify = implementer_rec["verify"]
+            persisted = TaskRepository.for_pod("demo").list()[0]
+            implementer_rec = next(h for h in persisted.hops if h.role == "implementer")
+            verify = implementer_rec.verify
             assert verify is not None
             assert verify["cmd"] == "echo ok"
             assert verify["exitCode"] == 0
@@ -403,9 +406,9 @@ class TestHopEvidence:
             res = _sweep.dispatch_pod("demo", runner=FakeDriver())[0]
 
             assert res.status == "failed"
-            persisted = _queue.read_tasks("demo")[0]
-            implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
-            verify = implementer_rec["verify"]
+            persisted = TaskRepository.for_pod("demo").list()[0]
+            implementer_rec = next(h for h in persisted.hops if h.role == "implementer")
+            verify = implementer_rec.verify
             assert verify is not None
             assert verify["exitCode"] == 1
             # The genuine canary: the stored secret's real value never survives into the
@@ -417,9 +420,9 @@ class TestHopEvidence:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "no verify configured", channel="cli")
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            persisted = _queue.read_tasks("demo")[0]
-            implementer_rec = next(h for h in persisted["hops"] if h["role"] == "implementer")
-            assert implementer_rec["verify"] is None
+            persisted = TaskRepository.for_pod("demo").list()[0]
+            implementer_rec = next(h for h in persisted.hops if h.role == "implementer")
+            assert implementer_rec.verify is None
 
 
 class TestHopEnvInjection:

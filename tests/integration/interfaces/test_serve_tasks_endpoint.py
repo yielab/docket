@@ -1,10 +1,10 @@
 """GET /tasks/<project> — the pod queue as JSON over HTTP.
 
-Exposes `tasks.application.queue.read_tasks` -- the exact normalized shape `docket pod <p> tasks` renders
-from -- behind the same Bearer auth as `/runs`. No new behaviour: adds no filtering, no reshaping,
-no 404 that `read_tasks` itself does not express (a project with no pod is `[]`, not an error).
+Exposes `TaskRepository.list` -- the records `docket pod <p> tasks` renders from, as their alias
+dump -- behind the same Bearer auth as `/runs`. No new behaviour: adds no filtering, no reshaping,
+no 404 that the repository itself does not express (a project with no pod is `[]`, not an error).
 Covers auth rejection, a missing project segment (400), a project with no pod (200, `{"tasks":
-[]}`), and a seeded pod's queue coming back with the same fields `read_tasks` returns.
+[]}`), and a seeded pod's queue coming back with the same fields the records dump.
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ from tests.support.pods import seed_pod as _seed_pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.platform import store as _store
 from docket.tasks.application import queue as _application_queue
-from docket.teams import settings as _settings
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import HopResult, TaskRecord
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -99,13 +99,13 @@ class TestNoPodIsEmptyList:
             assert body == {"tasks": []}
 
 
-class TestQueueShapeMatchesReadTasks:
-    def test_http_response_matches_read_tasks_directly(self, tmp_path: Path) -> None:
+class TestQueueShapeMatchesTheRecordDump:
+    def test_http_response_matches_the_record_dump_directly(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
             _application_queue.enqueue_task_once("demo", "Ship the read API", channel="cli")
             _application_queue.enqueue_task_once("demo", "Add a second task", channel="cli")
 
-            expected = _application_queue.read_tasks("demo")
+            expected = TaskRepository.for_pod("demo").list()
             assert len(expected) == 2
 
             approvals_dir = tmp_path / "approvals"
@@ -130,7 +130,7 @@ class TestQueueShapeMatchesReadTasks:
                 assert all("tokenBudget" in task for task in body["tasks"])
                 assert [
                     {k: v for k, v in t.items() if k != "tokenBudget"} for t in body["tasks"]
-                ] == expected
+                ] == [r.model_dump(by_alias=True, mode="json") for r in expected]
                 for task in body["tasks"]:
                     assert task["status"] == "pending"
                     assert task["priority"] == "normal"
@@ -149,8 +149,8 @@ def _post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  
         return exc.code, json.loads(exc.read())
 
 
-def _queue(project: str = "demo") -> list[dict]:  # type: ignore[type-arg]
-    return _application_queue.read_tasks(project)
+def _queue(project: str = "demo") -> list[TaskRecord]:
+    return TaskRepository.for_pod(project).list()
 
 
 def _enqueue_entries() -> list[dict]:  # type: ignore[type-arg]
@@ -355,12 +355,9 @@ class TestTokenBudget:
             assert status == 200
             assert record["tokenBudget"] == 1000
 
-            def _spend(doc: dict) -> dict:  # type: ignore[type-arg]
-                for task in doc["tasks"]:
-                    if task["id"] == created["task"]:
-                        task["hops"] = [{"role": "lead", "usage": {"input": 1500, "output": 10}}]
-                return doc
+            def _spend(record: TaskRecord) -> None:
+                record.hops = [HopResult(role="lead", usage={"input": 1500, "output": 10})]
 
-            _store.read_modify_write(_settings.pod_task_list_path("demo"), _spend)
+            TaskRepository.for_pod("demo").update(created["task"], _spend)
             _status, spent = _get(f"{url}/tasks/demo/{created['task']}", token)
             assert spent["tokenBudget"] == 0

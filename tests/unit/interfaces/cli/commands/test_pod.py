@@ -12,7 +12,6 @@ from tests.support.pods import seed_pod_isolation_off as _seed_pod
 from docket.kernel.home import current_home
 from docket.platform import store as _store
 from docket.teams import pod_provisioning as _pp
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.pod"
 
@@ -25,26 +24,6 @@ steps:
         from: lead
   - implementer: implementer
 """
-
-
-def _give_options(project: str, task_id: str) -> None:
-    """Turn the parked task's question into a v1.1 one with options, as a Lead consult writes."""
-
-    path = _settings.pod_task_list_path(project)
-    doc = _store.read_json(path)
-    for task in doc["tasks"]:
-        if task["id"] == task_id:
-            task["question"].update(
-                {
-                    "kind": "clarification",
-                    "options": [
-                        {"id": "opt1", "label": "Root", "description": "At the root."},
-                        {"id": "opt2", "label": "Search", "description": "Search for it."},
-                    ],
-                    "recommendation": {"optionId": "opt2", "rationale": "safer"},
-                }
-            )
-    _store.write_json(path, doc)
 
 
 def _invoke(*args: str, project: str = "demo") -> tuple[int, str]:

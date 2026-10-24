@@ -11,6 +11,7 @@ import pytest
 
 from docket.kernel import text as _text
 from docket.kernel.home import Home, current_home, use_home
+from docket.tasks.domain.parts import Prepared
 from docket.teams.workspace import prepare as _prepare
 
 SUBJECT = "docket.teams.workspace.prepare"
@@ -100,11 +101,11 @@ def test_needs_prepare_only_when_command_or_lock_changed_or_a_link_broke(tmp_pat
     spec = _prepare.resolve(root, task_prepare=None, pod_prepare="")
     assert spec is not None
     outcome = _prepare.PrepareOutcome(True, False, 0, 0.0, "")
-    prepared = _prepare.record(spec, outcome)
+    prepared = Prepared.model_validate(_prepare.record(spec, outcome))
     assert _prepare.needs_prepare(root, None, spec)
     assert not _prepare.needs_prepare(root, prepared, spec)
-    assert _prepare.needs_prepare(root, {**prepared, "lockHash": "other"}, spec)
-    assert _prepare.needs_prepare(root, {**prepared, "command": "other"}, spec)
+    assert _prepare.needs_prepare(root, prepared.model_copy(update={"lock_hash": "other"}), spec)
+    assert _prepare.needs_prepare(root, prepared.model_copy(update={"command": "other"}), spec)
     (root / "node_modules").symlink_to(tmp_path / "gone")
     assert _prepare.needs_prepare(root, prepared, spec)
 

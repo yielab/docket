@@ -27,6 +27,7 @@ from typing import Any
 
 import pytest
 from tests.support.git import git_identity_env as _git
+from tests.support.tasks import task as _make_task
 
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel.home import current_home, use_home
@@ -37,6 +38,9 @@ from docket.sandbox import docker as _docker
 from docket.sandbox import landlock as _landlock
 from docket.sandbox import seatbelt as _seatbelt
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import task_worktrees as _task_worktrees
 from docket.teams.workspace import prepare as _prepare
@@ -178,7 +182,20 @@ class TaskTree:
     wt: Path
     common: Path
     gitdir: Path
-    task: dict[str, Any]
+    task: TaskRecord
+
+
+def _probe(task: TaskRecord) -> tuple[list[str], str | None, dict[str, Any] | None, str]:
+    """The hop diff probe as dispatch calls it: the claimed task's trusted worktree directory."""
+    assert task.worktree is not None
+    return _worktree.hop_diff_probe(
+        "proj-implementer-1",
+        "implementer",
+        task_id=task.id,
+        description=task.description,
+        worktree_dir=_record.claimed_worktree_dir(task),
+        base_commit=task.worktree.base_commit,
+    )
 
 
 @pytest.fixture
@@ -198,7 +215,9 @@ def task_tree(arena: Path) -> TaskTree:
     common = Path(_git(wt, "rev-parse", "--git-common-dir"))
     common = (wt / common).resolve() if not common.is_absolute() else common.resolve()
     gitdir = Path(_git(wt, "rev-parse", "--absolute-git-dir")).resolve()
-    return TaskTree(main, wt, common, gitdir, {"id": "t1", "worktree": record})
+    return TaskTree(
+        main, wt, common, gitdir, _make_task(id="t1", worktree=Worktree.model_validate(record))
+    )
 
 
 # -- positive rows: the jail is on, and git still works inside it ------------------------------
@@ -365,8 +384,8 @@ def test_a_worktree_config_cannot_make_host_git_execute_code(
     attack = f"printf '[core]\\n\\tfsmonitor = {script}\\n' > {gitdir}/config.worktree"
     _run(backend, wt, attack)
     task = task_tree.task
-    _worktree.task_worktree_dir(task)
-    _worktree.hop_diff_probe("proj-implementer-1", "implementer", task)
+    _record.claimed_worktree_dir(task)
+    _probe(task)
     assert not ran.exists(), "host git ran a core.fsmonitor the jail wrote into config.worktree"
     (gitdir / "config.worktree").write_text(f"[core]\n\tfsmonitor = {script}\n")
     subprocess.run(["git", "-C", str(wt), "status"], capture_output=True, timeout=30)
@@ -386,16 +405,14 @@ def test_a_rewritten_dot_git_file_never_makes_dispatch_execute_anything(
         f"printf 'gitdir: {evil}\\n' > {wt}/.git"
     )
     task = task_tree.task
-    _worktree.task_worktree_dir(task)
+    _record.claimed_worktree_dir(task)
     _run(backend, wt, attack)
     dotgit = (wt / ".git").read_text()
     rewritten = str(evil) in dotgit
     if backend == "docker" or backend == "seatbelt":
         assert not rewritten, "the .git pointer file must be read-only in this backend"
-    _worktree.task_worktree_dir(task)
-    _files, _ref, evidence, _diff = _worktree.hop_diff_probe(
-        "proj-implementer-1", "implementer", task
-    )
+    _record.claimed_worktree_dir(task)
+    _files, _ref, evidence, _diff = _probe(task)
     assert not ran.exists(), "dispatch's host-side git executed what the jail wrote"
     assert evidence is not None
     assert [str(p) for p in _landlock.git_dirs(wt)] == [
@@ -513,10 +530,10 @@ def test_a_rewritten_commondir_never_makes_dispatch_execute_anything(
         f"printf '[core]\\n\\tfsmonitor = {script}\\n' >> {evil}/config && "
         f"printf '{evil}\\n' > {gitdir}/commondir"
     )
-    _worktree.task_worktree_dir(task_tree.task)
+    _record.claimed_worktree_dir(task_tree.task)
     _run(backend, wt, attack)
     rewritten = (gitdir / "commondir").read_text().strip() == str(evil)
-    _worktree.hop_diff_probe("proj-implementer-1", "implementer", task_tree.task)
+    _probe(task_tree.task)
     assert not ran.exists(), "dispatch's host-side git followed a commondir the jail rewrote"
     if rewritten:
         subprocess.run(["git", "-C", str(wt), "status"], capture_output=True, timeout=30)

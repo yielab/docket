@@ -97,7 +97,7 @@ def fixture_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[st
         monkeypatch.setenv("DOCKET_POD", "demo")
         monkeypatch.setenv("DOCKET_NO_HINTS", "1")
         monkeypatch.chdir(code)
-        yield str(task["id"])
+        yield str(task.id)
 
 
 def test_no_reader_is_missing_from_the_argument_table() -> None:

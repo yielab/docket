@@ -2,7 +2,7 @@
 
 ``task_list_2026-10-24.json`` is a scrubbed copy of two pods' queues (every status a task ends in,
 with questions, briefs, gates, restrictions, pre-grants, prepared installs, usage and worktrees);
-``.normalized.json`` is what ``read_tasks`` returned for it before the typed record, minus the
+``.normalized.json`` is the same queue with every field a record always writes filled in, minus the
 ``claimId`` and ``source`` keys that no longer exist. Each record's dump must equal it, with two
 stated allowances: the hop artifact's retired ``notes`` key (``""`` in every stored hop) is not
 written back, and ``task-q``, a hand-written record, has options and a recommendation without their
@@ -53,7 +53,7 @@ def test_every_record_of_the_queue_loads(loaded: list[Any]) -> None:
 
 
 @pytest.mark.parametrize("index", range(len(NORMALIZED)), ids=lambda i: NORMALIZED[i]["id"])
-def test_a_record_dumps_to_the_json_read_tasks_returned(loaded: list[Any], index: int) -> None:
+def test_a_record_dumps_to_the_normalized_json(loaded: list[Any], index: int) -> None:
     dumped = loaded[index].model_dump(by_alias=True, mode="json")
     assert _allowed(dumped) == _allowed(NORMALIZED[index])
 

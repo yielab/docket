@@ -30,6 +30,7 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
@@ -363,9 +364,9 @@ class TestReviewerReworkLoop:
         results = _sweep.dispatch_pod("myapp", runner=runner)
 
         assert results[0].status == "done"
-        persisted = _queue.read_tasks("myapp")[0]
-        assert persisted["status"] == "done"
-        assert [h["role"] for h in persisted["hops"]] == [
+        persisted = TaskRepository.for_pod("myapp").list()[0]
+        assert persisted.status == "done"
+        assert [h.role for h in persisted.hops] == [
             "lead",
             "implementer",
             "reviewer",
@@ -455,9 +456,9 @@ class TestReviewerReworkResume:
         # persisted before the crash; the rework implementer's request went
         # out (recorded in crasher.calls) but never came back.
         assert crasher.calls == ["lead", "implementer", "reviewer", "implementer"]
-        tasks = _queue.read_tasks("myapp")
-        assert tasks[0]["status"] == "running"
-        assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer", "reviewer"]
+        tasks = TaskRepository.for_pod("myapp").list()
+        assert tasks[0].status == "running"
+        assert [h.role for h in tasks[0].hops] == ["lead", "implementer", "reviewer"]
 
         # Force the claim stale, exactly like test_dispatch.py's own crash-recovery tests.
         with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
@@ -474,9 +475,9 @@ class TestReviewerReworkResume:
             roles_resumed = [c[0] for c in resumer.calls]
             assert roles_resumed == ["implementer", "reviewer", "tester"]
 
-            final = _queue.read_tasks("myapp")[0]
-            assert final["status"] == "done"
-            assert [h["role"] for h in final["hops"]] == [
+            final = TaskRepository.for_pod("myapp").list()[0]
+            assert final.status == "done"
+            assert [h.role for h in final.hops] == [
                 "lead",
                 "implementer",
                 "reviewer",
@@ -484,7 +485,7 @@ class TestReviewerReworkResume:
                 "reviewer",
                 "tester",
             ]
-            assert "claimPid" not in final
+            assert final.claim_pid is None
 
     def test_resumed_rework_implementer_message_still_carries_review_text(
         self, tmp_path: Path

@@ -11,14 +11,13 @@ from typing import Any
 import jsonschema
 import pytest
 from tests.support.pods import build_pod
+from tests.support.tasks import put_task, task
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.platform import store as _store
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -54,14 +53,16 @@ def server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
-        task = {
-            "id": "task-q",
-            "status": "waiting_input",
-            "description": "ship it",
-            "created": "2026-10-19T00:00:00+00:00",
-            "question": _QUESTION,
-        }
-        _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": [task]})
+        put_task(
+            "demo",
+            task(
+                id="task-q",
+                status="waiting_input",
+                description="ship it",
+                created="2026-10-19T00:00:00+00:00",
+                question=_QUESTION,
+            ),
+        )
 
         class _Handler(_DocketHandler):
             serve_token = _TOKEN

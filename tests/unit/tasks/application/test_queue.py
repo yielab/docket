@@ -22,8 +22,10 @@ from tests.support import http as _support_http
 from tests.support import pods as _support_pods
 from tests.support.http import post_raw as _post_raw
 from tests.support.pods import bind_one_step_pipeline as _bind_one_step_pipeline
-from tests.support.pods import put_task as _put_task
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
+from tests.support.tasks import put_task as _put_task
+from tests.support.tasks import put_tasks, update_task
+from tests.support.tasks import task as _make_task
 
 from docket.agent import ports as _rd
 from docket.hops.application import sweep as _sweep
@@ -33,10 +35,12 @@ from docket.observability import trace as _trace
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import repository as _repository
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.parts import Worktree
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import agent_memory as _mem
-from docket.teams import settings as _settings
 
 live_server = _support_http.live_server
 
@@ -100,7 +104,7 @@ class TestAuth:
         url, _ = live_server
         _seed_lean_pod("myapp")
         _post(f"{url}/tasks/myapp", {"description": "x"})
-        assert _queue.read_tasks("myapp") == []
+        assert TaskRepository.for_pod("myapp").list() == []
 
 
 # ── malformed / bad requests ───────────────────────────────────────────────
@@ -165,10 +169,10 @@ class TestPolicyGates:
         assert body["ok"] is True
         assert body["status"] == "pending"
         assert body["project"] == "myapp"
-        tasks = _queue.read_tasks("myapp")
+        tasks = TaskRepository.for_pod("myapp").list()
         assert len(tasks) == 1
-        assert tasks[0]["id"] == body["task"]
-        assert tasks[0]["status"] == "pending"
+        assert tasks[0].id == body["task"]
+        assert tasks[0].status == "pending"
 
     def test_block_verdict_is_4xx_naming_the_policy(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
@@ -181,7 +185,7 @@ class TestPolicyGates:
         assert "no-wipes" in body["error"]
         assert body["ok"] is False
         # Nothing was persisted -- a block is rejected before queueing.
-        assert _queue.read_tasks("myapp") == []
+        assert TaskRepository.for_pod("myapp").list() == []
 
     def test_require_approval_verdict_surfaces_status_and_token(
         self, live_server: tuple[str, str]
@@ -200,10 +204,10 @@ class TestPolicyGates:
         assert body["approvalToken"]
         assert body["approvalToken"].startswith("apr-")
 
-        tasks = _queue.read_tasks("myapp")
+        tasks = TaskRepository.for_pod("myapp").list()
         assert len(tasks) == 1
-        assert tasks[0]["status"] == "waiting_approval"
-        assert tasks[0]["approvalToken"] == body["approvalToken"]
+        assert tasks[0].status == "waiting_approval"
+        assert tasks[0].approval_token == body["approvalToken"]
 
 
 # ── the optional `trusted` field, threaded into policy_eval_detail only ───────
@@ -241,7 +245,7 @@ class TestTrustedFlag:
         )
         assert status == 400
         assert "prompt-injection" in body["error"]
-        assert _queue.read_tasks("myapp") == []
+        assert TaskRepository.for_pod("myapp").list() == []
 
 
 # ── success shape / priority passthrough ──────────────────────────────────────
@@ -257,8 +261,8 @@ class TestSuccess:
             token,
         )
         assert status == 201
-        tasks = _queue.read_tasks("myapp")
-        assert tasks[0]["priority"] == "high"
+        tasks = TaskRepository.for_pod("myapp").list()
+        assert tasks[0].priority == "high"
 
     def test_invalid_priority_falls_back_to_normal(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
@@ -268,8 +272,8 @@ class TestSuccess:
             {"description": "Fix the bug", "priority": "urgent!!"},
             token,
         )
-        tasks = _queue.read_tasks("myapp")
-        assert tasks[0]["priority"] == "normal"
+        tasks = TaskRepository.for_pod("myapp").list()
+        assert tasks[0].priority == "normal"
 
 
 class TestEnqueueAddressableOptions:
@@ -280,9 +284,10 @@ class TestEnqueueAddressableOptions:
             "myapp", "x", channel="cli", external_ref="A-1", max_tokens=10, base_ref="main"
         )[0]
 
-        assert (task["externalRef"], task["maxTokens"], task["baseRef"]) == ("A-1", 10, "main")
-        assert not {"idempotencyKey", "pipeline", "gate", "restrictions"} & set(task)
-        assert _queue.read_tasks("myapp")[0]["externalRef"] == "A-1"
+        assert (task.external_ref, task.max_tokens, task.base_ref) == ("A-1", 10, "main")
+        stored_keys = set(task.model_dump(by_alias=True, mode="json"))
+        assert not {"idempotencyKey", "pipeline", "gate", "restrictions"} & stored_keys
+        assert TaskRepository.for_pod("myapp").list()[0].external_ref == "A-1"
 
     def test_the_same_key_returns_the_queued_task_and_audits_once(self, pod_home: Path) -> None:
         from docket.governance import audit as _audit
@@ -296,8 +301,8 @@ class TestEnqueueAddressableOptions:
         )
 
         assert (created_first, created_second) == (True, False)
-        assert second["id"] == first["id"]
-        assert len(_queue.read_tasks("myapp")) == 1
+        assert second.id == first.id
+        assert len(TaskRepository.for_pod("myapp").list()) == 1
         assert len([e for e in _audit.read_audit() if e["action"] == "task.enqueue"]) == 1
 
     def test_a_widening_restriction_raises_the_subclass_and_persists_nothing(
@@ -311,7 +316,7 @@ class TestEnqueueAddressableOptions:
             _queue.enqueue_task_once("myapp", "x", channel="cli", max_tokens=0)
 
         assert not isinstance(shape.value, _task.TaskRestrictionError)
-        assert _queue.read_tasks("myapp") == []
+        assert TaskRepository.for_pod("myapp").list() == []
 
 
 class TestBaseRefRefusedAtClaim:
@@ -331,24 +336,20 @@ class TestBaseRefRefusedAtClaim:
         _seed_lean_pod("myapp")
         _queue.enqueue_task_once("myapp", "needs a base", channel="cli")
         _queue.enqueue_task_once("myapp", "plain", channel="cli")
-        queue = _queue.read_tasks("myapp")
-        queue[0]["baseRef"] = "nope"
-        from docket.platform import store as _store
-
-        _store.write_json(_settings.pod_task_list_path("myapp"), {"tasks": queue})
+        update_task("myapp", TaskRepository.for_pod("myapp").list()[0].id, base_ref="nope")
         calls: list[str] = []
 
         results = _sweep.dispatch_pod("myapp", runner=self._runner(calls))
 
-        first, second = _queue.read_tasks("myapp")
-        assert first["status"] == "failed"
-        assert first["failureKind"] == "base_ref"
-        assert "nope" in first["reason"]
-        assert first["hops"] == []
-        assert "claimPid" not in first
-        assert first["completedAt"]
-        assert "worktree" not in first
-        assert second["status"] == "done"
+        first, second = TaskRepository.for_pod("myapp").list()
+        assert first.status == "failed"
+        assert first.failure_kind == "base_ref"
+        assert "nope" in first.reason
+        assert first.hops == []
+        assert first.claim_pid is None
+        assert first.completed_at
+        assert first.worktree is None
+        assert second.status == "done"
         assert [r.status for r in results] == ["failed", "done"]
         assert all(a.startswith("myapp-") for a in calls) and calls
 
@@ -357,11 +358,7 @@ class TestBaseRefRefusedAtClaim:
     ) -> None:
         _seed_lean_pod("myapp")
         _queue.enqueue_task_once("myapp", "needs a base", channel="cli")
-        queue = _queue.read_tasks("myapp")
-        queue[0]["baseRef"] = "nope"
-        from docket.platform import store as _store
-
-        _store.write_json(_settings.pod_task_list_path("myapp"), {"tasks": queue})
+        update_task("myapp", TaskRepository.for_pod("myapp").list()[0].id, base_ref="nope")
 
         _sweep.dispatch_pod("myapp", runner=self._runner([]))
 
@@ -393,9 +390,9 @@ class TestBaseRefRefusedAtClaim:
         assert claim is not None
         assert claim.refusal == ("base_ref", "baseRef 'nope' was not used: no such ref")
         assert claim.record.status == "running"
-        (stored,) = _queue.read_tasks("myapp")
-        assert stored["status"] == "running"
-        assert "worktree" not in stored
+        (stored,) = TaskRepository.for_pod("myapp").list()
+        assert stored.status == "running"
+        assert stored.worktree is None
 
     def test_a_made_worktree_is_stored_and_carried_on_the_claim(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -409,38 +406,30 @@ class TestBaseRefRefusedAtClaim:
 
         assert claim is not None and claim.refusal is None
         assert claim.record.worktree_dir == "/wt"
-        assert _queue.read_tasks("myapp")[0]["worktree"] == made
+        assert TaskRepository.for_pod("myapp").list()[0].worktree == Worktree.model_validate(made)
 
     def test_base_ref_is_not_resumable(self) -> None:
-        assert "base_ref" not in _queue.RESUMABLE_FAILURE_KINDS
+        assert "base_ref" not in _state.RESUMABLE_FAILURE_KINDS
 
     def test_refuse_claimed_task_settles_any_failure_kind(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
-        _put_task(
-            "myapp",
-            {
-                "id": "t1",
-                "description": "x",
-                "status": "running",
-                "hops": [{"role": "lead"}],
-            },
-        )
+        _put_task("myapp", _make_task(id="t1", status="running", hops=[{"role": "lead"}]))
 
         res = _queue.refuse_claimed_task(
             "myapp", TaskRecord(id="t1", description="x"), "pipeline", "no such pipeline"
         )
 
-        (stored,) = _queue.read_tasks("myapp")
+        (stored,) = TaskRepository.for_pod("myapp").list()
         assert (res.status, res.failure_kind, res.reason) == (
             "failed",
             "pipeline",
             "no such pipeline",
         )
-        assert stored["status"] == "failed"
-        assert stored["failureKind"] == "pipeline"
-        assert stored["reason"] == "no such pipeline"
-        assert "claimPid" not in stored
-        assert [h["role"] for h in stored["hops"]] == ["lead"]
+        assert stored.status == "failed"
+        assert stored.failure_kind == "pipeline"
+        assert stored.reason == "no such pipeline"
+        assert stored.claim_pid is None
+        assert [h.role for h in stored.hops] == ["lead"]
 
 
 class TestResumableFailureKinds:
@@ -490,27 +479,21 @@ class TestRetryFailedTask:
         hop = {"role": "lead", "output": "plan", "ok": True}
         _put_task(
             "myapp",
-            {
-                "id": "task-1",
-                "description": "x",
-                "status": "failed",
-                "reason": "verification failed",
-                "hops": [hop],
-            },
+            _make_task(id="task-1", status="failed", reason="verification failed", hops=[hop]),
         )
 
         assert _lifecycle.retry_task("myapp", "task-1") is True
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "pending"
-        assert [(h["role"], h["output"], h["ok"]) for h in task["hops"]] == [("lead", "plan", True)]
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "pending"
+        assert [(h.role, h.output, h.ok) for h in task.hops] == [("lead", "plan", True)]
         assert "task.retry" in _audit_actions()
 
     def test_a_retry_re_syncs_the_heartbeat_ledger(self, pod_home: Path) -> None:
         """Every write of the queue regenerates the ledger, a retry included: an entry left for
         a task that is no longer ``running`` goes with the retry."""
         _seed_lean_pod("myapp")
-        _put_task("myapp", {"id": "task-1", "description": "x", "status": "failed"})
+        _put_task("myapp", _make_task(id="task-1", status="failed"))
         lead = current_home().workspace_dir("myapp-lead")
         _mem.write_dispatch_tasks(
             lead, [_mem.DispatchHeartbeatTask(task_id="task-1", description="x", claimed_at="")]
@@ -523,10 +506,10 @@ class TestRetryFailedTask:
 
     def test_a_done_task_is_not_retried(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
-        _put_task("myapp", {"id": "task-1", "description": "x", "status": "done"})
+        _put_task("myapp", _make_task(id="task-1", status="done"))
 
         assert _lifecycle.retry_task("myapp", "task-1") is False
-        assert _queue.read_tasks("myapp")[0]["status"] == "done"
+        assert TaskRepository.for_pod("myapp").list()[0].status == "done"
         assert "task.retry" not in _audit_actions()
 
 
@@ -536,14 +519,8 @@ _GONE_PID = 2_000_000_000
 class TestStaleClaimReclaim:
     """``--resume`` reclaims a ``running`` task whose claimant is gone, and only that one."""
 
-    def _running(self, claim_pid: int, claimed_at: str) -> dict[str, Any]:
-        return {
-            "id": "task-1",
-            "description": "x",
-            "status": "running",
-            "claimPid": claim_pid,
-            "claimedAt": claimed_at,
-        }
+    def _running(self, claim_pid: int, claimed_at: str) -> TaskRecord:
+        return _make_task(id="task-1", status="running", claim_pid=claim_pid, claimed_at=claimed_at)
 
     def test_dead_claimant_is_reclaimed_and_audited(self, pod_home: Path) -> None:
         from tests.support.fakes import FakeDriver
@@ -554,7 +531,7 @@ class TestStaleClaimReclaim:
         results = _sweep.dispatch_pod("myapp", runner=FakeDriver(), resume=True)
 
         assert [r.task_id for r in results] == ["task-1"]
-        assert _queue.read_tasks("myapp")[0]["status"] == "done"
+        assert TaskRepository.for_pod("myapp").list()[0].status == "done"
         assert "task.reclaimed" in _audit_actions()
 
     def test_live_claimant_inside_the_lease_is_left_alone(self, pod_home: Path) -> None:
@@ -568,7 +545,7 @@ class TestStaleClaimReclaim:
         results = _sweep.dispatch_pod("myapp", runner=FakeDriver(), resume=True)
 
         assert results == []
-        assert _queue.read_tasks("myapp")[0]["status"] == "running"
+        assert TaskRepository.for_pod("myapp").list()[0].status == "running"
         assert "task.reclaimed" not in _audit_actions()
 
 
@@ -579,14 +556,11 @@ class TestStopBetweenTasks:
 
         _seed_lean_pod("myapp")
         _bind_one_step_pipeline("myapp")
-        tasks = [{"id": f"task-{i}", "description": "x", "status": "pending"} for i in (1, 2, 3)]
-        from docket.platform import store as _store
-
-        _store.write_json(_settings.pod_task_list_path("myapp"), {"tasks": tasks})
+        put_tasks("myapp", *(_make_task(id=f"task-{i}") for i in (1, 2, 3)))
         driver = FakeDriver()
 
         results = _sweep.dispatch_pod("myapp", runner=driver, stop=lambda: len(driver.calls) >= 1)
 
         assert len(results) == 1
-        statuses = [t["status"] for t in _queue.read_tasks("myapp")]
+        statuses = [t.status for t in TaskRepository.for_pod("myapp").list()]
         assert sorted(statuses) == ["done", "pending", "pending"]

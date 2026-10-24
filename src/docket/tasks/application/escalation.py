@@ -14,8 +14,9 @@ from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import QuestionV11
 from docket.observability import trace as _trace
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
@@ -52,32 +53,27 @@ def count_escalation_metrics() -> EscalationMetrics:
 
     # Count questions and latency from task records
     for project in _all_projects():
-        for task in _queue.read_tasks(project):
-            task_answers = task.get("answers")
-            if not isinstance(task_answers, list):
+        for task in TaskRepository.for_pod(project).list():
+            if not task.answers:
                 continue
 
             # An answered question is gone from the task; its answer keeps the kind and
             # createdAt. A record without them falls back to a question still on the task.
-            question_rec = task.get("question")
-            question_rec = question_rec if isinstance(question_rec, dict) else {}
+            question = task.question
+            question_kind = question.kind if isinstance(question, QuestionV11) else "clarification"
+            question_created_at = question.created_at if question is not None else ""
 
-            for answer_rec in task_answers:
-                if not isinstance(answer_rec, dict):
-                    continue
-                answered_at_str = answer_rec.get("answeredAt", "")
-                if not answered_at_str:
+            for answer in task.answers:
+                if not answer.answered_at:
                     continue
 
-                action = answer_rec.get("action", "pending")
-                kind = answer_rec.get("kind") or question_rec.get("kind", "clarification")
-                key = (kind, action)
+                key = (answer.kind or question_kind, answer.action)
                 questions[key] = questions.get(key, 0) + 1
 
-                created_str = answer_rec.get("createdAt") or question_rec.get("createdAt", "")
+                created_str = answer.created_at or question_created_at
                 question_created = _clock.parse_iso(created_str) if created_str else None
                 if question_created:
-                    answered_at = _clock.parse_iso(answered_at_str)
+                    answered_at = _clock.parse_iso(answer.answered_at)
                     if answered_at is not None:
                         delta = (answered_at - question_created).total_seconds()
                         if delta >= 0:  # Only count valid positive latencies

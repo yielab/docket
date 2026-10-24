@@ -9,6 +9,7 @@ from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.platform import read_json
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet
 
 # Bumped on any breaking change to /status.json or /metrics contract, or to the
@@ -17,17 +18,12 @@ from docket.teams import fleet
 SERVE_API_VERSION = "6"
 
 
-def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
-    """*task* plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
+def _with_token_budget(task: TaskRecord) -> dict[str, Any]:
+    """*task*'s alias dump plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
 
-    cap = task.get("maxTokens")
-    hops = [h for h in task.get("hops") or [] if isinstance(h, dict)]
-    left = _decide.tokens_left(
-        cap if isinstance(cap, int) and not isinstance(cap, bool) else None,
-        [u if isinstance(u := h.get("usage"), dict) else None for h in hops],
-    )
+    left = _decide.tokens_left(task.max_tokens, [h.usage for h in task.hops])
     return {
-        **task,
+        **task.model_dump(by_alias=True, mode="json"),
         "tokenBudget": current_home().agent_loop_token_budget if left is None else max(0, left),
     }
 

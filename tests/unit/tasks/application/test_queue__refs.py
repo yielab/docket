@@ -9,15 +9,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.tasks import task as _make_task
 
 from docket.hops.application import runner as _runner
 from docket.kernel.home import Home, current_home, use_home
-from docket.tasks.application import queue as _queue
 from docket.tasks.application import queue as _task_ref
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import refs as _task_ref_types
 from docket.teams import fleet as _fleet
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -54,11 +54,7 @@ def _lead(project: str) -> None:
 def _task(project: str, task_id: str) -> None:
     if not (current_home().projects_dir / f"{project}-lead").exists():
         _lead(project)
-    _queue.enqueue_task_once(project, f"work {task_id}", channel="cli")
-    path = _settings.pod_task_list_path(project)
-    doc = json.loads(path.read_text())
-    doc["tasks"][-1]["id"] = task_id
-    path.write_text(json.dumps(doc))
+    TaskRepository.for_pod(project).add(_make_task(id=task_id, description=f"work {task_id}"))
 
 
 @pytest.fixture()
@@ -73,7 +69,7 @@ class TestResolveTask:
         assert _task_ref.resolve_task("a", "task-04ff2ff5-7be8") == full
         assert _task_ref.resolve_task(None, "task-04ff2") == full
         assert full.project == "a"
-        expected = _queue.read_tasks("a")[0]["id"]
+        expected = TaskRepository.for_pod("a").list()[0].id
         assert full.task_id == expected
 
     def test_session_key_is_the_lead_hop_key(self, two_pods: None) -> None:
@@ -111,7 +107,7 @@ class TestRunIds:
         with use_home(
             dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
         ):
-            task_id = _queue.read_tasks("b")[0]["id"]
+            task_id = TaskRepository.for_pod("b").list()[0].id
             run = _runs.create_run("cli", "b")
             _runs.finish_run(run["id"], state="succeeded", task_ids=[task_id])
             via_run = _task_ref.resolve_task(None, run["id"])
@@ -126,7 +122,7 @@ class TestRunIds:
         with use_home(
             dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
         ):
-            task_id = _queue.read_tasks("b")[0]["id"]
+            task_id = TaskRepository.for_pod("b").list()[0].id
             run = _runs.create_run("cli", "b")
             _runs.finish_run(run["id"], state="succeeded", task_ids=[task_id])
             with pytest.raises(_task_ref_types.TaskRefError, match="pod b"):

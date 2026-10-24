@@ -26,6 +26,7 @@ from docket.kernel import mcp as _kernel_mcp
 from docket.kernel.home import Home, use_home
 from docket.kernel.ports import SandboxAvailability
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
@@ -174,7 +175,7 @@ class TestRefusals:
         _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
         res, _driver = _dispatch_one(_GATED)
-        assert res.failure_kind in _queue.RESUMABLE_FAILURE_KINDS
+        assert res.failure_kind in _state.RESUMABLE_FAILURE_KINDS
 
     def test_a_resuming_sweep_refuses_a_task_once_per_run(
         self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
@@ -198,8 +199,8 @@ class TestRefusals:
     ) -> None:
         _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
-        first = _queue.enqueue_task_once("demo", "First", channel="cli")[0]["id"]
-        second = _queue.enqueue_task_once("demo", "Second", channel="cli")[0]["id"]
+        first = _queue.enqueue_task_once("demo", "First", channel="cli")[0].id
+        second = _queue.enqueue_task_once("demo", "Second", channel="cli")[0].id
 
         results = _sweep.dispatch_pod(
             "demo",

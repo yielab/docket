@@ -10,14 +10,17 @@ import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
+from tests.support.tasks import put_task
+from tests.support.tasks import task as _make_task
 
 from docket.kernel.home import Home, use_home
+from docket.kernel.operator_contract import Question, QuestionV11
 from docket.observability import trace as _trace
-from docket.platform import store as _store
 from docket.tasks.application import escalation as _escalation
-from docket.teams import settings as _settings
+from docket.tasks.domain.parts import Answer
 
 SUBJECT = "docket.tasks.application.escalation"
 
@@ -51,22 +54,39 @@ def home(tmp_path: Path) -> Iterator[Path]:
         yield d
 
 
-def _write_task(project: str, task_data: dict) -> None:
-    """Helper to write a task to the TASK_LIST.json file."""
-    task_data = {"description": "x", **task_data}
-    # An answer carries its question's kind and createdAt (the record requires them).
-    question = task_data.get("question", {})
-    for answer in task_data.get("answers", []):
-        answer.setdefault("createdAt", question.get("createdAt", answer["answeredAt"]))
-        answer.setdefault("kind", question.get("kind", "clarification"))
-    task_list_path = _settings.pod_task_list_path(project)
-    doc = _store.read_json(task_list_path)
-    if doc is None:
-        doc = {"tasks": []}
-    tasks = doc.get("tasks", [])
-    tasks.append(task_data)
-    doc["tasks"] = tasks
-    _store.write_json(task_list_path, doc)
+def _question(task_id: str, question_id: str, message: str, created_at: str) -> Question:
+    """A plain question as a pod parks it."""
+    return Question(
+        id=question_id,
+        task_id=task_id,
+        pod="myproj",
+        step="input",
+        message=message,
+        created_at=created_at,
+        requested_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+    )
+
+
+def _answer(
+    question: Question,
+    action: str,
+    answered_at: str,
+    channel: str,
+    content: dict[str, Any] | None = None,
+) -> Answer:
+    """The answer record ``answer_task`` keeps: the question's kind and createdAt travel with it."""
+    return Answer(
+        question_id=question.id,
+        step=question.step,
+        message=question.message,
+        action=action,
+        channel=channel,
+        actor="user",
+        answered_at=answered_at,
+        kind=question.kind if isinstance(question, QuestionV11) else "clarification",
+        created_at=question.created_at,
+        content=content,
+    )
 
 
 class TestEscalationMetrics:
@@ -125,35 +145,18 @@ class TestEscalationMetrics:
         question_created = now - timedelta(seconds=30)
         answer_time = now
 
-        task = {
-            "id": "t1",
-            "pod": "myproj",
-            "status": "done",
-            "question": {
-                "id": "q-abc123456789",
-                "taskId": "t1",
-                "pod": "myproj",
-                "step": "input",
-                "message": "Do you approve?",
-                "createdAt": question_created.isoformat(),
-                "expiresAt": None,
-                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
-            },
-            "answers": [
-                {
-                    "questionId": "q-abc123456789",
-                    "step": "input",
-                    "message": "Do you approve?",
-                    "action": "accept",
-                    "content": {},
-                    "channel": "http",
-                    "actor": "user",
-                    "answeredAt": answer_time.isoformat(),
-                }
-            ],
-        }
-
-        _write_task("myproj", task)
+        question = _question(
+            "t1", "q-abc123456789", "Do you approve?", question_created.isoformat()
+        )
+        put_task(
+            "myproj",
+            _make_task(
+                id="t1",
+                status="done",
+                question=question,
+                answers=[_answer(question, "accept", answer_time.isoformat(), "http", {})],
+            ),
+        )
 
         metrics = _escalation.count_escalation_metrics()
         assert ("clarification", "accept") in metrics.questions_total
@@ -165,36 +168,25 @@ class TestEscalationMetrics:
         """Test that question kind field is used when present."""
         now = datetime.now(UTC)
 
-        task = {
-            "id": "t2",
-            "pod": "myproj",
-            "status": "done",
-            "question": {
-                "id": "q-kind-test",
-                "taskId": "t2",
-                "pod": "myproj",
-                "step": "input",
-                "message": "Proceed?",
-                "kind": "decision",
-                "createdAt": now.isoformat(),
-                "expiresAt": None,
-                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
-            },
-            "answers": [
-                {
-                    "questionId": "q-kind-test",
-                    "step": "input",
-                    "message": "Proceed?",
-                    "action": "decline",
-                    "content": None,
-                    "channel": "cli",
-                    "actor": "user",
-                    "answeredAt": now.isoformat(),
-                }
-            ],
-        }
-
-        _write_task("myproj", task)
+        question = QuestionV11(
+            id="q-kind-test",
+            task_id="t2",
+            pod="myproj",
+            step="input",
+            message="Proceed?",
+            kind="decision",
+            created_at=now.isoformat(),
+            requested_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+        )
+        put_task(
+            "myproj",
+            _make_task(
+                id="t2",
+                status="done",
+                question=question,
+                answers=[_answer(question, "decline", now.isoformat(), "cli")],
+            ),
+        )
 
         metrics = _escalation.count_escalation_metrics()
         assert ("decision", "decline") in metrics.questions_total
@@ -204,45 +196,27 @@ class TestEscalationMetrics:
         """Test multiple answers with different latencies."""
         now = datetime.now(UTC)
 
-        task = {
-            "id": "t4",
-            "pod": "myproj",
-            "status": "done",
-            "question": {
-                "id": "q-multi",
-                "taskId": "t4",
-                "pod": "myproj",
-                "step": "input",
-                "message": "Question?",
-                "createdAt": (now - timedelta(seconds=50)).isoformat(),
-                "expiresAt": None,
-                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
-            },
-            "answers": [
-                {
-                    "questionId": "q-multi",
-                    "step": "input",
-                    "message": "Question?",
-                    "action": "accept",
-                    "content": {},
-                    "channel": "http",
-                    "actor": "user",
-                    "answeredAt": (now - timedelta(seconds=20)).isoformat(),
-                },
-                {
-                    "questionId": "q-multi",
-                    "step": "input",
-                    "message": "Question?",
-                    "action": "decline",
-                    "content": None,
-                    "channel": "cli",
-                    "actor": "user",
-                    "answeredAt": now.isoformat(),
-                },
-            ],
-        }
-
-        _write_task("myproj", task)
+        question = _question(
+            "t4", "q-multi", "Question?", (now - timedelta(seconds=50)).isoformat()
+        )
+        put_task(
+            "myproj",
+            _make_task(
+                id="t4",
+                status="done",
+                question=question,
+                answers=[
+                    _answer(
+                        question,
+                        "accept",
+                        (now - timedelta(seconds=20)).isoformat(),
+                        "http",
+                        {},
+                    ),
+                    _answer(question, "decline", now.isoformat(), "cli"),
+                ],
+            ),
+        )
 
         metrics = _escalation.count_escalation_metrics()
         assert metrics.questions_total.get(("clarification", "accept"), 0) == 1

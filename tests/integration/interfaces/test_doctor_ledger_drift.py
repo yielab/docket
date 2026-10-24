@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from tests.support.pods import lead_ws as _lead_ws
 from tests.support.pods import seed_pod as _seed_pod
+from tests.support.tasks import put_task, task
 
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_budget as _setup_check_budget
@@ -32,7 +33,7 @@ def _claim_a_task(project: str = "demo") -> str:
     """Enqueue + claim a task via the real dispatch state machine (so
     TASK_LIST.json ends up in a genuine 'running' state, ledger written by
     dispatch itself); returns the task id."""
-    _queue.enqueue_task_once(project, "some work", channel="cli")
+    put_task(project, task(description="some work"))
     claim = _queue.claim_next_task(project, resume=False)
     assert claim is not None
     return claim.record.id

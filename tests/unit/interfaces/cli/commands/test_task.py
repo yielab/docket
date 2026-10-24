@@ -14,13 +14,14 @@ from tests.support.pods import seed_pod_isolation_off as _seed_pod
 from tests.support.task_unit_harness import (
     _runner,
 )
+from tests.support.tasks import put_task, put_tasks, task
 
 from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.cli.app import app
 from docket.kernel.home import current_home
 from docket.tasks.application import lifecycle as _lifecycle
-from docket.tasks.application import queue as _queue
-from docket.teams import settings as _settings
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.parts import Worktree
 
 SUBJECT = "docket.interfaces.cli.commands.task"
 
@@ -43,16 +44,12 @@ def _seed_worktree_task(
         wt = tmp_path / "wt"
         wt.mkdir()
         base = "0123abc"
-        task = _queue.enqueue_task_once("demo", "bump x", channel="cli")[0]
-        path = _settings.pod_task_list_path("demo")
-        from docket.platform import store as _store
-
-        doc = _store.read_json(path)
-        for t in doc["tasks"]:
-            t["status"] = "done"
-            t["worktree"] = {"dir": str(wt), "branch": "docket/demo/t1", "baseCommit": base}
-        _store.write_json(path, doc)
-        yield {"id": task["id"], "wt": wt, "base": base}
+        record = task(
+            status="done",
+            worktree=Worktree(dir=str(wt), branch="docket/demo/t1", base_commit=base),
+        )
+        put_task("demo", record)
+        yield {"id": record.id, "wt": wt, "base": base, "record": record}
 
 
 def _write_trace(task_id: str, *events: tuple[str, dict[str, Any]]) -> None:
@@ -74,9 +71,10 @@ class TestTaskShow:
 
     def test_a_task_without_a_worktree_prints_no_worktree_block(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "plain", channel="cli")[0]
+            record = task(description="plain")
+            put_task("demo", record)
 
-            result = _runner.invoke(app, ["task", "show", task["id"], "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "show", record.id, "--pod", "demo"])
 
             assert result.exit_code == 0, result.output
             assert "Worktree" not in result.output
@@ -91,14 +89,14 @@ class TestTaskShow:
 
     def test_an_ambiguous_prefix_lists_both_and_exits_one(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            first = _queue.enqueue_task_once("demo", "one", channel="cli")[0]
-            second = _queue.enqueue_task_once("demo", "two", channel="cli")[0]
+            first, second = task(), task()
+            put_tasks("demo", first, second)
 
             result = _runner.invoke(app, ["task", "show", "task-"])
 
             assert result.exit_code == 1
-            assert str(first["id"]) in result.output
-            assert str(second["id"]) in result.output
+            assert first.id in result.output
+            assert second.id in result.output
 
     def test_an_unknown_ref_exits_one(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -109,10 +107,11 @@ class TestShowRunExitCode:
     def _run_for(self, status: str) -> str:
         from docket.tasks.application import runs as _runs
 
-        task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
+        record = task()
+        put_task("demo", record)
 
         class _Result:
-            task_id = task["id"]
+            task_id = record.id
 
         _Result.status = status  # type: ignore[attr-defined]
         _Result.reason = "verifyCmd exited 1" if status == "failed" else ""  # type: ignore[attr-defined]
@@ -137,7 +136,7 @@ class TestShowRunExitCode:
 class TestTaskList:
     def test_json_items_carry_the_worktree_path_or_null(self, tmp_path: Path) -> None:
         with _seed_worktree_task(tmp_path) as seeded:
-            _queue.enqueue_task_once("demo", "second", channel="cli")
+            put_tasks("demo", seeded["record"], task())
 
             result = _runner.invoke(app, ["task", "list", "--json", "--pod", "demo"])
 
@@ -146,11 +145,12 @@ class TestTaskList:
 
     def test_the_table_prints_the_short_id(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "visible", channel="cli")[0]
+            record = task(description="visible")
+            put_task("demo", record)
 
             result = _runner.invoke(app, ["task", "list", "--pod", "demo"])
 
-            assert str(task["id"])[:18] in result.output
+            assert str(record.id)[:18] in result.output
             assert "visible" in result.output
 
     def test_no_pod_for_the_directory_exits_one(
@@ -167,7 +167,8 @@ class TestTaskCancelRendering:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "work", channel="cli")[0]
+            record = task(description="work")
+            put_task("demo", record)
             seen: dict[str, Any] = {}
 
             def _cancel(project: str, task_id: str, **kwargs: Any) -> _lifecycle.TaskCancelOutcome:
@@ -177,16 +178,17 @@ class TestTaskCancelRendering:
                 )
 
             monkeypatch.setattr(_lifecycle, "cancel_task", _cancel)
-            result = _runner.invoke(app, ["task", "cancel", task["id"], "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "cancel", record.id, "--pod", "demo"])
 
             assert result.exit_code == 0, result.output
             assert "run asked" in result.output and "it was waiting_input" in result.output
-            assert seen["channel"] == "cli" and seen["task_id"] == task["id"]
+            assert seen["channel"] == "cli" and seen["task_id"] == record.id
 
     def test_nothing_in_flight_exits_one(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "work", channel="cli")[0]
-            result = _runner.invoke(app, ["task", "cancel", task["id"], "--pod", "demo"])
+            record = task(description="work")
+            put_task("demo", record)
+            result = _runner.invoke(app, ["task", "cancel", record.id, "--pod", "demo"])
             assert result.exit_code == 1
             assert "Nothing is in flight to cancel" in result.output
 
@@ -201,7 +203,9 @@ class TestTaskAdd:
             result = _runner.invoke(app, ["task", "add", "fix the redirect"])
 
             assert result.exit_code == 0, result.output
-            assert [t["description"] for t in _queue.read_tasks("demo")] == ["fix the redirect"]
+            assert [t.description for t in TaskRepository.for_pod("demo").list()] == [
+                "fix the redirect"
+            ]
 
     @pytest.mark.parametrize(
         ("args", "code"),
@@ -216,7 +220,7 @@ class TestTaskAdd:
     ) -> None:
         with _seed_pod(tmp_path):
             assert _runner.invoke(app, args).exit_code == code
-            assert _queue.read_tasks("demo") == []
+            assert TaskRepository.for_pod("demo").list() == []
 
     def test_bracketed_text_prints_literally(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -224,7 +228,7 @@ class TestTaskAdd:
                 app, ["task", "add", "Fix [/bold] in [red] mode", "--pod", "demo"]
             )
 
-            task_id = _queue.read_tasks("demo")[0]["id"]
+            task_id = TaskRepository.for_pod("demo").list()[0].id
             assert result.exit_code == 0, result.output
             assert f"[{task_id}] Fix [/bold] in [red] mode" in result.output
 
@@ -238,7 +242,7 @@ class TestTaskAdd:
             )
 
             assert result.exit_code == 1
-            assert _queue.read_tasks("demo") == []
+            assert TaskRepository.for_pod("demo").list() == []
 
     def test_a_valid_brief_is_stored_on_the_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -250,7 +254,9 @@ class TestTaskAdd:
             )
 
             assert result.exit_code == 0, result.output
-            assert _queue.read_tasks("demo")[0]["brief"]["objective"] == "fix the flaky test"
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.brief is not None
+            assert stored.brief.objective == "fix the flaky test"
 
     def test_a_clean_pod_says_nothing_will_ask(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -294,14 +300,14 @@ class TestTaskAdd:
                 ],
             )
 
-            task = _queue.read_tasks("demo")[0]
+            stored = TaskRepository.for_pod("demo").list()[0]
             assert result.exit_code == 0, result.output
-            assert task["externalRef"] == "TACK-1"
-            assert task["idempotencyKey"] == "k-1"
-            assert task["baseRef"] == "main"
-            assert task["pipeline"] == "tdd"
-            assert task["gate"] == {"command": "make test"}
-            assert task["maxTokens"] == 5000
+            assert stored.external_ref == "TACK-1"
+            assert stored.idempotency_key == "k-1"
+            assert stored.base_ref == "main"
+            assert stored.pipeline == "tdd"
+            assert stored.gate is not None and stored.gate.command == "make test"
+            assert stored.max_tokens == 5000
 
     def test_a_repeated_idempotency_key_says_already_queued(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -310,11 +316,11 @@ class TestTaskAdd:
             first = _runner.invoke(app, args)
             second = _runner.invoke(app, args)
 
-            tasks = _queue.read_tasks("demo")
+            tasks = TaskRepository.for_pod("demo").list()
             assert (first.exit_code, second.exit_code) == (0, 0)
             assert len(tasks) == 1
             assert "already queued" in second.output
-            assert tasks[0]["id"] in second.output
+            assert tasks[0].id in second.output
 
     @pytest.mark.parametrize(
         "flags",
@@ -327,64 +333,68 @@ class TestTaskAdd:
             result = _runner.invoke(app, ["task", "add", "x", "--pod", "demo", *flags])
 
             assert result.exit_code == 1
-            assert _queue.read_tasks("demo") == []
+            assert TaskRepository.for_pod("demo").list() == []
 
 
 class TestTaskTrace:
     def test_prints_the_tool_name_on_tool_call_lines(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
-            _write_trace(task["id"], ("tool_call", {"tool": "grep", "callId": "c1"}))
+            record = task(description="x")
+            put_task("demo", record)
+            _write_trace(record.id, ("tool_call", {"tool": "grep", "callId": "c1"}))
 
-            result = _runner.invoke(app, ["task", "trace", task["id"], "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "trace", record.id, "--pod", "demo"])
 
             assert result.exit_code == 0, result.output
             assert "tool=grep" in result.output
 
     def test_model_text_with_markup_tags_prints_literally(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
+            record = task(description="x")
+            put_task("demo", record)
             text = "ok [/bold] then [red]x[/red] for [task-1]"
-            _write_trace(task["id"], ("tool_result", {"text": text}))
+            _write_trace(record.id, ("tool_result", {"text": text}))
 
-            result = _runner.invoke(app, ["task", "trace", task["id"], "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "trace", record.id, "--pod", "demo"])
 
             assert f"text={text}" in result.output
 
     def test_tail_returns_once_the_session_has_ended(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
-            _write_trace(task["id"], ("session_start", {}), ("session_end", {"status": "done"}))
+            record = task(description="x")
+            put_task("demo", record)
+            _write_trace(record.id, ("session_start", {}), ("session_end", {"status": "done"}))
 
-            result = _runner.invoke(app, ["task", "trace", task["id"], "--tail", "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "trace", record.id, "--tail", "--pod", "demo"])
 
             assert result.exit_code == 0, result.output
             assert "session_end" in result.output
 
     def test_export_is_the_raw_jsonl(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
-            _write_trace(task["id"], ("session_start", {}))
+            record = task(description="x")
+            put_task("demo", record)
+            _write_trace(record.id, ("session_start", {}))
 
-            result = _runner.invoke(app, ["task", "trace", task["id"], "--export", "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "trace", record.id, "--export", "--pod", "demo"])
 
             assert json.loads(result.output.splitlines()[0])["event_type"] == "session_start"
 
     def test_json_lists_the_events(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
-            _write_trace(task["id"], ("session_start", {}))
+            record = task(description="x")
+            put_task("demo", record)
+            _write_trace(record.id, ("session_start", {}))
 
-            result = _runner.invoke(app, ["task", "trace", task["id"], "--json", "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "trace", record.id, "--json", "--pod", "demo"])
 
             assert json.loads(result.output)["events"][0]["event_type"] == "session_start"
 
     def test_a_task_that_never_ran_has_no_trace(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
-            assert (
-                _runner.invoke(app, ["task", "trace", task["id"], "--pod", "demo"]).exit_code == 1
-            )
+            record = task(description="x")
+            put_task("demo", record)
+            assert _runner.invoke(app, ["task", "trace", record.id, "--pod", "demo"]).exit_code == 1
 
 
 class TestGroup:
@@ -395,8 +405,9 @@ class TestGroup:
 class TestTaskDiff:
     def test_a_task_that_ran_in_place_has_nothing_to_diff(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "plain", channel="cli")[0]
-            assert _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo"]).exit_code == 1
+            record = task(description="plain")
+            put_task("demo", record)
+            assert _runner.invoke(app, ["task", "diff", record.id, "--pod", "demo"]).exit_code == 1
 
 
 class TestTaskDiffJson:
@@ -404,12 +415,13 @@ class TestTaskDiffJson:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            task = _queue.enqueue_task_once("demo", "work", channel="cli")[0]
-            doc = {"task": task["id"], "patch": "diff --git a/x b/x\n", "worktreePresent": False}
+            record = task(description="work")
+            put_task("demo", record)
+            doc = {"task": record.id, "patch": "diff --git a/x b/x\n", "worktreePresent": False}
             monkeypatch.setattr(_lifecycle, "task_diff", lambda project, task_id: doc)
 
-            shown = _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo", "--json"])
-            plain = _runner.invoke(app, ["task", "diff", task["id"], "--pod", "demo"])
+            shown = _runner.invoke(app, ["task", "diff", record.id, "--pod", "demo", "--json"])
+            plain = _runner.invoke(app, ["task", "diff", record.id, "--pod", "demo"])
 
             assert json.loads(shown.output) == doc
             assert plain.output == doc["patch"]
@@ -429,9 +441,10 @@ class TestShowForecast:
     def test_a_pipeline_gate_is_listed_with_the_park_posture(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
+            record = task(description="x")
+            put_task("demo", record)
 
-            result = _runner.invoke(app, ["task", "show", task["id"], "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "show", record.id, "--pod", "demo"])
 
             assert "step 'implementer' has an approval gate" in result.output
             assert "approvalMode resolves to" in result.output
@@ -439,9 +452,10 @@ class TestShowForecast:
     def test_json_lists_the_interruption_kinds(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _bind_ask_pipeline("demo", _GATED_PIPELINE_YAML)
-            task = _queue.enqueue_task_once("demo", "x", channel="cli")[0]
+            record = task(description="x")
+            put_task("demo", record)
 
-            result = _runner.invoke(app, ["task", "show", task["id"], "--json", "--pod", "demo"])
+            result = _runner.invoke(app, ["task", "show", record.id, "--json", "--pod", "demo"])
 
             kinds = {i["kind"] for i in json.loads(result.output)["interruptions"]}
             assert {"pipeline_gate", "mode"} <= kinds

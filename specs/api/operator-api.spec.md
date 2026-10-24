@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.2.2
+**Version**: 6.2.3
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-24
 
@@ -391,7 +391,7 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 - `src/docket/interfaces/http/routes/health.py`: `SERVE_API_VERSION`, the `tokenBudget`
   computation on read.
 - `src/docket/interfaces/http/exchange.py`: the 1 MiB body cap.
-- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`, `dispatchable_pods`,
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `dispatchable_pods`,
   the claim-time refusals (`base_ref`, `pipeline`, `prepare`).
 - `src/docket/tasks/application/lifecycle.py`: `cancel_task`, `retry_task`, `task_diff`.
 - `src/docket/tasks/domain/options.py`: addressable-task and `restrictions` validation,

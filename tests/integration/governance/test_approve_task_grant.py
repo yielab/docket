@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from tests.support.pods import build_pod
+from tests.support.tasks import stored_task, update_task
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
@@ -26,15 +27,12 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg
 from docket.kernel.operator_contract import canonical_args_digest
 from docket.pipeline.domain import plan as _orch
-from docket.platform import store as _store
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
-from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _domain_task
 from docket.teams import fleet as _fleet
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.governance.gate"
 
@@ -70,25 +68,14 @@ def _park(task_id: str, args: dict[str, Any] | None = None) -> str:
         rationale="",
     )
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        for t in doc["tasks"]:
-            if t["id"] == task_id:
-                t["status"] = "waiting_approval"
-                t["approvalToken"] = token
-        return {"tasks": doc["tasks"]}
-
-    _store.read_modify_write(_settings.pod_task_list_path(PROJECT), _fn)
+    update_task(PROJECT, task_id, status="waiting_approval", approval_token=token)
     return token
-
-
-def _task(task_id: str) -> dict[str, Any]:
-    return next(t for t in _queue.read_tasks(PROJECT) if t["id"] == task_id)
 
 
 def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
     ctx = _record.UnitContext(
         project=PROJECT,
-        task=TaskRepository.for_pod(PROJECT).get(task_id),
+        task=stored_task(PROJECT, task_id),
         task_id=task_id,
         session_id=f"agent:{PROJECT}:{task_id}",
         cap=0.0,
@@ -126,20 +113,20 @@ def _spend(env: dict[str, str], args: dict[str, Any] | None = None) -> str | Non
 class TestApproveTaskCli:
     def test_grant_records_a_task_grant_and_a_later_hop_runs_the_call(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
 
         assert run_approve(token, "--task") == 0
 
-        grants = _task(task["id"])["taskGrants"]
+        grants = stored_task(PROJECT, task.id).task_grants
         assert len(grants) == 1
-        assert grants[0]["tool"] == "bash"
-        assert grants[0]["argsDigest"] == canonical_args_digest("bash", CALL)
-        assert grants[0]["token"] == token
-        assert grants[0]["channel"] == "cli"
-        assert grants[0]["grantedAt"]
-        assert "actor" in grants[0]
+        assert grants[0].tool == "bash"
+        assert grants[0].args_digest == canonical_args_digest("bash", CALL)
+        assert grants[0].token == token
+        assert grants[0].channel == "cli"
+        assert grants[0].granted_at
+        assert grants[0].actor == ""
 
-        env = _later_hop_env(task["id"])
+        env = _later_hop_env(task.id)
         used = _spend(env)
         assert used is not None
         assert any(
@@ -149,77 +136,77 @@ class TestApproveTaskCli:
         assert _spend(env) is not None
         assert _spend(env) is None
         # The next hop gets a fresh one.
-        assert _spend(_later_hop_env(task["id"])) is not None
+        assert _spend(_later_hop_env(task.id)) is not None
 
     def test_without_the_option_nothing_is_task_wide(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
         assert run_approve(token) == 0
-        stored = _task(task["id"])
-        assert not stored.get("taskGrants")
-        assert len(stored["pregrants"]) == 1
+        stored = stored_task(PROJECT, task.id)
+        assert not stored.task_grants
+        assert len(stored.pregrants) == 1
 
     def test_another_task_with_the_same_call_still_parks(self) -> None:
         first = _queue.enqueue_task_once(PROJECT, "one", channel="cli")[0]
         second = _queue.enqueue_task_once(PROJECT, "two", channel="cli")[0]
-        run_approve(_park(first["id"]), "--task")
-        assert not _task(second["id"]).get("taskGrants")
-        assert _spend(_later_hop_env(second["id"])) is None
+        run_approve(_park(first.id), "--task")
+        assert not stored_task(PROJECT, second.id).task_grants
+        assert _spend(_later_hop_env(second.id)) is None
 
     def test_a_later_hop_of_another_role_gets_no_task_grant(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        run_approve(_park(task["id"]), "--task")
-        assert _task(task["id"])["taskGrants"][0]["role"] == "implementer"
-        env = _later_hop_env(task["id"], "reviewer")
+        run_approve(_park(task.id), "--task")
+        assert stored_task(PROJECT, task.id).task_grants[0].role == "implementer"
+        env = _later_hop_env(task.id, "reviewer")
         assert _spend(env) is not None  # the parked call's own single-use pre-grant
         assert _spend(env) is None
 
     def test_a_different_argument_digest_still_parks(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        run_approve(_park(task["id"]), "--task")
-        env = _later_hop_env(task["id"])
+        run_approve(_park(task.id), "--task")
+        env = _later_hop_env(task.id)
         assert _spend(env, {"command": "git push origin main"}) is None
 
     def test_conflicting_scopes_are_refused_and_leave_the_approval_pending(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
         assert run_approve(token, "--once", "--task") == 2
         assert _approval.approval_get(token)["state"] == "pending"
 
     def test_grants_are_dropped_when_the_task_reaches_a_terminal_status(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        run_approve(_park(task["id"]), "--task")
-        _lifecycle.finalize_task(PROJECT, task["id"], _domain_task.TaskResult(task["id"], "done"))
-        assert "taskGrants" not in _task(task["id"])
+        run_approve(_park(task.id), "--task")
+        _lifecycle.finalize_task(PROJECT, task.id, _domain_task.TaskResult(task.id, "done"))
+        assert not stored_task(PROJECT, task.id).task_grants
 
     def test_denial_fails_the_task_with_nothing_to_grant(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
         _approval.approval_deny(token, channel="cli")
         _actions.resolve_waiting_approval(token, "denied")
-        stored = _task(task["id"])
-        assert stored["status"] == "failed"
-        assert not stored.get("taskGrants")
+        stored = stored_task(PROJECT, task.id)
+        assert stored.status == "failed"
+        assert not stored.task_grants
 
     def test_the_twenty_first_grant_is_refused_with_a_message(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         for i in range(_actions.TASK_GRANT_CAP):
-            run_approve(_park(task["id"], {"command": f"echo {i}"}), "--task")
-        assert len(_task(task["id"])["taskGrants"]) == _actions.TASK_GRANT_CAP
+            run_approve(_park(task.id, {"command": f"echo {i}"}), "--task")
+        assert len(stored_task(PROJECT, task.id).task_grants) == _actions.TASK_GRANT_CAP
 
-        token = _park(task["id"], {"command": "echo extra"})
+        token = _park(task.id, {"command": "echo extra"})
         _approval.approval_set_option(token, "approve_task")
         _approval.approval_grant(token, channel="cli")
         updated, note = _actions.resolve_waiting_approval_detail(token, "granted", channel="cli")
 
         assert updated
         assert "task-wide grants" in note
-        stored = _task(task["id"])
-        assert len(stored["taskGrants"]) == _actions.TASK_GRANT_CAP
+        stored = stored_task(PROJECT, task.id)
+        assert len(stored.task_grants) == _actions.TASK_GRANT_CAP
         assert any(e["action"] == "approval.task_grant_refused" for e in _audit.read_audit())
         # The call itself was still approved once.
-        assert stored["status"] == "pending"
-        assert stored["pregrants"][-1]["token"] == token
+        assert stored.status == "pending"
+        assert stored.pregrants[-1].token == token
 
 
 class TestApproveTaskTelegram:
@@ -232,21 +219,21 @@ class TestApproveTaskTelegram:
     def test_approve_token_task_grants_task_wide(self) -> None:
         self._bind()
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
         assert self._say(f"/approve {token} task").ok
-        grants = _task(task["id"])["taskGrants"]
-        assert [g["channel"] for g in grants] == ["telegram"]
+        grants = stored_task(PROJECT, task.id).task_grants
+        assert [g.channel for g in grants] == ["telegram"]
 
     def test_plain_approve_stays_single_use(self) -> None:
         self._bind()
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
         assert self._say(f"/approve {token}").ok
-        assert not _task(task["id"]).get("taskGrants")
+        assert not stored_task(PROJECT, task.id).task_grants
 
     def test_unbound_chat_cannot_grant_task_wide(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
         out = self._say(f"/approve {token} task")
         assert not out.authorized
         assert _approval.approval_get(token)["state"] == "pending"
@@ -263,10 +250,10 @@ class TestApproveTaskHttpAndMcp:
         from docket.interfaces.cli.commands import mcp as _mcp
 
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        result = _mcp.tool_approvals_grant(_park(task["id"]), option="approve_task")
+        result = _mcp.tool_approvals_grant(_park(task.id), option="approve_task")
         assert result["state"] == "granted"
-        (grant,) = _task(task["id"])["taskGrants"]
-        assert grant["channel"] == "mcp"
+        (grant,) = stored_task(PROJECT, task.id).task_grants
+        assert grant.channel == "mcp"
 
     def test_http_grant_with_the_option_records_a_task_grant(self) -> None:
         import json
@@ -283,7 +270,7 @@ class TestApproveTaskHttpAndMcp:
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
             task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-            token = _park(task["id"])
+            token = _park(task.id)
             body = json.dumps({"action": "grant", "option": "approve_task"}).encode()
             req = urllib.request.Request(
                 f"http://127.0.0.1:{srv.server_address[1]}/approvals/{token}",
@@ -298,14 +285,14 @@ class TestApproveTaskHttpAndMcp:
                 assert json.loads(resp.read())["state"] == "granted"
         finally:
             srv.shutdown()
-        (grant,) = _task(task["id"])["taskGrants"]
-        assert grant["channel"] == "http"
+        (grant,) = stored_task(PROJECT, task.id).task_grants
+        assert grant.channel == "http"
 
     def test_an_unknown_option_is_refused_by_mcp_and_leaves_the_approval_pending(self) -> None:
         from docket.interfaces.cli.commands import mcp as _mcp
 
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task["id"])
+        token = _park(task.id)
         with pytest.raises(_mcp.McpToolError):
             _mcp.tool_approvals_grant(token, option="approve_forever")
         assert _approval.approval_get(token)["state"] == "pending"

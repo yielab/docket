@@ -23,8 +23,8 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.tasks.application import queue as _application_queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -61,14 +61,10 @@ def stub() -> Iterator[_ScriptedLLMServer]:
     server.stop()
 
 
-def _queue(**extra: Any) -> str:
-    from docket.platform import store as _store
-
-    _application_queue.enqueue_task_once("demo", "ship it", channel="cli")
-    tasks = _application_queue.read_tasks("demo")
-    tasks[0].update(extra)
-    _store.write_json(_settings.pod_task_list_path("demo"), {"tasks": tasks})
-    return str(tasks[0]["id"])
+def _queue(**options: Any) -> str:
+    return str(
+        _application_queue.enqueue_task_once("demo", "ship it", channel="cli", **options)[0].id
+    )
 
 
 class TestPipelineOnTheStubServer:
@@ -92,7 +88,7 @@ class TestPipelineOnTheStubServer:
         assert results[0].status == "done", results[0].reason
         assert [h.step_id for h in results[0].hops] == ["kickoff", "assemble"]
         assert len(stub.requests) >= 2
-        assert _application_queue.read_tasks("demo")[0]["pipelineSource"] == "pod:two"
+        assert TaskRepository.for_pod("demo").list()[0].pipeline_source == "pod:two"
 
 
 def _implementer_only(home: Path) -> None:
@@ -116,7 +112,7 @@ class TestTaskGateAfterVerifyCmd:
         failed = _task_events(task_id, "verification_failed")
         assert [e["payload"]["source"] for e in failed] == ["task"]
         assert failed[0]["payload"]["cmd"] == "false"
-        assert _application_queue.read_tasks("demo")[0]["gateApplied"] is True
+        assert TaskRepository.for_pod("demo").list()[0].gate_applied is True
 
     def test_a_passing_task_gate_keeps_the_verify_evidence_and_nests_its_own(
         self, home: Path

@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import json
 import urllib.parse as _urlparse
-from typing import Any
 
 from docket.interfaces.http.exchange import HttpExchange
 from docket.interfaces.http.routes.health import _with_token_budget
 from docket.kernel.errors import DispatchError
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import lifecycle as _lifecycle
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import options as _task_options
 from docket.tasks.domain import task as _task
 
@@ -29,7 +28,7 @@ def get_tasks(h: HttpExchange, rest: str) -> None:
         _send_one_task(h, project, task_id)
         return
     query = _urlparse.parse_qs(_urlparse.urlsplit(h.path).query)
-    tasks = _filter_tasks(h, _queue.read_tasks(project), query)
+    tasks = _filter_tasks(h, TaskRepository.for_pod(project).list(), query)
     if tasks is None:
         return
     listed = [_with_token_budget(task) for task in tasks]
@@ -65,8 +64,8 @@ def get_task_diff(h: HttpExchange, rest: str) -> None:
 
 
 def _send_one_task(h: HttpExchange, project: str, task_id: str) -> None:
-    for task in _queue.read_tasks(project):
-        if task.get("id") == task_id:
+    for task in TaskRepository.for_pod(project).list():
+        if task.id == task_id:
             body = json.dumps(_with_token_budget(task))
             h._send(body.encode("utf-8"), "application/json")
             return
@@ -74,8 +73,8 @@ def _send_one_task(h: HttpExchange, project: str, task_id: str) -> None:
 
 
 def _filter_tasks(
-    h: HttpExchange, tasks: list[dict[str, Any]], query: dict[str, list[str]]
-) -> list[dict[str, Any]] | None:
+    h: HttpExchange, tasks: list[_task.TaskRecord], query: dict[str, list[str]]
+) -> list[_task.TaskRecord] | None:
     """Apply ``externalRef`` / ``status``; answers 400 and returns None on an unknown status."""
     status = query.get("status", [""])[0]
     if status and status not in _task_options.TASK_STATUSES:
@@ -85,5 +84,5 @@ def _filter_tasks(
     return [
         t
         for t in tasks
-        if (not status or t.get("status") == status) and (not ref or t.get("externalRef") == ref)
+        if (not status or t.status == status) and (not ref or t.external_ref == ref)
     ]

@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from tests.support.fakes import FakeJail
+from tests.support.tasks import task as _make_task
 
 from docket.hops.application import compose as _compose_c
 from docket.hops.application import steps as _steps_c
@@ -57,14 +58,8 @@ def worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _task(root: Path, **extra: Any) -> TaskRecord:
-    return TaskRecord.model_validate(
-        {
-            "id": "t1",
-            "description": "x",
-            "worktree": {"dir": str(root), "branch": "b", "baseCommit": "", "commonDir": "/common"},
-            **extra,
-        }
-    )
+    worktree = Worktree(dir=str(root), branch="b", base_commit="", common_dir="/common")
+    return _make_task(id="t1", worktree=worktree, **extra)
 
 
 def test_a_task_that_runs_in_place_is_never_prepared(
@@ -74,9 +69,9 @@ def test_a_task_that_runs_in_place_is_never_prepared(
         _prepare, "prepare_worktree", lambda *a: pytest.fail("prepared an in-place task")
     )
     in_place = Worktree(dir="", branch="", base_commit="")
-    task = TaskRecord(id="t1", description="x", worktree=in_place)
+    task = _make_task(id="t1", worktree=in_place)
     assert _queue.prepare_claimed_task("demo", task) is None
-    assert _queue.prepare_claimed_task("demo", TaskRecord(id="t1", description="x")) is None
+    assert _queue.prepare_claimed_task("demo", _make_task(id="t1")) is None
 
 
 def test_a_task_already_prepared_for_this_lockfile_is_not_prepared_again(

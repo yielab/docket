@@ -89,6 +89,7 @@ from docket.operator import build_inbox
 from docket.platform import read_json, write_json
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
@@ -331,9 +332,7 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
     except DispatchError as exc:
         return TelegramActionResult(False, str(exc), True, "delegate")
 
-    return TelegramActionResult(
-        True, f"Queued for pod '{project}': [{task['id']}]", True, "delegate"
-    )
+    return TelegramActionResult(True, f"Queued for pod '{project}': [{task.id}]", True, "delegate")
 
 
 def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResult:
@@ -353,20 +352,20 @@ def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResu
             "answer",
         )
 
-    task = next((t for t in _queue.read_tasks(project) if t.get("id") == task_id), None)
+    task = next((t for t in TaskRepository.for_pod(project).list() if t.id == task_id), None)
     if task is None:
         return TelegramActionResult(
             False, f"Task {task_id!r} not found in pod {project!r}.", True, "answer"
         )
-    question = task.get("question")
-    if not isinstance(question, dict):
+    question = task.question
+    if question is None:
         return TelegramActionResult(
             False, f"Task {task_id!r} has no pending question.", True, "answer"
         )
-    option_ids = {
-        o.get("id") for o in question.get("options") or [] if isinstance(o, dict) and o.get("id")
-    }
-    properties = question.get("requestedSchema", {}).get("properties", {})
+    option_ids = (
+        {o.id for o in question.options} if isinstance(question, _oc.QuestionV11) else set()
+    )
+    properties = question.requested_schema.get("properties", {})
     if text in option_ids:
         content: dict[str, Any] = {"optionId": text}
     elif len(properties) != 1:

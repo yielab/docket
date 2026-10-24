@@ -63,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The MCP `queue` tool no longer says only a blocked task can be retried.** `retry_task_id`
+  re-queues a `blocked` or a `failed` task, as `docket task retry` does; the refusal now reads
+  "not a failed or blocked task" (mcp-server spec 1.9.6).
 - **A task run under `docket run --pipeline <file>` keeps that pipeline.** Its claim recorded
   source `default` and nothing else, so answering a question the file's pipeline parked looked up
   the step in the pod's pipeline and failed with "not parked at step", and the next claim ran the

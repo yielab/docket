@@ -29,6 +29,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
 
 _hermetic = _support_home.hermetic_trace_on
@@ -201,12 +202,12 @@ class TestPipelineApprovalStepGatesGenuinely:
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         spec = self._spec()
         _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
-        token = _queue.read_tasks("myapp")[0]["approvalToken"]
+        token = TaskRepository.for_pod("myapp").list()[0].approval_token
         assert token
 
         _ap.approval_grant(token, channel="cli")
         assert _actions.resolve_waiting_approval(token, "granted") is True
-        assert _queue.read_tasks("myapp")[0]["status"] == "pending"
+        assert TaskRepository.for_pod("myapp").list()[0].status == "pending"
 
         runner2 = _RoleRunner({})
         results = _sweep.dispatch_pod("myapp", runner=runner2, spec=spec)
@@ -220,14 +221,14 @@ class TestPipelineApprovalStepGatesGenuinely:
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         spec = self._spec()
         _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
-        token = _queue.read_tasks("myapp")[0]["approvalToken"]
+        token = TaskRepository.for_pod("myapp").list()[0].approval_token
 
         _ap.approval_deny(token, channel="cli")
         assert _actions.resolve_waiting_approval(token, "denied") is True
 
-        task = _queue.read_tasks("myapp")[0]
-        assert task["status"] == "failed"
-        assert task["failureKind"] == "approval_denied"
+        task = TaskRepository.for_pod("myapp").list()[0]
+        assert task.status == "failed"
+        assert task.failure_kind == "approval_denied"
 
 
 # ── parallel group: real concurrent execution + join semantics ──────────────
@@ -271,8 +272,8 @@ class TestParallelGroupThroughDispatch:
         # ... and only *after* the group joined does the tester run.
         assert agents_called[-1] == "myapp-tester"
 
-        persisted = _queue.read_tasks("myapp")[0]
-        assert [h["stepId"] for h in persisted["hops"]] == [
+        persisted = TaskRepository.for_pod("myapp").list()[0]
+        assert [h.step_id for h in persisted.hops] == [
             "plan",
             "impl-a",
             "impl-b",
@@ -304,8 +305,8 @@ class TestParallelGroupThroughDispatch:
         results = _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
         assert results[0].status == "failed"
         # Both children still ran (and persisted) despite one failing.
-        persisted = _queue.read_tasks("myapp")[0]
-        assert [h["stepId"] for h in persisted["hops"]] == ["plan", "impl-a", "impl-b"]
+        persisted = TaskRepository.for_pod("myapp").list()[0]
+        assert [h.step_id for h in persisted.hops] == ["plan", "impl-a", "impl-b"]
 
     def test_approval_gate_inside_a_group_is_a_clear_configuration_error(self) -> None:
         """See specs/functional/pod-dispatch.spec.md, "approval gate inside a parallel

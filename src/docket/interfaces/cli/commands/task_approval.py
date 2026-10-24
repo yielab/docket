@@ -9,6 +9,7 @@ from rich.markup import escape
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import service as _service
 from docket.interfaces.cli.render import ui
+from docket.kernel.operator_contract import Option, Question, QuestionV11
 
 _TYPE_COERCERS: dict[str, Any] = {
     "integer": int,
@@ -37,11 +38,17 @@ def _approval_actor(reason: str) -> str:
     return _actor() if reason else ""
 
 
-def _option_ids(question: dict[str, Any]) -> list[str]:
-    raw = question.get("options")
-    return (
-        [str(o.get("id", "")) for o in raw if isinstance(o, dict)] if isinstance(raw, list) else []
-    )
+def _options(question: Question) -> list[Option]:
+    return question.options if isinstance(question, QuestionV11) else []
+
+
+def _recommended(question: Question) -> str:
+    recommendation = question.recommendation if isinstance(question, QuestionV11) else None
+    return recommendation.option_id if recommendation is not None else ""
+
+
+def _option_ids(question: Question) -> list[str]:
+    return [o.id for o in _options(question)]
 
 
 def _parse_fields(fields: list[str]) -> dict[str, Any]:
@@ -55,29 +62,25 @@ def _parse_fields(fields: list[str]) -> dict[str, Any]:
     return out
 
 
-def _render_options(question: dict[str, Any]) -> None:
-    raw = question.get("options")
-    options = [o for o in raw if isinstance(o, dict)] if isinstance(raw, list) else []
-    recommendation = question.get("recommendation")
-    recommended = recommendation.get("optionId") if isinstance(recommendation, dict) else None
-    for option in options:
-        mark = " (recommended)" if option.get("id") == recommended else ""
-        ui.console.print(escape(f"  {option.get('id', '')} - {option.get('label', '')}{mark}"))
-        if option.get("description"):
-            ui.dim(escape(f"    {option['description']}"))
+def _render_options(question: Question) -> None:
+    recommended = _recommended(question)
+    for option in _options(question):
+        mark = " (recommended)" if option.id == recommended else ""
+        ui.console.print(escape(f"  {option.id} - {option.label}{mark}"))
+        if option.description:
+            ui.dim(escape(f"    {option.description}"))
 
 
-def _prompt_content(question: dict[str, Any]) -> dict[str, Any]:
+def _prompt_content(question: Question) -> dict[str, Any]:
     """One prompt for the option (blank takes the recommended one), then one per schema
     property; a blank optional property is dropped, a blank required one is left to the
     answer's own validation."""
     content: dict[str, Any] = {}
-    recommendation = question.get("recommendation")
-    recommended = recommendation.get("optionId") if isinstance(recommendation, dict) else ""
+    recommended = _recommended(question)
     if _option_ids(question):
         default = f" [{recommended}]" if recommended else ""
-        content["optionId"] = input(f"  Option{default}: ").strip() or (recommended or "")
-    schema = question.get("requestedSchema", {})
+        content["optionId"] = input(f"  Option{default}: ").strip() or recommended
+    schema = question.requested_schema
     required: list[str] = schema.get("required", [])
     for name, prop in schema.get("properties", {}).items():
         label = f"{name}{' (required)' if name in required else ''}"
@@ -93,13 +96,13 @@ def _prompt_content(question: dict[str, Any]) -> dict[str, Any]:
 
 
 def _answer_content(
-    question: dict[str, Any], text: list[str] | None, option: str | None, fields: list[str]
+    question: Question, text: list[str] | None, option: str | None, fields: list[str]
 ) -> dict[str, Any]:
     """The content an answer carries, built from flags; prompts on a TTY when none was given."""
     content = _parse_fields(fields)
     words = " ".join(text or []).strip()
     if words:
-        properties = question.get("requestedSchema", {}).get("properties", {})
+        properties = question.requested_schema.get("properties", {})
         if len(properties) != 1:
             ui.error("A bare text answer needs a one-property question", "Pass --field name=value")
             raise typer.Exit(1)
@@ -115,6 +118,6 @@ def _answer_content(
         else:
             ui.error("Nothing to answer with", "Pass text, --field name=value or --option <id>")
         raise typer.Exit(1)
-    ui.console.print(escape(f"  Question: {question.get('message', '')}"))
+    ui.console.print(escape(f"  Question: {question.message}"))
     _render_options(question)
     return _prompt_content(question)

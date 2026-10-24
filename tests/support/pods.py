@@ -27,11 +27,11 @@ from docket.pipeline.domain.spec import PipelineSpec, load_pipeline
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
-from docket.teams import settings as _settings
 from tests.support.fakes import FakeDriver, landlock_host
 from tests.support.home import point_config_at, record_isolation_off
 
@@ -370,14 +370,14 @@ def pod_home(tmp_path: Path) -> Iterator[Path]:
         yield home
 
 
-def seed_parked_task(project: str = "demo") -> dict[str, Any]:
+def seed_parked_task(project: str = "demo") -> TaskRecord:
     """A real pod with a real ``waiting_input`` task, reached by actually dispatching
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
     bind_pipeline(project, _ASK_PIPELINE_YAML)
     _queue.enqueue_task_once(project, "needs a decision", channel="cli")
     _sweep.dispatch_pod(project, runner=FakeDriver())
-    return _queue.read_tasks(project)[0]
+    return TaskRepository.for_pod(project).list()[0]
 
 
 def bind_demo_pipeline(text: str) -> None:
@@ -532,12 +532,6 @@ def seed_setup_check_home(
         yield home
 
 
-def put_task(project: str, task: dict[str, Any]) -> None:
-    from docket.platform import store as _store
-
-    _store.write_json(_settings.pod_task_list_path(project), {"tasks": [task]})
-
-
 def bind_one_step_pipeline(project: str) -> None:
     text = "name: solo\nsteps:\n  - kickoff: lead\n"
     path = pod.bound_pipeline_path(project)
@@ -582,14 +576,14 @@ def bind_ask_pipeline(project: str, text: str = _ASK_PIPELINE_YAML) -> None:
 @contextmanager
 def parked_task_in_pod(
     tmp_path: Path,
-) -> Iterator[dict[str, Any]]:
+) -> Iterator[TaskRecord]:
     """A real pod with a real ``waiting_input`` task, reached by actually dispatching
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     with seed_pod_isolation_off(tmp_path):
         bind_ask_pipeline("demo")
         _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
         _sweep.dispatch_pod("demo", runner=FakeDriver())
-        yield _queue.read_tasks("demo")[0]
+        yield TaskRepository.for_pod("demo").list()[0]
 
 
 @contextmanager

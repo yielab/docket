@@ -853,7 +853,8 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/teams/settings.py`: `pod_approval_mode`
 - `src/docket/hops/application/steps.py`: `effective_pipeline`, `_run_input_step`
   (`input_requested`)
-- `src/docket/tasks/application/queue.py`: `read_tasks`
+- `src/docket/tasks/application/repository.py`: `TaskRepository.list`, read by the operator
+  through the `TaskReader` port (bound in `src/docket/bootstrap.py`)
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`, `TASK_GRANT_CAP`
 - `src/docket/hops/application/compose.py`: task-grant minting in `_compose_hop`
 - `src/docket/tasks/application/record.py`: consult park conversion

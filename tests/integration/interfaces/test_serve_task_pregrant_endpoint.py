@@ -15,6 +15,7 @@ from tests.support.pods import build_pod
 
 from docket.interfaces.cli.commands import pod as _pod
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 
 live_server = _support_http.live_server
 
@@ -40,7 +41,7 @@ class TestHappyPath:
         task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
         status, body = _post(
-            f"{url}/tasks/{task['id']}/pregrants",
+            f"{url}/tasks/{task.id}/pregrants",
             {"pod": "demo", "command": "git push origin main"},
             token=token,
         )
@@ -48,9 +49,9 @@ class TestHappyPath:
         assert status == 200
         assert body["ok"] is True
         assert body["token"]
-        stored = _queue.read_tasks("demo")[0]
-        assert stored["pregrants"][0]["token"] == body["token"]
-        assert stored["pregrants"][0]["tool"] == "bash"
+        stored = TaskRepository.for_pod("demo").list()[0]
+        assert stored.pregrants[0].token == body["token"]
+        assert stored.pregrants[0].tool == "bash"
 
     def test_custom_tool_is_honoured(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
@@ -58,14 +59,14 @@ class TestHappyPath:
         task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
         status, _body = _post(
-            f"{url}/tasks/{task['id']}/pregrants",
+            f"{url}/tasks/{task.id}/pregrants",
             {"pod": "demo", "command": "echo hi", "tool": "write", "actor": "tack"},
             token=token,
         )
 
         assert status == 200
-        stored = _queue.read_tasks("demo")[0]
-        assert stored["pregrants"][0]["tool"] == "write"
+        stored = TaskRepository.for_pod("demo").list()[0]
+        assert stored.pregrants[0].tool == "write"
 
 
 class TestErrorMapping:

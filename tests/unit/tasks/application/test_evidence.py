@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
+from tests.support.tasks import update_task
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, assistant
 from docket.hops.application import driver as _dr
@@ -22,7 +23,7 @@ from docket.observability import trace as _trace
 from docket.tasks.application import evidence as _ev
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
-from docket.teams import settings as _settings
+from docket.tasks.domain.task import HopResult
 
 SUBJECT = "docket.tasks.application.evidence"
 ROOT = Path(__file__).resolve().parents[4]
@@ -69,16 +70,7 @@ def _run_three_hops(monkeypatch: pytest.MonkeyPatch) -> str:
     task = _queue.enqueue_task_once("demo", "evidence please", channel="cli")[0]
     results = _sweep.dispatch_pod("demo")
     assert results[0].status == "done"
-    return str(task["id"])
-
-
-def _seed_task(task_id: str, hops: list[dict[str, Any]]) -> None:
-    path = _settings.pod_task_list_path("demo")
-    raw = json.loads(path.read_text())
-    for t in raw["tasks"]:
-        if t["id"] == task_id:
-            t["hops"] = hops
-    path.write_text(json.dumps(raw))
+    return str(task.id)
 
 
 class TestTaskEvidence:
@@ -138,16 +130,21 @@ def _gated_task(
 ) -> Iterator[str]:
     with _seed_pod(tmp_path):
         task = _queue.enqueue_task_once("demo", "gated", channel="cli")[0]
-        first = {"role": "implementer", "member": "m", "ok": True, "verify": _GATED_VERIFY}
-        second = {"role": "reviewer", "member": "m", "ok": True}
-        _seed_task(
-            task["id"],
-            [
-                {**first, "repoFiles": _REPO_FILES},
-                {**second, "repoFiles": {**_REPO_FILES, "skills/x/SKILL.md": "b" * 64}},
-            ],
+        first = HopResult(
+            role="implementer",
+            member_id="m",
+            ok=True,
+            verify=_GATED_VERIFY,
+            repo_files=_REPO_FILES,
         )
-        yield str(task["id"])
+        second = HopResult(
+            role="reviewer",
+            member_id="m",
+            ok=True,
+            repo_files={**_REPO_FILES, "skills/x/SKILL.md": "b" * 64},
+        )
+        update_task("demo", task.id, hops=[first, second])
+        yield str(task.id)
 
 
 def _schema(name: str) -> dict[str, Any]:
@@ -178,10 +175,13 @@ class TestEvidence11:
 
         with _seed_pod(tmp_path):
             task = _queue.enqueue_task_once("demo", "plain", channel="cli")[0]
-            plain = {"role": "lead", "member": "m", "ok": True, "verify": {**_GATED_VERIFY}}
-            del plain["verify"]["label"]
-            _seed_task(task["id"], [plain])
-            ev = _ev.task_evidence("demo", task["id"], "1.1.0")
+            verify = {k: v for k, v in _GATED_VERIFY.items() if k != "label"}
+            update_task(
+                "demo",
+                task.id,
+                hops=[HopResult(role="lead", member_id="m", ok=True, verify=verify)],
+            )
+            ev = _ev.task_evidence("demo", task.id, "1.1.0")
             doc = json.loads(ev.model_dump_json(by_alias=True))
             assert "directives" not in doc and "gate" not in doc["hops"][0]
             jsonschema.validate(doc, _schema("evidence-v1.1"))
@@ -216,7 +216,7 @@ class TestRepoFilesOnTheHop:
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
             task = _queue.enqueue_task_once("demo", "files", channel="cli")[0]
             assert _sweep.dispatch_pod("demo")[0].status == "done"
-            doc = _ev.task_evidence("demo", str(task["id"]), "1.1.0")
+            doc = _ev.task_evidence("demo", str(task.id), "1.1.0")
             assert [d.path for d in doc.directives or []] == ["AGENTS.md"]
 
 

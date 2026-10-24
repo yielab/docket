@@ -1,2 +1,0 @@
-# modules that reach a pod's task queue without TaskRepository; shrink-only
-# delete a line in the commit that moves the module's last caller (Phase 49: P49-2..4)

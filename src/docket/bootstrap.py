@@ -43,7 +43,7 @@ from docket.platform import process as _process_adapter
 from docket.platform import store as _store
 from docket.sandbox.launch import Launcher
 from docket.tasks.application import actions as _actions
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams.ports import bind_channel_documents
 from docket.teams.role_composer import TeamsRoleComposer
@@ -60,13 +60,22 @@ def sink_for(spec: _channel.ChannelSpec) -> _channel_adapters.Deliver | None:
     return _channel_adapters.sink_for(spec)
 
 
+class _QueueTaskReader:
+    """The operator's view of a pod's queue: every task as its stored JSON."""
+
+    def read_tasks(self, project: str) -> list[dict[str, Any]]:
+        return [
+            r.model_dump(by_alias=True, mode="json") for r in TaskRepository.for_pod(project).list()
+        ]
+
+
 def bind_adapters() -> None:
     """Bind the real adapters of every port; every entry calls this before it runs."""
     bind_role_composer(TeamsRoleComposer())
     bind_tool_gate(_gate)
     bind_tracer(LocalTracer())
     bind_approval_follow_up(_actions)
-    bind_task_reader(_queue)
+    bind_task_reader(_QueueTaskReader())
     bind_endpoint_prober(_openai_http)
     bind_channel_documents(_channel)
     bind_git(_git_adapter)

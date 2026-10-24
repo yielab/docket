@@ -9,9 +9,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.tasks import put_task, stored_task
+from tests.support.tasks import task as _make_task
 
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import worktree_prune
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.parts import Worktree
 from docket.teams import task_worktrees
 
 SUBJECT = "docket.teams.pod_provisioning"
@@ -51,7 +55,7 @@ def env(tmp_path: Path) -> Iterator[dict[str, Any]]:
         )
         lead = current_home().projects_dir / f"{PROJECT}-lead"
         lead.mkdir()
-        yield {"repo": repo, "tasks": lead / "TASK_LIST.json"}
+        yield {"repo": repo}
 
 
 def _add_task(
@@ -63,17 +67,10 @@ def _add_task(
         (Path(rec["dir"]) / f"{task_id}.txt").write_text("work\n")
         _git(Path(rec["dir"]), "add", ".")
         _git(Path(rec["dir"]), "commit", "-m", f"work {task_id}")
-    path: Path = env["tasks"]
-    doc = json.loads(path.read_text()) if path.exists() else {"tasks": []}
-    doc["tasks"].append(
-        {"id": task_id, "description": "x", "status": status, "worktree": rec, **extra}
+    TaskRepository.for_pod(PROJECT).add(
+        _make_task(id=task_id, status=status, worktree=rec, **extra)
     )
-    path.write_text(json.dumps(doc))
     return rec
-
-
-def _task(env: dict[str, Any], task_id: str) -> dict[str, Any]:
-    return next(t for t in json.loads(env["tasks"].read_text())["tasks"] if t["id"] == task_id)
 
 
 def test_removes_merged_keeps_unmerged_and_untouches_running(env: dict[str, Any]) -> None:
@@ -89,14 +86,14 @@ def test_removes_merged_keeps_unmerged_and_untouches_running(env: dict[str, Any]
     assert merged["branch"] not in _branches(env["repo"])
     assert Path(unmerged["dir"]).is_dir() and unmerged["branch"] in _branches(env["repo"])
     assert Path(running["dir"]).is_dir()
-    assert _task(env, "t-merged")["worktree"]["prunedAt"]
-    assert "prunedAt" not in _task(env, "t-unmerged")["worktree"]
+    assert stored_task(PROJECT, "t-merged").worktree.pruned_at
+    assert stored_task(PROJECT, "t-unmerged").worktree.pruned_at is None
 
 
 def test_a_failed_task_dispatch_resume_would_reclaim_keeps_its_worktree(
     env: dict[str, Any],
 ) -> None:
-    rec = _add_task(env, "t-stale", "failed", failureKind="stale_claim")
+    rec = _add_task(env, "t-stale", "failed", failure_kind="stale_claim")
     (entry,) = worktree_prune.prune_task_worktrees(PROJECT, force=True)
     assert entry.action == "kept" and "resumable" in entry.reason
     assert Path(rec["dir"]).is_dir()
@@ -124,11 +121,11 @@ def test_dirty_worktree_kept_without_force(env: dict[str, Any]) -> None:
 
 def test_dry_run_changes_nothing(env: dict[str, Any]) -> None:
     rec = _add_task(env, "t-merged", "done")
-    before = env["tasks"].read_text()
+    before = TaskRepository.for_pod(PROJECT).list()
     (entry,) = worktree_prune.prune_task_worktrees(PROJECT, dry_run=True)
     assert entry.action == "would-remove"
     assert Path(rec["dir"]).is_dir() and rec["branch"] in _branches(env["repo"])
-    assert env["tasks"].read_text() == before
+    assert TaskRepository.for_pod(PROJECT).list() == before
 
 
 def test_force_removes_unmerged_and_audits(env: dict[str, Any]) -> None:
@@ -137,7 +134,7 @@ def test_force_removes_unmerged_and_audits(env: dict[str, Any]) -> None:
     assert entry.action == "removed"
     assert not Path(rec["dir"]).exists()
     assert rec["branch"] in _branches(env["repo"])  # the commits stay reachable
-    assert _task(env, "t-unmerged")["worktree"]["prunedAt"]
+    assert stored_task(PROJECT, "t-unmerged").worktree.pruned_at
     log = current_home().audit_log.read_text()
     assert "pod.worktrees.prune" in log and "t-unmerged" in log
 
@@ -146,37 +143,19 @@ def test_dir_outside_member_tasks_dir_is_never_removed(env: dict[str, Any], tmp_
     victim = tmp_path / "victim"
     victim.mkdir()
     (victim / "keep.txt").write_text("x")
-    env["tasks"].write_text(
-        json.dumps(
-            {
-                "tasks": [
-                    {
-                        "id": "t-evil",
-                        "description": "x",
-                        "status": "done",
-                        "worktree": {
-                            "dir": str(
-                                current_home().projects_dir
-                                / IMPL
-                                / "tasks"
-                                / ".."
-                                / ".."
-                                / ".."
-                                / ".."
-                                / "victim"
-                            ),
-                            "branch": "docket/t-evil",
-                            "baseCommit": "abc",
-                        },
-                    }
-                ]
-            }
-        )
+    escaped = current_home().projects_dir / IMPL / "tasks" / ".." / ".." / ".." / ".." / "victim"
+    put_task(
+        PROJECT,
+        _make_task(
+            id="t-evil",
+            status="done",
+            worktree=Worktree(dir=str(escaped), branch="docket/t-evil", base_commit="abc"),
+        ),
     )
     (entry,) = worktree_prune.prune_task_worktrees(PROJECT, force=True)
     assert entry.action == "kept"
     assert (victim / "keep.txt").exists()
-    assert "prunedAt" not in _task(env, "t-evil")["worktree"]
+    assert stored_task(PROJECT, "t-evil").worktree.pruned_at is None
 
 
 def test_cli_verb_prints_and_rejects_bad_usage(env: dict[str, Any]) -> None:

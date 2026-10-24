@@ -19,11 +19,12 @@ from typing import Any
 import pytest
 from tests.support import pods as _support_pods
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
+from tests.support.tasks import update_task
 
+from docket.kernel.operator_contract import Question
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
-from docket.teams import settings as _settings
 
 pod_home = _support_pods.pod_home_bare
 
@@ -37,15 +38,8 @@ class TestCancelTask:
     def _seed(self, status: str, **fields: Any) -> str:
         _seed_lean_pod()
         task = _queue.enqueue_task_once("myapp", "work", channel="cli")[0]
-        from docket.platform import store as _store
-
-        def _fn(doc: dict[str, Any]) -> dict[str, Any]:
-            for t in doc["tasks"]:
-                t.update(status=status, **fields)
-            return {"tasks": doc["tasks"]}
-
-        _store.read_modify_write(_settings.pod_task_list_path("myapp"), _fn)
-        return str(task["id"])
+        update_task("myapp", task.id, status=status, **fields)
+        return str(task.id)
 
     def test_a_running_task_cancels_its_live_run_and_audits_once(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch
@@ -117,15 +111,15 @@ class TestCancelTask:
         """A task waiting for input ends cancelled and names where it was parked."""
         task_id = self._seed(
             "waiting_input",
-            question={
-                "id": "q-1",
-                "taskId": "t",
-                "pod": "myapp",
-                "step": "s",
-                "message": "which?",
-                "requestedSchema": {"type": "object", "properties": {"a": {"type": "string"}}},
-                "createdAt": "2026-10-24T00:00:00+00:00",
-            },
+            question=Question(
+                id="q-1",
+                task_id="t",
+                pod="myapp",
+                step="s",
+                message="which?",
+                requested_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+                created_at="2026-10-24T00:00:00+00:00",
+            ),
         )
 
         outcome = _lifecycle.cancel_task("myapp", task_id, channel="cli")
@@ -134,7 +128,7 @@ class TestCancelTask:
 
     def test_a_stale_claim_is_settled_not_cancelled(self, pod_home: Path) -> None:
         """A running task whose claimant is gone ends failed and is reported as reclaimed."""
-        task_id = self._seed("running", claimPid=2**22 + 1)
+        task_id = self._seed("running", claim_pid=2**22 + 1)
 
         outcome = _lifecycle.cancel_task("myapp", task_id, channel="cli")
 

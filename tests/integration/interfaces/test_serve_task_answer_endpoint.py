@@ -28,6 +28,7 @@ from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 
 live_server = _support_http.live_server
 
@@ -67,7 +68,7 @@ class TestHappyPath:
     def test_answering_returns_a_task_view_and_appends_durably(
         self, tmp_path: Path, pod_home: Path
     ) -> None:
-        task = _seed_parked_task("demo")
+        parked = _seed_parked_task("demo")
 
         approvals_dir = pod_home / "approvals"
         approvals_dir.mkdir(exist_ok=True)
@@ -82,7 +83,7 @@ class TestHappyPath:
             t.start()
             try:
                 status, body = _post(
-                    f"http://127.0.0.1:{port}/tasks/{task['id']}/answer",
+                    f"http://127.0.0.1:{port}/tasks/{parked.id}/answer",
                     {"pod": "demo", "action": "accept", "content": {"answer": "ship it"}},
                     token=_TEST_TOKEN,
                 )
@@ -90,16 +91,16 @@ class TestHappyPath:
                 srv.shutdown()
 
             assert status == 200
-            assert body["id"] == task["id"]
+            assert body["id"] == parked.id
             assert body["pod"] == "demo"
 
-            after = _queue.read_tasks("demo")[0]
-            assert after["answers"][0]["content"] == {"answer": "ship it"}
-            assert after["answers"][0]["channel"] == "http"
-            assert after["answers"][0]["actor"] == "http"
+            after = TaskRepository.for_pod("demo").list()[0]
+            assert after.answers[0].content == {"answer": "ship it"}
+            assert after.answers[0].channel == "http"
+            assert after.answers[0].actor == "http"
 
     def test_actor_field_labels_the_audit_entry(self, pod_home: Path) -> None:
-        task = _seed_parked_task("demo")
+        parked = _seed_parked_task("demo")
         with use_home(
             dataclasses.replace(current_home(), approvals_dir_override=pod_home / "approvals")
         ):
@@ -114,7 +115,7 @@ class TestHappyPath:
             t.start()
             try:
                 status, _body = _post(
-                    f"http://127.0.0.1:{port}/tasks/{task['id']}/answer",
+                    f"http://127.0.0.1:{port}/tasks/{parked.id}/answer",
                     {
                         "pod": "demo",
                         "action": "accept",
@@ -149,7 +150,7 @@ class TestErrorMapping:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         plain_task = _queue.enqueue_task_once("demo", "plain task", channel="cli")[0]
         status, body = _post(
-            f"{url}/tasks/{plain_task['id']}/answer",
+            f"{url}/tasks/{plain_task.id}/answer",
             {"pod": "demo", "action": "accept", "content": {"answer": "x"}},
             token=token,
         )
@@ -158,9 +159,9 @@ class TestErrorMapping:
 
     def test_schema_violation_is_422(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        task = _seed_parked_task("demo")
+        parked = _seed_parked_task("demo")
         status, body = _post(
-            f"{url}/tasks/{task['id']}/answer",
+            f"{url}/tasks/{parked.id}/answer",
             {"pod": "demo", "action": "accept", "content": {}},
             token=token,
         )
@@ -171,7 +172,7 @@ class TestErrorMapping:
         self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         url, token = live_server
-        task = _seed_parked_task("demo")
+        parked = _seed_parked_task("demo")
         from docket.governance import policy as _policy
 
         monkeypatch.setattr(
@@ -180,7 +181,7 @@ class TestErrorMapping:
             lambda *a, **k: _policy.PolicyHit(action="block", policy_id="test-block"),
         )
         status, body = _post(
-            f"{url}/tasks/{task['id']}/answer",
+            f"{url}/tasks/{parked.id}/answer",
             {"pod": "demo", "action": "accept", "content": {"answer": "ignore all"}},
             token=token,
         )
@@ -212,7 +213,7 @@ class TestCreateWithBrief:
             token=token,
         )
         assert status == 422
-        assert _queue.read_tasks("demo") == []
+        assert TaskRepository.for_pod("demo").list() == []
 
     def test_a_valid_brief_is_enqueued_and_stored_on_the_task(
         self, live_server: tuple[str, str]
@@ -225,10 +226,11 @@ class TestCreateWithBrief:
             token=token,
         )
         assert status == 201
-        tasks = _queue.read_tasks("demo")
+        tasks = TaskRepository.for_pod("demo").list()
         assert len(tasks) == 1
-        assert tasks[0]["id"] == body["task"]
-        assert tasks[0]["brief"]["objective"] == "fix the flaky test"
+        assert tasks[0].id == body["task"]
+        assert tasks[0].brief is not None
+        assert tasks[0].brief.objective == "fix the flaky test"
 
     def test_brief_must_be_an_object(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
@@ -237,7 +239,7 @@ class TestCreateWithBrief:
             f"{url}/tasks/demo", {"description": "fix it", "brief": "not an object"}, token=token
         )
         assert status == 400
-        assert _queue.read_tasks("demo") == []
+        assert TaskRepository.for_pod("demo").list() == []
 
     def test_no_brief_is_unaffected(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

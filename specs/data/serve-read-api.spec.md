@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 4.1.3
+**Version**: 4.1.4
 **Status**: Stable
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-24
 
 ## Purpose
 
@@ -317,11 +317,11 @@ prints. An unknown task is `404 {"ok": false, "error": ...}`.
 
 ### GET /tasks/&lt;project&gt;
 
-Requires `Authorization: Bearer <token>`. Returns the pod's task records as `read_tasks(project)`
-normalizes them, each with a `tokenBudget` key added (the measured-token ceiling its next hop
+Requires `Authorization: Bearer <token>`. Returns the pod's task records as `TaskRepository.list()`
+holds them, each with a `tokenBudget` key added (the measured-token ceiling its next hop
 runs under). The optional `?status=` and `?externalRef=` filters, the `400` for an unknown
 `status`, and `tokenBudget` are specified by `operator-api.spec.md`. A project with no pod is
-`read_tasks`' own `[]`, not an error.
+an empty list, not an error.
 
 ```json
 {
@@ -341,7 +341,7 @@ runs under). The optional `?status=` and `?externalRef=` filters, the `400` for 
 }
 ```
 
-The field set of a task record is the one `read_tasks` normalizes onto it (owned by
+The field set of a task record is the one `TaskRecord` dumps (owned by
 `pod-dispatch.spec.md` and `operator-api.spec.md`); this spec does not re-enumerate it.
 
 - The project segment must be non-empty — `GET /tasks` and `GET /tasks/` both reject with `400`.
@@ -349,7 +349,7 @@ The field set of a task record is the one `read_tasks` normalizes onto it (owned
   segment containing e.g. `/` or `..` rejects with `400 {"error": ...}`, checked after the auth
   check so an unauthenticated caller still gets `401` first.
 - A project with a pod but an empty queue, and a project with no pod at all, both return `200` with
-  `{"tasks": []}` — indistinguishable at this endpoint, matching `read_tasks`' own contract (it has
+  `{"tasks": []}` — indistinguishable at this endpoint, matching the repository's contract (it has
   no notion of "pod exists but is empty" vs. "no pod").
 
 ### GET /traces/&lt;project&gt;
@@ -826,8 +826,9 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
 - `src/docket/tasks/application/runs.py`: `create_run`, `list_runs`, `get_run`, `execute`, `cancel_run`, the
   run record and its `cancellation` lifecycle
-- `src/docket/tasks/application/queue.py`: `read_tasks`, `enqueue_task_once`
-- `src/docket/tasks/domain/task.py`: task-record normalization (`_TASK_SCALAR_DEFAULTS`)
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`
+- `src/docket/tasks/application/repository.py`: `TaskRepository.list`
+- `src/docket/tasks/domain/task.py`: `TaskRecord`, the task record's fields and their dump
 - `src/docket/hops/application/steps.py`: `effective_pipeline`
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval_detail`, `TASK_GRANT_CAP`

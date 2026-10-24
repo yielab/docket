@@ -9,14 +9,13 @@ from typing import Any
 
 import pytest
 from tests.support.pods import seed_lead_implementer_pod as _seed
+from tests.support.tasks import put_task, put_tasks, task
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import status as _status
 from docket.kernel.home import current_home
-from docket.platform import store as _store
 from docket.sandbox.launch import Launcher
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.status"
 
@@ -24,11 +23,7 @@ runner = CliRunner()
 
 
 def _tasks(project: str, *statuses: str) -> None:
-    rows = [
-        {"id": f"t{i}", "description": "d", "status": s, "created": "2026-09-28T00:00:00+00:00"}
-        for i, s in enumerate(statuses)
-    ]
-    _store.write_json(_settings.pod_task_list_path(project), {"tasks": rows})
+    put_tasks(project, *(task(status=s) for s in statuses))
 
 
 def _trace(project: str, name: str, status: str) -> None:
@@ -108,19 +103,7 @@ class TestCurrentPod:
 
     def test_approved_ready_counts_a_granted_pending_task(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _store.write_json(
-                _settings.pod_task_list_path("demo"),
-                {
-                    "tasks": [
-                        {
-                            "id": "t",
-                            "description": "x",
-                            "status": "pending",
-                            "gateOverridePipelineIndex": 1,
-                        }
-                    ]
-                },
-            )
+            put_task("demo", task(gate_override_pipeline_index=1))
             assert _json("--pod", "demo")["tasks"]["approvedReady"] == 1
 
     def test_start_is_running_when_the_pid_file_names_a_live_process(self, tmp_path: Path) -> None:

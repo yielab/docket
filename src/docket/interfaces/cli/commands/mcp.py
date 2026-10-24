@@ -27,6 +27,7 @@ from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.repository import TaskRepository
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
 # the 2.x line's `mcp.server.MCPServer`, the decorator/`add_tool`-based server
@@ -88,15 +89,19 @@ def tool_pods() -> dict[str, Any]:
 
 def tool_queue(project: str, retry_task_id: str | None = None) -> dict[str, Any]:
     """Show a pod's task queue (all statuses, not just pending). If ``retry_task_id`` is
-    given, first moves that one ``blocked`` task back to ``pending`` (mirrors
-    `docket task retry`) — an error if it isn't currently blocked."""
+    given, first moves that one ``blocked`` or ``failed`` task back to ``pending`` (mirrors
+    `docket task retry`) — an error if it is in any other status."""
     detail = f"project={project}"
     if retry_task_id:
         detail += f" retry={retry_task_id}"
     _audit("queue", detail)
     if retry_task_id and not _lifecycle.retry_task(project, retry_task_id):
-        raise McpToolError(f"'{retry_task_id}' is not a blocked task in pod '{project}'.")
-    return {"project": project, "tasks": _queue.read_tasks(project)}
+        raise McpToolError(f"'{retry_task_id}' is not a failed or blocked task in pod '{project}'.")
+    records = TaskRepository.for_pod(project).list()
+    return {
+        "project": project,
+        "tasks": [r.model_dump(by_alias=True, mode="json") for r in records],
+    }
 
 
 def tool_delegate(project: str, description: str, priority: str = "normal") -> dict[str, Any]:
@@ -111,9 +116,10 @@ def tool_delegate(project: str, description: str, priority: str = "normal") -> d
     if priority not in ("high", "normal", "low"):
         raise McpToolError(f"Invalid priority '{priority}'. Use: high | normal | low")
     try:
-        return _queue.enqueue_task_once(project, description, priority, channel="mcp")[0]
+        task, _created = _queue.enqueue_task_once(project, description, priority, channel="mcp")
     except DispatchError as exc:
         raise McpToolError(str(exc)) from exc
+    return task.model_dump(by_alias=True, mode="json")
 
 
 def tool_dispatch(project: str, resume: bool = False, timeout: int | None = None) -> dict[str, Any]:

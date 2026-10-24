@@ -16,6 +16,7 @@ from docket.observability import trace as _trace
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain.refs import TaskRef, short_id
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
@@ -28,17 +29,15 @@ def _pod_codebase(project: str) -> str:
     return str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
 
 
-def _worktree(project: str, task: dict[str, Any]) -> dict[str, str] | None:
+def _worktree(project: str, record: TaskRecord) -> dict[str, str] | None:
     """The task's worktree record when it has a directory that was not pruned."""
-    record = task.get("worktree")
-    if not isinstance(record, dict) or not record.get("dir") or record.get("prunedAt"):
+    wt = record.worktree
+    path = record.worktree_dir
+    if wt is None or not path:
         return None
-    path = str(record["dir"])
-    base = str(record.get("baseCommit") or "")
-    branch = str(record.get("branch") or "")
-    codebase = str(_pod_codebase(project) or "")
+    codebase = _pod_codebase(project)
     root = f"git -C {codebase} " if codebase else "git "
-    git_dir, common_dir = str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
+    git_dir, common_dir = wt.git_dir or "", wt.common_dir or ""
     _git.trust_worktree(path, git_dir, common_dir)
     where = (
         f"GIT_DIR={git_dir} GIT_COMMON_DIR={common_dir} GIT_WORK_TREE={path} git"
@@ -47,27 +46,25 @@ def _worktree(project: str, task: dict[str, Any]) -> dict[str, str] | None:
     )
     return {
         "path": path,
-        "branch": branch,
-        "baseCommit": base,
-        "diff": f"{where} diff {base}",
-        "merge": f"{root}merge {branch}",
+        "branch": wt.branch,
+        "baseCommit": wt.base_commit,
+        "diff": f"{where} diff {wt.base_commit}",
+        "merge": f"{root}merge {wt.branch}",
     }
 
 
-def _cost_cell(task: dict[str, Any]) -> str:
-    cost = task.get("costUsd")
-    return f"${float(cost):.4f}" if cost else "-"
+def _cost_cell(record: TaskRecord) -> str:
+    return f"${record.cost_usd:.4f}" if record.cost_usd else "-"
 
 
-def _list_item(project: str, task: dict[str, Any]) -> dict[str, Any]:
-    wt = _worktree(project, task)
-    cost = task.get("costUsd")
+def _list_item(project: str, record: TaskRecord) -> dict[str, Any]:
+    wt = _worktree(project, record)
     return {
-        "id": str(task.get("id", "")),
-        "priority": str(task.get("priority", "normal")),
-        "status": str(task.get("status", "")),
-        "costUsd": float(cost) if cost else None,
-        "description": str(task.get("description", "")),
+        "id": record.id,
+        "priority": record.priority,
+        "status": str(record.status),
+        "costUsd": record.cost_usd or None,
+        "description": record.description,
         "worktree": wt["path"] if wt else None,
     }
 
@@ -126,7 +123,7 @@ def _render_forecast(project: str) -> None:
 
 def _render_show(
     found: TaskRef,
-    task: dict[str, Any],
+    record: TaskRecord,
     ev: _evidence.TaskEvidence,
     wt: dict[str, str] | None,
     notes: list[dict[str, Any]],
@@ -134,10 +131,10 @@ def _render_show(
     ui.header("task", short_id(found.task_id))
     _say(f"  pod:      {found.project}")
     _say(f"  id:       {found.task_id}")
-    _say(f"  status:   {task.get('status', '?')}")
-    _say(f"  priority: {task.get('priority', 'normal')}")
-    _say(f"  cost:     {_cost_cell(task)}")
-    _say(f"  task:     {task.get('description', '')}")
+    _say(f"  status:   {record.status}")
+    _say(f"  priority: {record.priority}")
+    _say(f"  cost:     {_cost_cell(record)}")
+    _say(f"  task:     {record.description}")
     if ev.hops:
         ui.section("Hops")
         cols = ["HOP", "ROLE", "OK", "VERDICT", "VERIFY", "COMMIT", "TOKENS IN", "TOKENS OUT"]
@@ -163,7 +160,7 @@ def _render_show(
 
 def _show_json(
     found: TaskRef,
-    task: dict[str, Any],
+    record: TaskRecord,
     ev: _evidence.TaskEvidence,
     wt: dict[str, str] | None,
     notes: list[dict[str, Any]],
@@ -171,7 +168,7 @@ def _show_json(
     forecast = _interruptions.forecast(found.project, caller_default=_report.caller_default())
     return {
         "pod": found.project,
-        "task": {**_list_item(found.project, task), "worktree": wt},
+        "task": {**_list_item(found.project, record), "worktree": wt},
         "evidence": json.loads(ev.model_dump_json(by_alias=True)),
         "runs": [_runs.get_run(r) for r in found.run_ids],
         "corrections": notes,

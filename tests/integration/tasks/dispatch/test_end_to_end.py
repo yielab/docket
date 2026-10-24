@@ -31,6 +31,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 
@@ -56,8 +57,8 @@ class TestEndToEnd:
             # against turning a measured-token estimate into a billing claim.
             assert results[0].cost_usd == 0.0
             assert len(backend.calls) == 2  # one turn per pod hop (lead, implementer)
-            tasks = _queue.read_tasks("demo")
-            assert tasks[0]["status"] == "done"
+            tasks = TaskRepository.for_pod("demo").list()
+            assert tasks[0].status == "done"
             assert (oc_dir / "traces" / "demo").is_dir()
 
     def test_agent_loop_trace_records_carry_the_claimed_tasks_id(
@@ -82,7 +83,7 @@ class TestEndToEnd:
             events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             llm_events = [e for e in events if e["event_type"] == "llm_call"]
             assert len(llm_events) == 2  # one per hop (lead, implementer)
-            assert all(e.get("task_id") == task["id"] for e in llm_events)
+            assert all(e.get("task_id") == task.id for e in llm_events)
             session_events = [
                 e for e in events if e["event_type"] in ("session_start", "session_end")
             ]
@@ -129,9 +130,9 @@ class TestEndToEnd:
             assert elapsed < 1.0, f"took {elapsed:.2f}s -- refuse mode should not wait"
             assert results[0].status == "failed"
             assert "approval_unavailable" in results[0].reason
-            tasks = _queue.read_tasks("demo")
-            assert tasks[0]["status"] == "failed"
-            assert "approval_unavailable" in tasks[0]["reason"]
+            tasks = TaskRepository.for_pod("demo").list()
+            assert tasks[0].status == "failed"
+            assert "approval_unavailable" in tasks[0].reason
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             assert trace_files
             trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
@@ -178,13 +179,13 @@ class TestEndToEnd:
             assert elapsed < 1.0, f"took {elapsed:.2f}s -- park mode should not wait"
             assert results[0].status == "waiting_approval", results[0].reason
             assert results[0].approval_token
-            tasks = _queue.read_tasks("demo")
-            assert tasks[0]["status"] == "waiting_approval"
-            assert tasks[0]["approvalToken"] == results[0].approval_token
+            tasks = TaskRepository.for_pod("demo").list()
+            assert tasks[0].status == "waiting_approval"
+            assert tasks[0].approval_token == results[0].approval_token
             # The parked hop is persisted (audit/trace history stays true) --
             # `parked: true`, not silently dropped.
-            assert tasks[0]["hops"][-1]["role"] == "implementer"
-            assert tasks[0]["hops"][-1]["parked"] is True
+            assert tasks[0].hops[-1].role == "implementer"
+            assert tasks[0].hops[-1].parked is True
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             assert trace_files
             trace_events = [
@@ -235,15 +236,15 @@ class TestEndToEnd:
             # docket task approve <token>
             _approval_mod.approval_grant(token, channel="cli")
             assert _actions.resolve_waiting_approval(token, "granted") is True
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "pending"
-            assert len(task["pregrants"]) == 1
-            assert task["pregrants"][0]["token"] == token
-            assert task["pregrants"][0]["tool"] == "bash"
-            assert task["pregrants"][0]["argsDigest"]
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "pending"
+            assert len(task.pregrants) == 1
+            assert task.pregrants[0].token == token
+            assert task.pregrants[0].tool == "bash"
+            assert task.pregrants[0].args_digest
             # The override-index field is for skipping a pre-hop approval *gate*,
             # never reused to re-run an already-attempted hop.
-            assert task.get("gateOverridePipelineIndex") is None
+            assert task.gate_override_pipeline_index is None
 
             # docket run -- the implementer's identical call is
             # re-issued by the model and this time passes via the pre-grant, then
@@ -265,16 +266,16 @@ class TestEndToEnd:
             second = _sweep.dispatch_pod("demo")
 
             assert second[0].status == "done", second[0].reason
-            final = _queue.read_tasks("demo")[0]
+            final = TaskRepository.for_pod("demo").list()[0]
             # Lead's already-persisted hop was not re-run; the implementer step
             # appears twice -- the parked attempt and the real one -- exactly the
             # same "each attempt is its own audit record" shape a rework cycle's
             # repeated reviewer hop already has, never overwritten in place.
-            assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
-            assert final["hops"][1]["parked"] is True
-            assert final["hops"][1]["ok"] is False
-            assert final["hops"][-1]["parked"] is False
-            assert final["hops"][-1]["ok"] is True
+            assert [h.role for h in final.hops] == ["lead", "implementer", "implementer"]
+            assert final.hops[1].parked is True
+            assert final.hops[1].ok is False
+            assert final.hops[-1].parked is False
+            assert final.hops[-1].ok is True
 
     def test_park_deny_fails_the_task_approval_denied(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -311,9 +312,9 @@ class TestEndToEnd:
             _approval_mod.approval_deny(token, channel="cli")
             assert _actions.resolve_waiting_approval(token, "denied") is True
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "failed"
-            assert task["failureKind"] == "approval_denied"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "failed"
+            assert task.failure_kind == "approval_denied"
 
     def test_park_expiry_past_deadline_denies_via_sweep(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -363,9 +364,9 @@ class TestEndToEnd:
             swept = _approval_mod.approval_sweep_expired()
             assert swept == 1
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "failed"
-            assert task["failureKind"] == "approval_denied"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "failed"
+            assert task.failure_kind == "approval_denied"
 
     def test_each_step_replays_only_its_history_and_receives_typed_handoff_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -387,15 +388,15 @@ class TestEndToEnd:
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
             task = _queue.enqueue_task_once("demo", "Keep context bounded", channel="cli")[0]
-            legacy_task_key = f"agent:demo:{task['id']}"
+            legacy_task_key = f"agent:demo:{task.id}"
             legacy_message = assistant("LEGACY_TASK_WIDE_HISTORY")
             _session.append_messages(legacy_task_key, [legacy_message])
             result = _sweep.dispatch_pod("demo")[0]
             assert result.status == "done"
 
-            lead_key = _runner.step_session_key("demo-lead", "demo", task["id"], "lead")
+            lead_key = _runner.step_session_key("demo-lead", "demo", task.id, "lead")
             implementer_key = _runner.step_session_key(
-                "demo-implementer", "demo", task["id"], "implementer"
+                "demo-implementer", "demo", task.id, "implementer"
             )
             assert lead_key != implementer_key
 
@@ -434,8 +435,8 @@ class TestEndToEnd:
             trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
             trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
-            assert trace_events[0]["session_id"] == f"agent:demo:{task['id']}"
-            assert all(e["session_id"] == f"agent:demo:{task['id']}" for e in trace_events)
+            assert trace_events[0]["session_id"] == f"agent:demo:{task.id}"
+            assert all(e["session_id"] == f"agent:demo:{task.id}" for e in trace_events)
             assert sum(e["event_type"] == "session_compaction" for e in trace_events) == 2
             assert {path.name for path in (home / "traces").iterdir()} == {"demo"}
 
@@ -535,7 +536,7 @@ class TestConcurrentDispatch:
             assert len(counts) == n_tasks, f"expected {n_tasks} distinct tasks, got {counts}"
             assert all(c == 2 for c in counts.values()), counts
             assert len(set(calls)) == n_tasks * 2
-            tasks = _queue.read_tasks("demo")
+            tasks = TaskRepository.for_pod("demo").list()
             assert len(tasks) == n_tasks
-            assert all(t["status"] == "done" for t in tasks)
-            assert len({t["id"] for t in tasks}) == n_tasks  # uuid4 ids never collide
+            assert all(t.status == "done" for t in tasks)
+            assert len({t.id for t in tasks}) == n_tasks  # uuid4 ids never collide

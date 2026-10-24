@@ -61,7 +61,7 @@ def seeded(tmp_path: Path) -> Iterator[dict[str, Any]]:
             t["status"] = "done"
             t["worktree"] = {"dir": str(wt), "branch": "docket/demo/t1", "baseCommit": base}
         _store.write_json(path, doc)
-        yield {"id": task["id"], "wt": wt, "base": base}
+        yield {"id": task.id, "wt": wt, "base": base}
 
 
 def test_task_diff_prints_the_branch_change_against_the_base(seeded: dict[str, Any]) -> None:

@@ -28,8 +28,9 @@ from docket.operator import flush, load_catalog, unreached_warning
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import lifecycle as _lifecycle
-from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.repository import TaskRepository, claimable
+from docket.tasks.domain.state import Status
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import models as _models
@@ -248,18 +249,12 @@ def _pod_dispatch(
         raise typer.Exit(1) from ex
     if resume:
         _clear_pause(project)
-    tasks = _queue.read_tasks(project)
-    pending = [t for t in tasks if t.get("status") == "pending"]
-    resumable = [
-        t
-        for t in tasks
-        if resume
-        and t.get("status") == "failed"
-        and t.get("failureKind") in _queue.RESUMABLE_FAILURE_KINDS
-    ]
+    tasks = TaskRepository.for_pod(project).list()
+    pending = [t for t in tasks if t.status == Status.pending]
+    resumable = [t for t in tasks if t.status == Status.failed and claimable(t, resume=resume)]
     # A crashed dispatcher leaves a task ``running``; dispatch_pod's own stale-claim sweep
     # judges whether its claim is stale, so under --resume a running task is enough to enter.
-    running = [t for t in tasks if resume and t.get("status") == "running"]
+    running = [t for t in tasks if resume and t.status == Status.running]
     if not pending and not resumable and not running:
         ui.warn(
             f"No pending tasks in pod '{project}'. Queue one: docket task add \"<description>\""
@@ -377,7 +372,7 @@ def _dry_run(project: str, spec: _pipeline.PipelineSpec | None) -> None:
     except DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
-    pending = sum(1 for t in _queue.read_tasks(project) if t.get("status") == "pending")
+    pending = sum(1 for t in TaskRepository.for_pod(project).list() if t.status == Status.pending)
     ui.header("Run plan", project)
     ui.console.print()
     ui.console.print(_orch.render_plan(plan), markup=False)

@@ -29,6 +29,7 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams.workspace import worktree as _worktree
@@ -39,6 +40,9 @@ SUBJECT = "docket.teams.workspace.worktree"
 
 # ── TestHopDiffProbeUnit: hop_diff_probe in isolation ──────
 
+# A task that runs in place: no worktree directory, no base commit.
+_IN_PLACE = {"task_id": "t1", "description": "x", "worktree_dir": "", "base_commit": ""}
+
 
 class TestHopDiffProbeUnit:
     def test_non_implementer_role_on_a_non_repo_gets_nothing(
@@ -47,8 +51,13 @@ class TestHopDiffProbeUnit:
         monkeypatch.setattr(_fleet, "meta_get", lambda _id, _field, default="": default)
         fake_git.git_available = lambda: True
         fake_git.git_is_repo = lambda _cwd: False
-        assert _worktree.hop_diff_probe("demo-lead", "lead", {}) == ([], None, None, "")
-        assert _worktree.hop_diff_probe("demo-reviewer", "reviewer", {}) == ([], None, None, "")
+        assert _worktree.hop_diff_probe("demo-lead", "lead", **_IN_PLACE) == ([], None, None, "")
+        assert _worktree.hop_diff_probe("demo-reviewer", "reviewer", **_IN_PLACE) == (
+            [],
+            None,
+            None,
+            "",
+        )
 
     def test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence(
         self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
@@ -59,9 +68,11 @@ class TestHopDiffProbeUnit:
         fake_git.git_changed_files = lambda _cwd: ["notes/"]
         fake_git.git_diff = lambda _cwd, _base: ""
         fake_git.git_new_files_text = lambda _cwd, _limit: "--- new file: n\nx\n"
-        result = _worktree.hop_diff_probe("demo-researcher", "researcher", {})
+        result = _worktree.hop_diff_probe("demo-researcher", "researcher", **_IN_PLACE)
         assert result == (["notes/"], None, None, "--- new file: n\nx\n")
-        same = _worktree.hop_diff_probe("demo-critic", "critic", {}, "--- new file: n\nx\n")
+        same = _worktree.hop_diff_probe(
+            "demo-critic", "critic", **_IN_PLACE, prior_diff="--- new file: n\nx\n"
+        )
         assert same == ([], None, None, "")
 
     def test_missing_git_binary_degrades_without_probing_further(
@@ -74,7 +85,7 @@ class TestHopDiffProbeUnit:
             raise AssertionError("must not call git_is_repo when git is unavailable")
 
         fake_git.git_is_repo = boom
-        result = _worktree.hop_diff_probe("demo-implementer", "implementer", {})
+        result = _worktree.hop_diff_probe("demo-implementer", "implementer", **_IN_PLACE)
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
     def test_non_repo_cwd_degrades_without_probing_further(
@@ -89,14 +100,13 @@ class TestHopDiffProbeUnit:
 
         fake_git.git_changed_files = boom
         fake_git.git_current_branch = boom
-        result = _worktree.hop_diff_probe("demo-implementer", "implementer", {})
+        result = _worktree.hop_diff_probe("demo-implementer", "implementer", **_IN_PLACE)
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
     def test_real_probe_resolves_task_worktree_first(
         self, monkeypatch: pytest.MonkeyPatch, fake_git: FakeGit
     ) -> None:
         meta = {"codebase": "/src/demo"}
-        task = {"worktree": {"dir": "/wt/demo-implementer", "branch": "b", "baseCommit": "abc"}}
         monkeypatch.setattr(
             _fleet, "meta_get", lambda _id, field, default="": meta.get(field, default)
         )
@@ -111,7 +121,14 @@ class TestHopDiffProbeUnit:
         fake_git.git_changed_files = lambda cwd: ["a.py", "b.py"]
         fake_git.git_current_branch = lambda cwd: "pc/demo-implementer"
 
-        result = _worktree.hop_diff_probe("demo-implementer", "implementer", task)
+        result = _worktree.hop_diff_probe(
+            "demo-implementer",
+            "implementer",
+            task_id="t1",
+            description="x",
+            worktree_dir="/wt/demo-implementer",
+            base_commit="abc",
+        )
         files_changed, diff_ref, evidence, _diff = result
         assert (files_changed, diff_ref) == (["a.py", "b.py"], "pc/demo-implementer")
         # The commit/diffStat producers are real git calls against a nonexistent path here
@@ -132,7 +149,7 @@ class TestHopDiffProbeUnit:
         fake_git.git_is_repo = lambda _cwd: True
         fake_git.git_changed_files = lambda _cwd: []
         fake_git.git_current_branch = lambda _cwd: ""
-        result = _worktree.hop_diff_probe("demo-implementer", "implementer", {})
+        result = _worktree.hop_diff_probe("demo-implementer", "implementer", **_IN_PLACE)
         assert result == ([], None, {"commit": None, "baseCommit": None, "diffStat": None}, "")
 
 
@@ -234,10 +251,10 @@ class TestDispatchPopulatesRealDiff:
             _queue.enqueue_task_once("demo", "add a feature", channel="cli")
             runner = _ImplementerWritesFile()
             (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
-            recorded = _queue.read_tasks("demo")[0]["worktree"]
-            expected_branch = recorded["branch"]
-            assert recorded["dir"] and expected_branch
-            assert runner.roots == [recorded["dir"]]
+            recorded = TaskRepository.for_pod("demo").list()[0].worktree
+            expected_branch = recorded.branch
+            assert recorded.dir and expected_branch
+            assert runner.roots == [recorded.dir]
 
             assert res.status == "done"
             implementer_hop = next(h for h in res.hops if h.role == "implementer")
@@ -252,7 +269,7 @@ class TestDispatchPopulatesRealDiff:
             base_commit = implementer_hop.evidence["baseCommit"]
             assert commit is not None and len(commit) == 40
             assert all(c in "0123456789abcdef" for c in commit)
-            assert base_commit == recorded["baseCommit"]
+            assert base_commit == recorded.base_commit
             assert isinstance(implementer_hop.evidence["diffStat"], dict)
             assert set(implementer_hop.evidence["diffStat"]) == {"files", "insertions", "deletions"}
 
@@ -302,7 +319,10 @@ class TestDegradePaths:
 
             _queue.enqueue_task_once("flatpod", "work", channel="cli")
             (res,) = _sweep.dispatch_pod("flatpod", runner=_PlainRunner(), max_tasks=1)
-            assert "not a git repo" in _queue.read_tasks("flatpod")[0]["worktree"]["fallbackReason"]
+            assert (
+                "not a git repo"
+                in TaskRepository.for_pod("flatpod").list()[0].worktree.fallback_reason
+            )
 
             assert res.status == "done"
             implementer_hop = next(h for h in res.hops if h.role == "implementer")
@@ -330,7 +350,7 @@ class TestDegradePaths:
 
             _queue.enqueue_task_once("gitless", "work", channel="cli")
             (res,) = _sweep.dispatch_pod("gitless", runner=_PlainRunner(), max_tasks=1)
-            assert _queue.read_tasks("gitless")[0]["worktree"]["dir"] == ""
+            assert TaskRepository.for_pod("gitless").list()[0].worktree.dir == ""
 
             assert res.status == "done"
             implementer_hop = next(h for h in res.hops if h.role == "implementer")

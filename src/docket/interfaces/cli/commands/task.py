@@ -39,6 +39,7 @@ from docket.interfaces.cli.commands.task_render import (
 from docket.interfaces.cli.render import ui
 from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
+from docket.kernel.operator_contract import Question
 from docket.observability import trace as _trace
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import corrections as _corrections
@@ -47,7 +48,10 @@ from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import worktree_prune as _worktree_prune
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
+from docket.tasks.domain.state import Status
+from docket.tasks.domain.task import TaskRecord
 
 task_app = typer.Typer(
     name="task",
@@ -74,11 +78,12 @@ def _resolve(pod: str | None, ref: str) -> TaskRef:
         raise typer.Exit(1) from exc
 
 
-def _task_record(found: TaskRef) -> dict[str, Any]:
-    for task in _queue.read_tasks(found.project):
-        if task.get("id") == found.task_id:
-            return task
-    return {}
+def _task_record(found: TaskRef) -> TaskRecord:
+    record = TaskRepository.for_pod(found.project).get(found.task_id)
+    if record is None:
+        ui.error(f"Task {short_id(found.task_id)} is no longer queued", "Run docket task list")
+        raise typer.Exit(1)
+    return record
 
 
 def _ask_noun(kind: str, count: int) -> str:
@@ -168,10 +173,10 @@ def cmd_add(
         ui.error(str(ex))
         raise typer.Exit(1) from ex
     if not created:
-        ui.success(escape(f"already queued for pod '{project}': [{task['id']}]"))
+        ui.success(escape(f"already queued for pod '{project}': [{task.id}]"))
         return
-    ui.success(escape(f"Queued for pod '{project}': [{task['id']}] {text}"))
-    ui.dim(f"  {_interruption_summary(str(task['id']), project)}")
+    ui.success(escape(f"Queued for pod '{project}': [{task.id}] {text}"))
+    ui.dim(f"  {_interruption_summary(task.id, project)}")
     _contract.next_step("docket run")
 
 
@@ -185,7 +190,7 @@ def cmd_list(
     Example: docket task list --json
     """
     project = _contract.require_pod(pod)
-    items = [_list_item(project, t) for t in _queue.read_tasks(project)]
+    items = [_list_item(project, t) for t in TaskRepository.for_pod(project).list()]
     if json_out:
         _contract.emit_json({"pod": project, "tasks": items})
         return
@@ -217,18 +222,18 @@ def cmd_show(
     Example: docket task show task-04ff
     """
     found = _resolve(pod, ref)
-    task = _task_record(found)
+    record = _task_record(found)
     try:
         ev = _evidence.task_evidence(found.project, found.task_id, "1.1.0")
     except _evidence.EvidenceNotFound as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
-    wt = _worktree(found.project, task)
+    wt = _worktree(found.project, record)
     notes = [r for r in _corrections.read(found.project) if r.get("taskId") == found.task_id]
     if json_out:
-        _contract.emit_json(_show_json(found, task, ev, wt, notes))
+        _contract.emit_json(_show_json(found, record, ev, wt, notes))
     else:
-        _render_show(found, task, ev, wt, notes)
+        _render_show(found, record, ev, wt, notes)
     if ref.startswith("run-") and (_runs.get_run(ref) or {}).get("state") == "failed":
         raise typer.Exit(1)
 
@@ -344,12 +349,11 @@ def _pending_token(pod: str | None, ref: str) -> tuple[str, str | None, str]:
             project = ""
         return ref, project or None, ref
     found = _resolve(pod, ref)
-    task = _task_record(found)
-    token = str(task.get("approvalToken") or "")
-    if task.get("status") != "waiting_approval" or not token:
+    record = _task_record(found)
+    token = record.approval_token or ""
+    if record.status != Status.waiting_approval or not token:
         ui.error(
-            f"Task {short_id(found.task_id)} is {task.get('status', 'unknown')}, "
-            "not waiting for approval",
+            f"Task {short_id(found.task_id)} is {record.status}, not waiting for approval",
             "Run docket inbox",
         )
         raise typer.Exit(1)
@@ -447,10 +451,10 @@ def _task_deny(
     ui.success(f"Denied {label}; the action is blocked")
 
 
-def _question_of(found: TaskRef) -> dict[str, Any]:
-    task = _task_record(found)
-    question = task.get("question")
-    if task.get("status") != "waiting_input" or not isinstance(question, dict):
+def _question_of(found: TaskRef) -> Question:
+    record = _task_record(found)
+    question = record.question
+    if record.status != Status.waiting_input or question is None:
         ui.error(f"Task {short_id(found.task_id)} has no pending question", "Run docket inbox")
         raise typer.Exit(1)
     return question
@@ -506,7 +510,7 @@ def _task_retry(
     """
     found = _resolve(pod, ref)
     if not _lifecycle.retry_task(found.project, found.task_id):
-        status = _task_record(found).get("status", "unknown")
+        status = _task_record(found).status
         ui.error(
             f"Task {short_id(found.task_id)} is {status}", "Only failed or blocked tasks retry"
         )

@@ -17,6 +17,7 @@ from docket.interfaces.http.server import _DocketHandler
 from docket.interfaces.telegram import bot as _tg
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
@@ -56,17 +57,17 @@ def test_a_cli_enqueue_records_the_cli_channel() -> None:
     _seed()
     result = CliRunner().invoke(_app, ["task", "add", "fix it", "--pod", "demo"])
     assert result.exit_code == 0, result.output
-    task = _queue.read_tasks("demo")[0]
-    assert task["channel"] == "cli"
+    task = TaskRepository.for_pod("demo").list()[0]
+    assert task.channel == "cli"
     assert "channel=cli" in str(_entries("task.enqueue")[0]["detail"])
 
 
 def test_an_http_enqueue_records_the_http_channel(live_server: str) -> None:
     _seed()
     resp = _post(f"{live_server}/tasks/demo", {"description": "from http"})
-    task = _queue.read_tasks("demo")[0]
-    assert task["id"] == resp["task"]
-    assert task["channel"] == "http"
+    task = TaskRepository.for_pod("demo").list()[0]
+    assert task.id == resp["task"]
+    assert task.channel == "http"
     detail = str(_entries("task.enqueue")[0]["detail"])
     assert "channel=http" in detail and resp["task"] in detail and "demo" in detail
 
@@ -76,8 +77,8 @@ def test_a_telegram_delegate_records_the_telegram_channel() -> None:
     _fleet.upsert_binding("demo-lead", "-100300", "telegram")
     msg = _tg.InboundMessage(chat_id="-100300", user_id="9", text="/delegate do it", update_id=1)
     assert _tg.handle_message(msg).ok
-    task = _queue.read_tasks("demo")[0]
-    assert task["channel"] == "telegram"
+    task = TaskRepository.for_pod("demo").list()[0]
+    assert task.channel == "telegram"
     assert "channel=telegram" in str(_entries("task.enqueue")[0]["detail"])
 
 

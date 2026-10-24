@@ -34,6 +34,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 from docket.teams.models import AgentMeta as _AgentMeta
@@ -173,10 +174,10 @@ class TestSweepDoesNotStallOnAParkedPod:
             elapsed = time.monotonic() - started
 
             assert elapsed < 5.0, f"took {elapsed:.2f}s -- alpha parking must not block beta"
-            alpha_task = _queue.read_tasks("alpha")[0]
-            beta_task = _queue.read_tasks("beta")[0]
-            assert alpha_task["status"] == "waiting_approval", alpha_task.get("reason")
-            assert beta_task["status"] == "done", beta_task.get("reason")
+            alpha_task = TaskRepository.for_pod("alpha").list()[0]
+            beta_task = TaskRepository.for_pod("beta").list()[0]
+            assert alpha_task.status == "waiting_approval", alpha_task.reason
+            assert beta_task.status == "done", beta_task.reason
 
 
 class TestCrashRecovery:
@@ -191,10 +192,10 @@ class TestCrashRecovery:
             # reviewer's request went out but the process "died" before a result.
             assert crasher.calls == ["lead", "implementer", "reviewer"]
 
-            tasks = _queue.read_tasks("demo")
+            tasks = TaskRepository.for_pod("demo").list()
             assert len(tasks) == 1
-            assert tasks[0]["status"] == "running"  # never got to a terminal status
-            assert [h["role"] for h in tasks[0]["hops"]] == ["lead", "implementer"]
+            assert tasks[0].status == "running"  # never got to a terminal status
+            assert [h.role for h in tasks[0].hops] == ["lead", "implementer"]
 
             # Force the claim stale — simulate enough wall-clock time having passed.
             with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
@@ -207,15 +208,15 @@ class TestCrashRecovery:
                 roles_called = [c[0].rsplit("-", 1)[-1] for c in resumer.calls]
                 assert roles_called == ["reviewer", "tester"]
 
-                final = _queue.read_tasks("demo")[0]
-                assert final["status"] == "done"
-                assert [h["role"] for h in final["hops"]] == [
+                final = TaskRepository.for_pod("demo").list()[0]
+                assert final.status == "done"
+                assert [h.role for h in final.hops] == [
                     "lead",
                     "implementer",
                     "reviewer",
                     "tester",
                 ]
-                assert "claimPid" not in final
+                assert final.claim_pid is None
 
     def test_stale_claim_without_resume_is_not_reclaimed(self, tmp_path: Path) -> None:
         """The default (non-resume) dispatch never auto-retries a crashed task."""
@@ -230,9 +231,9 @@ class TestCrashRecovery:
                 results = _sweep.dispatch_pod("demo", runner=runner)  # resume defaults to False
                 assert results == []  # nothing eligible without --resume
                 assert runner.calls == []
-                task = _queue.read_tasks("demo")[0]
-                assert task["status"] == "failed"
-                assert task["failureKind"] == "stale_claim"
+                task = TaskRepository.for_pod("demo").list()[0]
+                assert task.status == "failed"
+                assert task.failure_kind == "stale_claim"
 
     def test_stale_claim_sweep_emits_trace_event(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
@@ -269,11 +270,11 @@ class TestDeterministicRefusalSettlesTheClaim:
             assert [r.status for r in results] == ["failed", "failed"]
             assert all("refusing cross-pod dispatch" in r.reason for r in results)
 
-            tasks = _queue.read_tasks("demo")
-            assert [t["status"] for t in tasks] == ["failed", "failed"]
-            assert all("claimPid" not in t for t in tasks)  # settled, not orphaned
-            assert all(t["failureKind"] == "dispatch_refused" for t in tasks)
-            assert [h["role"] for h in tasks[0]["hops"]] == ["lead"]
+            tasks = TaskRepository.for_pod("demo").list()
+            assert [t.status for t in tasks] == ["failed", "failed"]
+            assert all(t.claim_pid is None for t in tasks)  # settled, not orphaned
+            assert all(t.failure_kind == "dispatch_refused" for t in tasks)
+            assert [h.role for h in tasks[0].hops] == ["lead"]
 
     def test_resume_reclaims_a_dispatch_refused_task_once_the_pipeline_is_fixed(
         self, tmp_path: Path
@@ -285,7 +286,7 @@ class TestDeterministicRefusalSettlesTheClaim:
 
             first = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_alien_step_spec())
             assert first[0].status == "failed"
-            assert _queue.read_tasks("demo")[0]["failureKind"] == "dispatch_refused"
+            assert TaskRepository.for_pod("demo").list()[0].failure_kind == "dispatch_refused"
 
             fixed_spec = _pipeline.PipelineSpec(
                 name="fixed",
@@ -302,10 +303,10 @@ class TestDeterministicRefusalSettlesTheClaim:
             assert second[0].status == "done"
             # The lead hop persisted before the refusal is not re-run.
             assert [c[0].rsplit("-", 1)[-1] for c in resumer.calls] == ["implementer"]
-            final = _queue.read_tasks("demo")[0]
-            assert final["status"] == "done"
-            assert [h["role"] for h in final["hops"]] == ["lead", "implementer"]
-            assert "failureKind" not in final
+            final = TaskRepository.for_pod("demo").list()[0]
+            assert final.status == "done"
+            assert [h.role for h in final.hops] == ["lead", "implementer"]
+            assert final.failure_kind is None
 
     @pytest.mark.parametrize("posture", ["network", "isolation"])
     def test_a_refused_posture_is_one_attempt_one_audit_and_resumable(
@@ -332,9 +333,9 @@ class TestDeterministicRefusalSettlesTheClaim:
             results = _sweep.dispatch_pod("demo", sleep=slept.append)
 
             assert [r.status for r in results] == ["failed"]
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "failed"
-            assert task["failureKind"] == "dispatch_refused"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "failed"
+            assert task.failure_kind == "dispatch_refused"
             assert not calls
             assert slept == []
             assert len([e for e in _audit.read_audit() if e["action"] == action]) == 1
@@ -367,9 +368,9 @@ class TestDeterministicRefusalSettlesTheClaim:
             with pytest.raises(RuntimeError, match="simulated crash"):
                 _sweep.dispatch_pod("demo", runner=crasher)
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "running"
-            assert task["claimPid"]
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "running"
+            assert task.claim_pid
 
 
 class TestResumeGateCountsRunningTasksTowardRecovery:
@@ -392,9 +393,9 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
 
             # Orphaned: `running`, no decoy `pending` task exists, and it hasn't been swept yet
             # (the sweep only runs at the top of a `dispatch_pod` call).
-            tasks_before = _queue.read_tasks("demo")
-            assert tasks_before[0]["status"] == "running"
-            assert not any(t.get("status") == "pending" for t in tasks_before)
+            tasks_before = TaskRepository.for_pod("demo").list()
+            assert tasks_before[0].status == "running"
+            assert not any(t.status == "pending" for t in tasks_before)
 
             with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
                 monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver())
@@ -403,7 +404,7 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
                 result = CliRunner().invoke(app, ["run", "--pod", "demo", "--resume"])
 
                 assert "No pending tasks" not in result.output
-                assert _queue.read_tasks("demo")[0]["status"] == "done"
+                assert TaskRepository.for_pod("demo").list()[0].status == "done"
 
     def test_resume_still_warns_with_nothing_pending_resumable_or_running(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -440,7 +441,7 @@ class TestBlockedStaysBlocked:
             for _ in range(3):
                 assert _sweep.dispatch_pod("demo", runner=runner) == []
             assert runner.calls == []  # never actually dispatched
-            assert _queue.read_tasks("demo")[0]["status"] == "blocked"
+            assert TaskRepository.for_pod("demo").list()[0].status == "blocked"
 
     def test_retry_task_unblocks_a_single_task(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -453,12 +454,12 @@ class TestBlockedStaysBlocked:
             monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
             monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            assert _queue.read_tasks("demo")[0]["status"] == "blocked"
+            assert TaskRepository.for_pod("demo").list()[0].status == "blocked"
 
-            assert _lifecycle.retry_task("demo", task["id"]) is True
-            assert _queue.read_tasks("demo")[0]["status"] == "pending"
+            assert _lifecycle.retry_task("demo", task.id) is True
+            assert TaskRepository.for_pod("demo").list()[0].status == "pending"
             # Retrying a task that isn't blocked is a no-op.
-            assert _lifecycle.retry_task("demo", task["id"]) is False
+            assert _lifecycle.retry_task("demo", task.id) is False
             assert _lifecycle.retry_task("demo", "no-such-task") is False
 
     def test_unblock_pod_unblocks_every_blocked_task(
@@ -483,16 +484,16 @@ class TestBlockedStaysBlocked:
             # `unblock_pod` contract the original test covered.
             _fleet.meta_set(lead_id, "paused", False)
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            tasks = _queue.read_tasks("demo")
+            tasks = TaskRepository.for_pod("demo").list()
             assert len(tasks) == 2
-            assert all(t["status"] == "blocked" for t in tasks)
+            assert all(t.status == "blocked" for t in tasks)
             assert _AgentMeta.coerce_paused(
                 _fleet.meta_get(lead_id, "paused", "")
             )  # re-paused by the second breach
 
             assert _lifecycle.unblock_pod("demo") == 2
-            tasks = _queue.read_tasks("demo")
-            assert all(t["status"] == "pending" for t in tasks)
+            tasks = TaskRepository.for_pod("demo").list()
+            assert all(t.status == "pending" for t in tasks)
             # Nothing left blocked — a second call is a no-op.
             assert _lifecycle.unblock_pod("demo") == 0
 

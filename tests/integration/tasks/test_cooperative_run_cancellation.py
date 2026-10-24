@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
+from tests.support.tasks import update_task
 
 from docket.agent import loop_steps as _loop_steps
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
@@ -27,11 +28,10 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 from docket.observability import trace as _trace
-from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.runs"
 
@@ -115,7 +115,7 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
         env = os.environ.copy()
         env["DOCKET_HOME"] = str(home)
         cancelled = subprocess.run(
-            [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
+            [sys.executable, "-m", "docket", "task", "cancel", task.id, "--pod", "demo"],
             cwd=Path(__file__).parents[3],
             env=env,
             text=True,
@@ -139,16 +139,16 @@ def test_separate_cli_request_stays_nonterminal_until_dispatch_stops(
 
         results = returned[0]
         assert isinstance(results, list)
-        assert results[0].task_id == task["id"]
+        assert results[0].task_id == task.id
         assert results[0].status == "cancelled"
-        persisted_task = _queue.read_tasks("demo")[0]
-        assert persisted_task["status"] == "cancelled"
-        assert persisted_task["completedAt"]
+        persisted_task = TaskRepository.for_pod("demo").list()[0]
+        assert persisted_task.status == "cancelled"
+        assert persisted_task.completed_at
 
         stopped = _runs.get_run(run["id"])
         assert stopped is not None
         assert stopped["state"] == "cancelled"
-        assert stopped["taskIds"] == [task["id"]]
+        assert stopped["taskIds"] == [task.id]
         assert stopped["cancellation"]["observedAt"] is not None
         assert stopped["cancellation"]["stoppedAt"] is not None
         assert (
@@ -207,16 +207,6 @@ class _OneShotBashBackend:
         )
 
 
-def _mark_running(project: str, task_id: str) -> None:
-    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
-        for t in doc["tasks"]:
-            if t["id"] == task_id:
-                t["status"] = "running"
-        return doc
-
-    _store.read_modify_write(_settings.pod_task_list_path(project), _fn)
-
-
 def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
     """The whole-path proof: `docket task cancel`, through the production
     driver, terminalizes a run whose hop is sitting inside a real `bash
@@ -232,7 +222,7 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         agent_id = _pod.pod.member_id("demo", "implementer")
         task = _queue.enqueue_task_once("demo", "sleep in bash", channel="cli")[0]
-        _mark_running("demo", task["id"])
+        update_task("demo", task.id, status="running")
 
         # `python3` is on the command classifier's curated allowlist, so this
         # reaches `run_bash` on a bare "allow" verdict -- the subject here is
@@ -259,7 +249,7 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
         env["DOCKET_HOME"] = str(home)
         requested_at = time.monotonic()
         cancelled = subprocess.run(
-            [sys.executable, "-m", "docket", "task", "cancel", task["id"], "--pod", "demo"],
+            [sys.executable, "-m", "docket", "task", "cancel", task.id, "--pod", "demo"],
             cwd=Path(__file__).parents[3],
             env=env,
             text=True,

@@ -28,8 +28,8 @@ from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.platform import read_json
-from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _np
 from docket.teams import pod as _pod
@@ -60,13 +60,6 @@ def _start_running() -> bool:
     """True when ``docket start`` is running (the service's own pid-file check)."""
 
     return _service.is_running()
-
-
-def _approved_ready(task: dict[str, Any]) -> bool:
-    """A pending task whose approval was granted and now only waits for ``docket run``."""
-    return task.get("status") == "pending" and bool(
-        task.get("pregrants") or task.get("gateOverridePipelineIndex") is not None
-    )
 
 
 def _isolation_phrase() -> str:
@@ -161,7 +154,9 @@ def _project_summary(project: str) -> dict[str, Any]:
         "members": member_rows,
         "tasks": {
             **queue,
-            "approvedReady": sum(1 for task in _queue.read_tasks(project) if _approved_ready(task)),
+            "approvedReady": sum(
+                1 for record in TaskRepository.for_pod(project).list() if record.approved_ready
+            ),
         },
         "usage": _usage([m["id"] for m in member_rows]),
         "outcomes": {

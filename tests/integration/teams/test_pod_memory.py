@@ -48,7 +48,7 @@ def _finish(
 ) -> str:
     """Enqueue a task, give its trace *events*, and finalize it with one implementer hop."""
     task = _queue.enqueue_task_once("demo", "do the work", channel="cli")[0]
-    task_id = str(task["id"])
+    task_id = str(task.id)
     session = f"agent:demo:{task_id}"
     for event_type, payload in events or [("session_start", {"source": "test"})]:
         _trace.trace_event("demo", session, "implementer", event_type, json.dumps(payload))

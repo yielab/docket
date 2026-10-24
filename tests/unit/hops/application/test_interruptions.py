@@ -7,7 +7,6 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 from tests.support.pods import bind_pipeline as _bind_pipeline
@@ -20,6 +19,9 @@ from docket.hops.application import interruptions as _interruptions
 from docket.kernel import operator_contract as _oc
 from docket.kernel.home import current_home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.parts import Grant
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.hops.application.interruptions"
@@ -145,13 +147,13 @@ class TestRecordPregrant:
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             token = _interruptions.record_pregrant(
-                "demo", task["id"], "git push origin main", channel="cli", actor="tester"
+                "demo", task.id, "git push origin main", channel="cli", actor="tester"
             )
 
-            stored = _queue.read_tasks("demo")[0]
+            stored = TaskRepository.for_pod("demo").list()[0]
             expected_digest = _oc.canonical_args_digest("bash", {"command": "git push origin main"})
-            assert stored["pregrants"] == [
-                {"token": token, "tool": "bash", "argsDigest": expected_digest}
+            assert stored.pregrants == [
+                Grant(token=token, tool="bash", args_digest=expected_digest)
             ]
 
     def test_collapses_whitespace_before_digesting(self, tmp_path: Path) -> None:
@@ -159,22 +161,22 @@ class TestRecordPregrant:
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             _interruptions.record_pregrant(
-                "demo", task["id"], "git   push  origin\tmain", channel="cli"
+                "demo", task.id, "git   push  origin\tmain", channel="cli"
             )
 
-            stored = _queue.read_tasks("demo")[0]
+            stored = TaskRepository.for_pod("demo").list()[0]
             expected_digest = _oc.canonical_args_digest("bash", {"command": "git push origin main"})
-            assert stored["pregrants"][0]["argsDigest"] == expected_digest
+            assert stored.pregrants[0].args_digest == expected_digest
 
     def test_custom_tool_changes_the_digest(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
-            _interruptions.record_pregrant("demo", task["id"], "hello", tool="write", channel="cli")
+            _interruptions.record_pregrant("demo", task.id, "hello", tool="write", channel="cli")
 
-            stored = _queue.read_tasks("demo")[0]
-            assert stored["pregrants"][0]["tool"] == "write"
-            assert stored["pregrants"][0]["argsDigest"] == _oc.canonical_args_digest(
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.pregrants[0].tool == "write"
+            assert stored.pregrants[0].args_digest == _oc.canonical_args_digest(
                 "write", {"command": "hello"}
             )
 
@@ -183,10 +185,10 @@ class TestPregrantAtTheChokepoint:
     """The acceptance criterion: a pre-granted call passes the real chokepoint once; a
     rephrased one still asks (ADR 0016 SS10's exact-after-whitespace-collapse limit)."""
 
-    def _pregrants_for(self, task: dict[str, Any]) -> tuple[core_tools.Pregrant, ...]:
+    def _pregrants_for(self, task: TaskRecord) -> tuple[core_tools.Pregrant, ...]:
         return tuple(
-            core_tools.Pregrant(token=g["token"], tool=g["tool"], args_digest=g["argsDigest"])
-            for g in task.get("pregrants", [])
+            core_tools.Pregrant(token=g.token, tool=g.tool, args_digest=g.args_digest)
+            for g in task.pregrants
         )
 
     def test_the_named_command_passes_once_a_rephrased_one_still_asks(self, tmp_path: Path) -> None:
@@ -195,10 +197,8 @@ class TestPregrantAtTheChokepoint:
             use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)),
         ):
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
-            _interruptions.record_pregrant(
-                "demo", task["id"], "git push origin main", channel="cli"
-            )
-            stored = _queue.read_tasks("demo")[0]
+            _interruptions.record_pregrant("demo", task.id, "git push origin main", channel="cli")
+            stored = TaskRepository.for_pod("demo").list()[0]
             ctx = core_tools.ToolContext(
                 agent_id="demo-implementer",
                 roots=(tmp_path,),

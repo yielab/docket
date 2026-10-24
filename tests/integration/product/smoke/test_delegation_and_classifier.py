@@ -18,6 +18,7 @@ from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import Home, use_home
 from docket.pipeline.domain.gates import MechanicalGate
 from docket.pipeline.domain.spec import load_pipeline
+from docket.tasks.application.repository import TaskRepository
 
 SUBJECT = "docket.__main__"
 
@@ -80,7 +81,6 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
     from typer.testing import CliRunner
 
     from docket.interfaces.cli.app import app
-    from docket.tasks.application import queue as _queue
 
     home = tmp_path / ".docket"
     codebase = tmp_path / "codebase"
@@ -104,10 +104,10 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
         assert len(results) == 1
         result = results[0]
         assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
-        tasks = _queue.read_tasks("smoke")
+        tasks = TaskRepository.for_pod("smoke").list()
         assert len(tasks) == 1
-        assert tasks[0]["description"] == _smoke._memory_task_description()
-        assert len(tasks[0]["description"]) <= 500
+        assert tasks[0].description == _smoke._memory_task_description()
+        assert len(tasks[0].description) <= 500
 
 
 def test_basic_smoke_delegation_remains_byte_identical() -> None:

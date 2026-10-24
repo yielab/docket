@@ -37,24 +37,6 @@ from docket.teams.settings import builtin_tool_names, load_pod_settings, pod_tas
 from docket.teams.workspace import prepare as _prepare
 from docket.teams.workspace.worktree import ensure_task_worktree
 
-# `failed` task ``failureKind`` values ``--resume`` is allowed to reclaim (see
-# ``repository.claimable`` and pod-dispatch.spec.md "Claiming"): a swept crash
-# (``stale_claim``) and a settled deterministic refusal (``dispatch_refused``,
-# see ``dispatch_task``'s ``DispatchError`` handling). Neither is a graded
-# hop/gate outcome, so neither is a "real gate/hop failure" in the sense
-# "blocked and terminal-failure re-entry" uses that phrase for. Shared by
-# ``interfaces/cli/commands/run.py``'s "anything to do?" gate so the two never drift apart.
-RESUMABLE_FAILURE_KINDS: frozenset[str] = _state.RESUMABLE_FAILURE_KINDS
-
-
-def read_tasks(project: str) -> list[dict[str, Any]]:
-    """Return the pod's task list as stored rows ([] if the queue file is absent)."""
-    return [_row(r) for r in TaskRepository.for_pod(project).list()]
-
-
-def _row(record: TaskRecord) -> dict[str, Any]:
-    return record.model_dump(by_alias=True, mode="json")
-
 
 def _enqueue_pre_input_gate(
     project: str, session_id: str, task_id: str, description: str, *, trusted: bool
@@ -126,7 +108,7 @@ def enqueue_task_once(
     trusted: bool | None = None,
     brief: dict[str, Any] | None = None,
     **options: Any,
-) -> tuple[dict[str, Any], bool]:
+) -> tuple[TaskRecord, bool]:
     """Locked read-modify-write returning ``(task, created)``; DispatchError persists nothing.
     A queued ``idempotency_key`` returns that task with ``created`` False; *options* are the
     addressable-task fields. *channel* (cli|http|telegram|mcp) is recorded, never trusted."""
@@ -139,7 +121,7 @@ def enqueue_task_once(
     if key is not None:
         queued = next((r for r in repo.list() if r.idempotency_key == key), None)
         if queued is not None:
-            return _row(queued), False
+            return queued, False
 
     # *brief*, when given, is a pre-brief the operator already knows: validated as a
     # TaskBrief (invalid raises DispatchError, nothing persisted), folded into the enqueued
@@ -196,9 +178,9 @@ def enqueue_task_once(
 
     stored, created = repo.add(record)
     if not created:
-        return _row(stored), False
+        return stored, False
     _audit.audit_log("task.enqueue", f"project={project} task={task_id} channel={channel}")
-    return _row(stored), True
+    return stored, True
 
 
 def has_claimable_work(project: str) -> bool:
@@ -303,8 +285,7 @@ def prepare_claimed_task(project: str, task: TaskRecord) -> TaskResult | None:
     except DispatchError as exc:
         return refuse_claimed_task(project, task, "prepare", str(exc))
     spec = _prepare.resolve(Path(root), task_prepare=task.prepare, pod_prepare=pod_prepare)
-    prepared = task.prepared.model_dump(by_alias=True) if task.prepared is not None else None
-    if spec is None or not _prepare.needs_prepare(Path(root), prepared, spec):
+    if spec is None or not _prepare.needs_prepare(Path(root), task.prepared, spec):
         return None
     codebase = str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
     outcome = _prepare.prepare_worktree(
@@ -405,10 +386,8 @@ def pod_roster() -> list[dict[str, Any]]:
     return out
 
 
-def _build(project: str, task: dict[str, object]) -> TaskRef:
-    task_id = str(task["id"])
-    record = task.get("worktree")
-    worktree = str(record.get("dir") or "") if isinstance(record, dict) else ""
+def _build(project: str, record: TaskRecord) -> TaskRef:
+    task_id = record.id
     run_ids = tuple(
         str(r["id"])
         for r in list_runs(project)
@@ -420,7 +399,7 @@ def _build(project: str, task: dict[str, object]) -> TaskRef:
         project=project,
         session_key=step_session_key(lead, project, task_id, LEAD_STEP_ID),
         run_ids=run_ids,
-        worktree=worktree,
+        worktree=record.worktree_dir,
     )
 
 
@@ -430,12 +409,12 @@ def _resolve_run(ref: str) -> TaskRef | None:
         return None
     project = str(run.get("project", ""))
     task_ids = [str(t) for t in run.get("taskIds") or []]
-    tasks = {str(t.get("id")): t for t in read_tasks(project)}
+    tasks = {t.id: t for t in TaskRepository.for_pod(project).list()}
     found = [tasks[t] for t in task_ids if t in tasks]
     if not found:
         raise TaskRefError(f"run {ref} (pod {project}) has no task on the queue")
     if len(found) > 1:
-        listing = ", ".join(f"{t['id']} (pod {project})" for t in found)
+        listing = ", ".join(f"{t.id} (pod {project})" for t in found)
         raise TaskRefError(f"run {ref} dispatched more than one task: {listing}")
     return _build(project, found[0])
 
@@ -455,19 +434,19 @@ def resolve_task(project: str | None, ref: str) -> TaskRef:
             return via_run
 
     pods = [project] if project is not None else sorted(dispatchable_pods())
-    matches: list[tuple[str, dict[str, object]]] = []
+    matches: list[tuple[str, TaskRecord]] = []
     for pod in pods:
-        for task in read_tasks(pod):
-            if str(task.get("id", "")).startswith(ref):
+        for task in TaskRepository.for_pod(pod).list():
+            if task.id.startswith(ref):
                 matches.append((pod, task))
 
-    exact = [m for m in matches if m[1]["id"] == ref]
+    exact = [m for m in matches if m[1].id == ref]
     if exact:
         matches = exact
     if len(matches) == 1:
         return _build(*matches[0])
     if matches:
-        listing = ", ".join(f"{t['id']} (pod {p})" for p, t in matches)
+        listing = ", ".join(f"{t.id} (pod {p})" for p, t in matches)
         raise TaskRefError(f"{ref!r} is ambiguous: {listing}")
     searched = f"pod {project}" if project is not None else f"{len(pods)} pod(s)"
     names = f" ({', '.join(pods)})" if project is None and pods else ""

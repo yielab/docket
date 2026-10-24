@@ -22,10 +22,12 @@ import pytest
 from tests.support import pods as _support_pods
 from tests.support.pods import bind_one_step_pipeline as _bind_one_step_pipeline
 from tests.support.pods import planned_unit as _planned_unit
-from tests.support.pods import put_task as _put_task
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
 from tests.support.pods import unit_context as _unit_context
 from tests.support.pods import write_meta as _write_meta
+from tests.support.tasks import put_task as _put_task
+from tests.support.tasks import put_tasks
+from tests.support.tasks import task as _make_task
 
 from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
@@ -41,13 +43,14 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.options import TaskGate
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import roles as _archetypes
-from docket.teams import settings as _settings
 
 pod_home = _support_pods.pod_home_bare
 
@@ -385,7 +388,7 @@ def _write_pod_pipeline(project: str, name: str, text: str) -> None:
 
 
 def _queue_task(project: str, **extra: Any) -> None:
-    _put_task(project, {"id": "task-1", "description": "x", "status": "pending", **extra})
+    _put_task(project, _make_task(id="task-1", **extra))
 
 
 class TestTaskPipeline:
@@ -402,7 +405,7 @@ class TestTaskPipeline:
         results = _sweep.dispatch_pod("myapp", runner=FakeDriver())
 
         assert [h.step_id for h in results[0].hops] == ["kickoff", "assemble"]
-        assert _queue.read_tasks("myapp")[0]["pipelineSource"] == "pod:two"
+        assert TaskRepository.for_pod("myapp").list()[0].pipeline_source == "pod:two"
 
     def test_a_task_without_a_pipeline_runs_the_pods_default(self, pod_home: Path) -> None:
         from tests.support.fakes import FakeDriver
@@ -415,9 +418,9 @@ class TestTaskPipeline:
         results = _sweep.dispatch_pod("myapp", runner=FakeDriver())
 
         assert [h.step_id for h in results[0].hops] == ["kickoff"]
-        stored = _queue.read_tasks("myapp")[0]
-        assert stored["pipelineSource"] == "default"
-        assert stored["gateApplied"] is False
+        stored = TaskRepository.for_pod("myapp").list()[0]
+        assert stored.pipeline_source == "default"
+        assert stored.gate_applied is False
 
     def test_a_shipped_recipe_name_resolves_its_pipeline(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
@@ -458,14 +461,14 @@ class TestTaskPipeline:
 
         results = _sweep.dispatch_pod("myapp", runner=driver)
 
-        stored = _queue.read_tasks("myapp")[0]
+        stored = TaskRepository.for_pod("myapp").list()[0]
         assert driver.calls == []
         assert [r.status for r in results] == ["failed"]
-        assert stored["status"] == "failed"
-        assert stored["failureKind"] == "pipeline"
-        assert "nope" in stored["reason"]
-        assert stored["hops"] == []
-        assert "claimPid" not in stored
+        assert stored.status == "failed"
+        assert stored.failure_kind == "pipeline"
+        assert "nope" in stored.reason
+        assert stored.hops == []
+        assert stored.claim_pid is None
         tf = current_home().traces_dir / "myapp" / "agent:myapp:task-1.jsonl"
         refused = [e for e in _trace.read_trace(tf) if e["event_type"] == "dispatch_refused"]
         assert len(refused) == 1
@@ -474,23 +477,11 @@ class TestTaskPipeline:
     def test_a_refused_task_does_not_stop_the_next_one(self, pod_home: Path) -> None:
         from tests.support.fakes import FakeDriver
 
-        from docket.platform import store as _store
-
         _seed_lean_pod("myapp")
-        _store.write_json(
-            _settings.pod_task_list_path("myapp"),
-            {
-                "tasks": [
-                    {
-                        "id": "task-1",
-                        "description": "x",
-                        "status": "pending",
-                        "priority": "high",
-                        "pipeline": "nope",
-                    },
-                    {"id": "task-2", "description": "y", "status": "pending"},
-                ]
-            },
+        put_tasks(
+            "myapp",
+            _make_task(id="task-1", priority="high", pipeline="nope"),
+            _make_task(id="task-2", description="y"),
         )
 
         results = _sweep.dispatch_pod("myapp", runner=FakeDriver())
@@ -501,7 +492,7 @@ class TestTaskPipeline:
         ]
 
     def test_a_pipeline_refusal_is_not_resumable(self, pod_home: Path) -> None:
-        assert "pipeline" not in _queue.RESUMABLE_FAILURE_KINDS
+        assert "pipeline" not in _state.RESUMABLE_FAILURE_KINDS
 
     def test_a_pipeline_with_unresolved_variables_refuses_the_task(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
@@ -515,7 +506,7 @@ class TestTaskPipeline:
 
         _sweep.dispatch_pod("myapp", runner=lambda *a, **k: _rd.TurnResult(True, "x", 0.0, {}))
 
-        assert _queue.read_tasks("myapp")[0]["failureKind"] == "pipeline"
+        assert TaskRepository.for_pod("myapp").list()[0].failure_kind == "pipeline"
 
 
 class TestTaskGate:

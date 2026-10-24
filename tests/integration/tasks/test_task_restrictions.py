@@ -16,16 +16,18 @@ from tests.support.git import git_quiet as _git
 from tests.support.home import record_isolation_off, register_local_provider
 from tests.support.llm import _final_response, _ScriptedLLMServer, _tool_call_response
 from tests.support.pods import build_pod
+from tests.support.tasks import update_task
 
 from docket.governance import audit as _audit
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.options import TaskRestrictions
+from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
-from docket.teams import settings as _settings
 
 _hermetic = _support_home.trace_on_env
 
@@ -79,17 +81,21 @@ def _seed_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
         yield
 
 
-def _queue_task(**fields: Any) -> str:
-    task = _queue.enqueue_task_once("demo", "write a file", channel="cli")[0]
-
-    def _fn(doc: dict[str, Any]) -> dict[str, Any]:
-        for entry in doc["tasks"]:
-            if entry["id"] == task["id"]:
-                entry.update(fields)
-        return {"tasks": doc["tasks"]}
-
-    _store.read_modify_write(_settings.pod_task_list_path("demo"), _fn)
-    return str(task["id"])
+def _queue_task(
+    *,
+    restrictions: dict[str, Any] | None = None,
+    hops: list[HopResult] | None = None,
+    **options: Any,
+) -> str:
+    """Queue a task and set what enqueue would refuse or cannot carry straight on the record, so
+    the hop-time checks see it: a restriction the enqueue validation would not admit, hops
+    already run."""
+    task = _queue.enqueue_task_once("demo", "write a file", channel="cli", **options)[0]
+    if restrictions is not None:
+        update_task("demo", task.id, restrictions=TaskRestrictions.model_validate(restrictions))
+    if hops is not None:
+        update_task("demo", task.id, hops=hops)
+    return str(task.id)
 
 
 def _run_one() -> _task.TaskResult:
@@ -215,28 +221,25 @@ def test_a_task_max_tokens_stops_the_task_with_failure_kind_budget(
     """A maxTokens the first call overruns fails the task as budget after at most one call."""
     server = stub([_final_response("this answer costs 60 tokens")])
     with _seed_pod(tmp_path, server.base_url):
-        _queue_task(maxTokens=10)
+        _queue_task(max_tokens=10)
 
         result = _run_one()
 
         assert result.status == "failed", result.reason
         assert result.failure_kind == "budget"
         assert len(server.requests) <= 1
-        (task,) = _queue.read_tasks("demo")
-        assert task["failureKind"] == "budget"
+        (task,) = TaskRepository.for_pod("demo").list()
+        assert task.failure_kind == "budget"
 
 
 def test_a_spent_max_tokens_refuses_the_next_hop_without_a_call(tmp_path: Path, stub: Any) -> None:
     """A task whose persisted hops used the whole cap starts no further hop."""
     server = stub([_final_response("never reached")])
     with _seed_pod(tmp_path, server.base_url):
-        spent_hop = {
-            "role": "lead",
-            "member": "demo-lead",
-            "ok": True,
-            "usage": {"input": 5, "output": 5},
-        }
-        _queue_task(maxTokens=10, hops=[spent_hop])
+        spent_hop = HopResult(
+            role="lead", member_id="demo-lead", ok=True, usage={"input": 5, "output": 5}
+        )
+        _queue_task(max_tokens=10, hops=[spent_hop])
 
         result = _run_one()
 
@@ -257,13 +260,10 @@ def test_each_hop_runs_with_what_the_cap_has_left(tmp_path: Path, stub: Any) -> 
         return TurnResult(True, "done", 0.0, {})
 
     with _seed_pod(tmp_path, stub([_final_response("x")]).base_url):
-        spent_hop = {
-            "role": "lead",
-            "member": "demo-lead",
-            "ok": True,
-            "usage": {"input": 30, "output": 10},
-        }
-        _queue_task(maxTokens=1000, hops=[spent_hop])
+        spent_hop = HopResult(
+            role="lead", member_id="demo-lead", ok=True, usage={"input": 30, "output": 10}
+        )
+        _queue_task(max_tokens=1000, hops=[spent_hop])
 
         (result,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 

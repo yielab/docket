@@ -14,7 +14,7 @@ import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from filelock import FileLock
 
@@ -79,11 +79,20 @@ def resolve(root: Path, *, task_prepare: object, pod_prepare: str) -> PrepareSpe
     return None if is_off(command) else PrepareSpec(command, source, lock_hash)
 
 
-def needs_prepare(root: Path, prepared: object, spec: PrepareSpec) -> bool:
+class PreparedRecord(Protocol):
+    """What a task record keeps of its last preparation (``tasks`` owns the record)."""
+
+    @property
+    def command(self) -> str: ...
+    @property
+    def lock_hash(self) -> str: ...
+
+
+def needs_prepare(root: Path, prepared: PreparedRecord | None, spec: PrepareSpec) -> bool:
     """False when the task record says this command and lockfile were prepared and no link broke."""
-    if not isinstance(prepared, dict):
+    if prepared is None:
         return True
-    if prepared.get("command") != spec.command or prepared.get("lockHash") != spec.lock_hash:
+    if prepared.command != spec.command or prepared.lock_hash != spec.lock_hash:
         return True
     return any((root / n).is_symlink() and not (root / n).exists() for n in LINKED_DIRS)
 

@@ -85,7 +85,7 @@ This specification does NOT cover:
    stores nothing; a `require_approval` stores the task `waiting_approval` with an `approvalToken`,
    `pendingApprovalIndex: 0` and an `approval_required` trace event (`security-gates.spec.md`).
    Enqueueing into a project with no pod raises `DispatchError`.
-2. Every read of a pod's queue (`read_tasks`) **MUST** fill each field enqueue does not write with
+2. Every read of a pod's queue (`TaskRepository.list`) **MUST** fill each field enqueue does not write with
    its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`, `costUsd`,
    `claimedAt`, `approvalToken`, `pendingApprovalIndex`,
    `gateOverridePipelineIndex`, a fresh empty `hops` and `pregrants` list, `created`, `id`); no
@@ -2262,7 +2262,7 @@ queue.)
 
 The dispatch state machine, by module (public names first, then private ones for orientation):
 
-- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`,
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`,
   `validate_task_options`, `RESUMABLE_FAILURE_KINDS`, `pod_full_roster`, `dispatchable_pods`,
   `pod_roster`; the claim (`claim_next_task`, `refuse_claimed_task`,
   `prepare_claimed_task`), `touch_claim`
@@ -2290,7 +2290,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
   `_gate_failed_section`
 - `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,
-  `hop_record`, `hop_from_record`, `verdict_event_names`, resume (`replay_pipeline_position`,
+  `verdict_event_names`, resume (`replay_pipeline_position`,
   `_group_complete`)
 - `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`; gates (`_gate_budget`,
   `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`, `_check_brief_resources`,
@@ -2299,8 +2299,9 @@ The dispatch state machine, by module (public names first, then private ones for
   `_evaluate_external_gate`, `_evaluate_verdict_gate`); the hop's `_task_command_env`,
   `_run_in_envelope`
 - `src/docket/teams/workspace/worktree.py`: the claim's `ensure_task_worktree`, which returns the worktree record or a refusal and
-  never touches the queue; the hop's
-  `hop_diff_probe`, `_pin_hop_tree`
+  never touches the queue; `trusted_worktree_dir`; the hop's
+  `hop_diff_probe` (it takes the task's id, description, worktree directory and base commit, not
+  the record), `_pin_hop_tree`
 - `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
   `normalize_values`, `render_plan`, `run_group`, `ExecutionPlan`, `PlannedUnit`, `PlannedGroup`,
   `DEFAULT_MAX_PARALLEL_WORKERS`, `trace_write_lock`

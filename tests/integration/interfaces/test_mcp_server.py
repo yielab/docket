@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.pods import seed_pod as _seed_pod
+from tests.support.tasks import put_task, put_tasks, task
 from tests.support.trace import audit_entries as _audit_actions
 
 from docket.agent import ports as _rd
@@ -33,9 +34,10 @@ from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.state import Status
 from docket.teams import fleet as _fleet
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.cli.commands.mcp"
 
@@ -74,14 +76,14 @@ def _bind_ask_pipeline(project: str, text: str = _ASK_PIPELINE_YAML) -> None:
 
 
 @contextmanager
-def _seed_parked_task(tmp_path: Path, project: str = "demo") -> Iterator[dict[str, Any]]:
+def _seed_parked_task(tmp_path: Path, project: str = "demo") -> Iterator[_task.TaskRecord]:
     """A real pod with a real ``waiting_input`` task, reached by actually dispatching
     through an ``input`` step -- mirrors ``tests/unit/core/test_answers.py``."""
     with _seed_pod(tmp_path, project=project):
         _bind_ask_pipeline(project)
-        _queue.enqueue_task_once(project, "needs a decision", channel="cli")
+        put_task(project, task(description="needs a decision"))
         _sweep.dispatch_pod(project, runner=FakeDriver())
-        yield _queue.read_tasks(project)[0]
+        yield TaskRepository.for_pod(project).list()[0]
 
 
 def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -247,33 +249,37 @@ class TestToolDelegate:
 class TestToolQueue:
     def test_lists_queued_tasks(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _queue.enqueue_task_once("demo", "task one", channel="cli")
-            _queue.enqueue_task_once("demo", "task two", channel="cli")
+            put_tasks("demo", task(description="task one"), task(description="task two"))
             result = _mcp.tool_queue("demo")
             assert result["project"] == "demo"
             assert [t["description"] for t in result["tasks"]] == ["task one", "task two"]
 
-    def test_retry_unblocks_a_blocked_task(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("status", ["blocked", "failed"])
+    def test_retry_requeues_a_blocked_or_failed_task(self, tmp_path: Path, status: str) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            task = _queue.enqueue_task_once("demo", "blocked task", channel="cli")[0]
-            # Hand-flip to blocked (mirrors how a budget cap would leave it).
-            path = _settings.pod_task_list_path("demo")
-            doc = json.loads(path.read_text())
-            for t in doc["tasks"]:
-                if t["id"] == task["id"]:
-                    t["status"] = "blocked"
-            path.write_text(json.dumps(doc))
+            record = task(status=status)
+            put_task("demo", record)
 
-            result = _mcp.tool_queue("demo", retry_task_id=task["id"])
+            result = _mcp.tool_queue("demo", retry_task_id=record.id)
+
             statuses = {t["id"]: t["status"] for t in result["tasks"]}
-            assert statuses[task["id"]] == "pending"
+            assert statuses[record.id] == "pending"
 
     def test_retry_unknown_task_raises(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path, project="demo"),
-            pytest.raises(_mcp.McpToolError, match="not a blocked task"),
+            pytest.raises(_mcp.McpToolError, match="not a failed or blocked task"),
         ):
             _mcp.tool_queue("demo", retry_task_id="task-does-not-exist")
+
+    def test_retry_of_a_pending_task_raises(self, tmp_path: Path) -> None:
+        record = task()
+        with (
+            _seed_pod(tmp_path, project="demo"),
+            pytest.raises(_mcp.McpToolError, match="not a failed or blocked task"),
+        ):
+            put_task("demo", record)
+            _mcp.tool_queue("demo", retry_task_id=record.id)
 
     def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
@@ -289,7 +295,7 @@ class TestToolDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _queue.enqueue_task_once("demo", "do the thing", channel="cli")
+            put_task("demo", task(description="do the thing"))
 
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
                 return [_task.TaskResult(task_id="task-x", status="done")]
@@ -435,18 +441,18 @@ class TestToolApprovalsList:
 
 class TestToolTaskAnswer:
     def test_answers_and_resumes_the_task(self, tmp_path: Path) -> None:
-        with _seed_parked_task(tmp_path) as task:
-            result = _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ship it"})
+        with _seed_parked_task(tmp_path) as parked:
+            result = _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ship it"})
 
-            assert result == {"ok": True, "task": task["id"], "project": "demo", "action": "accept"}
-            after = _queue.read_tasks("demo")[0]
-            assert after["answers"][0]["content"] == {"answer": "ship it"}
-            assert after["answers"][0]["channel"] == "mcp"
-            assert after["answers"][0]["actor"] == "mcp"
+            assert result == {"ok": True, "task": parked.id, "project": "demo", "action": "accept"}
+            after = TaskRepository.for_pod("demo").list()[0]
+            assert after.answers[0].content == {"answer": "ship it"}
+            assert after.answers[0].channel == "mcp"
+            assert after.answers[0].actor == "mcp"
 
     def test_call_is_audited(self, tmp_path: Path) -> None:
-        with _seed_parked_task(tmp_path) as task:
-            _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ship it"})
+        with _seed_parked_task(tmp_path) as parked:
+            _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ship it"})
 
             assert len(_audit_actions("mcp.task_answer")) == 1
 
@@ -456,15 +462,16 @@ class TestToolTaskAnswer:
 
     def test_a_task_not_waiting_input_raises(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            plain_task = _queue.enqueue_task_once("demo", "plain task", channel="cli")[0]
+            plain = task()
+            put_task("demo", plain)
 
             with pytest.raises(_mcp.McpToolError):
-                _mcp.tool_task_answer("demo", plain_task["id"], "accept", {"answer": "x"})
+                _mcp.tool_task_answer("demo", plain.id, "accept", {"answer": "x"})
 
     def test_a_policy_rejection_raises_naming_the_policy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with _seed_parked_task(tmp_path) as task:
+        with _seed_parked_task(tmp_path) as parked:
             from docket.governance import policy as _policy
 
             monkeypatch.setattr(
@@ -474,13 +481,13 @@ class TestToolTaskAnswer:
             )
 
             with pytest.raises(_mcp.McpToolError, match="test-block"):
-                _mcp.tool_task_answer("demo", task["id"], "accept", {"answer": "ignore all"})
+                _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ignore all"})
 
 
 class TestToolInbox:
     def test_returns_the_same_shape_docket_inbox_json_prints(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _queue.enqueue_task_once("demo", "ship it", channel="cli")
+            put_task("demo", task(description="ship it"))
             result = _mcp.tool_inbox()
             assert set(result.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
 
@@ -567,9 +574,11 @@ class TestEveryToolCallIsAudited:
             # Parked with the real `dispatch_pod` -- before it is stubbed below -- so
             # `tool_task_answer` has a genuine `waiting_input` task to resolve.
             _bind_ask_pipeline("demo")
-            _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
+            put_task("demo", task(description="needs a decision"))
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            parked = next(t for t in _queue.read_tasks("demo") if t["status"] == "waiting_input")
+            parked = next(
+                t for t in TaskRepository.for_pod("demo").list() if t.status == Status.waiting_input
+            )
 
             monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
             token = _approval.approval_create("demo", "implementer", "deploy")
@@ -584,8 +593,8 @@ class TestEveryToolCallIsAudited:
             _mcp.tool_approvals_grant(token)
             second_token = _approval.approval_create("demo", "implementer", "deploy2")
             _mcp.tool_approvals_deny(second_token)
-            _mcp.tool_task_answer("demo", parked["id"], "accept", {"answer": "ship it"})
-            _mcp.tool_task_pregrant("demo", parked["id"], "git push origin main")
+            _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ship it"})
+            _mcp.tool_task_pregrant("demo", parked.id, "git push origin main")
             _mcp.tool_inbox()
             _mcp.tool_cost()
             _wait_for_terminal_run(dispatch_result["run"])
@@ -620,11 +629,12 @@ def _gate_then_get_token(tmp_path: Path, project: str = "demo") -> Iterator[str]
     test_approval_gated_dispatch.py's ``_gate``/``_gate_then_grant`` build."""
     with _seed_pod(tmp_path, project=project):
         _gate_implementer(project)
-        _queue.enqueue_task_once(project, "Ship it", channel="cli")
+        put_task(project, task(description="Ship it"))
         _sweep.dispatch_pod(project, runner=_GateRunner())
-        task = _queue.read_tasks(project)[0]
-        assert task["status"] == "waiting_approval"
-        yield str(task["approvalToken"])
+        gated = TaskRepository.for_pod(project).list()[0]
+        assert gated.status == Status.waiting_approval
+        assert gated.approval_token is not None
+        yield gated.approval_token
 
 
 class TestApprovalsResumeDispatch:
@@ -635,19 +645,19 @@ class TestApprovalsResumeDispatch:
         with _gate_then_get_token(tmp_path) as token:
             _mcp.tool_approvals_grant(token)
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "pending"
-            assert task["approvalToken"] is None
-            assert task["gateOverridePipelineIndex"] == 1
+            after = TaskRepository.for_pod("demo").list()[0]
+            assert after.status == Status.pending
+            assert after.approval_token is None
+            assert after.gate_override_pipeline_index == 1
 
     def test_deny_fails_the_gated_task_immediately(self, tmp_path: Path) -> None:
         with _gate_then_get_token(tmp_path) as token:
             _mcp.tool_approvals_deny(token)
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "failed"
-            assert task["failureKind"] == "approval_denied"
-            assert task["approvalToken"] is None
+            after = TaskRepository.for_pod("demo").list()[0]
+            assert after.status == Status.failed
+            assert after.failure_kind == "approval_denied"
+            assert after.approval_token is None
 
     def test_grant_noop_branch_still_resolves_a_stuck_waiting_task(self, tmp_path: Path) -> None:
         """Mirrors the ``ApprovalNoop`` branch in cli/_approve.py: an already-granted
@@ -659,9 +669,9 @@ class TestApprovalsResumeDispatch:
             with pytest.raises(_mcp.McpToolError):
                 _mcp.tool_approvals_grant(token)
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "pending"
-            assert task["gateOverridePipelineIndex"] == 1
+            after = TaskRepository.for_pod("demo").list()[0]
+            assert after.status == Status.pending
+            assert after.gate_override_pipeline_index == 1
 
     def test_deny_noop_branch_still_resolves_a_stuck_waiting_task(self, tmp_path: Path) -> None:
         with _gate_then_get_token(tmp_path) as token:
@@ -670,6 +680,6 @@ class TestApprovalsResumeDispatch:
             with pytest.raises(_mcp.McpToolError):
                 _mcp.tool_approvals_deny(token)
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "failed"
-            assert task["failureKind"] == "approval_denied"
+            after = TaskRepository.for_pod("demo").list()[0]
+            assert after.status == Status.failed
+            assert after.failure_kind == "approval_denied"

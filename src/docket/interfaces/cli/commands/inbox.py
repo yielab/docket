@@ -19,7 +19,7 @@ from docket.kernel.home import current_home
 from docket.kernel.operator_contract import ApprovalView, InboxView, TaskView
 from docket.operator import MemoryItem, build_inbox, pending_memory, task_view
 from docket.platform import read_json, write_json
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 
 APPROVED_READY = "approved_ready"
 NEEDS_MEMORY = "needs_memory_approval"
@@ -47,11 +47,9 @@ def _approved_ready_tasks() -> list[TaskView]:
     """Pending tasks whose approval was granted: nothing is left but ``docket run``."""
     out: list[TaskView] = []
     for project in _status.pod_ids():
-        for task in _queue.read_tasks(project):
-            if task.get("status") == "pending" and (
-                task.get("pregrants") or task.get("gateOverridePipelineIndex") is not None
-            ):
-                out.append(task_view(project, task))
+        for record in TaskRepository.for_pod(project).list():
+            if record.approved_ready:
+                out.append(task_view(project, record.model_dump(by_alias=True, mode="json")))
     return out
 
 

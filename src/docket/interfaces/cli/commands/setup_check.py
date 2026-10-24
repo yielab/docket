@@ -60,6 +60,8 @@ from docket.operator import load_catalog
 from docket.pipeline.application import schedule as _sched
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.state import Status
 from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _mp
@@ -220,8 +222,8 @@ def _check_json_dispatch_ledger() -> tuple[int, list[dict[str, Any]]]:
     for project in _queue.dispatchable_pods():
         lead_id = _pod_ledger_mod.member_id(project, "lead")
         ws = current_home().workspace_dir(lead_id)
-        tasks = _queue.read_tasks(project)
-        running_ids = {str(t["id"]) for t in tasks if t.get("status") == "running"}
+        tasks = TaskRepository.for_pod(project).list()
+        running_ids = {t.id for t in tasks if t.status == Status.running}
         ledger_ids = set(_mem.read_dispatch_task_ids(ws))
         missing = sorted(running_ids - ledger_ids)
         stale = sorted(ledger_ids - running_ids)

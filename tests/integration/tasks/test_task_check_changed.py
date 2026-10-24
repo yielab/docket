@@ -27,6 +27,8 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
@@ -89,8 +91,8 @@ class _Editor:
         return TurnResult(True, "done", 0.0, {})
 
 
-def _only_task() -> dict[str, object]:
-    (task,) = _queue.read_tasks("demo")
+def _only_task() -> TaskRecord:
+    (task,) = TaskRepository.for_pod("demo").list()
     return task
 
 
@@ -119,10 +121,10 @@ def test_a_lights_out_task_that_edits_package_json_parks_naming_it(
         (res,) = _sweep.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=1)
 
         task = _only_task()
-        assert (res.status, task["status"]) == ("waiting_approval", "waiting_approval")
-        assert task["checkChanged"] == ["package.json"]
-        assert "package.json" in str(task["reason"])
-        record = _ap.approval_get(str(task["approvalToken"]))
+        assert (res.status, task.status) == ("waiting_approval", "waiting_approval")
+        assert task.check_changed == ["package.json"]
+        assert "package.json" in str(task.reason)
+        record = _ap.approval_get(str(task.approval_token))
         assert record["context"]["kind"] == "check_changed"
         assert record["context"]["paths"] == ["package.json"]
 
@@ -138,15 +140,15 @@ def test_a_grant_ends_the_parked_task_done_and_a_deny_fails_it_check_changed(
 
         _sweep.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=2)
 
-        first, second = _queue.read_tasks("demo")
-        tokens = [str(first["approvalToken"]), str(second["approvalToken"])]
+        first, second = TaskRepository.for_pod("demo").list()
+        tokens = [str(first.approval_token), str(second.approval_token)]
         _resolve(tokens[0], "granted")
         _resolve(tokens[1], "denied")
-        granted, denied = _queue.read_tasks("demo")
-        assert granted["status"] == "done" and "failureKind" not in granted
-        assert granted["checkChanged"] == ["package.json"] and not granted.get("approvalToken")
-        assert (denied["status"], denied["failureKind"]) == ("failed", "check_changed")
-        assert denied["reason"] == "approval denied: not now"
+        granted, denied = TaskRepository.for_pod("demo").list()
+        assert granted.status == "done" and granted.failure_kind is None
+        assert granted.check_changed == ["package.json"] and granted.approval_token is None
+        assert (denied.status, denied.failure_kind) == ("failed", "check_changed")
+        assert denied.reason == "approval denied: not now"
         entries = _audit.read_audit()
         for action, token in (("approval.grant", tokens[0]), ("approval.deny", tokens[1])):
             details = [
@@ -166,8 +168,8 @@ def test_a_task_that_edits_the_script_its_gate_runs_parks(tmp_path: Path) -> Non
         )
 
         task = _only_task()
-        assert task["status"] == "waiting_approval"
-        assert task["checkChanged"] == ["scripts/check.sh"]
+        assert task.status == "waiting_approval"
+        assert task.check_changed == ["scripts/check.sh"]
 
 
 def test_a_task_that_edits_only_src_ends_done(tmp_path: Path) -> None:
@@ -181,8 +183,8 @@ def test_a_task_that_edits_only_src_ends_done(tmp_path: Path) -> None:
         )
 
         task = _only_task()
-        assert (res.status, task["status"]) == ("done", "done")
-        assert "checkChanged" not in task
+        assert (res.status, task.status) == ("done", "done")
+        assert task.check_changed == []
 
 
 def test_a_team_pattern_protects_a_path_the_defaults_do_not(tmp_path: Path) -> None:
@@ -194,4 +196,4 @@ def test_a_team_pattern_protects_a_path_the_defaults_do_not(tmp_path: Path) -> N
 
         _sweep.dispatch_pod("demo", runner=_Editor({"src/app.js": "console.log(2)\n"}), max_tasks=1)
 
-        assert _only_task()["checkChanged"] == ["src/app.js"]
+        assert _only_task().check_changed == ["src/app.js"]

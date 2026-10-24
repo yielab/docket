@@ -32,6 +32,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 
@@ -137,7 +138,7 @@ class TestDefect39PodPolicyOnEveryScreen:
         with pytest.raises(_task.DispatchError, match="pod-block-input"):
             _queue.enqueue_task_once("demo", "please CANARY-PHRASE now", channel="cli")
 
-        assert _queue.read_tasks("demo") == []
+        assert TaskRepository.for_pod("demo").list() == []
 
     def test_defect_39_hop_pre_output_blocks_on_a_pod_only_policy(self, tmp_path: Path) -> None:
         _seed_pod(tmp_path)
@@ -162,7 +163,7 @@ class TestDefect39PodPolicyOnEveryScreen:
 
         assert not result.ok
         assert "pod-block-input" in result.reply
-        assert _queue.read_tasks("demo") == []
+        assert TaskRepository.for_pod("demo").list() == []
 
     def test_defect_39_approval_rationale_is_blocked_by_a_pod_only_policy(
         self, tmp_path: Path
@@ -198,21 +199,21 @@ class TestDefect39PodPolicyOnEveryScreen:
         _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "pipeline", digest)
         _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
         _sweep.dispatch_pod("demo", runner=FakeDriver())
-        parked = _queue.read_tasks("demo")[0]
-        assert parked["status"] == "waiting_input"
+        parked = TaskRepository.for_pod("demo").list()[0]
+        assert parked.status == "waiting_input"
         _pod_policy("pod-block-input", _INPUT_BLOCK)
 
         with pytest.raises(_answers.AnswerRejected):
             _answers.answer_task(
                 "demo",
-                parked["id"],
+                parked.id,
                 "accept",
                 {"answer": "CANARY-PHRASE"},
                 channel="cli",
                 actor="op",
             )
 
-        assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
+        assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
 
 class TestDefect20PodRoleGateContract:

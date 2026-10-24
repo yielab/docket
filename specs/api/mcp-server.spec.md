@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.5
+**Version**: 1.9.7
 **Status**: Implemented
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-24
 
 ## Purpose
 
@@ -160,7 +160,7 @@ Members are ordered Lead-first, matching `docket pod show`'s own member ordering
 **Output**: `{"project": "myapp", "tasks": [...]}` — the pod's task records as stored (see
 `pod-dispatch.spec.md`); the retry, when given, is applied before the queue is read.
 **Failure modes**: raises if `retry_task_id` is given but does not name a `blocked` or `failed`
-task in that project's queue (the message says "not a blocked task").
+task in that project's queue (the message says "not a failed or blocked task").
 
 ### `delegate`
 
@@ -406,7 +406,7 @@ concern, not docket's — see Scope above).
   `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
 - `src/docket/interfaces/cli/commands/service.py`: the `docket start` command and its `--mcp` flag handling
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
-- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`, `pod_roster`
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `pod_roster`
 - `src/docket/tasks/application/lifecycle.py`: `retry_task`
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`,
   `resolve_waiting_approval_detail`

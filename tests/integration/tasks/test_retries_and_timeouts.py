@@ -34,6 +34,7 @@ from docket.kernel.home import current_home, use_home
 from docket.kernel.ports import jail as _jail
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
@@ -492,9 +493,9 @@ class TestRetryDoesNotTripStaleClaimSweep:
             assert results[0].status == "done"
             assert calls["implementer"] == 2
 
-            tasks = _queue.read_tasks("demo")
-            assert tasks[0]["status"] == "done"
-            assert tasks[0].get("failureKind") != "stale_claim"
+            tasks = TaskRepository.for_pod("demo").list()
+            assert tasks[0].status == "done"
+            assert tasks[0].failure_kind != "stale_claim"
 
             # No stale_claim trace event should have fired for this task.
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))

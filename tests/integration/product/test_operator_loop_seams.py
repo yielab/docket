@@ -38,6 +38,7 @@ from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
 from docket.operator import notify as _notify
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.operator.channel"
@@ -96,7 +97,7 @@ class TestHttpGrantConsumesThePregrant:
             parked = _sweep.dispatch_pod("demo")
             token = parked[0].approval_token
             assert token
-            assert _queue.read_tasks("demo")[0]["status"] == "waiting_approval"
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_approval"
 
             # The real HTTP write route -- not `approval.approval_grant` called directly.
             class _Handler(_DocketHandler):
@@ -126,10 +127,10 @@ class TestHttpGrantConsumesThePregrant:
             assert status == 200
             assert body == {"ok": True, "token": token, "state": "granted"}
 
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "pending"
-            assert len(task["pregrants"]) == 1
-            assert task["pregrants"][0]["token"] == token
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "pending"
+            assert len(task.pregrants) == 1
+            assert task.pregrants[0].token == token
 
             # A real re-dispatch: the implementer's identical call is re-issued by the model
             # and this time is admitted via the single-use pre-grant `_handle_post_approvals`
@@ -151,11 +152,11 @@ class TestHttpGrantConsumesThePregrant:
             second = _sweep.dispatch_pod("demo")
 
             assert second[0].status == "done", second[0].reason
-            final = _queue.read_tasks("demo")[0]
-            assert [h["role"] for h in final["hops"]] == ["lead", "implementer", "implementer"]
-            assert final["hops"][1]["parked"] is True
-            assert final["hops"][-1]["parked"] is False
-            assert final["hops"][-1]["ok"] is True
+            final = TaskRepository.for_pod("demo").list()[0]
+            assert [h.role for h in final.hops] == ["lead", "implementer", "implementer"]
+            assert final.hops[1].parked is True
+            assert final.hops[-1].parked is False
+            assert final.hops[-1].ok is True
             # The pre-grant is single-use -- a stray real audit.log under the real home was
             # never touched by this test (only the throwaway `home` this fixture built).
             assert home.is_dir()
@@ -339,13 +340,13 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
 
             first = _sweep.dispatch_pod("demo", runner=runner)
             assert first[0].status == "waiting_input"
-            question = _queue.read_tasks("demo")[0]["question"]
-            assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
-            assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
+            question = TaskRepository.for_pod("demo").list()[0].question
+            assert question.requested_schema["properties"]["q1"]["title"] == "Which color?"
+            assert question.requested_schema["properties"]["q2"]["title"] == "Which size?"
 
             _answers.answer_task(
                 "demo",
-                task["id"],
+                task.id,
                 "accept",
                 {"q1": "blue", "q2": "large"},
                 channel="cli",
@@ -360,6 +361,6 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
             second_lead_message = lead_messages[1]
 
             assert "## Operator answers" in second_lead_message
-            assert "Which color?" in second_lead_message or "add a widget" in question["message"]
+            assert "Which color?" in second_lead_message or "add a widget" in question.message
             assert '"q1": "blue"' in second_lead_message
             assert '"q2": "large"' in second_lead_message

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from tests.support.tasks import task
 from tests.support.telegram_harness import (
     _bind,
     _read_audit,
@@ -184,7 +185,7 @@ class TestOutboundOnlyThroughTheChannel:
         monkeypatch.setattr(_tg, "_lead_project", lambda _aid: "demo")
         monkeypatch.setattr(_tg._policy, "policy_eval_detail", lambda *a, **k: _policy.PolicyHit())
         monkeypatch.setattr(
-            _tg._queue, "enqueue_task_once", lambda *a, **k: ({"id": "task-abc123"}, True)
+            _tg._queue, "enqueue_task_once", lambda *a, **k: (task(id="task-abc123"), True)
         )
 
         result = _tg._handle_delegate("demo-lead", "do the thing")

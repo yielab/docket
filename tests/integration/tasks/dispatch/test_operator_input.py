@@ -29,6 +29,7 @@ from docket.kernel import operator_contract as _oc
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
@@ -152,15 +153,15 @@ class TestOperatorInputStepsPark:
 
             assert len(results) == 1
             assert results[0].status == "waiting_input"
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "waiting_input"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "waiting_input"
             # Only the Lead's real hop is persisted -- the park itself leaves no hop, the same
             # posture as the pre-hop require_approval gate's `waiting_approval`.
-            assert [h["role"] for h in task["hops"]] == ["lead"]
-            question = task["question"]
-            assert question["step"] == "ask"
-            assert question["requestedSchema"]["properties"] == {"answer": {"type": "string"}}
-            assert question["requestedSchema"]["required"] == ["answer"]
+            assert [h.role for h in task.hops] == ["lead"]
+            question = task.question
+            assert question.step == "ask"
+            assert question.requested_schema["properties"] == {"answer": {"type": "string"}}
+            assert question.requested_schema["required"] == ["answer"]
 
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             events = [
@@ -169,7 +170,7 @@ class TestOperatorInputStepsPark:
             requested = [e for e in events if e["event_type"] == "input_requested"]
             assert len(requested) == 1
             assert requested[0]["payload"]["step"] == "ask"
-            assert requested[0]["payload"]["questionId"] == question["id"]
+            assert requested[0]["payload"]["questionId"] == question.id
 
     def test_a_waiting_input_task_is_never_reclaimed_by_a_plain_dispatch(
         self, tmp_path: Path
@@ -177,11 +178,11 @@ class TestOperatorInputStepsPark:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
             _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
-            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
             for _ in range(3):
                 assert _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec()) == []
-            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
 
 class TestAnswerTaskResumesDispatch:
@@ -193,26 +194,26 @@ class TestAnswerTaskResumesDispatch:
             _bind_pipeline("demo", _ASK_PIPELINE_YAML)
             task = _queue.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
             result = _answers.answer_task(
-                "demo", task["id"], "accept", {"answer": "go ahead"}, channel="cli", actor="op"
+                "demo", task.id, "accept", {"answer": "go ahead"}, channel="cli", actor="op"
             )
             assert result.action == "accept"
 
-            parked = _queue.read_tasks("demo")[0]
-            assert parked["status"] == "pending"
-            assert parked["answers"][0]["content"] == {"answer": "go ahead"}
-            assert [h["role"] for h in parked["hops"]] == ["lead", "operator"]
-            assert parked["hops"][-1]["nextStep"] is None  # no `on:` route -- ordinary advance
+            parked = TaskRepository.for_pod("demo").list()[0]
+            assert parked.status == "pending"
+            assert parked.answers[0].content == {"answer": "go ahead"}
+            assert [h.role for h in parked.hops] == ["lead", "operator"]
+            assert parked.hops[-1].next_step is None  # no `on:` route -- ordinary advance
 
             # The crash/resume boundary: a fresh `dispatch_pod` call (as `serve --dispatch`'s
             # next sweep would make) claims the re-opened task and must continue past `ask`
             # straight to `implementer`, never re-asking.
             final_results = _sweep.dispatch_pod("demo", runner=FakeDriver())
             assert final_results[0].status == "done"
-            final = _queue.read_tasks("demo")[0]
-            assert [h["role"] for h in final["hops"]] == ["lead", "operator", "implementer"]
+            final = TaskRepository.for_pod("demo").list()[0]
+            assert [h.role for h in final.hops] == ["lead", "operator", "implementer"]
 
     def test_a_declined_answer_routes_backward_and_a_second_decline_exhausts_its_cap(
         self, tmp_path: Path
@@ -223,28 +224,28 @@ class TestAnswerTaskResumesDispatch:
             _bind_pipeline("demo", _ASK_DECLINE_CAP_PIPELINE_YAML)
             task = _queue.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            assert _queue.read_tasks("demo")[0]["status"] == "waiting_input"
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
-            _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
-            after_first = _queue.read_tasks("demo")[0]
-            assert after_first["status"] == "pending"
-            assert after_first["hops"][-1]["nextStep"] == "lead"
+            _answers.answer_task("demo", task.id, "decline", None, channel="cli", actor="op")
+            after_first = TaskRepository.for_pod("demo").list()[0]
+            assert after_first.status == "pending"
+            assert after_first.hops[-1].next_step == "lead"
 
             # Resume: replays back to `lead`, re-runs it (a fresh hop), reaches `ask` again and
             # parks with a brand new question -- `route_counts` for ("ask", "declined") is now 1,
             # rebuilt purely from the first operator hop's own persisted `nextStep`.
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            reparked = _queue.read_tasks("demo")[0]
-            assert reparked["status"] == "waiting_input"
-            assert [h["role"] for h in reparked["hops"]] == ["lead", "operator", "lead"]
+            reparked = TaskRepository.for_pod("demo").list()[0]
+            assert reparked.status == "waiting_input"
+            assert [h.role for h in reparked.hops] == ["lead", "operator", "lead"]
 
             # A second decline exhausts the `max: 1` budget -- `answer_task` settles the task
             # `failed` right here (no live dispatch context exists to do it for it).
-            _answers.answer_task("demo", task["id"], "decline", None, channel="cli", actor="op")
-            final = _queue.read_tasks("demo")[0]
-            assert final["status"] == "failed"
-            assert final["hops"][-1]["nextStep"] is None
-            assert final["hops"][-1]["role"] == "operator"
+            _answers.answer_task("demo", task.id, "decline", None, channel="cli", actor="op")
+            final = TaskRepository.for_pod("demo").list()[0]
+            assert final.status == "failed"
+            assert final.hops[-1].next_step is None
+            assert final.hops[-1].role == "operator"
 
 
 class TestCheckBriefResources:
@@ -343,15 +344,15 @@ class TestIntakeRecipeTaskBrief:
 
             first = _sweep.dispatch_pod("demo", runner=runner)
             assert first[0].status == "waiting_input"
-            question = _queue.read_tasks("demo")[0]["question"]
-            assert question["requestedSchema"]["properties"]["q1"]["title"] == "Which color?"
-            assert question["requestedSchema"]["properties"]["q2"]["title"] == "Which size?"
-            assert question["requestedSchema"]["required"] == ["q1", "q2"]
-            assert question["message"] == "The Lead needs answers before starting: add a widget"
+            question = TaskRepository.for_pod("demo").list()[0].question
+            assert question.requested_schema["properties"]["q1"]["title"] == "Which color?"
+            assert question.requested_schema["properties"]["q2"]["title"] == "Which size?"
+            assert question.requested_schema["required"] == ["q1", "q2"]
+            assert question.message == "The Lead needs answers before starting: add a widget"
 
             _answers.answer_task(
                 "demo",
-                task["id"],
+                task.id,
                 "accept",
                 {"q1": "blue", "q2": "large"},
                 channel="cli",
@@ -381,13 +382,13 @@ class TestIntakeRecipeTaskBrief:
             results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert results[0].status == "blocked"
-            task = _queue.read_tasks("demo")[0]
-            assert task["status"] == "blocked"
-            assert task["blockedReason"] == "resources"
-            assert "secret:MISSING_KEY" in task["reason"]
-            assert _oc.a2a_state("blocked", blocked_reason=task["blockedReason"]) == "AUTH_REQUIRED"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "blocked"
+            assert task.blocked_reason == "resources"
+            assert "secret:MISSING_KEY" in task.reason
+            assert _oc.a2a_state("blocked", blocked_reason=task.blocked_reason) == "AUTH_REQUIRED"
             # No Implementer hop was ever attempted -- the check happens before that turn.
-            assert [h["role"] for h in task["hops"]] == ["lead"]
+            assert [h.role for h in task.hops] == ["lead"]
 
     def test_a_resources_block_does_not_stop_the_run_from_claiming_the_next_task(
         self, tmp_path: Path
@@ -424,8 +425,8 @@ class TestIntakeRecipeTaskBrief:
             results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert results[0].status == "done"
-            task = _queue.read_tasks("demo")[0]
-            assert [h["role"] for h in task["hops"]] == ["lead", "implementer", "reviewer"]
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert [h.role for h in task.hops] == ["lead", "implementer", "reviewer"]
 
     def test_reject_fails_the_task_as_rejected(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
@@ -436,6 +437,6 @@ class TestIntakeRecipeTaskBrief:
             results = _sweep.dispatch_pod("demo", runner=runner)
 
             assert results[0].status == "failed"
-            task = _queue.read_tasks("demo")[0]
-            assert task["failureKind"] == "rejected"
-            assert _oc.a2a_state("failed", failure_kind=task["failureKind"]) == "REJECTED"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.failure_kind == "rejected"
+            assert _oc.a2a_state("failed", failure_kind=task.failure_kind) == "REJECTED"

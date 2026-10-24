@@ -18,6 +18,8 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
@@ -60,7 +62,7 @@ def _seed_research_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
 @contextmanager
 def _run_pipeline(
     tmp_path: Path, llm_server: Any, note: str
-) -> Iterator[tuple[Any, list[dict[str, Any]]]]:
+) -> Iterator[tuple[Any, list[HopResult]]]:
     server = llm_server(
         [
             _tool_call_response("write", {"path": "notes/x.md", "content": note}),
@@ -72,7 +74,7 @@ def _run_pipeline(
         _queue.enqueue_task_once("demo", "research the topic", channel="cli")
         (result,) = _sweep.dispatch_pod("demo", max_tasks=1)
         assert result.status == "done", result.reason
-        hops = _queue.read_tasks("demo")[0]["hops"]
+        hops = TaskRepository.for_pod("demo").list()[0].hops
         yield server, hops
 
 
@@ -96,12 +98,12 @@ def test_a_note_past_the_cap_is_cut_with_a_marker(tmp_path: Path, llm_server: An
         assert "line-00001" in critic_first
         assert "line-04999" not in critic_first
         assert "diff cut at" in critic_first
-        assert len(hops[0]["artifact"]["diff"]) < current_home().handoff_diff_max_chars + 200
+        assert len(hops[0].artifact.diff) < current_home().handoff_diff_max_chars + 200
 
 
 def test_a_hop_that_changed_nothing_adds_no_diff(tmp_path: Path, llm_server: Any) -> None:
     """The writing hop's artifact carries the diff; the read-only critic after it carries none."""
     with _run_pipeline(tmp_path, llm_server, _NOTE) as (_server, hops):
-        assert _NOTE in hops[0]["artifact"]["diff"]
-        assert hops[1]["artifact"]["diff"] == ""
-        assert hops[1]["artifact"]["files_changed"] == []
+        assert _NOTE in hops[0].artifact.diff
+        assert hops[1].artifact.diff == ""
+        assert hops[1].artifact.files_changed == []

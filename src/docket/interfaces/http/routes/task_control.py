@@ -9,7 +9,7 @@ from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.http.exchange import HttpExchange
 from docket.operator import task_view
 from docket.tasks.application import lifecycle as _lifecycle
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 
 
@@ -44,13 +44,13 @@ def post_task_retry(h: HttpExchange, rest: str) -> None:
     project, _, task_id = rest.partition("/")
     if h._reject_bad_project_id(project):
         return
-    task = next((t for t in _queue.read_tasks(project) if t.get("id") == task_id), None)
+    task = next((t for t in TaskRepository.for_pod(project).list() if t.id == task_id), None)
     if task is None:
         h._send_json_error(f"task {task_id!r} not found in pod {project!r}", 404)
         return
     if not _lifecycle.retry_task(project, task_id):
         h._send_json_error(
-            f"task {task_id} is {task.get('status')}; only failed or blocked tasks retry", 409
+            f"task {task_id} is {task.status}; only failed or blocked tasks retry", 409
         )
         return
     h._send_json({"ok": True, "task": task_id, "status": "pending"})
@@ -99,14 +99,16 @@ def post_task_answer(h: HttpExchange, task_id: str) -> None:
             h._send_json_error(msg, 422)
         return
 
-    task = next((t for t in _queue.read_tasks(project) if t.get("id") == task_id), None)
+    task = next((t for t in TaskRepository.for_pod(project).list() if t.id == task_id), None)
     if task is None:
         # Answered, then vanished from its own pod's queue before this read — not
         # expected in practice (nothing deletes a task), but report it honestly
         # rather than crash rendering a view for it.
         h._send_json_error(f"task {task_id!r} not found after answering", 500)
         return
-    view = task_view(project, task).model_dump(by_alias=True, mode="json")
+    view = task_view(project, task.model_dump(by_alias=True, mode="json")).model_dump(
+        by_alias=True, mode="json"
+    )
     h._send(json.dumps(view).encode(), "application/json")
 
 

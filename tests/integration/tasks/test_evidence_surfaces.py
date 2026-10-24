@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 from tests.support.pods import build_pod
+from tests.support.tasks import update_task
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
@@ -24,7 +25,6 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import evidence as _ev
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
-from docket.teams import settings as _settings
 
 SUBJECT = "docket.tasks.application.evidence"
 _TOKEN = "test-serve-token-evidence-p36-4"
@@ -40,22 +40,14 @@ def _seed(tmp_path: Path) -> Iterator[str]:
     with use_home(dataclasses.replace(Home(home), approvals_dir_override=approvals)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         task = _queue.enqueue_task_once("demo", "evidence please", channel="cli")[0]
-        hop = (
-            _task.HopResult(
-                role="implementer",
-                member_id="demo-implementer",
-                ok=True,
-                verify={"cmd": "true", "exitCode": 0, "durationS": 0.1, "outputTail": ""},
-            )
-        ).model_dump(by_alias=True, mode="json")
-        path = _settings.pod_task_list_path("demo")
-        raw = json.loads(path.read_text())
-        for t in raw["tasks"]:
-            if t["id"] == task["id"]:
-                t["hops"] = [hop]
-                t["status"] = "done"
-        path.write_text(json.dumps(raw))
-        yield str(task["id"])
+        hop = _task.HopResult(
+            role="implementer",
+            member_id="demo-implementer",
+            ok=True,
+            verify={"cmd": "true", "exitCode": 0, "durationS": 0.1, "outputTail": ""},
+        )
+        update_task("demo", task.id, hops=[hop], status="done")
+        yield str(task.id)
 
 
 @pytest.fixture()

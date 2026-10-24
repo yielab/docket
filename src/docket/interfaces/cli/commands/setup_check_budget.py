@@ -5,6 +5,8 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.state import Status
 from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
 
@@ -113,8 +115,8 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
     for project in pods:
         lead_id = _pod.member_id(project, "lead")
         ws = current_home().workspace_dir(lead_id)
-        tasks = _queue.read_tasks(project)
-        running_ids = {str(t["id"]) for t in tasks if t.get("status") == "running"}
+        tasks = TaskRepository.for_pod(project).list()
+        running_ids = {t.id for t in tasks if t.status == Status.running}
         ledger_ids = set(_mem.read_dispatch_task_ids(ws))
         missing = running_ids - ledger_ids
         stale = ledger_ids - running_ids
@@ -130,7 +132,7 @@ def _check_dispatch_ledger(do_fix: bool) -> int:
         ui.console.print(f"[red]✗[/red]   {project}: " + "; ".join(detail))
         issues += 1
         if do_fix:
-            _mem.sync_dispatch_tasks(ws, tasks)
+            _mem.sync_dispatch_tasks(ws, [t.model_dump(by_alias=True, mode="json") for t in tasks])
             ui.success(f"  {project}: ledger re-synced from TASK_LIST.json")
             issues -= 1
         else:

@@ -30,6 +30,7 @@ from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.governance import security as _sec
 from docket.hops.application import sweep as _sweep
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 
 _hermetic = _support_home.trace_on_env
 
@@ -118,8 +119,8 @@ def test_a_test_that_already_passes_on_the_base_fails_the_task(tmp_path: Path) -
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "failed"
-        hops = _queue.read_tasks("demo")[0]["hops"]
-        assert "do not test the change" in "".join(h.get("output", "") for h in hops)
+        hops = TaskRepository.for_pod("demo").list()[0].hops
+        assert "do not test the change" in "".join(h.output for h in hops)
         assert not [p for p in _git(repo, "worktree", "list").splitlines() if "anti-tautology" in p]
 
 
@@ -135,8 +136,8 @@ def test_an_uncommitted_test_that_already_passes_on_the_base_fails_the_task(tmp_
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "failed"
-        hops = _queue.read_tasks("demo")[0]["hops"]
-        assert "do not test the change" in "".join(h.get("output", "") for h in hops)
+        hops = TaskRepository.for_pod("demo").list()[0].hops
+        assert "do not test the change" in "".join(h.output for h in hops)
 
 
 @pytest.mark.parametrize("recipe", ["anti-tautology", "mutation"])
@@ -169,7 +170,7 @@ def test_a_test_that_fails_on_the_base_and_passes_after_the_change_finishes_done
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
-        outputs = "".join(h.get("output", "") for h in _queue.read_tasks("demo")[0]["hops"])
+        outputs = "".join(h.output for h in TaskRepository.for_pod("demo").list()[0].hops)
         assert "fail on the base, as they should" in outputs
         assert not [p for p in _git(repo, "worktree", "list").splitlines() if "anti-tautology" in p]
 
@@ -182,7 +183,7 @@ def test_no_changed_test_file_passes_the_step_trivially(tmp_path: Path) -> None:
         (res,) = _sweep.dispatch_pod("demo", runner=_FilesRunner({"notes.txt": "x\n"}), max_tasks=1)
 
         assert res.status == "done", res.reason
-        outputs = "".join(h.get("output", "") for h in _queue.read_tasks("demo")[0]["hops"])
+        outputs = "".join(h.output for h in TaskRepository.for_pod("demo").list()[0].hops)
         assert "nothing to check" in outputs
 
 
@@ -210,6 +211,6 @@ def test_the_mutation_step_scores_only_the_changed_source_file(tmp_path: Path) -
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert res.status == "done", res.reason
-        outputs = "".join(h.get("output", "") for h in _queue.read_tasks("demo")[0]["hops"])
+        outputs = "".join(h.output for h in TaskRepository.for_pod("demo").list()[0].hops)
         assert "pkg.calc.*" in outputs
         assert "pkg.other" not in outputs

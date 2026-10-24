@@ -29,6 +29,7 @@ from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 
 _hermetic = _support_home.hermetic
@@ -153,15 +154,15 @@ class TestEnqueuePreInputGate:
     def test_allows_when_no_policies_installed(self) -> None:
         _seed_lean_pod()
         task = _queue.enqueue_task_once("myapp", "Ship it", channel="cli")[0]
-        assert task["status"] == "pending"
-        assert _queue.read_tasks("myapp")[0]["id"] == task["id"]
+        assert task.status == "pending"
+        assert TaskRepository.for_pod("myapp").list()[0].id == task.id
 
     def test_block_rejects_before_the_task_is_ever_queued(self) -> None:
         _seed_lean_pod()
         _write_policy("no-wipes", "pre_input", "wipe prod db", "block", message="absolutely not")
         with pytest.raises(_task.DispatchError, match="no-wipes"):
             _queue.enqueue_task_once("myapp", "please wipe prod db tonight", channel="cli")
-        assert _queue.read_tasks("myapp") == []
+        assert TaskRepository.for_pod("myapp").list() == []
 
     def test_block_emits_a_self_contained_terminal_session(self) -> None:
         """A rejected task is never dispatched, so nothing else will ever close
@@ -189,23 +190,23 @@ class TestEnqueuePreInputGate:
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
         task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
 
-        assert task["status"] == "waiting_approval"
-        assert task["approvalToken"].startswith("apr-")
-        assert task["pendingApprovalIndex"] == 0
-        stored = _queue.read_tasks("myapp")[0]
-        assert stored["status"] == "waiting_approval"
-        assert stored["approvalToken"] == task["approvalToken"]
+        assert task.status == "waiting_approval"
+        assert task.approval_token.startswith("apr-")
+        assert task.pending_approval_index == 0
+        stored = TaskRepository.for_pod("myapp").list()[0]
+        assert stored.status == "waiting_approval"
+        assert stored.approval_token == task.approval_token
 
-        rec = _ap.approval_get(task["approvalToken"])
+        rec = _ap.approval_get(task.approval_token)
         assert rec["project"] == "myapp"
         assert rec["role"] == "lead"
         assert rec["state"] == "pending"
-        assert rec["context"] == {"taskId": task["id"], "pipelineIndex": 0}
+        assert rec["context"] == {"taskId": task.id, "pipelineIndex": 0}
 
         events = _trace_events("myapp")
         approval_events = [e for e in events if e["event_type"] == "approval_required"]
         assert len(approval_events) == 1
-        assert approval_events[0]["payload"]["token"] == task["approvalToken"]
+        assert approval_events[0]["payload"]["token"] == task.approval_token
         assert approval_events[0]["payload"]["policy"] == "big-spend"
 
     def test_require_approval_task_is_not_claimable_until_granted(self) -> None:
@@ -222,14 +223,14 @@ class TestEnqueuePreInputGate:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
         task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
-        token = task["approvalToken"]
+        token = task.approval_token
 
         _ap.approval_grant(token)
         assert _actions.resolve_waiting_approval(token, "granted") is True
 
-        resumed = _queue.read_tasks("myapp")[0]
-        assert resumed["status"] == "pending"
-        assert resumed["gateOverridePipelineIndex"] == 0
+        resumed = TaskRepository.for_pod("myapp").list()[0]
+        assert resumed.status == "pending"
+        assert resumed.gate_override_pipeline_index == 0
 
         runner = _RecordingRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -241,14 +242,14 @@ class TestEnqueuePreInputGate:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
         task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
-        token = task["approvalToken"]
+        token = task.approval_token
 
         _ap.approval_deny(token)
         assert _actions.resolve_waiting_approval(token, "denied") is True
 
-        failed = _queue.read_tasks("myapp")[0]
-        assert failed["status"] == "failed"
-        assert failed["failureKind"] == "approval_denied"
+        failed = TaskRepository.for_pod("myapp").list()[0]
+        assert failed.status == "failed"
+        assert failed.failure_kind == "approval_denied"
 
     def test_redact_scrubs_the_persisted_description(self) -> None:
         _seed_lean_pod()
@@ -261,17 +262,17 @@ class TestEnqueuePreInputGate:
         task = _queue.enqueue_task_once(
             "myapp", "loop in leaky@example.com before shipping", channel="cli"
         )[0]
-        assert "leaky@example.com" not in task["description"]
-        assert "[REDACTED]" in task["description"]
-        stored = _queue.read_tasks("myapp")[0]
-        assert "leaky@example.com" not in stored["description"]
+        assert "leaky@example.com" not in task.description
+        assert "[REDACTED]" in task.description
+        stored = TaskRepository.for_pod("myapp").list()[0]
+        assert "leaky@example.com" not in stored.description
 
     def test_warn_does_not_change_status_or_description(self) -> None:
         _seed_lean_pod()
         _write_policy("fyi-only", "pre_input", "heads up", "warn")
         task = _queue.enqueue_task_once("myapp", "heads up, this one is tricky", channel="cli")[0]
-        assert task["status"] == "pending"
-        assert task["description"] == "heads up, this one is tricky"
+        assert task.status == "pending"
+        assert task.description == "heads up, this one is tricky"
         events = _trace_events("myapp")
         assert any(e["event_type"] == "guardrail_check" for e in events)
         assert not any(e["event_type"] == "guardrail_block" for e in events)
