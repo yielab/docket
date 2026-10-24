@@ -7,13 +7,13 @@ from typing import Any, ClassVar, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from pydantic import ValidationError as _PydanticValidationError
 
-from docket.agent.tools import mcp_tools as _mcp_tools
 from docket.governance import security as _security
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace import protected_paths as _protected
 from docket.kernel.errors import InvalidInput
 from docket.pipeline.application import schedule as _schedule
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import roles as _archetypes
 from docket.teams.pod import member_id
 
@@ -107,7 +107,7 @@ class PodSettings(BaseModel):
     schedule: str | None = Field(None, alias="schedule")
     # Relative paths (comma-joined in storage, like allowCommands) inside this pod's
     # codebase root, composed into a turn's system prompt right after INSTRUCTIONS.md
-    # (agent/identity.py's opt-in section) -- the AGENTS.md/CLAUDE.md convention, but
+    # (teams/identity.py's opt-in section) -- the AGENTS.md/CLAUDE.md convention, but
     # never auto-discovered: unset (the default) composes byte-identically to today.
     # Validated here (not at codebase-resolution time) so a path that could only ever
     # escape the root -- absolute, home-relative, or containing a ".." segment -- is
@@ -121,7 +121,7 @@ class PodSettings(BaseModel):
     # (agent/tools/mcp_tools.py::load_mcp_servers()). ``None`` (the default, and every
     # pod before this field existed) means "every configured server" -- today's
     # behavior, unchanged. A non-empty tuple names the exhaustive subset this
-    # pod's turns load; agent/driver.py::_load_mcp_tools is the
+    # pod's turns load; hops/application/driver.py::_load_mcp_tools is the
     # sole reader (see its docstring for the live-turn refusal this feeds).
     # Validated against the *live* catalog at `set` time (below) -- not merely
     # syntactically -- because an unconfigured server name here is always a
@@ -295,7 +295,7 @@ class PodSettings(BaseModel):
         tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
         context = info.context or {}
         project = str(context.get("project", ""))
-        catalog = {s.name for s in _mcp_tools.load_mcp_servers(project)}
+        catalog = {s.name for s in _mcp_servers.load_mcp_servers(project)}
         catalog.update(context.get("mcp_extra", ()))
         kept: dict[str, None] = {}
         for raw in tokens:
@@ -303,7 +303,7 @@ class PodSettings(BaseModel):
             if not name:
                 continue
             if name not in catalog:
-                owner = _mcp_tools.pod_scoped_owner(name, exclude=project)
+                owner = _mcp_servers.pod_scoped_owner(name, exclude=project)
                 if owner:
                     raise InvalidInput(
                         f"{name!r} is an MCP server of another pod ({owner}); "

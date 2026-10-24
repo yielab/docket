@@ -212,7 +212,7 @@ $ docket run --resume
 - `src/docket/models/selection.py`: `price_for`
 - `src/docket/observability/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `budget_warning`, `paused_refused`)
 - `src/docket/agent/ports.py`: `TurnResult.cost_usd`, `UsageReport`, `DriverCapabilities.reports_cost_usd`
-- `src/docket/agent/driver.py`: `DocketDriver.usage`, `DocketDriver.capabilities`
+- `src/docket/hops/application/driver.py`: `DocketDriver.usage`, `DocketDriver.capabilities`
 - `src/docket/interfaces/cli/commands/status.py`: `docket status`, the per-pod usage summary, the fleet inventory, `cost_snapshot` (the MCP `cost` tool reads it)
 - `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset budgetUsd`
 - `src/docket/interfaces/cli/commands/run.py`: `docket run --resume`, the cap header

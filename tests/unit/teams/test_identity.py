@@ -11,10 +11,11 @@ from pathlib import Path
 
 from tests.support import pods as _support_pods
 
-from docket.agent import identity as I
-from docket.agent import memory as _mem
+from docket.agent import ports
 from docket.kernel.home import current_home, use_home
 from docket.platform import store as _store
+from docket.teams import agent_memory as _mem
+from docket.teams import identity as I
 from docket.teams import pod_settings as _pod_settings
 
 pod_input_policy = _support_pods.pod_input_policy
@@ -23,7 +24,7 @@ _LOCAL_WINDOW = 16_384
 _LOCAL_MAX_OUTPUT = 8_192
 _HOSTED_WINDOW = 200_000
 
-SUBJECT = "docket.agent.identity"
+SUBJECT = "docket.teams.identity"
 
 
 class TestSoulHasNoPersonaBlock:
@@ -284,7 +285,9 @@ class TestSkillsSection:
 class TestRepositoryTextIsFramed:
     """Repository text composes after the runtime contract, behind a fixed untrusted frame."""
 
-    def _pod(self, tmp_path: Path, name: str, *, agents: bool, skill: bool) -> I.PromptComposition:
+    def _pod(
+        self, tmp_path: Path, name: str, *, agents: bool, skill: bool
+    ) -> ports.PromptComposition:
         codebase = tmp_path / "repo"
         codebase.mkdir()
         if agents:
@@ -431,5 +434,5 @@ class TestScreensSeeThePodPolicy:
 
 def test_a_composition_defaults_its_budget_from_the_current_home() -> None:
     with use_home(dataclasses.replace(current_home(), context_token_budget_default=777)):
-        assert I.PromptComposition(text="").budget_tokens == 777
+        assert ports.PromptComposition(text="").budget_tokens == 777
         assert I.resolve_static_context_budget(None, None) == (777, "default")

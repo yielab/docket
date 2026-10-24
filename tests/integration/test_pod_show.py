@@ -21,15 +21,16 @@ from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.agent.tools import mcp_tools as _mcp_tools
 from docket.governance import policy as _policy
 from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
 from docket.teams import report as pod_report
 from docket.teams import roles as _archetypes
@@ -245,8 +246,8 @@ class TestPodShowScopeLabels:
             )
 
             # One MCP server, declared read, selected by this pod alone.
-            _mcp_tools.add_mcp_server(
-                _mcp_tools.McpServerConfig(name="search", command="stub", kind="read")
+            _mcp_servers.add_mcp_server(
+                _mcp.McpServerConfig(name="search", command="stub", kind="read")
             )
             lead = pod.member_id("demo", "lead")
             _fleet.meta_set(lead, "mcpServers", "search")

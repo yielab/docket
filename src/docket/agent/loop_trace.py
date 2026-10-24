@@ -6,8 +6,8 @@ import threading
 from collections.abc import Sequence
 from typing import Any
 
-from docket.agent import identity as _identity
 from docket.agent.llm import ChatMessage, ChatResponse
+from docket.agent.ports import PromptSectionReport
 from docket.agent.session_compaction import CompactionResult
 from docket.agent.tools.registry import ToolDenialKind
 from docket.kernel import text as _text
@@ -304,7 +304,7 @@ def _trace_prompt_composed(
     project: str,
     session_key: str,
     role: str,
-    sections: tuple[_identity.PromptSectionReport, ...],
+    sections: tuple[PromptSectionReport, ...],
     budget_tokens: int,
     budget_source: str,
     task_id: str = "",

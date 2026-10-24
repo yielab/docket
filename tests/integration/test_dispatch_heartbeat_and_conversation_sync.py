@@ -2,9 +2,9 @@
 conversation registry current.
 
 ``core/dispatch.py``'s ``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
-call ``agent/memory.py``'s ``sync_dispatch_tasks`` at each task-state-persistence point, so the
+call ``teams/agent_memory.py``'s ``sync_dispatch_tasks`` at each task-state-persistence point, so the
 durable ledger is true whether or not the agent ever wrote anything there itself.
-``_persist_hop`` also calls ``agent/conversations.py``'s ``touch_for_hop`` so a wired channel
+``_persist_hop`` also calls ``teams/conversations.py``'s ``touch_for_hop`` so a wired channel
 thread's ``last_message``/``task_ref`` reflect the dispatch actually working, not just whatever
 ``docket setup notify bind`` seeded once. Setup mirrors ``test_dispatch.py``'s hermetic pod fixture (injected
 ``FakeDriver``/plain runner callables, no real subprocess).
@@ -23,8 +23,6 @@ from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
 from tests.support.pods import lead_ws as _lead_ws
 
-from docket.agent import conversations as _conv
-from docket.agent import memory as _mem
 from docket.agent import ports as _rd
 from docket.hops.application import record as _record
 from docket.hops.gates import pre_hop as _pre_hop_c
@@ -36,6 +34,8 @@ from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
+from docket.teams import agent_memory as _mem
+from docket.teams import conversations as _conv
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.agent"

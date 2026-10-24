@@ -30,8 +30,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
+from docket.kernel.home import current_home
+from docket.kernel.ports import Binding
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from docket.agent.llm import TokenUsage
+    from docket.agent.tools.registry import ToolRegistry
 
 # ── run_turn ──────────────────────────────────────────────────────────────────
 
@@ -235,3 +241,76 @@ class RuntimeDriver(Protocol):
     def capabilities(self) -> DriverCapabilities:
         """Describe what this driver instance can actually promise."""
         ...
+
+
+#: Where a resolved budget's value came from — named consistently wherever a
+#: budget is reported (the ``prompt_composed`` trace event, ``docket pod
+#: show``): an explicit ``CONTEXT_TOKEN_BUDGET`` env override, an archetype's
+#: own declared ``tokenBudget``, a computed share of the resolved model
+#: window, or today's plain constant (no override, no usable window).
+BudgetSource = Literal["env", "archetype", "window", "default"]
+
+
+#: A composed prompt section's fit outcome, for the ``prompt_composed`` trace event
+#: `agent/loop.py` emits -- this module stays trace-free and only reports data.
+PromptSectionStatus = Literal["full", "truncated", "omitted"]
+
+
+@dataclass(frozen=True)
+class PromptSectionReport:
+    """One section's byte accounting in a composed prompt."""
+
+    name: str
+    bytes: int
+    status: PromptSectionStatus
+
+
+@dataclass(frozen=True)
+class PromptComposition:
+    """A composed system prompt plus its per-section fit accounting."""
+
+    text: str
+    sections: tuple[PromptSectionReport, ...] = ()
+    # The static-context budget this composition was fit to, and where that number
+    # came from (see resolve_static_context_budget) -- reported even for an empty
+    # composition (no prompt material), describing what would have applied.
+    budget_tokens: int = field(default_factory=lambda: current_home().context_token_budget_default)
+    budget_source: BudgetSource = "default"
+
+
+# ── the role composer: what a turn needs from the team that owns the role ──────
+
+
+class RoleComposer(Protocol):
+    """What the turn engine asks of the context that knows roles and identity files.
+
+    The engine owns the loop; which tools a role may see, what budget its archetype declares
+    and the system prompt its workspace composes are the team's data, bound once at the entry
+    point (``bootstrap.bind_adapters``) and swapped in a test with ``role_composer_port.use``."""
+
+    def narrow_registry(self, registry: ToolRegistry, role: str, project: str) -> ToolRegistry:
+        """*registry* without the tools *role* may never call."""
+        ...
+
+    def declared_token_budget(self, role: str, project: str) -> int | None:
+        """The context budget *role*'s archetype declares, or ``None`` when it declares none."""
+        ...
+
+    def compose_prompt(
+        self,
+        agent_id: str,
+        *,
+        project_roots: tuple[Path, ...],
+        context_window_tokens: int | None,
+        max_output_tokens: int | None,
+    ) -> PromptComposition:
+        """*agent_id*'s system prompt, fit to this turn's resolved model bounds."""
+        ...
+
+
+role_composer_port: Binding[RoleComposer] = Binding("role_composer")
+role_composer: RoleComposer = role_composer_port.proxy()
+
+
+def bind_role_composer(adapter: RoleComposer) -> None:
+    role_composer_port.bind(adapter)

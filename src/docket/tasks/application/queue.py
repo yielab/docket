@@ -8,11 +8,10 @@ from typing import Any
 
 from pydantic import ValidationError as _ValidationError
 
-from docket.agent import isolation_posture as _isolation_posture
-from docket.agent import memory as _mem
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
+from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.application.record import _hop_from_record
 from docket.hops.workspace import prepare as _prepare
 from docket.hops.workspace.worktree import _ensure_task_worktree
@@ -37,6 +36,7 @@ from docket.tasks.domain.task import (
     TaskResult,
     _normalize_task,
 )
+from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
 from docket.teams import models as _models
 from docket.teams import pod as _pod

@@ -82,7 +82,7 @@ class Home:
     # Cap on the repository map a hop message carries (hops/workspace/repo_map.py).
     repo_map_max_chars: int = 1600
     # The static-context budget when CONTEXT_TOKEN_BUDGET is unset and the model's window
-    # is unknown. Kept apart so agent/identity.py can tell an explicit value from none.
+    # is unknown. Kept apart so teams/identity.py can tell an explicit value from none.
     context_token_budget_default: int = 6000
     context_token_budget_override: int | None = None
     # Bounds the summarising turn session compaction runs (agent/session.py).
@@ -321,7 +321,7 @@ class Home:
             return self.plugins_dir_override
         return self.root / "plugins"
 
-    # The operator's skills, the outermost of the three scopes agent/skills.py reads.
+    # The operator's skills, the outermost of the three scopes hops/workspace/skills.py reads.
     @property
     def skills_dir(self) -> Path:
         if self.skills_dir_override is not None:

@@ -6,8 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from docket.agent import conversations as _conv
-from docket.agent import memory as _mem
 from docket.agent import ports as _rd
 from docket.hops.workspace.worktree import _hop_diff_probe
 from docket.kernel import clock as _clock
@@ -20,6 +18,8 @@ from docket.pipeline.domain import plan as _orch
 from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult
 from docket.tasks.domain.task import HopResult
+from docket.teams import agent_memory as _mem
+from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams.settings import pod_task_list_path

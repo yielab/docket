@@ -19,11 +19,11 @@ from tests.support.llm import final_response as _final_response
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.agent import driver as _dr
-from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import audit as _audit
 from docket.governance.policy import install_policies
+from docket.hops.application import driver as _dr
+from docket.hops.application.driver import DocketDriver
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import contract as _contract

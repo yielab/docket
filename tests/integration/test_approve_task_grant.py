@@ -15,12 +15,12 @@ from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
-from docket.agent.driver import _parse_pregrants
 from docket.agent.tools.registry import ToolContext, _consume_matching_pregrant
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.hops.application import compose as _compose
 from docket.hops.application import record as _record
+from docket.hops.application.driver import _parse_pregrants
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg

@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-import docket.agent.memory as _mem
-from docket.agent.driver import _resolve_roots
+import docket.teams.agent_memory as _mem
+from docket.hops.application.driver import _resolve_roots
 from docket.kernel.home import current_home
 from docket.teams.member_workspace import provision_member
 from docket.teams.models import AgentMeta

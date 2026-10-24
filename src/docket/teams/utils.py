@@ -21,7 +21,7 @@ def project_ids() -> list[str]:
 
 def last_activity(agent_id: str) -> str:
     """The date (YYYY-MM-DD) of *agent_id*'s most recently updated session, or '—'."""
-    from docket.agent import driver as _dr
+    from docket.hops.application import driver as _dr
 
     stamps = [s.last_active for s in _dr.default_driver().list_sessions(agent_id) if s.last_active]
     return max(stamps)[:10] if stamps else "—"
@@ -49,7 +49,7 @@ def aggregate_cost(agent_id: str) -> UsageTotals:
     which must see the same driver hops actually execute through or the
     budget cap silently stops tripping.
     """
-    from docket.agent import driver as _dr
+    from docket.hops.application import driver as _dr
 
     return _dr.default_driver().usage(agent_id).totals
 
@@ -111,6 +111,6 @@ def cost_history(agent_id: str) -> list[UsageDay]:
     cost breakdown is real, useful information this driver does not yet have
     a way to produce.
     """
-    from docket.agent import driver as _dr
+    from docket.hops.application import driver as _dr
 
     return _dr.default_driver().usage(agent_id).by_day

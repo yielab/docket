@@ -16,9 +16,9 @@ from pathlib import Path
 import pytest
 from tests.support.home import record_isolation_off
 
-from docket.agent.driver import DocketDriver
 from docket.agent.tools.builtins import toolbox
 from docket.governance.audit import read_audit
+from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
@@ -162,7 +162,7 @@ class TestGatesCommand:
 
 class TestRefusal:
     def test_the_unrecorded_default_is_not_refused_without_a_jail(self) -> None:
-        from docket.agent.isolation_posture import _resolve_network
+        from docket.hops.application.isolation_posture import _resolve_network
 
         assert _fleet.get_network_mode() == "none"
         assert _resolve_network("solo-agent", "implementer", False) == (True, None)

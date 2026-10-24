@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from docket.agent import memory as _mem
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.hops.application.record import _hop_record
@@ -22,6 +21,7 @@ from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.queue import _task_record
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import DispatchError, TaskNotFoundError, TaskResult, _normalize_task
+from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod

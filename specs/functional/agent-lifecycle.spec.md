@@ -288,6 +288,6 @@ Where the names above live today; the only place this spec names a path.
 - `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`, `detect_stack`
 - `src/docket/teams/settings.py`: `pod_approval_mode`
 - `src/docket/teams/fleet.py`: `fleet.json` registration, bindings
-- `src/docket/agent/conversations.py`: `remove_agent_durable`
+- `src/docket/teams/conversations.py`: `remove_agent_durable`
 - `src/docket/platform/git.py`: `git_current_branch`, `git_branch_merged`,
   `git_branch_delete`

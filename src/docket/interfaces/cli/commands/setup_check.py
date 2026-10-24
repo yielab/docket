@@ -15,7 +15,6 @@ import json as _json
 import shutil
 from typing import Any
 
-from docket.agent import memory as _mem
 from docket.governance import network_posture as _np
 from docket.governance import profile as _profile
 from docket.interfaces.cli.commands.setup_check_budget import (
@@ -62,6 +61,7 @@ from docket.operator import channel as _channel
 from docket.pipeline.application import schedule as _sched
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
+from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import pod as _pod_ledger_mod

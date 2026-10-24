@@ -601,8 +601,8 @@ docket pod validate ./producer.yaml
   passing the turn's project
 - `src/docket/models/selection.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
   `rank_anchors`
-- `src/docket/agent/identity.py`: the live runtime startup contract
-- `src/docket/agent/memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` manual-path paragraph),
+- `src/docket/teams/identity.py`: the live runtime startup contract
+- `src/docket/teams/agent_memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` manual-path paragraph),
   `REQUIRED_STARTUP_FILE`
 - `src/docket/teams/config_docs.py`: `load_document` (role kind detection and validation)
 - `src/docket/teams/apply/plan.py`: directory and recipe apply

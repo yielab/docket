@@ -14,6 +14,7 @@ import pytest
 
 import docket.agent.tools.mcp_tools as _mt
 from docket.agent.tools import mcp_client as _client
+from docket.kernel import mcp as _mcp
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home, use_home
 from docket.sandbox import landlock
@@ -68,10 +69,10 @@ def _hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]
 
 
 @pytest.fixture
-def server(root: Path) -> _mt.McpServerConfig:
+def server(root: Path) -> _mcp.McpServerConfig:
     script = root / "server.py"
     script.write_text(_SERVER)
-    return _mt.McpServerConfig(name="probe", command=sys.executable, args=[str(script)])
+    return _mcp.McpServerConfig(name="probe", command=sys.executable, args=[str(script)])
 
 
 @pytest.fixture
@@ -94,7 +95,7 @@ def _launch(
 
 
 def test_isolation_off_leaves_the_servers_own_argv_byte_identical(root: Path) -> None:
-    config = _mt.McpServerConfig(name="s", command="npx", args=["-y", "srv", "--flag"])
+    config = _mcp.McpServerConfig(name="s", command="npx", args=["-y", "srv", "--flag"])
     for launch in (None, _launch(root, sandbox="off"), _launch(root, network=False, sandbox="off")):
         params = _client._stdio_params(config, launch)
         assert (params.command, params.args) == ("npx", ["-y", "srv", "--flag"])
@@ -104,7 +105,7 @@ def test_a_jailed_server_is_wrapped_by_landlock_with_the_turns_roots_and_network
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
-    config = _mt.McpServerConfig(name="s", command="npx", args=["a", "b"])
+    config = _mcp.McpServerConfig(name="s", command="npx", args=["a", "b"])
     open_net = _client._stdio_params(config, _launch(root))
     cut_net = _client._stdio_params(config, _launch(root, network=False))
     assert open_net.command == sys.executable
@@ -118,7 +119,7 @@ def test_a_docker_wrapped_server_keeps_stdin_open_and_honours_network(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "docker")
-    config = _mt.McpServerConfig(name="s", command="srv", args=["a"], env={"K": "V"})
+    config = _mcp.McpServerConfig(name="s", command="srv", args=["a"], env={"K": "V"})
     params = _client._stdio_params(config, _launch(root, network=False))
     assert params.command == "docker"
     assert "-i" in params.args
@@ -131,7 +132,7 @@ def test_isolation_on_with_no_backend_refuses_rather_than_starting_unjailed(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
-    config = _mt.McpServerConfig(name="s", command="srv")
+    config = _mcp.McpServerConfig(name="s", command="srv")
     with pytest.raises(Unavailable, match="no sandbox backend"):
         _client._stdio_params(config, _launch(root))
 
@@ -139,7 +140,7 @@ def test_isolation_on_with_no_backend_refuses_rather_than_starting_unjailed(
 @_needs_sdk
 @_needs_landlock
 def test_a_jailed_server_cannot_write_outside_the_roots(
-    tmp_path: Path, root: Path, server: _mt.McpServerConfig, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, root: Path, server: _mcp.McpServerConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
     inside = root / "in.txt"
@@ -161,7 +162,7 @@ def test_a_jailed_server_cannot_write_outside_the_roots(
 @_needs_sdk
 @_needs_landlock
 def test_under_network_none_a_jailed_server_cannot_open_a_socket(
-    root: Path, server: _mt.McpServerConfig, monkeypatch: pytest.MonkeyPatch
+    root: Path, server: _mcp.McpServerConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
     out = _client.call_remote_tool(
@@ -174,7 +175,7 @@ def test_under_network_none_a_jailed_server_cannot_open_a_socket(
 @_needs_sdk
 @_needs_landlock
 def test_listing_works_through_the_jail(
-    root: Path, server: _mt.McpServerConfig, monkeypatch: pytest.MonkeyPatch
+    root: Path, server: _mcp.McpServerConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
     listing = _client.list_remote_tools(server, 30.0, _launch(root, runtime=True))

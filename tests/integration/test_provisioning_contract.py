@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from docket.agent import memory as _mem
+from docket.teams import agent_memory as _mem
 from docket.teams import provisioning as _prov
 
 SUBJECT = "docket.agent"

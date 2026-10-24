@@ -1550,7 +1550,7 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`
 - `src/docket/agent/ports.py`: `DOCKET_APPROVAL_MODE`, `DOCKET_TASK_DENIED_TOOLS`,
   `DOCKET_TASK_NETWORK`, `DOCKET_TASK_POLICIES`
-- `src/docket/agent/driver.py`: `DocketDriver.run_turn` (isolation and network
+- `src/docket/hops/application/driver.py`: `DocketDriver.run_turn` (isolation and network
   resolution, `isolation.refused`, `network.refused`, approval mode, `allow_commands`, project
   resolution, task policies, `make_non_dumpable`), `resolve_command_jail`
 - `src/docket/sandbox/launch.py`: `sandbox_availability`, `SandboxAvailability`, `jail_launch`,

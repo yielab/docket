@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from tests.support.pods import write_security_vetter_md as _write_security_vetter_md
 
-from docket.agent.memory import HEARTBEAT_FILE
+from docket.teams.agent_memory import HEARTBEAT_FILE
 from docket.teams.builtin_roles import BUILTIN_ARCHETYPES, STARTER_ARCHETYPES
 from docket.teams.role_schema import (
     ArchetypeError,
@@ -141,7 +141,7 @@ def _instructs_a_private_write(prompt: str) -> str:
 class TestGeneratedInstructionsAgreeWithRuntimeContract:
     """No built-in/starter archetype's rendered SOUL.md + AGENTS.md may instruct the
     model to write HEARTBEAT.md or memory/ itself -- that contradicts
-    `agent/identity.py`'s live runtime contract, composed into the same turn."""
+    `teams/identity.py`'s live runtime contract, composed into the same turn."""
 
     def test_no_archetype_instructs_a_private_write(self) -> None:
         offenders: dict[str, str] = {}

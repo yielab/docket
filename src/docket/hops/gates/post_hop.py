@@ -6,11 +6,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import ports as _rd
 from docket.agent.tools import registry as _tools
 from docket.governance import policy as _policy
 from docket.governance import security as _sec
+from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.application.record import (
     _trace_locked,
     _UnitContext,

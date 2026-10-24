@@ -76,7 +76,7 @@ class AgentLoopResult:
     ``stop_reason == "final_message"`` exactly when ``ok`` is True — the only
     stop reason that represents a completed, usable turn. Mirrors
     ``ChatResponse``/``TurnResult``'s identical invariant deliberately, so
-    ``agent/driver.py``'s translation to ``TurnResult`` is a
+    ``hops/application/driver.py``'s translation to ``TurnResult`` is a
     field-for-field copy, not a re-interpretation.
     """
 

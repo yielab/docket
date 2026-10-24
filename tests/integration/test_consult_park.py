@@ -19,9 +19,9 @@ from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
 from tests.support.pods import build_pod
 
-from docket.agent import driver as _dr
-from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.hops.application import driver as _dr
+from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home

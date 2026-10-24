@@ -204,7 +204,7 @@ BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
 
 
 # A bad stored value degrades to "no additional pod-level denial" rather than raising --
-# mirroring `agent/driver.py`'s `_resolve_allow_commands` fail-open
+# mirroring `hops/application/driver.py`'s `_resolve_allow_commands` fail-open
 # pattern for a different pod setting: this runs once per turn on the live agent-loop
 # path and must never crash it, and the write path (`PodSettings.coerce`) is what
 # refuses a bad value before it can ever reach here. Deferred import: `teams.pod`

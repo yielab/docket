@@ -5,7 +5,7 @@ parses it and decides every entry itself: only a fact docket verified (a generat
 at the task's commit, a command with an exit status in the task's trace) is accepted
 automatically, anything that reads as an instruction is refused, and the rest waits for the
 operator. Accepted entries reach later prompts through ``render_entries`` behind an untrusted
-frame (``agent/identity.py``). See specs/functional/workspace-structure.spec.md "Pod memory"."""
+frame (``teams/identity.py``). See specs/functional/workspace-structure.spec.md "Pod memory"."""
 
 from __future__ import annotations
 

@@ -34,7 +34,7 @@ from docket.agent.session_units import (
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel.home import current_home
-from docket.platform import store as _store
+from docket.platform import read_json, read_modify_write
 
 __all__ = [
     "HISTORY_FULL_RESULTS_CHARS",
@@ -58,7 +58,7 @@ __all__ = [
 #: The shape `compact_session` needs from a driver -- identical to
 #: `agent.memory.DistillRunner`/`hops.application.runner`'s 5-arg `Runner`: `RuntimeDriver.run_turn`'s
 #: core 5-arg call, nothing more. A separate alias (not an import of either)
-#: because this module must not depend on `agent/memory.py` or `hops/application/runner.py`
+#: because this module must not depend on `teams/agent_memory.py` or `hops/application/runner.py`
 #: for a plain structural type -- see the module docstring's fail-closed section.
 SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], TurnResult]
 
@@ -185,7 +185,7 @@ def load_session(session_key: str, *, sessions_dir: Path | None = None) -> Sessi
     if not path.exists():
         return SessionRecord(session_key=session_key)
     try:
-        return SessionRecord.model_validate(_store.read_json(path))
+        return SessionRecord.model_validate(read_json(path))
     except Exception:
         return SessionRecord(session_key=session_key)
 
@@ -230,7 +230,7 @@ def append_messages(
         )
         return updated.model_dump(by_alias=True)
 
-    result = _store.read_modify_write(path, _mutate)
+    result = read_modify_write(path, _mutate)
     return SessionRecord.model_validate(result)
 
 

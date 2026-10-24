@@ -12,13 +12,14 @@ import pytest
 from tests.support.git import git_3 as _git
 from tests.support.pods import build_pod
 
-from docket.agent import identity as _identity
+from docket.agent import ports as _ports
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.observability import trace as _trace
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
+from docket.teams import identity as _identity
 from docket.teams import memory as _pm
 
 SUBJECT = "docket.teams.memory"
@@ -63,7 +64,7 @@ def _finish(
     return task_id
 
 
-def _prompt(root: Path) -> _identity.PromptComposition:
+def _prompt(root: Path) -> _ports.PromptComposition:
     return _identity.compose_agent_prompt(_MEMBER, project_roots=(root,))
 
 

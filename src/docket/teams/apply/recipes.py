@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 import docket.kernel.templates as _templates
-from docket.agent.tools import mcp_tools as _mcp_tools
+from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
 from docket.teams.apply.model import PodApplyError
 
@@ -129,14 +130,14 @@ def _server_files(directory: Path) -> list[Path]:
     return sorted(_config_glob(servers_dir)) if servers_dir.is_dir() else []
 
 
-def _declared_servers(directory: Path) -> list[_mcp_tools.McpServerConfig]:
+def _declared_servers(directory: Path) -> list[_mcp.McpServerConfig]:
     """Each readable ``mcp-servers/*`` document; an invalid one is skipped here (``plan_apply``
     and ``validate`` are what refuse it)."""
-    servers: list[_mcp_tools.McpServerConfig] = []
+    servers: list[_mcp.McpServerConfig] = []
     for path in _server_files(directory):
         try:
-            servers.append(_mcp_tools.load_mcp_server_document(path))
-        except _mcp_tools.McpServerDocError:
+            servers.append(_mcp_servers.load_mcp_server_document(path))
+        except _mcp_servers.McpServerDocError:
             continue
     return servers
 

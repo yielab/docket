@@ -4,7 +4,7 @@ A skill is a directory: ``SKILL.md`` frontmatter names it and describes it in on
 an optional body and optional ``scripts/``/``references/``/``assets/`` are read on demand. Three
 scopes, nearest wins by name (ADR 0013 §3 rule 8): a codebase's own ``.docket/skills/``, this
 pod's own ``config/skills/`` (a recipe's ``skills/`` applied there, exported back), and the
-operator's ``~/.docket/skills/`` (``Home.skills_dir``). ``agent/identity.py`` composes the
+operator's ``~/.docket/skills/`` (``Home.skills_dir``). ``teams/identity.py`` composes the
 discovered index into the system prompt; the ``skill`` built-in tool
 (``agent/tools/registry.py``) reads a named skill's body on demand, through the same chokepoint as every
 other tool. This module never imports ``platform/`` or any ``adapters/`` package -- discovery and parsing are pure reads over

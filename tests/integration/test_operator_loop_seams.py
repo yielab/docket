@@ -23,12 +23,12 @@ from tests.support.llm import final_response as _final_response
 from tests.support.pods import bind_intake_pipeline as _bind_intake_pipeline
 from tests.support.pods import seed_pod_2 as _seed_pod
 
-from docket.agent import driver as _dr
 from docket.agent import ports as _rd
-from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
+from docket.hops.application import driver as _dr
+from docket.hops.application.driver import DocketDriver
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer

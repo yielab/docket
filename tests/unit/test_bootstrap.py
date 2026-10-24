@@ -8,7 +8,7 @@ import pytest
 from tests.support.fakes import FakeJail
 
 from docket import bootstrap
-from docket.agent import driver as _driver
+from docket.hops.application import driver as _driver
 from docket.kernel.home import Home
 from docket.kernel.ports import SandboxAvailability
 

@@ -4,7 +4,6 @@ import datetime as _dt
 import json as _json
 from typing import Any
 
-from docket.agent import memory as _mem
 from docket.governance import approval as _ap
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import audit as _audit
@@ -15,6 +14,7 @@ from docket.observability import trace as _trace
 from docket.platform import read_modify_write
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.domain import state as _state
+from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
 from docket.teams.settings import _pod_settings, pod_task_list_path
 

@@ -21,16 +21,16 @@ from tests.support.git import git as _git
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 
-from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.agent.identity"
+SUBJECT = "docket.teams.identity"
 
 _PIPELINE = """\
 name: base-files

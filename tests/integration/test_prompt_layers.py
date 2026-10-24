@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 from tests.support.pods import build_pod
 
-from docket.agent import identity as _identity
 from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.teams import identity as _identity
 from docket.teams import roles as _arch
 
-SUBJECT = "docket.agent.identity"
+SUBJECT = "docket.teams.identity"
 
 _MEMBER = "demo-implementer"
 

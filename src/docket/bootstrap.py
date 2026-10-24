@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from docket.agent import driver as _driver
+from docket.agent.ports import bind_role_composer
 from docket.governance import secrets as _secrets
 from docket.governance import security as _security
+from docket.hops.application import driver as _driver
 from docket.kernel.home import Home
 from docket.kernel.ports import SandboxAvailability, bind_git, bind_jail, bind_process
 from docket.kernel.ports import jail as _jail
@@ -31,6 +32,7 @@ from docket.platform import process as _process_adapter
 from docket.platform import store as _store
 from docket.sandbox.launch import Launcher
 from docket.teams import fleet as _fleet
+from docket.teams.role_composer import TeamsRoleComposer
 
 DEFAULT_PORT = 7331
 DEFAULT_INTERVAL = 30
@@ -53,7 +55,8 @@ def _credential_sources() -> set[str]:
 
 
 def bind_adapters() -> None:
-    """Bind the real git, process and jail adapters; every entry calls this before it runs."""
+    """Bind the real adapters of every port; every entry calls this before it runs."""
+    bind_role_composer(TeamsRoleComposer())
     bind_git(_git_adapter)
     bind_process(_process_adapter)
     bind_jail(

@@ -408,7 +408,7 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 - `src/docket/models/adapters/openai_http.py`: `request_part_bytes`
 - `src/docket/agent/tools/builtins/toolbox.py`: `run_bash` (the `on_process` reports)
 - `src/docket/agent/tools/registry.py`: `ToolContext.on_process`, the `bash` handler's `"tool": "bash"` tag
-- `src/docket/agent/driver.py`: `DocketDriver` (turns `on_process` reports into
+- `src/docket/hops/application/driver.py`: `DocketDriver` (turns `on_process` reports into
   `process_*` events, registers pgids)
 - `src/docket/tasks/application/runs.py`: `current_run_id`, `add_hop_pid`, `remove_hop_pid`
 - `src/docket/interfaces/http/server.py`: the periodic sweep that calls `sweep_all` then `expire_old_traces`

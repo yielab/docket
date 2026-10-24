@@ -2,7 +2,7 @@
 
 `teams/roles.py`'s `denied_tools` (data) plus `registry_for_role` (the composing function,
 called once per turn by `agent/loop.py`) make a Reviewer structurally *unable* to edit code,
-not just told not to via SOUL.md prose. `agent/identity.py`'s `compose_agent_prompt` reads
+not just told not to via SOUL.md prose. `teams/identity.py`'s `compose_agent_prompt` reads
 SOUL.md, the member's AGENTS.md and bounded MEMORY.md state
 into one runtime-safe prompt, without replaying manual private-file instructions or widening roots.
 
@@ -22,7 +22,6 @@ import pytest
 from tests.support.llm import final as _final
 
 from docket.agent import context as _context
-from docket.agent import identity as _identity
 from docket.agent import loop as _loop
 from docket.agent import loop_trace as _loop_trace
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
@@ -33,6 +32,7 @@ from docket.governance import audit as _audit
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
 from docket.teams import builtin_roles as _builtin_roles
+from docket.teams import identity as _identity
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 

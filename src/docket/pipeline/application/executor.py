@@ -6,7 +6,7 @@ import time as _time
 from collections.abc import Callable
 from typing import Any, Literal
 
-from docket.agent import driver as _dr
+from docket.hops.application import driver as _dr
 from docket.hops.application.record import (
     Runner,
     _is_gate_failure_carryover,

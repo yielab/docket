@@ -23,7 +23,6 @@ import threading
 from pathlib import Path
 
 from docket import bootstrap as _bootstrap
-from docket.agent import conversations
 from docket.governance import approval
 from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.auth import authorize
@@ -49,6 +48,7 @@ from docket.tasks.application import answers
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import sweep as _sweep
+from docket.teams import conversations
 
 DEFAULT_PORT = _bootstrap.DEFAULT_PORT
 DEFAULT_INTERVAL = _bootstrap.DEFAULT_INTERVAL

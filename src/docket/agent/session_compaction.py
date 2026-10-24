@@ -27,7 +27,7 @@ from docket.agent.session_units import (
 )
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.platform import store as _store
+from docket.platform import read_modify_write
 
 _COMPACTION_ACTIVE: ContextVar[bool] = ContextVar("docket_session_compaction_active", default=False)
 
@@ -468,7 +468,7 @@ def compact_session(
 
     guard_token = _COMPACTION_ACTIVE.set(True)
     try:
-        _store.read_modify_write(path, _mutate)
+        read_modify_write(path, _mutate)
     finally:
         _COMPACTION_ACTIVE.reset(guard_token)
     return outcome

@@ -23,7 +23,7 @@ _RUNTIME_FILES = (
     "kernel/brief.py",
     "agent/llm.py",
     "agent/ports.py",
-    "agent/skills.py",
+    "hops/workspace/skills.py",
     "agent/tools/__init__.py",
     "agent/tools/builtins/__init__.py",
     "agent/tools/builtins/toolbox.py",

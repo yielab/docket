@@ -864,12 +864,12 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 - `src/docket/agent/loop_trace.py`, `src/docket/agent/loop_request.py`: the `prompt_composed`,
   `session_compaction`, `request_fit`, `budget_warning`, `llm_call`, `tool_call` and
   `tool_result` emitters; token accounting
-- `src/docket/agent/driver.py`: `DocketDriver`, `default_driver`, the default
+- `src/docket/hops/application/driver.py`: `DocketDriver`, `default_driver`, the default
   `mcp_loader`, root resolution, the base-commit `RepoView` construction, the export start/flush
 - `src/docket/agent/ports.py`: `RuntimeDriver`, `TurnResult`, `DriverCapabilities`,
   `SessionSummary`, `UsageReport`
 - `tests/fakes.py`: `FakeDriver`, the port's canonical fake
-- `src/docket/agent/identity.py`: `compose_agent_prompt`, `compose_system_prompt`,
+- `src/docket/teams/identity.py`: `compose_agent_prompt`, `compose_system_prompt`,
   `project_instruction_files`, `resolve_static_context_budget`, `memory_has_content`,
   `PromptSectionReport`, `REPO_INSTRUCTIONS_FRAME`, `REPO_SKILLS_FRAME`, `POD_MEMORY_FRAME`
 - `src/docket/agent/context.py`: `resolve_window_share_tokens`, `WINDOW_SHARE`,
@@ -881,7 +881,7 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
   `screen_tool_result`, the `skill`, `consult` and `fetch` tools
 - `src/docket/agent/tools/builtins/toolbox.py`: `SKIPPED_DIRS`, `READ_DEFAULT_LINES`,
   `READ_DEFAULT_CHARS`, `read_file`, `glob_files`, `grep_files`, `run_bash`, the output truncation
-- `src/docket/agent/skills.py`: `discover_skills`
+- `src/docket/hops/workspace/skills.py`: `discover_skills`
 - `src/docket/hops/workspace/repo_view.py`: `RepoView`
 - `src/docket/platform/git.py`: `git_read_blob`, `git_list_tree_dirs`
 - `src/docket/teams/memory.py`: `render_entries`

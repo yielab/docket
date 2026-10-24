@@ -3,8 +3,6 @@
 # of these removes its line here; a module gaining coverage some other way still needs its own
 # unit file before it can be dropped, since test_layout.py checks presence, not the golden/
 # integration suites. New entries require the module to already exist and already lack coverage.
-docket.agent.conversations
-docket.agent.driver
 docket.agent.llm
 docket.agent.loop_request
 docket.agent.loop_trace
@@ -13,6 +11,7 @@ docket.agent.tools.builtins.toolbox
 docket.agent.tools.mcp_client
 docket.governance.audit
 docket.governance.security
+docket.hops.application.driver
 docket.hops.application.runner
 docket.hops.gates.post_hop
 docket.interfaces.cli.commands.mcp
@@ -27,6 +26,7 @@ docket.interfaces.telegram.bot
 docket.models.adapters.openai_http
 docket.models.catalog
 docket.tasks.application.actions
+docket.teams.conversations
 docket.teams.fleet
 docket.teams.member_workspace
 docket.teams.models

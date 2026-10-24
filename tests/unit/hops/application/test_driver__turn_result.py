@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from docket.agent import driver as _dr
 from docket.agent import loop as _loop
+from docket.hops.application import driver as _dr
 
-SUBJECT = "docket.agent.driver"
+SUBJECT = "docket.hops.application.driver"
 
 
 def test_turn_result_carries_the_served_model_and_provider() -> None:

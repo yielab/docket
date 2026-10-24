@@ -4,7 +4,6 @@ import urllib.parse
 from collections.abc import Callable
 from typing import Any
 
-from docket.agent import skills as _skills
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.builtins.toolbox import ToolOutcome as ToolOutcome
 from docket.agent.tools.registry import (
@@ -15,6 +14,7 @@ from docket.agent.tools.registry import (
     _str_arg,
     screen_tool_result,
 )
+from docket.hops.workspace import skills as _skills
 from docket.kernel.home import current_home
 from docket.platform import fetch as _fetch
 from docket.tasks.application import consult as _consult

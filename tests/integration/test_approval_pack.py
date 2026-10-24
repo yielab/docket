@@ -14,12 +14,12 @@ from typing import Any
 import pytest
 from tests.support.home import record_isolation_off
 
-from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.agent.ports import DOCKET_APPROVAL_MODE
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool, ToolRegistry
 from docket.governance import approval as _approval
+from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
 

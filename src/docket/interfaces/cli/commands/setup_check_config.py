@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from docket.agent import memory as _mem
 from docket.governance import policy as _pol
 from docket.governance import profile as _profile
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
+from docket.teams import agent_memory as _mem
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod as _pod

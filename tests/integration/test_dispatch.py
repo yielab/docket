@@ -30,15 +30,15 @@ from tests.support.pods import bind_pipeline as _bind_pipeline
 from tests.support.pods import build_pod
 from tests.support.pods import seed_pod_2 as _seed_pod
 
-from docket.agent import driver as _dr
 from docket.agent import ports as _rd
 from docket.agent import session as _session
-from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
+from docket.hops.application import driver as _dr
 from docket.hops.application import record as _record
 from docket.hops.application import runner as _runner
+from docket.hops.application.driver import DocketDriver
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
@@ -171,7 +171,7 @@ class TestEnqueueTaskPreBrief:
 # There is no daemon-facing driver, no subprocess-backed `agent_run`, and no
 # daemon JSON shape to shell out to any more. The equivalent coverage lives
 # in `models/adapters/openai_http.py`'s `OpenAIChatClient` (response parsing, see
-# test_llm_port.py) and `agent/driver.py`'s
+# test_llm_port.py) and `hops/application/driver.py`'s
 # `DocketDriver` (env passed through to a tool call, see
 # test_docket_driver.py's `test_env_kwarg_reaches_a_tool_call` and
 # `test_on_spawn_is_accepted_and_ignored`).

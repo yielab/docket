@@ -16,7 +16,7 @@ from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.agent import driver as _dr
+from docket.hops.application import driver as _dr
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 

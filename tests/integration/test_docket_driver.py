@@ -1,4 +1,4 @@
-"""`DocketDriver`, the daemon-free `RuntimeDriver` (`agent/driver.py`).
+"""`DocketDriver`, the daemon-free `RuntimeDriver` (`hops/application/driver.py`).
 
 Implements the 7-method `RuntimeDriver` Protocol on top of `agent/loop.py` with no
 external daemon underneath. Covers: `run_turn` maps `AgentLoopResult` onto `TurnResult`
@@ -26,11 +26,8 @@ from tests.support.fakes import FakeJail
 from tests.support.home import record_isolation_off
 from tests.support.pods import write_meta_2 as _write_meta
 
-from docket.agent import driver as _docket_runtime
-from docket.agent import memory as _memory
 from docket.agent import session as _session
 from docket.agent import session_units as _session_units
-from docket.agent.driver import DocketDriver
 from docket.agent.llm import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.agent.ports import DOCKET_APPROVAL_MODE, PIPELINE_WORKTREE_ENV
 from docket.agent.session import load_session
@@ -39,6 +36,8 @@ from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
 from docket.governance.audit import read_audit
+from docket.hops.application import driver as _docket_runtime
+from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
@@ -47,6 +46,7 @@ from docket.models.adapters import openai_http as _llm_adapter
 from docket.platform import store as _store
 from docket.sandbox.launch import Launcher
 from docket.tasks.domain.task import DispatchError
+from docket.teams import agent_memory as _memory
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.agent"
@@ -1968,7 +1968,7 @@ def _allow_commands_probe_registry() -> ToolRegistry:
 
 class TestAllowCommandsWiring:
     """A pod Lead's `allowCommands` setting reaching a member agent's real
-    `ToolContext` (`teams.pod_settings.PodSettings` -> `agent/driver.py`)."""
+    `ToolContext` (`teams.pod_settings.PodSettings` -> `hops/application/driver.py`)."""
 
     def test_a_non_pod_agent_gets_no_extra_bins(self) -> None:
         _write_meta("solo-agent")

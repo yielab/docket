@@ -1,4 +1,4 @@
-"""`agent/memory.py`: the HEARTBEAT.md dispatch ledger and the seeded contract files.
+"""`teams/agent_memory.py`: the HEARTBEAT.md dispatch ledger and the seeded contract files.
 
 Ledger: rendering, the write path preserving an agent's own prose byte-for-byte outside the
 delimited block, and the read-back.
@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from docket.agent import memory as _mem
+from docket.teams import agent_memory as _mem
 
-SUBJECT = "docket.agent.memory"
+SUBJECT = "docket.teams.agent_memory"
 
 # ── the HEARTBEAT.md dispatch ledger ──────────────────────────────────────
 

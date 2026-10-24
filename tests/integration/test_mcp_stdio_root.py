@@ -12,9 +12,10 @@ import pytest
 from tests.unit.agent.tools.test_mcp_tools import _final, _ScriptedBackend, _write_meta
 
 import docket.agent.tools.mcp_tools as _mt
-from docket.agent.driver import DocketDriver, _load_mcp_tools
 from docket.agent.tools import mcp_client as _client
 from docket.agent.tools.registry import ToolContext, ToolOutcome, ToolRegistry
+from docket.hops.application.driver import DocketDriver, _load_mcp_tools
+from docket.kernel import mcp as _mcp
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.agent.tools.mcp_client"
@@ -41,7 +42,7 @@ _SERVER = textwrap.dedent(
 
 @_needs_sdk
 def test_stdio_params_carry_the_given_directory(tmp_path: Path) -> None:
-    config = _mt.McpServerConfig(name="s", command="stub")
+    config = _mcp.McpServerConfig(name="s", command="stub")
     assert _client._stdio_params(config, _mt.StdioLaunch(cwd=str(tmp_path))).cwd == str(tmp_path)
     assert _client._stdio_params(config).cwd is None
 
@@ -57,7 +58,7 @@ def test_a_real_stdio_server_starts_in_the_root_and_elsewhere_outside_a_turn(
     here = tmp_path / "elsewhere"
     here.mkdir()
     monkeypatch.chdir(here)
-    config = _mt.McpServerConfig(name="probe", command=sys.executable, args=[str(script)])
+    config = _mcp.McpServerConfig(name="probe", command=sys.executable, args=[str(script)])
 
     in_turn = _client.call_remote_tool(config, "where", {}, 30.0, _mt.StdioLaunch(cwd=str(root)))
     outside = _client.call_remote_tool(config, "where", {}, 30.0)
@@ -87,7 +88,7 @@ def test_load_mcp_tools_hands_the_root_to_listing_and_calls() -> None:
     launch = _mt.StdioLaunch(cwd="/some/root")
     _mt.load_mcp_tools(
         registry,
-        servers=[_mt.McpServerConfig(name="s", command="stub")],
+        servers=[_mcp.McpServerConfig(name="s", command="stub")],
         list_tools=_list,
         call_tool=_call,
         launch=launch,

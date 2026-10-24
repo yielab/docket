@@ -971,7 +971,7 @@ ok Exporter privacy updated: langfuse
   `OtlpHttpSink`, `ProbeResult`, `probe`
 - `src/docket/observability/adapters/sinks.py`: `sink_for`
 - `src/docket/platform/redirects.py`: `open_same_origin`
-- `src/docket/agent/driver.py`: `DocketDriver.run_turn` (requirement 55), the
+- `src/docket/hops/application/driver.py`: `DocketDriver.run_turn` (requirement 55), the
   `atexit` hook `_close_telemetry` (requirement 109)
 - `src/docket/platform/store.py`: the docket-owned JSON store (`read_json`, `write_json`,
   `read_modify_write`)

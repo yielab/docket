@@ -22,25 +22,25 @@ stale copy.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 from docket.agent import context as _context
-from docket.agent import skills as _skills
-from docket.agent.memory import MEMORY_FILE, REQUIRED_STARTUP_FILE
+from docket.agent.ports import (
+    BudgetSource,
+    PromptComposition,
+    PromptSectionReport,
+    PromptSectionStatus,
+)
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.workspace import repo_view as _repo_view
+from docket.hops.workspace import skills as _skills
 from docket.kernel.home import current_home
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
-
-#: A composed prompt section's fit outcome, for the ``prompt_composed`` trace event
-#: `agent/loop.py` emits -- this module stays trace-free and only reports data.
-PromptSectionStatus = Literal["full", "truncated", "omitted"]
+from docket.teams.agent_memory import MEMORY_FILE, REQUIRED_STARTUP_FILE
 
 #: The identity file `compose_agent_prompt` reads alongside
 #: ``WORKFLOW_AUTO.md`` — kept as a local constant (not re-exported from
@@ -83,28 +83,6 @@ _RUNTIME_CONTEXT_NOTE = (
 _RUNTIME_CONTEXT_FOOTER = "\n\n# End runtime-loaded Docket workspace state"
 _PRIVATE_FILE_NAMES = "HEARTBEAT.md, AGENTS.md, TOOLS.md, MEMORY.md, memory/, and .docket"
 _TEMPLATE_LINE = re.compile(r"^(#.*|_.*_|-\s*(stack|codebase|path|origin):.*)$", re.IGNORECASE)
-
-
-@dataclass(frozen=True)
-class PromptSectionReport:
-    """One section's byte accounting in a composed prompt."""
-
-    name: str
-    bytes: int
-    status: PromptSectionStatus
-
-
-@dataclass(frozen=True)
-class PromptComposition:
-    """A composed system prompt plus its per-section fit accounting."""
-
-    text: str
-    sections: tuple[PromptSectionReport, ...] = ()
-    # The static-context budget this composition was fit to, and where that number
-    # came from (see resolve_static_context_budget) -- reported even for an empty
-    # composition (no prompt material), describing what would have applied.
-    budget_tokens: int = field(default_factory=lambda: current_home().context_token_budget_default)
-    budget_source: _context.BudgetSource = "default"
 
 
 # ── the turn's system prompt ────────────────────────────────────────────────
@@ -265,7 +243,7 @@ def _omission_marker(name: str, text: str) -> str:
 def resolve_static_context_budget(
     context_window_tokens: int | None = None,
     max_output_tokens: int | None = None,
-) -> tuple[int, _context.BudgetSource]:
+) -> tuple[int, BudgetSource]:
     """Resolve the static-context token budget (SOUL plus runtime workspace
     state) and name where its value came from: ``env``, ``window``, or ``default``.
     """
@@ -283,7 +261,7 @@ def resolve_static_context_budget(
         floor_tokens=default,
         reserved_tokens=_context.TOOL_SCHEMA_RESERVE_TOKENS,
     )
-    source: _context.BudgetSource = "window" if tokens > default else "default"
+    source: BudgetSource = "window" if tokens > default else "default"
     return tokens, source
 
 

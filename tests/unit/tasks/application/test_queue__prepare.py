@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 from tests.support.fakes import FakeJail
 
-from docket.agent import isolation_posture as _isolation_posture
 from docket.agent import loop_trace as _loop_trace
 from docket.hops.application import compose as _compose_c
+from docket.hops.application import isolation_posture as _isolation_posture
 from docket.hops.gates import post_hop as _post_hop_c
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.hops.workspace import prepare as _prepare

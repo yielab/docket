@@ -17,16 +17,17 @@ from tests.support.pods import build_pod
 from tests.support.pods import spec as _spec
 from typer.testing import CliRunner
 
-from docket.agent.tools import mcp_tools as _mcp
 from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
 from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel import mcp as _kernel_mcp
 from docket.kernel.home import Home, use_home
 from docket.kernel.ports import SandboxAvailability
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod_settings as _pod_settings
 
 SUBJECT = "docket.interfaces"
@@ -162,8 +163,8 @@ class TestRefusals:
     ) -> None:
         _meet_everything(home, monkeypatch, fake_jail)
         _secrets.save_secrets({"MY_TOKEN": "x"})
-        _mcp.write_pod_mcp_servers(
-            "demo", [_mcp.McpServerConfig(name="s", command="true", env={"MY_TOKEN": "y"})]
+        _mcp_servers.write_pod_mcp_servers(
+            "demo", [_kernel_mcp.McpServerConfig(name="s", command="true", env={"MY_TOKEN": "y"})]
         )
 
         res, driver = _dispatch_one(_GATED)

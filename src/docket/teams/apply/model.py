@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.agent.tools import mcp_tools as _mcp_tools
+from docket.kernel import mcp as _mcp
 from docket.kernel.errors import InvalidInput
 from docket.teams import pod
 
@@ -72,7 +72,7 @@ class _McpServerWrite:
     """The complete pod-scoped server list to write: the pod's existing servers with each
     recipe-declared one added or replaced by name."""
 
-    servers: tuple[_mcp_tools.McpServerConfig, ...]
+    servers: tuple[_mcp.McpServerConfig, ...]
 
 
 @dataclass(frozen=True)
