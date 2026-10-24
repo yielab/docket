@@ -14,20 +14,20 @@ from docket.kernel import operator_contract as _oc
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.tasks.application.actions import _mint_task_grant_pregrants
+from docket.tasks.application.actions import mint_task_grant_pregrants
 from docket.tasks.application.record import (
-    _gate_did_not_pass,
-    _is_gate_failure_carryover,
-    _trace_locked,
-    _UnitContext,
+    UnitContext,
+    gate_did_not_pass,
     hop_env,
+    is_gate_failure_carryover,
+    trace_locked,
 )
 from docket.tasks.domain.task import HopResult
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
-from docket.teams.settings import _pod_settings, pod_approval_mode
+from docket.teams.settings import load_pod_settings, pod_approval_mode
 from docket.teams.workspace import repo_map as _repo_map
-from docket.teams.workspace.worktree import _task_worktree_dir
+from docket.teams.workspace.worktree import task_worktree_dir
 
 
 @dataclass
@@ -106,7 +106,7 @@ def _gate_report(prior: list[HopResult], step_id: str) -> str:
     for h in reversed(prior):
         if (h.step_id or h.role) != step_id:
             continue
-        if h.verify is None or not _gate_did_not_pass(h.verify):
+        if h.verify is None or not gate_did_not_pass(h.verify):
             return ""
         reasons = h.verify.get("reasons")
         if isinstance(reasons, list) and reasons:
@@ -127,7 +127,7 @@ def _compose_gate_failed(
     reasons = hop.verify.get("reasons")
     rendered = _render_gate_reasons(reasons) if isinstance(reasons, list) and reasons else ""
     raw_tail = rendered or str(hop.verify.get("outputTail", ""))
-    tail, truncated = _ctx._truncate_summary(raw_tail, budget_tokens)
+    tail, truncated = _ctx.truncate_summary(raw_tail, budget_tokens)
     comp.sections.append(
         {
             "role": "gate_failed",
@@ -178,7 +178,7 @@ def _hop_message(
     role-archetypes.spec.md)."""
 
     desc = str(task.get("description", "")).strip()
-    worktree = "" if role == "lead" else _task_worktree_dir(task)
+    worktree = "" if role == "lead" else task_worktree_dir(task)
     root_block = _repo_map.task_root_block(worktree, project, role)
     if role == "lead":
         if step_instructions:
@@ -202,7 +202,7 @@ def _hop_message(
     instructions = _resolve_hop_instructions(
         role,
         project,
-        None if _is_gate_failure_carryover(rework_hop) else rework_hop,
+        None if is_gate_failure_carryover(rework_hop) else rework_hop,
         step_instructions,
     )
 
@@ -219,7 +219,7 @@ def _hop_message(
     lines = [f"Task: {desc}", ""] + ([root_block, ""] if root_block else [])
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
 
-    gate_failed_hop = rework_hop if _is_gate_failure_carryover(rework_hop) else None
+    gate_failed_hop = rework_hop if is_gate_failure_carryover(rework_hop) else None
     if gate_failed_hop is not None:
         # Resumed right behind an operator's answer: that answer is what the human decided.
         answered = bool(prior) and prior[-1].role == "operator"
@@ -306,7 +306,7 @@ def _hop_message(
 
 
 # Rough character budget for the Lead's "## Operator answers" section, expressed here as a
-# token budget for `_ctx._truncate_summary`, which only ever bounds bytes -- ASCII text keeps
+# token budget for `_ctx.truncate_summary`, which only ever bounds bytes -- ASCII text keeps
 # the two close enough for a "capped near N characters" guarantee, never an exact one.
 _ANSWERS_CHAR_BUDGET = 4000
 
@@ -345,7 +345,7 @@ def _render_operator_answers(task: dict[str, Any]) -> str:
 
     text = "\n\n".join(blocks)
     budget_tokens = _ANSWERS_CHAR_BUDGET // current_home().context_bytes_per_token
-    capped, _truncated = _ctx._truncate_summary(text, budget_tokens)
+    capped, _truncated = _ctx.truncate_summary(text, budget_tokens)
     return capped
 
 
@@ -359,7 +359,7 @@ def _consult_answer_note(task: dict[str, Any], step_id: str) -> str:
 
 
 def _compose_hop(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     node: _orch.PlannedUnit,
     role: str,
     member_id: str,
@@ -381,7 +381,7 @@ def _compose_hop(
     message += _consult_answer_note(ctx.task, node.step_id)
     pipeline_worktree = ""
     if role != "lead":
-        pipeline_worktree = _task_worktree_dir(ctx.task)
+        pipeline_worktree = task_worktree_dir(ctx.task)
         if pipeline_worktree:
             # The task block already names the checkout as the working directory.
             checkout_note = ""
@@ -392,7 +392,7 @@ def _compose_hop(
                 )
             message += checkout_note
             composition.total_bytes += len(checkout_note.encode("utf-8"))
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
@@ -407,7 +407,7 @@ def _compose_hop(
             }
         ),
     )
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
@@ -415,7 +415,7 @@ def _compose_hop(
         _json.dumps({"hop": role, "agent": member_id}),
     )
     planned_model = _hop_model(node, member_id)
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
@@ -449,7 +449,7 @@ def _compose_hop(
             # stamped on the parked record by governance/gate.py's `_park`.
             # Computed fresh per hop (not once per task) so a long-running
             # earlier hop never shortens a later one's window.
-            expiry_hours = _pod_settings(ctx.project).approval_expiry_hours
+            expiry_hours = load_pod_settings(ctx.project).approval_expiry_hours
             deadline = _clock.now() + _dt.timedelta(hours=expiry_hours)
             env[_rd.DOCKET_APPROVAL_EXPIRES_AT] = deadline.isoformat()
     if ctx.approval_timeout is not None:
@@ -460,7 +460,7 @@ def _compose_hop(
     pregrants_raw = ctx.task.get("pregrants")
     pregrants_raw = [
         *(pregrants_raw if isinstance(pregrants_raw, list) else []),
-        *_mint_task_grant_pregrants(ctx, role),
+        *mint_task_grant_pregrants(ctx, role),
     ]
     if pregrants_raw:
         # Every pre-grant this task's human has already resolved (ADR 0016

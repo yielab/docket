@@ -20,7 +20,7 @@ SERVE_API_VERSION = "6"
 def _with_token_budget(task: dict[str, Any]) -> dict[str, Any]:
     """*task* plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
 
-    left = _pre_hop._task_token_budget(task)
+    left = _pre_hop.task_token_budget(task)
     return {
         **task,
         "tokenBudget": current_home().agent_loop_token_budget if left is None else max(0, left),

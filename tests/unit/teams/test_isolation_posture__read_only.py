@@ -19,11 +19,11 @@ def test_a_hop_reads_its_pods_grants_and_the_entries_its_root_links_into(
     grant, entry = tmp_path / "node", tmp_path / "entry"
     monkeypatch.setattr(_pod_settings, "effective_read_only", lambda project: (grant,))
     monkeypatch.setattr(_prepare, "linked_entries", lambda root: (entry,))
-    assert _isolation_posture._hop_read_only("demo", tmp_path) == (grant, entry)
+    assert _isolation_posture.hop_read_only("demo", tmp_path) == (grant, entry)
 
 
 def test_a_root_that_links_nowhere_adds_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(_pod_settings, "effective_read_only", lambda project: ())
-    assert _isolation_posture._hop_read_only("demo", tmp_path) == ()
+    assert _isolation_posture.hop_read_only("demo", tmp_path) == ()

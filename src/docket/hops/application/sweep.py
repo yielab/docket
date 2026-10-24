@@ -21,17 +21,17 @@ from docket.hops.application.steps import effective_pipeline
 from docket.kernel.errors import DispatchError
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application.lifecycle import (
-    _finalize_task,
-    _sweep_stale_claims,
+    finalize_task,
     reclaim_stale_running,
+    sweep_stale_claims,
 )
 from docket.tasks.application.queue import (
-    _claim_next_task,
-    _prepare_claimed_task,
-    _refuse_claimed_task,
-    _touch_claim,
+    claim_next_task,
+    prepare_claimed_task,
+    refuse_claimed_task,
+    touch_claim,
 )
-from docket.tasks.application.record import Runner, _persist_hop
+from docket.tasks.application.record import Runner, persist_hop
 from docket.tasks.domain.task import HopResult, TaskResult, TaskRunRefusal
 from docket.teams.pod import pod_pipeline
 
@@ -75,14 +75,14 @@ def dispatch_pod(
             "refusing dispatch: step instructions reference unresolved pipeline "
             "variable(s): " + ", ".join(missing)
         )
-    _sweep_stale_claims(project)
+    sweep_stale_claims(project)
     if resume:
         reclaim_stale_running(project)
 
     results: list[TaskResult] = []
     claimed_ids: set[str] = set()
     while (max_tasks is None or len(results) < max_tasks) and not (stop is not None and stop()):
-        claim = _claim_next_task(project, resume=resume, skip=frozenset(claimed_ids))
+        claim = claim_next_task(project, resume=resume, skip=frozenset(claimed_ids))
         if claim is None:
             break
         task, resume_hops = claim
@@ -90,26 +90,26 @@ def dispatch_pod(
         claimed_ids.add(task_id)
         refusal = task.pop("claimRefusal", None)
         if refusal is not None:
-            results.append(_refuse_claimed_task(project, task, *refusal))
+            results.append(refuse_claimed_task(project, task, *refusal))
             continue
         try:
             run_spec, run_vars, source = _resolve_task_run(
                 project, task, effective_spec, resolved_vars, variables
             )
         except TaskRunRefusal as exc:
-            results.append(_refuse_claimed_task(project, task, "pipeline", str(exc)))
+            results.append(refuse_claimed_task(project, task, "pipeline", str(exc)))
             continue
         _record_task_run(project, task, source)
-        refused = _prepare_claimed_task(project, task)
+        refused = prepare_claimed_task(project, task)
         if refused is not None:
             results.append(refused)
             continue
 
         def _persist(hop: HopResult, _project: str = project, _task_id: str = task_id) -> None:
-            _persist_hop(_project, _task_id, hop)
+            persist_hop(_project, _task_id, hop)
 
         def _touch(_project: str = project, _task_id: str = task_id) -> None:
-            _touch_claim(_project, _task_id)
+            touch_claim(_project, _task_id)
 
         res = dispatch_task(
             project,
@@ -125,7 +125,7 @@ def dispatch_pod(
             variables=run_vars,
             approval_default=approval_default,
         )
-        _finalize_task(project, task_id, res)
+        finalize_task(project, task_id, res)
         results.append(res)
         if res.status == "blocked" and res.blocked_reason != "resources":
             break  # budget is pod-wide; no point trying further tasks this run

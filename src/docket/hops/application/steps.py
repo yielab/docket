@@ -23,7 +23,7 @@ from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.application.record import _trace_locked, _UnitContext, _UnitOutcome
+from docket.tasks.application.record import UnitContext, UnitOutcome, trace_locked
 from docket.tasks.domain.task import HopResult, TaskRunRefusal
 from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
@@ -31,7 +31,7 @@ from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams.pod import TASK_PIPELINE_NAME
 from docket.teams.settings import (
-    _pod_settings,
+    load_pod_settings,
     pod_approval_mode,
     pod_budget,
     pod_max_rework_cycles,
@@ -78,7 +78,7 @@ def _bound_pipeline(project: str, pipeline_hash: str) -> _pipeline.PipelineSpec:
 def _blueprint_pipeline(project: str) -> tuple[_pipeline.PipelineSpec, str]:
     """The resolved (spec, source) base pipeline for a caller-supplied-spec-free
     dispatch -- see the comment above for the resolution order."""
-    settings = _pod_settings(project)
+    settings = load_pod_settings(project)
     if settings.pipeline:
         spec = _bound_pipeline(project, settings.pipeline)
         return spec, f"{_BOUND_PIPELINE_SOURCE_PREFIX} (hash {settings.pipeline[:12]}...)"
@@ -229,11 +229,11 @@ def unpriced_budget_models(project: str) -> list[str]:
 
 
 def _run_command_step(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     node: _orch.PlannedUnit,
     prior: list[HopResult],
     index_for_context: int,
-) -> _UnitOutcome:
+) -> UnitOutcome:
     """Run *node*'s ``run`` command directly -- no agent turn, no session. Classified like
     any shell-out first: ``allow`` runs it, anything else gates like an ``approval`` step
     (or fails outright under ``approvalMode: refuse``). See pod-dispatch.spec.md."""
@@ -243,11 +243,11 @@ def _run_command_step(
     assert node.run is not None
     role = node.step_id
     cmd = node.run
-    settings = _pod_settings(ctx.project)
+    settings = load_pod_settings(ctx.project)
     verdict = _sec.classify_command(cmd, extra_bins=frozenset(settings.allow_commands))
     if verdict.action != "allow":
         if pod_approval_mode(ctx.project, caller_default=ctx.approval_default) == "refuse":
-            _trace_locked(
+            trace_locked(
                 ctx.project,
                 ctx.session_id,
                 role,
@@ -262,7 +262,7 @@ def _run_command_step(
                 error=f"command step refused: {verdict.reason}",
                 step_id=node.step_id,
             )
-            return _UnitOutcome(
+            return UnitOutcome(
                 kind="failed",
                 hops=[hop],
                 reason=f"command step {node.step_id!r} refused: {verdict.reason}",
@@ -284,7 +284,7 @@ def _run_command_step(
     )
     passed = code == 0
     redacted = _secrets.redact(raw_output)
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
@@ -296,15 +296,15 @@ def _run_command_step(
         ctx.on_hop(hop)
     label = _command_outcome_label(raw_output, passed)
     if _match_on_route(node.on, label) is not None:
-        return _UnitOutcome(kind="routed", hops=[hop], label=label)
+        return UnitOutcome(kind="routed", hops=[hop], label=label)
     if not passed:
-        return _UnitOutcome(
+        return UnitOutcome(
             kind="failed",
             hops=[hop],
             reason=f"command step {node.step_id!r} failed: {cmd!r}",
             label=label,
         )
-    return _UnitOutcome(kind="advance", hops=[hop], label=label)
+    return UnitOutcome(kind="advance", hops=[hop], label=label)
 
 
 def _command_outcome_label(output: str, passed: bool) -> str:
@@ -326,11 +326,11 @@ _DEFAULT_INPUT_SCHEMA: dict[str, Any] = {
 
 
 def _run_input_step(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     node: _orch.PlannedUnit,
     prior: list[HopResult],
     index_for_context: int,
-) -> _UnitOutcome:
+) -> UnitOutcome:
     """Park the task for an operator question minted from *node.input*, trace
     ``input_requested``, and stop ``waiting_input`` -- no hop persisted for this attempt.
     Resumed only by ``hops.application.answers.answer_task``. See pod-dispatch.spec.md."""
@@ -362,14 +362,14 @@ def _run_input_step(
         created_at=_clock.iso(),
         expires_at=expires_at,
     )
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         node.step_id,
         "input_requested",
         _json.dumps({"task": ctx.task_id, "step": node.step_id, "questionId": question.id}),
     )
-    return _UnitOutcome(
+    return UnitOutcome(
         kind="waiting_input",
         reason=f"awaiting operator answer for step {node.step_id!r} (question={question.id})",
         question=question.model_dump(by_alias=True),

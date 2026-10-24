@@ -19,7 +19,7 @@ from docket.platform import read_modify_write
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.queue import _task_record
-from docket.tasks.application.record import _hop_record
+from docket.tasks.application.record import hop_record
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import TaskNotFoundError, TaskResult, _normalize_task
 from docket.teams import agent_memory as _mem
@@ -27,11 +27,11 @@ from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
 from docket.teams.settings import (
-    _pod_settings,
-    _resolve_timeout,
+    load_pod_settings,
     pod_task_list_path,
     pod_turn_timeout,
     pod_verify_timeout,
+    resolve_timeout,
 )
 
 
@@ -42,7 +42,7 @@ def _apply_result(
     "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval``/``waiting_input``
     are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
     ``resolve_waiting_approval``/``hops.application.answers.answer_task``. Stays pure -- HEARTBEAT.md sync
-    lives in ``_finalize_task``."""
+    lives in ``finalize_task``."""
     if res.status == _state.Status.waiting_input and (
         res.question and not res.question.get("expiresAt") and input_expiry_hours
     ):
@@ -63,7 +63,7 @@ def _apply_result(
         question=res.question,
         ran=True,
     )
-    task["hops"] = [_hop_record(h) for h in res.hops]
+    task["hops"] = [hop_record(h) for h in res.hops]
     task["costUsd"] = res.cost_usd
     if res.check_changed:
         task["checkChanged"] = list(res.check_changed)
@@ -77,11 +77,13 @@ def _apply_result(
         task["consultations"] = int(task.get("consultations") or 0) + 1
 
 
-def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
+def finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     """Persist a task's terminal outcome (status/reason/hops/cost), clear its claim, and
     re-sync HEARTBEAT.md. The only trigger that ever *removes* a ledger entry --
-    ``_claim_next_task``/``_persist_hop``/``_touch_claim`` only add or keep one current."""
-    expiry = _pod_settings(project).input_expiry_hours if res.status == "waiting_input" else None
+    ``claim_next_task``/``persist_hop``/``touch_claim`` only add or keep one current."""
+    expiry = (
+        load_pod_settings(project).input_expiry_hours if res.status == "waiting_input" else None
+    )
 
     def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
         tasks_raw = doc.get("tasks")
@@ -110,7 +112,7 @@ def _finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     _pod_memory.record_task_memory(project, task_id, res)
 
 
-def _sweep_stale_claims(project: str) -> None:
+def sweep_stale_claims(project: str) -> None:
     """Crash recovery: fail a ``running`` task whose claim has gone stale (older than
     ``CLAIM_STALE_TIMEOUT``), tagging ``failureKind: "stale_claim"`` and leaving its
     persisted ``hops`` untouched for a later ``--resume`` (pod-dispatch.spec.md, "Per-hop
@@ -174,7 +176,7 @@ def reclaim_stale_running(project: str) -> None:
     """``--resume``: settle every stale ``running`` claim to ``failed``/``stale_claim`` so the
     claim step that follows picks it up from its last persisted hop; audited ``task.reclaimed``."""
     now = _clock.now()
-    lease_s = _resolve_timeout(None, pod_turn_timeout(project)) + _resolve_timeout(
+    lease_s = resolve_timeout(None, pod_turn_timeout(project)) + resolve_timeout(
         None, pod_verify_timeout(project)
     )
     reclaimed: list[tuple[str, str]] = []

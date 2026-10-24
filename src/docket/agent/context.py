@@ -15,7 +15,7 @@ order (``diff_ref`` -> ``files_changed`` -> ``verdict``),
 checking the budget after each drop and stopping the moment it fits.
 ``summary`` is never in ``DROP_ORDER`` — it is the artifact's minimum viable
 content — so the worst case is an explicitly *marked* truncation of
-``summary`` itself (``_truncate_summary``), never a silent drop and never an
+``summary`` itself (``truncate_summary``), never a silent drop and never an
 empty section. ``brief`` (a Lead's typed intake, ADR 0016 §4) is excluded from
 ``DROP_ORDER`` for the same reason and is carried in full alongside the
 (possibly truncated) ``summary`` in every case, including the worst one —
@@ -157,7 +157,7 @@ def hop_share(rank: int, total_budget: int) -> int:
     return total_budget >> (rank + 1)
 
 
-def _truncate_summary(summary: str, budget_tokens: int) -> tuple[str, bool]:
+def truncate_summary(summary: str, budget_tokens: int) -> tuple[str, bool]:
     """Truncate *summary* to fit *budget_tokens*, head + tail, an explicit marker.
 
     Only ever reached once every ``HandoffArtifact.DROP_ORDER`` field has
@@ -228,7 +228,7 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        actually changed the rendered text.
     3. If it still doesn't fit with every droppable (and non-empty) field
        gone — only ``summary`` (and, when set, ``brief``) left — truncate
-       ``summary`` itself via ``_truncate_summary``, with a visible marker.
+       ``summary`` itself via ``truncate_summary``, with a visible marker.
        ``summary`` is never silently dropped: it is one of the two fields
        ``DROP_ORDER`` deliberately excludes, so the worst case is an
        explicitly marked truncation, never an empty section. ``brief`` is
@@ -236,7 +236,7 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        a Lead's typed intake is carried forward whole or not at all, never
        shed piecemeal like the four droppable fields above, so it is
        appended in full here too, and the budget handed to
-       ``_truncate_summary`` is reduced by its own rendered size first so
+       ``truncate_summary`` is reduced by its own rendered size first so
        the *total* still targets ``budget_tokens`` as closely as it can
        while never cutting the brief itself.
     """
@@ -261,7 +261,7 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
 
     brief_block = f"\nBrief:\n{render_brief(current.brief)}" if current.brief is not None else ""
     summary_budget = max(budget_tokens - estimate_tokens(brief_block), 0)
-    truncated_summary, was_truncated = _truncate_summary(current.summary, summary_budget)
+    truncated_summary, was_truncated = truncate_summary(current.summary, summary_budget)
     final_text = f"{truncated_summary}{brief_block}"
     return CompiledArtifact(
         final_text,

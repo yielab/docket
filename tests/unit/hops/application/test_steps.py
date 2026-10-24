@@ -8,7 +8,7 @@ bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 path does, since this route calls the same ``enqueue_task_once``),
 TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
 and two extracted phases, called directly with a hand-built
-``_UnitContext``/``PlannedUnit``).
+``UnitContext``/``PlannedUnit``).
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ def _budget_warnings() -> list[dict[str, Any]]:
     return [e["payload"] for e in events if e["event_type"] == "budget_warning"]
 
 
-def _run_one_hop(cap: float, node: _orch.PlannedUnit) -> _record._UnitOutcome:
+def _run_one_hop(cap: float, node: _orch.PlannedUnit) -> _record.UnitOutcome:
     ctx = _unit_context(cap=cap, run=lambda *a, **k: _rd.TurnResult(True, "done", 0.0, {}))
     return _runner._execute_unit(
         ctx, node, prior_snapshot=[], rework_hop=None, check_approval=True, index_for_context=0

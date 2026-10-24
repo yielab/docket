@@ -41,7 +41,7 @@ def _seed(tmp_path: Path) -> Iterator[str]:
     with use_home(dataclasses.replace(Home(home), approvals_dir_override=approvals)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         task = _queue.enqueue_task_once("demo", "evidence please", channel="cli")[0]
-        hop = _record._hop_record(
+        hop = _record.hop_record(
             _task.HopResult(
                 role="implementer",
                 member_id="demo-implementer",

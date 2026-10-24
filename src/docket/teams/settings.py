@@ -26,7 +26,7 @@ def pod_task_list_path(project: str) -> Path:
     return current_home().workspace_dir(lead_id) / "TASK_LIST.json"
 
 
-def _pod_settings(project: str) -> _teams_pod_settings.PodSettings:
+def load_pod_settings(project: str) -> _teams_pod_settings.PodSettings:
     """Load this pod's validated Lead-meta settings, or raise ``DispatchError``
     naming the offending key -- never a silently substituted default (see
     ``teams.pod_settings.PodSettings``)."""
@@ -38,17 +38,17 @@ def _pod_settings(project: str) -> _teams_pod_settings.PodSettings:
 
 def pod_budget(project: str) -> float:
     """The pod's USD budget cap (Lead's ``budgetUsd``), 0.0 = unlimited."""
-    return _pod_settings(project).budget_usd
+    return load_pod_settings(project).budget_usd
 
 
 def pod_max_rework_cycles(project: str) -> int:
     """Bounded rework budget for a REQUEST-CHANGES review: Lead's ``maxReworkCycles`` meta
     (default ``1``; ``0`` disables rework -- a hard gate, no retry). See pod-dispatch.spec.md
     ("Reviewer verdict gate and bounded rework")."""
-    return _pod_settings(project).max_rework_cycles
+    return load_pod_settings(project).max_rework_cycles
 
 
-def _retries_for_role(role: str) -> int:
+def retries_for_role(role: str) -> int:
     """Max retry attempts (after the first try) for one role's hop."""
     return current_home().dispatch_retries_per_role.get(
         role, current_home().dispatch_retries_default
@@ -57,7 +57,7 @@ def _retries_for_role(role: str) -> int:
 
 def _lead_meta_timeout(project: str, field_name: str) -> int | None:
     """Read one already-validated timeout field off this pod's ``PodSettings``."""
-    settings = _pod_settings(project)
+    settings = load_pod_settings(project)
     return settings.turn_timeout_s if field_name == "turnTimeoutS" else settings.verify_timeout_s
 
 
@@ -89,11 +89,11 @@ def pod_approval_mode(
     # ADR 0016 SS2: `serve --dispatch`'s sweep and a non-TTY foreground dispatch pass
     # "park", a TTY foreground dispatch passes "wait" -- see `_compose_hop`.
     if pod_approval_mode_is_set(project):
-        return _pod_settings(project).approval_mode
+        return load_pod_settings(project).approval_mode
     return caller_default
 
 
-def _resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
+def resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
     """Timeout precedence: an explicit per-call override, else the pod's Lead-meta
     config, else ``DEFAULT_TIMEOUT`` (the fallback of last resort)."""
     if explicit is not None:

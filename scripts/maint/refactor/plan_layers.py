@@ -177,6 +177,8 @@ if renamed:
         names = ", ".join(sorted(x for x in edges[(a, b)] if x)) or "(module)"
         print(f"  {short(n)} | {vname(a, assign)} -> {vname(b, assign)} : {names}")
 
+accepted = dict(assign)
+
 # Greedy single-module reassignment.
 moves: list[tuple[str, str, str, int]] = []
 while True:
@@ -212,26 +214,26 @@ for n, a, b in after:
     names = ", ".join(sorted(x for x in edges[(a, b)] if x)) or "(module)"
     print(f"  {short(n)} | {vname(a, assign)} -> {vname(b, assign)} : {names}")
 
-# Cross-context private names, after the moves. Importers and imported are any docket package.
-print("\ncross-context private-name use after the moves (importer -> imported : names):")
+# Cross-context private names, in the tree as it stands. Importers and imported are any docket package.
+print("\ncross-context private-name use in the tree as it stands (importer -> imported : names):")
 private: dict[tuple[str, str], set[str]] = defaultdict(set)
 for (a, b), names in edges.items():
-    if assign[a] != assign[b] and assign[b] != "kernel":
+    if accepted[a] != accepted[b] and accepted[b] != "kernel":
         hit = {n for n in names if n.startswith("_") and not n.startswith("__")}
         if hit:
             private[(a, b)] |= hit
 for (a, b), names in attr_private.items():
-    if assign[a] != assign[b] and assign[b] != "kernel":
+    if accepted[a] != accepted[b] and accepted[b] != "kernel":
         private[(a, b)] |= names
 count = sum(len(v) for v in private.values())
 for (a, b), names in sorted(private.items()):
-    print(f"  {vname(a, assign)} -> {vname(b, assign)} : {', '.join(sorted(names))}")
+    print(f"  {vname(a, accepted)} -> {vname(b, accepted)} : {', '.join(sorted(names))}")
 print(f"  total: {count} names over {len(private)} module pairs")
 
 # Exact minimal order of the contexts for the moved tree (application/flat importers, like the rule).
 w: dict[tuple[str, str], int] = Counter()
 for a, b in edges:
-    va, vb = vname(a, assign), vname(b, assign)
+    va, vb = vname(a, accepted), vname(b, accepted)
     ca, cb = IC._classify(va)[0], IC._classify(vb)[0]
     if IC._classify(va)[1] in {"application", "flat"} and ca != cb and ca in RANK and cb in RANK:
         w[(ca, cb)] += 1

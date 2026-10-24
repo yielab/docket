@@ -24,7 +24,7 @@ from docket.kernel.ports import jail as _jail
 from docket.observability import trace as _trace
 from docket.platform import read_json, read_modify_write
 from docket.tasks.application import transitions as _transitions
-from docket.tasks.application.record import _hop_from_record
+from docket.tasks.application.record import hop_from_record
 from docket.tasks.application.runs import get_run, list_runs
 from docket.tasks.domain import options as _task_options
 from docket.tasks.domain import state as _state
@@ -40,9 +40,9 @@ from docket.teams import fleet as _fleet
 from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import models as _models
 from docket.teams import pod as _pod
-from docket.teams.settings import _pod_settings, builtin_tool_names, pod_task_list_path
+from docket.teams.settings import builtin_tool_names, load_pod_settings, pod_task_list_path
 from docket.teams.workspace import prepare as _prepare
-from docket.teams.workspace.worktree import _ensure_task_worktree
+from docket.teams.workspace.worktree import ensure_task_worktree
 
 # Priority sort key shared by task selection everywhere it matters.
 _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
@@ -270,7 +270,7 @@ def apply_transition(project: str, task_id: str, to: _state.Status, **facts: Any
     return read_modify_write(pod_task_list_path(project), _fn)
 
 
-def _refuse_claimed_task(
+def refuse_claimed_task(
     project: str, task: dict[str, Any], failure_kind: str, reason: str
 ) -> TaskResult:
     """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
@@ -356,7 +356,7 @@ def _store_prepared(project: str, task: dict[str, Any], prepared: dict[str, Any]
     read_modify_write(pod_task_list_path(project), _fn)
 
 
-def _prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | None:
+def prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | None:
     """Prepare a claimed task's own worktree before its first hop (pod-dispatch.spec.md, "Task
     preparation"); the refusing ``TaskResult`` when the install fails, else ``None``."""
     worktree = task.get("worktree")
@@ -364,9 +364,9 @@ def _prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | No
     if not root:
         return None
     try:
-        pod_prepare = _pod_settings(project).prepare
+        pod_prepare = load_pod_settings(project).prepare
     except DispatchError as exc:
-        return _refuse_claimed_task(project, task, "prepare", str(exc))
+        return refuse_claimed_task(project, task, "prepare", str(exc))
     spec = _prepare.resolve(Path(root), task_prepare=task.get("prepare"), pod_prepare=pod_prepare)
     if spec is None or not _prepare.needs_prepare(Path(root), task.get("prepared"), spec):
         return None
@@ -380,14 +380,12 @@ def _prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | No
     )
     _trace_prepare(project, str(task.get("id", "")), spec, outcome)
     if not outcome.ok:
-        return _refuse_claimed_task(
-            project, task, "prepare", _prepare_reason(spec.command, outcome)
-        )
+        return refuse_claimed_task(project, task, "prepare", _prepare_reason(spec.command, outcome))
     _store_prepared(project, task, _prepare.record(spec, outcome))
     return None
 
 
-def _claim_next_task(
+def claim_next_task(
     project: str, *, resume: bool, skip: frozenset[str] = frozenset()
 ) -> tuple[dict[str, Any], list[HopResult]] | None:
     """Locked claim of the pod's next eligible task (highest priority first; pod-dispatch.spec.md,
@@ -447,8 +445,8 @@ def _claim_next_task(
     doc = read_modify_write(pod_task_list_path(project), _fn)
     if claimed is None:
         return None
-    _ensure_task_worktree(project, claimed)
-    resume_hops = [_hop_from_record(h) for h in claimed.get("hops", []) if isinstance(h, dict)]
+    ensure_task_worktree(project, claimed)
+    resume_hops = [hop_from_record(h) for h in claimed.get("hops", []) if isinstance(h, dict)]
     tasks_after = doc.get("tasks")
     _mem.sync_dispatch_tasks(
         current_home().workspace_dir(lead_id), tasks_after if isinstance(tasks_after, list) else []
@@ -456,7 +454,7 @@ def _claim_next_task(
     return claimed, resume_hops
 
 
-def _touch_claim(project: str, task_id: str) -> None:
+def touch_claim(project: str, task_id: str) -> None:
     """Refresh a ``running`` task's ``claimedAt``, called before every retry attempt --
     without this, a long retry could push elapsed time past ``CLAIM_STALE_TIMEOUT`` and a
     *concurrent* dispatcher's ``_sweep_stale_claims`` would fail the task out from under the

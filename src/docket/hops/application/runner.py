@@ -19,18 +19,18 @@ from docket.kernel.ids import step_session_key
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.record import (
-    _build_hop_result,
-    _persist_hop_and_trace,
-    _trace_locked,
-    _UnitContext,
-    _UnitOutcome,
+    UnitContext,
+    UnitOutcome,
+    build_hop_result,
+    persist_hop_and_trace,
+    trace_locked,
 )
 from docket.tasks.domain.task import HopResult
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
-from docket.teams.settings import _retries_for_role
-from docket.teams.workspace.worktree import _task_worktree_dir
+from docket.teams.settings import retries_for_role
+from docket.teams.workspace.worktree import task_worktree_dir
 
 # Only these TurnResult.failure_kind values are worth retrying — a
 # transient hiccup running the turn. A non-zero exit or an unparseable/failing
@@ -40,7 +40,7 @@ _RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"}
 
 
 def _run_hop_turn(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     node: _orch.PlannedUnit,
     role: str,
     member_id: str,
@@ -54,7 +54,7 @@ def _run_hop_turn(
     ``retries``/``timeout`` override wins over the pod's role-based budget and turn timeout.
     A step's own ``model`` (pipeline-format.spec.md "Steps" Req. 10) is resolved once per call
     and passed to the production driver only, for this hop alone -- see "Per-hop execution"."""
-    retry_budget = node.retries if node.retries is not None else _retries_for_role(role)
+    retry_budget = node.retries if node.retries is not None else retries_for_role(role)
     hop_timeout = node.timeout if node.timeout is not None else ctx.resolved_turn_timeout
     resolved_model: str | None = None
     if node.model:
@@ -104,7 +104,7 @@ def _run_hop_turn(
             break
         if attempt > retry_budget:
             break
-        _trace_locked(
+        trace_locked(
             ctx.project,
             ctx.session_id,
             role,
@@ -143,14 +143,14 @@ def _run_hop_turn(
 
 
 def _execute_unit(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     node: _orch.PlannedUnit,
     *,
     prior_snapshot: list[HopResult],
     rework_hop: HopResult | None,
     check_approval: bool,
     index_for_context: int,
-) -> _UnitOutcome:
+) -> UnitOutcome:
     """Run one PlannedUnit's hop end to end: budget/approval gates, the agent turn (with
     retries), and its post-hop gate. Shared by a top-level step and a group's children --
     *check_approval* is False for a child, since an ``approval`` gate inside a fan-out is a
@@ -182,7 +182,7 @@ def _execute_unit(
 
     hop_output, hop_ok, hop_error = _apply_output_guardrails(ctx, role, run_res)
 
-    hop = _build_hop_result(
+    hop = build_hop_result(
         ctx,
         node,
         role,
@@ -196,7 +196,7 @@ def _execute_unit(
         prior_snapshot,
     )
 
-    early_outcome = _persist_hop_and_trace(
+    early_outcome = persist_hop_and_trace(
         ctx, role, hop, run_res, hop_ok, hop_error, index_for_context
     )
     if early_outcome is not None:
@@ -207,11 +207,11 @@ def _execute_unit(
     )
 
 
-def _when_cwd(ctx: _UnitContext, prior: list[HopResult]) -> str:
+def _when_cwd(ctx: UnitContext, prior: list[HopResult]) -> str:
     """Working tree a ``when: {changed: ...}`` predicate and a command step's own command
     both run against: the task's own worktree, falling back to the pod Lead's own codebase
     (the task runs in place, or the pod has no Implementer)."""
-    worktree = _task_worktree_dir(ctx.task)
+    worktree = task_worktree_dir(ctx.task)
     if worktree:
         return worktree
     lead_id = _pod.member_id(ctx.project, "lead")

@@ -195,10 +195,10 @@ class TestEvidence11:
 class TestRepoFilesOnTheHop:
     def test_round_trips_through_the_persisted_record(self) -> None:
         hop = _task.HopResult(role="lead", member_id="m", ok=True, repo_files=_REPO_FILES)
-        rec = _record._hop_record(hop)
+        rec = _record.hop_record(hop)
         assert rec["repoFiles"] == _REPO_FILES
-        assert _record._hop_from_record(rec).repo_files == _REPO_FILES
-        assert _record._hop_from_record({"role": "lead"}).repo_files == {}
+        assert _record.hop_from_record(rec).repo_files == _REPO_FILES
+        assert _record.hop_from_record({"role": "lead"}).repo_files == {}
 
     def test_dispatch_copies_the_turns_repo_files_onto_the_hop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

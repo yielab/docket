@@ -219,7 +219,7 @@ def _locate_parked_step(
     persisted position no longer matches *question*'s own step."""
     hops_raw = t.get("hops")
     prior_hops = [
-        _record._hop_from_record(h)
+        _record.hop_from_record(h)
         for h in (hops_raw if isinstance(hops_raw, list) else [])
         if isinstance(h, dict)
     ]
@@ -250,7 +250,7 @@ def _apply_route_outcome(
         ok=True,
         output=f"answered: {question.id}",
         # `verdict` carries the outcome label ("answered"/"declined"), not a real verdict
-        # marker -- `_replay_pipeline_position`'s own route_counts rebuild keys a backward/
+        # marker -- `replay_pipeline_position`'s own route_counts rebuild keys a backward/
         # self route by `hop.artifact.verdict` (see its handling of `hop.next_step`), the
         # same field a verdict gate's routed hop already relies on; without this a resumed
         # cap check would key on the wrong label.
@@ -260,7 +260,7 @@ def _apply_route_outcome(
     )
     hops_raw = t.get("hops")
     new_hops = list(hops_raw) if isinstance(hops_raw, list) else []
-    new_hops.append(_record._hop_record(hop))
+    new_hops.append(_record.hop_record(hop))
     t["hops"] = new_hops
 
     if terminal in ("failed", "done"):

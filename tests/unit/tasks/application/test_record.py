@@ -8,7 +8,7 @@ bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 path does, since this route calls the same ``enqueue_task_once``),
 TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
 and two extracted phases, called directly with a hand-built
-``_UnitContext``/``PlannedUnit``).
+``UnitContext``/``PlannedUnit``).
 """
 
 from __future__ import annotations

@@ -86,7 +86,7 @@ def _task(task_id: str) -> dict[str, Any]:
 
 
 def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
-    ctx = _record._UnitContext(
+    ctx = _record.UnitContext(
         project=PROJECT,
         task=_task(task_id),
         task_id=task_id,

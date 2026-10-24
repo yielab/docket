@@ -8,7 +8,7 @@ bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 path does, since this route calls the same ``enqueue_task_once``),
 TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
 and two extracted phases, called directly with a hand-built
-``_UnitContext``/``PlannedUnit``).
+``UnitContext``/``PlannedUnit``).
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class TestExecuteUnitDirectly:
 
     def test_gate_pre_hop_approval_consumes_the_override_exactly_once(self, pod_home: Path) -> None:
         # The riskiest capture in the pre-lift closure: `override_index` was
-        # rebound with `nonlocal`. As a `_UnitContext` attribute, the same
+        # rebound with `nonlocal`. As a `UnitContext` attribute, the same
         # rebind is `ctx.override_index = None` — this test pins that the
         # mutation actually lands on the shared context, not a local copy.
         ctx = _unit_context(override_index=2)

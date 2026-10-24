@@ -19,10 +19,10 @@ SUBJECT = "docket.tasks.application.record"
 def test_a_group_keeps_the_failure_kind_of_the_child_that_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake(ctx: Any, child: Any, **_k: Any) -> _record._UnitOutcome:
+    def fake(ctx: Any, child: Any, **_k: Any) -> _record.UnitOutcome:
         if child.step_id == "b":
-            return _record._UnitOutcome(kind="failed", reason="spent", failure_kind="budget")
-        return _record._UnitOutcome(kind="advance")
+            return _record.UnitOutcome(kind="failed", reason="spent", failure_kind="budget")
+        return _record.UnitOutcome(kind="advance")
 
     monkeypatch.setattr(_runner, "_execute_unit", fake)
     monkeypatch.setattr(_executor, "_execute_unit", fake)

@@ -40,7 +40,7 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
         return
     raw_codebase = _fleet.meta_get(member_id, "codebase", "")
     codebase = pod.resolve_member_cwd(member_id, "", raw_codebase)
-    content = _member_workspace._member_tools(
+    content = _member_workspace.member_tools(
         project,
         role,
         codebase,

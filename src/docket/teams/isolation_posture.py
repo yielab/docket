@@ -30,7 +30,7 @@ def _pod_cache_dir(agent_id: str) -> Path | None:
     return _ensure_pod_cache(project) if project is not None else None
 
 
-def _jail_cache_dir(agent_id: str, want_sandbox: bool) -> Path | None:
+def jail_cache_dir(agent_id: str, want_sandbox: bool) -> Path | None:
     """The jail's cache dir for this turn; ``None`` when isolation is off."""
     return _pod_cache_dir(agent_id) if want_sandbox else None
 
@@ -111,13 +111,13 @@ def resolve_command_jail(project: str, label: str) -> tuple[JailPolicy | None, s
     ), None
 
 
-def _hop_read_only(project: str, root: Path) -> tuple[Path, ...]:
+def hop_read_only(project: str, root: Path) -> tuple[Path, ...]:
     """The read-only roots of a hop: the operator's grants for the pod, plus the prepared
     install cache entries the hop's root links into."""
     return (*_pod_settings.effective_read_only(project), *_prepare.linked_entries(root))
 
 
-def _resolve_posture(
+def resolve_posture(
     agent_id: str, role: str, env: dict[str, str] | None = None
 ) -> tuple[bool, bool]:
     """``(want_sandbox, network_allowed)``: the isolation go/no-go, then the network's; *env*'s

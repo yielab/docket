@@ -481,7 +481,7 @@ class TestEndToEnd:
 class TestConcurrentDispatch:
     """The double-run regression this exists to close: an unlocked ``dispatch_pod`` could let
     two concurrent callers both run the same ``pending`` task from a stale queue snapshot.
-    ``_claim_next_task``'s locked read-modify-write prevents this: never the same task twice."""
+    ``claim_next_task``'s locked read-modify-write prevents this: never the same task twice."""
 
     def test_two_concurrent_dispatch_pod_calls_never_double_run_a_task(
         self, tmp_path: Path

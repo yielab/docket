@@ -12,7 +12,7 @@ from docket.teams import task_worktrees as _task_worktrees
 from docket.teams.settings import pod_task_list_path
 
 
-def _task_worktree_dir(task: dict[str, Any]) -> str:
+def task_worktree_dir(task: dict[str, Any]) -> str:
     """The directory of the worktree recorded on *task* at claim, or empty when the task runs in
     place (no recorded worktree, or a recorded fallback). It also tells host-side git the git dir
     docket recorded for that worktree, so nothing the agent wrote at ``.git`` is ever read."""
@@ -24,14 +24,14 @@ def _task_worktree_dir(task: dict[str, Any]) -> str:
     return wt_dir
 
 
-def _hop_diff_probe(
+def hop_diff_probe(
     member_id: str, role: str, task: dict[str, Any], prior_diff: str = ""
 ) -> tuple[list[str], str | None, dict[str, Any] | None, str]:
     """``(files_changed, diff_ref, evidence, diff)`` for a hop; ``diff_ref``/``evidence`` are the
     Implementer's, and a non-Implementer hop whose diff equals *prior_diff* changed nothing.
     See pod-dispatch.spec.md, "Implementer diff producer" and "Hop evidence"."""
     implementer = role == "implementer"
-    task_dir = _task_worktree_dir(task)
+    task_dir = task_worktree_dir(task)
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
     cwd = _pod.resolve_member_cwd(member_id, task_dir, member_codebase)
     if not _git.git_available() or not _git.git_is_repo(cwd):
@@ -92,7 +92,7 @@ def _pin_hop_tree(cwd: str, task: dict[str, Any], role: str, *, in_worktree: boo
     return _git.git_snapshot_commit(cwd, message)
 
 
-def _ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
+def ensure_task_worktree(project: str, claimed: dict[str, Any]) -> None:
     """Record ``task["worktree"]`` for a claimed task (a recorded one is kept); a failed add
     records ``fallbackReason`` and runs in place. With a ``baseRef`` it never runs in place:
     it sets ``claimed["claimRefusal"] = (failure_kind, reason)`` instead."""

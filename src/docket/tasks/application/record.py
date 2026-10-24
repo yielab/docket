@@ -21,14 +21,14 @@ from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams.settings import pod_task_list_path
-from docket.teams.workspace.worktree import _hop_diff_probe
+from docket.teams.workspace.worktree import hop_diff_probe
 
 # Injectable runner for tests (matches the RuntimeDriver port's ``run_turn`` signature). The
 # 4th positional arg is always the *agent-turn* timeout (never the verify timeout).
 Runner = Callable[[str, str, str, int, dict[str, str] | None], _rd.TurnResult]
 
 
-def _gate_did_not_pass(verify: dict[str, Any] | None) -> bool:
+def gate_did_not_pass(verify: dict[str, Any] | None) -> bool:
     """Whether *verify* evidence records a gate that did not pass: a non-``pass`` label, or, for
     a mechanical gate (no label), a nonzero exit."""
     if verify is None:
@@ -37,10 +37,10 @@ def _gate_did_not_pass(verify: dict[str, Any] | None) -> bool:
     return str(label).lower() != "pass"
 
 
-def _is_gate_failure_carryover(hop: HopResult | None) -> bool:
+def is_gate_failure_carryover(hop: HopResult | None) -> bool:
     """Whether *hop* is a routed gate hop whose gate did not pass. A verdict rework hop never has
     ``next_step``, and a backward ``pass`` route carries no failure."""
-    return hop is not None and hop.next_step is not None and _gate_did_not_pass(hop.verify)
+    return hop is not None and hop.next_step is not None and gate_did_not_pass(hop.verify)
 
 
 def hop_env(member_id: str, role: str) -> dict[str, str] | None:
@@ -61,8 +61,8 @@ def hop_env(member_id: str, role: str) -> dict[str, str] | None:
     }
 
 
-def _hop_record(h: HopResult) -> dict[str, Any]:
-    """Persisted shape of one hop (round-trips via ``_hop_from_record``; pod-dispatch.spec.md,
+def hop_record(h: HopResult) -> dict[str, Any]:
+    """Persisted shape of one hop (round-trips via ``hop_from_record``; pod-dispatch.spec.md,
     "Structured handoff artifacts" and "Hop evidence"). ``artifact``/``verify``/``evidence`` are
     persisted alongside ``output``; ``verification_skipped`` stays an in-memory-only flag."""
     return {
@@ -88,7 +88,7 @@ def _hop_record(h: HopResult) -> dict[str, Any]:
     }
 
 
-def _hop_from_record(rec: dict[str, Any]) -> HopResult:
+def hop_from_record(rec: dict[str, Any]) -> HopResult:
     """Reconstruct a HopResult from a persisted hop record (for resume). A missing or invalid
     ``artifact``, ``verify``, or ``evidence`` key degrades each to its own default -- see
     pod-dispatch.spec.md ("Structured handoff artifacts", "Hop evidence")."""
@@ -154,7 +154,7 @@ def _group_complete(node: _orch.PlannedGroup, prior: list[HopResult]) -> bool:
     )
 
 
-def _replay_pipeline_position(
+def replay_pipeline_position(
     runtime_steps: tuple[_orch.PlannedNode, ...], prior: list[HopResult]
 ) -> _ResumePosition:
     """Replay a hop history to find where dispatch should continue. See pod-dispatch.spec.md
@@ -203,7 +203,7 @@ def _replay_pipeline_position(
                     )
                     key = (step_id, label)
                     route_counts[key] = route_counts.get(key, 0) + 1
-                    rework_hop = hop if _is_gate_failure_carryover(hop) else None
+                    rework_hop = hop if is_gate_failure_carryover(hop) else None
                     if (
                         rework_hop is None
                         and carried_failure is not None
@@ -214,7 +214,7 @@ def _replay_pipeline_position(
                         rework_hop = carried_failure
                 else:
                     rework_hop = None
-                    if _is_gate_failure_carryover(hop):
+                    if is_gate_failure_carryover(hop):
                         parked_gate_failure = hop
                 pi = target_index
                 continue
@@ -255,7 +255,7 @@ def _replay_pipeline_position(
     )
 
 
-def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
+def trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
     """``trace.trace_event``, serialized against ``orchestrator.trace_write_lock`` because a
     parallel group's children share one task's tracefile (the append-only exemption is safe
     only across *different* session files). See pod-dispatch.spec.md ("Parallel step groups")."""
@@ -263,7 +263,7 @@ def _trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
         return _trace.trace_event(*args, **kwargs)
 
 
-def _verdict_event_names(role: str) -> tuple[str, str, str]:
+def verdict_event_names(role: str) -> tuple[str, str, str]:
     """(rework_event, rejected_event, unparseable_event) names for a verdict gate's non-pass
     outcome. Keeps the established names for ``reviewer``/``tester`` (pinned by
     test_reviewer_gate.py/test_verify_gate.py) so gate logic stays generic without changing
@@ -276,7 +276,7 @@ def _verdict_event_names(role: str) -> tuple[str, str, str]:
 
 
 @dataclass
-class _UnitOutcome:
+class UnitOutcome:
     """What happened running one ``PlannedUnit``'s hop. ``kind`` adds ``"routed"`` to the
     existing set; its resolved gate outcome (for ``_route_outcome``) is ``label``."""
 
@@ -294,7 +294,7 @@ class _UnitOutcome:
 
 
 @dataclass
-class _UnitContext:
+class UnitContext:
     """Per-invocation state a ``PlannedUnit``'s execution needs but does not own. Two
     attributes are mutated across a run, not just read -- passing a *copy* instead of the
     same shared object would silently break each: ``rework_counts`` accumulates each gated
@@ -319,7 +319,7 @@ class _UnitContext:
     # Each step id's own already-interpolated `instructions` override (see
     # `_pipeline.step_instructions_by_id`/`interpolate_instructions`); a step
     # absent here defers to its role's own hop instruction. Defaulted so
-    # every existing direct `_UnitContext(...)` construction (tests included)
+    # every existing direct `UnitContext(...)` construction (tests included)
     # is unaffected.
     step_instructions: dict[str, str] = field(default_factory=dict)
     # This run's resolved pipeline variables, stringified -- the `var`/`is` half of a
@@ -355,9 +355,9 @@ def _hop_usage(run_res: _rd.TurnResult) -> dict[str, int] | None:
     }
 
 
-def _hop_trace_link(ctx: _UnitContext, first_ts: str) -> dict[str, str] | None:
+def _hop_trace_link(ctx: UnitContext, first_ts: str) -> dict[str, str] | None:
     """The hop's trace link; ``lastTs`` is refreshed once the hop's closing events are written
-    (``_persist_hop_and_trace``). ``None`` under ``DOCKET_NO_TRACE``."""
+    (``persist_hop_and_trace``). ``None`` under ``DOCKET_NO_TRACE``."""
     if _process.no_trace() or not first_ts:
         return None
     return {
@@ -368,8 +368,8 @@ def _hop_trace_link(ctx: _UnitContext, first_ts: str) -> dict[str, str] | None:
     }
 
 
-def _build_hop_result(
-    ctx: _UnitContext,
+def build_hop_result(
+    ctx: UnitContext,
     node: _orch.PlannedUnit,
     role: str,
     member_id: str,
@@ -397,7 +397,7 @@ def _build_hop_result(
         prior_diff = next(
             (h.artifact.diff for h in reversed(prior or []) if h.artifact and h.artifact.diff), ""
         )
-        files_changed, diff_ref, evidence, diff = _hop_diff_probe(
+        files_changed, diff_ref, evidence, diff = hop_diff_probe(
             member_id, role, ctx.task, prior_diff
         )
     # A hop's raw text carrying a parseable TaskBrief (ADR 0016 §4) is never limited to
@@ -457,7 +457,7 @@ def _parked_approval_token(error: str) -> str | None:
 
 
 def _parked_consult_question(
-    ctx: _UnitContext, hop: HopResult, token: str | None
+    ctx: UnitContext, hop: HopResult, token: str | None
 ) -> dict[str, Any] | None:
     """The question a parked ``consult`` left, rebound to this task and step (stored on the
     task like an input step's), or ``None`` when *token* is not a consultation's."""
@@ -471,29 +471,29 @@ def _parked_consult_question(
     return question.model_dump(by_alias=True)
 
 
-def _turn_budget_failure_kind(ctx: _UnitContext, run_res: _rd.TurnResult) -> str:
+def _turn_budget_failure_kind(ctx: UnitContext, run_res: _rd.TurnResult) -> str:
     """``"budget"`` when the turn loop stopped on the token budget a task ``maxTokens`` set."""
     if run_res.stop_reason == "token_budget" and ctx.task.get("maxTokens") is not None:
         return "budget"
     return ""
 
 
-def _persist_hop_and_trace(
-    ctx: _UnitContext,
+def persist_hop_and_trace(
+    ctx: UnitContext,
     role: str,
     hop: HopResult,
     run_res: _rd.TurnResult,
     hop_ok: bool,
     hop_error: str,
     index_for_context: int,
-) -> _UnitOutcome | None:
+) -> UnitOutcome | None:
     """Persist this hop and trace its result; short-circuit a failed hop. Returns the
     terminal outcome, or ``None`` to proceed to the gate."""
     # Persisted immediately, not deferred to a group join, so a crash in a sibling child
     # never loses an already-completed hop. A hop whose turn stopped on an in-turn
     # `approval_parked` denial (park-mode DOCKET_APPROVAL_MODE, see `_compose_hop`) is
     # persisted with `hop.parked = True` before `on_hop` -- so a crash right after still
-    # leaves the correct record for `_replay_pipeline_position` to resume from -- and
+    # leaves the correct record for `replay_pipeline_position` to resume from -- and
     # yields the same `waiting_approval` outcome shape the pre-hop `require_approval` gate
     # already produces, at this hop's own pipeline index (ADR 0016 SS2).
     parked_token = None if hop_ok else _parked_approval_token(hop_error)
@@ -501,7 +501,7 @@ def _persist_hop_and_trace(
         hop.parked = True
     consult_question = _parked_consult_question(ctx, hop, parked_token)
 
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
@@ -510,7 +510,7 @@ def _persist_hop_and_trace(
         cost_usd=run_res.cost_usd or None,
     )
     if run_res.cost_usd:
-        _trace_locked(
+        trace_locked(
             ctx.project,
             ctx.session_id,
             role,
@@ -538,7 +538,7 @@ def _persist_hop_and_trace(
             if isinstance(label, str)
             else ("pass" if hop.verify.get("exitCode") == 0 else "fail")
         )
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
@@ -568,13 +568,13 @@ def _persist_hop_and_trace(
 
     if not hop_ok:
         if run_res.failure_kind == "run_cancelled":
-            return _UnitOutcome(
+            return UnitOutcome(
                 kind="cancelled",
                 hops=[hop],
                 reason="run cancellation requested",
             )
         if consult_question is not None:
-            return _UnitOutcome(
+            return UnitOutcome(
                 kind="waiting_input",
                 hops=[hop],
                 reason=f"{role} hop parked a consultation (question={consult_question['id']})",
@@ -582,7 +582,7 @@ def _persist_hop_and_trace(
             )
         if parked_token is not None and parked_token.startswith(PARK_TOKEN_PREFIX):
             # No approval record can resolve a consult token, so parking on it would be stuck.
-            return _UnitOutcome(
+            return UnitOutcome(
                 kind="failed",
                 hops=[hop],
                 reason=f"{role} hop failed: consult_question_missing (the parked consultation carried no question)",
@@ -593,7 +593,7 @@ def _persist_hop_and_trace(
             # "a require_approval-equivalent gate fired; task ->
             # waiting_approval", whether the trigger was a pre-hop gate or, as
             # here, an in-turn tool call parking mid-hop.
-            _trace_locked(
+            trace_locked(
                 ctx.project,
                 ctx.session_id,
                 role,
@@ -602,14 +602,14 @@ def _persist_hop_and_trace(
                     {"role": role, "token": parked_token, "pipelineIndex": index_for_context}
                 ),
             )
-            return _UnitOutcome(
+            return UnitOutcome(
                 kind="waiting_approval",
                 hops=[hop],
                 reason=f"{role} hop parked for approval (token={parked_token})",
                 approval_token=parked_token,
                 pending_approval_index=index_for_context,
             )
-        return _UnitOutcome(
+        return UnitOutcome(
             kind="failed",
             hops=[hop],
             reason=f"{role} hop failed: {hop_error or 'no result'}",
@@ -618,7 +618,7 @@ def _persist_hop_and_trace(
     return None
 
 
-def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
+def persist_hop(project: str, task_id: str, hop: HopResult) -> None:
     """Append one just-completed hop to the task's record, called after every hop (not only
     at task end) so a crash loses at most the in-flight hop. Also refreshes ``claimedAt``,
     re-syncs the HEARTBEAT.md ledger, and touches the hop agent's tracked conversation, if any
@@ -632,7 +632,7 @@ def _persist_hop(project: str, task_id: str, hop: HopResult) -> None:
                 hops = t.get("hops")
                 if not isinstance(hops, list):
                     hops = []
-                hops.append(_hop_record(hop))
+                hops.append(hop_record(hop))
                 t["hops"] = hops
                 t["costUsd"] = round(sum(float(h.get("costUsd", 0.0) or 0.0) for h in hops), 6)
                 t["claimedAt"] = _clock.iso()

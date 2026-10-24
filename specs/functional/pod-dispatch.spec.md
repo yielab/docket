@@ -2239,12 +2239,12 @@ The dispatch state machine, by module (public names first, then private ones for
 
 - `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `read_tasks`,
   `validate_task_options`, `RESUMABLE_FAILURE_KINDS`, `pod_full_roster`, `dispatchable_pods`,
-  `pod_roster`; the claim (`_claim_next_task`, `_eligible_for_claim`, `_refuse_claimed_task`,
-  `_prepare_claimed_task`), `_touch_claim`
+  `pod_roster`; the claim (`claim_next_task`, `_eligible_for_claim`, `refuse_claimed_task`,
+  `prepare_claimed_task`), `touch_claim`
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
 - `src/docket/tasks/application/lifecycle.py`: `reclaim_stale_running`, `retry_task`, `cancel_task`,
-  `cancel_parked_task`, `task_diff`, `unblock_pod`; `_finalize_task`, `_apply_result`,
-  `_sweep_stale_claims`
+  `cancel_parked_task`, `task_diff`, `unblock_pod`; `finalize_task`, `_apply_result`,
+  `sweep_stale_claims`
 - `src/docket/tasks/application/actions.py`: `TASK_GRANT_CAP`, `resolve_waiting_approval`,
   `resolve_waiting_approval_detail`
 - `src/docket/tasks/domain/task.py`: `DispatchError`, `TaskRestrictionError`, `TaskRunRefusal`,
@@ -2261,8 +2261,8 @@ The dispatch state machine, by module (public names first, then private ones for
   and the step loop's `_execute_unit`
 - `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
   `_gate_failed_section`
-- `src/docket/tasks/application/record.py`: `hop_env`; `_persist_hop_and_trace`, `_persist_hop`,
-  `_hop_record`, `_hop_from_record`, `_verdict_event_names`, resume (`_replay_pipeline_position`,
+- `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,
+  `hop_record`, `hop_from_record`, `verdict_event_names`, resume (`replay_pipeline_position`,
   `_group_complete`)
 - `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`; gates (`_gate_budget`,
   `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`, `_check_brief_resources`,
@@ -2270,8 +2270,8 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/hops/gates/post_hop.py`: gates (`_evaluate_mechanical_gate`,
   `_evaluate_external_gate`, `_evaluate_verdict_gate`); the hop's `_task_command_env`,
   `_run_in_envelope`
-- `src/docket/teams/workspace/worktree.py`: the claim's `_ensure_task_worktree`; the hop's
-  `_hop_diff_probe`, `_pin_hop_tree`
+- `src/docket/teams/workspace/worktree.py`: the claim's `ensure_task_worktree`; the hop's
+  `hop_diff_probe`, `_pin_hop_tree`
 - `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
   `normalize_values`, `render_plan`, `run_group`, `ExecutionPlan`, `PlannedUnit`, `PlannedGroup`,
   `DEFAULT_MAX_PARALLEL_WORKERS`, `trace_write_lock`

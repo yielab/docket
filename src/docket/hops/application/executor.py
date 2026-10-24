@@ -36,21 +36,21 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_modify_write
 from docket.tasks.application.record import (
     Runner,
-    _is_gate_failure_carryover,
-    _replay_pipeline_position,
-    _trace_locked,
-    _UnitContext,
-    _UnitOutcome,
+    UnitContext,
+    UnitOutcome,
+    is_gate_failure_carryover,
+    replay_pipeline_position,
+    trace_locked,
 )
 from docket.tasks.domain.task import HopResult, TaskResult, TaskRunRefusal
 from docket.teams import roles as _archetypes
 from docket.teams.pod import pod_full_roster, pod_pipeline
 from docket.teams.settings import (
-    _resolve_timeout,
     pod_budget,
     pod_task_list_path,
     pod_turn_timeout,
     pod_verify_timeout,
+    resolve_timeout,
 )
 
 
@@ -98,11 +98,11 @@ def _record_task_run(project: str, task: dict[str, Any], source: str) -> None:
 
 
 def _run_group_node(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     node: _orch.PlannedGroup,
     prior: list[HopResult],
     index_for_context: int,
-) -> _UnitOutcome:
+) -> UnitOutcome:
     """Run a parallel group's children concurrently; join before advancing. Merge priority:
     cancelled > blocked > failed > advance (rework is impossible here -- the pipeline
     format's validator forbids a rework edge inside a ``parallel`` group)."""
@@ -118,7 +118,7 @@ def _run_group_node(
             index_for_context=index_for_context,
         ),
     )
-    merged = _UnitOutcome(kind="advance")
+    merged = UnitOutcome(kind="advance")
     for oc in child_outcomes:
         merged.hops.extend(oc.hops)
     for oc in child_outcomes:
@@ -162,14 +162,14 @@ def _resolve_resume_state(
 ) -> tuple[list[HopResult], int, dict[str, int], dict[tuple[str, str], int], dict[int, HopResult]]:
     """Compute the pipeline position (and rework state) a run should continue from.
     *resume_from* seeds hops already completed before a crash, which can legitimately
-    include the same step more than once mid-rework -- see ``_replay_pipeline_position``."""
+    include the same step more than once mid-rework -- see ``replay_pipeline_position``."""
     prior: list[HopResult] = list(resume_from) if resume_from else []
     # A step can now legitimately run more than once (a rework cycle re-runs
     # its gate's declared target, then re-runs the gating step), so "where do
     # we continue" is a pipeline position + per-gate rework counts, not a set
-    # of already-seen role names — see `_replay_pipeline_position`'s
+    # of already-seen role names — see `replay_pipeline_position`'s
     # docstring for why this matters for a task resumed mid-rework.
-    resume_pos = _replay_pipeline_position(runtime_steps, prior)
+    resume_pos = replay_pipeline_position(runtime_steps, prior)
     pending_rework_by_index: dict[int, HopResult] = {}
     if resume_pos.rework_hop is not None:
         pending_rework_by_index[resume_pos.pipeline_index] = resume_pos.rework_hop
@@ -182,7 +182,7 @@ def _resolve_resume_state(
     )
 
 
-def _step_skipped(ctx: _UnitContext, node: _orch.PlannedUnit, prior: list[HopResult]) -> bool:
+def _step_skipped(ctx: UnitContext, node: _orch.PlannedUnit, prior: list[HopResult]) -> bool:
     """Evaluate *node*'s ``when`` (every set predicate ANDed); a false predicate emits
     ``step_skipped`` so the caller advances with no hop. See pod-dispatch.spec.md
     ("Conditional steps and command steps")."""
@@ -206,7 +206,7 @@ def _step_skipped(ctx: _UnitContext, node: _orch.PlannedUnit, prior: list[HopRes
         matched = matched and str(when["memberPresent"]) in pod_full_roster(ctx.project)
     if matched:
         return False
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         node.step_id,
@@ -217,9 +217,9 @@ def _step_skipped(ctx: _UnitContext, node: _orch.PlannedUnit, prior: list[HopRes
 
 
 def _route_outcome(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     node: _orch.PlannedUnit,
-    outcome: _UnitOutcome,
+    outcome: UnitOutcome,
     pipeline_index: int,
 ) -> tuple[int | None, str]:
     """Resolve a ``"routed"`` outcome's target (``fail``/``stop``/a step id, bounded by
@@ -237,7 +237,7 @@ def _route_outcome(
     trace_role = node.role or node.agent or node.step_id
 
     def _trace_route(resolved_target: str) -> None:
-        _trace_locked(
+        trace_locked(
             ctx.project,
             ctx.session_id,
             trace_role,
@@ -286,7 +286,7 @@ _ROUTE_FAILURE_KINDS: dict[str, str] = {"REJECT": "rejected"}
 
 
 def _run_pipeline(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     runtime_steps: tuple[_orch.PlannedNode, ...],
     pipeline_index: int,
     pending_rework_by_index: dict[int, HopResult],
@@ -295,7 +295,7 @@ def _run_pipeline(
 ) -> None:
     """Advance one task through its resolved pipeline until a terminal outcome. Mutates
     *result*/*prior* in place per step (each hop is also observed via *on_hop* -- see
-    ``_persist_hop_and_trace``). The only backward moves are a bounded rework cycle and a
+    ``persist_hop_and_trace``). The only backward moves are a bounded rework cycle and a
     step's own ``on:`` route, each jumping to a declared target. A ``READY`` verdict
     carrying a Lead intake brief (ADR 0016 §4) is checked against
     ``_check_brief_resources`` before the pipeline is allowed past it."""
@@ -372,7 +372,7 @@ def _run_pipeline(
                 break
             if _block_on_missing_resources(ctx, outcome, result):
                 break
-            if next_index <= pipeline_index and _is_gate_failure_carryover(outcome.hops[0]):
+            if next_index <= pipeline_index and is_gate_failure_carryover(outcome.hops[0]):
                 # A backward route out of a mechanical gate: the target's next hop is told
                 # why the gate failed (see `_gate_failed_section`).
                 pending_rework_by_index[next_index] = outcome.hops[0]
@@ -407,7 +407,7 @@ def dispatch_task(
     declared target up to its own cycle budget. *spec* ``None`` resolves the pod's
     zero-migration pipeline; *resume_from* seeds hops completed before a crash or a settled
     refusal (skipped, not re-invoked) -- including a hop that parked mid-turn, replayed by its
-    own exact index (ADR 0016 SS2, see ``_replay_pipeline_position``); *turn_timeout*/
+    own exact index (ADR 0016 SS2, see ``replay_pipeline_position``); *turn_timeout*/
     *verify_timeout* override the pod Lead's meta then ``DEFAULT_TIMEOUT``, unless a step
     declares its own. *on_retry* fires before each retry so the caller can refresh the task's
     claim before it goes stale. *variables* is this run's already-resolved pipeline variable
@@ -447,8 +447,8 @@ def dispatch_task(
     try:
         pod_pipeline(project)  # validates pod/lead up front (raises DispatchError otherwise)
         cap = pod_budget(project)
-        resolved_turn_timeout = _resolve_timeout(turn_timeout, pod_turn_timeout(project))
-        resolved_verify_timeout = _resolve_timeout(verify_timeout, pod_verify_timeout(project))
+        resolved_turn_timeout = resolve_timeout(turn_timeout, pod_turn_timeout(project))
+        resolved_verify_timeout = resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
         task_gate = _task_gate(task)
         runtime_steps, id_to_index, raw_step_instructions = _resolve_pipeline_steps(project, spec)
@@ -468,7 +468,7 @@ def dispatch_task(
         # rework cycle revisiting it) still gates normally.
         override_index = _resolve_gate_override(task)
 
-        ctx = _UnitContext(
+        ctx = UnitContext(
             project=project,
             task=task,
             task_id=task_id,

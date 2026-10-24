@@ -4,7 +4,7 @@ Covers: ``AgentMeta.coerce_paused`` (typed accessor fixing the string/bool
 display bug: a writer stores a real ``bool`` while old code compared it to the string
 ``"true"``, which ``True`` never equals); the pause writer (per-hop budget gate marks the pod's
 Lead ``paused=True, pausedReason="budget"`` at the cap); claim-time refusal
-(``_claim_next_task`` refuses every claim for a paused pod outright -- a ``paused_refused``
+(``claim_next_task`` refuses every claim for a paused pod outright -- a ``paused_refused``
 trace event, no wasted turn -- until resumed); and the token-based estimate
 fallback (``core/utils.estimate_cost_usd``/``core/dispatch.pod_gating_cost``) that lets gating
 trip even when the driver reports no USD cost -- always labelled, never contaminating spend.

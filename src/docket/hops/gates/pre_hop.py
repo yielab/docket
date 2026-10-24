@@ -20,15 +20,15 @@ from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.queue import read_tasks
-from docket.tasks.application.record import _trace_locked, _UnitContext, _UnitOutcome
+from docket.tasks.application.record import UnitContext, UnitOutcome, trace_locked
 from docket.tasks.domain.task import TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams.pod import pod_full_roster
-from docket.teams.settings import _pod_settings
-from docket.teams.workspace.worktree import _task_worktree_dir
+from docket.teams.settings import load_pod_settings
+from docket.teams.workspace.worktree import task_worktree_dir
 
 
 def pod_gating_cost(project: str) -> tuple[float, bool]:
@@ -53,7 +53,7 @@ def pod_gating_cost(project: str) -> tuple[float, bool]:
 
 
 def _pause_lead_for_budget(project: str) -> None:
-    """Mark the pod's Lead paused once budget is reached, so ``_claim_next_task`` refuses
+    """Mark the pod's Lead paused once budget is reached, so ``claim_next_task`` refuses
     every further claim (one write here, not a per-hop recheck) until an operator clears it
     (``docket run --resume``). Idempotent."""
     lead_id = _pod.member_id(project, "lead")
@@ -77,10 +77,10 @@ def _approval_action_text(role: str, task: dict[str, Any]) -> str:
 
 
 # `interfaces/http/routes/health.py` reads the task token budget through this name.
-_task_token_budget = _decide.task_token_budget
+task_token_budget = _decide.task_token_budget
 
 
-def _current_task(ctx: _UnitContext) -> dict[str, Any]:
+def _current_task(ctx: UnitContext) -> dict[str, Any]:
     """The task as the queue holds it now (hops persisted so far), else the claimed snapshot."""
     for entry in read_tasks(ctx.project):
         if entry.get("id") == ctx.task_id:
@@ -88,7 +88,7 @@ def _current_task(ctx: _UnitContext) -> dict[str, Any]:
     return ctx.task
 
 
-def _gate_task_tokens(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
+def _gate_task_tokens(ctx: UnitContext, role: str) -> UnitOutcome | None:
     """Fail the task with ``failureKind: "budget"`` when its ``maxTokens`` is spent before *role*."""
     decision = _decide.decide_task_tokens(
         left=_decide.task_token_budget(_current_task(ctx)),
@@ -97,12 +97,10 @@ def _gate_task_tokens(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
     )
     if decision.kind == "advance":
         return None
-    return _UnitOutcome(kind="failed", reason=decision.reason, failure_kind=decision.failure_kind)
+    return UnitOutcome(kind="failed", reason=decision.reason, failure_kind=decision.failure_kind)
 
 
-def _apply_task_restrictions(
-    ctx: _UnitContext, env: dict[str, str] | None
-) -> dict[str, str] | None:
+def _apply_task_restrictions(ctx: UnitContext, env: dict[str, str] | None) -> dict[str, str] | None:
     """*env* plus the driver coordinates for the task's restrictions and remaining token budget.
     A policy document that is invalid or not ``block`` refuses the hop (``DispatchError``)."""
     extra: dict[str, str] = {}
@@ -127,7 +125,7 @@ def _apply_task_restrictions(
     return {**(env or {}), **extra} if extra else env
 
 
-def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
+def _gate_budget(ctx: UnitContext, role: str) -> UnitOutcome | None:
     """Budget gate before the hop (see ``pod_gating_cost``); on trip, marks the Lead paused
     so future dispatch attempts are refused at claim time instead of re-running this check.
     Returns ``None`` when the hop may proceed."""
@@ -140,10 +138,10 @@ def _gate_budget(ctx: _UnitContext, role: str) -> _UnitOutcome | None:
     decision = _decide.decide_pod_budget(cap=ctx.cap, spent=spent, estimated=estimated, role=role)
     if decision.kind == "advance":
         return None
-    _trace_locked(
+    trace_locked(
         ctx.project, ctx.session_id, role, decision.event, _json.dumps(dict(decision.detail))
     )
-    return _UnitOutcome(kind="blocked", reason=decision.reason)
+    return UnitOutcome(kind="blocked", reason=decision.reason)
 
 
 def _hop_model(node: _orch.PlannedUnit, member_id: str) -> str:
@@ -164,13 +162,13 @@ def _unpriced(model: str) -> bool:
     )
 
 
-def _warn_unpriced_hop(ctx: _UnitContext, role: str, model: str) -> None:
+def _warn_unpriced_hop(ctx: UnitContext, role: str, model: str) -> None:
     """Under a budget, an unpriced model adds nothing to the estimate, so the cap cannot stop
     this hop's spend: trace a ``budget_warning`` and let the hop run (cost-tracking.spec.md)."""
     reason = _decide.unpriced_budget_warning(cap=ctx.cap, model=model, unpriced=_unpriced(model))
     if reason is None:
         return
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
@@ -180,13 +178,13 @@ def _warn_unpriced_hop(ctx: _UnitContext, role: str, model: str) -> None:
 
 
 def _gate_pre_hop_approval(
-    ctx: _UnitContext,
+    ctx: UnitContext,
     role: str,
     node: _orch.PlannedUnit,
     *,
     check_approval: bool,
     index_for_context: int,
-) -> _UnitOutcome | None:
+) -> UnitOutcome | None:
     """require_approval gate: after budget (affordability), before the hop (permission).
     Mutates ``ctx.override_index``, consuming a granted approval's single-use override the
     first time a run reaches its minted position, so a later hop revisiting that position
@@ -208,14 +206,14 @@ def _gate_pre_hop_approval(
         action,
         context={"taskId": ctx.task_id, "pipelineIndex": index_for_context},
     )
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         role,
         "approval_required",
         _json.dumps({"role": role, "token": token, "pipelineIndex": index_for_context}),
     )
-    return _UnitOutcome(
+    return UnitOutcome(
         kind="waiting_approval",
         reason=f"approval required before {role} hop (token={token})",
         approval_token=token,
@@ -223,13 +221,13 @@ def _gate_pre_hop_approval(
     )
 
 
-def _consult_budget_env(ctx: _UnitContext, env: dict[str, str] | None) -> dict[str, str] | None:
+def _consult_budget_env(ctx: UnitContext, env: dict[str, str] | None) -> dict[str, str] | None:
     """Once the task has parked consultations, this hop's cap is what the task has left
     (``maxConsultationsPerTask`` minus them); before that the pod setting applies as is."""
     used = ctx.task.get("consultations")
     if not isinstance(used, int) or used <= 0:
         return env
-    remaining = max(0, _pod_settings(ctx.project).max_consultations_per_task - used)
+    remaining = max(0, load_pod_settings(ctx.project).max_consultations_per_task - used)
     return {**(env or {}), _rd.DOCKET_MAX_CONSULTATIONS: str(remaining)}
 
 
@@ -257,9 +255,7 @@ def _check_brief_resources(project: str, brief: _oc.TaskBrief) -> list[str]:
     )
 
 
-def _block_on_missing_resources(
-    ctx: _UnitContext, outcome: _UnitOutcome, result: TaskResult
-) -> bool:
+def _block_on_missing_resources(ctx: UnitContext, outcome: UnitOutcome, result: TaskResult) -> bool:
     """A ``READY`` outcome whose brief names something ``_check_brief_resources`` finds
     missing blocks *result* and returns ``True``; the caller's own ``break`` stops the
     pipeline. A brief with nothing missing, or no brief, returns ``False`` unchanged."""
@@ -314,13 +310,13 @@ def _checked_commands(
 
 
 def _park_if_check_changed(
-    ctx: _UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...], result: TaskResult
+    ctx: UnitContext, runtime_steps: tuple[_orch.PlannedNode, ...], result: TaskResult
 ) -> None:
     """A finished task whose diff touches a protected path (teams/workspace/protected_paths.py) parks
     ``waiting_approval`` for a person whatever the profile, instead of ending ``done``. A task
     with no recorded worktree is not checked."""
     record = ctx.task.get("worktree")
-    directory = _task_worktree_dir(ctx.task)
+    directory = task_worktree_dir(ctx.task)
     branch = str(record.get("branch") or "") if isinstance(record, dict) else ""
     base = str(record.get("baseCommit") or "") if isinstance(record, dict) else ""
     if not (directory and branch and base):
@@ -329,7 +325,7 @@ def _park_if_check_changed(
         directory,
         base,
         branch,
-        _pod_settings(ctx.project).protects,
+        load_pod_settings(ctx.project).protects,
         _checked_commands(ctx.project, ctx.task, runtime_steps),
     )
     if not paths:
@@ -341,7 +337,7 @@ def _park_if_check_changed(
         f"pod dispatch -- task {ctx.task_id} edits what checks it: {listed}",
         context={"kind": "check_changed", "taskId": ctx.task_id, "paths": paths},
     )
-    _trace_locked(
+    trace_locked(
         ctx.project,
         ctx.session_id,
         "lead",

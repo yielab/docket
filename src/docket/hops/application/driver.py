@@ -63,7 +63,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
-from docket.teams.isolation_posture import _hop_read_only, _jail_cache_dir, _resolve_posture
+from docket.teams.isolation_posture import hop_read_only, jail_cache_dir, resolve_posture
 from docket.teams.models import AgentMeta
 from docket.teams.roles import BUILTIN_TOOL_KINDS
 from docket.teams.workspace import repo_view as _repo_view
@@ -267,7 +267,7 @@ def _turn_token_budget(raw: str | None) -> int:
 
 def _task_scope(registry: ToolRegistry, tool_env: dict[str, str]) -> AbstractContextManager[None]:
     """The policy scope for the turn's task restrictions; pops their coordinates from *tool_env*
-    so no tool sees them (the network one was read by ``_resolve_posture``)."""
+    so no tool sees them (the network one was read by ``resolve_posture``)."""
     tool_env.pop(DOCKET_TASK_NETWORK, None)
     denied_raw = tool_env.pop(DOCKET_TASK_DENIED_TOOLS, None)
     policies_raw = tool_env.pop(DOCKET_TASK_POLICIES, None)
@@ -405,7 +405,7 @@ class DocketDriver:
     ) -> TurnResult:
         """Run one turn through ``agent/loop.py``. Never raises, with one deliberate
         exception: ``DispatchError`` for a deterministic refusal -- a refused isolation or
-        network posture (``_resolve_posture``), or ``self.mcp_loader`` finding an ``mcpServers``
+        network posture (``resolve_posture``), or ``self.mcp_loader`` finding an ``mcpServers``
         name absent from the live catalog (see ``_load_mcp_tools``'s own docstring). A caller
         misconfiguration, not an ordinary turn failure, and every production call site (``hops/application/executor.py``'s
         pipeline runner) already lets a raised ``DispatchError``
@@ -465,7 +465,7 @@ class DocketDriver:
                 failure_kind="invalid_output",
             )
 
-        want_sandbox, network_allowed = _resolve_posture(agent_id, meta.role, env)
+        want_sandbox, network_allowed = resolve_posture(agent_id, meta.role, env)
         effective_model = model or meta.model or current_home().default_model
         backend = self.backend_factory(effective_model)
         if backend is None:
@@ -538,8 +538,8 @@ class DocketDriver:
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,
             approval_timeout=approval_timeout,
-            cache_dir=_jail_cache_dir(agent_id, want_sandbox),
-            read_only=_hop_read_only(resolved_project, ctx_roots[0]) if want_sandbox else (),
+            cache_dir=jail_cache_dir(agent_id, want_sandbox),
+            read_only=hop_read_only(resolved_project, ctx_roots[0]) if want_sandbox else (),
             on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
         )
         # Folded in before the turn loop narrows by role

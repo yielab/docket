@@ -7,7 +7,7 @@ waits on, and resolves a real approval rather than sitting with zero production 
   * TestGateFiresPreHop — a required hop stops *before* its turn runs, persists
     ``waiting_approval`` with a token + exact pipeline position, and traces ``approval_required``.
   * TestNotClaimableConcurrently — a ``waiting_approval`` task is invisible to every claim path
-    (a second ``dispatch_pod`` call, or ``_claim_next_task`` directly) until its approval resolves.
+    (a second ``dispatch_pod`` call, or ``claim_next_task`` directly) until its approval resolves.
   * TestGrantResumesAtHop — a grant (direct, and via ``cli/_approve.py``) flips the task to
     ``pending`` and the next dispatch resumes at the exact hop it stopped on — never re-running
     completed hops, never re-prompting for that same hop.
@@ -286,10 +286,10 @@ class TestNotClaimableConcurrently:
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
 
-        assert _queue._claim_next_task("myapp", resume=False) is None
+        assert _queue.claim_next_task("myapp", resume=False) is None
         # --resume only ever reclaims a stale_claim failure, never a
         # waiting_approval task.
-        assert _queue._claim_next_task("myapp", resume=True) is None
+        assert _queue.claim_next_task("myapp", resume=True) is None
 
     def test_stale_claim_sweep_does_not_touch_a_waiting_approval_task(self) -> None:
         _seed_lean_pod(gated=True)
@@ -300,7 +300,7 @@ class TestNotClaimableConcurrently:
         # waiting_approval task has no claimedAt to go stale against — the
         # sweep only ever looks at status == "running".
         with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
-            _lifecycle._sweep_stale_claims("myapp")
+            _lifecycle.sweep_stale_claims("myapp")
             assert _queue.read_tasks("myapp")[0]["status"] == "waiting_approval"
 
 

@@ -8,7 +8,7 @@ bodies are 400 before ``enqueue_task_once`` runs), TestMissingPod (no pod is
 path does, since this route calls the same ``enqueue_task_once``),
 TestSuccess (happy path), and TestExecuteUnitDirectly (``_execute_unit``
 and two extracted phases, called directly with a hand-built
-``_UnitContext``/``PlannedUnit``).
+``UnitContext``/``PlannedUnit``).
 """
 
 from __future__ import annotations
@@ -46,11 +46,11 @@ class TestHopEvents:
         hop = _task.HopResult(
             role="lead", member_id="m", ok=True, model="local/x", provider="local"
         )
-        rec = _record._hop_record(hop)
+        rec = _record.hop_record(hop)
         assert (rec["model"], rec["provider"]) == ("local/x", "local")
-        back = _record._hop_from_record(rec)
+        back = _record.hop_from_record(rec)
         assert (back.model, back.provider) == ("local/x", "local")
-        old = _record._hop_from_record({"role": "lead"})
+        old = _record.hop_from_record({"role": "lead"})
         assert (old.model, old.provider) == ("", "")
 
     def test_a_two_hop_run_pairs_hop_events_and_sums_task_usage(
@@ -138,7 +138,7 @@ class TestHopEvents:
                     usage={"input": 50, "cached": 10, "cacheWrite": 0, "output": 3},
                 ),
             ]
-            _lifecycle._finalize_task(
+            _lifecycle.finalize_task(
                 "demo", task_id, _task.TaskResult(task_id=task_id, status="done", hops=hops)
             )
             raw = json.loads(_settings.pod_task_list_path("demo").read_text())

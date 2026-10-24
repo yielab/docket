@@ -505,8 +505,8 @@ def unit_context(
     override_index: int | None = None,
     run: Any = None,
     on_hop: Any = None,
-) -> _record._UnitContext:
-    return _record._UnitContext(
+) -> _record.UnitContext:
+    return _record.UnitContext(
         project=project,
         task={"id": task_id},
         task_id=task_id,

@@ -1,10 +1,10 @@
 """Dispatch mechanically maintains the pod Lead's HEARTBEAT.md task ledger and keeps the
 conversation registry current.
 
-``core/dispatch.py``'s ``_claim_next_task``/``_persist_hop``/``_touch_claim``/``_finalize_task``
+``core/dispatch.py``'s ``claim_next_task``/``persist_hop``/``touch_claim``/``_finalize_task``
 call ``teams/agent_memory.py``'s ``sync_dispatch_tasks`` at each task-state-persistence point, so the
 durable ledger is true whether or not the agent ever wrote anything there itself.
-``_persist_hop`` also calls ``teams/conversations.py``'s ``touch_for_hop`` so a wired channel
+``persist_hop`` also calls ``teams/conversations.py``'s ``touch_for_hop`` so a wired channel
 thread's ``last_message``/``task_ref`` reflect the dispatch actually working, not just whatever
 ``docket setup notify bind`` seeded once. Setup mirrors ``test_dispatch.py``'s hermetic pod fixture (injected
 ``FakeDriver``/plain runner callables, no real subprocess).
@@ -133,14 +133,14 @@ class TestHeartbeatLedgerLifecycle:
     def test_touch_claim_keeps_the_entry_and_refreshes_it(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "retry me", channel="cli")
-            claim = _queue._claim_next_task("demo", resume=False)
+            claim = _queue.claim_next_task("demo", resume=False)
             assert claim is not None
             task, _hops = claim
             ws = _lead_ws()
             before = (ws / _mem.HEARTBEAT_FILE).read_text(encoding="utf-8")
             assert task["id"] in before
 
-            _queue._touch_claim("demo", task["id"])
+            _queue.touch_claim("demo", task["id"])
             after = (ws / _mem.HEARTBEAT_FILE).read_text(encoding="utf-8")
             assert task["id"] in after
 
@@ -152,7 +152,7 @@ class TestHeartbeatLedgerLifecycle:
             ws = _lead_ws()
             # Task is still 'pending' -- never claimed -- so touching an unrelated
             # id must not put anything in the ledger.
-            _queue._touch_claim("demo", "task-does-not-exist")
+            _queue.touch_claim("demo", "task-does-not-exist")
             assert _mem.read_dispatch_task_ids(ws) == []
 
     def test_two_concurrently_running_tasks_both_appear(self, tmp_path: Path) -> None:
@@ -162,8 +162,8 @@ class TestHeartbeatLedgerLifecycle:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "first", channel="cli")
             _queue.enqueue_task_once("demo", "second", channel="cli")
-            claim1 = _queue._claim_next_task("demo", resume=False)
-            claim2 = _queue._claim_next_task("demo", resume=False)
+            claim1 = _queue.claim_next_task("demo", resume=False)
+            claim2 = _queue.claim_next_task("demo", resume=False)
             assert claim1 is not None and claim2 is not None
             ids = {claim1[0]["id"], claim2[0]["id"]}
             ws = _lead_ws()
@@ -251,7 +251,7 @@ class TestConversationAutoPopulation:
                 _task.HopResult("implementer", "demo-implementer", True, output="impl preview"),
             )
             threads = [
-                new_thread(target=_record._persist_hop, args=("demo", task["id"], hop))
+                new_thread(target=_record.persist_hop, args=("demo", task["id"], hop))
                 for hop in hops
             ]
             for thread in threads:

@@ -13,11 +13,11 @@ from docket.observability import trace as _trace
 from docket.platform import read_modify_write
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import transitions as _transitions
-from docket.tasks.application.record import _UnitContext
+from docket.tasks.application.record import UnitContext
 from docket.tasks.domain import state as _state
 from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
-from docket.teams.settings import _pod_settings, pod_task_list_path
+from docket.teams.settings import load_pod_settings, pod_task_list_path
 
 TASK_GRANT_CAP = 20
 
@@ -46,7 +46,7 @@ def resolve_waiting_approval_detail(
     ``{token, tool, argsDigest}`` to the task's ``pregrants`` for ``_compose_hop`` to carry
     into the re-run, and does **not** set ``gateOverridePipelineIndex`` (that field is for
     skipping a pre-hop gate, not for re-running an already-attempted hop -- the resumed hop
-    re-runs by ``_replay_pipeline_position``'s own ``hop.parked`` handling instead). A plain
+    re-runs by ``replay_pipeline_position``'s own ``hop.parked`` handling instead). A plain
     in-turn ``wait``-mode ask also carries no ``taskId`` (its wait blocks the calling thread
     directly, so there is no task-level state to update here) and is unaffected: not parked
     and no ``taskId`` still no-ops, exactly as before.
@@ -210,13 +210,15 @@ def _append_task_grant(
     return ""
 
 
-def _mint_task_grant_pregrants(ctx: _UnitContext, role: str) -> list[dict[str, str]]:
+def mint_task_grant_pregrants(ctx: UnitContext, role: str) -> list[dict[str, str]]:
     """One fresh single-use pre-grant per task-wide grant made for *role*, bound to this project
     and role: a grant never reaches a hop of another role."""
     raw = ctx.task.get("taskGrants")
     if not isinstance(raw, list) or not raw:
         return []
-    deadline = _clock.now() + _dt.timedelta(hours=_pod_settings(ctx.project).approval_expiry_hours)
+    deadline = _clock.now() + _dt.timedelta(
+        hours=load_pod_settings(ctx.project).approval_expiry_hours
+    )
     minted: list[dict[str, str]] = []
     for grant in raw[:TASK_GRANT_CAP]:
         if not isinstance(grant, dict) or grant.get("role") != role:

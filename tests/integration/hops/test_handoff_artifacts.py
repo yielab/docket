@@ -151,13 +151,13 @@ class TestHopRecordRoundTrip:
         hop = _task.HopResult(
             role="tester", member_id="demo-tester", ok=True, output="s", artifact=art
         )
-        rec = _record._hop_record(hop)
+        rec = _record.hop_record(hop)
         assert rec["artifact"] == art.model_dump()
         # verification_skipped is a this-run-only signal, not part of the
         # durable record (see HopResult's own docstring) -- not persisted.
         assert "verification_skipped" not in rec
 
-        restored = _record._hop_from_record(rec)
+        restored = _record.hop_from_record(rec)
         assert restored.artifact == art
 
     def test_a_record_with_no_artifact_key_degrades_to_summary(self) -> None:
@@ -172,7 +172,7 @@ class TestHopRecordRoundTrip:
             "attempts": 1,
             "stepId": "implementer",
         }
-        restored = _record._hop_from_record(rec)
+        restored = _record.hop_from_record(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "old raw text"
         assert restored.artifact.verdict is None
@@ -186,7 +186,7 @@ class TestHopRecordRoundTrip:
             "output": "raw",
             "artifact": {"not": "a valid HandoffArtifact shape"},
         }
-        restored = _record._hop_from_record(rec)
+        restored = _record.hop_from_record(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "raw"
 
@@ -198,7 +198,7 @@ class TestHopRecordRoundTrip:
             "output": "raw",
             "artifact": None,
         }
-        restored = _record._hop_from_record(rec)
+        restored = _record.hop_from_record(rec)
         assert restored.artifact is not None
         assert restored.artifact.summary == "raw"
 
@@ -215,7 +215,7 @@ class TestHopRecordRoundTrip:
             "attempts": 1,
             "stepId": "implementer",
         }
-        restored = _record._hop_from_record(rec)
+        restored = _record.hop_from_record(rec)
         assert restored.verify is None
         assert restored.evidence is None
 
@@ -230,11 +230,11 @@ class TestHopRecordRoundTrip:
             verify=verify,
             evidence=evidence,
         )
-        rec = _record._hop_record(hop)
+        rec = _record.hop_record(hop)
         assert rec["verify"] == verify
         assert rec["evidence"] == evidence
 
-        restored = _record._hop_from_record(rec)
+        restored = _record.hop_from_record(rec)
         assert restored.verify == verify
         assert restored.evidence == evidence
 
@@ -423,7 +423,7 @@ class TestDispatchBuildsTypedArtifacts:
             # Drive the pipeline through the Reviewer only (simulating a crash
             # right before the Tester hop) by dispatching with a spec-free run
             # but a runner that would raise for "tester" -- simpler: reuse the
-            # real dispatch_pod/_persist_hop path via three completed hops, then
+            # real dispatch_pod/persist_hop path via three completed hops, then
             # hand-build the resume_from list the way a real crash-and-restart
             # would load it (through the persisted-record round trip).
             prior_hops = [
@@ -448,8 +448,8 @@ class TestDispatchBuildsTypedArtifacts:
             ]
             # Round-trip through the persisted-record shape, exactly like a real
             # crash-and-`--resume` would load them from TASK_LIST.json.
-            records = [_record._hop_record(h) for h in prior_hops]
-            resumed_hops = [_record._hop_from_record(r) for r in records]
+            records = [_record.hop_record(h) for h in prior_hops]
+            resumed_hops = [_record.hop_from_record(r) for r in records]
 
             real_parse_verdict = _plan.parse_verdict
 

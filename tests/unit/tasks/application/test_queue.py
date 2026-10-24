@@ -387,7 +387,7 @@ class TestBaseRefRefusedAtClaim:
             },
         )
 
-        res = _queue._refuse_claimed_task("myapp", {"id": "t1"}, "pipeline", "no such pipeline")
+        res = _queue.refuse_claimed_task("myapp", {"id": "t1"}, "pipeline", "no such pipeline")
 
         (stored,) = _queue.read_tasks("myapp")
         assert (res.status, res.failure_kind, res.reason) == (

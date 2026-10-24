@@ -71,36 +71,40 @@ class TestExecution:
         monkeypatch.setattr(_runner, "_when_cwd", lambda ctx, prior: str(tmp_path))
         monkeypatch.setattr(_steps, "_when_cwd", lambda ctx, prior: str(tmp_path))
         monkeypatch.setattr(_executor_c, "_when_cwd", lambda ctx, prior: str(tmp_path))
-        monkeypatch.setattr(_record, "_trace_locked", lambda *a, **k: events.append(a))
-        monkeypatch.setattr(_compose_c, "_trace_locked", lambda *a, **k: events.append(a))
-        monkeypatch.setattr(_runner, "_trace_locked", lambda *a, **k: events.append(a))
-        monkeypatch.setattr(_pre_hop_c, "_trace_locked", lambda *a, **k: events.append(a))
-        monkeypatch.setattr(_post_hop_c, "_trace_locked", lambda *a, **k: events.append(a))
-        monkeypatch.setattr(_steps, "_trace_locked", lambda *a, **k: events.append(a))
-        monkeypatch.setattr(_executor_c, "_trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_record, "trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_compose_c, "trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_runner, "trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_pre_hop_c, "trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_post_hop_c, "trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_steps, "trace_locked", lambda *a, **k: events.append(a))
+        monkeypatch.setattr(_executor_c, "trace_locked", lambda *a, **k: events.append(a))
         monkeypatch.setattr(
-            _settings, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _settings, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
         )
         monkeypatch.setattr(
-            _actions_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _actions_c, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
         )
         monkeypatch.setattr(
-            _queue_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _queue_c, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
         )
         monkeypatch.setattr(
-            _lifecycle_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _lifecycle_c,
+            "load_pod_settings",
+            lambda project: type("S", (), {"allow_commands": []})(),
         )
         monkeypatch.setattr(
-            _compose_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _compose_c, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
         )
         monkeypatch.setattr(
-            _pre_hop_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _pre_hop_c, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
         )
         monkeypatch.setattr(
-            _post_hop_c, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _post_hop_c,
+            "load_pod_settings",
+            lambda project: type("S", (), {"allow_commands": []})(),
         )
         monkeypatch.setattr(
-            _steps, "_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
+            _steps, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
         )
         node = _orch.PlannedUnit(
             step_id="check",

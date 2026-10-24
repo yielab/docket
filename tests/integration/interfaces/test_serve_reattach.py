@@ -36,7 +36,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
-from docket.teams import pod_settings as _pod_settings
+from docket.teams import pod_settings as load_pod_settings
 from docket.teams import settings as _settings
 
 SUBJECT = "docket.interfaces.http.server"
@@ -151,7 +151,7 @@ def _park_on_consult(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
     _fleet.meta_set("demo-implementer", "codebase", str(workspace))
     _fleet.meta_set("demo-implementer", "verifyCmd", "true")
     _fleet.meta_set(
-        "demo-lead", "approvalMode", _pod_settings.PodSettings.coerce("approvalMode", "park")
+        "demo-lead", "approvalMode", load_pod_settings.PodSettings.coerce("approvalMode", "park")
     )
     backend = _Backend([_final("plan"), _consult(), _final("built with redis")])
     driver = DocketDriver(backend_factory=lambda model_name: backend)

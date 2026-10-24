@@ -69,7 +69,7 @@ def _member_soul(
     return _role_schema.render(arch.soul_template, variables)
 
 
-def _member_tools(
+def member_tools(
     project: str,
     role: str,
     codebase: str,
@@ -156,7 +156,7 @@ def _write_member_workspace(
     (ws / _mem.HEARTBEAT_FILE).write_text(_mem.heartbeat_seed(member.member_id), encoding="utf-8")
     if member.role == "implementer" and ((port_range_start and scratch_dir) or verify_cmd):
         (ws / "TOOLS.md").write_text(
-            _member_tools(
+            member_tools(
                 project,
                 member.role,
                 told_root,
@@ -317,7 +317,7 @@ def rendered_member_files(member_id: str) -> dict[str, str]:
     port_start_s = str(meta.get("portRangeStart", ""))
     scratch = str(meta.get("scratchDir", ""))
     if role == "implementer" and ((port_start_s and scratch) or verify_cmd):
-        files["TOOLS.md"] = _member_tools(
+        files["TOOLS.md"] = member_tools(
             project,
             role,
             codebase,

@@ -9,7 +9,7 @@ from docket.agent.tools.registry import (
     Tool,
     ToolContext,
     ToolRegistry,
-    _str_arg,
+    str_arg,
 )
 from docket.agent.tools.screening import screen_tool_result
 from docket.kernel.gate import CONSULT_TOOL
@@ -46,13 +46,13 @@ def _skill_read(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     ``SKILL.md``) from within that skill's own directory. An unknown name is a failed call
     naming the known names, never a raise."""
 
-    name = _str_arg(args, "name")
+    name = str_arg(args, "name")
     discovered = _skills.discover_skills(ctx.project, ctx.roots[0] if ctx.roots else None)
     skill = discovered.get(name)
     if skill is None:
         known = ", ".join(sorted(discovered)) or "(none)"
         return ToolOutcome(False, error=f"unknown skill {name!r}; known skills: {known}")
-    skill_path = _str_arg(args, "path", "SKILL.md")
+    skill_path = str_arg(args, "path", "SKILL.md")
     if skill.view is not None:
         parts = skill_path.split("/")
         if skill_path.startswith("/") or any(p in ("", ".", "..") for p in parts):
@@ -161,7 +161,7 @@ def _fetch_tool(fetch_url: Any) -> Tool:
     """The `fetch` built-in over *fetch_url*, the edges adapter the registry hands in."""
 
     def _fetch_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
-        url = _str_arg(args, "url")
+        url = str_arg(args, "url")
         outcome: ToolOutcome = fetch_url(url, _int_arg(args, "timeout"))
         host = (urllib.parse.urlsplit(url).hostname or "").lower()
         return screen_tool_result(
@@ -205,7 +205,7 @@ def _register_all(registry: ToolRegistry, *tools: Tool) -> None:
 def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     return toolbox.run_bash(
         ctx.roots,
-        _str_arg(args, "command"),
+        str_arg(args, "command"),
         _int_arg(args, "timeout", ctx.timeout) or ctx.timeout,
         ctx.env,
         ctx.sandbox,
@@ -263,7 +263,7 @@ def builtin_registry() -> ToolRegistry:
             },
             handler=lambda args, ctx: toolbox.read_file(
                 ctx.roots,
-                _str_arg(args, "path"),
+                str_arg(args, "path"),
                 _int_arg(args, "offset"),
                 _int_arg(args, "limit"),
             ),
@@ -284,7 +284,7 @@ def builtin_registry() -> ToolRegistry:
                 "required": ["path", "content"],
             },
             handler=lambda args, ctx: toolbox.write_file(
-                ctx.roots, _str_arg(args, "path"), _str_arg(args, "content")
+                ctx.roots, str_arg(args, "path"), str_arg(args, "content")
             ),
             kind="write",
         )
@@ -309,9 +309,9 @@ def builtin_registry() -> ToolRegistry:
             },
             handler=lambda args, ctx: toolbox.edit_file(
                 ctx.roots,
-                _str_arg(args, "path"),
-                _str_arg(args, "old_string"),
-                _str_arg(args, "new_string"),
+                str_arg(args, "path"),
+                str_arg(args, "old_string"),
+                str_arg(args, "new_string"),
                 bool(args.get("replace_all")),
             ),
             kind="write",
@@ -331,7 +331,7 @@ def builtin_registry() -> ToolRegistry:
                 "required": ["pattern"],
             },
             handler=lambda args, ctx: toolbox.glob_files(
-                ctx.roots, _str_arg(args, "pattern"), _str_arg(args, "path")
+                ctx.roots, str_arg(args, "pattern"), str_arg(args, "path")
             ),
             kind="read",
         )
@@ -352,9 +352,9 @@ def builtin_registry() -> ToolRegistry:
             },
             handler=lambda args, ctx: toolbox.grep_files(
                 ctx.roots,
-                _str_arg(args, "pattern"),
-                _str_arg(args, "path"),
-                _str_arg(args, "glob", "**/*"),
+                str_arg(args, "pattern"),
+                str_arg(args, "path"),
+                str_arg(args, "glob", "**/*"),
             ),
             kind="read",
         )
