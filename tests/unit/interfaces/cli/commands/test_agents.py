@@ -9,11 +9,13 @@ import pytest
 from tests.support.fakes import FakeProcess
 from typer.testing import CliRunner
 
+from docket.governance.audit import read_audit
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.home import Home, current_home, use_home
 from docket.sandbox.launch import Launcher
+from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.interfaces.cli.commands.agents"
 
@@ -106,23 +108,54 @@ class TestInitInstallsTheBaselinePolicies:
             assert "block-destructive.yaml" in installed or "block-destructive.json" in installed
 
 
-def test_init_closes_with_the_sandbox_line(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    bind_launcher: Callable[..., Launcher],
-) -> None:
-    """The output ends with a `This machine` block naming the sandbox posture."""
+class TestInitTurnsIsolationOnWhereTheMachineCanJail:
+    """security-gates spec, Workspace isolation 3: with no recorded choice, `init` records on when
+    a backend is detected, and leaves the home unrecorded (tools on the host) when none is."""
 
-    with use_home(Home(tmp_path / "home")):
-        bind_launcher(landlock=True)
+    def _init(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> str:
         code = tmp_path / "code"
         code.mkdir()
         assert _agents.run_init(_agents.InitRequest(name="demo", location=str(code))) == 0
         out = capsys.readouterr().out
-        tail = out[out.index("This machine") :]
-        assert "Sandbox   off. The agent's commands run with your user's permissions." in tail
-        assert "Turn it on: docket setup sandbox on" in tail
+        return out[out.index("This machine") :]
+
+    def test_a_detected_backend_turns_it_on_and_audits(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
+    ) -> None:
+        with use_home(Home(tmp_path / "home")):
+            bind_launcher(landlock=True, seatbelt=False)
+            tail = self._init(tmp_path, capsys)
+            assert _fleet.get_isolation_state() == "on"
+            assert "Sandbox   on (landlock" in tail
+            assert any(e.get("action") == "gates.isolate" for e in read_audit())
+
+    def test_no_backend_leaves_it_off_and_says_so(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
+    ) -> None:
+        with use_home(Home(tmp_path / "home")):
+            bind_launcher(landlock=False, seatbelt=False)
+            tail = self._init(tmp_path, capsys)
+            assert _fleet.get_isolation_state() == "off (default)"
+            assert "Sandbox   not available" in tail
+
+    def test_a_recorded_off_is_kept(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        bind_launcher: Callable[..., Launcher],
+    ) -> None:
+        with use_home(Home(tmp_path / "home")):
+            bind_launcher(landlock=True, seatbelt=False)
+            _fleet.disable_workspace_isolation()
+            tail = self._init(tmp_path, capsys)
+            assert _fleet.get_isolation_state() == "off"
+            assert "Turn it on: docket setup sandbox on" in tail
 
 
 def _repo(tmp_path: Path, step: str = "sh scripts/migrate.sh") -> Path:

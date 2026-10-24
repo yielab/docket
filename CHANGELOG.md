@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`docket init` turns workspace isolation on where the machine can jail (D-67).** When no
+  choice is recorded and Landlock or Seatbelt is detected, init records it on and audits
+  `gates.isolate` as `on (detected <backend>)`. Without a backend it records nothing and says so;
+  a recorded choice is never changed. `docket setup sandbox on|off` is unchanged.
 - **The tree is organised by context (ADR 0030, D-66).** `src/docket/` is `kernel`, the context
   packages and `interfaces/`; no module is over 700 lines. The oversized modules were split by
   `scripts/maint/refactor/move.py`; the turn loop's state became budget, compaction and tool-step

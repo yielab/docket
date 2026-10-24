@@ -186,6 +186,19 @@ def isolate(want: str) -> int:
     return 0
 
 
+def turn_on_where_detected() -> None:
+    """Record isolation on when nobody chose yet and this machine has a backend; a recorded choice
+    and a host without one are left as they are, so no turn is ever refused for lack of a jail
+    the operator never asked for."""
+    if _fleet.get_isolation_state() != "off (default)":
+        return
+    backend = _jail.sandbox_availability().backend
+    if backend == "none":
+        return
+    _fleet.apply_workspace_isolation()
+    audit_log("gates.isolate", f"on (detected {backend})")
+
+
 def network(want: str) -> int:
     """Record whether jailed tool calls may reach the network."""
     _fleet.set_network_mode(want)

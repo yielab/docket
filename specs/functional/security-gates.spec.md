@@ -1,10 +1,11 @@
 # Security Gates Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
-MCP and Telegram. The exec jail is opt-in and fails closed when on without a usable backend.
-**Last Updated**: 2026-10-23
+MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
+closed when on without a usable backend.
+**Last Updated**: 2026-10-24
 
 ## Purpose
 
@@ -172,7 +173,7 @@ and chain (audit.spec.md).
    targeting private workspace state before deciding. The record **MUST NOT** store an unredacted
    secret, and the action is cut at 1,000 characters.
 
-### Workspace isolation (opt-in)
+### Workspace isolation (on where the machine can jail)
 
 1. File tools **MUST NOT** read or write outside the turn's roots (the agent's workspace and
    codebase, or the task worktree). `resolve_within` resolves every path argument and refuses one
@@ -181,9 +182,12 @@ and chain (audit.spec.md).
    sandbox 3).
 2. Path traversal out of the roots (`..`, an absolute path elsewhere, a symlink out) **MUST** be
    rejected with `PathEscapeError`; "File-tool containment" covers symlinks met during a walk.
-3. Workspace isolation is **opt-in** (ADR 0021): a `DOCKET_HOME` with no recorded choice
-   (`fleet.json` `security.isolationMode` unset) runs tools on the host, exactly as an explicit
-   off does. `docket setup sandbox on` records on and succeeds only when `sandbox_availability()`
+3. Workspace isolation is **turned on where the machine can jail** (D-67): `docket init`, finding
+   no recorded choice (`fleet.json` `security.isolationMode` unset) and a backend
+   `sandbox_availability()` detects, records on and audits `gates.isolate` (`on (detected
+   <backend>)`); with no backend it records nothing and its `This machine` block says the sandbox
+   is not available. A recorded choice is never changed. A `DOCKET_HOME` with no recorded choice
+   runs tools on the host, exactly as an explicit off does. `docket setup sandbox on` records on and succeeds only when `sandbox_availability()`
    finds a backend (otherwise it exits 1 and records nothing); `docket setup sandbox off` records
    an explicit off; both are audited (`gates.isolate`). `docket setup sandbox` and `docket setup`
    show `off (default)`, `on` or `off`. The requirement a host must meet to turn it on is one

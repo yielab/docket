@@ -13,11 +13,11 @@ docket's plain voice (`ok`, `->`, `!`); on a terminal the same lines read `✓`,
 > every cost figure as an estimate, not a provider bill.
 
 **You need:** Python 3.11+, Git, Bash, and one OpenAI-compatible chat-completions endpoint with
-function-tool support. **Optional:** a sandbox for the agents' shell. Isolation is opt-in: turn it
-on with `docket setup sandbox on`, which needs nothing installed: Landlock in the Linux kernel
-(5.13 or newer) or `sandbox-exec` on macOS, or Docker if you choose it with
-`docket setup sandbox backend docker`; `docket setup sandbox` shows what this machine has. See
-[Workspace isolation](SECURITY-SIMPLE.md#workspace-isolation-opt-in-the-sandbox-for-the-agents-shell).
+function-tool support. Nothing to install for the sandbox: `docket init` turns isolation on when
+this machine has Landlock (Linux 5.13 or newer) or `sandbox-exec` (macOS), and says so when it has
+neither; `docket setup sandbox off` turns it off, `docket setup sandbox backend docker` chooses
+Docker. See
+[Workspace isolation](SECURITY-SIMPLE.md#workspace-isolation-on-where-the-machine-can-jail-the-sandbox-for-the-agents-shell).
 The route below uses a local model on `127.0.0.1:8081` (llama.cpp, vLLM,
 LM Studio, Ollama all work); a hosted provider is a one-line variant in step 2.
 

@@ -140,8 +140,9 @@ setting; the [recipe library](docs/recipes.md) shows what each recipe adds.
 Read these before trusting docket with anything consequential:
 
 - **One machine, one operator.** No multi-tenancy, hosted scheduler or worker queue.
-- **Sandboxing is opt-in.** Until you run `docket setup sandbox on`, an agent's shell commands run
-  on your machine and can reach the network.
+- **Sandboxing needs a backend.** `docket init` turns it on where the machine has Landlock or
+  Seatbelt; without one, or after `docket setup sandbox off`, an agent's shell commands run on your
+  machine and can reach the network.
 - **The audit log is tamper-evident, not tamper-proof.** Deleting it is visible, not impossible.
 - **Costs are estimates.** Token counts are measured; docket records no dollar spend, and its
   budget limit works on a labelled estimate.

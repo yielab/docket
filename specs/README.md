@@ -31,7 +31,7 @@ specs/
 │   ├── pod-blueprints.spec.md            # Built-in pod blueprints (software/research/content/ops/agentic-product)
 │   ├── pod-dispatch.spec.md              # Pod dispatch pipeline state machine and gates
 │   ├── role-archetypes.spec.md           # Declarative role archetypes (registry, overlay, CLI)
-│   ├── security-gates.spec.md            # Tool-call gate (always on), approvals, isolation (opt-in)
+│   ├── security-gates.spec.md            # Tool-call gate (always on), approvals, isolation (on where the machine can jail)
 │   ├── session-history.spec.md           # Durable per-session turn history and compaction
 │   ├── session-scoping.spec.md           # Multi-project session isolation
 │   ├── telegram-integration.spec.md      # Telegram bindings and docket's own bot
@@ -105,7 +105,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pod Blueprints | 2.1.0 | Implemented |
 | Pod Dispatch | 9.4.0 | Implemented |
 | Role Archetypes | 4.0.0 | Implemented |
-| Security Gates | 1.3.0 | Implemented (gate always on; isolation opt-in) |
+| Security Gates | 1.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 4.0.1 | Implemented |

@@ -51,12 +51,12 @@
 > `deny`; `--reason` on approve/deny is
 > screened and audited with the answering channel.
 > **Workspace isolation** is a
-> separate layer on top, **opt-in** (`docket setup sandbox on`; `docket setup sandbox status` names
-> the backend this host offers) and consulted by the turn loop: when it's on, every real dispatch hop runs
+> separate layer on top, **turned on by `docket init` where this host has a backend** (`docket setup
+> sandbox status` names it; `docket setup sandbox on|off` records a choice) and consulted by the turn loop: when it's on, every real dispatch hop runs
 > sandboxed, and if no backend is usable the
 > turn **refuses to run rather than falling back unsandboxed** (an audited `isolation.refused`
 > entry — no LLM call, no tool executes). `docket setup sandbox status` reports which state applies.
-> Requirements and coverage: "Workspace isolation (opt-in)" below, and
+> Requirements and coverage: "Workspace isolation" below, and
 > [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md).
 
 ---
@@ -197,7 +197,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   open` grants it (with isolation on, verify commands and `run:` steps run in the same jail). It is also scoped to what docket itself dispatches: a
   process started outside docket's turn loop is outside this gate entirely.
 - **Only commands are jailed, and only with isolation on.** The command gate above applies to every
-  `bash` call; the opt-in isolation (next section) jails `bash`, stdio MCP servers, and a pod's
+  `bash` call; isolation (next section) jails `bash`, stdio MCP servers, and a pod's
   verify commands and pipeline `run:` steps.
   The jail protects the host from writes: only the workspace and the task's worktree are
   writable, and your home directory is not readable from inside (Landlock and seatbelt); Docker
@@ -228,11 +228,12 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   fast with `approval_unavailable`, the one posture that never gives a human a chance to grant it
   later.
 
-### Workspace isolation (opt-in): the sandbox for the agents' shell
+### Workspace isolation (on where the machine can jail): the sandbox for the agents' shell
 
-**Off by default.** Without it, an agent's `bash` runs on your machine as you, bounded by the
-tool-call gate and the policies above but not by a sandbox. Turn it on when you want the shell
-contained as well as gated:
+**`docket init` turns it on when this machine has a backend** and nobody has chosen yet; with no
+backend, init says so and tools run on the host. Without it, an agent's `bash` runs on your machine
+as you, bounded by the tool-call gate and the policies above but not by a sandbox. To choose
+yourself:
 
 ```bash
 docket setup sandbox on      # needs a backend (below); exits 1 naming the fix if there is none
@@ -520,7 +521,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation is opt-in with `docket setup sandbox on`, which needs a usable backend on the host (`docket setup sandbox status` names it), and `docket setup sandbox network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again ("The operator loop" above): every notification channel ships off except your own console, which sends nothing, so `docket setup` warns until you enable one that delivers, and widening what one shares is a confirmed, audited command too.
+**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation is turned on by `docket init` where the host has a usable backend, and recorded with `docket setup sandbox on|off` (`docket setup sandbox status` names it), and `docket setup sandbox network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again ("The operator loop" above): every notification channel ships off except your own console, which sends nothing, so `docket setup` warns until you enable one that delivers, and widening what one shares is a confirmed, audited command too.
 
 ---
 

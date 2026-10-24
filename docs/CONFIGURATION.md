@@ -619,7 +619,7 @@ disappears. The Docker image is `DOCKET_SANDBOX_IMAGE`. The choice is `isolation
 `fleet.json`; `networkMode` (`docket setup sandbox network`) and `readOnly` (`docket setup sandbox
 read add|remove`, toolchain paths every jail may read, never write; a pod's `readOnly` setting only
 narrows them) are the other `security` keys the live path enforces. Requirements and coverage:
-[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md#workspace-isolation-opt-in-the-sandbox-for-the-agents-shell).
+[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md#workspace-isolation-on-where-the-machine-can-jail-the-sandbox-for-the-agents-shell).
 
 ### 3.7 Give agents external tools (MCP)
 

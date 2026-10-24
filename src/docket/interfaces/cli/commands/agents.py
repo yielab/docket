@@ -390,6 +390,7 @@ def run_init(req: InitRequest) -> int:
     ui.console.print("  docket pod add reviewer # add a role")
     _offer_desktop_channel()
 
+    _setup_sandbox.turn_on_where_detected()
     ui.console.print()
     ui.console.print("This machine")
     _setup_sandbox.print_sandbox_block()
