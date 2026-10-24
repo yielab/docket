@@ -68,7 +68,7 @@ def test_json_status_reports_the_backend(
         result = _runner.invoke(app, ["setup", "sandbox", "status", "--json"])
 
         assert result.exit_code == 0
-        assert '"backend": "none"' in result.stdout
+        assert json.loads(result.stdout)["backend"] == "none"
 
 
 def test_isolate_on_without_a_backend_fails_and_writes_nothing(

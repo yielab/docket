@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
 from typer.testing import CliRunner
@@ -26,7 +27,6 @@ from docket.governance import policy as _policy
 from docket.hops.application import report as pod_report
 from docket.hops.application import steps as _steps
 from docket.hops.application import sweep as _sweep
-from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
@@ -57,7 +57,7 @@ def _seed(
 
 
 def _show(*args: str, project: str = "demo") -> tuple[int, str]:
-    result = _runner.invoke(_pod.pod_app, ["show", *args, "--pod", project])
+    result = invoke_pod(["show", *args, "--pod", project])
     return result.exit_code, result.output
 
 

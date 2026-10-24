@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off
 from tests.support.pods import build_pod
@@ -52,7 +53,7 @@ def fake_driver(monkeypatch: pytest.MonkeyPatch) -> FakeDriver:
 
 
 def _reset(*extra: str) -> tuple[int, str]:
-    result = _runner.invoke(_pod.pod_app, ["reset", _MEMBER, "--pod", "demo", *extra])
+    result = invoke_pod(["reset", _MEMBER, "--pod", "demo", *extra])
     return result.exit_code, result.output
 
 
@@ -114,6 +115,6 @@ class TestPodReset:
         self, tmp_path: Path, fake_driver: FakeDriver
     ) -> None:
         with _make_ws(tmp_path):
-            result = _runner.invoke(_pod.pod_app, ["reset", "other-lead", "--pod", "demo", "--yes"])
+            result = invoke_pod(["reset", "other-lead", "--pod", "demo", "--yes"])
 
             assert result.exit_code == 1

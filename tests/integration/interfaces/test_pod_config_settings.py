@@ -16,12 +16,11 @@ from pathlib import Path
 
 import pytest
 import typer
+from tests.support.cli import invoke_pod
 from tests.support.pods import build_pod
 from tests.support.pods import seed_empty_home as _seed
-from typer.testing import CliRunner
 
 from docket.hops.application import steps as _steps
-from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.interfaces.http import sweeps as _sweeps
 from docket.kernel.home import current_home
@@ -46,7 +45,7 @@ def _lead_meta(project: str) -> dict[str, object]:
 
 
 def _show(project: str = "proj") -> tuple[int, str]:
-    result = CliRunner().invoke(_pod.pod_app, ["show", "--pod", project, "--json"])
+    result = invoke_pod(["show", "--pod", project, "--json"])
     return result.exit_code, result.output
 
 

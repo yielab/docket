@@ -16,12 +16,12 @@ from pathlib import Path
 
 import pytest
 import typer
+from tests.support.cli import invoke_pod
 from tests.support.cli import pod_cli as _pod_cli
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
 from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
 from tests.support.trace import trace_events as _trace_events
-from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
@@ -428,9 +428,7 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
 
 
 def _explain_json(agent_id: str, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
-    shown = CliRunner().invoke(
-        _pod.pod_app, ["show", agent_id, "--pod", _pod.pod.pod_of(agent_id) or "", "--json"]
-    )
+    shown = invoke_pod(["show", agent_id, "--pod", _pod.pod.pod_of(agent_id) or "", "--json"])
     assert shown.exit_code == 0, shown.output
     return json.loads(shown.stdout)  # type: ignore[no-any-return]
 

@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 import typer
+from tests.support.cli import invoke_pod
 from tests.support.fakes import FakeProcess
 from tests.support.pods import build_pod
 from tests.support.pods import meta as _meta
-from typer.testing import CliRunner
 
 from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import agents as _agents
@@ -45,7 +45,7 @@ def _ids(home: Path) -> list[str]:
 
 
 def _pod_cli(*args: str, project: str = "demo") -> tuple[int, str]:
-    result = CliRunner().invoke(_pod.pod_app, [*args, "--pod", project])
+    result = invoke_pod([*args, "--pod", project])
     return result.exit_code, result.output
 
 
@@ -490,9 +490,8 @@ class TestMemberSync:
 
 
 def _sync(*flags: str) -> str:
-    from typer.testing import CliRunner
 
-    result = CliRunner().invoke(_pod.pod_app, ["update", "--pod", "demo", *flags])
+    result = invoke_pod(["update", "--pod", "demo", *flags])
     assert result.exit_code == 0, result.output
     return result.output
 

@@ -5,9 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
-
-from docket.interfaces.cli.commands import pod as _pod
+from tests.support.cli import invoke_pod
 
 SUBJECT = "docket.interfaces.cli.commands.pod_config"
 
@@ -22,7 +20,7 @@ def _put_role(roles_dir: Path, file: str, text: str, soul: str = "You vet things
 
 
 def _validate(path: Path) -> tuple[int, str]:
-    result = CliRunner().invoke(_pod.pod_app, ["validate", str(path)])
+    result = invoke_pod(["validate", str(path)])
     return result.exit_code, result.output
 
 

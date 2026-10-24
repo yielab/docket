@@ -22,12 +22,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.pods import seed_pod as _seed_pod
-from typer.testing import CliRunner
 
 from docket.governance import audit as _audit
 from docket.interfaces.cli.commands import log as audit_cli
-from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
 from docket.interfaces.cli.commands.agents import InitRequest, run_init
@@ -729,9 +728,7 @@ class TestAgentAddDeleteAudit:
 
     def test_pod_delete_writes_one_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            result = CliRunner().invoke(
-                _pod.pod_app, ["delete", "--pod", "demo", "--confirm", "demo"]
-            )
+            result = invoke_pod(["delete", "--pod", "demo", "--confirm", "demo"])
             assert result.exit_code == 0, result.output
 
             entries = _entries("pod.delete")

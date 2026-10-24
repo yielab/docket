@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.cli import invoke_pod
 
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
@@ -307,11 +308,8 @@ class TestRegistryOverlay:
 class TestRolesCli:
     @staticmethod
     def _run(*args: str) -> Any:
-        from typer.testing import CliRunner
 
-        from docket.interfaces.cli.commands import pod as _pod
-
-        return CliRunner().invoke(_pod.pod_app, list(args))
+        return invoke_pod(list(args))
 
     def test_list_exits_zero(self, registry_file: Path) -> None:
         result = self._run("roles")
