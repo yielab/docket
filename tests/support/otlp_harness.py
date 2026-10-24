@@ -9,7 +9,7 @@ from docket.observability import projection
 from docket.observability import spans as observability_spans
 
 _TRACE_FIXTURE = (
-    Path(__file__).resolve().parents[3] / "fixtures" / "traces" / "dispatch-3-hops.jsonl"
+    Path(__file__).resolve().parents[1] / "fixtures" / "traces" / "dispatch-3-hops.jsonl"
 )
 
 
