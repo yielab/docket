@@ -35,7 +35,7 @@ from docket.teams import identity as _identity
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.agent.tools.registry"
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 

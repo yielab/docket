@@ -40,7 +40,7 @@ _hermetic = _support_home.hermetic_5
 
 SUBJECT = "docket.agent.tools.mcp_client"
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _write_pre_tool_call_policy(

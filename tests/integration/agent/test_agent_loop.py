@@ -55,7 +55,7 @@ from docket.observability import trace as _trace
 
 SUBJECT = "docket.agent.loop"
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 AGENT_LOOP_SRCS = sorted((REPO_ROOT / "src" / "docket" / "agent").glob("loop*.py"))
 
 
