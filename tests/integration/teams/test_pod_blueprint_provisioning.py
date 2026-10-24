@@ -32,7 +32,7 @@ from docket.kernel.home import current_home
 from docket.teams import blueprints as _bp
 from docket.teams import pod as _pod_core
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.teams.blueprints"
 
 # ── hermetic helpers (mirrors test_pod_roles_from_archetypes.py / test_pod_resources.py) ──
 

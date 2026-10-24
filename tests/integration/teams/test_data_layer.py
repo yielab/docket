@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import new_thread
 
-SUBJECT = "docket.teams"
+SUBJECT = "docket.teams.fleet"
 
 _runner = CliRunner()
 

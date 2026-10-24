@@ -14,7 +14,7 @@ from pathlib import Path
 from docket.teams import agent_memory as _mem
 from docket.teams import provisioning as _prov
 
-SUBJECT = "docket.agent"
+SUBJECT = "docket.teams.provisioning"
 
 
 class TestUxHelpers:

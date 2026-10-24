@@ -28,7 +28,7 @@ from docket.models import selection as _mp
 from docket.teams import pod
 from docket.teams import roles as _arch
 
-SUBJECT = "docket.teams"
+SUBJECT = "docket.teams.pod"
 
 
 class TestNormalizeRoleAgainstRegistry:

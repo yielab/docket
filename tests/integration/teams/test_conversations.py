@@ -19,7 +19,7 @@ from docket.kernel.threads import new_thread
 from docket.platform import store as _store
 from docket.teams import conversations as C
 
-SUBJECT = "docket.interfaces.cli.app"
+SUBJECT = "docket.teams.conversations"
 
 
 def _write(reg: C.ConversationRegistry, path: Path) -> None:

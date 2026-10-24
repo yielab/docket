@@ -25,7 +25,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod_provisioning as _pp
 
-SUBJECT = "docket"
+SUBJECT = "docket.teams.pod_provisioning"
 
 
 @contextmanager

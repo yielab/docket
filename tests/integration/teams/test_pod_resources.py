@@ -24,7 +24,7 @@ from docket.platform import store as _store
 from docket.teams import pod_provisioning as _pp
 from docket.teams import resources as _res
 
-SUBJECT = "docket.teams"
+SUBJECT = "docket.teams.resources"
 
 # ── hermetic helpers ─────────────────────────────────────────────────────────
 

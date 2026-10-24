@@ -14,7 +14,7 @@ import pytest
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
 
-SUBJECT = "docket.teams"
+SUBJECT = "docket.teams.member_workspace"
 
 
 def _legacy_member_soul(
