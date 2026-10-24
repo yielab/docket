@@ -276,3 +276,62 @@ class TestSkippedSettingsSayWhy:
             _write.apply(_pod_apply.plan_apply("demo", root), channel="cli")
             [item] = [i for i in _pod_apply.plan_apply("demo", root).items if i.kind == "setting"]
             assert (item.action, item.note) == ("skip", "")
+
+
+class TestMaxReworkCyclesWithAPipeline:
+    """`settings.maxReworkCycles` beside a pipeline would be accepted and ignored: refuse it."""
+
+    _PIPELINE = "kind: pipeline\nname: p\nsteps:\n  - plan: lead\n"
+
+    def test_a_manifest_declaring_both_is_refused(self, tmp_path: Path) -> None:
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(
+                tmp_path,
+                {
+                    "pod.yaml": "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 2\n",
+                    "pipeline.yaml": self._PIPELINE,
+                },
+            )
+
+            with pytest.raises(_model.PodApplyConflict, match=r"on: \{<label>: \{goto"):
+                _pod_apply.plan_apply("demo", root)
+
+    def test_a_named_pipeline_file_counts_too(self, tmp_path: Path) -> None:
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(
+                tmp_path,
+                {
+                    "pod.yaml": (
+                        "kind: pod\nname: x\npipeline: flow.yaml\nsettings:\n  maxReworkCycles: 2\n"
+                    ),
+                    "flow.yaml": self._PIPELINE,
+                },
+            )
+
+            with pytest.raises(_model.PodApplyConflict):
+                _pod_apply.plan_apply("demo", root)
+
+    def test_the_setting_alone_is_planned_as_before(self, tmp_path: Path) -> None:
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(
+                tmp_path,
+                {"pod.yaml": "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 2\n"},
+            )
+
+            items = _pod_apply.plan_apply("demo", root).items
+
+            assert [(i.kind, i.name) for i in items] == [("setting", "maxReworkCycles")]
+
+    def test_a_pod_that_already_binds_a_pipeline_refuses_the_setting_alone(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_fixture_pod(tmp_path, "demo"):
+            bound = _repo_dir(tmp_path / "a", {"pipeline.yaml": self._PIPELINE})
+            _write.apply(_pod_apply.plan_apply("demo", bound), channel="cli")
+            root = _repo_dir(
+                tmp_path / "b",
+                {"pod.yaml": "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 2\n"},
+            )
+
+            with pytest.raises(_model.PodApplyConflict):
+                _pod_apply.plan_apply("demo", root)

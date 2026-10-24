@@ -115,6 +115,22 @@ class TestPodApply:
             assert json.loads(result.output)["items"][0]["action"] == "add"
             assert not (current_home().pod_config_dir("demo") / "roles.json").exists()
 
+    def test_a_pod_yaml_with_a_rework_setting_and_a_pipeline_exits_2(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            directory = tmp_path / "recipe"
+            directory.mkdir()
+            (directory / "pod.yaml").write_text(
+                "kind: pod\nname: x\nsettings:\n  maxReworkCycles: 2\n", encoding="utf-8"
+            )
+            (directory / "pipeline.yaml").write_text(
+                "kind: pipeline\nname: p\nsteps:\n  - plan: lead\n", encoding="utf-8"
+            )
+
+            result = _pod_run("update", str(directory), "--pod", "demo", "--dry-run")
+
+            assert result.exit_code == 2
+            assert "on: {<label>: {goto: <step>, max: <n>}}" in result.output
+
     def test_a_document_that_is_not_a_role_or_policy_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             pipeline = tmp_path / "pipeline.yaml"

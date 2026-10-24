@@ -268,6 +268,9 @@ def _apply_repo_config(aid: str, apply_source: Path, no_apply: bool) -> int:
 
     try:
         plan = _pod_apply.plan_apply(aid, apply_source)
+    except _model.PodApplyConflict as exc:
+        ui.error(str(exc))
+        return 2
     except _model.PodApplyError as exc:
         ui.error(str(exc))
         return 1

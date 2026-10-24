@@ -137,6 +137,8 @@ def _apply_directory(
     try:
         directory = _recipes.resolve_recipe(target)
         plan = _pod_apply.plan_apply(project, directory)
+    except _model.PodApplyConflict as ex:
+        _fail(str(ex), code=2)
     except _model.PodApplyError as ex:
         _fail(str(ex))
     if not dry_run:

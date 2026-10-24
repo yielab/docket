@@ -186,6 +186,11 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     if key in _pod_settings.PodSettings.RECORDED_KEYS:
         ui.error(f"{key} is written by update, not by set")
         raise typer.Exit(1)
+    if key == "maxReworkCycles" and _pod_settings.PodSettings.load_for(project).pipeline:
+        ui.error(
+            _pod_settings.REWORK_BOUND_BY_PIPELINE, f"docket pod unset pipeline --pod {project}"
+        )
+        raise typer.Exit(2)
     try:
         coerced = _pod_settings.PodSettings.coerce(key, value, project=project)
     except _pod_settings.PodSettingsError as ex:

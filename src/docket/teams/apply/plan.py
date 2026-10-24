@@ -42,6 +42,7 @@ from docket.teams.apply.model import (
     ApplyAction,
     ApplyItem,
     ApplyPlan,
+    PodApplyConflict,
     PodApplyError,
     _McpServerWrite,
     _MemberWrite,
@@ -357,6 +358,15 @@ def _plan_pipeline(
     )
 
 
+def _pipeline_bound(project: str) -> bool:
+    """Whether *project* already has a bound pipeline (unreadable settings are reported by
+    ``_plan_settings``, not here)."""
+    try:
+        return bool(_pod_settings.PodSettings.load_for(project).pipeline)
+    except _pod_settings.PodSettingsError:
+        return False
+
+
 def _plan_settings(
     project: str, raw_settings: dict[str, Any], mcp_extra: tuple[str, ...] = ()
 ) -> tuple[list[ApplyItem], list[_SettingWrite]]:
@@ -496,8 +506,13 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     mcp_items, mcp_write = _plan_mcp_servers(directory, project)
 
+    all_settings = _settings_with_top_level(raw_settings, manifest)
+    if "maxReworkCycles" in all_settings and (
+        pipeline_item is not None or _pipeline_bound(project)
+    ):
+        raise PodApplyConflict(f"pod.yaml: {_pod_settings.REWORK_BOUND_BY_PIPELINE}")
     setting_items, setting_writes = _plan_settings(
-        project, _settings_with_top_level(raw_settings, manifest), tuple(i.name for i in mcp_items)
+        project, all_settings, tuple(i.name for i in mcp_items)
     )
 
     items = [*role_items, *policy_items, *plugin_items, *skill_items, *mcp_items, *member_items]

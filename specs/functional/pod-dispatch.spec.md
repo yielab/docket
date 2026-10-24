@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 9.1.0
+**Version**: 9.2.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -601,7 +601,13 @@ wired agent's conversation current with the task it is working.
    the raw CLI argument string; any `set` or `unset` of `budgetUsd`, whatever the value, re-queues
    the pod's blocked tasks (`unblock_pod`) and clears the Lead's `paused`/`pausedReason`. The line
    it prints counts every task `unblock_pod` re-queued, whatever its `blockedReason`:
-   `Unblocked <n> blocked task(s)`.
+   `Unblocked <n> blocked task(s)`. `docket pod set maxReworkCycles` on a pod with a bound pipeline
+   **MUST** be refused with exit 2 and the stored settings untouched, the message
+   (`REWORK_BOUND_BY_PIPELINE`) naming the pipeline's own bound, `on: {<label>: {goto: <step>,
+   max: <n>}}`: a bound pipeline is never patched with the pod's `maxReworkCycles`, so the setting
+   would be accepted and ignored. `unset` is always allowed. `docket pod show` reports a bound
+   pod's `maxReworkCycles` with source `pipeline` and, as its value, the bounds the pipeline itself
+   carries (`<step>:<max>` comma-joined, `none` when it has none).
 3. `approvalMode` (`"wait"` | `"park"` | `"refuse"`, field default `"wait"`) is a setting on the
    same model (`PodSettings.approval_mode`), writable through the same `show`/`set`/`unset` surface.
    A present-but-invalid stored value (anything other than the three literals) raises exactly like a

@@ -24,7 +24,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`code-intel`](#code-intel) | 2 MCP servers | Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers. |
 | [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`dual-review`](#dual-review) | 2 members, pipeline `dual-review` | Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass. |
-| [`frugal`](#frugal) | 1 member, 3 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
+| [`frugal`](#frugal) | 1 member, 2 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
 | [`git-safety`](#git-safety) | 2 policies | Block unattended-unsafe git commands and ask before a push that touches a protected branch. |
 | [`intake`](#intake) | 1 member, pipeline `intake` | The Lead reasons about a task before any code changes: a typed brief, a deterministic resource check, and an operator question when something only a human can answer. |
 | [`mutation`](#mutation) | pipeline `mutation` | Fails a task whose changed source files are not well covered by their tests, measured by mutation testing with mutmut (must be installed). |
@@ -261,7 +261,7 @@ docket pod remove <project>-critic
 
 A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping.
 
-**Brings:** 1 member, 3 settings, pipeline `frugal`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline frugal · plugins 0 · skills 0 · settings 3`
+**Brings:** 1 member, 2 settings, pipeline `frugal`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline frugal · plugins 0 · skills 0 · settings 2`
 
 ```bash
 docket init --recipe frugal
@@ -275,8 +275,8 @@ reserve spend for the step that actually needs it (the Implementer) and cap the 
 right-size-the-model-to-the-role practice model-routing setups use.
 
 **What docket's gates make structural:** `budgetUsd: 2` is enforced by dispatch's own budget
-gate — a task that would exceed it pauses rather than silently overspending. `maxReworkCycles: 1`
-bounds the Reviewer's own rework edge pod-wide. `model: cheap` on `plan` and `review` resolves
+gate — a task that would exceed it pauses rather than silently overspending. The pipeline's own
+`on: {REQUEST-CHANGES: {goto: build, max: 1}}` bounds the Reviewer's rework edge. `model: cheap` on `plan` and `review` resolves
 against the live rank anchors for that hop only; it is never persisted to the Lead's or
 Reviewer's own model, so removing this pipeline restores their ordinary resolution.
 
@@ -289,15 +289,15 @@ docket init --recipe frugal          # a new pod for the current repository
 docket pod update frugal    # onto an existing pod
 ```
 
-`pod.yaml` names the one member this recipe adds (`reviewer`) and the three settings it writes
-(`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`); `apply` validates the roster, the settings and
+`pod.yaml` names the one member this recipe adds (`reviewer`) and the two settings it writes
+(`budgetUsd`, `turnTimeoutS`); `apply` validates the roster, the settings and
 `pipeline.yaml` before writing anything, and is safe to run again (a second run plans every item
 `skip`). `--dry-run` prints the plan without writing.
 
 ### Files
 
 - `pod.yaml` — what `apply` reads: `kind: pod`, `name: frugal`, `members: [reviewer]`,
-  `settings: {budgetUsd: 2, maxReworkCycles: 1, turnTimeoutS: 600}`.
+  `settings: {budgetUsd: 2, turnTimeoutS: 600}`.
 - `pipeline.yaml` — `plan` (Lead, `model: cheap`) -> `build` (Implementer, gated on its own
   verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES verdict, rework
   -> build, maxCycles 1).
@@ -307,7 +307,6 @@ docket pod update frugal    # onto an existing pod
 ```bash
 docket pod unset pipeline
 docket pod unset budgetUsd
-docket pod unset maxReworkCycles
 docket pod unset turnTimeoutS
 docket pod remove <project>-reviewer
 ```
