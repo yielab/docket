@@ -21,11 +21,16 @@ pause, fixed at the root. **Phase 47** (the seams ADR 0030
 §"After Phase 46" names) runs on the same branch. Wave 1 (P47-1..P47-9, archived) shipped ports for
 git, processes, the jail, the tracer and the tool gate, `agent` as the turn engine, one writer of a
 task's `status`, pure gate decisions, one owner per test helper, and the layers contract (import
-baseline 748 -> 65 lines). The close-out is active on `TODO.md`: P47-10 integrates the tests-by-context
-branch; P47-11 moves modules to the context that owns their data from a computed plan (62 upward
-imports to an expected handful) and removes the local imports and shims; P47-12 leaves one authored
-YAML form per kind, refuses a setting that does nothing, and adds a `command` policy predicate checked
-against M-1's measured corpus; P47-13 finishes the test audit; P47-14 closes. Decisions waiting for the maintainer are in §7.1.
+baseline 748 -> 65 lines). The close-out (`TODO.md`) has merged P47-10..P47-13 and M-1 (2026-10-24):
+every module sits in the context whose data it reads (contract baseline 1 line, local imports 1, no
+cross-context private name), one authored YAML form per kind, no setting that silently does nothing,
+policies on the parsed command measured on a 310-row corpus, and the test refactor; the close's gates
+ran once. **Open:** P47-15, the four defects the close's first real run found on the live home (a
+sweep with nothing to claim writes a run record, 85,540 empty records and 47 MB in a week with lock
+timeouts; tests wrote eight pods into the real home on 2026-10-23; state leaking between test files
+in a no-sandbox run; `docket stop` advising `kill -9` too early). The live install and home were then
+reset (kept in `~/docket-reset-backup-20261024/`), so P47-14's real run starts from zero. Decisions
+waiting for the maintainer are in §7.1.
 Phase 45 (a prepared task worktree, model
 limits from the provider, protected paths, approvals per team; D-65,
 [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md))

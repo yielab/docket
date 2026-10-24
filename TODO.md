@@ -97,7 +97,7 @@ from `main`.
 **Order, by file contention:**
 
 ```text
-P47-10 ─► P47-11 ─► P47-12 ─► P47-13 ─► P47-14 close
+P47-10 ─► P47-11 ─► P47-12 ─► P47-13 ─► P47-15 ─► P47-14 close (its real run on a fresh home)
 M-1 ─────────────────┘   (M-1 must finish before P47-12; it runs beside P47-10 or P47-11)
 ```
 
@@ -105,6 +105,8 @@ M-1 ─────────────────┘   (M-1 must finish be
 - P47-11 moves modules between contexts; `move.py` carries their mirrored tests and the dotted names
   in specs. P47-12 then changes configuration behaviour in modules that already sit where they stay.
 - P47-13 rewrites the tests last, once every patch target and helper has stopped moving.
+- P47-15 fixes what the close's first real run found on the live home (2026-10-24); the close's real
+  run then starts from a fresh install and an empty `DOCKET_HOME`.
 - P47-14 runs the full gates, the goldens and the real run once, after all code has settled.
 - M-1 only runs commands through the policy path and commits a data file; P47-12 turns it into a test.
 
@@ -346,6 +348,51 @@ and every row left allowed carries a `limit:` reason that the security spec name
 - **Gate:** `uv run pytest tests/guards -q`, `pytest --co`, and the files each step touched; at the end,
   one parallel default run, then `--lf` only.
 
+### P47-15 — the live home stays bounded, and no test touches it
+
+**Status:** TODO, before P47-14's real run · **Size:** M · **Model:** Sonnet, one run · **Kind:** B
+(named behaviour changes) + T
+
+- **Trigger (found by the close's first real run on the live `~/.docket`, 2026-10-24):**
+  1. **A sweep with nothing to claim writes a run record.** `docket-runs.json` held 85,591 runs over
+     seven days; 85,540 were `source: sweep` with `taskIds: []`, one per pod per 30 s tick, 47 MB.
+     Every write rewrites the file and its `.bak`, and the restarted service logged `sweep: pod race
+     failed: Could not acquire lock for docket-runs.json within 10s`. `runs.prune_terminal` exists but
+     uses `trace_retention_s`, so nothing was old enough to prune.
+  2. **Tests wrote eight pods into the real home on 2026-10-23** (`race`, `flaky`, `httpproj`,
+     `myops`, `myresearch`, `web-dev`, `demo`, `w120-2`; codebases `/src/<name>`, empty, or an agent
+     worktree), between 03:17 and 11:53, during the Phase 46 `Home` conversion. The names are the
+     fixtures of `tests/integration/interfaces/test_serve_pods_endpoint.py` and
+     `tests/integration/teams/test_pod_blueprint_provisioning.py`; the serve handler threads did not
+     carry the test's `Home` at the time. The service then swept the eight pods on every tick.
+  3. **State leaks between test files in one worker:** two `tests/integration/hops/test_diff_probe.py`
+     tests (`TestHopDiffProbeUnit::test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence`,
+     `::test_real_probe_resolves_task_worktree_first`) fail only in the full
+     `scripts/maint/pytest-without-sandbox.sh -n auto --dist loadfile` run and pass alone: the probe
+     saw no files although `fake_git` supplies them. Candidates: the cached process default `Home`
+     (`kernel/home.py::_DEFAULT`) or a port binding another file left.
+  4. **`docket stop` advises `kill -9`** ("did not exit. Run `kill -9 <pid>`") after its 15 s wait
+     while the service is still exiting; it was gone seconds later.
+- **Steps (one commit each):**
+  1. RED: a test that ten idle sweep ticks over two pods leave `docket-runs.json` byte-identical; then
+     a sweep records a run only when it claims a task (spec: operator-api or pod-dispatch, whichever
+     owns run records; name the change). Nothing migrates existing files (D-57).
+  2. A session guard in `tests/conftest.py`: any resolution of the real `~/.docket` (or the real
+     `$HOME`) during the test session fails the test that did it, seen failing on a planted case.
+     Run the two named files under it; fix what it catches.
+  3. Find the leak behind item 3: run the worker's file order from a `-n auto --dist loadfile` run
+     against `test_diff_probe.py` (bisect the file list once), fix the leaking fixture, and make the
+     autouse fixture reset whatever it was. The no-sandbox run is the check.
+  4. `docket stop` waits for the pid after the second signal (bounded) and advises `kill -9` only
+     when it is still alive; a unit test with a fake process.
+- **Non-goals:** a retention policy for run records beyond step 1; the timing flakes in the
+  follow-ups.
+- **Acceptance:** the idle-tick test passes; the home guard is in the default suite and was seen
+  failing; `scripts/maint/pytest-without-sandbox.sh -q -n auto --dist loadfile` passes once; `docket
+  stop` on a slow exit prints no kill advice.
+- **Gate:** the touched files' tests, `tests/guards`, `pytest --co`; at the end, one parallel default run
+  and one no-sandbox run.
+
 ### P47-14 — close Phase 47
 
 **Status:** IN-PROGRESS (@integrator) · **Size:** M · **Owner:** integrator (not a docket task) · **Kind:** close
@@ -360,8 +407,12 @@ and every row left allowed carries a `limit:` reason that the security spec name
      diff explained line by line), `uv run pytest tests/agent`, `bash scripts/validate-specs.sh`,
      `uv run python scripts/metrics.py --check`, `gen_cli_docs.py --check`, `gen_recipe_docs.py --check`,
      `comment_lint.py --check` on the files Phase 47 touched.
-  3. The real run on `fab-dev`, compared with `internal-docs/baselines/phase-46/after/dispatch`: same
-     hop order, event types and transitions.
+  3. The real run on `fab-dev` from zero, done by the maintainer: `./install.sh` from this branch, an
+     empty `DOCKET_HOME`, providers, sandbox and the pod recreated from the export in
+     `~/docket-reset-backup-20261024/fab-p47/export/` (the previous home, install and Fabulada's
+     `docket/fab-dev/*` branches are kept there), then `scripts/maint/live-dispatch-baseline.sh` and
+     `fab-p47/compare.py` against `internal-docs/baselines/phase-46/after/dispatch`: same final status,
+     transitions, hops and per-role control-flow events.
   4. Delete the refactor tools: `scripts/maint/refactor/` (`analyze.py`, `move.py`, `hoist_imports.py`,
      `plan_layers.py`, `docket-rules.toml`), `refactor/target-map.toml`, `scripts/maint/refactor_gate.sh`,
      `tests/guards/test_refactor_*.py`, `tests/guards/fixtures/refactor/`, and every reference to them
@@ -410,31 +461,8 @@ measurement (no `src/` change)
   and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
   over half") fired. Next: on a real run, measure which calls repeat before cutting anything.
 
-**Found by the Phase 47 close's real run (2026-10-24, live `~/.docket`).**
-
-- **Fired: a sweep with nothing to claim writes a run record.** `docket-runs.json` held 85,591 runs
-  over seven days, 85,540 of them sweep runs with no task (one per pod per 30 s tick), 47 MB; every
-  write rewrites it and its `.bak`, and the restarted service logged `Could not acquire lock for
-  docket-runs.json within 10s`. `prune_terminal` exists but shares `trace_retention_s`, so nothing was
-  old enough to prune. Next: record a run only when a sweep claims a task (or prune empty ones on the
-  next tick), with a test that ten idle ticks leave the file unchanged.
-- **Fired: tests wrote eight pods into the real home on 2026-10-23** (`race`, `flaky`, `httpproj`,
-  `w120-2`, `myops`, `myresearch`, `web-dev`, `demo`; codebases `/src/<name>`, empty, or an agent
-  worktree), created between 03:17 and 11:53 during the Phase 46 `Home` conversion; the service then
-  swept them every tick. Next: find the test (the names come from its fixtures) and add a session
-  guard that fails when a test resolves `~/.docket`.
-- **`docket stop` says "did not exit. Run `kill -9`"** after its 15 s wait while the service is
-  still exiting; it was gone seconds later. Next: wait for the pid after the second signal before
-  advising a kill.
-
 **Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
 
-- **Two `test_diff_probe.py` tests fail only in the full no-sandbox parallel run**
-  (`TestHopDiffProbeUnit::test_non_implementer_role_gets_files_and_diff_but_no_ref_or_evidence`,
-  `::test_real_probe_resolves_task_worktree_first`): the probe returned no files although `fake_git`
-  supplies them. Hypothesis: state left by another file in the same worker (the cached default `Home`
-  in `kernel/home.py::_DEFAULT`, or a port binding). Trigger: it fails again, or the `no-sandbox` CI job
-  goes red on it. Then run that worker's file list in its order to find the leaking file.
 - **Timing flakes seen once each:** `test_kernel_adoption.py` over its 2 s guard ceiling,
   `test_retries_and_timeouts.py::TestRetryDoesNotTripStaleClaimSweep`, and the foreground approval
   deny test (its fake approval timeout was raised from 5 s to 60 s, `1a704359`). Trigger: a second
