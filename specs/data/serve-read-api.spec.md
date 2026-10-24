@@ -828,16 +828,16 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   run record and its `cancellation` lifecycle
 - `src/docket/tasks/application/queue.py`: `read_tasks`, `enqueue_task_once`
 - `src/docket/tasks/domain/task.py`: task-record normalization (`_TASK_SCALAR_DEFAULTS`)
-- `src/docket/pipeline/application/steps.py`: `effective_pipeline`
-- `src/docket/tasks/application/sweep.py`: `dispatch_pod`
+- `src/docket/hops/application/steps.py`: `effective_pipeline`
+- `src/docket/hops/application/sweep.py`: `dispatch_pod`
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval_detail`, `TASK_GRANT_CAP`
 - `src/docket/tasks/application/evidence.py`: `task_evidence`
 - `src/docket/observability/trace.py`: `export_lines`, `trace_event`, `expire_old_traces`, `sweep_all`
 - `src/docket/governance/audit.py`: `read_audit`, rotation at `AUDIT_LOG_MAX_BYTES`
 - `src/docket/governance/approval.py`: `APPROVAL_CHANNELS`, `list_pending`, `approval_grant`,
   `approval_deny`, `approval_set_option`
-- `src/docket/tasks/application/answers.py`: `answer_task`
-- `src/docket/tasks/application/interruptions.py`: `record_pregrant`
+- `src/docket/hops/application/answers.py`: `answer_task`
+- `src/docket/hops/application/interruptions.py`: `record_pregrant`
 - `src/docket/pipeline/domain/spec.py`: `resolve_variables`
 - `src/docket/teams/provisioning.py`: `validate_project_id`
 - `src/docket/teams/pod_provisioning.py`: `provision_pod`, `validate_verify_cmd`

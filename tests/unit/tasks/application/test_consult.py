@@ -12,12 +12,13 @@ from typing import Any
 import pytest
 
 from docket.agent.ports import ToolCall
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext, ToolResult, dispatch_tool
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 from docket.observability import trace as _trace
 from docket.platform import parked_question
 from docket.tasks.application import consult as _consult
+from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.tasks.application.consult"
@@ -79,7 +80,7 @@ class TestRegistration:
         assert _arch.BUILTIN_TOOL_KINDS["consult"] == "read"
 
     def test_a_reviewer_keeps_consult(self) -> None:
-        registry = _arch.registry_for_role(builtin_registry(), "reviewer")
+        registry = _role_composer.registry_for_role(builtin_registry(), "reviewer")
         assert "consult" in registry.names()
         assert "write" not in registry.names()
 
@@ -146,7 +147,7 @@ class TestRefuse:
 
     def test_the_question_survives_the_real_error_string_and_dispatch_parser(self) -> None:
         from docket.agent import loop as _loop
-        from docket.hops.application import record as _record
+        from docket.tasks.application import record as _record
 
         result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
         error = _loop.approval_parked_error(result)

@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.platform import read_json, write_json
+from docket.teams import fleet as _fleet
 from docket.teams.models import AgentMeta
 
 _LENIENT = ConfigDict(extra="allow", populate_by_name=True)
@@ -68,7 +69,7 @@ class FleetSecurity(BaseModel):
     network_mode: str = Field("unset", alias="networkMode")
     # 'auto' (landlock on Linux, seatbelt on macOS) | 'docker' (docker only, once chosen).
     sandbox_backend: str = Field("auto", alias="sandboxBackend")
-    # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; governance/profile.py).
+    # 'unset' (attended: nothing recorded) | 'lights-out' (ADR 0025 D2; hops/gates/profile.py).
     profile: str = Field("unset", alias="profile")
     # Resolved absolute paths every jail reads and executes, never writes (the toolchain).
     read_only: list[str] = Field(default_factory=list, alias="readOnly")
@@ -374,3 +375,31 @@ def set_model_both(agent_id: str, model: str) -> None:
     agent's model, so despite the name there is only one write to make.
     """
     meta_set(agent_id, "model", model)
+
+
+def apply_workspace_isolation() -> None:
+    """Record that per-agent Docker sandbox isolation is desired.
+
+    The Docker capability check at ``docket setup sandbox on`` time is the
+    caller's responsibility. Writes fleet.json's isolation mode, read by
+    ``DocketDriver`` on every turn to decide real landlock, seatbelt or docker containment
+    when a backend is usable, or an audited refusal instead of an
+    unsandboxed run when none is.
+    """
+    _fleet.set_sandbox_isolation(mode="non-main")
+
+
+def disable_workspace_isolation() -> None:
+    """Turn the recorded sandbox-isolation mode off (mode: off)."""
+    _fleet.disable_sandbox_isolation()
+
+
+def project_ids() -> list[str]:
+    """Sorted list of project agent IDs (dirs containing .docket-meta.json)."""
+    if not current_home().projects_dir.is_dir():
+        return []
+    return sorted(
+        d.name
+        for d in current_home().projects_dir.iterdir()
+        if d.is_dir() and (d / current_home().meta_file).is_file()
+    )

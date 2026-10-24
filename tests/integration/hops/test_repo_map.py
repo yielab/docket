@@ -1,4 +1,4 @@
-"""``hops/workspace/repo_map.py``: the derived repository map and the task root block."""
+"""``teams/workspace/repo_map.py``: the derived repository map and the task root block."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ import subprocess
 from pathlib import Path
 
 from docket.agent.tools.builtins import toolbox
-from docket.hops.workspace import repo_map as R
 from docket.kernel.home import current_home, use_home
+from docket.teams.workspace import repo_map as R
 
-SUBJECT = "docket.hops.workspace.repo_map"
+SUBJECT = "docket.teams.workspace.repo_map"
 
 
 def _repo(root: Path, files: list[str]) -> Path:

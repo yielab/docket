@@ -15,13 +15,13 @@ from tests.support.pods import build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, assistant
 from docket.hops.application import driver as _dr
-from docket.hops.application import record as _record
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import Home, use_home
 from docket.observability import trace as _trace
 from docket.tasks.application import evidence as _ev
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
@@ -195,10 +195,10 @@ class TestEvidence11:
 class TestRepoFilesOnTheHop:
     def test_round_trips_through_the_persisted_record(self) -> None:
         hop = _task.HopResult(role="lead", member_id="m", ok=True, repo_files=_REPO_FILES)
-        rec = _record._hop_record(hop)
+        rec = _record.hop_record(hop)
         assert rec["repoFiles"] == _REPO_FILES
-        assert _record._hop_from_record(rec).repo_files == _REPO_FILES
-        assert _record._hop_from_record({"role": "lead"}).repo_files == {}
+        assert _record.hop_from_record(rec).repo_files == _REPO_FILES
+        assert _record.hop_from_record({"role": "lead"}).repo_files == {}
 
     def test_dispatch_copies_the_turns_repo_files_onto_the_hop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

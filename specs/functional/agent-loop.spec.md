@@ -878,18 +878,19 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
   `condense_history`
 - `src/docket/teams/roles.py`: `registry_for_role`
 - `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolContext`, `ToolResult`;
-  `agent/tools/builtin_tools.py`: `builtin_registry`, the `skill`, `consult` and `fetch` tools;
+  `hops/application/builtin_tools.py`: `builtin_registry`, the `skill`, `consult` and `fetch` tools;
   `agent/tools/screening.py`: `screen_tool_result`
 - `src/docket/agent/tools/builtins/toolbox.py`: `SKIPPED_DIRS`, `READ_DEFAULT_LINES`,
   `READ_DEFAULT_CHARS`, `read_file`, `glob_files`, `grep_files`, `run_bash`, the output truncation
-- `src/docket/hops/workspace/skills.py`: `discover_skills`
-- `src/docket/hops/workspace/repo_view.py`: `RepoView`
+- `src/docket/teams/workspace/skills.py`: `discover_skills`
+- `src/docket/teams/workspace/repo_view.py`: `RepoView`
 - `src/docket/platform/git.py`: `git_read_blob`, `git_list_tree_dirs`
 - `src/docket/teams/memory.py`: `render_entries`
 - `src/docket/teams/pod.py`: `PodSettings` (`projectInstructions`, `mcpServers`)
-- `src/docket/teams/report.py`: the `docket pod show` report of project instructions
+- `src/docket/hops/application/report.py`: the `docket pod show` report of project instructions
 - `src/docket/agent/ports.py`: `ChatBackend`, `ChatResponse`, `TokenUsage`, `FailureKind`, `Endpoint`
-- `src/docket/models/adapters/openai_http.py`: `client_for`, `resolve_endpoint`, `endpoint_from_spec`
+- `src/docket/models/adapters/openai_http.py`: `client_for`
+- `src/docket/models/application/endpoint.py`: `resolve_endpoint`, `endpoint_from_spec`
 - `src/docket/models/catalog.py`: `resolve_limits`
 - `src/docket/tasks/application/runs.py`: `RunCancellationSignal`, `current_cancellation_signal`
 - `src/docket/tasks/domain/task.py`: `DispatchError`

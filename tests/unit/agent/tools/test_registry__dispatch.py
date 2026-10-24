@@ -15,9 +15,8 @@ from tests.support import llm as _support_llm
 from tests.support import pods as _support_pods
 from tests.support.cli import call as _call
 
-from docket.agent.tools import builtin_tools, screening
 from docket.agent.tools import registry as core_tools
-from docket.agent.tools.builtin_tools import builtin_registry
+from docket.agent.tools import screening
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import (
@@ -30,6 +29,8 @@ from docket.agent.tools.registry import (
 )
 from docket.governance import approval as core_approval
 from docket.governance import approval_pregrant
+from docket.hops.application import builtin_tools
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 from docket.kernel.operator_contract import canonical_args_digest
 
@@ -438,7 +439,7 @@ class TestSinglePathToExecution:
     # `toolbox.read_file` et al.); nothing outside `dispatch_tool` ever does.
     ALLOWED_IMPORTERS: ClassVar[set[str]] = {
         "agent/tools/registry.py",
-        "agent/tools/builtin_tools.py",
+        "hops/application/builtin_tools.py",
         "agent/tools/builtins/toolbox.py",
         "agent/tools/mcp_tools.py",
         "agent/tools/mcp_client.py",

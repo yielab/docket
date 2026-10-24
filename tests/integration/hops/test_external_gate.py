@@ -21,13 +21,13 @@ from tests.support.llm import implementer_messages as _implementer_messages
 from tests.support.pods import build_pod
 
 from docket.governance import secrets as _secrets
+from docket.hops.application import answers as _answers
+from docket.hops.application import sweep as _sweep
 from docket.hops.gates import post_hop as _post_hop
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.hops.gates.post_hop"

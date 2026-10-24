@@ -9,9 +9,9 @@ from tests.support import home as _support_home
 from tests.support.pods import write_meta_4 as _write_meta
 from typer.testing import CliRunner
 
+from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands import pod as _pod
-from docket.pipeline.application import steps as _steps
-from docket.tasks.application import queue as _queue
+from docket.teams import pod as _teams_pod
 
 _hermetic = _support_home.hermetic_6
 
@@ -173,7 +173,7 @@ class TestPipelinePlanCli:
         expected_spec = _steps.effective_pipeline("demo", None)
         expected_plan = _orch.resolve_plan(
             expected_spec,
-            _queue.pod_full_roster("demo"),
+            _teams_pod.pod_full_roster("demo"),
             registry=_archetypes.load_registry(),
         )
         assert _orch.render_plan(expected_plan) in result.output

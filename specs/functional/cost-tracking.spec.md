@@ -206,10 +206,10 @@ $ docket run --resume
 - `src/docket/teams/utils.py`: `aggregate_cost`, `cost_history`, `estimate_cost_usd`, `gating_cost`
 - `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`, the pre-hop budget gate, the Lead pause writer
 - `src/docket/teams/settings.py`: `pod_recorded_cost`, `pod_budget`
-- `src/docket/pipeline/application/steps.py`: `unpriced_budget_models`
+- `src/docket/hops/application/steps.py`: `unpriced_budget_models`
 - `src/docket/tasks/application/lifecycle.py`: `unblock_pod`
 - `src/docket/tasks/application/queue.py`: the claim-time pause check
-- `src/docket/models/selection.py`: `price_for`
+- `src/docket/teams/model_selection.py`: `price_for`
 - `src/docket/observability/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `budget_warning`, `paused_refused`)
 - `src/docket/agent/ports.py`: `TurnResult.cost_usd`, `UsageReport`, `DriverCapabilities.reports_cost_usd`
 - `src/docket/hops/application/driver.py`: `DocketDriver.usage`, `DocketDriver.capabilities`

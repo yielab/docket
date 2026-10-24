@@ -20,9 +20,9 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.kernel.home import Home, use_home
-from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
+from docket.teams import pod as _teams_pod
 from docket.teams import pod_provisioning as _pp
 
 SUBJECT = "docket.teams.pod_provisioning"
@@ -592,7 +592,7 @@ class TestInitReadsRepoConfig:
             rc = _agents.run_init(_agents.InitRequest(location=str(codebase), name="demo"))
 
             assert rc == 0
-            assert "reviewer" in _queue.pod_full_roster("demo")
+            assert "reviewer" in _teams_pod.pod_full_roster("demo")
             assert len([e for e in _audit.read_audit() if e["action"] == "pod.apply"]) == 1
 
     def test_invalid_docket_dir_provisions_nothing(self, tmp_path: Path) -> None:
@@ -617,7 +617,7 @@ class TestInitReadsRepoConfig:
             )
 
             assert rc == 0
-            assert "security-vetter" in _queue.pod_full_roster("demo")
+            assert "security-vetter" in _teams_pod.pod_full_roster("demo")
 
     def test_created_summary_counts_the_members_the_recipe_added(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -741,5 +741,5 @@ class TestInitReadsRepoConfig:
             )
 
             assert rc == 0
-            assert "reviewer" not in _queue.pod_full_roster("demo")
+            assert "reviewer" not in _teams_pod.pod_full_roster("demo")
             assert not [e for e in _audit.read_audit() if e["action"] == "pod.apply"]

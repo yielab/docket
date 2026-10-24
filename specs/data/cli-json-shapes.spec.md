@@ -609,12 +609,12 @@ snake_case.
 - `src/docket/interfaces/cli/commands/setup_sandbox.py`: `sandbox_state`
 - `src/docket/interfaces/cli/commands/setup_model.py`: `setup model`, `setup provider`
 - `src/docket/interfaces/cli/commands/setup_notify.py`, `src/docket/interfaces/cli/commands/setup_export.py`, `src/docket/interfaces/cli/commands/setup_mcp.py`: the `list` / `show` / `preview` commands
-- `src/docket/teams/report.py`: `pod_report`, `member_report`
+- `src/docket/hops/application/report.py`: `pod_report`, `member_report`
 - `src/docket/teams/pod.py`: `PodSettings.KEYS`
 - `src/docket/tasks/domain/options.py`: `TASK_STATUSES`, `TaskOptions`
-- `src/docket/tasks/application/interruptions.py`: `forecast`
+- `src/docket/hops/application/interruptions.py`: `forecast`
 - `src/docket/tasks/application/runs.py`: `create_run`, the run record
-- `src/docket/governance/profile.py`: `as_json`
+- `src/docket/hops/gates/profile.py`: `as_json`
 - `src/docket/kernel/operator_contract.py`: `InboxView`
 - `src/docket/tasks/application/queue.py`: `read_tasks`
 - `src/docket/tasks/application/lifecycle.py`: `task_diff`

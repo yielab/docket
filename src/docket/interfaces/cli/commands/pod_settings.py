@@ -12,12 +12,10 @@ from docket.interfaces.cli.render import ui
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json, write_json
 from docket.tasks.application import lifecycle as _lifecycle
-from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
@@ -42,7 +40,7 @@ def _regenerate_member_tools(member_id: str, project: str) -> None:
         return
     raw_codebase = _fleet.meta_get(member_id, "codebase", "")
     codebase = pod.resolve_member_cwd(member_id, "", raw_codebase)
-    content = _member_workspace._member_tools(
+    content = _member_workspace.member_tools(
         project,
         role,
         codebase,
@@ -82,7 +80,7 @@ def _unset_member_verify(project: str, member_id: str) -> None:
 def _lead_for_settings(project: str) -> str:
     """The Lead's member id, after checking the pod exists and has one."""
     try:
-        _steps.pod_pipeline(project)
+        pod.pod_pipeline(project)
     except DispatchError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
@@ -99,7 +97,7 @@ def _budget_changed(project: str, lead_id: str) -> None:
 
 
 # Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the
-# operator's original path, which can drift or disappear -- pipeline/application/steps.py's
+# operator's original path, which can drift or disappear -- hops/application/steps.py's
 # effective_pipeline verifies the copy against this hash on every read.
 def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
     """``docket pod set pipeline <file>``: validate *path_str* and
@@ -116,7 +114,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
             ui.console.print(f"  [red]x[/red] {e}")
         raise typer.Exit(1)
 
-    roster = _queue.pod_full_roster(project)
+    roster = pod.pod_full_roster(project)
     registry = _arch.load_registry(project)
     plan = _orch.resolve_plan(result.spec, roster, registry=registry)
     problems = _recipes.unresolvable_pipeline_steps(plan, project)

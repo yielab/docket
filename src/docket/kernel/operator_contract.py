@@ -15,7 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from docket.kernel import ids as _ids
-from docket.kernel.brief import TaskBrief as TaskBrief
+from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import InvalidInput
 
 A2AState = Literal[

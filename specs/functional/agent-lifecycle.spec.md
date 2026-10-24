@@ -284,7 +284,7 @@ Where the names above live today; the only place this spec names a path.
   `allocate_pod_resources`, `release_implementer_resources`, `free_pod_resources`, `purge_pod_history`, `rendered_member_files`,
   `POD_TEMPLATE_VERSION`
 - `src/docket/teams/pod.py`: `session_key`, `plan_added_member`, `normalize_role`
-- `src/docket/teams/report.py`: `pod_report`, `member_report`
+- `src/docket/hops/application/report.py`: `pod_report`, `member_report`
 - `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`, `detect_stack`
 - `src/docket/teams/settings.py`: `pod_approval_mode`
 - `src/docket/teams/fleet.py`: `fleet.json` registration, bindings

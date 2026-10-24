@@ -21,11 +21,11 @@ from tests.support.pods import build_pod
 from tests.support.pods import spec as _spec
 
 from docket.hops.application import compose as _compose
+from docket.hops.application import executor as _executor
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
-from docket.pipeline.application import executor as _executor
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 
@@ -123,7 +123,7 @@ def test_hop_message_without_gate_failed_hop_is_unchanged() -> None:
 
 def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(tmp_path: Path) -> None:
     with _seed(tmp_path, "true"):
-        steps, _ids, _instr = _executor._resolve_pipeline_steps("demo", _spec(_UNTIL_YAML))
+        steps, _ids, _instr = _executor.resolve_pipeline_steps("demo", _spec(_UNTIL_YAML))
         lead = _task.HopResult(
             role="lead", member_id="demo-lead", ok=True, output="p", cost_usd=0.0, step_id="plan"
         )

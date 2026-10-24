@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 
+from docket.hops.application import answers as _answers
+from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.http.exchange import HttpExchange
 from docket.operator import task_view
-from docket.tasks.application import answers as _answers
-from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task

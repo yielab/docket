@@ -708,7 +708,7 @@ Where the names above live today. This is the only section that names paths.
   `is_reviewed`, `review_code`)
 - `src/docket/teams/config_docs.py`: `discover_config_paths`, `validate_directory`, the `pod`
   document model
-- `src/docket/pipeline/application/steps.py`: `effective_pipeline`, `TASK_PIPELINE_NAME`
+- `src/docket/hops/application/steps.py`: `effective_pipeline`, `TASK_PIPELINE_NAME`
 - `src/docket/tasks/application/queue.py`: `pod_full_roster`
 - `src/docket/pipeline/domain/spec.py`: `default_pipeline`; `src/docket/pipeline/domain/plan.py`:
   `resolve_plan`

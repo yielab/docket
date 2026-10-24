@@ -14,6 +14,9 @@ from pydantic import ValidationError
 from rich.markup import escape
 
 from docket.governance import approval as _ap
+from docket.hops.application import answers as _answers
+from docket.hops.application import interruptions as _interruptions
+from docket.hops.application import report as _report
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.commands.task_approval import (
@@ -34,20 +37,17 @@ from docket.interfaces.cli.commands.task_render import (
     _worktree,
 )
 from docket.interfaces.cli.render import ui
-from docket.kernel import operator_contract as _oc
+from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
 from docket.observability import trace as _trace
 from docket.tasks.application import actions as _actions
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import evidence as _evidence
-from docket.tasks.application import interruptions as _interruptions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application import worktree_prune as _worktree_prune
 from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
-from docket.teams import report as _report
-from docket.teams import task_worktrees as _task_worktrees
 
 task_app = typer.Typer(
     name="task",
@@ -106,7 +106,7 @@ def _load_brief(path: Path | None) -> dict[str, Any] | None:
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-        _oc.TaskBrief.model_validate(raw)
+        _brief.TaskBrief.model_validate(raw)
     except (OSError, json.JSONDecodeError, ValidationError) as exc:
         ui.error(f"Invalid brief file '{path}': {exc}", "Pass a JSON TaskBrief")
         raise typer.Exit(1) from exc
@@ -289,7 +289,7 @@ def cmd_trace(
 
 
 def _prune_worktrees(project: str, force: bool, dry_run: bool) -> None:
-    entries = _task_worktrees.prune_task_worktrees(project, force=force, dry_run=dry_run)
+    entries = _worktree_prune.prune_task_worktrees(project, force=force, dry_run=dry_run)
     if not entries:
         ui.info("No finished task worktrees to prune.")
     for e in entries:

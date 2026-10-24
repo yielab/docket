@@ -631,10 +631,10 @@ Where the names used above live today.
   `interpolate_instructions`
 - `src/docket/pipeline/domain/plan.py`: `resolve_gate`, `resolve_plan`, `render_plan`, `parse_verdict`
   (the verdict-line rule of Gates Requirement 3), `run_group`; it holds no step loop
-- `src/docket/pipeline/application/steps.py`: `PIPELINE_ORDER`, `effective_pipeline`,
+- `src/docket/hops/application/steps.py`: `PIPELINE_ORDER`, `effective_pipeline`,
   `_run_command_step` (`_command_outcome_label`)
-- `src/docket/tasks/application/sweep.py`: `dispatch_pod` (the unresolved-variable refusal)
-- `src/docket/pipeline/application/executor.py`: `_run_pipeline` (the step loop), `_route_outcome`
+- `src/docket/hops/application/sweep.py`: `dispatch_pod` (the unresolved-variable refusal)
+- `src/docket/hops/application/executor.py`: `_run_pipeline` (the step loop), `_route_outcome`
 - `src/docket/teams/config_docs.py`: `validate_path`, `load_document` (`docket pod validate`, and the
   provider-existence check of a step `model`)
 - `src/docket/teams/roles.py`: the `gateContract` fallback used by the Zero migration invariant

@@ -23,23 +23,24 @@ from tests.support.pods import build_pod
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
+from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _application_runner
+from docket.hops.application import steps as _steps_c
+from docket.hops.application import sweep as _sweep
+from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home, use_home
 from docket.kernel.ports import jail as _jail
-from docket.pipeline.application import executor as _executor
-from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
 _hermetic = _support_home.hermetic_6
 
-SUBJECT = "docket.tasks.application.sweep"
+SUBJECT = "docket.hops.application.sweep"
 
 # ── hermetic environment (mirrors test_verify_gate.py / test_hop_carryover.py) ──
 
@@ -108,7 +109,7 @@ class TestRetryPolicy:
 
     def test_unknown_role_falls_back_to_default_budget(self) -> None:
         assert (
-            _settings._retries_for_role("some-future-role")
+            _settings.retries_for_role("some-future-role")
             == current_home().dispatch_retries_default
         )
 
@@ -372,7 +373,7 @@ class TestHopRetryLoop:
 class TestTimeoutResolution:
     def test_defaults_to_default_timeout_when_nothing_set(self) -> None:
         _write_meta("myapp-lead")
-        assert _settings._resolve_timeout(None, _settings.pod_turn_timeout("myapp")) == (
+        assert _settings.resolve_timeout(None, _settings.pod_turn_timeout("myapp")) == (
             _settings.DEFAULT_TIMEOUT
         )
 
@@ -388,7 +389,7 @@ class TestTimeoutResolution:
 
     def test_explicit_override_wins_over_lead_meta(self) -> None:
         _write_meta("myapp-lead", {"turnTimeoutS": 45})
-        assert _settings._resolve_timeout(90, _settings.pod_turn_timeout("myapp")) == 90
+        assert _settings.resolve_timeout(90, _settings.pod_turn_timeout("myapp")) == 90
 
     def test_invalid_lead_meta_value_refuses_instead_of_defaulting(self) -> None:
         _write_meta("myapp-lead", {"turnTimeoutS": "not-a-number"})
@@ -482,7 +483,7 @@ class TestRetryDoesNotTripStaleClaimSweep:
                 # Second attempt: simulate a concurrent dispatcher's sweep landing
                 # here, immediately after on_retry refreshed claimedAt for the
                 # failed first attempt and right before this (successful) retry.
-                _lifecycle._sweep_stale_claims("demo")
+                _lifecycle.sweep_stale_claims("demo")
                 return _rd.TurnResult(True, "done", 0.0, {})
 
             results = _sweep.dispatch_pod("demo", runner=_flaky_then_ok, sleep=_no_sleep)
@@ -514,7 +515,7 @@ class TestExistingStateMachineBehaviourUnaffected:
         monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+        monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
         monkeypatch.setattr(_pre_hop_c, "pod_recorded_cost", lambda _p: 5.0)
 
         def _runner(

@@ -25,8 +25,8 @@ from tests.support import home as _support_home
 import docket.kernel.templates as _templates
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
 from docket.governance import security as _sec
+from docket.hops.application import sweep as _sweep
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 
 _hermetic = _support_home.hermetic_2
 

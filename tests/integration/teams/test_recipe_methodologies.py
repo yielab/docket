@@ -18,12 +18,12 @@ from tests.support.trace import trace_events_2 as _trace_events
 
 import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, use_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import pod
 from docket.teams import roles as _arch
 from docket.teams.apply import plan as _pod_apply
@@ -101,7 +101,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        roster = _queue.pod_full_roster(project)
+        roster = pod.pod_full_roster(project)
         registry = _arch.load_registry(project)
         exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
@@ -142,7 +142,7 @@ def test_dual_review_plan_has_one_planned_group(tmp_path: Path) -> None:
         result = _pipeline.load_pipeline(text)
         assert result.spec is not None, result.errors
 
-        roster = _queue.pod_full_roster(project)
+        roster = pod.pod_full_roster(project)
         registry = _arch.load_registry(project)
         exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 

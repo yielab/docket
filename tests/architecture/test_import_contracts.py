@@ -288,7 +288,7 @@ _BITES: list[tuple[str, str, str, bool]] = [
     ("application", "docket.tasks.application.queue", "docket.hops.application.runner", False),
     ("application", "docket.hops.application.runner", "docket.tasks.application.queue", True),
     ("application", "docket.hops.application.runner", "docket.models.catalog", True),
-    ("application", "docket.pipeline.application.executor", "docket.tasks.domain.task", False),
+    ("application", "docket.pipeline.application.schedule", "docket.tasks.domain.task", False),
     ("application", "docket.governance.policy", "docket.teams.settings", False),
     ("application", "docket.governance.policy", "docket.platform.store", True),
     ("application", "docket.models.catalog", "docket.models.adapters.openai_http", False),

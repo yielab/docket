@@ -20,19 +20,19 @@ from tests.support.llm import final as _final
 from tests.support.pods import build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
-from docket.hops.application import record as _record_mod
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
+from docket.tasks.application import record as _record_mod
 from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
 

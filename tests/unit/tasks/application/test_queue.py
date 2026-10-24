@@ -26,12 +26,12 @@ from tests.support.pods import put_task as _put_task
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
 
 from docket.agent import ports as _rd
+from docket.hops.application import sweep as _sweep
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import settings as _settings
 
@@ -387,7 +387,7 @@ class TestBaseRefRefusedAtClaim:
             },
         )
 
-        res = _queue._refuse_claimed_task("myapp", {"id": "t1"}, "pipeline", "no such pipeline")
+        res = _queue.refuse_claimed_task("myapp", {"id": "t1"}, "pipeline", "no such pipeline")
 
         (stored,) = _queue.read_tasks("myapp")
         assert (res.status, res.failure_kind, res.reason) == (

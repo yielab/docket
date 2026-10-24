@@ -9,13 +9,13 @@ from tests.support import home as _support_home
 from tests.support import llm as _support_llm
 from tests.support import pods as _support_pods
 
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins.toolbox import PathEscapeError, resolve_within
 from docket.agent.tools.registry import (
     ToolContext,
 )
 from docket.governance.gate import evaluate_tool_call
 from docket.governance.security import classify_command
+from docket.hops.application.builtin_tools import builtin_registry
 
 SUBJECT = "docket.agent.tools.registry"
 

@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import urllib.parse as _urlparse
 
+from docket.hops.application import report as _pod_report
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel.errors import DispatchError
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
 from docket.teams import pod_settings as _pod_settings
-from docket.teams import report as _pod_report
 
 
 def get_pods(h: HttpExchange, _arg: str) -> None:

@@ -4,8 +4,8 @@ A provider is a `ProviderSpec` -- name, dialect, base URL, named credentials (ne
 selectable models with optional pricing, and named presets -- loaded the same way a role or
 policy is (model-profiles.spec.md "Provider catalog"). Two scopes, nearest-wins by name: built-in
 (`kernel.templates.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
-(`Home.providers_file`, the operator's own). `models/adapters/openai_http.py`'s `resolve_endpoint` reads
-the merged catalog; this module has no knowledge of terminals. `models/selection.py`'s
+(`Home.providers_file`, the operator's own). `models/application/endpoint.py`'s `resolve_endpoint` reads
+the merged catalog; this module has no knowledge of terminals. `teams/model_selection.py`'s
 `presets`/`preset_table`/`is_local_provider`/`is_marketplace`/`price_for`/`rank_anchors` are the
 only readers of the catalog's presets and pricing; every other per-provider fact (base URLs,
 credential names, key-format prefixes) derives from this module too, so no module keeps its
@@ -99,7 +99,7 @@ class ModelRow(BaseModel):
 
 class Preset(BaseModel):
     """A named rank triple attached to the provider that defines it -- what
-    `models/selection.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
+    `teams/model_selection.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
     ``cost``) that are derived from the owning `ProviderSpec` instead of stored twice."""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -300,6 +300,14 @@ def _global_providers_from(raw: object) -> dict[str, ProviderSpec]:
 def load_catalog() -> Catalog:
     """The merged provider catalog: a global document overrides the built-in of the same name."""
     return _merged_catalog(_load_global_providers())
+
+
+def credential_sources() -> set[str]:
+    """The credential names the secret store and the provider catalog add to the built-in two."""
+    names = set(_secrets.secrets_keys())
+    for spec in load_catalog().entries.values():
+        names.update(spec.auth.credentials)
+    return names
 
 
 def _merged_catalog(global_entries: dict[str, ProviderSpec]) -> Catalog:

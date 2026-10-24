@@ -17,14 +17,13 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.governance import secrets as _secrets
+from docket.governance.secrets import redact
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
@@ -81,7 +80,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         # built-in ones (which keep emitting their own names above —
         # rework_started/review_rejected/reviewer_verdict_unparseable for
         # reviewer, tester_verdict_failed for tester — see
-        # hops/application/record.py's _verdict_event_names).
+        # tasks/application/record.py's _verdict_event_names).
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",
@@ -89,7 +88,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "command_step",  # a `run` (command) step executed, with its exit code
         "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
         "input_requested",  # an `input` step parked the task, waiting on an operator question
-        "input_answered",  # `tasks.application.answers.answer_task` resumed a parked `input` step
+        "input_answered",  # `hops.application.answers.answer_task` resumed a parked `input` step
         "question_asked",  # a `consult` call posed a QuestionV11 to the operator (tasks/application/consult.py)
         "input_expired",  # an unanswered question passed its deadline; task -> blocked
         "llm_call",  # one backend chat-completions exchange: model, tokens, latency
@@ -103,70 +102,6 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "session_end",
     ]
 )
-
-# Secret-shape patterns stripped from payloads before writing.
-# Stored secret values are also redacted after the regex pass (see _stored_secret_values).
-#
-# Every quantifier here either shares no characters with what follows it, or is capped at
-# a length no real identifier/local-part/domain-label exceeds. Payloads handed to redact()
-# are untrusted and can be one long unbroken run of alnum characters (base64, a hex dump, a
-# minified bundle); an uncapped quantifier immediately followed by a required literal drawn
-# from the same character class forces the engine to try every split point in the run
-# before it can rule out a match there, which is quadratic (or worse) in the run's length.
-# Capping the quantifier bounds that search to a constant per position without narrowing
-# which real secrets match -- an env-var name or an email local-part/domain never actually
-# runs to thousands of characters, so the cap only ever rejects noise, not a real value.
-_REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(
-        r"(?<![A-Za-z0-9])(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:ANTHROPIC|OPENAI|GOOGLE|OPENROUTER|AI_GATEWAY|VERCEL|COHERE)"
-        r"[_A-Z]*[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
-        re.IGNORECASE,
-    ),
-    re.compile(r"[A-Z][A-Z0-9_]{5,40}_(?:API_KEY|SECRET|TOKEN|KEY)\s*[=:]\s*\S+", re.IGNORECASE),
-    # Bare vendor tokens with no `key=` prefix: OpenAI/Anthropic `sk-...`, GitHub `gh?_...`,
-    # Slack `xox?-...`, and a Telegram bot token (`<digits>:<35 chars>`).
-    re.compile(
-        r"(?<![A-Za-z0-9])(?:sk-ant-|sk-proj-|sk-|ghp_|gho_|ghs_|xox[abp]-)[A-Za-z0-9_\-]{20,}"
-    ),
-    re.compile(r"(?<![A-Za-z0-9])\d{8,10}:[A-Za-z0-9_\-]{35}(?![A-Za-z0-9_\-])"),
-    re.compile(r"[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]{1,255}\.[a-zA-Z]{2,24}", re.IGNORECASE),
-)
-
-
-_ENV_CREDENTIAL_NAMES = ("DOCKET_LLM_API_KEY", "TELEGRAM_BOT_TOKEN")
-_ENV_CREDENTIAL_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_PASSWORD")
-
-
-def _stored_secret_values() -> list[str]:
-    """Secret values longer than 8 chars (redact.sh's >8 filter): docket's own store plus every
-    credential-shaped variable in this process's environment, since a key exported in the shell
-    never rests in the store. Best-effort, so redaction never fails a trace write."""
-    values: list[str] = []
-    with contextlib.suppress(Exception):
-        values.extend(v for v in (s.strip() for s in _secrets.secret_values()) if len(v) > 8)
-    values.extend(
-        v
-        for v in _process.credential_env_values(_ENV_CREDENTIAL_NAMES, _ENV_CREDENTIAL_SUFFIXES)
-        if len(v) > 8
-    )
-    return values
-
-
-def redact(text: str) -> str:
-    """Strip secret-shaped substrings from *text*. Applies the always-on
-    regex patterns, then redacts the exact VALUES of any stored secrets
-    (replaced after the regex pass)."""
-    if not text:
-        return text
-    for pat in _REDACT_PATTERNS:
-        text = pat.sub("[REDACTED]", text)
-    for value in _stored_secret_values():
-        text = text.replace(value, "[REDACTED]")
-    return text
 
 
 def _redact_value(value: Any) -> Any:

@@ -593,13 +593,13 @@ docket pod validate ./producer.yaml
 - `src/docket/pipeline/domain/spec.py`: `default_pipeline`
 - `src/docket/hops/application/compose.py`: the hop-message builder (`_hop_message`,
   `_resolve_hop_instructions`)
-- `src/docket/pipeline/application/executor.py`: plan resolution for dispatch
-  (`_resolve_pipeline_steps`)
+- `src/docket/hops/application/executor.py`: plan resolution for dispatch
+  (`resolve_pipeline_steps`)
 - `src/docket/agent/context.py`: `budget_for_role`, `DEFAULT_TOKEN_BUDGET`
 - `src/docket/agent/session.py`: `compact_session`
 - `src/docket/agent/loop.py`: the per-turn `registry_for_role` call; the compaction call
   passing the turn's project
-- `src/docket/models/selection.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
+- `src/docket/teams/model_selection.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
   `rank_anchors`
 - `src/docket/teams/identity.py`: the live runtime startup contract
 - `src/docket/teams/agent_memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` manual-path paragraph),

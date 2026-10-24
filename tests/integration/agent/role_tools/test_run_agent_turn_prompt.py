@@ -14,8 +14,8 @@ from tests.support.role_tools_harness import (
 )
 
 from docket.agent import loop as _loop
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home
 
 SUBJECT = "docket.agent.tools.registry"

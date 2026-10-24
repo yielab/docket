@@ -10,6 +10,7 @@ from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
 from docket.teams.apply.model import PodApplyError
@@ -101,7 +102,6 @@ def _recipe_manifest(directory: Path) -> dict[str, Any]:
     manifest_file = directory / "pod.yaml"
     if not manifest_file.is_file():
         return {}
-    from docket.teams import config_docs as _config_docs
 
     try:
         return _config_docs.load_document(manifest_file, kind="pod").doc
@@ -277,7 +277,6 @@ def directory_digest(directory: Path) -> str:
     """Sha256 hex digest over the sorted relative paths and bytes of every file
     `discover_config_paths` returns, plus any `plugins/*.py` and any `skills/**` file
     (never the generated `.schemas/`); `apply` records it as `configDigest`."""
-    from docket.teams import config_docs as _config_docs
 
     paths = list(_config_docs.discover_config_paths(directory))
     plugins_dir = directory / "plugins"

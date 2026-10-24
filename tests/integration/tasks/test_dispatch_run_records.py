@@ -290,7 +290,7 @@ class TestCliDispatchPath:
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
                 return [_task.TaskResult(task_id="task-x", status="done")]
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             _run._pod_dispatch("demo")
 
@@ -311,7 +311,7 @@ class TestCliDispatchPath:
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
                 return [_task.TaskResult(task_id="task-x", status="failed", reason=reason)]
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             with pytest.raises(typer.Exit) as excinfo:
                 _run._pod_dispatch("demo")
@@ -334,7 +334,7 @@ class TestCliDispatchPath:
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
                 return [_task.TaskResult(task_id="task-x", status=status, reason="paused")]
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             _run._pod_dispatch("demo")
 
@@ -365,7 +365,7 @@ class TestCliDispatchPath:
             def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
                 raise RuntimeError("daemon exploded")
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _boom)
 
             with pytest.raises(typer.Exit) as excinfo:
                 _run._pod_dispatch("demo")
@@ -427,7 +427,7 @@ class TestWebhookDispatchPath:
         def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
             return [_task.TaskResult(task_id="task-web", status="done")]
 
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
         status, body = _post(f"{url}/dispatch/myproject", token=token)
         assert status == 200
@@ -449,7 +449,7 @@ class TestWebhookDispatchPath:
         def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
             raise RuntimeError("webhook dispatch exploded")
 
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _boom)
 
         status, body = _post(f"{url}/dispatch/myproject", token=token)
         assert status == 200  # webhook still returns immediately
@@ -564,7 +564,7 @@ class TestScheduleDispatchPath:
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
                 return [_task.TaskResult(task_id="task-sched", status="done")]
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             _sweeps._check_schedules(time.time())
 
@@ -592,7 +592,7 @@ class TestScheduleDispatchPath:
             def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
                 raise RuntimeError("schedule dispatch exploded")
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _boom)
 
             _sweeps._check_schedules(time.time())
 
@@ -625,7 +625,7 @@ class TestSweepDispatchPath:
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
                 return [_task.TaskResult(task_id="task-sweep", status="done")]
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             _server._run_sweeps(dispatch=True)
             assert _sweeps._drain_sweeps(timeout=10)
@@ -652,7 +652,7 @@ class TestSweepDispatchPath:
                         raise RuntimeError("pod-a exploded")
                     return [_task.TaskResult(task_id="task-b", status="done")]
 
-                monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _selective_boom)
+                monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _selective_boom)
 
                 _server._run_sweeps(dispatch=True)
                 assert _sweeps._drain_sweeps(timeout=10)  # must not raise
@@ -696,7 +696,7 @@ class TestSweepWorkers:
                     b_done.set()
                 return [_task.TaskResult(task_id=f"t-{proj}", status="done")]
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake)
             try:
                 _server._run_sweeps(dispatch=True)
                 assert b_done.wait(10), "pod-b never ran while pod-a was blocked"
@@ -722,7 +722,7 @@ class TestSweepWorkers:
                     assert release.wait(10)
                 return []
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake)
             try:
                 _server._run_sweeps(dispatch=True)
                 assert started.wait(10)
@@ -749,7 +749,7 @@ class TestSweepWorkers:
                     assert release.wait(10)
                 return []
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake)
             try:
                 _server._run_sweeps(dispatch=True)
                 assert a_started.wait(10)
@@ -775,7 +775,7 @@ class TestSweepWorkers:
                     finished.set()
                 return []
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake)
             monkeypatch.setattr(_sweeps, "_check_schedules", lambda _now: None)
             stop = threading.Event()
             loop = new_thread(target=_server._sweep_loop, args=(0.01, stop, True), daemon=True)

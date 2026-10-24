@@ -18,8 +18,8 @@ from typing import Any
 
 from docket.agent.ports import bind_role_composer, bind_tool_gate
 from docket.governance import gate as _gate
-from docket.governance import secrets as _secrets
 from docket.governance import security as _security
+from docket.governance.ports import bind_approval_follow_up
 from docket.hops.application import driver as _driver
 from docket.kernel.home import Home
 from docket.kernel.ports import (
@@ -31,15 +31,21 @@ from docket.kernel.ports import (
 )
 from docket.kernel.ports import jail as _jail
 from docket.models import catalog as _catalog
+from docket.models.adapters import openai_http as _openai_http
+from docket.models.ports import bind_endpoint_prober
 from docket.observability.adapters import otlp_http as _otlp_http
 from docket.observability.adapters.local_tracer import LocalTracer
 from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
+from docket.operator.ports import bind_task_reader
 from docket.platform import git as _git_adapter
 from docket.platform import process as _process_adapter
 from docket.platform import store as _store
 from docket.sandbox.launch import Launcher
+from docket.tasks.application import actions as _actions
+from docket.tasks.application import queue as _queue
 from docket.teams import fleet as _fleet
+from docket.teams.ports import bind_channel_documents
 from docket.teams.role_composer import TeamsRoleComposer
 
 DEFAULT_PORT = 7331
@@ -54,25 +60,21 @@ def sink_for(spec: _channel.ChannelSpec) -> _channel_adapters.Deliver | None:
     return _channel_adapters.sink_for(spec)
 
 
-def _credential_sources() -> set[str]:
-    """The credential names the secret store and the provider catalog add to the built-in two."""
-    names = set(_secrets.secrets_keys())
-    for spec in _catalog.load_catalog().entries.values():
-        names.update(spec.auth.credentials)
-    return names
-
-
 def bind_adapters() -> None:
     """Bind the real adapters of every port; every entry calls this before it runs."""
     bind_role_composer(TeamsRoleComposer())
     bind_tool_gate(_gate)
     bind_tracer(LocalTracer())
+    bind_approval_follow_up(_actions)
+    bind_task_reader(_queue)
+    bind_endpoint_prober(_openai_http)
+    bind_channel_documents(_channel)
     bind_git(_git_adapter)
     bind_process(_process_adapter)
     bind_jail(
         Launcher(
             recorded_backend=_fleet.get_sandbox_backend,
-            credential_source=_credential_sources,
+            credential_source=_catalog.credential_sources,
             high_risk=_security.match_high_risk,
         )
     )

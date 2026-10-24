@@ -20,7 +20,6 @@ from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.governance.gate import consume_matching_pregrant as _consume_matching_pregrant
 from docket.hops.application import compose as _compose
-from docket.hops.application import record as _record
 from docket.hops.application.driver import _parse_pregrants
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import pod as _pod
@@ -31,6 +30,7 @@ from docket.platform import store as _store
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _domain_task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
@@ -86,7 +86,7 @@ def _task(task_id: str) -> dict[str, Any]:
 
 
 def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
-    ctx = _record._UnitContext(
+    ctx = _record.UnitContext(
         project=PROJECT,
         task=_task(task_id),
         task_id=task_id,

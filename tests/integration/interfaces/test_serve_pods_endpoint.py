@@ -25,15 +25,15 @@ from tests.support.http import get as _get
 from tests.support.http import post_2 as _post
 from tests.support.http import post_raw as _post_raw
 
+from docket.hops.application import report as _pod_report
+from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.kernel.threads import new_thread
-from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod_provisioning as _pp
-from docket.teams import report as _pod_report
 
 live_server = _support_http.live_server
 

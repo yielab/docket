@@ -19,12 +19,12 @@ from tests.support.home import record_isolation_off, register_local_provider
 from tests.support.llm import _final_response, _ScriptedLLMServer
 from tests.support.pods import build_pod
 
-from docket.hops.application import record as _record
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http import server as _server
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
@@ -35,7 +35,7 @@ _DRIVER = textwrap.dedent(
     """
     import threading
     import docket.tasks.application.queue as q
-    import docket.tasks.application.sweep as d
+    import docket.hops.application.sweep as d
     from docket.interfaces.http import server
 
     release = threading.Event()
@@ -180,7 +180,7 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
                     "claimId": "c-1",
                     "claimPid": 2**22 + 12345,
                     "claimedAt": _clock.iso(),
-                    "hops": [_record._hop_record(hop)],
+                    "hops": [_record.hop_record(hop)],
                 }
             ]
         )

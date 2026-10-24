@@ -2,7 +2,7 @@
 
 Composes existing resolvers only (model policy, `agent.identity`'s prompt composer,
 role/tool denial, the guardrail policy engine, `teams.pod_settings.PodSettings`, and
-`pipeline.application.steps.effective_pipeline_source`); writes nothing and adds no new core
+`hops.application.steps.effective_pipeline_source`); writes nothing and adds no new core
 surface. See specs/data/cli-json-shapes.spec.md, "`docket pod show --json`". The oracle
 case (`TestPodShowMatchesRealDispatch`) cross-checks the reports against what a real pod
 dispatch (FakeDriver) actually used for the hop.
@@ -22,17 +22,17 @@ from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.governance import policy as _policy
+from docket.hops.application import report as pod_report
+from docket.hops.application import steps as _steps
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import Home, current_home, use_home
-from docket.pipeline.application import steps as _steps
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
-from docket.teams import report as pod_report
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 
@@ -417,7 +417,7 @@ class TestPodShowProvider:
         from docket.agent.ports import ModelLimits
         from docket.models import catalog as _prov
         from docket.models import provider_lifecycle as _provider_lifecycle
-        from docket.models.adapters.openai_http import ProbeResult
+        from docket.models.application.probe import ProbeResult
 
         with _seed(tmp_path):
             spec = _prov.ProviderSpec(

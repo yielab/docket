@@ -23,14 +23,14 @@ from tests.support.pods import bind_pipeline_3 as _bind_pipeline
 from tests.support.pods import build_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, current_home, use_home
 from docket.observability import trace as _trace
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
-SUBJECT = "docket.hops.workspace.prepare"
+SUBJECT = "docket.teams.workspace.prepare"
 
 _FAKE_NPM = """\
 #!/bin/sh

@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from docket.kernel.home import Home, current_home, use_home
+from docket.tasks.application import worktree_prune
 from docket.teams import task_worktrees
 
 SUBJECT = "docket.teams.pod_provisioning"
@@ -77,7 +78,7 @@ def test_removes_merged_keeps_unmerged_and_untouches_running(env: dict[str, Any]
     merged = _add_task(env, "t-merged", "done")
     unmerged = _add_task(env, "t-unmerged", "failed", commit=True)
     running = _add_task(env, "t-running", "running")
-    entries = {e.task_id: e for e in task_worktrees.prune_task_worktrees(PROJECT)}
+    entries = {e.task_id: e for e in worktree_prune.prune_task_worktrees(PROJECT)}
     assert entries["t-merged"].action == "removed"
     assert entries["t-unmerged"].action == "kept"
     assert "not merged" in entries["t-unmerged"].reason
@@ -94,7 +95,7 @@ def test_a_failed_task_dispatch_resume_would_reclaim_keeps_its_worktree(
     env: dict[str, Any],
 ) -> None:
     rec = _add_task(env, "t-stale", "failed", failureKind="stale_claim")
-    (entry,) = task_worktrees.prune_task_worktrees(PROJECT, force=True)
+    (entry,) = worktree_prune.prune_task_worktrees(PROJECT, force=True)
     assert entry.action == "kept" and "resumable" in entry.reason
     assert Path(rec["dir"]).is_dir()
 
@@ -104,9 +105,9 @@ def test_untracked_artifacts_do_not_keep_a_merged_worktree(env: dict[str, Any]) 
     (Path(rec["dir"]) / "__pycache__").mkdir()
     (Path(rec["dir"]) / "__pycache__" / "calc.pyc").write_text("x")
     (Path(rec["dir"]) / "out.txt").write_text("artifact\n")
-    (entry,) = task_worktrees.prune_task_worktrees(PROJECT, dry_run=True)
+    (entry,) = worktree_prune.prune_task_worktrees(PROJECT, dry_run=True)
     assert entry.action == "would-remove" and "2 untracked" in entry.reason
-    (entry,) = task_worktrees.prune_task_worktrees(PROJECT)
+    (entry,) = worktree_prune.prune_task_worktrees(PROJECT)
     assert entry.action == "removed" and "2 untracked" in entry.reason
     assert not Path(rec["dir"]).exists()
 
@@ -114,7 +115,7 @@ def test_untracked_artifacts_do_not_keep_a_merged_worktree(env: dict[str, Any]) 
 def test_dirty_worktree_kept_without_force(env: dict[str, Any]) -> None:
     rec = _add_task(env, "t-dirty", "done")
     (Path(rec["dir"]) / "a.txt").write_text("edited, never committed\n")
-    (entry,) = task_worktrees.prune_task_worktrees(PROJECT)
+    (entry,) = worktree_prune.prune_task_worktrees(PROJECT)
     assert entry.action == "kept" and "uncommitted" in entry.reason
     assert Path(rec["dir"]).is_dir()
 
@@ -122,7 +123,7 @@ def test_dirty_worktree_kept_without_force(env: dict[str, Any]) -> None:
 def test_dry_run_changes_nothing(env: dict[str, Any]) -> None:
     rec = _add_task(env, "t-merged", "done")
     before = env["tasks"].read_text()
-    (entry,) = task_worktrees.prune_task_worktrees(PROJECT, dry_run=True)
+    (entry,) = worktree_prune.prune_task_worktrees(PROJECT, dry_run=True)
     assert entry.action == "would-remove"
     assert Path(rec["dir"]).is_dir() and rec["branch"] in _branches(env["repo"])
     assert env["tasks"].read_text() == before
@@ -130,7 +131,7 @@ def test_dry_run_changes_nothing(env: dict[str, Any]) -> None:
 
 def test_force_removes_unmerged_and_audits(env: dict[str, Any]) -> None:
     rec = _add_task(env, "t-unmerged", "done", commit=True)
-    (entry,) = task_worktrees.prune_task_worktrees(PROJECT, force=True)
+    (entry,) = worktree_prune.prune_task_worktrees(PROJECT, force=True)
     assert entry.action == "removed"
     assert not Path(rec["dir"]).exists()
     assert rec["branch"] in _branches(env["repo"])  # the commits stay reachable
@@ -167,7 +168,7 @@ def test_dir_outside_member_tasks_dir_is_never_removed(env: dict[str, Any], tmp_
             }
         )
     )
-    (entry,) = task_worktrees.prune_task_worktrees(PROJECT, force=True)
+    (entry,) = worktree_prune.prune_task_worktrees(PROJECT, force=True)
     assert entry.action == "kept"
     assert (victim / "keep.txt").exists()
     assert "prunedAt" not in _task(env, "t-evil")["worktree"]

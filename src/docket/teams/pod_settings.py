@@ -97,7 +97,7 @@ class PodSettings(BaseModel):
     # sha256 hex digest of the docket-owned bound-pipeline copy in the Lead's workspace
     # (``bound_pipeline_path``) -- never the operator's original file path. Set only by
     # ``docket pod set pipeline <file>``, which validates the file and
-    # writes the copy before this ever gets written (see pipeline/application/steps.py's
+    # writes the copy before this ever gets written (see hops/application/steps.py's
     # ``_blueprint_pipeline``, which verifies the copy still hashes to this value).
     pipeline: str | None = Field(None, alias="pipeline", pattern=r"^[0-9a-f]{64}$")
     # An `@every`/`HH:MM`/cron spec (pipeline/application/schedule.py). Mirrors the value the dedicated
@@ -152,15 +152,15 @@ class PodSettings(BaseModel):
     # It only ever narrows: ``coerce`` refuses a path the machine has not granted.
     read_only: str = Field("", alias="readOnly")
 
-    # The install command a task's fresh worktree runs before its first hop (hops/workspace/prepare.py);
+    # The install command a task's fresh worktree runs before its first hop (teams/workspace/prepare.py);
     # 'none' turns preparation off and '' leaves the choice to the worktree's lockfile.
     prepare: str = Field("", alias="prepare")
 
-    # Globs a task may not change without a person (hops/workspace/protected_paths.py); they add to the
+    # Globs a task may not change without a person (teams/workspace/protected_paths.py); they add to the
     # defaults and never remove one. Comma-joined in storage, like allowCommands.
     protects: tuple[str, ...] = Field((), alias="protects")
 
-    # 'attended' (the default) or 'lights-out' (governance/profile.py): a pod may only move toward
+    # 'attended' (the default) or 'lights-out' (hops/gates/profile.py): a pod may only move toward
     # stricter than the fleet's recorded profile -- ``coerce`` refuses a weaker write.
     profile: str = Field("attended", alias="profile")
 

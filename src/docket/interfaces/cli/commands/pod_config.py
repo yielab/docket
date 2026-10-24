@@ -10,22 +10,22 @@ from typing import Any, NoReturn
 import typer
 from rich.markup import escape
 
-from docket.agent.tools import builtin_tools as _builtin_tools
 from docket.agent.tools import registry as _tools
 from docket.governance import gate as _gate
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
+from docket.hops.application import builtin_tools as _builtin_tools
+from docket.hops.application import steps as _steps
+from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
 from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.render.apply import _render_items, render_apply_header, render_apply_plan
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.observability import exporter as _exporter
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json
-from docket.tasks.application import queue as _queue
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
@@ -63,88 +63,6 @@ def _default_dir(project: str, *, create: bool = False) -> Path:
 
 def _codebase(project: str) -> Path:
     return Path(_fleet.meta_get(_pod_core.member_id(project, "lead"), "codebase", ""))
-
-
-# -- render helpers shared with init ---------------------------------------------------------
-
-
-def render_apply_header(project: str, directory: Path, summary: _recipes.RecipeSummary) -> None:
-    """Print the apply header: the recipe's description when set, then its derived summary."""
-    ui.header("Apply plan", f"{project} <- {directory}")
-    if summary.description:
-        ui.console.print(escape(summary.description))
-    ui.console.print(f"  {escape(summary.render())}")
-
-
-_RUN_LABELS = {
-    "pipeline-step": 'pipeline step "{}"',
-    "mcp-server": 'MCP server "{}"',
-    "plugin": 'plugin "{}"',
-    "allow-commands": "allowed commands",
-    "network": "network",
-    "role-loosens": 'role "{}"',
-    "verify": 'verify command "{}"',
-    "gate": 'external gate "{}"',
-}
-
-
-def run_item_label(item: _review.RunItem) -> str:
-    """The console label of one run-on-this-machine item."""
-    return _RUN_LABELS.get(item.kind, item.kind).format(item.name)
-
-
-def render_run_items(items: tuple[_review.RunItem, ...]) -> None:
-    """Print the numbered ``Runs on this machine`` list, one exact command per item."""
-    width = max((len(run_item_label(i)) for i in items), default=0)
-    ui.console.print("Runs on this machine")
-    for n, item in enumerate(items, 1):
-        label = run_item_label(item).ljust(width)
-        ui.console.print(f"  {n}. {escape(label)}   {escape(item.runs)}")
-
-
-def render_review(review: _review.PlanReview) -> None:
-    """Print the two groups of a repository's directory: adds, then runs on this machine."""
-    if review.adds:
-        ui.console.print("Adds to the team")
-        width = max(len(kind) for kind, _ in review.adds)
-        for kind, name in review.adds:
-            ui.console.print(f"  {escape(kind.ljust(width))}   {escape(name)}")
-    render_run_items(review.runs)
-
-
-def _render_items(items: tuple[_model.ApplyItem, ...]) -> None:
-    for item in items:
-        note = f" ({item.note})" if item.note else ""
-        ui.console.print(f"  {escape(f'[{item.action}]')} {item.kind}: {item.name}{escape(note)}")
-
-
-def render_apply_plan(plan: _model.ApplyPlan) -> None:
-    """Print an apply plan one item per line, then one line per named exporter."""
-    _render_items(plan.items)
-    render_exporter_states(plan.exporters)
-
-
-def render_exporter_states(names: tuple[str, ...]) -> None:
-    """Print each exporter's state and, unless enabled, the command that enables it."""
-    if not names:
-        return
-
-    catalog = _exporter.load_catalog()
-    for name in names:
-        spec = catalog.get(name)
-        if spec is None:
-            continue
-        state, missing = _exporter.activation_state(spec, health=None)
-        if state == "enabled":
-            line = f"exporter {name}: enabled"
-        elif state == "needs credential":
-            line = (
-                f"exporter {name}: needs credential {', '.join(missing)} "
-                f"-> docket setup export enable {name}"
-            )
-        else:
-            line = f"exporter {name}: {state} -> docket setup export enable {name}"
-        ui.console.print(f"  {escape(line)}")
 
 
 # -- apply ------------------------------------------------------------------------------------
@@ -206,7 +124,6 @@ def _sync(project: str, dry_run: bool, json_out: bool) -> None:
 
 def _review_directory(project: str, directory: Path, json_out: bool, accept: str | None) -> None:
     """The operator's OK for what *directory* runs on this machine; exits 2 when not given."""
-    from docket.interfaces.cli.commands import agents as _agents
 
     root = _codebase(project)
     request = _agents.InitRequest(accept=accept, json_out=json_out)
@@ -379,8 +296,8 @@ def cmd_plan(
     project = _contract.require_pod(pod)
     spec = _plan_spec(pipeline) if pipeline else None
     try:
-        _steps.pod_pipeline(project)
-        roster = _queue.pod_full_roster(project)
+        _pod_core.pod_pipeline(project)
+        roster = _pod_core.pod_full_roster(project)
         effective = spec if spec is not None else _steps.effective_pipeline(project, None)
         source = (
             f"file '{pipeline}'" if spec is not None else _steps.effective_pipeline_source(project)

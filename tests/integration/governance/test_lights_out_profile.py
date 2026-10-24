@@ -19,18 +19,19 @@ from typer.testing import CliRunner
 
 from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
+from docket.hops.application import report as _pod_report
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import mcp as _kernel_mcp
 from docket.kernel.home import Home, use_home
 from docket.kernel.ports import SandboxAvailability
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod_settings as _pod_settings
 
-SUBJECT = "docket.governance.profile"
+SUBJECT = "docket.hops.gates.profile"
 
 _GATED = """\
 name: gated
@@ -295,14 +296,13 @@ class TestStatusAndDoctor:
     def test_status_and_doctor_show_the_same_violations(
         self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
-        from docket.governance import profile as _profile
         from docket.interfaces.cli.commands import setup_check as _setup_check
         from docket.interfaces.cli.commands import status as _status
 
         _meet_everything(home, monkeypatch, fake_jail)
         record_isolation_off(home)
 
-        expected = [v.requirement for v in _profile.project_violations("demo")]
+        expected = [v.requirement for v in _pod_report.project_violations("demo")]
         assert "isolation" in expected
         summary = _status._project_summary("demo")
         assert [v["requirement"] for v in summary["profile"]["violations"]] == expected

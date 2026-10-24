@@ -7,7 +7,9 @@ from typing import Any
 
 import pytest
 
+from docket.governance import approval as _approval
 from docket.kernel.home import current_home
+from docket.tasks.application import actions as _actions
 from docket.tasks.application import corrections as _corrections
 
 SUBJECT = "docket.tasks.application.corrections"
@@ -250,3 +252,22 @@ class TestRead:
             r["taskId"] for r in _corrections.read(project, since="2026-10-01T10:00:00+00:00")
         ] == ["job-2"]
         assert len(_corrections.read(project)) == 3
+
+
+class TestDenyReasonFromAnApproval:
+    """A denied approval's reason joins the ledger when the gated task is settled."""
+
+    def test_deny_reason_is_recorded_against_the_tasks_id(self) -> None:
+        """The correction carries the task id dispatch stores under ``context``."""
+        token = _approval.approval_create(
+            "proj", "implementer", "deploy", context={"taskId": "task-1", "pipelineIndex": 1}
+        )
+        _approval.approval_deny(token, channel="cli", actor="op", reason="not ready")
+        _actions.resolve_waiting_approval(
+            token, "denied", channel="cli", actor="op", reason="not ready"
+        )
+
+        records = _corrections.read("proj")
+        assert [(r["kind"], r["taskId"], r["text"], r["source"]) for r in records] == [
+            ("deny_reason", "task-1", "not ready", "cli")
+        ]

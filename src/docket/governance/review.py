@@ -14,7 +14,6 @@ from docket.kernel import protected_paths as _protected
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.platform import read_json, read_modify_write
-from docket.teams.apply.review import RunItem
 
 CODE_LENGTH = 16
 _NAMES_NO_FILE = frozenset({"allow-commands", "network", "role-loosens"})
@@ -130,3 +129,13 @@ def remember(repo_root: Path, project: str, items: tuple[RunItem, ...]) -> str:
         f"repo={_key(repo_root)} pod={project} code={code} items={len(items)}",
     )
     return code
+
+
+@dataclass(frozen=True)
+class RunItem:
+    """One thing a directory would run on this machine: its ``kind``, ``name`` and the
+    exact ``runs`` text the operator is asked to allow."""
+
+    kind: str
+    name: str
+    runs: str

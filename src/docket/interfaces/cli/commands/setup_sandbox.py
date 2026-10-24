@@ -9,15 +9,15 @@ from enum import StrEnum
 
 import typer
 
-from docket.governance import network_posture as _np
-from docket.governance import profile as _profile
 from docket.governance import security as _sec
 from docket.governance.audit import audit_log
+from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
 from docket.kernel.ports import SandboxAvailability
 from docket.kernel.ports import jail as _jail
 from docket.teams import fleet as _fleet
+from docket.teams import network_posture as _np
 
 sandbox_app = typer.Typer(
     name="sandbox",
@@ -171,7 +171,7 @@ def status(json_out: bool = False) -> int:
 def isolate(want: str) -> int:
     """Turn workspace isolation on or off; ``on`` needs a usable backend."""
     if want == "off":
-        _sec.disable_workspace_isolation()
+        _fleet.disable_workspace_isolation()
         audit_log("gates.isolate", "off")
         ui.success("Isolation off; tools run on the host")
         return 0
@@ -179,7 +179,7 @@ def isolate(want: str) -> int:
     if avail.backend == "none":
         ui.error("No sandbox backend is usable", NO_BACKEND_HINT)
         return 1
-    _sec.apply_workspace_isolation()
+    _fleet.apply_workspace_isolation()
     audit_log("gates.isolate", "on")
     ui.success(f"Isolation on (backend {avail.backend})")
     ui.dim("A turn with no usable backend is refused and audited, never run unsandboxed.")

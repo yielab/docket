@@ -205,7 +205,7 @@ stores, all under `~/.docket/`:
   path: older messages are summarised, and an assistant tool call is never separated from its
   tool results.
 - **`HEARTBEAT.md`'s dispatch ledger** — every pod Lead's `HEARTBEAT.md` carries a delimited,
-  docket-owned region inside its `## Active Tasks` list that `hops/application/record.py` upserts
+  docket-owned region inside its `## Active Tasks` list that `tasks/application/record.py` upserts
   (through `teams/agent_memory.py`'s `sync_dispatch_tasks`)
   mechanically at claim, at every persisted hop, and at finalize — not prose an agent is trusted
   to keep current by convention. `docket setup` flags a task the queue marks `running` with no
@@ -739,7 +739,7 @@ Tester:      ✓ Behavior-only validation
 queued tasks through its pipeline, one real, costed agent turn per hop. Earlier drafts of this
 document sketched a memory-file signaling protocol (`TASK.md`/`DONE.md`/`APPROVED.md`/
 `VALIDATED.md`) with Telegram polling and a fixed 3-retry escalation — that was never what
-dispatch (`pipeline/application/executor.py`, `hops/`, `tasks/`) implements. This section replaces it with the mechanism as it actually ships,
+dispatch (`hops/application/executor.py`, `hops/`, `tasks/`) implements. This section replaces it with the mechanism as it actually ships,
 resolved against a declarative pipeline by `pipeline/domain/plan.py`.
 
 ### Task state machine
@@ -780,7 +780,7 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
   brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket task answer
   <task-id>`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
-  all resolve it through one `tasks.application.answers.answer_task` function, which routes the step's own
+  all resolve it through one `hops.application.answers.answer_task` function, which routes the step's own
   `on:` outcome (`answered`/`declined`) and reopens the task `pending`. An unanswered question
   past its own deadline moves the task to `blocked` (`blockedReason: "input_expired"`), never
   `failed`.

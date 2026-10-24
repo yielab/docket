@@ -840,9 +840,9 @@ Each JSONL line is a JSON object with these fields:
   dialect's `deliver`
 - `src/docket/templates/channels/01-console.yaml` … `07-telegram.yaml`: the seven built-in
   channel documents
-- `src/docket/tasks/application/answers.py`: `answer_task`, `AnswerError`, `AnswerRejected`,
+- `src/docket/hops/application/answers.py`: `answer_task`, `AnswerError`, `AnswerRejected`,
   `sweep_expired_questions`
-- `src/docket/tasks/application/interruptions.py`: `forecast`, `Interruption`, `ASK_KINDS`,
+- `src/docket/hops/application/interruptions.py`: `forecast`, `Interruption`, `ASK_KINDS`,
   `NOTHING_WILL_ASK`, `record_pregrant`, `InterruptionsError`
 - `src/docket/tasks/application/consult.py`: the `consult` handler, `park_token`, `parked_question`,
   `ConsultParked`, `ConsultUnavailable`, `DEFAULT_MAX_CONSULTATIONS`
@@ -851,16 +851,16 @@ Each JSONL line is a JSON object with these fields:
   `consult_park`, `pregrants`); `src/docket/governance/gate.py`: the park path (`_park`,
   `context.taskId`), the pre-grant matcher, the `approve_task` in-turn pre-grant
 - `src/docket/teams/settings.py`: `pod_approval_mode`
-- `src/docket/pipeline/application/steps.py`: `effective_pipeline`, `_run_input_step`
+- `src/docket/hops/application/steps.py`: `effective_pipeline`, `_run_input_step`
   (`input_requested`)
 - `src/docket/tasks/application/queue.py`: `read_tasks`
 - `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`, `TASK_GRANT_CAP`
 - `src/docket/hops/application/compose.py`: task-grant minting in `_compose_hop`
-- `src/docket/hops/application/record.py`: consult park conversion
+- `src/docket/tasks/application/record.py`: consult park conversion
 - `src/docket/hops/gates/pre_hop.py`: `_park_if_check_changed`
 - `src/docket/governance/approval.py`: `create_pregrant`, `consume_pregrant`, `approval_set_option`,
   `approval_sweep_expired`, the `deny_reason` correction
-- `src/docket/governance/profile.py`: `project_violations`, `gather_facts`, `lights_out_violations`,
+- `src/docket/hops/gates/profile.py`: `project_violations`, `gather_facts`, `lights_out_violations`,
   `lights_out_report`, `as_json`
 - `src/docket/interfaces/telegram/bot.py`: `/status` rendering from `build_inbox`
 - `src/docket/kernel/home.py`: the `Home` members `inbox_cursor_file`, `channels_file`,

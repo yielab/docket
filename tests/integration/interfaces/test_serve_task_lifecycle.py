@@ -20,6 +20,7 @@ from tests.support.llm import _final_response, _tool_call_response
 from tests.support.pods import build_pod
 
 from docket.governance import audit as _audit
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
@@ -27,10 +28,9 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
+from docket.tasks.application import worktree_prune as _worktree_prune
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
-from docket.teams import task_worktrees as _task_worktrees
 
 _hermetic = _support_home.hermetic_2
 
@@ -145,7 +145,7 @@ def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_serve
         assert body["untracked"] == ["loose.txt"]
         assert body["worktreePresent"] is True
 
-        entries = _task_worktrees.prune_task_worktrees("demo", force=True)
+        entries = _worktree_prune.prune_task_worktrees("demo", force=True)
         assert [e.action for e in entries] == ["removed"]
         status, after = _call("GET", url)
 

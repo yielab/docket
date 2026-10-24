@@ -1131,7 +1131,7 @@ answers, prompts once per schema property on a TTY, then answers) or non-interac
 task answer <task-id> [text] [--field name=value]... [--decline]` — a bare `text` fills a
 single-property question, `--field` names each property of a richer one. Both, plus `POST
 /tasks/<id>/answer` and the MCP `task_answer` tool, resolve through the same
-`tasks.application.answers.answer_task` function, so an answer is screened by the same input policy hook
+`hops.application.answers.answer_task` function, so an answer is screened by the same input policy hook
 regardless of which surface sent it.
 
 ## 4. File reference

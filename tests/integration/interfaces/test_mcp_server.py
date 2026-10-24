@@ -27,12 +27,12 @@ from tests.support.trace import audit_actions_2 as _audit_actions
 from docket.agent import ports as _rd
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import mcp as _mcp
 from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
@@ -299,7 +299,7 @@ class TestToolDispatch:
             def _fake_dispatch_pod(proj: str, **kw: object) -> list[_task.TaskResult]:
                 return [_task.TaskResult(task_id="task-x", status="done")]
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _fake_dispatch_pod)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake_dispatch_pod)
 
             result = _mcp.tool_dispatch("demo")
             assert result["ok"] is True
@@ -324,7 +324,7 @@ class TestToolDispatch:
             def _boom(proj: str, **kw: object) -> list[_task.TaskResult]:
                 raise RuntimeError("dispatch exploded")
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _boom)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _boom)
 
             result = _mcp.tool_dispatch("demo")
             assert result["ok"] is True
@@ -348,7 +348,7 @@ class TestToolDispatch:
                 time.sleep(0.05)
                 return []
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _slow)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _slow)
             result = _mcp.tool_dispatch("demo")
             # The audit entry exists right away — it does not wait for the
             # background pipeline thread to finish.
@@ -361,7 +361,7 @@ class TestToolDispatch:
     def test_resume_and_timeout_are_threaded_through_to_dispatch_pod(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Proves this tool is a thin wrapper over `tasks.application.sweep.dispatch_pod`
+        """Proves this tool is a thin wrapper over `hops.application.sweep.dispatch_pod`
         (same gates, same knobs) rather than a parallel dispatch path."""
         with _seed_pod(tmp_path, project="demo"):
             seen: dict[str, object] = {}
@@ -370,7 +370,7 @@ class TestToolDispatch:
                 seen.update(kw)
                 return []
 
-            monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", _spy)
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _spy)
             result = _mcp.tool_dispatch("demo", resume=True, timeout=45)
             _wait_for_terminal_run(result["run"])
             assert seen["resume"] is True
@@ -576,9 +576,7 @@ class TestEveryToolCallIsAudited:
             _sweep.dispatch_pod("demo", runner=FakeDriver())
             parked = next(t for t in _queue.read_tasks("demo") if t["status"] == "waiting_input")
 
-            monkeypatch.setattr(
-                "docket.tasks.application.sweep.dispatch_pod", lambda proj, **kw: []
-            )
+            monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
             token = _approval.approval_create("demo", "implementer", "deploy")
 
             _mcp.tool_status()

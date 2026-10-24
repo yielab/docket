@@ -19,6 +19,7 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import setup as _setup
 from docket.kernel.home import current_home
 from docket.models.adapters import openai_http as _llm
+from docket.models.application import probe as _probe
 
 SUBJECT = "docket.interfaces.cli.commands.setup"
 
@@ -30,7 +31,7 @@ def _files(home: Path) -> list[str]:
 
 
 def _reachable(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _llm.ProbeResult(status=200))
+    monkeypatch.setattr(_llm, "probe_models", lambda *a, **k: _probe.ProbeResult(status=200))
 
 
 def _ready_optionals(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,7 +161,7 @@ class TestScriptedTerminal:
             monkeypatch.setattr(
                 _llm,
                 "probe_models",
-                lambda *a, **k: _llm.ProbeResult(status=None, transport_error="refused"),
+                lambda *a, **k: _probe.ProbeResult(status=None, transport_error="refused"),
             )
             monkeypatch.setattr(_contract, "is_tty", lambda: True)
 

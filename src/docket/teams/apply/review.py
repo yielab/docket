@@ -6,23 +6,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 import docket.kernel.templates as _templates
-from docket.hops.workspace import prepare as _prepare
+from docket.governance import review as _reviewed
+from docket.governance.review import RunItem
 from docket.kernel.home import current_home
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import config_docs as _config_docs
 from docket.teams import roles as _arch
 from docket.teams.apply.recipes import _config_glob, _declared_servers, _named_pipeline_files
+from docket.teams.workspace import prepare as _prepare
 
 REPO_REFUSED_COMMANDS: tuple[str, ...] = ("sh", "bash", "zsh", "dash", "sudo", "ssh", "nc", "socat")
-
-
-@dataclass(frozen=True)
-class RunItem:
-    """One thing a directory would run on this machine: its ``kind``, ``name`` and the
-    exact ``runs`` text the operator is asked to allow."""
-
-    kind: str
-    name: str
-    runs: str
 
 
 @dataclass(frozen=True)
@@ -69,8 +62,6 @@ def _run_steps(steps: list[Any], prefix: str = "") -> list[RunItem]:
 
 
 def _config_docs_doc(path: Path, kind: str) -> dict[str, Any]:
-    from docket.teams import config_docs as _config_docs
-
     try:
         return dict(_config_docs.load_document(path, kind=kind).doc)
     except _config_docs.ConfigDocError:
@@ -193,7 +184,6 @@ def review_decision(
     """Whether *directory*'s run-on-this-machine items are cleared by the shipped-recipe
     exemption, a set *project* remembered for *repo_root*, or the matching *accept* code.
     Read-only."""
-    from docket.governance import review as _reviewed
 
     empty = PlanReview((), ())
     if is_shipped_recipe(directory):
@@ -221,7 +211,6 @@ class RunChange:
 def runs_changed(project: str, repo_dir: Path) -> tuple[RunChange, ...]:
     """The run-on-this-machine items of *repo_dir* that differ from the latest set *project*
     remembered for its repository (every item when none was remembered)."""
-    from docket.governance import review as _reviewed
 
     found = _reviewed.lookup(repo_root(repo_dir), project)
     was = {(i.kind, i.name): i.runs for i in found.items} if found else {}

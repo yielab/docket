@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-import docket.agent.tools.mcp_tools as _mt
 from docket.agent.tools import mcp_client as _client
+from docket.agent.tools import mcp_types as _mcp_types
 from docket.kernel import mcp as _mcp
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home, use_home
@@ -84,9 +84,9 @@ def root(tmp_path: Path) -> Path:
 
 def _launch(
     root: Path, network: bool = True, sandbox: str = "auto", runtime: bool = False
-) -> _mt.StdioLaunch:
+) -> _mcp_types.StdioLaunch:
     extra = (Path(sys.prefix), Path(sys.base_prefix)) if runtime else ()
-    return _mt.StdioLaunch(
+    return _mcp_types.StdioLaunch(
         cwd=str(root),
         sandbox=sandbox,  # type: ignore[arg-type]
         network=network,

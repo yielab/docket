@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from docket.governance import policy as _pol
-from docket.governance import profile as _profile
+from docket.hops.application import report as _pod_report
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import read_json
@@ -39,7 +39,7 @@ def _required_workspace_files(aid: str) -> tuple[str, ...]:
 
 def _check_profiles() -> None:
     """Under ``lights-out``, each pod's profile and unmet requirements; silent otherwise."""
-    report = _profile.lights_out_report()
+    report = _pod_report.lights_out_report()
     if not report:
         return
     ui.section("Profile:")

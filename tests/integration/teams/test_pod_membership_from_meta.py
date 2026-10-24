@@ -18,12 +18,12 @@ from tests.support.pods import build_pod
 from tests.support.pods import seed as _seed
 
 from docket.agent import ports as _rd
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import pod
 from docket.teams import roles as _arch
 

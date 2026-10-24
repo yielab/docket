@@ -31,9 +31,9 @@ from tests.support.git import git_2 as _git
 from tests.support.git import pgrep_count as _pgrep_count
 
 from docket.agent.ports import ToolCall
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.registry import ToolContext, dispatch_tool
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 from docket.kernel.ports import jail as _jail_port
 from docket.sandbox import docker as sandbox_docker

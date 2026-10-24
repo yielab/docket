@@ -278,6 +278,6 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
 # ── built-in tools ────────────────────────────────────────────────────────────
 
 
-def _str_arg(args: dict[str, Any], name: str, default: str = "") -> str:
+def str_arg(args: dict[str, Any], name: str, default: str = "") -> str:
     value = args.get(name, default)
     return value if isinstance(value, str) else str(value)

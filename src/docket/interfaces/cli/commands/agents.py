@@ -22,14 +22,14 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup as _setup
 from docket.interfaces.cli.commands import setup_notify as _setup_notify
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
-from docket.interfaces.cli.commands.pod_config import (
+from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.render.apply import (
     render_apply_header,
     render_apply_plan,
     render_review,
     render_run_items,
     run_item_label,
 )
-from docket.interfaces.cli.render import ui
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
@@ -196,7 +196,7 @@ def _stopped(command: str) -> str:
     return "Not set up" if command == "docket init" else "Not updated"
 
 
-def _label(item: _review.RunItem) -> str:
+def _label(item: _reviewed.RunItem) -> str:
     return run_item_label(item)
 
 

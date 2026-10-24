@@ -7,7 +7,7 @@ waits on, and resolves a real approval rather than sitting with zero production 
   * TestGateFiresPreHop — a required hop stops *before* its turn runs, persists
     ``waiting_approval`` with a token + exact pipeline position, and traces ``approval_required``.
   * TestNotClaimableConcurrently — a ``waiting_approval`` task is invisible to every claim path
-    (a second ``dispatch_pod`` call, or ``_claim_next_task`` directly) until its approval resolves.
+    (a second ``dispatch_pod`` call, or ``claim_next_task`` directly) until its approval resolves.
   * TestGrantResumesAtHop — a grant (direct, and via ``cli/_approve.py``) flips the task to
     ``pending`` and the next dispatch resumes at the exact hop it stopped on — never re-running
     completed hops, never re-prompting for that same hop.
@@ -47,31 +47,32 @@ from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
 from docket.agent.ports import ToolCall
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance.policy import install_policies
+from docket.hops.application import executor as _executor_c
+from docket.hops.application import steps as _steps_c
+from docket.hops.application import sweep as _sweep
+from docket.hops.application import usage as _usage
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
-from docket.pipeline.application import executor as _executor_c
-from docket.pipeline.application import steps as _steps_c
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import settings as _settings
 
 _hermetic = _support_home.hermetic
 
-SUBJECT = "docket.tasks.application.sweep"
+SUBJECT = "docket.hops.application.sweep"
 
 # ── hermetic environment (mirrors test_reviewer_gate.py) ──────────────────────
 
@@ -285,10 +286,10 @@ class TestNotClaimableConcurrently:
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
 
-        assert _queue._claim_next_task("myapp", resume=False) is None
+        assert _queue.claim_next_task("myapp", resume=False) is None
         # --resume only ever reclaims a stale_claim failure, never a
         # waiting_approval task.
-        assert _queue._claim_next_task("myapp", resume=True) is None
+        assert _queue.claim_next_task("myapp", resume=True) is None
 
     def test_stale_claim_sweep_does_not_touch_a_waiting_approval_task(self) -> None:
         _seed_lean_pod(gated=True)
@@ -299,7 +300,7 @@ class TestNotClaimableConcurrently:
         # waiting_approval task has no claimedAt to go stale against — the
         # sweep only ever looks at status == "running".
         with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
-            _lifecycle._sweep_stale_claims("myapp")
+            _lifecycle.sweep_stale_claims("myapp")
             assert _queue.read_tasks("myapp")[0]["status"] == "waiting_approval"
 
 
@@ -599,7 +600,7 @@ class TestBudgetGateTakesPrecedence:
         monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
         monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+        monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
         monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
 
         results = _sweep.dispatch_pod("myapp", runner=_RecordingRunner())

@@ -22,6 +22,7 @@ from docket.governance import gate_rules as _rules
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.governance.gate_rules import AskRoute
+from docket.governance.secrets import redact as _redact
 from docket.governance.security import classify_command
 from docket.kernel.gate import (
     Decision,
@@ -33,7 +34,6 @@ from docket.kernel.gate import (
 )
 from docket.kernel.operator_contract import canonical_args_digest
 from docket.kernel.ports import git as _git
-from docket.observability.trace import redact as _redact
 
 
 @dataclass(frozen=True)

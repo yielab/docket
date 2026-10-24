@@ -22,7 +22,7 @@ from docket.kernel.errors import DocumentError, Unavailable
 from docket.kernel.home import current_home
 from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
-from docket.models import selection as _mp
+from docket.teams import model_selection as _mp
 
 
 def _say(text: str = "") -> None:

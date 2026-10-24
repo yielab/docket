@@ -25,13 +25,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 from docket.governance import policy as _policy
+from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
+from docket.governance.ports import approval_follow_up as _follow_up
 from docket.kernel import clock as _clock
 from docket.kernel import ids as _ids
 from docket.kernel.errors import NotFound
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Option
-from docket.observability import trace as _trace
+from docket.kernel.ports import tracer as _tracer
 from docket.platform import read_modify_write, with_lock, write_json
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
@@ -103,11 +105,10 @@ class ApprovalNoop(Exception):
 
 
 def _redact(text: str) -> str:
-    """Best-effort secret redaction via the trace/redact port. A redaction failure must
-    never break approval, so any error returns the original text unchanged; the local
-    import avoids a cycle with trace."""
+    """Best-effort secret redaction. A redaction failure must never break approval, so any
+    error returns the original text unchanged."""
     try:
-        return _trace.redact(text)
+        return _secrets.redact(text)
     except Exception:
         return text
 
@@ -128,10 +129,10 @@ def _emit_trace(
     event_type: str,
     payload: dict[str, Any],
 ) -> None:
-    """Best-effort trace hook to docket.observability.trace.trace_event; any failure is swallowed
-    so a trace problem never breaks the approval. Local import avoids a cycle."""
+    """Best-effort trace hook to the tracer port; any failure is swallowed so a trace problem
+    never breaks the approval."""
     try:
-        _trace.trace_event(project, session, role, event_type, json.dumps(payload))
+        _tracer.trace_event(project, session, role, event_type, json.dumps(payload))
     except Exception:
         return None
 
@@ -359,23 +360,6 @@ def approval_deny(
         audit_detail += f" reason={_audit_field(reason)}"
     audit_log("approval.deny", audit_detail)
 
-    # The denial reason joins the corrections ledger under the task the gate named (dispatch
-    # stores it in the record's context); an approval no task carries is keyed empty.
-    if reason and project != "operator":
-        raw_context = data.get("context")
-        context: dict[str, Any] = raw_context if isinstance(raw_context, dict) else {}
-        task_id = str(data.get("taskId") or context.get("taskId") or "")
-        from docket.tasks.application import corrections as _corrections
-
-        _corrections.record(
-            project,
-            "deny_reason",
-            task_id=task_id,
-            role=role,
-            text=reason,
-            source=channel,
-        )
-
 
 def list_pending() -> list[dict[str, Any]]:
     """Return every pending approval record in filename order; records that fail to
@@ -452,9 +436,7 @@ def _resolve_timeout_as_denied(token: str) -> bool:
     _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
     audit_log("approval.deny", f"token={token} project={project} channel=timeout")
     with contextlib.suppress(Exception):
-        from docket.tasks.application import actions as _actions
-
-        _actions.resolve_waiting_approval(token, "denied")
+        _follow_up.resolve_waiting_approval(token, "denied")
     return True
 
 

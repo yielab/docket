@@ -18,16 +18,17 @@ from tests.support.pods import seed_pod_2 as _seed_pod
 
 from docket.agent import ports as _rd
 from docket.governance import secrets as _secrets
+from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel import brief as _brief
 from docket.kernel import operator_contract as _oc
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
@@ -257,31 +258,31 @@ class TestCheckBriefResources:
 
     def test_an_unconfigured_secret_is_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            brief = _oc.TaskBrief(objective="x", resources=["secret:NOPE"])
+            brief = _brief.TaskBrief(objective="x", resources=["secret:NOPE"])
             assert _pre_hop._check_brief_resources("demo", brief) == ["secret:NOPE"]
 
     def test_a_configured_secret_is_not_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _secrets.save_secrets({"YES": "shh"})
-            brief = _oc.TaskBrief(objective="x", resources=["secret:YES"])
+            brief = _brief.TaskBrief(objective="x", resources=["secret:YES"])
             assert _pre_hop._check_brief_resources("demo", brief) == []
 
     def test_a_missing_path_is_reported(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             missing = str(tmp_path / "does-not-exist.txt")
-            brief = _oc.TaskBrief(objective="x", resources=[f"path:{missing}"])
+            brief = _brief.TaskBrief(objective="x", resources=[f"path:{missing}"])
             assert _pre_hop._check_brief_resources("demo", brief) == [f"path:{missing}"]
 
     def test_an_existing_path_is_not_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             present = tmp_path / "exists.txt"
             present.write_text("x")
-            brief = _oc.TaskBrief(objective="x", resources=[f"path:{present}"])
+            brief = _brief.TaskBrief(objective="x", resources=[f"path:{present}"])
             assert _pre_hop._check_brief_resources("demo", brief) == []
 
     def test_verify_is_missing_with_no_configured_verify_cmd(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            brief = _oc.TaskBrief(objective="x", resources=["verify"])
+            brief = _brief.TaskBrief(objective="x", resources=["verify"])
             assert _pre_hop._check_brief_resources("demo", brief) == ["verify"]
 
     def test_verify_is_not_missing_once_the_implementer_has_a_verify_cmd(
@@ -289,12 +290,12 @@ class TestCheckBriefResources:
     ) -> None:
         with _seed_pod(tmp_path):
             _fleet.meta_set(_pod.pod.member_id("demo", "implementer"), "verifyCmd", "pytest -q")
-            brief = _oc.TaskBrief(objective="x", resources=["verify"])
+            brief = _brief.TaskBrief(objective="x", resources=["verify"])
             assert _pre_hop._check_brief_resources("demo", brief) == []
 
     def test_a_brief_with_no_resources_has_nothing_missing(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            assert _pre_hop._check_brief_resources("demo", _oc.TaskBrief(objective="x")) == []
+            assert _pre_hop._check_brief_resources("demo", _brief.TaskBrief(objective="x")) == []
 
 
 class TestRequireVerify:

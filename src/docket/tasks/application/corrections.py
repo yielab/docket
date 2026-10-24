@@ -8,10 +8,10 @@ import logging as _logging
 import os
 from typing import Any
 
+from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.observability import trace as _trace
 
 __all__ = ["read", "record", "utc_cursor", "utc_z"]
 
@@ -33,7 +33,7 @@ def record(
     ts = _now or _clock.iso()
 
     # Redact sensitive text
-    redacted_text = _trace.redact(text)
+    redacted_text = _secrets.redact(text)
 
     # Tail-bound to 4000 chars
     if len(redacted_text) > 4000:

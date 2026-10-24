@@ -115,7 +115,7 @@ class TaskResult:
     pending_approval_index: int | None = None
     # Only meaningful when status == "waiting_input" -- the minted ``Question``
     # (operator_contract, dumped by alias), so the caller (``_apply_result``) can
-    # persist it for `tasks.application.answers.answer_task` to resolve later. See
+    # persist it for `hops.application.answers.answer_task` to resolve later. See
     # pod-dispatch.spec.md ("Operator input steps and answers").
     question: dict[str, Any] | None = None
     # Only meaningful when status == "failed" -- see RESUMABLE_FAILURE_KINDS.

@@ -25,10 +25,10 @@ import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
 from docket.governance import approval as _ap
 from docket.governance import policy as _policy
+from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 
 _hermetic = _support_home.hermetic

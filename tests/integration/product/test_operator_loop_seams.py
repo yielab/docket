@@ -27,7 +27,9 @@ from docket.agent import ports as _rd
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
+from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
@@ -35,9 +37,7 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
 from docket.operator import notify as _notify
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.operator.channel"

@@ -329,7 +329,7 @@ Where the names above live today; the only section that names source paths.
 - `src/docket/teams/identity.py`: `compose_agent_prompt`, `POD_MEMORY_FRAME`, `POD_MEMORY_LABEL`,
   `INSTRUCTIONS_FILE`
 - `src/docket/teams/settings.py`: `pod_task_list_path`
-- `src/docket/tasks/application/lifecycle.py`: `_finalize_task` calls `record_task_memory`
+- `src/docket/tasks/application/lifecycle.py`: `finalize_task` calls `record_task_memory`
 - `src/docket/teams/apply/plan.py`: `resolve_recipe`
 - `src/docket/governance/policy.py`: `install_policies`
 - `src/docket/teams/utils.py`: `project_ids`

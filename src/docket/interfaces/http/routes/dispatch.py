@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 
 from docket.governance import audit as _audit
+from docket.hops.application import steps as _steps
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import threads as _threads
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
 
 
 def post_dispatch(h: HttpExchange, project: str) -> None:

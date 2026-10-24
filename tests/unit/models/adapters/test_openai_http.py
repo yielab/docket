@@ -15,6 +15,7 @@ import pytest
 
 from docket.agent.ports import Endpoint, ModelLimits
 from docket.models.adapters import openai_http as llm
+from docket.models.application import probe
 
 SUBJECT = "docket.models.adapters.openai_http"
 
@@ -45,7 +46,7 @@ class _Response:
         return self._body.encode("utf-8")
 
 
-def _probe(monkeypatch: pytest.MonkeyPatch, body: str) -> llm.ProbeResult:
+def _probe(monkeypatch: pytest.MonkeyPatch, body: str) -> probe.ProbeResult:
     monkeypatch.setattr(llm, "open_same_origin", lambda *a, **k: _Response(body))
     return llm.probe_models(Endpoint(base_url="http://127.0.0.1:1/v1", model_id="x"))
 

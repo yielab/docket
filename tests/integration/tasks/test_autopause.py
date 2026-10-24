@@ -4,7 +4,7 @@ Covers: ``AgentMeta.coerce_paused`` (typed accessor fixing the string/bool
 display bug: a writer stores a real ``bool`` while old code compared it to the string
 ``"true"``, which ``True`` never equals); the pause writer (per-hop budget gate marks the pod's
 Lead ``paused=True, pausedReason="budget"`` at the cap); claim-time refusal
-(``_claim_next_task`` refuses every claim for a paused pod outright -- a ``paused_refused``
+(``claim_next_task`` refuses every claim for a paused pod outright -- a ``paused_refused``
 trace event, no wasted turn -- until resumed); and the token-based estimate
 fallback (``core/utils.estimate_cost_usd``/``core/dispatch.pod_gating_cost``) that lets gating
 trip even when the driver reports no USD cost -- always labelled, never contaminating spend.
@@ -22,21 +22,22 @@ from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
+from docket.hops.application import executor as _executor_c
+from docket.hops.application import steps as _steps_c
+from docket.hops.application import sweep as _sweep
+from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, current_home, use_home
-from docket.models import selection as _mp
-from docket.pipeline.application import executor as _executor_c
-from docket.pipeline.application import steps as _steps_c
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 from docket.teams import pod as _podcore
 from docket.teams import settings as _settings
 from docket.teams import utils as _utils
 from docket.teams.models import AgentMeta
 
-SUBJECT = "docket.tasks.application.sweep"
+SUBJECT = "docket.hops.application.sweep"
 
 # ── hermetic environment (mirrors test_dispatch.py) ───────────────────────────────
 
@@ -137,7 +138,7 @@ class TestAutoPauseDispatch:
             monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
             monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
 
             results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
@@ -156,7 +157,7 @@ class TestAutoPauseDispatch:
             monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
             monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
             monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
             _sweep.dispatch_pod("demo", runner=_RecordingRunner())
 
@@ -214,7 +215,7 @@ class TestEstimateFallback:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
-            monkeypatch.setattr(_settings, "pod_recorded_cost", lambda _p: 3.5)
+            monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 3.5)
             monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 3.5)
             spent, estimated = _pre_hop.pod_gating_cost("demo")
             assert spent == 3.5
@@ -262,7 +263,7 @@ class TestRecordedSpendNeverContaminated:
             # aggregate_cost (what `docket status` reports) must stay exactly the
             # driver's own recorded figure — 0.0 here — never the estimate, even
             # though plenty of tokens (and a known price) exist to estimate from.
-            assert _utils.aggregate_cost(lead_id).cost_usd == 0.0
+            assert _usage.aggregate_cost(lead_id).cost_usd == 0.0
 
     def test_status_labels_the_dollar_figure_an_estimate(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
@@ -308,7 +309,7 @@ class TestUnpricedModelSurfaces:
             yield model
 
     def test_the_pod_report_names_the_unpriced_model(self, tmp_path: Path) -> None:
-        from docket.teams import report as pod_report
+        from docket.hops.application import report as pod_report
 
         with self._budgeted_pod(tmp_path) as model:
             assert pod_report.pod_report("demo")["budgetUnpriced"] == [model]

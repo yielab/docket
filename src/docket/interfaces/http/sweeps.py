@@ -6,11 +6,11 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from docket.hops.application import sweep as _sweep
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
 from docket.tasks.application import runs as _runs
-from docket.tasks.application import sweep as _sweep
 
 _SWEEP_LOCK = threading.Lock()
 _sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}

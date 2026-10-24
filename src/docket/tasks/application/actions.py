@@ -7,16 +7,17 @@ from typing import Any
 from docket.governance import approval as _ap
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import audit as _audit
-from docket.hops.application.record import _UnitContext
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.platform import read_modify_write
+from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import transitions as _transitions
+from docket.tasks.application.record import UnitContext
 from docket.tasks.domain import state as _state
 from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
-from docket.teams.settings import _pod_settings, pod_task_list_path
+from docket.teams.settings import load_pod_settings, pod_task_list_path
 
 TASK_GRANT_CAP = 20
 
@@ -45,7 +46,7 @@ def resolve_waiting_approval_detail(
     ``{token, tool, argsDigest}`` to the task's ``pregrants`` for ``_compose_hop`` to carry
     into the re-run, and does **not** set ``gateOverridePipelineIndex`` (that field is for
     skipping a pre-hop gate, not for re-running an already-attempted hop -- the resumed hop
-    re-runs by ``_replay_pipeline_position``'s own ``hop.parked`` handling instead). A plain
+    re-runs by ``replay_pipeline_position``'s own ``hop.parked`` handling instead). A plain
     in-turn ``wait``-mode ask also carries no ``taskId`` (its wait blocks the calling thread
     directly, so there is no task-level state to update here) and is unaffected: not parked
     and no ``taskId`` still no-ops, exactly as before.
@@ -70,6 +71,17 @@ def resolve_waiting_approval_detail(
     check_changed = context.get("kind") == "check_changed"
     task_id = str(context.get("taskId", ""))
     project = str(rec.get("project", ""))
+    if decision == "denied" and reason and project and project != "operator":
+        # The denial reason joins the corrections ledger under the task the gate named (dispatch
+        # stores it in the record's context); an approval no task carries is keyed empty.
+        _corrections.record(
+            project,
+            "deny_reason",
+            task_id=str(rec.get("taskId") or task_id),
+            role=str(rec.get("role", "")) or "operator",
+            text=reason,
+            source=channel or "unknown",
+        )
     if not project or (not task_id and not parked):
         return False, ""
 
@@ -198,13 +210,15 @@ def _append_task_grant(
     return ""
 
 
-def _mint_task_grant_pregrants(ctx: _UnitContext, role: str) -> list[dict[str, str]]:
+def mint_task_grant_pregrants(ctx: UnitContext, role: str) -> list[dict[str, str]]:
     """One fresh single-use pre-grant per task-wide grant made for *role*, bound to this project
     and role: a grant never reaches a hop of another role."""
     raw = ctx.task.get("taskGrants")
     if not isinstance(raw, list) or not raw:
         return []
-    deadline = _clock.now() + _dt.timedelta(hours=_pod_settings(ctx.project).approval_expiry_hours)
+    deadline = _clock.now() + _dt.timedelta(
+        hours=load_pod_settings(ctx.project).approval_expiry_hours
+    )
     minted: list[dict[str, str]] = []
     for grant in raw[:TASK_GRANT_CAP]:
         if not isinstance(grant, dict) or grant.get("role") != role:

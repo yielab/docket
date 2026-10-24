@@ -22,9 +22,9 @@ from typing import Any
 import pytest
 
 from docket.agent.ports import ToolCall
-from docket.agent.tools.builtin_tools import builtin_registry
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.governance import approval as _approval
+from docket.hops.application.builtin_tools import builtin_registry
 from docket.interfaces.http.routes import metrics
 from docket.kernel.home import current_home, use_home
 from docket.observability.trace import trace_event

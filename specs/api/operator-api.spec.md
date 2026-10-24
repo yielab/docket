@@ -396,7 +396,7 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 - `src/docket/tasks/application/lifecycle.py`: `cancel_task`, `retry_task`, `task_diff`.
 - `src/docket/tasks/domain/options.py`: addressable-task and `restrictions` validation,
   `TASK_STATUSES`.
-- `src/docket/teams/report.py`: the `GET /pods` row (`pod_summary`) and `GET /pods/<p>`
+- `src/docket/hops/application/report.py`: the `GET /pods` row (`pod_summary`) and `GET /pods/<p>`
   (`pod_detail`).
 - `src/docket/teams/apply/plan.py`: `apply_directory`; `src/docket/governance/review.py`: the
   review code and `repo.allow`.

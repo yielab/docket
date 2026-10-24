@@ -23,9 +23,9 @@ from docket.kernel.ports import jail as _jail
 from docket.kernel.ports import process as _process
 from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
-from docket.models import selection as _mp
 from docket.operator import enable_channel, load_catalog, unreached_warning
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 
 setup_app = typer.Typer(
     name="setup",

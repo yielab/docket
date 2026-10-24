@@ -21,16 +21,16 @@ from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
 from docket.governance import approval as _approval
+from docket.hops.application import answers as _answers
+from docket.hops.application import executor as _executor
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import run as _run
 from docket.interfaces.telegram import bot as _tg
 from docket.kernel.home import Home, current_home, use_home
-from docket.pipeline.application import executor as _executor
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.application import answers as _answers
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.tasks.domain import task as _task
 from docket.teams import fleet as _fleet
 
@@ -221,7 +221,7 @@ class TestDefect20PodRoleGateContract:
     def test_defect_20_dispatch_plan_gates_a_pod_only_role(self, tmp_path: Path) -> None:
         _seed_auditor_pod(tmp_path)
 
-        steps, _index, _instr = _executor._resolve_pipeline_steps("demo", None)
+        steps, _index, _instr = _executor.resolve_pipeline_steps("demo", None)
 
         auditor = next(s for s in steps if s.step_id == "auditor")
         assert auditor.gate is not None

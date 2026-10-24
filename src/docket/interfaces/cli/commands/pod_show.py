@@ -1,11 +1,11 @@
-"""``docket pod show`` -- Rich rendering of the reports built by ``teams.report``."""
+"""``docket pod show`` -- Rich rendering of the reports built by ``hops.application.report``."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from docket.hops.application.report import network_text, unpriced_text
 from docket.interfaces.cli.render import ui
-from docket.teams.report import network_text, unpriced_text
 
 
 def _kv(label: str, value: object) -> None:

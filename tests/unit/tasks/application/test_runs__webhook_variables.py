@@ -67,7 +67,7 @@ class TestWebhookVariableBinding:
         self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         url, token = live_server
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", lambda proj, **kw: [])
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
 
         status, body = _post_json(
             f"{url}/dispatch/myproject", {"env": "staging", "count": 3}, token
@@ -83,7 +83,7 @@ class TestWebhookVariableBinding:
         self, live_server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         url, token = live_server
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", lambda proj, **kw: [])
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
 
         status, body = _post_json(f"{url}/dispatch/myproject", {}, token)
         assert status == 200
@@ -97,7 +97,7 @@ class TestWebhookVariableBinding:
         url, token = live_server
         dispatched: list[str] = []
         monkeypatch.setattr(
-            "docket.tasks.application.sweep.dispatch_pod",
+            "docket.hops.application.sweep.dispatch_pod",
             lambda proj, **kw: dispatched.append(proj) or [],
         )
 
@@ -118,11 +118,11 @@ class TestWebhookVariableBinding:
         url, token = live_server
         spec = _spec(env=_pipeline.Variable(required=True))
         monkeypatch.setattr(
-            "docket.pipeline.application.steps.effective_pipeline", lambda proj, s: spec
+            "docket.hops.application.steps.effective_pipeline", lambda proj, s: spec
         )
         dispatched: list[str] = []
         monkeypatch.setattr(
-            "docket.tasks.application.sweep.dispatch_pod",
+            "docket.hops.application.sweep.dispatch_pod",
             lambda proj, **kw: dispatched.append(proj) or [],
         )
 
@@ -139,9 +139,9 @@ class TestWebhookVariableBinding:
         url, token = live_server
         spec = _spec(env=_pipeline.Variable(required=True))
         monkeypatch.setattr(
-            "docket.pipeline.application.steps.effective_pipeline", lambda proj, s: spec
+            "docket.hops.application.steps.effective_pipeline", lambda proj, s: spec
         )
-        monkeypatch.setattr("docket.tasks.application.sweep.dispatch_pod", lambda proj, **kw: [])
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
 
         status, body = _post_json(f"{url}/dispatch/myproject", {"env": "staging"}, token)
         assert status == 200

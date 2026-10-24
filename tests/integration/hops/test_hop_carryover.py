@@ -25,9 +25,9 @@ from tests.support.pods import seed_pod as _seed_pod
 from docket.agent import context as _context
 from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
+from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 
 _hermetic = _support_home.hermetic_2
 

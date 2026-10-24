@@ -7,7 +7,7 @@ now "rank anchors" with an honest caption; a `local` preset prices as "$0 (local
 never a fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the
 dead-end guidance strings in cli/_provider.py name commands that actually exist.
 
-Unit tests import `docket.models.selection` directly; CLI-surface tests use CliRunner with
+Unit tests import `docket.teams.model_selection` directly; CLI-surface tests use CliRunner with
 a `use_home` block on a temp directory."""
 
 from __future__ import annotations
@@ -23,14 +23,14 @@ from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import Home, use_home
-from docket.models import selection as _mp
+from docket.teams import model_selection as _mp
 
-SUBJECT = "docket.models.selection"
+SUBJECT = "docket.teams.model_selection"
 
 _runner = CliRunner()
 
 # ---------------------------------------------------------------------------
-# Direct unit tests: models/selection.py
+# Direct unit tests: teams/model_selection.py
 # ---------------------------------------------------------------------------
 
 

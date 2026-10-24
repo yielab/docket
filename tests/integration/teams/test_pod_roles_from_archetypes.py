@@ -4,7 +4,7 @@ must keep returning the exact same values for the four legacy roles, while
 also accepting a starter-library/user-defined role without a single new
 hardcoded string in `teams/pod.py`.
 
-Also covers `models/selection.py`'s archetype-modelClass fallback (a role
+Also covers `teams/model_selection.py`'s archetype-modelClass fallback (a role
 with no named `ALL_ROLES` row resolves through its own `modelClass` against
 the live rank anchors) and an end-to-end `docket pod add
 <starter-role>` provisioning smoke test.
@@ -24,7 +24,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.kernel.home import Home, current_home, use_home
-from docket.models import selection as _mp
+from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import roles as _arch
 

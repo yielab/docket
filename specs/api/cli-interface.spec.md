@@ -1077,8 +1077,8 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/teams/provisioning.py`: `slugify`, `validate_project_id`
 - `src/docket/teams/pod.py`: `PodSettings`, member ids
 - `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskBrief`
-- `src/docket/tasks/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
-- `src/docket/tasks/application/answers.py`: `answer_task`
+- `src/docket/hops/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
+- `src/docket/hops/application/answers.py`: `answer_task`
 - `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `ApprovalNoop`
 - `src/docket/tasks/application/queue.py`: task enqueue
 - `src/docket/tasks/application/lifecycle.py`: `task_diff`, retry, cancel of a parked task,
@@ -1094,10 +1094,10 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/observability/telemetry.py`: `ExportPolicy`
 - `src/docket/governance/privacy.py`: `describe`
 - `src/docket/operator/channel.py`: `unreached_warning`
-- `src/docket/governance/network_posture.py`: the `network <mode>` wording in the `isolation` string
+- `src/docket/teams/network_posture.py`: the `network <mode>` wording in the `isolation` string
 - `src/docket/agent/tools/registry.py`: `dispatch_tool`
 - `src/docket/platform/git.py`: `trust_worktree`
-- `src/docket/models/adapters/openai_http.py`: `resolve_endpoint`
+- `src/docket/models/application/endpoint.py`: `resolve_endpoint`
 - `src/docket/observability/adapters/otlp_http.py`: `encode`
 - `src/docket/kernel/home.py`: the `Home` members `tool_approval_timeout`, `trace_retention_days`,
   `root`

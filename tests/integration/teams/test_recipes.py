@@ -28,13 +28,13 @@ from docket.agent import ports as _rd
 from docket.governance import audit as _audit
 from docket.governance import gate as _gate
 from docket.governance import policy as _policy
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _commands_pod_settings
 from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import sweep as _sweep
 from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
@@ -142,7 +142,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(recipe_dir: Path, tmp_path: Pat
         result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
 
-        roster = _queue.pod_full_roster(project)
+        roster = pod.pod_full_roster(project)
         registry = _arch.load_registry(project)
         plan = _orch.resolve_plan(result.spec, roster, registry=registry)
 
@@ -160,7 +160,7 @@ def test_pod_apply_resolves_a_shipped_recipe_by_name(tmp_path: Path) -> None:
     with _seed_fixture_pod(tmp_path, project):
         assert _pod_cli("update", "secure-build", "--pod", project).exit_code == 0
 
-        assert "security-vetter" in _queue.pod_full_roster(project)
+        assert "security-vetter" in pod.pod_full_roster(project)
 
 
 def test_apply_with_an_invalid_setting_writes_nothing(tmp_path: Path) -> None:

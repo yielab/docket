@@ -20,20 +20,19 @@ from typing import Any, Literal
 
 from docket.governance import policy as _policy
 from docket.governance import review as _reviewed
+from docket.governance.review import RunItem
 from docket.kernel import mcp as _mcp
 from docket.kernel import protected_paths as _protected
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models import document_fields as _documents
-from docket.models import selection as _mp
 from docket.observability import exporter as _exporter
-from docket.pipeline.application import steps as _steps
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.application import queue as _queue
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
@@ -66,27 +65,13 @@ from docket.teams.apply.recipes import (
 from docket.teams.apply.review import (
     PlanReview,
     RunChange,
-    RunItem,
     classify_directory,
     repo_root,
     review_decision,
     runs_changed,
 )
 from docket.teams.apply.write import apply
-
-_MANIFEST_KEYS = frozenset(
-    {
-        "members",
-        "settings",
-        "pipeline",
-        "kind",
-        "name",
-        "description",
-        "exporters",
-        "prepare",
-        "protects",
-    }
-)
+from docket.teams.config_docs import _MANIFEST_KEYS
 
 
 def _plan_roles(
@@ -194,7 +179,7 @@ def _plan_named_pipelines(
     seen: set[str] = set()
     for pipeline_file in _named_pipeline_files(directory):
         rel = f"pipelines/{pipeline_file.name}"
-        if not _steps.TASK_PIPELINE_NAME.match(pipeline_file.stem):
+        if not pod.TASK_PIPELINE_NAME.match(pipeline_file.stem):
             raise PodApplyError(f"{rel}: {pipeline_file.stem!r} is not a pipeline name")
         if pipeline_file.stem in seen:
             raise PodApplyError(f"{rel}: two files name pipeline {pipeline_file.stem!r}")
@@ -284,7 +269,7 @@ def _plan_members(
 ) -> tuple[list[ApplyItem], list[_MemberWrite], dict[str, str]]:
     items: list[ApplyItem] = []
     writes: list[_MemberWrite] = []
-    roster = dict(_queue.pod_full_roster(project))
+    roster = dict(pod.pod_full_roster(project))
 
     base_ids = _pp.pod_member_ids(project)
     if not base_ids:
@@ -463,7 +448,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     if not directory.is_dir():
         raise PodApplyError(f"recipe directory not found: {directory}")
     try:
-        _steps.pod_pipeline(project)
+        pod.pod_pipeline(project)
     except DispatchError as exc:
         raise PodApplyError(str(exc)) from exc
 

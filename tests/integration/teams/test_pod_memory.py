@@ -60,7 +60,7 @@ def _finish(
         evidence={"commit": commit, "baseCommit": None, "diffStat": None},
         trace={"project": "demo", "session": session, "firstTs": "0", "lastTs": "9"},
     )
-    _lifecycle._finalize_task("demo", task_id, _task.TaskResult(task_id, "done", hops=[hop]))
+    _lifecycle.finalize_task("demo", task_id, _task.TaskResult(task_id, "done", hops=[hop]))
     return task_id
 
 

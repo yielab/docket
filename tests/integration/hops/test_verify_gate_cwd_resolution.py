@@ -27,12 +27,12 @@ from tests.support.pods import write_meta_3 as _write_meta
 
 from docket.agent import ports as _rd
 from docket.governance import audit as _audit
-from docket.hops.application import record as _record
+from docket.hops.application import executor as _executor
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.kernel.home import Home, current_home, use_home
-from docket.pipeline.application import executor as _executor
+from docket.tasks.application import record as _record
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
 

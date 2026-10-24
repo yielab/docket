@@ -23,10 +23,10 @@ from docket.governance.audit import audit_log
 from docket.kernel.errors import Conflict, InvalidInput, Unavailable
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
-from docket.models import selection as _mp
 from docket.platform import read_json, read_modify_write, with_lock
 from docket.teams import blueprints as _bp
 from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import provisioning as _prov
 from docket.teams import resources as _res

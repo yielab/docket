@@ -27,6 +27,7 @@ from docket.hops.application.runner import _RETRYABLE_FAILURE_KINDS
 from docket.kernel.home import Home, use_home
 from docket.models.adapters import openai_http as adapter
 from docket.models.adapters import openai_wire as _openai_wire
+from docket.models.application import endpoint as application_endpoint
 
 SUBJECT = "docket.models.adapters.openai_http"
 
@@ -141,7 +142,7 @@ class TestTransport:
                 headers={"x-title": "docket"},
             )
         )
-        ep = adapter.resolve_endpoint("azure/gpt-4")
+        ep = application_endpoint.resolve_endpoint("azure/gpt-4")
         assert ep is not None
 
         captured: dict[str, Any] = {}
@@ -319,8 +320,12 @@ class TestEndpointResolution:
                 "AI_GATEWAY_API_KEY", "vercel-stored", "add"
             )
 
-            openrouter = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
-            gateway = adapter.resolve_endpoint("ai-gateway/anthropic/claude-sonnet-4.6")
+            openrouter = application_endpoint.resolve_endpoint(
+                "openrouter/anthropic/claude-sonnet-4.6"
+            )
+            gateway = application_endpoint.resolve_endpoint(
+                "ai-gateway/anthropic/claude-sonnet-4.6"
+            )
 
             assert openrouter is not None
             assert openrouter.base_url == "https://openrouter.ai/api/v1"
@@ -351,7 +356,7 @@ class TestEndpointResolution:
             ],
         )
 
-        endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
+        endpoint = application_endpoint.resolve_endpoint("openrouter/anthropic/claude-sonnet-4.6")
 
         assert endpoint is not None
         assert endpoint.api_key == "sk-or-env"
@@ -364,7 +369,7 @@ class TestEndpointResolution:
         monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
         monkeypatch.setenv("VERCEL_OIDC_TOKEN", "oidc-token")
 
-        endpoint = adapter.resolve_endpoint("ai-gateway/anthropic/claude-haiku-4.5")
+        endpoint = application_endpoint.resolve_endpoint("ai-gateway/anthropic/claude-haiku-4.5")
 
         assert endpoint is not None
         assert endpoint.api_key == "oidc-token"
@@ -374,7 +379,7 @@ class TestEndpointResolution:
     ) -> None:
         monkeypatch.setenv("DOCKET_LLM_BASE_URL", "http://127.0.0.1:9999/v1")
         monkeypatch.setenv("DOCKET_LLM_API_KEY", "sk-env")
-        ep = adapter.resolve_endpoint("anything/some-model")
+        ep = application_endpoint.resolve_endpoint("anything/some-model")
         assert ep is not None
         assert ep.base_url == "http://127.0.0.1:9999/v1"
         assert ep.api_key == "sk-env"
@@ -385,7 +390,7 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
 
         _register_provider("local", "http://127.0.0.1:8081/v1", local=True)
-        ep = adapter.resolve_endpoint("local/qwen3.6-35b-a3b")
+        ep = application_endpoint.resolve_endpoint("local/qwen3.6-35b-a3b")
         assert ep is not None
         assert ep.base_url == "http://127.0.0.1:8081/v1"
         assert ep.model_id == "qwen3.6-35b-a3b"
@@ -406,7 +411,7 @@ class TestEndpointResolution:
             ],
         )
 
-        ep = adapter.resolve_endpoint("local/wanted")
+        ep = application_endpoint.resolve_endpoint("local/wanted")
 
         assert ep is not None
         assert ep.context_window_tokens == 16384
@@ -428,7 +433,7 @@ class TestEndpointResolution:
             models=[{"id": "m", "contextWindow": 16384, "maxTokens": 2048}],
         )
 
-        ep = adapter.resolve_endpoint("local/m")
+        ep = application_endpoint.resolve_endpoint("local/m")
 
         assert ep is not None
         assert ep.context_window_tokens is None
@@ -441,7 +446,7 @@ class TestEndpointResolution:
         monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
 
         _register_provider("local", "http://127.0.0.1:8081/v1", local=True)
-        ep = adapter.resolve_endpoint("local/m")
+        ep = application_endpoint.resolve_endpoint("local/m")
         assert ep is not None and ep.api_key == ""
 
     def test_provider_named_env_var_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -452,7 +457,7 @@ class TestEndpointResolution:
         _register_provider(
             "openrouter", "https://openrouter.ai/api/v1", credentials=("OPENROUTER_API_KEY",)
         )
-        ep = adapter.resolve_endpoint("openrouter/some-model")
+        ep = application_endpoint.resolve_endpoint("openrouter/some-model")
         assert ep is not None and ep.api_key == "sk-or"
 
     def test_provider_environment_key_overrides_central_store(
@@ -466,14 +471,16 @@ class TestEndpointResolution:
         with use_home(Home(tmp_path)):
             _secrets.save_secrets({"OPENROUTER_API_KEY": "sk-or-stored"})
 
-            endpoint = adapter.resolve_endpoint("openrouter/anthropic/claude-haiku-4.5")
+            endpoint = application_endpoint.resolve_endpoint(
+                "openrouter/anthropic/claude-haiku-4.5"
+            )
 
             assert endpoint is not None
             assert endpoint.api_key == "sk-or-env"
 
     def test_unknown_provider_resolves_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
-        assert adapter.resolve_endpoint("nosuch/model") is None
+        assert application_endpoint.resolve_endpoint("nosuch/model") is None
         assert adapter.client_for("nosuch/model") is None
 
     def test_client_for_builds_a_usable_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
