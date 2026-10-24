@@ -11,7 +11,6 @@ import shutil
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import pytest
 from tests.support import home as _support_home
@@ -23,6 +22,8 @@ from docket.kernel.home import current_home
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.sandbox import landlock as _landlock
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 
 _hermetic = _support_home.hermetic_trace_on
@@ -55,15 +56,14 @@ def _worktree(tmp_path: Path) -> Path:
     return worktree
 
 
-def _verify_task(tmp_path: Path, cmd: str) -> dict[str, Any]:
+def _verify_task(tmp_path: Path, cmd: str) -> TaskRecord:
     _write_meta("myapp-lead")
     _write_meta("myapp-implementer", {"codebase": str(tmp_path), "verifyCmd": cmd})
-    return {
-        "id": "e1",
-        "description": "work",
-        "status": "pending",
-        "worktree": {"dir": str(_worktree(tmp_path)), "branch": "b", "baseCommit": ""},
-    }
+    return TaskRecord(
+        id="e1",
+        description="work",
+        worktree=Worktree(dir=str(_worktree(tmp_path)), branch="b", base_commit=""),
+    )
 
 
 def _run_step_spec(cmd: str) -> _pipeline.PipelineSpec:
@@ -102,12 +102,11 @@ def test_run_step_writing_outside_the_worktree_fails(
     tmp_path: Path, outside: Path, isolation_on: None
 ) -> None:
     _write_meta("myapp-lead")
-    task = {
-        "id": "e2",
-        "description": "work",
-        "status": "pending",
-        "worktree": {"dir": str(_worktree(tmp_path)), "branch": "b", "baseCommit": ""},
-    }
+    task = TaskRecord(
+        id="e2",
+        description="work",
+        worktree=Worktree(dir=str(_worktree(tmp_path)), branch="b", base_commit=""),
+    )
     res = _executor.dispatch_task(
         "myapp", task, runner=_runner, spec=_run_step_spec(f"touch {outside}/escaped")
     )
@@ -158,7 +157,7 @@ def test_a_jailed_verify_reads_a_granted_toolchain_and_cannot_write_it(
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     _fleet.add_read_only(str(outside))
     task = _verify_task(second, f"{reads} && ! touch {outside}/written")
-    task["id"] = "e3"
+    task.id = "e3"
     res = _executor.dispatch_task("myapp", task, runner=_runner)
     assert res.status == "done", res.reason
     assert not (outside / "written").exists()

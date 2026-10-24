@@ -24,7 +24,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application.record import UnitContext, UnitOutcome, trace_locked
-from docket.tasks.domain.task import HopResult, TaskRunRefusal
+from docket.tasks.domain.task import HopResult, TaskRecord, TaskRunRefusal
 from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
@@ -145,23 +145,23 @@ def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
 
 def _task_pipeline(
     project: str,
-    task: dict[str, Any],
+    task: TaskRecord,
     default_spec: _pipeline.PipelineSpec,
     default_source: str = "default",
 ) -> tuple[_pipeline.PipelineSpec, str]:
     """The (spec, source) a claimed task runs: its named pipeline, else the caller's file, else
     the ``pipelineSpec`` it kept at an earlier claim, else the pod's *default_spec*. Raises
     ``TaskRunRefusal`` for one that resolves to nothing valid."""
-    name = task.get("pipeline")
+    name = task.pipeline
     if name is None or name == "":
-        kept = task.get("pipelineSpec")
+        kept = task.pipeline_spec
         if kept is None or default_source == "file":
             return default_spec, default_source
         try:
             return _pipeline.PipelineSpec.model_validate(kept), "file"
         except ValueError as exc:
             raise TaskRunRefusal(f"the task's kept pipeline does not validate: {exc}") from exc
-    if not isinstance(name, str) or not TASK_PIPELINE_NAME.match(name):
+    if not TASK_PIPELINE_NAME.match(name):
         raise TaskRunRefusal(f"pipeline {name!r} is not a valid pipeline name")
     found = _task_pipeline_file(project, name)
     if found is None:
@@ -181,18 +181,15 @@ def _task_pipeline(
     return loaded.spec, source
 
 
-def _task_gate(task: dict[str, Any]) -> _gates.ExternalGate | None:
+def _task_gate(task: TaskRecord) -> _gates.ExternalGate | None:
     """The ``ExternalGate`` a task's ``gate`` object describes, or ``None`` for no gate. ``map``
     moves the named exit codes onto their label over the default 0/1/2 mapping."""
-    raw = task.get("gate")
+    raw = task.gate
     if raw is None:
         return None
-    if not isinstance(raw, dict) or not isinstance(raw.get("command"), str):
-        raise TaskRunRefusal("task gate must be an object with a string 'command'")
     exit_map: dict[str, list[int]] = {"pass": [0], "fail": [1], "needs_human": [2]}
-    mapping = raw.get("map") or {}
     try:
-        for code_text, label in dict(mapping).items():
+        for code_text, label in (raw.exit_map or {}).items():
             if label not in exit_map:
                 raise InvalidInput(f"unknown label {label!r}")
             code = int(code_text)
@@ -200,9 +197,7 @@ def _task_gate(task: dict[str, Any]) -> _gates.ExternalGate | None:
                 if code in codes:
                     codes.remove(code)
             exit_map[label].append(code)
-        return _gates.ExternalGate(
-            command=raw["command"], timeout=raw.get("timeoutS"), exit_map=exit_map
-        )
+        return _gates.ExternalGate(command=raw.command, timeout=raw.timeout_s, exit_map=exit_map)
     except (TypeError, ValueError, _ValidationError) as exc:
         raise TaskRunRefusal(f"task gate is invalid: {exc}") from exc
 

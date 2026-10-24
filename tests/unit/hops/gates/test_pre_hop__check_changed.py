@@ -9,6 +9,8 @@ from docket.hops.application import executor as _executor_c
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
+from docket.tasks.domain.options import TaskGate
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
@@ -33,7 +35,7 @@ def test_every_command_a_task_runs_as_a_check_is_collected(
             ),
         ),
     )
-    task = {"gate": {"command": "python gate.py"}}
+    task = TaskRecord(description="x", gate=TaskGate(command="python gate.py"))
 
     assert _pre_hop._checked_commands("demo", task, steps) == [
         "make verify",

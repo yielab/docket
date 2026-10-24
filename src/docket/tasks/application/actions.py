@@ -197,19 +197,17 @@ def _append_task_grant(
 def mint_task_grant_pregrants(ctx: UnitContext, role: str) -> list[dict[str, str]]:
     """One fresh single-use pre-grant per task-wide grant made for *role*, bound to this project
     and role: a grant never reaches a hop of another role."""
-    raw = ctx.task.get("taskGrants")
-    if not isinstance(raw, list) or not raw:
+    raw = ctx.task.task_grants
+    if not raw:
         return []
     deadline = _clock.now() + _dt.timedelta(
         hours=load_pod_settings(ctx.project).approval_expiry_hours
     )
     minted: list[dict[str, str]] = []
     for grant in raw[:TASK_GRANT_CAP]:
-        if not isinstance(grant, dict) or grant.get("role") != role:
+        if grant.role != role:
             continue
-        tool = str(grant.get("tool", ""))
-        digest = str(grant.get("argsDigest", ""))
-        channel = str(grant.get("channel", ""))
+        tool, digest, channel = grant.tool, grant.args_digest, grant.channel
         try:
             pre = _approval_pregrant.create_pregrant(
                 ctx.project,
@@ -219,7 +217,7 @@ def mint_task_grant_pregrants(ctx: UnitContext, role: str) -> list[dict[str, str
                 task_id=ctx.task_id,
                 expires_at=deadline.isoformat(),
                 channel=channel if channel in _ap.APPROVAL_CHANNELS else "cli",
-                actor=str(grant.get("actor") or "approve_task"),
+                actor=grant.actor or "approve_task",
             )
         except _ap.ApprovalError:
             continue

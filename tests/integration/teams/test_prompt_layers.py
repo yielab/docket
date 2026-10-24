@@ -13,6 +13,8 @@ from tests.support.pods import build_pod
 from docket.hops.application import builtin_tools as _builtin_tools
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import identity as _identity
 from docket.teams import role_composer as _role_composer
 
@@ -114,8 +116,10 @@ def test_each_role_is_told_the_root_its_tools_use(tmp_path: Path, pod_home: Path
 
     origin = str(tmp_path / "origin")
     worktree = _checkout(tmp_path / "wt")
-    in_place = {"description": "do it"}
-    claimed = {"description": "do it", "worktree": {"dir": str(worktree)}}
+    in_place = TaskRecord(description="do it")
+    claimed = TaskRecord(
+        description="do it", worktree=Worktree(dir=str(worktree), branch="b", base_commit="")
+    )
 
     lead, _ = _compose._hop_message(claimed, "lead", [], project="demo")
     implementer, _ = _compose._hop_message(claimed, "implementer", [], project="demo")

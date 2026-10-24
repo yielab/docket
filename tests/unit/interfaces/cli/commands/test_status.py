@@ -183,7 +183,7 @@ class TestQueueCounts:
             tasks = _json("--pod", "demo")["tasks"]
 
             assert tasks == {**_pod_report.task_counts("demo"), "approvedReady": 0}
-            assert tasks["completed"] == 1 and tasks["pending"] == 2
+            assert tasks["done"] == 1 and tasks["pending"] == 2 and "completed" not in tasks
 
 
 class TestAllPods:

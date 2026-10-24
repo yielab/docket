@@ -10,11 +10,12 @@ specs/functional/pipeline-format.spec.md ("Variables").
 from __future__ import annotations
 
 from docket.hops.application import compose as _compose
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.hops.application.compose"
 
-_TASK = {"description": "ship the feature"}
+_TASK = TaskRecord(description="ship the feature")
 
 
 class TestBuiltinRolesByteIdenticalToBase:

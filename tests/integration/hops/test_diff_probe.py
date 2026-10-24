@@ -29,6 +29,7 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams.workspace import worktree as _worktree
 
@@ -275,11 +276,7 @@ class TestDegradePaths:
         work_dir = tmp_path / "workdir-target"
         work_dir.mkdir()
         with _seed_pod(tmp_path, "taskpod", work_dir=str(work_dir)):
-            task: dict[str, Any] = {
-                "id": "t2",
-                "description": "research something",
-                "status": "pending",
-            }
+            task = TaskRecord(id="t2", description="research something")
             res = _executor.dispatch_task("taskpod", task, runner=_PlainRunner())
 
             assert res.status == "done"

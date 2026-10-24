@@ -19,6 +19,8 @@ from docket.observability import trace as _trace
 from docket.tasks.application import actions as _actions_c
 from docket.tasks.application import lifecycle as _lifecycle_c
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import settings as _settings
@@ -54,8 +56,15 @@ def worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
-def _task(root: Path, **extra: Any) -> dict[str, Any]:
-    return {"id": "t1", "worktree": {"dir": str(root), "commonDir": "/common"}, **extra}
+def _task(root: Path, **extra: Any) -> TaskRecord:
+    return TaskRecord.model_validate(
+        {
+            "id": "t1",
+            "description": "x",
+            "worktree": {"dir": str(root), "branch": "b", "baseCommit": "", "commonDir": "/common"},
+            **extra,
+        }
+    )
 
 
 def test_a_task_that_runs_in_place_is_never_prepared(
@@ -64,8 +73,10 @@ def test_a_task_that_runs_in_place_is_never_prepared(
     monkeypatch.setattr(
         _prepare, "prepare_worktree", lambda *a: pytest.fail("prepared an in-place task")
     )
-    assert _queue.prepare_claimed_task("demo", {"id": "t1", "worktree": {"dir": ""}}) is None
-    assert _queue.prepare_claimed_task("demo", {"id": "t1"}) is None
+    in_place = Worktree(dir="", branch="", base_commit="")
+    task = TaskRecord(id="t1", description="x", worktree=in_place)
+    assert _queue.prepare_claimed_task("demo", task) is None
+    assert _queue.prepare_claimed_task("demo", TaskRecord(id="t1", description="x")) is None
 
 
 def test_a_task_already_prepared_for_this_lockfile_is_not_prepared_again(

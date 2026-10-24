@@ -9,7 +9,7 @@ domain/ is a functional core for decisions".
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -261,16 +261,14 @@ def hop_network(pod_mode: str, task_mode: str | None) -> str:
     return "none" if "none" in (pod_mode, task_mode) else "open"
 
 
-def task_token_budget(task: Mapping[str, Any]) -> int | None:
-    """What *task*'s ``maxTokens`` has left after its persisted hops' counted usage (input minus
-    cache reads, plus output); ``None`` without a cap. Zero or less means no hop may start."""
-    cap = task.get("maxTokens")
-    if not isinstance(cap, int) or isinstance(cap, bool):
+def tokens_left(cap: int | None, hop_usages: Iterable[Mapping[str, int] | None]) -> int | None:
+    """What a task's ``maxTokens`` *cap* has left after its hops' measured *hop_usages* (input
+    minus cache reads, plus output); ``None`` without a cap. Zero or less means no hop may start."""
+    if cap is None:
         return None
     used = 0
-    for hop in task.get("hops") or []:
-        usage = hop.get("usage") if isinstance(hop, dict) else None
-        if isinstance(usage, dict):
+    for usage in hop_usages:
+        if usage is not None:
             fresh = int(usage.get("input") or 0) - int(usage.get("cached") or 0)
             used += max(0, fresh) + int(usage.get("output") or 0)
     return cap - used

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json as _json
 from pathlib import Path
-from typing import Any
 
 from docket.agent import ports as _rd
 from docket.governance import approval as _ap
@@ -19,16 +18,20 @@ from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.tasks.application.queue import read_tasks
-from docket.tasks.application.record import UnitContext, UnitOutcome, trace_locked
-from docket.tasks.domain.task import TaskResult
+from docket.tasks.application.record import (
+    UnitContext,
+    UnitOutcome,
+    claimed_worktree_dir,
+    trace_locked,
+)
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import TaskRecord, TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams.pod import pod_full_roster
 from docket.teams.settings import load_pod_settings
-from docket.teams.workspace.worktree import task_worktree_dir
 
 
 def pod_gating_cost(project: str) -> tuple[float, bool]:
@@ -67,28 +70,28 @@ def _pipeline_step_requires_approval(gate: _gates.Gate | None) -> bool:
     return isinstance(gate, _gates.ApprovalGate)
 
 
-def _approval_action_text(role: str, task: dict[str, Any]) -> str:
+def _approval_action_text(role: str, task: TaskRecord) -> str:
     """Human-readable description recorded on the approval record; ``governance/approval.py``
     redacts it before persisting, so this need not scrub secrets itself.
     """
-    desc = str(task.get("description", "")).strip()
-    task_id = str(task.get("id", "task"))
-    return f"pod dispatch — {role} hop for task {task_id}: {desc}"[:1000]
+    desc = task.description.strip()
+    return f"pod dispatch — {role} hop for task {task.id}: {desc}"[:1000]
 
 
-def _current_task(ctx: UnitContext) -> dict[str, Any]:
+def _current_task(ctx: UnitContext) -> TaskRecord:
     """The task as the queue holds it now (hops persisted so far), else the claimed snapshot."""
-    for entry in read_tasks(ctx.project):
-        if entry.get("id") == ctx.task_id:
-            return entry
-    return ctx.task
+    return TaskRepository.for_pod(ctx.project).get(ctx.task_id) or ctx.task
+
+
+def _token_budget_left(task: TaskRecord) -> int | None:
+    return _decide.tokens_left(task.max_tokens, [h.usage for h in task.hops])
 
 
 def _gate_task_tokens(ctx: UnitContext, role: str) -> UnitOutcome | None:
     """Fail the task with ``failureKind: "budget"`` when its ``maxTokens`` is spent before *role*."""
     decision = _decide.decide_task_tokens(
-        left=_decide.task_token_budget(_current_task(ctx)),
-        max_tokens=ctx.task.get("maxTokens"),
+        left=_token_budget_left(_current_task(ctx)),
+        max_tokens=ctx.task.max_tokens,
         role=role,
     )
     if decision.kind == "advance":
@@ -100,22 +103,22 @@ def _apply_task_restrictions(ctx: UnitContext, env: dict[str, str] | None) -> di
     """*env* plus the driver coordinates for the task's restrictions and remaining token budget.
     A policy document that is invalid or not ``block`` refuses the hop (``DispatchError``)."""
     extra: dict[str, str] = {}
-    restrictions = ctx.task.get("restrictions")
-    if isinstance(restrictions, dict):
-        if restrictions.get("deniedTools"):
-            extra[_rd.DOCKET_TASK_DENIED_TOOLS] = _json.dumps(list(restrictions["deniedTools"]))
-        task_mode = restrictions.get("network")
+    restrictions = ctx.task.restrictions
+    if restrictions is not None:
+        if restrictions.denied_tools:
+            extra[_rd.DOCKET_TASK_DENIED_TOOLS] = _json.dumps(restrictions.denied_tools)
+        task_mode = restrictions.network
         if task_mode == "none":
             extra[_rd.DOCKET_TASK_NETWORK] = _decide.hop_network(
                 _teams_pod_settings.effective_network(ctx.project)[0], task_mode
             )
-        if restrictions.get("policies"):
+        if restrictions.policies:
             try:
-                documents = [_policy.task_policy_document(d) for d in restrictions["policies"]]
+                documents = [_policy.task_policy_document(d) for d in restrictions.policies]
             except ValueError as exc:
                 raise DispatchError(f"task restrictions refused: {exc}") from exc
             extra[_rd.DOCKET_TASK_POLICIES] = _json.dumps(documents)
-    left = _decide.task_token_budget(_current_task(ctx))
+    left = _token_budget_left(_current_task(ctx))
     if left is not None:
         extra[_rd.DOCKET_TURN_TOKEN_BUDGET] = str(left)
     return {**(env or {}), **extra} if extra else env
@@ -220,8 +223,8 @@ def _gate_pre_hop_approval(
 def _consult_budget_env(ctx: UnitContext, env: dict[str, str] | None) -> dict[str, str] | None:
     """Once the task has parked consultations, this hop's cap is what the task has left
     (``maxConsultationsPerTask`` minus them); before that the pod setting applies as is."""
-    used = ctx.task.get("consultations")
-    if not isinstance(used, int) or used <= 0:
+    used = ctx.task.consultations
+    if used <= 0:
         return env
     remaining = max(0, load_pod_settings(ctx.project).max_consultations_per_task - used)
     return {**(env or {}), _rd.DOCKET_MAX_CONSULTATIONS: str(remaining)}
@@ -288,7 +291,7 @@ def _refuse_unmet_profile(
 
 
 def _checked_commands(
-    project: str, task: dict[str, Any], runtime_steps: tuple[_orch.PlannedNode, ...]
+    project: str, task: TaskRecord, runtime_steps: tuple[_orch.PlannedNode, ...]
 ) -> list[str]:
     """The commands this task runs as checks: the Implementer's ``verifyCmd``, every mechanical or
     external gate command and ``run:`` step of the pipeline, and the task's own gate command."""
@@ -299,9 +302,8 @@ def _checked_commands(
             commands.append(unit.run or "")
             if isinstance(unit.gate, (_gates.MechanicalGate, _gates.ExternalGate)):
                 commands.append(unit.gate.command or "")
-    raw_gate = task.get("gate")
-    if isinstance(raw_gate, dict):
-        commands.append(str(raw_gate.get("command") or ""))
+    if task.gate is not None:
+        commands.append(task.gate.command)
     return [c for c in commands if c]
 
 
@@ -311,10 +313,10 @@ def _park_if_check_changed(
     """A finished task whose diff touches a protected path (teams/workspace/protected_paths.py) parks
     ``waiting_approval`` for a person whatever the profile, instead of ending ``done``. A task
     with no recorded worktree is not checked."""
-    record = ctx.task.get("worktree")
-    directory = task_worktree_dir(ctx.task)
-    branch = str(record.get("branch") or "") if isinstance(record, dict) else ""
-    base = str(record.get("baseCommit") or "") if isinstance(record, dict) else ""
+    record = ctx.task.worktree
+    directory = claimed_worktree_dir(ctx.task)
+    branch = record.branch if record is not None else ""
+    base = record.base_commit if record is not None else ""
     if not (directory and branch and base):
         return
     paths = _protected.changed_protected(

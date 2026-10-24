@@ -27,6 +27,7 @@ from docket.pipeline.domain.spec import PipelineSpec, load_pipeline
 from docket.platform import store as _store
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
@@ -444,7 +445,7 @@ def unit_context(
 ) -> _record.UnitContext:
     return _record.UnitContext(
         project=project,
-        task={"id": task_id},
+        task=TaskRecord(id=task_id, description=""),
         task_id=task_id,
         session_id=f"agent:{project}:{task_id}",
         cap=cap,

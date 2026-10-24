@@ -31,6 +31,7 @@ from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _domain_task
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
@@ -87,7 +88,7 @@ def _task(task_id: str) -> dict[str, Any]:
 def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
     ctx = _record.UnitContext(
         project=PROJECT,
-        task=_task(task_id),
+        task=TaskRepository.for_pod(PROJECT).get(task_id),
         task_id=task_id,
         session_id=f"agent:{PROJECT}:{task_id}",
         cap=0.0,

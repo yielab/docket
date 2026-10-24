@@ -58,8 +58,8 @@ from docket.observability import telemetry as _telemetry
 from docket.observability import trace as _trace
 from docket.observability.adapters import sinks as _exporters
 from docket.platform import read_json, write_json
-from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
@@ -209,15 +209,14 @@ def _base_commit_view(
         return None
 
     try:
-        tasks = _queue.read_tasks(project)
+        task = TaskRepository.for_pod(project).get(task_id)
     except Exception:  # an unreadable queue file must not fail the turn
         return None
-    record = next((t.get("worktree") for t in tasks if t.get("id") == task_id), None)
-    if not isinstance(record, dict):
+    if task is None or task.worktree is None:
         return None
-    base = str(record.get("baseCommit") or "")
-    git_dir, common_dir = str(record.get("gitDir") or ""), str(record.get("commonDir") or "")
-    recorded = str(record.get("dir") or "")
+    record = task.worktree
+    base, git_dir = record.base_commit, record.git_dir or ""
+    common_dir, recorded = record.common_dir or "", record.dir
     if not (base and git_dir and common_dir and recorded):
         return None
     if Path(recorded).resolve() != Path(pipeline_worktree).resolve():

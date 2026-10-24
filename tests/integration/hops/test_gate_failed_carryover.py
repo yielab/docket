@@ -27,6 +27,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.hops.application.compose"
@@ -90,7 +91,7 @@ def test_gate_failed_section_is_recorded_in_the_composition() -> None:
         verify={"cmd": "x", "exitCode": 1, "durationS": 0.1, "outputTail": MARKER},
     )
     message, comp = _compose._hop_message(
-        {"description": "d"}, "implementer", [hop], rework_hop=hop
+        TaskRecord(description="d"), "implementer", [hop], rework_hop=hop
     )
     assert f"--- GATE FAILED: build ---\n{MARKER}" in message
     assert [s["role"] for s in comp.sections][:1] == ["gate_failed"]
@@ -113,7 +114,7 @@ def test_hop_message_without_gate_failed_hop_is_unchanged() -> None:
             role="lead", member_id="demo-lead", ok=True, output="Plan: X.", cost_usd=0.0
         )
     ]
-    message, _ = _compose._hop_message({"description": "d"}, "implementer", prior)
+    message, _ = _compose._hop_message(TaskRecord(description="d"), "implementer", prior)
     assert message == (
         "Task: d\n\n--- lead output ---\nPlan: X.\n\n"
         "You are the Implementer. Implement the change in the workspace."
@@ -156,5 +157,7 @@ def test_a_backward_route_out_of_a_passing_gate_carries_no_gate_failure() -> Non
         next_step="plan",
         verify=passed,
     )
-    message, _ = _compose._hop_message({"description": "d"}, "implementer", [hop], rework_hop=hop)
+    message, _ = _compose._hop_message(
+        TaskRecord(description="d"), "implementer", [hop], rework_hop=hop
+    )
     assert "GATE FAILED" not in message

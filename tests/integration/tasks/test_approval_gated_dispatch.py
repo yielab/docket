@@ -66,6 +66,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import settings as _settings
@@ -577,6 +578,37 @@ class TestReworkReGatesAfterResume:
         final_runner._reviewer_calls = 1  # next reviewer call approves
         final_results = _sweep.dispatch_pod("myapp", runner=final_runner)
         assert final_results[0].status == "done"
+
+
+class TestGateOverrideIndexArgument:
+    """``dispatch_task`` takes the claim's ``gate_override_index`` as an argument, not a task key."""
+
+    def test_the_index_skips_that_gate_once_and_the_rework_revisit_gates(self) -> None:
+        _seed_full_pod(gated=True)
+        runner = _OneReworkThenGateAgainRunner()
+
+        result = _executor_c.dispatch_task(
+            "myapp",
+            TaskRecord(id="task-1", description="Ship it"),
+            gate_override_index=1,
+            runner=runner,
+        )
+
+        # The implementer (index 1) ran ungated once; the reviewer sent it back; it gated then.
+        assert runner.calls == ["lead", "implementer", "reviewer"]
+        assert result.status == "waiting_approval"
+        assert result.pending_approval_index == 1
+
+    def test_without_an_index_the_first_implementer_hop_gates(self) -> None:
+        _seed_full_pod(gated=True)
+        runner = _OneReworkThenGateAgainRunner()
+
+        result = _executor_c.dispatch_task(
+            "myapp", TaskRecord(id="task-1", description="Ship it"), runner=runner
+        )
+
+        assert runner.calls == ["lead"]
+        assert (result.status, result.pending_approval_index) == ("waiting_approval", 1)
 
 
 # ── budget still checked before approval (affordability before permission) ──────

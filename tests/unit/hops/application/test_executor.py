@@ -23,6 +23,8 @@ from docket.agent import ports as _rd
 from docket.hops.application import executor as _executor
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
+from docket.tasks.domain.state import Status
+from docket.tasks.domain.task import TaskRecord
 
 pod_home = _support_pods.pod_home_bare
 
@@ -53,7 +55,7 @@ class TestDeterministicRefusalFailsOnlyThatTask:
             calls.append(agent_id)
             return _rd.TurnResult(True, "done", 0.0, {})
 
-        task = {"id": "task-1", "description": "x", "status": "running"}
+        task = TaskRecord(id="task-1", description="x", status=Status.running)
 
         result = _executor.dispatch_task("myapp", task, runner=_runner, spec=spec)
 
@@ -75,7 +77,7 @@ class TestDeterministicRefusalFailsOnlyThatTask:
         ) -> _rd.TurnResult:
             raise RuntimeError("simulated crash")
 
-        task = {"id": "task-1", "description": "x", "status": "running"}
+        task = TaskRecord(id="task-1", description="x", status=Status.running)
 
         with pytest.raises(RuntimeError, match="simulated crash"):
             _executor.dispatch_task("myapp", task, runner=_crasher)

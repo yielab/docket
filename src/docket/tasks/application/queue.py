@@ -221,11 +221,11 @@ def apply_transition(
 
 
 def refuse_claimed_task(
-    project: str, task: dict[str, Any], failure_kind: str, reason: str
+    project: str, task: TaskRecord, failure_kind: str, reason: str
 ) -> TaskResult:
     """Settle a just-claimed task ``failed`` with ``failure_kind`` and ``reason`` before any hop
     runs: clear the claim, keep the recorded hops, and trace ``dispatch_refused``."""
-    task_id = str(task.get("id", "task"))
+    task_id = task.id
     apply_transition(
         project,
         task_id,
@@ -285,37 +285,36 @@ def _trace_prepare(
     )
 
 
-def _store_prepared(project: str, task: dict[str, Any], prepared: dict[str, Any]) -> None:
-    task["prepared"] = prepared
+def _store_prepared(project: str, task: TaskRecord, prepared: dict[str, Any]) -> None:
     stored = Prepared.model_validate(prepared)
-    TaskRepository.for_pod(project).update(
-        str(task.get("id")), lambda r: setattr(r, "prepared", stored)
-    )
+    task.prepared = stored
+    TaskRepository.for_pod(project).update(task.id, lambda r: setattr(r, "prepared", stored))
 
 
-def prepare_claimed_task(project: str, task: dict[str, Any]) -> TaskResult | None:
+def prepare_claimed_task(project: str, task: TaskRecord) -> TaskResult | None:
     """Prepare a claimed task's own worktree before its first hop (pod-dispatch.spec.md, "Task
     preparation"); the refusing ``TaskResult`` when the install fails, else ``None``."""
-    worktree = task.get("worktree")
-    root = str(worktree.get("dir") or "") if isinstance(worktree, dict) else ""
-    if not root:
+    worktree = task.worktree
+    root = worktree.dir if worktree is not None else ""
+    if worktree is None or not root:
         return None
     try:
         pod_prepare = load_pod_settings(project).prepare
     except DispatchError as exc:
         return refuse_claimed_task(project, task, "prepare", str(exc))
-    spec = _prepare.resolve(Path(root), task_prepare=task.get("prepare"), pod_prepare=pod_prepare)
-    if spec is None or not _prepare.needs_prepare(Path(root), task.get("prepared"), spec):
+    spec = _prepare.resolve(Path(root), task_prepare=task.prepare, pod_prepare=pod_prepare)
+    prepared = task.prepared.model_dump(by_alias=True) if task.prepared is not None else None
+    if spec is None or not _prepare.needs_prepare(Path(root), prepared, spec):
         return None
     codebase = str(_fleet.meta_get(_pod.member_id(project, "implementer"), "codebase", "") or "")
     outcome = _prepare.prepare_worktree(
         spec,
         Path(root),
         codebase,
-        str(worktree.get("commonDir") or "") if isinstance(worktree, dict) else "",
+        worktree.common_dir or "",
         lambda cmd: _run_prepare_command(project, cmd, root),
     )
-    _trace_prepare(project, str(task.get("id", "")), spec, outcome)
+    _trace_prepare(project, task.id, spec, outcome)
     if not outcome.ok:
         return refuse_claimed_task(project, task, "prepare", _prepare_reason(spec.command, outcome))
     _store_prepared(project, task, _prepare.record(spec, outcome))

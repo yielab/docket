@@ -34,6 +34,7 @@ from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import repository as _repository
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import agent_memory as _mem
 from docket.teams import settings as _settings
 
@@ -425,7 +426,9 @@ class TestBaseRefRefusedAtClaim:
             },
         )
 
-        res = _queue.refuse_claimed_task("myapp", {"id": "t1"}, "pipeline", "no such pipeline")
+        res = _queue.refuse_claimed_task(
+            "myapp", TaskRecord(id="t1", description="x"), "pipeline", "no such pipeline"
+        )
 
         (stored,) = _queue.read_tasks("myapp")
         assert (res.status, res.failure_kind, res.reason) == (

@@ -85,11 +85,9 @@ def dispatch_pod(
         claim = claim_next_task(project, resume=resume, skip=frozenset(claimed_ids))
         if claim is None:
             break
-        task = claim.record.model_dump(by_alias=True, mode="json")
-        if claim.gate_override_index is not None:
-            task["gateOverridePipelineIndex"] = claim.gate_override_index
+        task = claim.record
         resume_hops = claim.resume_hops
-        task_id = claim.record.id
+        task_id = task.id
         claimed_ids.add(task_id)
         if claim.refusal is not None:
             results.append(refuse_claimed_task(project, task, *claim.refusal))
@@ -121,6 +119,7 @@ def dispatch_pod(
         res = dispatch_task(
             project,
             task,
+            gate_override_index=claim.gate_override_index,
             runner=runner,
             turn_timeout=turn_timeout,
             verify_timeout=verify_timeout,

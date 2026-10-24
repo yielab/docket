@@ -31,6 +31,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
@@ -138,20 +139,20 @@ class TestReviewerGateBasic:
 
     def test_approve_advances_to_done(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=self._runner("APPROVE - looks good"))
         assert res.status == "done"
         assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer", "tester"]
 
     def test_approve_case_insensitive(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        task: dict[str, Any] = {"id": "t1b", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t1b", description="work")
         res = _executor.dispatch_task("myapp", task, runner=self._runner("approve, ship it"))
         assert res.status == "done"
 
     def test_reviewer_and_tester_markers_may_follow_evidence(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        task: dict[str, Any] = {"id": "t1c", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t1c", description="work")
         res = _executor.dispatch_task(
             "myapp",
             task,
@@ -169,7 +170,7 @@ class TestReviewerGateBasic:
 
     def test_conflicting_reviewer_markers_fail_as_unparseable(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        task: dict[str, Any] = {"id": "t1d", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t1d", description="work")
         res = _executor.dispatch_task(
             "myapp", task, runner=self._runner("APPROVE\nREQUEST-CHANGES")
         )
@@ -180,7 +181,7 @@ class TestReviewerGateBasic:
 
     def test_unparseable_reviewer_output_fails(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t2", description="work")
         res = _executor.dispatch_task("myapp", task, runner=self._runner("this looks fine I guess"))
         assert res.status == "failed"
         assert "unparseable" in res.reason
@@ -202,13 +203,13 @@ class TestReviewerGateBasic:
             output = "no marker here" if _role_of(member_id) == "reviewer" else "ok"
             return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
-        task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t3", description="work")
         _executor.dispatch_task("myapp", task, runner=_run)
         assert calls == ["lead", "implementer", "reviewer"]
 
     def test_unparseable_emits_distinct_trace_event(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t4", description="work")
         _executor.dispatch_task("myapp", task, runner=self._runner("hmm not sure"))
         events = _trace_events("myapp")
         types = [e["event_type"] for e in events]
@@ -217,7 +218,7 @@ class TestReviewerGateBasic:
 
     def test_empty_reviewer_output_is_unparseable_not_rejection(self, tmp_path: Path) -> None:
         _seed_full_pod()
-        task: dict[str, Any] = {"id": "t5", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t5", description="work")
         res = _executor.dispatch_task("myapp", task, runner=self._runner(""))
         assert res.status == "failed"
         assert "unparseable" in res.reason
@@ -237,7 +238,7 @@ class TestReviewerGateBasic:
         ) -> _rd.TurnResult:
             return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
 
-        task: dict[str, Any] = {"id": "t6", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t6", description="work")
         res = _executor.dispatch_task("leanapp", task, runner=_run)
         assert res.status == "done"
         assert [h.role for h in res.hops] == ["lead", "implementer"]
@@ -287,7 +288,7 @@ class TestReviewerReworkLoop:
     def test_request_changes_triggers_one_rework_then_approves(self, tmp_path: Path) -> None:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=1)
-        task: dict[str, Any] = {"id": "r1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="r1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner)
 
         assert res.status == "done"
@@ -310,7 +311,7 @@ class TestReviewerReworkLoop:
     def test_rework_brief_carries_the_review_text(self, tmp_path: Path) -> None:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=1)
-        task: dict[str, Any] = {"id": "r2", "description": "work", "status": "pending"}
+        task = TaskRecord(id="r2", description="work")
         _executor.dispatch_task("myapp", task, runner=runner)
 
         implementer_messages = [msg for role, msg in runner.calls if role == "implementer"]
@@ -325,7 +326,7 @@ class TestReviewerReworkLoop:
     def test_rework_started_trace_event(self, tmp_path: Path) -> None:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=1)
-        task: dict[str, Any] = {"id": "r3", "description": "work", "status": "pending"}
+        task = TaskRecord(id="r3", description="work")
         _executor.dispatch_task("myapp", task, runner=runner)
         events = _trace_events("myapp")
         rework_events = [e for e in events if e["event_type"] == "rework_started"]
@@ -335,7 +336,7 @@ class TestReviewerReworkLoop:
     def test_second_request_changes_fails_the_task(self, tmp_path: Path) -> None:
         _seed_full_pod()  # default maxReworkCycles is 1
         runner = _ReworkRunner(request_changes_count=2)  # always rejects
-        task: dict[str, Any] = {"id": "r4", "description": "work", "status": "pending"}
+        task = TaskRecord(id="r4", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner)
 
         assert res.status == "failed"
@@ -349,7 +350,7 @@ class TestReviewerReworkLoop:
     def test_second_request_changes_emits_review_rejected_trace_event(self, tmp_path: Path) -> None:
         _seed_full_pod()
         runner = _ReworkRunner(request_changes_count=2)
-        task: dict[str, Any] = {"id": "r5", "description": "work", "status": "pending"}
+        task = TaskRecord(id="r5", description="work")
         _executor.dispatch_task("myapp", task, runner=runner)
         events = _trace_events("myapp")
         ev = next(e for e in events if e["event_type"] == "review_rejected")
@@ -378,7 +379,7 @@ class TestReviewerReworkLoop:
         # a single REQUEST-CHANGES fails immediately, no rework attempted.
         _seed_full_pod(lead_extra={"maxReworkCycles": "0"})
         runner = _ReworkRunner(request_changes_count=1)
-        task: dict[str, Any] = {"id": "r6", "description": "work", "status": "pending"}
+        task = TaskRecord(id="r6", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner)
 
         assert res.status == "failed"

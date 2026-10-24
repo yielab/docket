@@ -20,7 +20,6 @@ from docket.hops.gates.post_hop import (
     _external_failure_kind,
     _latest_implementer_evidence,
     _match_on_route,
-    _resolve_gate_override,
 )
 from docket.hops.gates.pre_hop import (
     _block_on_missing_resources,
@@ -33,7 +32,6 @@ from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.platform import read_modify_write
 from docket.tasks.application.record import (
     Runner,
     UnitContext,
@@ -42,12 +40,12 @@ from docket.tasks.application.record import (
     replay_pipeline_position,
     trace_locked,
 )
-from docket.tasks.domain.task import HopResult, TaskResult, TaskRunRefusal
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import HopResult, TaskRecord, TaskResult, TaskRunRefusal
 from docket.teams import roles as _archetypes
 from docket.teams.pod import pod_full_roster, pod_pipeline
 from docket.teams.settings import (
     pod_budget,
-    pod_task_list_path,
     pod_turn_timeout,
     pod_verify_timeout,
     resolve_timeout,
@@ -56,7 +54,7 @@ from docket.teams.settings import (
 
 def _resolve_task_run(
     project: str,
-    task: dict[str, Any],
+    task: TaskRecord,
     default_spec: _pipeline.PipelineSpec,
     default_vars: dict[str, Any],
     variables: dict[str, Any] | None,
@@ -70,40 +68,32 @@ def _resolve_task_run(
     try:
         resolved = _pipeline.resolve_variables(spec, variables)
     except _pipeline.VariableError as exc:
-        raise TaskRunRefusal(f"pipeline {task.get('pipeline')!r}: {exc}") from exc
+        raise TaskRunRefusal(f"pipeline {task.pipeline!r}: {exc}") from exc
     missing = _pipeline.unresolved_step_variables(spec, resolved)
     if missing:
         raise TaskRunRefusal(
-            f"pipeline {task.get('pipeline')!r}: unresolved variable(s): {', '.join(missing)}"
+            f"pipeline {task.pipeline!r}: unresolved variable(s): {', '.join(missing)}"
         )
     return spec, resolved, source
 
 
 def _record_task_run(
-    project: str, task: dict[str, Any], source: str, spec: _pipeline.PipelineSpec
+    project: str, task: TaskRecord, source: str, spec: _pipeline.PipelineSpec
 ) -> None:
     """Record ``pipelineSource`` and ``gateApplied`` on the claimed task and its stored record,
     and, for a caller's file, the spec itself as ``pipelineSpec`` so an answer and a later claim
     replay it."""
-    task["pipelineSource"] = source
-    task["gateApplied"] = task.get("gate") is not None
+    task.pipeline_source = source
+    task.gate_applied = task.gate is not None
     if source == "file":
-        task["pipelineSpec"] = spec.model_dump(mode="json", by_alias=True)
-    task_id = task.get("id")
+        task.pipeline_spec = spec.model_dump(mode="json", by_alias=True)
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks = doc.get("tasks")
-        if not isinstance(tasks, list):
-            return None
-        for t in tasks:
-            if isinstance(t, dict) and t.get("id") == task_id:
-                t["pipelineSource"] = task["pipelineSource"]
-                t["gateApplied"] = task["gateApplied"]
-                if "pipelineSpec" in task:
-                    t["pipelineSpec"] = task["pipelineSpec"]
-        return {"tasks": tasks}
+    def _fn(stored: TaskRecord) -> None:
+        stored.pipeline_source = task.pipeline_source
+        stored.gate_applied = task.gate_applied
+        stored.pipeline_spec = task.pipeline_spec
 
-    read_modify_write(pod_task_list_path(project), _fn)
+    TaskRepository.for_pod(project).update(task.id, _fn)
 
 
 def _run_group_node(
@@ -394,8 +384,9 @@ def _run_pipeline(
 
 def dispatch_task(
     project: str,
-    task: dict[str, Any],
+    task: TaskRecord,
     *,
+    gate_override_index: int | None = None,
     runner: Runner | None = None,
     turn_timeout: int | None = None,
     verify_timeout: int | None = None,
@@ -425,6 +416,8 @@ def dispatch_task(
     that skips ``dispatch_pod`` gets no unresolved-reference refusal, only best-effort
     interpolation. *approval_default* is this call's own resolution for an *unset* pod
     ``approvalMode`` (``pod_approval_mode``); an explicit pod value always wins over it.
+    *gate_override_index* is the pipeline position a granted approval stopped at, from the
+    claim (``Claim.gate_override_index``): the pre-hop approval at that position is skipped once.
 
     A ``DispatchError`` raised anywhere on this claimed task's path (the membership check near
     the top of ``execute_unit``, or this function's own up-front ``pod_pipeline`` revalidation)
@@ -441,7 +434,7 @@ def dispatch_task(
     # working completely unchanged.
     track_pid = runner is None
     do_sleep = sleep or _time.sleep
-    task_id = str(task.get("id", "task"))
+    task_id = task.id
     session_id = f"agent:{project}:{task_id}"
 
     _trace.trace_event(
@@ -470,13 +463,9 @@ def dispatch_task(
             _resolve_resume_state(runtime_steps, resume_from)
         )
 
-        # A granted approval hands the exact pipeline position it stopped at
-        # back to this one claim as a single-use override (see
-        # `_claim_next_task`'s claim-time handoff) — consumed the first time this
-        # run reaches that position, so a later hop at the same position (a
-        # rework cycle revisiting it) still gates normally.
-        override_index = _resolve_gate_override(task)
-
+        # *gate_override_index* is the pipeline position a granted approval stopped at, handed to
+        # this one claim: consumed the first time this run reaches that position, so a later hop
+        # at the same position (a rework cycle revisiting it) still gates normally.
         ctx = UnitContext(
             project=project,
             task=task,
@@ -487,7 +476,7 @@ def dispatch_task(
             resolved_verify_timeout=resolved_verify_timeout,
             id_to_index=id_to_index,
             rework_counts=rework_counts,
-            override_index=override_index,
+            override_index=gate_override_index,
             track_pid=track_pid,
             run=run,
             do_sleep=do_sleep,

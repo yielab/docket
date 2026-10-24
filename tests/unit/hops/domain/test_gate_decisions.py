@@ -290,34 +290,21 @@ def test_hop_network_takes_the_narrower(pod: str, task: str | None, expected: st
 
 
 @pytest.mark.parametrize(
-    ("task", "left"),
+    ("cap", "usages", "left"),
     [
-        ({}, None),
-        ({"maxTokens": None}, None),
-        ({"maxTokens": True}, None),
-        ({"maxTokens": 1000}, 1000),
-        (
-            {
-                "maxTokens": 1000,
-                "hops": [{"usage": {"input": 300, "output": 100}}, {"usage": None}, {"role": "x"}],
-            },
-            600,
-        ),
-        (
-            {
-                "maxTokens": 10_000,
-                "hops": [{"usage": {"input": 30_000, "cached": 25_000, "output": 100}}] * 2,
-            },
-            10_000 - 2 * 5_100,
-        ),
-        ({"maxTokens": 100, "hops": [{"usage": {"input": 90, "output": 20}}]}, -10),
-        ({"maxTokens": 100, "hops": [{"usage": {"input": 5, "cached": 50, "output": 1}}]}, 99),
+        (None, [], None),
+        (None, [{"input": 5, "output": 5}], None),
+        (1000, [], 1000),
+        (1000, [{"input": 300, "output": 100}, None], 600),
+        (10_000, [{"input": 30_000, "cached": 25_000, "output": 100}] * 2, 10_000 - 2 * 5_100),
+        (100, [{"input": 90, "output": 20}], -10),
+        (100, [{"input": 5, "cached": 50, "output": 1}], 99),
     ],
 )
-def test_task_token_budget_counts_input_less_cache_plus_output(
-    task: dict[str, Any], left: int | None
+def test_tokens_left_counts_input_less_cache_plus_output(
+    cap: int | None, usages: list[dict[str, int] | None], left: int | None
 ) -> None:
-    assert _d.task_token_budget(task) == left
+    assert _d.tokens_left(cap, usages) == left
 
 
 @pytest.mark.parametrize(

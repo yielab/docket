@@ -11,6 +11,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Literal
 
+from pydantic.alias_generators import to_camel
+
 from docket.governance import policy as _policy
 from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import executor as _executor
@@ -26,6 +28,8 @@ from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.state import Status
 from docket.teams import fleet as _fleet
 from docket.teams import identity as _identity
 from docket.teams import mcp_servers as _mcp_servers
@@ -425,16 +429,10 @@ def _codebase(project: str) -> str:
 
 
 def task_counts(project: str) -> dict[str, int]:
-    """The queue counts ``status --json`` prints under ``tasks``, keyed the same way."""
-    counts = Counter(str(t.get("status", "pending")) for t in _queue.read_tasks(project))
-    return {
-        "pending": counts["pending"],
-        "running": counts["running"],
-        "waitingApproval": counts["waiting_approval"],
-        "waitingInput": counts["waiting_input"],
-        "failed": counts["failed"],
-        "completed": counts["completed"] + counts["done"],
-    }
+    """The queue counts ``status --json`` prints under ``tasks``: one per ``Status``, keyed by its
+    camelCase name."""
+    counts = Counter(r.status for r in TaskRepository.for_pod(project).list())
+    return {to_camel(status.value): counts[status] for status in Status}
 
 
 def project_violations(

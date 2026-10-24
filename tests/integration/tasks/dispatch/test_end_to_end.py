@@ -31,6 +31,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
@@ -463,7 +464,7 @@ class TestEndToEnd:
                 ],
             )
             runner = FakeDriver()
-            task = {"id": "task-parallel", "description": "compare", "status": "pending"}
+            task = TaskRecord(id="task-parallel", description="compare")
 
             result = _executor.dispatch_task("demo", task, runner=runner, spec=spec)
 

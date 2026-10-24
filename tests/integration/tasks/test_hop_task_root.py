@@ -5,10 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from docket.hops.application import compose as _compose
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
 
 SUBJECT = "docket.tasks.application.queue"
 
-_TASK = {"description": "ship the feature"}
+_TASK = TaskRecord(description="ship the feature")
+
+
+def _tree(directory: Path) -> Worktree:
+    return Worktree(dir=str(directory), branch="b", base_commit="")
 
 
 def _repo_with_files(root: Path) -> Path:
@@ -29,7 +35,7 @@ class TestTaskRootAndRepositoryMap:
 
     def test_a_worktree_task_names_its_root_and_carries_the_map(self, tmp_path: Path) -> None:
         worktree = _repo_with_files(tmp_path / "wt")
-        task = {**_TASK, "worktree": {"dir": str(worktree)}}
+        task = _TASK.model_copy(update={"worktree": _tree(worktree)})
 
         message, comp = _compose._hop_message(task, "implementer", [])
 
@@ -43,7 +49,7 @@ class TestTaskRootAndRepositoryMap:
         from docket.tasks.domain.task import HopResult
 
         worktree = _repo_with_files(tmp_path / "wt")
-        task = {**_TASK, "worktree": {"dir": str(worktree)}}
+        task = _TASK.model_copy(update={"worktree": _tree(worktree)})
         hop = HopResult(role="lead", member_id="p-lead", ok=True, output="the plan")
 
         message, _ = _compose._hop_message(task, "implementer", [hop])
@@ -52,7 +58,7 @@ class TestTaskRootAndRepositoryMap:
 
     def test_the_lead_is_never_told_a_task_worktree(self, tmp_path: Path) -> None:
         worktree = _repo_with_files(tmp_path / "wt")
-        task = {**_TASK, "worktree": {"dir": str(worktree)}}
+        task = _TASK.model_copy(update={"worktree": _tree(worktree)})
 
         message, _ = _compose._hop_message(task, "lead", [])
 
@@ -64,7 +70,7 @@ class TestTaskRootAndRepositoryMap:
     def test_a_root_that_is_not_a_repository_gets_the_line_and_no_map(self, tmp_path: Path) -> None:
         plain = tmp_path / "plain"
         plain.mkdir()
-        task = {**_TASK, "worktree": {"dir": str(plain)}}
+        task = _TASK.model_copy(update={"worktree": _tree(plain)})
 
         message, _ = _compose._hop_message(task, "reviewer", [])
 

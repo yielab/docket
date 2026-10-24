@@ -21,6 +21,7 @@ from docket.tasks.application import corrections as _corrections
 from docket.tasks.application.record import (
     UnitContext,
     UnitOutcome,
+    claimed_worktree_dir,
     trace_locked,
     verdict_event_names,
 )
@@ -30,7 +31,6 @@ from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import pod as _pod
 from docket.teams.settings import load_pod_settings
 from docket.teams.workspace import prepare as _prepare
-from docket.teams.workspace.worktree import task_worktree_dir
 
 
 def _apply_output_guardrails(
@@ -105,7 +105,7 @@ def _gate_cwd(ctx: UnitContext, member_id: str) -> str:
     """The directory a gate command runs in: the member's, worktree-aware (shared with
     interfaces/cli/commands/pod.py through ``teams.pod.resolve_member_cwd`` so the two never disagree)."""
     member_codebase = str(_fleet.meta_get(member_id, "codebase", "") or "")
-    return _pod.resolve_member_cwd(member_id, task_worktree_dir(ctx.task), member_codebase)
+    return _pod.resolve_member_cwd(member_id, claimed_worktree_dir(ctx.task), member_codebase)
 
 
 def _run_gate_command(
@@ -449,14 +449,6 @@ def _evaluate_hop_gates(
     if own is not None:
         hop.verify = {**own, "taskGate": hop.verify}
     return outcome
-
-
-def _resolve_gate_override(task: dict[str, Any]) -> int | None:
-    """A granted approval's single-use override for this one claim (see
-    ``_claim_next_task``), consumed the first time this run reaches that pipeline position,
-    so a later hop at the same position (a rework cycle) still gates normally."""
-    override_index = task.get("gateOverridePipelineIndex")
-    return override_index if isinstance(override_index, int) else None
 
 
 def _latest_implementer_evidence(prior: list[HopResult]) -> dict[str, Any]:

@@ -17,17 +17,18 @@ from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.actions import mint_task_grant_pregrants
 from docket.tasks.application.record import (
     UnitContext,
+    claimed_worktree_dir,
     gate_did_not_pass,
     hop_env,
     is_gate_failure_carryover,
     trace_locked,
 )
-from docket.tasks.domain.task import HopResult
+from docket.tasks.domain.parts import Answer
+from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.settings import load_pod_settings, pod_approval_mode
 from docket.teams.workspace import repo_map as _repo_map
-from docket.teams.workspace.worktree import task_worktree_dir
 
 
 @dataclass
@@ -156,7 +157,7 @@ def _latest_brief_hop_index(prior: list[HopResult]) -> int | None:
 
 
 def _hop_message(
-    task: dict[str, Any],
+    task: TaskRecord,
     role: str,
     prior: list[HopResult],
     rework_hop: HopResult | None = None,
@@ -177,8 +178,8 @@ def _hop_message(
     instruction text, or a custom role's own ``hopInstruction``/generated fallback, see
     role-archetypes.spec.md)."""
 
-    desc = str(task.get("description", "")).strip()
-    worktree = "" if role == "lead" else task_worktree_dir(task)
+    desc = task.description.strip()
+    worktree = "" if role == "lead" else claimed_worktree_dir(task)
     root_block = _repo_map.task_root_block(worktree, project, role)
     if role == "lead":
         if step_instructions:
@@ -191,7 +192,7 @@ def _hop_message(
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
         if root_block:
             message = f"{message}\n\n{root_block}"
-        answers_block = _render_operator_answers(task)
+        answers_block = _render_operator_answers(task.answers)
         if answers_block:
             message = f"{message}\n\n## Operator answers\n{answers_block}"
         comp = _HopComposition(
@@ -223,9 +224,7 @@ def _hop_message(
     if gate_failed_hop is not None:
         # Resumed right behind an operator's answer: that answer is what the human decided.
         answered = bool(prior) and prior[-1].role == "operator"
-        answer = (
-            _render_operator_answers({"answers": task.get("answers", [])[-1:]}) if answered else ""
-        )
+        answer = _render_operator_answers(task.answers[-1:]) if answered else ""
         lines.append(_compose_gate_failed(gate_failed_hop, carryover_budget, comp, answer))
     elif rework_hop is not None and rework_hop.output:
         # Rendered from the hop's *artifact*, not its raw output, so this
@@ -311,13 +310,12 @@ def _hop_message(
 _ANSWERS_CHAR_BUDGET = 4000
 
 
-def _render_answer_value(entry: dict[str, Any]) -> str:
+def _render_answer_value(entry: Answer) -> str:
     """One answered entry's ``A: ...`` line: the single ``answer`` property's value for an
     ``accept``, else a plain marker -- see ``hops.application.answers.answer_task``."""
-    action = str(entry.get("action", ""))
+    action = entry.action
     if action == "accept":
-        content = entry.get("content")
-        content = content if isinstance(content, dict) else {}
+        content = entry.content or {}
         if list(content.keys()) == ["answer"]:
             return str(content["answer"])
         return _json.dumps(content, sort_keys=True)
@@ -328,34 +326,26 @@ def _render_answer_value(entry: dict[str, Any]) -> str:
     return "(no answer)"
 
 
-def _render_operator_answers(task: dict[str, Any]) -> str:
+def _render_operator_answers(answers: list[Answer]) -> str:
     """Render ``answers[]`` as ``Q: ...\\nA: ...`` blocks, oldest first, capped near
     ``_ANSWERS_CHAR_BUDGET`` characters with a visible truncation marker. Empty when the task
     carries no answers yet."""
-    answers_raw = task.get("answers")
-    if not isinstance(answers_raw, list) or not answers_raw:
+    if not answers:
         return ""
-    blocks = [
-        f"Q: {str(entry.get('message', '')).strip()}\nA: {_render_answer_value(entry)}"
-        for entry in answers_raw
-        if isinstance(entry, dict)
-    ]
-    if not blocks:
-        return ""
-
+    blocks = [f"Q: {entry.message.strip()}\nA: {_render_answer_value(entry)}" for entry in answers]
     text = "\n\n".join(blocks)
     budget_tokens = _ANSWERS_CHAR_BUDGET // current_home().context_bytes_per_token
     capped, _truncated = _ctx.truncate_summary(text, budget_tokens)
     return capped
 
 
-def _consult_answer_note(task: dict[str, Any], step_id: str) -> str:
+def _consult_answer_note(task: TaskRecord, step_id: str) -> str:
     """The operator's answer to this step's parked consultation, as a trailing message block
     (empty when the step has none)."""
-    answer = task.get("consultAnswer")
-    if not isinstance(answer, dict) or answer.get("step") != step_id:
+    answer = task.consult_answer
+    if answer is None or answer.step != step_id:
         return ""
-    return f"\n\n{answer.get('text', '')}\n"
+    return f"\n\n{answer.text}\n"
 
 
 def _compose_hop(
@@ -381,7 +371,7 @@ def _compose_hop(
     message += _consult_answer_note(ctx.task, node.step_id)
     pipeline_worktree = ""
     if role != "lead":
-        pipeline_worktree = task_worktree_dir(ctx.task)
+        pipeline_worktree = claimed_worktree_dir(ctx.task)
         if pipeline_worktree:
             # The task block already names the checkout as the working directory.
             checkout_note = ""
@@ -457,9 +447,8 @@ def _compose_hop(
         env[_rd.DOCKET_APPROVAL_TIMEOUT] = str(ctx.approval_timeout)
     env = _consult_budget_env(ctx, env)
     env = _apply_task_restrictions(ctx, env)
-    pregrants_raw = ctx.task.get("pregrants")
     pregrants_raw = [
-        *(pregrants_raw if isinstance(pregrants_raw, list) else []),
+        *(g.model_dump(by_alias=True) for g in ctx.task.pregrants),
         *mint_task_grant_pregrants(ctx, role),
     ]
     if pregrants_raw:

@@ -28,6 +28,7 @@ from docket.hops.application import compose as _compose
 from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain.task import TaskRecord
 
 _hermetic = _support_home.trace_on_env
 
@@ -43,7 +44,7 @@ class TestHopMessageCap:
     def test_small_task_byte_identical_to_pre_cap_behaviour(self) -> None:
         """Regression pin: below-budget content composes exactly as before
         any cap/budget mechanism existed."""
-        task = {"description": "Fix the bug"}
+        task = TaskRecord(description="Fix the bug")
         prior = [_hop("lead", "Plan: do X.")]
         message, comp = _compose._hop_message(task, "implementer", prior)
 
@@ -71,7 +72,7 @@ class TestHopMessageCap:
 
     def test_lead_hop_message_unaffected_by_cap(self) -> None:
         """The lead hop has no prior output to cap — its message is untouched."""
-        task = {"description": "Ship it"}
+        task = TaskRecord(description="Ship it")
         message, comp = _compose._hop_message(task, "lead", [])
         assert message == (
             "You are the pod Lead. Decompose this task into a concrete plan for "
@@ -85,7 +86,7 @@ class TestHopMessageCap:
         out of the role's budget (leaving less for carryover) but is never
         itself shed or cut, no matter how large."""
         huge_desc = "D" * 500_000
-        task = {"description": huge_desc}
+        task = TaskRecord(description=huge_desc)
 
         lead_message, _lead_comp = _compose._hop_message(task, "lead", [])
         assert huge_desc in lead_message
@@ -98,7 +99,7 @@ class TestHopMessageCap:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: 20)
-        task = {"description": "task"}
+        task = TaskRecord(description="task")
         prior = [_hop("lead", "L" * 5000)]
         message, comp = _compose._hop_message(task, "implementer", prior)
         assert "[... summary truncated" in message
@@ -109,7 +110,7 @@ class TestHopMessageCap:
 
     def test_newest_hop_is_truncated_least(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: 8192)
-        task = {"description": "task"}
+        task = TaskRecord(description="task")
         prior = [
             _hop("lead", "A" * 20_000),
             _hop("implementer", "B" * 20_000),
@@ -130,7 +131,7 @@ class TestHopMessageCap:
         the aggregate carryover must still respect the role's token budget."""
         cap_tokens = 8192
         monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: cap_tokens)
-        task = {"description": "task"}
+        task = TaskRecord(description="task")
         prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
         message, comp = _compose._hop_message(task, "tester", prior)
 
@@ -140,11 +141,11 @@ class TestHopMessageCap:
         assert all(s["truncated"] for s in comp.sections)
         # The description plus a small fixed per-hop wrapper overhead is all
         # that's added on top of the bounded carryover.
-        assert len(message.encode("utf-8")) < cap_bytes + len(task["description"]) + 2000
+        assert len(message.encode("utf-8")) < cap_bytes + len(task.description) + 2000
 
     def test_small_multi_hop_task_unchanged_no_truncation(self) -> None:
         """No regression for the common (small-output) multi-hop case either."""
-        task = {"description": "Small task"}
+        task = TaskRecord(description="Small task")
         prior = [_hop("lead", "short plan"), _hop("implementer", "small diff")]
         message, comp = _compose._hop_message(task, "reviewer", prior)
         expected = "\n".join(

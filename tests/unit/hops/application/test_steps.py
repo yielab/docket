@@ -42,6 +42,8 @@ from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.options import TaskGate
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import roles as _archetypes
@@ -152,7 +154,7 @@ class TestEffectivePipelineBlueprint:
         lead_instructions = raw_step_instructions.get("lead", "")
 
         message, _ = _compose._hop_message(
-            {"description": "scan the market"},
+            TaskRecord(description="scan the market"),
             "lead",
             [],
             step_instructions=lead_instructions,
@@ -421,7 +423,9 @@ class TestTaskPipeline:
         _seed_lean_pod("myapp")
         default = _steps.effective_pipeline("myapp", None)
 
-        spec, source = _steps._task_pipeline("myapp", {"pipeline": "tdd"}, default)
+        spec, source = _steps._task_pipeline(
+            "myapp", TaskRecord(description="x", pipeline="tdd"), default
+        )
 
         assert source == "recipe:tdd"
         assert spec.name == "tdd"
@@ -431,7 +435,9 @@ class TestTaskPipeline:
         _write_pod_pipeline("myapp", "tdd", _TWO_STEP_YAML.replace("name: two", "name: mine"))
         default = _steps.effective_pipeline("myapp", None)
 
-        spec, source = _steps._task_pipeline("myapp", {"pipeline": "tdd"}, default)
+        spec, source = _steps._task_pipeline(
+            "myapp", TaskRecord(description="x", pipeline="tdd"), default
+        )
 
         assert (source, spec.name) == ("pod:tdd", "mine")
 
@@ -441,7 +447,7 @@ class TestTaskPipeline:
         default = _steps.effective_pipeline("myapp", None)
 
         with pytest.raises(_task.DispatchError):
-            _steps._task_pipeline("myapp", {"pipeline": name}, default)
+            _steps._task_pipeline("myapp", TaskRecord(description="x", pipeline=name), default)
 
     def test_an_unknown_pipeline_fails_the_task_before_any_hop(self, pod_home: Path) -> None:
         from tests.support.fakes import FakeDriver
@@ -515,7 +521,10 @@ class TestTaskPipeline:
 class TestTaskGate:
     def test_the_gate_maps_exit_codes_over_the_defaults(self) -> None:
         gate = _steps._task_gate(
-            {"gate": {"command": "x", "timeoutS": 9, "map": {"3": "needs_human", "5": "fail"}}}
+            TaskRecord(
+                description="x",
+                gate=TaskGate(command="x", timeoutS=9, map={"3": "needs_human", "5": "fail"}),
+            )
         )
 
         assert gate is not None
@@ -530,14 +539,13 @@ class TestTaskGate:
         ]
 
     def test_no_gate_is_none(self) -> None:
-        assert _steps._task_gate({}) is None
+        assert _steps._task_gate(TaskRecord(description="x")) is None
 
-    @pytest.mark.parametrize(
-        "raw", ["true", {"command": ""}, {"command": "x", "map": {"0": "weird"}}, {"command": 3}]
-    )
-    def test_a_malformed_gate_is_refused(self, raw: Any) -> None:
+    def test_a_gate_mapping_to_an_unknown_label_is_refused(self) -> None:
+        task = TaskRecord(description="x", gate=TaskGate(command="x", map={"0": "weird"}))
+
         with pytest.raises(_task.DispatchError):
-            _steps._task_gate({"gate": raw})
+            _steps._task_gate(task)
 
     def test_the_gate_attaches_to_the_last_implementer_step(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")

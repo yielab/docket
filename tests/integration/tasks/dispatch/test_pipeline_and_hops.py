@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import pytest
 from tests.support.fakes import FakeDriver
@@ -23,6 +22,8 @@ from docket.kernel.home import current_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import resources as _res
 from docket.teams import settings as _settings
@@ -155,16 +156,11 @@ class TestPipeline:
                     output = "done"
                 return _rd.TurnResult(True, output, 0.0, {})
 
-            task: dict[str, Any] = {
-                "id": "wt1",
-                "description": "work",
-                "status": "pending",
-                "worktree": {
-                    "dir": str(worktree),
-                    "branch": "docket/demo/wt1",
-                    "baseCommit": "abc",
-                },
-            }
+            task = TaskRecord(
+                id="wt1",
+                description="work",
+                worktree=Worktree(dir=str(worktree), branch="docket/demo/wt1", base_commit="abc"),
+            )
             result = _executor.dispatch_task("demo", task, runner=runner)
 
             assert result.status == "done", result.reason
@@ -203,7 +199,7 @@ class TestPipeline:
                 calls.append((agent_id, env))
                 return _rd.TurnResult(True, "done", 0.0, {})
 
-            task: dict[str, Any] = {"id": "am1", "description": "work", "status": "pending"}
+            task = TaskRecord(id="am1", description="work")
             result = _executor.dispatch_task("demo", task, runner=runner)
 
             assert result.status == "done", result.reason
@@ -227,14 +223,14 @@ class TestPipeline:
                 calls.append(env)
                 return _rd.TurnResult(True, "done", 0.0, {})
 
-            task: dict[str, Any] = {"id": "at1", "description": "work", "status": "pending"}
+            task = TaskRecord(id="at1", description="work")
             result = _executor.dispatch_task("demo", task, runner=runner, approval_timeout=9)
 
             assert result.status == "done", result.reason
             assert len(calls) == 2
             assert all(env is not None and env[_rd.DOCKET_APPROVAL_TIMEOUT] == "9" for env in calls)
             calls.clear()
-            again: dict[str, Any] = {"id": "at2", "description": "work", "status": "pending"}
+            again = TaskRecord(id="at2", description="work")
             _executor.dispatch_task("demo", again, runner=runner)
             assert all(env is None or _rd.DOCKET_APPROVAL_TIMEOUT not in env for env in calls)
 
@@ -256,7 +252,7 @@ class TestPipeline:
                 calls.append((agent_id, env))
                 return _rd.TurnResult(True, "done", 0.0, {})
 
-            task: dict[str, Any] = {"id": "am2", "description": "work", "status": "pending"}
+            task = TaskRecord(id="am2", description="work")
             result = _executor.dispatch_task("demo", task, runner=runner)
 
             assert result.status == "done", result.reason

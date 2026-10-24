@@ -29,6 +29,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain.task import TaskRecord
 
 _hermetic = _support_home.hermetic_trace_on
 
@@ -71,7 +72,7 @@ class TestMechanicalGateGeneralized:
                 _step.Step(id="apply", role="operator", gate=_gates.MechanicalGate(command=None)),
             ],
         )
-        task: dict[str, Any] = {"id": "m1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="m1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "done"
         assert [h.role for h in res.hops] == ["lead", "operator"]
@@ -86,7 +87,7 @@ class TestMechanicalGateGeneralized:
                 _step.Step(id="apply", role="operator", gate=_gates.MechanicalGate(command=None)),
             ],
         )
-        task: dict[str, Any] = {"id": "m2", "description": "work", "status": "pending"}
+        task = TaskRecord(id="m2", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "failed"
         assert "verifyCmd failed" in res.reason
@@ -105,7 +106,7 @@ class TestMechanicalGateGeneralized:
                 _step.Step(id="apply", role="operator", gate=_gates.MechanicalGate(command="true")),
             ],
         )
-        task: dict[str, Any] = {"id": "m3", "description": "work", "status": "pending"}
+        task = TaskRecord(id="m3", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "done"
 
@@ -130,7 +131,7 @@ class TestVerdictGateGeneralized:
         _write_meta("myapp-lead")
         _write_meta("myapp-critic")
         runner = _RoleRunner({"critic": "APPROVE\nlooks good"})
-        task: dict[str, Any] = {"id": "v1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="v1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "done"
 
@@ -138,7 +139,7 @@ class TestVerdictGateGeneralized:
         _write_meta("myapp-lead")
         _write_meta("myapp-critic")
         runner = _RoleRunner({"critic": "REJECT\nneeds work"})
-        task: dict[str, Any] = {"id": "v2", "description": "work", "status": "pending"}
+        task = TaskRecord(id="v2", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "failed"
         assert "REJECT" in res.reason
@@ -152,7 +153,7 @@ class TestVerdictGateGeneralized:
         _write_meta("myapp-lead")
         _write_meta("myapp-critic")
         runner = _RoleRunner({"critic": "not sure about this one"})
-        task: dict[str, Any] = {"id": "v3", "description": "work", "status": "pending"}
+        task = TaskRecord(id="v3", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "failed"
         assert "unparseable" in res.reason
@@ -327,7 +328,7 @@ class TestParallelGroupThroughDispatch:
                 ),
             ],
         )
-        task: dict[str, Any] = {"id": "g1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="g1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
         assert res.status == "failed"
         assert "not supported inside a parallel group" in res.reason
@@ -346,7 +347,7 @@ class TestCommandSteps:
                 _step.Step(id="check", run="false"),
             ],
         )
-        task: dict[str, Any] = {"id": "c1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="c1", description="work")
         runner = _RoleRunner({})
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
         assert res.status == "failed"
@@ -372,7 +373,7 @@ class TestConditionalSteps:
                 _step.Step(id="finish", role="analyst"),
             ],
         )
-        task: dict[str, Any] = {"id": "c2", "description": "work", "status": "pending"}
+        task = TaskRecord(id="c2", description="work")
         runner = _RoleRunner({})
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
         assert res.status == "done"
@@ -413,7 +414,7 @@ class TestOutcomeRoutingThroughDispatch:
             ],
         )
         runner = _RoleRunner({"critic": "FAIL\nneeds a human look"})
-        task: dict[str, Any] = {"id": "r1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="r1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
 
         assert res.status == "waiting_approval"

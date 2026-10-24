@@ -35,6 +35,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _plan
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.task import TaskRecord
 
 _hermetic = _support_home.trace_on_env
 
@@ -255,7 +256,7 @@ def _seed_pod(tmp_path: Path, project: str = "demo", *, full: bool = False) -> I
 class TestDispatchBuildsTypedArtifacts:
     def test_two_hop_dispatch_produces_typed_artifacts_not_strings(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
+            task = TaskRecord(id="t1", description="work")
             res = _executor.dispatch_task("demo", task, runner=FakeDriver())
 
             assert res.status == "done"
@@ -290,7 +291,7 @@ class TestDispatchBuildsTypedArtifacts:
                     }[role]
                     return TurnResult(True, text, 0.01, {})
 
-            task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
+            task = TaskRecord(id="t2", description="work")
             res = _executor.dispatch_task("demo", task, runner=_Runner())
             assert res.status == "done"
 
@@ -334,7 +335,7 @@ class TestDispatchBuildsTypedArtifacts:
                     }[role]
                     return TurnResult(True, text, 0.01, {})
 
-            task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
+            task = TaskRecord(id="t3", description="work")
             res = _executor.dispatch_task("demo", task, runner=_Runner())
             assert res.status == "done"
 
@@ -378,7 +379,7 @@ class TestDispatchBuildsTypedArtifacts:
                     }[role]
                     return TurnResult(True, text, 0.01, {})
 
-            task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
+            task = TaskRecord(id="t4", description="work")
             res = _executor.dispatch_task("demo", task, runner=_Runner())
             assert res.status == "done"
             reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
@@ -400,7 +401,9 @@ class TestDispatchBuildsTypedArtifacts:
         thread the *persisted artifact* into later hops' prompts, not just
         raw text -- proving --resume recovers the structured record."""
         with _seed_pod(tmp_path, full=True):
-            task = _queue.enqueue_task_once("demo", "work", channel="cli")[0]
+            task = TaskRecord.model_validate(
+                _queue.enqueue_task_once("demo", "work", channel="cli")[0]
+            )
 
             from docket.agent.ports import TurnResult
 

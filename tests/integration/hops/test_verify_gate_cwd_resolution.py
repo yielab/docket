@@ -17,7 +17,6 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 import pytest
 import typer
@@ -33,6 +32,8 @@ from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import record as _record
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
 
@@ -118,12 +119,11 @@ class TestDispatchVerifyCwd:
                 "verifyCmd": "test -f WORKTREE_MARKER && ! test -f CODEBASE_MARKER",
             },
         )
-        task: dict[str, Any] = {
-            "id": "cw1",
-            "description": "work",
-            "status": "pending",
-            "worktree": {"dir": str(worktree), "branch": "b", "baseCommit": ""},
-        }
+        task = TaskRecord(
+            id="cw1",
+            description="work",
+            worktree=Worktree(dir=str(worktree), branch="b", base_commit=""),
+        )
         res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "done", res.reason
 
@@ -137,7 +137,7 @@ class TestDispatchVerifyCwd:
             "myapp-implementer",
             {"codebase": str(codebase), "verifyCmd": "test -f CODEBASE_MARKER"},
         )
-        task: dict[str, Any] = {"id": "cw2", "description": "work", "status": "pending"}
+        task = TaskRecord(id="cw2", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "done", res.reason
 
@@ -150,7 +150,7 @@ class TestDispatchVerifyCwd:
         ws = current_home().projects_dir / "myapp-implementer"
         (ws / "WORKSPACE_MARKER").touch()
 
-        task: dict[str, Any] = {"id": "cw3", "description": "work", "status": "pending"}
+        task = TaskRecord(id="cw3", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "done", res.reason
 
@@ -165,12 +165,11 @@ class TestDispatchVerifyCwd:
             "myapp-implementer",
             {"verifyCmd": "test -f WORKTREE_MARKER"},
         )
-        task: dict[str, Any] = {
-            "id": "cw4",
-            "description": "work",
-            "status": "pending",
-            "worktree": {"dir": str(worktree), "branch": "b", "baseCommit": ""},
-        }
+        task = TaskRecord(
+            id="cw4",
+            description="work",
+            worktree=Worktree(dir=str(worktree), branch="b", base_commit=""),
+        )
         res = _executor.dispatch_task("myapp", task, runner=_fake_runner())
         assert res.status == "failed"
 

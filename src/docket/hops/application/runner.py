@@ -22,6 +22,7 @@ from docket.tasks.application.record import (
     UnitContext,
     UnitOutcome,
     build_hop_result,
+    claimed_worktree_dir,
     persist_hop_and_trace,
     trace_locked,
 )
@@ -30,7 +31,6 @@ from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams.settings import retries_for_role
-from docket.teams.workspace.worktree import task_worktree_dir
 
 # Only these TurnResult.failure_kind values are worth retrying — a
 # transient hiccup running the turn. A non-zero exit or an unparseable/failing
@@ -211,7 +211,7 @@ def when_cwd(ctx: UnitContext, prior: list[HopResult]) -> str:
     """Working tree a ``when: {changed: ...}`` predicate and a command step's own command
     both run against: the task's own worktree, falling back to the pod Lead's own codebase
     (the task runs in place, or the pod has no Implementer)."""
-    worktree = task_worktree_dir(ctx.task)
+    worktree = claimed_worktree_dir(ctx.task)
     if worktree:
         return worktree
     lead_id = _pod.member_id(ctx.project, "lead")

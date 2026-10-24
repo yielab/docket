@@ -34,16 +34,15 @@ from docket.kernel.operator_contract import (
 )
 from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
-from docket.platform import read_modify_write
 from docket.tasks.application import consult as _consult
 from docket.tasks.application import corrections as _corrections
-from docket.tasks.application import queue as _queue
 from docket.tasks.application import transitions as _transitions
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.parts import Answer, ConsultAnswer
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
-from docket.teams import settings as _settings
 
 __all__ = ["AnswerError", "AnswerRejected", "answer_task", "sweep_expired_questions"]
 
@@ -104,16 +103,11 @@ def _resolve_route(
     return target_str, ""
 
 
-def _load_parked_question(t: dict[str, Any], task_id: str) -> Question:
-    """The task's persisted ``question``, validated -- raises ``AnswerError`` when missing or
-    malformed."""
-    question_raw = t.get("question")
-    if not isinstance(question_raw, dict):
+def _load_parked_question(t: _task.TaskRecord, task_id: str) -> Question:
+    """The task's persisted ``question`` -- raises ``AnswerError`` when it has none."""
+    if t.question is None:
         raise AnswerError(f"task {task_id!r} has no pending question")
-    try:
-        return Question.model_validate(question_raw)
-    except ValidationError as exc:
-        raise AnswerError(str(exc)) from exc
+    return t.question
 
 
 def _validate_and_screen(project: str, question: Question, result: AnswerResult) -> None:
@@ -140,7 +134,7 @@ def _screen_content(project: str, result: AnswerResult) -> None:
 
 
 def _append_answer(
-    t: dict[str, Any],
+    t: _task.TaskRecord,
     question: Question,
     result: AnswerResult,
     *,
@@ -151,32 +145,29 @@ def _append_answer(
 ) -> None:
     """Append one entry to the task's durable ``answers[]`` and clear its ``question``. The entry
     keeps the question's ``kind`` and ``createdAt``, which nothing else retains once it is cleared."""
-    answers_raw = t.get("answers")
-    answers = list(answers_raw) if isinstance(answers_raw, list) else []
-    answers.append(
-        {
-            "questionId": question.id,
-            "step": question.step,
-            "message": question.message,
-            "action": result.action,
-            "content": result.content,
-            "channel": channel,
-            "actor": actor,
-            "answeredAt": ts,
+    t.answers.append(
+        Answer(
+            question_id=question.id,
+            step=question.step,
+            message=question.message,
+            action=result.action,
+            content=result.content,
+            channel=channel,
+            actor=actor,
+            answered_at=ts,
             # The question is cleared below; the metrics read its kind and age from here.
-            "kind": getattr(question, "kind", "clarification"),
-            "createdAt": question.created_at,
-            **({"optionId": option_id} if option_id else {}),
-        }
+            kind=getattr(question, "kind", "clarification"),
+            created_at=question.created_at,
+            option_id=option_id or None,
+        )
     )
-    t["answers"] = answers
-    t.pop("question", None)
+    t.question = None
 
 
 def _answer_consult(
     project: str,
-    t: dict[str, Any],
-    question_raw: dict[str, Any],
+    t: _task.TaskRecord,
+    question: QuestionV11,
     result: AnswerResult,
     *,
     channel: str,
@@ -186,7 +177,6 @@ def _answer_consult(
     """Resolve a parked ``consult``: validate its ``optionId`` (in *content*), record the answer
     and reopen the task ``pending`` so the same role's step re-runs with the answer."""
     try:
-        question = QuestionV11.model_validate(question_raw)
         body = dict(result.content or {})
         option_id = body.pop("optionId", None)
         answer = AnswerResultV11.model_validate(
@@ -197,17 +187,17 @@ def _answer_consult(
         raise AnswerError(str(exc)) from exc
     _screen_content(project, answer)
     _append_answer(t, question, answer, channel=channel, actor=actor, ts=ts, option_id=option_id)
-    t["consultAnswer"] = {
-        "step": question.step,
-        "questionId": question.id,
-        "text": _consult.answer_text(question, answer, body),
-    }
+    t.consult_answer = ConsultAnswer(
+        step=question.step,
+        question_id=question.id,
+        text=_consult.answer_text(question, answer, body),
+    )
     _transitions.apply_to_task(t, _state.Status.pending)
     return question
 
 
 def _locate_parked_step(
-    t: dict[str, Any],
+    t: _task.TaskRecord,
     question: Question,
     task_id: str,
     runtime_steps: tuple[Any, ...],
@@ -216,14 +206,8 @@ def _locate_parked_step(
     """The ``PlannedUnit`` the task is actually parked at, its pipeline index, and the
     ``route_counts`` rebuilt from its persisted hops -- raises ``AnswerError`` when the
     persisted position no longer matches *question*'s own step."""
-    hops_raw = t.get("hops")
-    prior_hops = [
-        _task.HopResult.model_validate(h)
-        for h in (hops_raw if isinstance(hops_raw, list) else [])
-        if isinstance(h, dict)
-    ]
     _prior, pipeline_index, _rework, route_counts, _pending = _executor._resolve_resume_state(
-        runtime_steps, prior_hops
+        runtime_steps, t.hops
     )
     node = runtime_steps[pipeline_index] if pipeline_index < len(runtime_steps) else None
     if node is None or not isinstance(node, _orch.PlannedUnit) or node.step_id != question.step:
@@ -232,7 +216,7 @@ def _locate_parked_step(
 
 
 def _apply_route_outcome(
-    t: dict[str, Any],
+    t: _task.TaskRecord,
     node: Any,
     target_str: str | None,
     terminal: str,
@@ -257,10 +241,7 @@ def _apply_route_outcome(
         step_id=node.step_id,
         next_step=target_str,
     )
-    hops_raw = t.get("hops")
-    new_hops = list(hops_raw) if isinstance(hops_raw, list) else []
-    new_hops.append(hop.model_dump(by_alias=True, mode="json"))
-    t["hops"] = new_hops
+    t.hops.append(hop)
 
     if terminal in ("failed", "done"):
         target_word = "fail" if terminal == "failed" else "stop"
@@ -279,17 +260,16 @@ def _parked_task_pipeline(project: str, task_id: str) -> Any:
     """The pipeline *task_id* was dispatched through: the one it names itself or the caller's
     file it kept, else ``None`` (the pod's own). One that no longer resolves is an
     ``AnswerError``."""
-    for t in _queue.read_tasks(project):
-        if t.get("id") != task_id or not (t.get("pipeline") or t.get("pipelineSpec")):
-            continue
-        try:
-            spec, _source = _steps._task_pipeline(
-                project, t, _steps.effective_pipeline(project, None)
-            )
-        except _task.TaskRunRefusal as exc:
-            raise AnswerError(str(exc)) from exc
-        return spec
-    return None
+    record = TaskRepository.for_pod(project).get(task_id)
+    if record is None or not (record.pipeline or record.pipeline_spec):
+        return None
+    try:
+        spec, _source = _steps._task_pipeline(
+            project, record, _steps.effective_pipeline(project, None)
+        )
+    except _task.TaskRunRefusal as exc:
+        raise AnswerError(str(exc)) from exc
+    return spec
 
 
 def answer_task(
@@ -313,7 +293,6 @@ def answer_task(
     except ValidationError as exc:
         raise AnswerError(str(exc)) from exc
 
-    path = _settings.pod_task_list_path(project)
     outcome: dict[str, str] = {}
     # Resolved *before* the locked read-modify-write below: it reads the pod Lead's own
     # `.docket-meta.json`, which shares a per-directory lock with the task list itself
@@ -326,41 +305,34 @@ def answer_task(
         project, _parked_task_pipeline(project, task_id)
     )
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in tasks:
-            if t.get("id") != task_id:
-                continue
-            if t.get("status") != "waiting_input":
-                raise AnswerError(f"task {task_id!r} is not waiting_input")
-            raw = t.get("question")
-            if isinstance(raw, dict) and raw.get("kind") in ("clarification", "decision"):
-                consulted = _answer_consult(
-                    project, t, raw, result, channel=channel, actor=actor, ts=ts
-                )
-                outcome["step"] = consulted.step
-                outcome["question_id"] = consulted.id
-                return {"tasks": tasks}
-            question = _load_parked_question(t, task_id)
-            _validate_and_screen(project, question, result)
-            _append_answer(t, question, result, channel=channel, actor=actor, ts=ts)
-
-            node, pipeline_index, route_counts = _locate_parked_step(
-                t, question, task_id, runtime_steps, id_to_index
+    def _fn(t: _task.TaskRecord) -> None:
+        if t.status != _state.Status.waiting_input:
+            raise AnswerError(f"task {task_id!r} is not waiting_input")
+        if isinstance(t.question, QuestionV11) and t.question_is_consultation:
+            consulted = _answer_consult(
+                project, t, t.question, result, channel=channel, actor=actor, ts=ts
             )
-            outcome_label = "answered" if result.action == "accept" else "declined"
-            target_str, terminal = _resolve_route(
-                node.on, outcome_label, route_counts, id_to_index, node.step_id, pipeline_index
-            )
-            _apply_route_outcome(t, node, target_str, terminal, outcome_label, question, ts)
+            outcome["step"] = consulted.step
+            outcome["question_id"] = consulted.id
+            return
+        question = _load_parked_question(t, task_id)
+        _validate_and_screen(project, question, result)
+        _append_answer(t, question, result, channel=channel, actor=actor, ts=ts)
 
-            outcome["step"] = question.step
-            outcome["question_id"] = question.id
-            return {"tasks": tasks}
+        node, pipeline_index, route_counts = _locate_parked_step(
+            t, question, task_id, runtime_steps, id_to_index
+        )
+        outcome_label = "answered" if result.action == "accept" else "declined"
+        target_str, terminal = _resolve_route(
+            node.on, outcome_label, route_counts, id_to_index, node.step_id, pipeline_index
+        )
+        _apply_route_outcome(t, node, target_str, terminal, outcome_label, question, ts)
+
+        outcome["step"] = question.step
+        outcome["question_id"] = question.id
+
+    if TaskRepository.for_pod(project).update(task_id, _fn) is None:
         raise AnswerError(f"task {task_id!r} not found in pod {project!r}")
-
-    read_modify_write(path, _fn)
     _record_answer_audit_and_trace(
         project, task_id, outcome, channel=channel, actor=actor, result=result
     )
@@ -419,38 +391,27 @@ def sweep_expired_questions(now: str | None = None) -> int:
         return 0
     count = 0
     for project in _all_projects():
-        path = _settings.pod_task_list_path(project)
         expired: list[tuple[str, str]] = []
 
-        def _fn(
-            doc: dict[str, Any], _expired: list[tuple[str, str]] = expired
-        ) -> dict[str, Any] | None:
-            tasks_raw = doc.get("tasks")
-            tasks = tasks_raw if isinstance(tasks_raw, list) else []
-            changed = False
-            for t in tasks:
-                if t.get("status") != "waiting_input":
-                    continue
-                question = t.get("question")
-                if not isinstance(question, dict):
-                    continue
-                expires_at = question.get("expiresAt")
-                if not expires_at:
-                    continue
-                exp_dt = _clock.parse_iso(str(expires_at))
-                if exp_dt is None or exp_dt > now_dt:
-                    continue
-                _transitions.apply_to_task(
-                    t,
-                    _state.Status.blocked,
-                    reason=f"question {question.get('id', '')!r} expired unanswered",
-                    blocked_reason="input_expired",
-                )
-                _expired.append((str(t.get("id", "")), str(question.get("id", ""))))
-                changed = True
-            return {"tasks": tasks} if changed else None
+        def _expire(t: _task.TaskRecord, _expired: list[tuple[str, str]] = expired) -> bool:
+            question = t.question
+            if t.status != _state.Status.waiting_input or question is None:
+                return False
+            if not question.expires_at:
+                return False
+            exp_dt = _clock.parse_iso(question.expires_at)
+            if exp_dt is None or exp_dt > now_dt:
+                return False
+            _transitions.apply_to_task(
+                t,
+                _state.Status.blocked,
+                reason=f"question {question.id!r} expired unanswered",
+                blocked_reason="input_expired",
+            )
+            _expired.append((t.id, question.id))
+            return True
 
-        read_modify_write(path, _fn)
+        TaskRepository.for_pod(project).update_each(_expire)
         for task_id, question_id in expired:
             count += 1
             _trace.trace_event(

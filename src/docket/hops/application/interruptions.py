@@ -24,8 +24,8 @@ from docket.kernel.errors import NotFound
 from docket.operator import load_catalog
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import step as _step
-from docket.platform import read_modify_write
-from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.parts import Grant
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import settings as _settings
 
@@ -187,8 +187,8 @@ def record_pregrant(
     """Record a single-use pre-grant for one exact *command* on one task, ahead of dispatch --
     same shape a live park's own grant appends. Raises `InterruptionsError` when *task_id* is
     not in *project*'s own queue -- a pre-grant never crosses pods."""
-    tasks = _queue.read_tasks(project)
-    if not any(t.get("id") == task_id for t in tasks):
+    repo = TaskRepository.for_pod(project)
+    if repo.get(task_id) is None:
         raise InterruptionsError(f"Task '{task_id}' not found in pod '{project}'.")
 
     normalized = _normalized_command(command)
@@ -206,17 +206,8 @@ def record_pregrant(
         actor=actor,
     )
 
-    def _fn(doc: dict[str, Any]) -> dict[str, Any] | None:
-        tasks_raw = doc.get("tasks")
-        found_tasks = tasks_raw if isinstance(tasks_raw, list) else []
-        for t in found_tasks:
-            if t.get("id") == task_id:
-                pregrants_raw = t.get("pregrants")
-                pregrants = list(pregrants_raw) if isinstance(pregrants_raw, list) else []
-                pregrants.append({"token": token, "tool": tool, "argsDigest": args_digest})
-                t["pregrants"] = pregrants
-                return {"tasks": found_tasks}
-        return None
-
-    read_modify_write(_settings.pod_task_list_path(project), _fn)
+    repo.update(
+        task_id,
+        lambda r: r.pregrants.append(Grant(token=token, tool=tool, args_digest=args_digest)),
+    )
     return token

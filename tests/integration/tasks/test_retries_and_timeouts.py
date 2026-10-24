@@ -35,6 +35,7 @@ from docket.kernel.ports import jail as _jail
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import settings as _settings
 
@@ -155,7 +156,7 @@ class TestHopRetryLoop:
                 ]
             }
         )
-        task: dict[str, Any] = {"id": "t1", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
         assert res.status == "done"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
@@ -187,7 +188,7 @@ class TestHopRetryLoop:
                 return _rd.TurnResult(True, "done", 0.0, {})
             return _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout")
 
-        task: dict[str, Any] = {"id": "t2", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t2", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_always_timeout, sleep=_no_sleep)
         assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
@@ -213,7 +214,7 @@ class TestHopRetryLoop:
                 return _rd.TurnResult(True, "done", 0.0, {})
             return _rd.TurnResult(False, "", 0.0, {}, "exit 1", failure_kind="nonzero_exit")
 
-        task: dict[str, Any] = {"id": "t3", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t3", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
@@ -240,7 +241,7 @@ class TestHopRetryLoop:
             output = "garbage, no verdict" if role == "tester" else "done"
             return _rd.TurnResult(True, output, 0.0, {})
 
-        task: dict[str, Any] = {"id": "t4", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t4", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         assert res.status == "failed"
         assert "unparseable" in res.reason
@@ -257,7 +258,7 @@ class TestHopRetryLoop:
                 ]
             }
         )
-        task: dict[str, Any] = {"id": "t5", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t5", description="work")
         _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
 
         events = _trace_events("myapp")
@@ -279,7 +280,7 @@ class TestHopRetryLoop:
             }
         )
         touches: list[None] = []
-        task: dict[str, Any] = {"id": "t6", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t6", description="work")
         _executor.dispatch_task(
             "myapp",
             task,
@@ -302,7 +303,7 @@ class TestHopRetryLoop:
             }
         )
         sleeps: list[float] = []
-        task: dict[str, Any] = {"id": "t7", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t7", description="work")
         _executor.dispatch_task("myapp", task, runner=runner, sleep=lambda s: sleeps.append(s))
         assert sleeps == [
             current_home().dispatch_retry_backoff_s * 1,
@@ -325,7 +326,7 @@ class TestHopRetryLoop:
             }
         )
         sleeps: list[float] = []
-        task: dict[str, Any] = {"id": "t9", "description": "work", "status": "pending"}
+        task = TaskRecord(id="t9", description="work")
         res = _executor.dispatch_task(
             "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
         )
@@ -359,7 +360,7 @@ class TestHopRetryLoop:
                 }
             )
             sleeps: list[float] = []
-            task: dict[str, Any] = {"id": "t10", "description": "work", "status": "pending"}
+            task = TaskRecord(id="t10", description="work")
             res = _executor.dispatch_task(
                 "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
             )
@@ -429,7 +430,7 @@ class TestTimeoutResolution:
         mp = _pytest.MonkeyPatch()
         try:
             fake_jail.run_command = _spy_run_command
-            task: dict[str, Any] = {"id": "t8", "description": "work", "status": "pending"}
+            task = TaskRecord(id="t8", description="work")
             res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         finally:
             mp.undo()
