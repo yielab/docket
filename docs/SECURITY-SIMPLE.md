@@ -205,6 +205,18 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
   `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials, policy and path confinement,
   not by a sandbox.
+- **What no rule of the command gate can catch.** The gate reads the command line; it cannot read
+  what a program does once started. Code handed to an allowlisted interpreter (`python3 -c` with a
+  string built by concatenation, `node -e`, `perl -e`, a script written and then run,
+  `base64 -d | sh`), a command, flag or argument held in a shell variable (`$R -r build`,
+  `git push origin $B`) and a package script whose body docket cannot see (`npm run release`) pass
+  the policies unless the binary itself is off the allowlist. With isolation on, the jail contains
+  what such code can reach; with it off (the default), nothing does. The two text screens are
+  tripwires, not classifiers: `prompt-injection` warns on a few known phrases (a paraphrase, a
+  translation or an encoded payload passes), and `secret-pii-redact` masks fixed secret shapes
+  (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer`
+  credentials, email addresses), not a secret that is spelled out, reversed or encoded.
+  `specs/functional/security-gates.spec.md`, "Known limits of the command gate", is the list.
 - **A pod can widen its own allowlist** with `docket pod set allowCommands uv,tox`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
   refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so

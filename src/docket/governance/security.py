@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
+
+from docket.governance.command_lexer import Segment, cut_quoted_heredocs, split_segments, unwrap
 
 # Curated set of common, lower-risk binaries `classify_command` allows
 # unattended. Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and
@@ -57,14 +58,6 @@ SAFE_BINS: tuple[str, ...] = (
 # they are not here.
 _REDIRECT_SENSITIVE_BINS: frozenset[str] = frozenset({"echo"})
 
-# Output-writing redirects only -- `<` (input) does not let arbitrary content
-# reach a file the way `>`/`>>`/`>|`/`&>`/`&>>`/`>&` do. A descriptor prefix
-# (`2>`) lexes as the digit then the operator, so it needs no entry. `>&` is
-# a file redirect unless its target is a descriptor number (`2>&1`), which
-# `_split_segments` tells apart.
-_OUTPUT_REDIRECT_OPS: frozenset[str] = frozenset({">", ">>", ">|", "&>", "&>>", ">&"})
-_INPUT_REDIRECT_OPS: frozenset[str] = frozenset({"<", "<<", "<<<", "<>"})
-
 # A redirect target the shell would expand before opening (a variable, a home
 # prefix, a glob) is not the path docket would resolve, so it cannot be placed.
 _UNPLACEABLE_TARGET_CHARS: frozenset[str] = frozenset("$~*?[{")
@@ -102,6 +95,12 @@ class HighRiskClass:
 # exhaustive coverage. Not user-configurable yet; a config-file override is
 # a natural follow-up. All three classes are fully enforced via
 # `classify_command` (argument-aware).
+#
+# Each pattern is searched in three forms of a command (see `_command_forms`): the raw text, each
+# invocation with its quoting undone, and each invocation with its options dropped, so an option
+# before the verb (`kubectl -n prod apply`, `vault -address=x kv put`) or a quoted word
+# (`"vault" kv put`, `api.s""tripe.com`) does not hide the verb. A verb may be preceded by one
+# option's value (`kubectl prod apply` once `-n` is dropped), hence `(?:\s+\S+)?`.
 HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
     HighRiskClass(
         name="money-movement",
@@ -115,10 +114,15 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
         name="prod-deploy",
         description="Production deploys and release pushes",
         pattern=(
-            r"git\s+(?:-{1,2}[A-Za-z][\w.-]*(?:=\S*)?(?:\s+[^-\s]\S*)?\s+)*push\s+"
-            r".*\b(main|master|production|prod)\b|npm\s+publish"
-            r"|docker\s+(push|stop)\b|terraform\s+apply|kubectl\s+(apply|delete|rollout)"
-            r"|helm\s+upgrade"
+            r"\bgit\b(?:\s+\S+)*?\s+push\b.*(?:\b(?:main|master|production|prod)\b|--(?:all|mirror)\b)"
+            r"|\b(npm|pnpm|yarn)(?:\s+\S+)?\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b"
+            r"|\b(docker|podman)(?:\s+\S+)?\s+(push|stop)\b|\b(docker|podman)\b.*\s--push\b"
+            r"|\b(terraform|tofu)(?:\s+\S+)?\s+(apply|destroy)\b"
+            r"|\bkubectl(?:\s+\S+)?\s+(apply|delete|replace|rollout)\b"
+            r"|\bhelm(?:\s+\S+)?\s+(upgrade|install)\b"
+            r"|\b(flyctl|fly)(?:\s+\S+)?\s+deploy\b|\bvercel\b.*(\bdeploy\b|--prod\b)"
+            r"|\bgh(?:\s+\S+)?\s+release\s+(create|delete|upload)\b"
+            r"|\bheroku\b.*\b(releases:rollback|promote)\b|\bansible-playbook\b"
         ),
         bins=("git", "npm"),
     ),
@@ -126,11 +130,30 @@ HIGH_RISK_PATTERNS: tuple[HighRiskClass, ...] = (
         name="secret-access",
         description="Secret/credential writes and key generation",
         pattern=(
-            r"vault\s+(write|kv\s+put)|ssh-keygen|openssl\s+genrsa"
-            r"|kubectl\s+(create|apply).*secret|aws.*secretsmanager.*put-secret"
+            r"\bvault(?:\s+\S+)?\s+(write|kv\s+put|token\s+create)\b|ssh-keygen"
+            r"|\bopenssl\b.*\b(genrsa|genpkey|ecparam)\b|\bopenssl\s+req\b.*\s-newkey\b"
+            r"|\bgpg\b.*--(full-|quick-)?(gen-key|generate-key)\b"
+            r"|\bkubectl(?:\s+\S+)?\s+(create|apply)\b.*secret"
+            r"|\baws\b.*\b(secretsmanager|ssm)\b.*\b(put|create|update)-?"
         ),
     ),
 )
+
+
+def _command_forms(command: str) -> list[str]:
+    """The texts a high-risk pattern is searched in: *command* as written, then each invocation
+    with its quoting undone and with its options dropped (``command_segments``). A command the
+    lexer cannot read is searched as written only."""
+    forms = [command]
+    try:
+        segments = command_segments(command)
+    except ValueError:
+        return forms
+    for segment in segments:
+        words = [segment.program, *segment.args]
+        forms.append(" ".join(words))
+        forms.append(" ".join(w for w in words if not w.startswith("-")))
+    return forms
 
 
 def match_high_risk(command: str) -> HighRiskClass | None:
@@ -142,8 +165,9 @@ def match_high_risk(command: str) -> HighRiskClass | None:
     decide ``ask`` for a live tool call, the check ``dispatch_tool`` enforces.
     See specs/functional/security-gates.spec.md.
     """
+    forms = _command_forms(command)
     for cls in HIGH_RISK_PATTERNS:
-        if re.search(cls.pattern, command, re.IGNORECASE):
+        if any(re.search(cls.pattern, form, re.IGNORECASE) for form in forms):
             return cls
     return None
 
@@ -157,11 +181,6 @@ def match_high_risk(command: str) -> HighRiskClass | None:
 # `git push origin production` indistinguishable from `git status`. This one
 # reads the whole command line, including every segment behind a `;`, `&&`
 # or pipe.
-
-# Shell operators that start a new command. Anything after one of these is a
-# separate binary invocation and must be classified on its own — `ls && rm -rf
-# /` is not an `ls`.
-_COMMAND_SEPARATORS: frozenset[str] = frozenset({";", "&&", "||", "|", "&", "(", ")", "\n"})
 
 # Substrings that make a command line impossible to classify statically: the
 # real binary is produced at runtime. Their presence forces an approval rather
@@ -190,198 +209,8 @@ class CommandVerdict:
         return self.action != "allow"
 
 
-@dataclass(frozen=True)
-class _Segment:
-    """One binary invocation of a command line, with what its output redirects name."""
-
-    tokens: list[str]
-    redirects: int  # output redirect operators attached to this invocation
-    targets: tuple[str, ...]  # the token after each one; fewer than ``redirects`` when one had none
-    subshell: bool = False  # joined to a neighbour by ``|`` or ``&``, so it runs in a subshell
-
-    @property
-    def redirected(self) -> bool:
-        return self.redirects > 0
-
-
-def _logical_lines(command: str) -> list[str]:
-    """Split *command* at every unquoted, unescaped newline, where the shell starts a new
-    command (a quoted newline stays text, a backslash-newline continues the line); ``shlex``
-    with ``whitespace_split`` swallows a newline as whitespace and never yields it."""
-    lines: list[str] = []
-    current: list[str] = []
-    quote = ""
-    escaped = False
-    for ch in command:
-        if escaped:
-            escaped = False
-            if ch in "\r\n":
-                current.pop()  # drop the backslash: the two lines are one command
-                current.append(" ")
-            else:
-                current.append(ch)
-            continue
-        if ch == "\\" and quote != "'":
-            escaped = True
-            current.append(ch)
-            continue
-        if quote:
-            if ch == quote:
-                quote = ""
-            current.append(ch)
-            continue
-        if ch in "'\"":
-            quote = ch
-            current.append(ch)
-            continue
-        if ch in "\r\n":
-            lines.append("".join(current))
-            current = []
-            continue
-        current.append(ch)
-    lines.append("".join(current))
-    return [line for line in lines if line.strip()]
-
-
-_HEREDOC_OP = re.compile(r"<<(-?)[ \t]*(?:'([^'\n]*)'|\"([^\"\n]*)\"|(\\?)([A-Za-z0-9_.-]+))")
-_SHELL_BINS: frozenset[str] = frozenset(
-    {"bash", "sh", "zsh", "dash", "ksh", "ash", "fish", "csh", "tcsh", "source", "."}
-)
-
-
-def _heredocs_on(line: str) -> list[tuple[str, bool, bool]]:
-    """The ``(word, quoted, strip_tabs)`` of every ``<<`` heredoc opened on *line*; a ``<<``
-    inside quotes, or the ``<<<`` here-string, is not one."""
-    found: list[tuple[str, bool, bool]] = []
-    quote = ""
-    i = 0
-    while i < len(line):
-        ch = line[i]
-        if ch == "\\" and quote != "'":
-            i += 2
-            continue
-        if quote:
-            quote = "" if ch == quote else quote
-        elif ch in "'\"":
-            quote = ch
-        elif line.startswith("<<<", i):
-            i += 3
-            continue
-        elif line.startswith("<<", i):
-            m = _HEREDOC_OP.match(line, i)
-            if m:
-                word = m.group(2) if m.group(2) is not None else m.group(3)
-                quoted = word is not None or bool(m.group(4))
-                found.append((word if word is not None else m.group(5), quoted, bool(m.group(1))))
-                i = m.end()
-                continue
-        i += 1
-    return found
-
-
-def _line_runs_a_shell(line: str) -> bool:
-    """True when any segment of *line* runs a shell (or cannot be read), so a heredoc body on
-    it may be commands."""
-    try:
-        for segment in _split_segments(line):
-            effective = _unwrap(segment.tokens)
-            if effective is None or os.path.basename(effective[0]) in _SHELL_BINS:
-                return True
-    except ValueError:
-        return True
-    return False
-
-
-def _cut_quoted_heredocs(text: str) -> tuple[str, str | None]:
-    """Remove the body and closing line of every quoted-delimiter heredoc not fed to a shell.
-    The second item is a refusal reason when a quoted heredoc never closes."""
-    lines = text.split("\n")
-    out: list[str] = []
-    idx = 0
-    while idx < len(lines):
-        line = lines[idx]
-        out.append(line)
-        idx += 1
-        pending = _heredocs_on(line)
-        if not pending:
-            continue
-        keep = _line_runs_a_shell(line)
-        for word, quoted, strip in pending:
-            body_start = idx
-            while idx < len(lines):
-                candidate = lines[idx].rstrip("\r")
-                if (candidate.lstrip("\t") if strip else candidate) == word:
-                    break
-                idx += 1
-            closed = idx < len(lines)
-            if quoted and not keep:
-                if not closed:
-                    return text, f"heredoc {word!r} has no closing delimiter"
-            else:
-                out.extend(lines[body_start : idx + 1 if closed else idx])
-            idx += 1 if closed else 0
-    return "\n".join(out), None
-
-
-def _split_segments(command: str) -> list[_Segment]:
-    """Split a shell command into per-invocation token lists, plus the output redirects attached
-    to each -- kept internal, used only by ``classify_command``."""
-    tokens: list[str] = []
-    for line in _logical_lines(command):
-        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        tokens.extend(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
-        tokens.append("\n")  # a line boundary is a command separator, below
-
-    segments: list[_Segment] = []
-    current: list[str] = []
-    redirects = 0
-    targets: list[str] = []
-    expecting_target = duplicating = False
-    prev_sep = ""
-    for token in tokens:
-        if token in _COMMAND_SEPARATORS:
-            if current:
-                sub = prev_sep in ("|", "&") or token in ("|", "&")
-                segments.append(_Segment(current, redirects, tuple(targets), sub))
-            current, redirects, targets, expecting_target = [], 0, [], False
-            prev_sep = token
-            continue
-        # Redirections attach to the current invocation rather than starting a
-        # new one, but the target is not a binary -- drop the operator and let
-        # the path stay as an argument, recording it as the redirect's target.
-        if token in _OUTPUT_REDIRECT_OPS or token in _INPUT_REDIRECT_OPS:
-            expecting_target = token in _OUTPUT_REDIRECT_OPS
-            duplicating = token == ">&"
-            if expecting_target:
-                redirects += 1
-            continue
-        if expecting_target:
-            expecting_target = False
-            if duplicating and (token.isdigit() or token == "-"):
-                redirects -= 1  # `2>&1` copies a descriptor; no file is opened
-            else:
-                targets.append(token)
-        current.append(token)
-    if current:
-        segments.append(_Segment(current, redirects, tuple(targets), prev_sep in ("|", "&")))
-
-    cleaned: list[_Segment] = []
-    for segment in segments:
-        idx = 0
-        while idx < len(segment.tokens) and re.fullmatch(
-            r"[A-Za-z_][A-Za-z0-9_]*=.*", segment.tokens[idx]
-        ):
-            idx += 1
-        if idx < len(segment.tokens):
-            cleaned.append(
-                _Segment(segment.tokens[idx:], segment.redirects, segment.targets, segment.subshell)
-            )
-    return cleaned
-
-
 def _redirects_stay_inside(
-    segment: _Segment, roots: tuple[Path, ...], base: Path | None
+    segment: Segment, roots: tuple[Path, ...], base: Path | None
 ) -> str | None:
     """None when every output redirect names ``/dev/null`` or a path inside *roots* (relative to
     *base*, symlinks followed); otherwise the reason it cannot be placed. A *base* of None
@@ -429,76 +258,11 @@ def _followed_directory(effective: list[str], base: Path | None, follow: bool) -
         return None
 
 
-# Command wrappers: the wrapper is allowlisted, the command it runs is what gets classified.
-# `setsid` is not one: a new session leaves the process group that cancellation kills.
-# Value is the set of options that consume the next token when written without `=`/attached value.
-_WRAPPER_ARG_OPTS: dict[str, frozenset[str]] = {
-    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}),
-    "xargs": frozenset(
-        {"-I", "-n", "-L", "-P", "-s", "-d", "-E", "-a", "-e", "-l", "--max-args", "--max-procs",
-         "--delimiter", "--arg-file", "--max-lines", "--max-chars", "--eof", "--replace"}
-    ),
-    "nice": frozenset({"-n", "--adjustment"}),
-    "nohup": frozenset(),
-    "timeout": frozenset({"-s", "--signal", "-k", "--kill-after"}),
-    "time": frozenset(),
-    "command": frozenset(),
-    "stdbuf": frozenset({"-i", "-o", "-e", "--input", "--output", "--error"}),
-}  # fmt: skip
-_MAX_WRAPPER_DEPTH = 8
 _FIND_ACTION_FLAGS: frozenset[str] = frozenset(
     {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
 )
 _AWK_BINS: frozenset[str] = frozenset({"awk", "gawk", "mawk", "nawk"})
 _AWK_WRITE_RE = re.compile(r"\bprintf?\b[^;{}]*?>")
-_ENV_ASSIGN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
-
-
-def _wrapped_command(bin_name: str, tokens: list[str]) -> list[str] | None:
-    """The command *tokens* (after the wrapper's own arguments) hand to the shell, ``[]`` when the
-    wrapper runs nothing (or only echoes), ``None`` when its options cannot be read safely."""
-    takes_arg = _WRAPPER_ARG_OPTS[bin_name]
-    idx = 0
-    while idx < len(tokens):
-        tok = tokens[idx]
-        if tok == "--":
-            idx += 1
-            break
-        if bin_name == "env" and _ENV_ASSIGN_RE.fullmatch(tok):
-            idx += 1
-            continue
-        if not tok.startswith("-") or tok == "-":
-            break
-        if bin_name == "time" and tok not in ("-p", "--portability"):
-            return None
-        if bin_name == "command" and tok in ("-v", "-V"):
-            return []
-        if tok in takes_arg:
-            idx += 2
-            continue
-        if bin_name == "env" and (tok.startswith("-S") or tok.startswith("--split-string")):
-            return None
-        idx += 1
-    rest = tokens[idx:]
-    if bin_name == "timeout" and rest:
-        rest = rest[1:]  # the DURATION operand
-    return rest
-
-
-def _unwrap(tokens: list[str]) -> list[str] | None:
-    """Peel command wrappers off *tokens* and return the command that really runs (the last
-    wrapper's own tokens when it runs nothing); ``None`` when too deep or unreadable."""
-    for _ in range(_MAX_WRAPPER_DEPTH):
-        bin_name = os.path.basename(tokens[0])
-        if bin_name not in _WRAPPER_ARG_OPTS:
-            return tokens
-        inner = _wrapped_command(bin_name, tokens[1:])
-        if inner is None:
-            return None
-        if not inner:
-            return tokens
-        tokens = inner
-    return None
 
 
 def _executes_or_writes(bin_name: str, tokens: list[str]) -> str | None:
@@ -520,6 +284,70 @@ def _executes_or_writes(bin_name: str, tokens: list[str]) -> str | None:
         ):
             return f"{bin_name} program that runs a command or writes a file"
     return None
+
+
+# Programs whose non-option arguments are the paths they create, replace, edit in place or delete.
+_PATH_WRITERS: frozenset[str] = frozenset(
+    {
+        "tee",
+        "cp",
+        "mv",
+        "install",
+        "ln",
+        "rsync",
+        "touch",
+        "truncate",
+        "rm",
+        "unlink",
+        "shred",
+        "srm",
+    }
+)
+_SED_IN_PLACE_RE = re.compile(r"-[nsEr]*i|--in-place")
+_PERL_IN_PLACE_RE = re.compile(r"-[nplaF0-9]*i")
+
+
+@dataclass(frozen=True)
+class CommandSegment:
+    """One invocation of a command line as ``command_segments`` reads it: the *program* (its
+    basename, quoting undone, wrappers such as ``env`` or ``xargs`` peeled), the *args* after it,
+    and the *writes* it makes to paths (its output redirect targets, plus the paths a known writer
+    such as ``tee``, ``cp``, ``dd of=`` or ``sed -i`` is given)."""
+
+    program: str
+    args: tuple[str, ...]
+    writes: tuple[str, ...]
+
+
+def _write_targets(program: str, args: tuple[str, ...]) -> tuple[str, ...]:
+    """The paths the known writer *program* writes to, from its *args*."""
+    operands = tuple(a for a in args if not a.startswith("-"))
+    if program in _PATH_WRITERS:
+        return operands
+    if program == "dd":
+        return tuple(a[3:] for a in args if a.startswith("of="))
+    if program == "sed" and any(_SED_IN_PLACE_RE.match(a) for a in args):
+        return operands
+    if program == "perl" and any(_PERL_IN_PLACE_RE.match(a) for a in args):
+        return operands
+    return ()
+
+
+def command_segments(command: str) -> list[CommandSegment]:
+    """Read *command* the way ``classify_command`` does and return its invocations: every
+    segment behind ``;``/``&&``/``||``/pipe, quoting undone, leading assignments and command
+    wrappers peeled. Raises ``ValueError`` for a command the lexer cannot read (unbalanced
+    quotes). A heredoc body that is not fed to a shell is not part of any invocation."""
+    text, _unclosed = cut_quoted_heredocs(command.strip())
+    found: list[CommandSegment] = []
+    for segment in split_segments(text.strip()):
+        effective = unwrap(segment.tokens) or segment.tokens
+        program = os.path.basename(effective[0])
+        args = tuple(effective[1:])
+        found.append(
+            CommandSegment(program, args, (*segment.targets, *_write_targets(program, args)))
+        )
+    return found
 
 
 def classify_command(
@@ -570,7 +398,7 @@ def classify_command(
         return CommandVerdict("deny", "empty command")
 
     full_text = text
-    text, unclosed = _cut_quoted_heredocs(text)
+    text, unclosed = cut_quoted_heredocs(text)
     if unclosed is not None:
         return CommandVerdict("ask", unclosed)
     text = text.strip()
@@ -585,7 +413,7 @@ def classify_command(
             )
 
     try:
-        segments = _split_segments(text)
+        segments = split_segments(text)
     except ValueError as ex:
         return CommandVerdict("ask", f"command could not be parsed ({ex})")
     if not segments:
@@ -603,7 +431,7 @@ def classify_command(
     follow = "(" not in text and "||" not in text
     base: Path | None = roots[0].resolve() if roots else None
     for segment in segments:
-        effective = _unwrap(segment.tokens)
+        effective = unwrap(segment.tokens)
         if effective is None:
             return CommandVerdict(
                 "ask", "command wrapper could not be read", bin_name=segment.tokens[0]

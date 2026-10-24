@@ -27,6 +27,7 @@ from typing import Any
 import docket.governance.plugin_api as _plugin_api
 import docket.kernel.templates as _templates
 from docket.governance import plugins as _plugins
+from docket.governance import policy_command as _command
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 
@@ -46,7 +47,9 @@ _THEN_TO_ACTION: dict[str, str] = {
     "block": "block",
     "redact": "redact",
 }
-_WHEN_PREDICATE_KEYS: frozenset[str] = frozenset({"tool", "path", "matches", "branch", "plugin"})
+_WHEN_PREDICATE_KEYS: frozenset[str] = frozenset(
+    {"tool", "path", "matches", "branch", "plugin", "command"}
+)
 _WHEN_MODIFIER_KEYS: frozenset[str] = frozenset({"with"})  # meaningful only beside "plugin"
 _POLICY_GLOBS: tuple[str, ...] = ("*.json", "*.yaml", "*.yml")
 
@@ -79,8 +82,13 @@ def _validate_when(when: Any, label: str) -> str:
     if unknown:
         return (
             f"{label}: unknown predicate key(s) {sorted(unknown)} "
-            "(valid: tool, path, matches, branch, plugin)"
+            "(valid: tool, path, matches, branch, plugin, command)"
         )
+    command = when.get("command")
+    if command is not None:
+        err = _command.validate_command(command, label)
+        if err:
+            return err
     matches = when.get("matches")
     if matches is not None:
         try:
@@ -482,6 +490,10 @@ def _predicate_matches(
     ):
         return False
     if "branch" in when and (call is None or not fnmatch(get_branch(), str(when["branch"]))):
+        return False
+    if "command" in when and not (
+        call is not None and _command.command_matches(when["command"], call.tool, call.args)
+    ):
         return False
     if "plugin" in when and not _plugin_matches(when, call, text, get_branch, role, project):
         return False

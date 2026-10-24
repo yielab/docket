@@ -89,6 +89,17 @@ class PipelineDocument(BaseModel):
     steps: list[dict[Any, Any]]  # a bare YAML `on:` key loads as True
 
 
+class PolicyCommand(BaseModel):
+    """A policy's ``when.command`` predicate -- see security-gates.spec.md ("Policy format v1")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    program: list[str] | str | None = None
+    verb: list[str] | str | None = None
+    args: list[str] | str | None = None
+    writes: list[str] | str | None = None
+
+
 class PolicyWhen(BaseModel):
     """A policy's structured predicate -- see security-gates.spec.md ("Policy format v1").
     `plugin`/`with` describe the predicate-plugin escape hatch (ADR 0010 §4); the runtime
@@ -100,6 +111,7 @@ class PolicyWhen(BaseModel):
     path: str | None = None
     matches: str | None = None
     branch: str | None = None
+    command: PolicyCommand | None = None
     anyOf: list[PolicyWhen] | None = None
     plugin: str | None = None
     with_: dict[str, Any] | None = Field(None, alias="with")

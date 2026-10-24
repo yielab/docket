@@ -90,8 +90,20 @@ _HEREDOC = (
 )
 
 
+def _bash_action(command: str) -> str:
+    """What the baseline policies answer a ``bash`` call carrying *command*."""
+    args = {"command": command}
+    call = _policy.ToolCallFacts("bash", args, lambda: "")
+    return _policy.policy_eval_detail(
+        "implementer", "pre_tool_call", render_tool_call("bash", args), call=call
+    ).action
+
+
 def _bd_hit(policies_dir: Path, tool: str, args: dict[str, str]) -> bool:
-    hit = _policy.policy_eval_detail("implementer", "pre_tool_call", render_tool_call(tool, args))
+    call = _policy.ToolCallFacts(tool, args, lambda: "")
+    hit = _policy.policy_eval_detail(
+        "implementer", "pre_tool_call", render_tool_call(tool, args), call=call
+    )
     return hit.policy_id == "block-destructive"
 
 
@@ -133,41 +145,29 @@ class TestBlockDestructiveTargets:
 class TestHighRiskDeploy:
     def test_git_push_main_requires_approval(self, policies_dir: Path) -> None:
         # 'git' is in SAFE_BINS (exec allowlist) — policy still fires.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin main"
-        ).action
+        action = _bash_action("git push origin main")
         assert action == "require_approval"
 
     def test_git_push_production_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin production"
-        ).action
+        action = _bash_action("git push origin production")
         assert action == "require_approval"
 
     def test_npm_publish_requires_approval(self, policies_dir: Path) -> None:
         # 'npm' is in SAFE_BINS — policy still fires.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "npm publish --access public"
-        ).action
+        action = _bash_action("npm publish --access public")
         assert action == "require_approval"
 
     def test_terraform_apply_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "terraform apply -auto-approve"
-        ).action
+        action = _bash_action("terraform apply -auto-approve")
         assert action == "require_approval"
 
     def test_helm_upgrade_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "helm upgrade my-chart ./chart --namespace prod"
-        ).action
+        action = _bash_action("helm upgrade my-chart ./chart --namespace prod")
         assert action == "require_approval"
 
     def test_git_push_feature_branch_not_gated(self, policies_dir: Path) -> None:
         # Pushing to a feature branch is not high-risk.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin feature/my-feature"
-        ).action
+        action = _bash_action("git push origin feature/my-feature")
         assert action != "require_approval"
 
     def test_allowlisted_bin_still_gated_by_high_risk(self, policies_dir: Path) -> None:
@@ -175,12 +175,8 @@ class TestHighRiskDeploy:
         # high-risk-deploy policy must override the allowlist.
         assert "git" in _sec.SAFE_BINS
         assert "npm" in _sec.SAFE_BINS
-        git_action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "git push origin master"
-        ).action
-        npm_action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "npm publish"
-        ).action
+        git_action = _bash_action("git push origin master")
+        npm_action = _bash_action("npm publish")
         assert git_action == "require_approval", "git (allowlisted) must still gate on prod push"
         assert npm_action == "require_approval", "npm (allowlisted) must still gate on publish"
 
@@ -190,40 +186,28 @@ class TestHighRiskDeploy:
 
 class TestHighRiskCredentials:
     def test_vault_write_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "vault write secret/myapp api_key=xyz"
-        ).action
+        action = _bash_action("vault write secret/myapp api_key=xyz")
         assert action == "require_approval"
 
     def test_kubectl_create_secret_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "kubectl create secret generic db-creds"
-        ).action
+        action = _bash_action("kubectl create secret generic db-creds")
         assert action == "require_approval"
 
     def test_openssl_genrsa_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "openssl genrsa -out key.pem 4096"
-        ).action
+        action = _bash_action("openssl genrsa -out key.pem 4096")
         assert action == "require_approval"
 
     def test_ssh_keygen_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "ssh-keygen -t ed25519 -C user@example.com"
-        ).action
+        action = _bash_action("ssh-keygen -t ed25519 -C user@example.com")
         assert action == "require_approval"
 
     def test_adduser_requires_approval(self, policies_dir: Path) -> None:
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "adduser deployer"
-        ).action
+        action = _bash_action("adduser deployer")
         assert action == "require_approval"
 
     def test_read_secret_not_gated(self, policies_dir: Path) -> None:
         # Reading a secret (vault read) is not a write — not high-risk.
-        action = _policy.policy_eval_detail(
-            "implementer", "pre_tool_call", "vault read secret/myapp"
-        ).action
+        action = _bash_action("vault read secret/myapp")
         # No high-risk policy should fire on a read-only vault path.
         assert action != "require_approval"
 

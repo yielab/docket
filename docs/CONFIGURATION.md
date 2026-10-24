@@ -549,8 +549,26 @@ message: curl needs approval
 |---|---|
 | `appliesTo` | Role names as dispatch sees them (`implementer`, `reviewer`, … or a custom role), or `"*"`. |
 | `on` | `input` (a task entering the queue; always evaluated as role `lead`), `toolCall` (tool name and arguments, the default), `output` (a hop's output). |
-| `when` | `tool`, `path` (glob over a path/file argument), `matches` (regex over the rendered call, case-insensitive), `branch` (glob over the worktree branch), `anyOf` (OR over a list of the above); sibling keys AND. |
+| `when` | `tool`, `path` (glob over a path/file argument), `matches` (regex over the rendered call, case-insensitive; for text with no structure, such as SQL), `branch` (glob over the worktree branch), `command` (a shell command read by invocation, below), `anyOf` (OR over a list of the above); sibling keys AND. |
 | `then` | `allow`, `warn` (record only), `redact`, `ask` (require approval), `block` (deny). There is no `deny` action; use `block`. |
+
+`when.command` reads a `bash` call's command line the way the classifier does (every segment behind
+`;`/`&&`/`|`, quoting undone, `env`/`xargs`/`command` peeled), so a flag order, a quote or an option
+before the subcommand does not change the answer. Every key present must hold for the same
+invocation; `anyOf` ORs several:
+
+```yaml
+kind: policy
+name: no-force-push
+appliesTo: ["*"]
+when:
+  command:
+    program: git                       # a name, a list, or a glob ("mkfs*")
+    verb: [push]                       # a subcommand among the non-option arguments
+    args: [-f, --force, "+*"]          # any of these; -f also names -rf, a glob is a pattern
+    # writes: ["*.env"]                # globs over redirect targets and what tee/cp/dd of=/sed -i write
+then: ask
+```
 
 How policies combine and what they ignore:
 
