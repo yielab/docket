@@ -36,9 +36,11 @@ task; load only the referenced section or spec.
    and the store module as the sole writer of docket-owned JSON. The contracts, as the ADR's
    table states them: `kernel` imports nothing in `docket`; `<context>/domain` imports `kernel`
    and its own `domain`; `<context>/application` imports `kernel`, its own `domain` and `ports`,
-   and other contexts' `__init__`; `<context>/adapters`, `platform` and `sandbox` import `kernel`,
+   and any module of a context below it in the layer order (`platform` < `governance` < `agent` <
+   `models` < `observability` < `pipeline` < `teams` < `sandbox` < `operator` < `tasks` < `hops`;
+   an import of a context above is the violation the baseline records); `<context>/adapters`, `platform` and `sandbox` import `kernel`,
    `platform`'s `__init__` and the ports and domain types they implement; `agent` imports `kernel`, `platform`'s `__init__` and its own
-   packages (the turn engine; the ports it needs are in `agent/ports.py`); `interfaces` imports `kernel`, `bootstrap` and contexts' `__init__`; `bootstrap`
+   packages (the turn engine; the ports it needs are in `agent/ports.py`); `interfaces` imports `kernel`, `bootstrap` and any context; `bootstrap`
    imports everything. No function-local `docket.*` import; no module over 700 lines. The
    contracts are enforced by `tests/architecture/`; `cli/`, `core/` and `edges/` no longer exist.
    `dispatch_tool` is in `agent/tools/registry.py` and the store in `platform/store.py`.
