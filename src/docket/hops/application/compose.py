@@ -446,7 +446,7 @@ def _compose_hop(
         if resolved_mode == "park":
             # This hop's own deadline for a call it parks (ADR 0016 SS2) --
             # popped by DocketDriver into ToolContext.approval_expires_at,
-            # stamped on the parked record by agent/tools/registry.py's `_park_call`.
+            # stamped on the parked record by governance/gate.py's `_park`.
             # Computed fresh per hop (not once per task) so a long-running
             # earlier hop never shortens a later one's window.
             expiry_hours = _pod_settings(ctx.project).approval_expiry_hours

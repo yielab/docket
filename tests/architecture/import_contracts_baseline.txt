@@ -5,6 +5,8 @@ application imports kernel, its own context and other contexts' __init__ | docke
 application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.operator.contract
 application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.tasks.application.actions
 application imports kernel, its own context and other contexts' __init__ | docket.governance.approval -> docket.tasks.application.corrections
+application imports kernel, its own context and other contexts' __init__ | docket.governance.gate -> docket.observability.trace
+application imports kernel, its own context and other contexts' __init__ | docket.governance.gate -> docket.operator.contract
 application imports kernel, its own context and other contexts' __init__ | docket.governance.network_posture -> docket.teams.fleet
 application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.hops.application.record
 application imports kernel, its own context and other contexts' __init__ | docket.governance.profile -> docket.pipeline.application.executor
@@ -40,7 +42,6 @@ application imports kernel, its own context and other contexts' __init__ | docke
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.driver -> docket.observability.adapters.sinks
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.driver -> docket.observability.telemetry
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.driver -> docket.observability.trace
-application imports kernel, its own context and other contexts' __init__ | docket.hops.application.driver -> docket.tasks.application.consult
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.driver -> docket.tasks.application.queue
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.driver -> docket.tasks.application.runs
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.driver -> docket.tasks.domain.task
@@ -76,7 +77,7 @@ application imports kernel, its own context and other contexts' __init__ | docke
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.teams.pod
 application imports kernel, its own context and other contexts' __init__ | docket.hops.application.runner -> docket.teams.settings
 application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.agent.ports
-application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.agent.tools.registry
+application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.agent.tools.screening
 application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.governance.policy
 application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.governance.security
 application imports kernel, its own context and other contexts' __init__ | docket.hops.gates.post_hop -> docket.observability.trace
@@ -306,16 +307,6 @@ agent imports kernel only | docket.agent.session_compaction -> docket.platform
 agent imports kernel only | docket.agent.tools.builtin_tools -> docket.hops.workspace.skills
 agent imports kernel only | docket.agent.tools.builtin_tools -> docket.platform.fetch
 agent imports kernel only | docket.agent.tools.builtin_tools -> docket.tasks.application.consult
-agent imports kernel only | docket.agent.tools.mcp_tools -> docket.governance.audit
-agent imports kernel only | docket.agent.tools.mcp_tools -> docket.governance.policy
-agent imports kernel only | docket.agent.tools.registry -> docket.governance.approval
-agent imports kernel only | docket.agent.tools.registry -> docket.governance.approval_pregrant
-agent imports kernel only | docket.agent.tools.registry -> docket.governance.audit
-agent imports kernel only | docket.agent.tools.registry -> docket.governance.policy
-agent imports kernel only | docket.agent.tools.registry -> docket.governance.security
-agent imports kernel only | docket.agent.tools.registry -> docket.observability.trace
-agent imports kernel only | docket.agent.tools.registry -> docket.operator.contract
-agent imports kernel only | docket.agent.tools.registry -> docket.tasks.application.consult
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.governance.policy
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.governance.review
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.agents -> docket.operator.channel
@@ -355,6 +346,7 @@ interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.c
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.agent.tools.builtin_tools
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.agent.tools.registry
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.governance.audit
+interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.governance.gate
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.governance.policy
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.observability.exporter
 interfaces import kernel, bootstrap and contexts' __init__ | docket.interfaces.cli.commands.pod_config -> docket.pipeline.application.steps

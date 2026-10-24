@@ -848,8 +848,8 @@ Each JSONL line is a JSON object with these fields:
   `ConsultParked`, `ConsultUnavailable`, `DEFAULT_MAX_CONSULTATIONS`
 - `src/docket/tasks/application/corrections.py`: `record`, `read`, `utc_cursor`
 - `src/docket/agent/tools/registry.py`: `ToolContext` (`approval_mode`, `max_consultations`,
-  `consult_park`, `pregrants`), the park path (`_park_call`, `context.taskId`), the pre-grant
-  matcher, the `approve_task` in-turn pre-grant
+  `consult_park`, `pregrants`); `src/docket/governance/gate.py`: the park path (`_park`,
+  `context.taskId`), the pre-grant matcher, the `approve_task` in-turn pre-grant
 - `src/docket/teams/settings.py`: `pod_approval_mode`
 - `src/docket/pipeline/application/steps.py`: `effective_pipeline`, `_run_input_step`
   (`input_requested`)

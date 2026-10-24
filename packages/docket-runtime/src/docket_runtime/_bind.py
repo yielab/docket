@@ -1,12 +1,14 @@
-"""Bind the real git, process and jail adapters of the private implementation.
+"""Bind the real tool gate, git, process and jail adapters of the private implementation.
 
 ``docket.bootstrap`` does this for the CLI and the server; the runtime ships a closure that
-excludes it, so this module is the runtime's entry point for the same three ports. Importing
+excludes it, so this module is the runtime's entry point for the ports its closure uses. Importing
 ``docket_runtime`` imports it first.
 """
 
 from __future__ import annotations
 
+from docket_runtime._internal.docket.agent.ports import bind_tool_gate
+from docket_runtime._internal.docket.governance import gate as _gate
 from docket_runtime._internal.docket.governance import secrets as _secrets
 from docket_runtime._internal.docket.governance import security as _security
 from docket_runtime._internal.docket.kernel.ports import bind_git, bind_jail, bind_process
@@ -25,6 +27,7 @@ def _credential_sources() -> set[str]:
 
 
 def bind_adapters() -> None:
+    bind_tool_gate(_gate)
     bind_git(_git)
     bind_process(_process)
     bind_jail(

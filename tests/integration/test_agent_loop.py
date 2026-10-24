@@ -43,11 +43,11 @@ from docket.agent.llm import (
 )
 from docket.agent.session import append_messages as append_session_messages
 from docket.agent.session import load_session
-from docket.agent.tools import registry as _tools
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool as _Tool
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.governance import approval as _approval
+from docket.governance import gate as _gate
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
 from docket.models.adapters import openai_http as _llm_adapter
@@ -438,9 +438,9 @@ class TestCooperativeRunCancellation:
             )
         )
         monkeypatch.setattr(
-            _tools,
+            _gate,
             "evaluate_tool_call",
-            lambda _tool, _args, _ctx: _tools.ToolVerdict("ask", "operator approval required"),
+            lambda _tool, _args, _ctx: _gate.ToolVerdict("ask", "operator approval required"),
         )
         with use_home(
             dataclasses.replace(

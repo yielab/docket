@@ -552,8 +552,8 @@ dispatch_tool(
   hard wall-clock bound (`anyio.fail_after`)
 - `src/docket/hops/application/driver.py`: `DocketDriver.mcp_loader` and its default wrapper
   (the pod `mcpServers` selection, the `StdioLaunch` built from the turn's context)
-- `src/docket/agent/tools/registry.py`: `screen_tool_result` (the untrusted-result screen used for MCP
-  results), `dispatch_tool`, `ToolRegistry`
+- `src/docket/agent/tools/screening.py`: `screen_tool_result` (the untrusted-result screen used for MCP
+  results); `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolRegistry`
 - `src/docket/teams/pod.py`: `PodSettings` `mcpServers` validation (Requirement 38)
 - `src/docket/teams/apply/plan.py`: recipe `mcp-servers/` planning and the pod-scoped file write
 - `src/docket/interfaces/cli/commands/setup_mcp.py`: `docket setup mcp list/add/remove`

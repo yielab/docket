@@ -16,7 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from docket.agent.ports import bind_role_composer
+from docket.agent.ports import bind_role_composer, bind_tool_gate
+from docket.governance import gate as _gate
 from docket.governance import secrets as _secrets
 from docket.governance import security as _security
 from docket.hops.application import driver as _driver
@@ -57,6 +58,7 @@ def _credential_sources() -> set[str]:
 def bind_adapters() -> None:
     """Bind the real adapters of every port; every entry calls this before it runs."""
     bind_role_composer(TeamsRoleComposer())
+    bind_tool_gate(_gate)
     bind_git(_git_adapter)
     bind_process(_process_adapter)
     bind_jail(

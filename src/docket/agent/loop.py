@@ -40,7 +40,7 @@ reported as ``AgentLoopResult.stop_reason``:
   default third consecutive denial stops locally after its complete atomic
   assistant/tool-result unit and usage are persisted.
 - ``approval_unavailable`` — a tool call needed a human decision
-  (``agent.tools.registry.evaluate_tool_call`` returned ``ask``) and ``ToolContext.
+  (``governance.gate.evaluate_tool_call`` returned ``ask``) and ``ToolContext.
   approval_mode == "refuse"``, so ``dispatch_tool`` denied it immediately
   instead of creating an approval record and waiting. Unlike ``tool_denials``
   this is not a count reaching a limit — one such result ends the turn right

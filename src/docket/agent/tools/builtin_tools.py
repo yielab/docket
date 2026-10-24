@@ -7,14 +7,14 @@ from typing import Any
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.builtins.toolbox import ToolOutcome as ToolOutcome
 from docket.agent.tools.registry import (
-    _CONSULT_TOOL,
     Tool,
     ToolContext,
     ToolRegistry,
     _str_arg,
-    screen_tool_result,
 )
+from docket.agent.tools.screening import screen_tool_result
 from docket.hops.workspace import skills as _skills
+from docket.kernel.gate import CONSULT_TOOL
 from docket.kernel.home import current_home
 from docket.platform import fetch as _fetch
 from docket.tasks.application import consult as _consult
@@ -126,7 +126,7 @@ def _consult_tool() -> Tool:
         "required": ["id", "label", "description"],
     }
     return Tool(
-        name=_CONSULT_TOOL,
+        name=CONSULT_TOOL,
         description=(
             "Ask the operator a question when the task cannot be decided from the "
             "repository alone. Give at least two options and your recommendation. The "

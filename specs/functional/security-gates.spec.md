@@ -1519,10 +1519,13 @@ $ git clone https://anywhere.example/repo.git
 
 ## Implementation
 
-- `src/docket/agent/tools/registry.py`: `dispatch_tool`, `evaluate_tool_call`, `render_tool_call`,
-  `ToolContext`, `ToolResult`, `ToolVerdict`, `Pregrant`, `screen_tool_result`, `builtin_registry`
-  (the `bash`, `consult` and `fetch` registrations), the wait, park, pre-grant and `approve_task`
-  handling, the `tool.*` audit entries
+- `src/docket/agent/tools/registry.py`: `dispatch_tool` (the one chokepoint; it asks the `ToolGate`
+  port of `agent/ports.py`), `ToolContext`, `ToolResult`, `Pregrant`; `agent/tools/screening.py`:
+  `screen_tool_result`; `agent/tools/builtin_tools.py`: `builtin_registry` (the `bash`, `consult` and
+  `fetch` registrations)
+- `src/docket/governance/gate.py`: `govern`, `evaluate_tool_call`, `render_tool_call`, `ToolVerdict`,
+  the wait, park, pre-grant and `approve_task` handling, the `tool.*` audit entries;
+  `governance/gate_rules.py`: the pure decisions (`combine_verdicts`, `ask_route`, `settle_wait`)
 - `src/docket/governance/security.py`: `SAFE_BINS`, `HighRiskClass`, `HIGH_RISK_PATTERNS`,
   `match_high_risk`, `classify_command`, `CommandVerdict`, `apply_workspace_isolation`,
   `disable_workspace_isolation`

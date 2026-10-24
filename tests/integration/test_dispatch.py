@@ -904,7 +904,7 @@ class TestEndToEnd:
             assert token
 
             # Force this record's own expiresAt into the past -- the parked
-            # record carries its own deadline (agent/tools/registry.py's `_park_call`),
+            # record carries its own deadline (governance/gate.py's `_park`),
             # never the generic APPROVAL_TIMEOUT.
             rec_path = current_home().approvals_dir / f"{token}.json"
             rec = json.loads(rec_path.read_text(encoding="utf-8"))

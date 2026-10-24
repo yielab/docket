@@ -30,6 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
+from docket.kernel.gate import GateCall, GateContext, GateDecision, Screened
 from docket.kernel.home import current_home
 from docket.kernel.ports import Binding
 
@@ -314,3 +315,47 @@ role_composer: RoleComposer = role_composer_port.proxy()
 
 def bind_role_composer(adapter: RoleComposer) -> None:
     role_composer_port.bind(adapter)
+
+
+# ── the tool gate: what the chokepoint asks of governance ──────────────────────
+
+
+class ToolGate(Protocol):
+    """What ``dispatch_tool`` asks of the context that owns policy, approvals and audit.
+
+    ``dispatch_tool`` stays the only way a tool call runs; it decides nothing itself. Bound once
+    per entry (``bootstrap.bind_adapters``, the runtime package's ``_bind``) to ``governance.gate``
+    and swapped in a test with ``tool_gate_port.use``."""
+
+    def govern(self, call: GateCall, ctx: GateContext) -> GateDecision:
+        """Whether *call* may run: policy and the command classifier, then any approval it needs."""
+        ...
+
+    def audit_refusal(self, call: GateCall, ctx: GateContext, kind: str) -> None:
+        """Audit a refusal a tool handler made itself (``kind`` names the rule)."""
+        ...
+
+    def audit_event(self, action: str, detail: str) -> None:
+        """Append *detail* to the audit log under *action* (a tool adapter's own event)."""
+        ...
+
+    def screen_untrusted(
+        self,
+        role: str,
+        text: str,
+        *,
+        project: str,
+        detail: str,
+        blocked_action: str,
+        warn_action: str,
+    ) -> Screened:
+        """Judge text from outside docket as untrusted input and audit a non-allow hit."""
+        ...
+
+
+tool_gate_port: Binding[ToolGate] = Binding("tool_gate")
+tool_gate: ToolGate = tool_gate_port.proxy()
+
+
+def bind_tool_gate(adapter: ToolGate) -> None:
+    tool_gate_port.bind(adapter)

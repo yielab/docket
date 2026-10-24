@@ -877,8 +877,9 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 - `src/docket/agent/session.py`: `append_messages`, `load_messages`, `compact_session`,
   `condense_history`
 - `src/docket/teams/roles.py`: `registry_for_role`
-- `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolContext`, `ToolResult`, `builtin_registry`,
-  `screen_tool_result`, the `skill`, `consult` and `fetch` tools
+- `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolContext`, `ToolResult`;
+  `agent/tools/builtin_tools.py`: `builtin_registry`, the `skill`, `consult` and `fetch` tools;
+  `agent/tools/screening.py`: `screen_tool_result`
 - `src/docket/agent/tools/builtins/toolbox.py`: `SKIPPED_DIRS`, `READ_DEFAULT_LINES`,
   `READ_DEFAULT_CHARS`, `read_file`, `glob_files`, `grep_files`, `run_bash`, the output truncation
 - `src/docket/hops/workspace/skills.py`: `discover_skills`

@@ -18,9 +18,9 @@ from typing import ClassVar
 import pytest
 
 import docket.kernel.templates as _templates
-from docket.agent.tools.registry import render_tool_call
 from docket.governance import policy as _policy
 from docket.governance import security as _sec
+from docket.governance.gate import render_tool_call
 from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.governance.policy"

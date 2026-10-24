@@ -40,7 +40,7 @@ def resolve_waiting_approval_detail(
     (-> ``failed``, ``failureKind: "approval_denied"``) outcomes.
 
     A **parked** in-turn call (ADR 0016 SS2, ``context["parked"] is True``) carries no
-    ``taskId`` -- ``agent/tools/registry.py``'s ``_park_call`` has no task to name -- so its task is
+    ``taskId`` -- ``governance/gate.py``'s ``_park`` has no task to name -- so its task is
     found by matching ``approvalToken`` directly instead; a grant appends
     ``{token, tool, argsDigest}`` to the task's ``pregrants`` for ``_compose_hop`` to carry
     into the re-run, and does **not** set ``gateOverridePipelineIndex`` (that field is for

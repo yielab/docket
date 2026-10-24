@@ -25,8 +25,8 @@ from typer.testing import CliRunner
 
 import docket.kernel.templates as _templates
 from docket.agent import ports as _rd
-from docket.agent.tools import registry as _tools
 from docket.governance import audit as _audit
+from docket.governance import gate as _gate
 from docket.governance import policy as _policy
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _commands_pod_settings
@@ -300,7 +300,7 @@ def test_git_safety_blocks_force_push_after_apply(tmp_path: Path) -> None:
         _write.apply(_pod_apply.plan_apply(project, recipe_dir))
 
         command = "git push --force origin main"
-        text = _tools.render_tool_call("bash", {"command": command})
+        text = _gate.render_tool_call("bash", {"command": command})
         call = _policy.ToolCallFacts(tool="bash", args={"command": command}, branch_of=lambda: "")
 
         action = _policy.policy_test(
@@ -320,7 +320,7 @@ def test_secrets_guard_blocks_env_write_and_allows_a_plain_write(tmp_path: Path)
         env_call = _policy.ToolCallFacts(
             tool="write", args={"path": "config/.env"}, branch_of=lambda: ""
         )
-        env_text = _tools.render_tool_call("write", {"path": "config/.env", "content": "SECRET=1"})
+        env_text = _gate.render_tool_call("write", {"path": "config/.env", "content": "SECRET=1"})
         env_action = _policy.policy_test(
             "pre_tool_call", "implementer", env_text, project=project, call=env_call
         )
@@ -329,7 +329,7 @@ def test_secrets_guard_blocks_env_write_and_allows_a_plain_write(tmp_path: Path)
         doc_call = _policy.ToolCallFacts(
             tool="write", args={"path": "README.md"}, branch_of=lambda: ""
         )
-        doc_text = _tools.render_tool_call("write", {"path": "README.md", "content": "hello"})
+        doc_text = _gate.render_tool_call("write", {"path": "README.md", "content": "hello"})
         doc_action = _policy.policy_test(
             "pre_tool_call", "implementer", doc_text, project=project, call=doc_call
         )

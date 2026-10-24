@@ -9,8 +9,8 @@ from typing import Any
 from docket.agent.llm import ChatMessage, ChatResponse
 from docket.agent.ports import PromptSectionReport
 from docket.agent.session_compaction import CompactionResult
-from docket.agent.tools.registry import ToolDenialKind
 from docket.kernel import text as _text
+from docket.kernel.gate import ToolDenialKind
 from docket.kernel.home import current_home
 from docket.observability import telemetry as _telemetry
 from docket.observability.trace import trace_event

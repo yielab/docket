@@ -19,10 +19,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from docket.agent.ports import tool_gate
 from docket.agent.tools.builtins.toolbox import ToolOutcome
-from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry, screen_tool_result
-from docket.governance import policy as _policy
-from docket.governance.audit import audit_log
+from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
+from docket.agent.tools.screening import screen_tool_result
 from docket.kernel.mcp import McpServerConfig
 
 __all__ = [
@@ -126,21 +126,16 @@ def _screen_description(
     """Run one remote tool's name+description through the `pre_input` policy hook (the calling
     pod's policies included); returns a skip reason if the tool must not be registered, else
     ``None``. See specs/functional/mcp-client.spec.md "Untrusted tool descriptions"."""
-    text = f"{remote.name}: {remote.description}"
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
+    hit = tool_gate.screen_untrusted(
+        role,
+        f"{remote.name}: {remote.description}",
+        project=project,
+        detail=f"server={server_name!r} tool={remote.name!r}",
+        blocked_action="mcp_client.tool_description_blocked",
+        warn_action="mcp_client.tool_description_warn",
+    )
     if hit.action in ("block", "require_approval"):
-        audit_log(
-            "mcp_client.tool_description_blocked",
-            f"server={server_name!r} tool={remote.name!r} "
-            f"policy={hit.policy_id!r} action={hit.action}",
-        )
         return f"description blocked by policy {hit.policy_id!r} (action={hit.action})"
-    if hit.action in ("warn", "redact"):
-        audit_log(
-            "mcp_client.tool_description_warn",
-            f"server={server_name!r} tool={remote.name!r} "
-            f"policy={hit.policy_id!r} action={hit.action}",
-        )
     return None
 
 
@@ -261,7 +256,9 @@ def load_mcp_tools(
             listing = McpListResult(ok=False, error=f"{type(ex).__name__}: {ex}")
 
         if not listing.ok:
-            audit_log("mcp_client.unavailable", f"server={config.name!r}: {listing.error}")
+            tool_gate.audit_event(
+                "mcp_client.unavailable", f"server={config.name!r}: {listing.error}"
+            )
             reports.append(
                 McpServerLoadResult(config.name, ok=False, kind=config.kind, error=listing.error)
             )
