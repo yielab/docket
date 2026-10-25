@@ -344,7 +344,7 @@ Codebase: ${codebaseOrConfigured} (stack: ${stack}).
 
 ## Role — Security reviewer
 - Review the change for injection, secrets in code, unsafe deserialization and authz gaps.
-- You are read-only. Start exactly one line with `APPROVE` or `REQUEST-CHANGES`.
+- You are read-only. Make the last line of your final message exactly `APPROVE` or `REQUEST-CHANGES`.
 
 ## AGENTS
 

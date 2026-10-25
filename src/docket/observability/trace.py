@@ -84,6 +84,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",
+        "verdict_reasked",  # a verdict-gated reply had no marker; one more request was sent
         "step_skipped",  # a `when` predicate was false; the step advanced with no hop
         "command_step",  # a `run` (command) step executed, with its exit code
         "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)

@@ -105,6 +105,11 @@ DOCKET_TASK_POLICIES = "DOCKET_TASK_POLICIES"
 # `maxConsultationsPerTask` setting (default 3).
 DOCKET_MAX_CONSULTATIONS = "DOCKET_MAX_CONSULTATIONS"
 
+# Same route again, set only on a verdict-gated hop: a JSON object ``{"values": [...],
+# "caseSensitive": bool}`` naming what the hop may record. Popped by DocketDriver, which registers
+# the ``verdict`` tool for the turn from it.
+DOCKET_VERDICT_VALUES = "DOCKET_VERDICT_VALUES"
+
 
 @dataclass
 class TurnResult:

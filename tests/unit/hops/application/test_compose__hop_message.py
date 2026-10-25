@@ -35,17 +35,17 @@ class TestBuiltinRolesByteIdenticalToBase:
     def test_reviewer_message_unchanged(self) -> None:
         message, _ = _compose._hop_message(_TASK, "reviewer", [])
         assert (
-            "You are the Reviewer. Review the diff (read-only). Start exactly one "
-            "output line with APPROVE or REQUEST-CHANGES (case-insensitive); "
-            "reasons may come before or after that marker line." in message
+            "You are the Reviewer. Review the diff (read-only). The LAST line of your "
+            "FINAL message must be exactly `APPROVE` or `REQUEST-CHANGES`, with nothing "
+            "else on that line. Reasons go above it." in message
         )
 
     def test_tester_message_unchanged(self) -> None:
         message, _ = _compose._hop_message(_TASK, "tester", [])
         assert (
-            "You are the Tester. Validate behaviour only. Start exactly one output "
-            "line with PASS or FAIL (case-insensitive); evidence may come before or "
-            "after that marker line." in message
+            "You are the Tester. Validate behaviour only. The LAST line of your FINAL "
+            "message must be exactly `PASS` or `FAIL`, with nothing else on that line. "
+            "Evidence goes above it." in message
         )
 
 
@@ -72,7 +72,7 @@ class TestCustomRoleFallsBackToArchetype:
             "acme",
         )
         message, _ = _compose._hop_message(_TASK, "security-reviewer", [], project="acme")
-        assert "APPROVE or REQUEST-CHANGES" in message
+        assert "exactly `APPROVE` or `REQUEST-CHANGES`" in message
 
     def test_registered_role_with_declared_hop_instruction_uses_it_verbatim(self) -> None:
         _arch.add_user_archetype(

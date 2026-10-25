@@ -1,10 +1,10 @@
 # Trace Store Specification
 
-**Version**: 3.0.3
+**Version**: 3.1.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -70,7 +70,7 @@ This specification does NOT cover:
 5. `cost_usd` **MUST** be included on a record only when the caller passes a value that parses
    as `float`; when included, it **MUST** be the field name `cost_usd`. `duration_ms` follows the
    same optional-inclusion rule, parsed as `int`.
-6. `EVENT_TYPES` **MUST** be exactly these 48 members: `session_start`, `tool_call`,
+6. `EVENT_TYPES` **MUST** be exactly these 49 members: `session_start`, `tool_call`,
    `tool_result`, `context_composed`, `prompt_composed`, `session_compaction`, `request_fit`,
    `guardrail_check`, `guardrail_block`, `approval_requested`, `approval_granted`,
    `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`,
@@ -78,7 +78,7 @@ This specification does NOT cover:
    `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
    `paused_refused`, `approval_required`, `approval_resumed`, `approval_task_denied`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
-   `verdict_unparseable`, `step_skipped`, `command_step`, `route_taken`, `input_requested`,
+   `verdict_unparseable`, `verdict_reasked`, `step_skipped`, `command_step`, `route_taken`, `input_requested`,
    `input_answered`, `question_asked`, `input_expired`, `llm_call`, `hop_started`,
    `hop_finished`, `memory_update`, `prepare`, `process_started`, `process_exited`, `error`,
    `session_end`. Adding a member **MUST** be a one-line change to this frozenset; removing one

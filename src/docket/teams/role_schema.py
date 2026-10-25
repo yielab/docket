@@ -197,10 +197,10 @@ def resolve_hop_instruction(archetype: RoleArchetype) -> str:
         return archetype.hop_instruction
     gc = archetype.gate_contract
     if gc.kind == "verdict" and gc.regexes:
-        markers = " or ".join(gc.regexes)
+        markers = " or ".join(f"`{m}`" for m in gc.regexes)
         return (
-            f"Start exactly one output line with {markers} (case-insensitive); "
-            "reasons may come before or after that marker line."
+            f"The LAST line of your FINAL message must be exactly {markers}, "
+            "with nothing else on that line. Reasons go above it."
         )
     if gc.kind == "mechanical":
         return "Complete the task; your work is verified mechanically before the pipeline advances."

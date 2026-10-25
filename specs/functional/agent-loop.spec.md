@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -660,6 +660,16 @@ This specification does NOT cover:
 88. `bash` **MUST** append the line `[output had no trailing newline]` to a non-empty result whose
     raw output did not end with a newline, so a command such as `tail -c1 file | xxd` or `cat
     file` shows the state of the last line.
+
+### A tool that ends the turn
+
+89. A `Tool` **MAY** be declared `ends_turn`. After a batch in which such a tool's call executed and
+    succeeded, the loop **MUST**, once the round's messages are persisted, stop with
+    `stop_reason="final_message"` and `ok=True` without a further backend call. The turn's
+    `output` **MUST** be the batch's assistant text (when it has any) followed by a newline and the
+    successful result text of the last such call. A call that failed or was refused does not end
+    the turn. Every call still passes `dispatch_tool`; the approval and denial stops of the same
+    round take precedence.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
+from docket.hops.application.verdict_tool import encode_values
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
 from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
@@ -57,15 +58,15 @@ def _resolve_hop_instructions(
         )
     if role == "reviewer":
         return (
-            "You are the Reviewer. Review the diff (read-only). Start exactly one "
-            "output line with APPROVE or REQUEST-CHANGES (case-insensitive); "
-            "reasons may come before or after that marker line."
+            "You are the Reviewer. Review the diff (read-only). The LAST line of your "
+            "FINAL message must be exactly `APPROVE` or `REQUEST-CHANGES`, with nothing "
+            "else on that line. Reasons go above it."
         )
     if role == "tester":
         return (
-            "You are the Tester. Validate behaviour only. Start exactly one output "
-            "line with PASS or FAIL (case-insensitive); evidence may come before or "
-            "after that marker line."
+            "You are the Tester. Validate behaviour only. The LAST line of your FINAL "
+            "message must be exactly `PASS` or `FAIL`, with nothing else on that line. "
+            "Evidence goes above it."
         )
     # A custom role: its own archetype's `hopInstruction`, or one generated
     # from its `gateContract` (e.g. a verdict role's marker convention) --
@@ -377,8 +378,8 @@ def _compose_hop(
             checkout_note = ""
             if role != "implementer" and isinstance(node.gate, _gates.VerdictGate):
                 checkout_note = (
-                    "\nYour final reply must still contain one distinct recognized verdict marker "
-                    "at the start of a complete line; reasons may come before or after it.\n"
+                    "\nYour final message must still end with the verdict marker as its LAST "
+                    "line, with nothing else on that line.\n"
                 )
             message += checkout_note
             composition.total_bytes += len(checkout_note.encode("utf-8"))
@@ -445,6 +446,11 @@ def _compose_hop(
     if ctx.approval_timeout is not None:
         env = dict(env or {})
         env[_rd.DOCKET_APPROVAL_TIMEOUT] = str(ctx.approval_timeout)
+    if isinstance(node.gate, _gates.VerdictGate):
+        env = dict(env or {})
+        env[_rd.DOCKET_VERDICT_VALUES] = encode_values(
+            _orch.verdict_values(node.gate), node.gate.case_sensitive
+        )
     env = _consult_budget_env(ctx, env)
     env = _apply_task_restrictions(ctx, env)
     pregrants_raw = [
