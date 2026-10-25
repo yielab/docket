@@ -432,7 +432,7 @@
 
 ### P51-9 — retire the old shapes
 
-**Status:** TODO (needs P51-8; no external trigger: Tack adapts to docket, decided by the maintainer 2026-10-25) · **Size:** M · **Model:** Sonnet · **Kind:** deletion + spec
+**Status:** DONE (merged 2026-10-25, 3fb1e6ec; the last part ran as four lanes: tests of the CLI, contract fixtures, specs and docs, guards)· **Size:** M · **Model:** Sonnet · **Kind:** deletion + spec
 
 - **Also (left by P51-6 and P51-3, decided here because the deletions force the question):**
   move the approval, gate and `check_changed` follow-up (`approval_grant`, pre-grants, gate override,
@@ -480,6 +480,29 @@
   worker; the coordinator runs the live evals.
 - **Contention:** `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py` and their tests. Not
   P51-5's files.
+
+### P51-14 — the scripts that drive the CLI stop calling the removed verbs
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts, examples, benchmarks; no `src/`)
+
+- **Trigger (found in the P51-9 integration, 2026-10-25):** `scripts/smoke_workflow.py` reads
+  `approvalToken` from the task and runs `docket task approve` and `docket task deny`
+  (search `"approve"`, `"deny"`, `approvalToken`); `examples/starter/starter.py` (~line 474),
+  `benchmarks/scenarios/run.py` (~line 161) and `scripts/maint/live-dispatch-baseline.sh` call the
+  same removed verbs. None of the default suite runs them (the live smoke is opt-in and the
+  deterministic smoke moved into `tests/e2e`), so nothing failed, and the next live eval would.
+- **Goal:** each caller finds the pending escalation (`docket inbox --json`, the `needsYou` item's
+  escalation id, or `docket task show <id> --json`) and answers it with `docket task answer <id>
+  --option approve_once|deny`; the in-turn tool-approval handler of the smoke does the same.
+- **Non-goals:** any change under `src/`; changing what the smoke proves.
+- **Acceptance:** a guard test that scans `scripts/`, `examples/` and `benchmarks/` for the
+  removed names the way `tests/guards/test_cli_invocations_true.py` scans docs (extend that guard
+  or add one beside it; failing first against the four callers above); `scripts/smoke_workflow.py
+  --live-model --scenario basic --consult-mode decide --sandbox on` against the local model reaches
+  SMOKE PASS from a world outside any repository (the coordinator runs it); the default suite and
+  the e2e lane stay green.
+- **Contention:** `scripts/smoke_workflow.py`, `scripts/maint/live-dispatch-baseline.sh`,
+  `examples/starter/starter.py`, `benchmarks/scenarios/run.py`, `tests/guards/`.
 
 **Notes for Tack (not docket cards)**
 
