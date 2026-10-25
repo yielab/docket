@@ -115,13 +115,21 @@ def _consult_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     return ToolOutcome(outcome.ok, outcome.content, outcome.error)
 
 
-def consult_description(remaining: int, parks: bool, decides: bool = False) -> str:
+def consult_description(
+    remaining: int, parks: bool, decides: bool = False, waits: bool = False
+) -> str:
     """What the model reads about `consult`: asking ends the turn in dispatch (*parks*) unless the
-    pod *decides* for it, and *remaining* is what the handler will still accept on this task."""
+    pod *decides* for it or a person at the terminal answers in the turn (*waits*), and
+    *remaining* is what the handler will still accept on this task."""
     if parks and decides:
         effect = (
             "Asking returns at once with your recommendation applied; prefer deciding in your "
             "reply without the tool."
+        )
+    elif parks and waits:
+        effect = (
+            "Asking waits for the person at this terminal: the call returns their answer in "
+            "this turn, or 'no answer; decide yourself' if none comes."
         )
     elif parks:
         effect = (
@@ -150,14 +158,27 @@ def consult_description(remaining: int, parks: bool, decides: bool = False) -> s
 
 
 def describe_consult(
-    registry: ToolRegistry, remaining: int, parks: bool, decides: bool = False
+    registry: ToolRegistry, remaining: int, parks: bool, decides: bool = False, waits: bool = False
 ) -> None:
     """Re-register `consult` in *registry* with this hop's real budget and effect."""
     tool = registry.get(CONSULT_TOOL)
     if tool is not None:
         registry.register(
-            dataclasses.replace(tool, description=consult_description(remaining, parks, decides))
+            dataclasses.replace(
+                tool, description=consult_description(remaining, parks, decides, waits)
+            )
         )
+
+
+def describe_consult_for(registry: ToolRegistry, ctx: ToolContext) -> None:
+    """`describe_consult` for the turn *ctx* runs: its budget and what the handler will do."""
+    describe_consult(
+        registry,
+        ctx.max_consultations,
+        ctx.consult_park,
+        ctx.consult_decides,
+        _consult.waits_in_turn(ctx),
+    )
 
 
 def _consult_tool() -> Tool:

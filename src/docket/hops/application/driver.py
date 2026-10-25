@@ -52,7 +52,7 @@ from docket.governance import policy as _policy
 from docket.hops.application import verify_tool as _verify
 from docket.hops.application.builtin_tools import (
     builtin_registry,
-    describe_consult,
+    describe_consult_for,
     state_bash_rules,
 )
 from docket.hops.application.verdict_tool import parse_values, verdict_tool
@@ -578,7 +578,7 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
-        describe_consult(registry, ctx.max_consultations, ctx.consult_park, ctx.consult_decides)
+        describe_consult_for(registry, ctx)
         state_bash_rules(registry, ctx)
         if verdict_gate is not None:
             registry.register(verdict_tool(*verdict_gate))

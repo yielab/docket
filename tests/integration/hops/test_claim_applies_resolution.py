@@ -1,0 +1,283 @@
+"""`resolve` receives an answer to a question; the claim of the task applies it, exactly once.
+
+Real pods and tasks, a real dispatch to park a task on an `input` step and the real `resolve`; only
+the model is a double. The oracle for the applied answer is the task a surface reads: the
+synthetic operator hop and its route, the consult note the re-run hop reads.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from tests.support import escalations as _support_escalations
+from tests.support.escalations import consult_escalation
+from tests.support.fakes import FakeDriver
+from tests.support.pods import bind_pipeline, build_pod
+from tests.support.tasks import stored_task
+
+from docket.hops.application import executor as _executor
+from docket.hops.application import resolutions as _resolutions
+from docket.hops.application import sweep as _sweep
+from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel.operator_contract import Escalation
+from docket.platform import (
+    list_escalations,
+    read_escalation,
+    settle_escalation,
+    write_escalation,
+)
+from docket.tasks.application import escalations as _esc
+from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
+
+SUBJECT = "docket.hops.application.resolutions"
+
+PROJECT = "demo"
+ASK = """\
+name: ask
+steps:
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
+"""
+ASK_STOP = """\
+name: ask-stop
+steps:
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+      on:
+        answered: stop
+  - implementer: implementer
+"""
+
+demo_pod = _support_escalations.demo_pod
+pytestmark = pytest.mark.usefixtures("demo_pod")
+
+
+def _roles(driver: FakeDriver) -> list[str]:
+    return [call[0].rsplit("-", 1)[-1] for call in driver.calls]
+
+
+def _park_on_input(pipeline: str = ASK) -> Escalation:
+    """A task parked on the `ask` step by a real dispatch; returns its `input` escalation."""
+    build_pod(PROJECT, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{PROJECT}")
+    bind_pipeline(PROJECT, pipeline)
+    _queue.enqueue_task_once(PROJECT, "needs a decision", channel="cli")
+    _sweep.dispatch_pod(PROJECT, runner=FakeDriver())
+    (record,) = list_escalations()
+    assert record.kind == "input"
+    return record
+
+
+def _answer(escalation: Escalation, **content: Any) -> None:
+    _esc.resolve(escalation.id, None, content or {"answer": "ship it"}, by="alice", channel="http")
+
+
+def _apply(task_id: str) -> _resolutions.Applied:
+    """What the claim does for *task_id* before it computes the resume position."""
+    task = TaskRepository.for_pod(PROJECT).get(task_id)
+    assert task is not None
+    steps, ids, _ = _executor.resolve_pipeline_steps(PROJECT, None)
+    return _resolutions.apply_resolutions(PROJECT, task, list(task.hops), steps, ids)
+
+
+def _operator_hops(task_id: str) -> list[Any]:
+    return [h for h in stored_task(PROJECT, task_id).hops if h.role == "operator"]
+
+
+class TestResolveOnlyReceives:
+    def test_an_input_answer_adds_no_hop_and_leaves_the_resolution_unapplied(self) -> None:
+        escalation = _park_on_input()
+        hops_before = stored_task(PROJECT, escalation.task).hops
+
+        _answer(escalation)
+
+        task = stored_task(PROJECT, escalation.task)
+        assert task.status == "pending" and task.question is None
+        assert [a.action for a in task.answers] == ["accept"]
+        assert task.hops == hops_before
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is None
+
+    def test_a_consult_answer_sets_no_consult_note_yet(self) -> None:
+        escalation = consult_escalation()
+
+        _esc.resolve(escalation.id, "redis", {"note": "hot path"}, by="alice", channel="http")
+
+        task = stored_task(PROJECT, escalation.task)
+        assert (task.status, task.consult_answer) == ("pending", None)
+        assert [(a.option_id, a.action) for a in task.answers] == [("redis", "accept")]
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is None
+
+    def test_no_update_of_the_pipeline_or_the_hops_and_no_pipeline_is_resolved(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        escalation = _park_on_input()
+        touched: list[tuple[Any, Any, Any]] = []
+        real_update = TaskRepository.update
+
+        def _spy(self: TaskRepository, task_id: str, fn: Any) -> Any:
+            def _wrapped(record: Any) -> Any:
+                before = (list(record.hops), record.pipeline, record.pipeline_spec)
+                outcome = fn(record)
+                after = (list(record.hops), record.pipeline, record.pipeline_spec)
+                if before != after:
+                    touched.append((before, after, task_id))
+                return outcome
+
+            return real_update(self, task_id, _wrapped)
+
+        def _no_pipeline(*args: Any, **kwargs: Any) -> Any:
+            raise AssertionError("resolve resolved a pipeline")
+
+        monkeypatch.setattr(TaskRepository, "update", _spy)
+        monkeypatch.setattr(_executor, "resolve_pipeline_steps", _no_pipeline)
+
+        _answer(escalation)
+
+        assert touched == []
+
+
+class TestTheClaimApplies:
+    def test_an_input_answer_becomes_one_operator_hop_and_the_pipeline_goes_on(self) -> None:
+        escalation = _park_on_input()
+        _answer(escalation)
+        driver = FakeDriver()
+
+        _sweep.dispatch_pod(PROJECT, runner=driver)
+
+        task = stored_task(PROJECT, escalation.task)
+        assert task.status == "done"
+        assert [h.role for h in task.hops] == ["lead", "operator", "implementer"]
+        assert _roles(driver) == ["implementer"]
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is not None
+
+    def test_a_stop_route_settles_the_task_done_without_running_a_hop(self) -> None:
+        escalation = _park_on_input(ASK_STOP)
+        _answer(escalation)
+        assert stored_task(PROJECT, escalation.task).status == "pending"
+        driver = FakeDriver()
+
+        _sweep.dispatch_pod(PROJECT, runner=driver)
+
+        task = stored_task(PROJECT, escalation.task)
+        assert task.status == "done" and driver.calls == []
+        assert [h.role for h in task.hops] == ["lead", "operator"]
+        assert task.completed_at
+
+    def test_a_consult_answer_is_the_note_the_re_run_hop_reads(self) -> None:
+        escalation = consult_escalation()
+        _esc.resolve(escalation.id, "redis", {"note": "hot path"}, by="alice", channel="http")
+        driver = FakeDriver()
+
+        _sweep.dispatch_pod(PROJECT, runner=driver)
+
+        implementer = next(c for c in driver.calls if c[0].endswith("implementer"))
+        assert (
+            "Operator answered your consultation q-1: option redis (Redis) hot path"
+            in implementer[2]
+        )
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is not None
+
+    def test_a_declined_consult_tells_the_hop_to_decide_itself(self) -> None:
+        escalation = consult_escalation()
+        _esc.resolve(escalation.id, "decline", None, by="alice", channel="http")
+        driver = FakeDriver()
+
+        _sweep.dispatch_pod(PROJECT, runner=driver)
+
+        implementer = next(c for c in driver.calls if c[0].endswith("implementer"))
+        assert "declined. Decide yourself." in implementer[2]
+
+
+class TestAppliedOnce:
+    def test_a_task_claimed_twice_gains_one_operator_hop(self) -> None:
+        escalation = _park_on_input()
+        _answer(escalation)
+
+        first = _apply(escalation.task)
+        second = _apply(escalation.task)
+
+        assert [h.role for h in first.hops] == ["lead", "operator"]
+        assert [h.role for h in second.hops] == ["lead", "operator"]
+        assert len(_operator_hops(escalation.task)) == 1
+
+    def test_a_crash_between_the_hop_and_the_stamp_does_not_double_the_hop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        escalation = _park_on_input()
+        _answer(escalation)
+        monkeypatch.setattr(_resolutions, "mark_escalation_applied", lambda *a, **k: False)
+        _apply(escalation.task)
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is None
+        monkeypatch.undo()
+
+        again = _apply(escalation.task)
+
+        assert [h.role for h in again.hops] == ["lead", "operator"]
+        assert len(_operator_hops(escalation.task)) == 1
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is not None
+
+    def test_a_terminal_route_still_ends_the_task_when_the_claim_is_repeated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        escalation = _park_on_input(ASK_STOP)
+        _answer(escalation)
+        monkeypatch.setattr(_resolutions, "mark_escalation_applied", lambda *a, **k: False)
+        assert _apply(escalation.task).ended is not None
+        monkeypatch.undo()
+
+        again = _apply(escalation.task)
+
+        assert again.ended is not None and again.ended[0] == "done"
+        assert len(_operator_hops(escalation.task)) == 1
+
+    def test_a_consult_note_is_set_once(self) -> None:
+        escalation = consult_escalation()
+        _esc.resolve(escalation.id, "redis", None, by="alice", channel="http")
+
+        _apply(escalation.task)
+        first = stored_task(PROJECT, escalation.task).consult_answer
+        _apply(escalation.task)
+
+        assert first is not None and first.question_id == "q-1"
+        assert stored_task(PROJECT, escalation.task).consult_answer == first
+
+
+class TestWhatIsNeverApplied:
+    @pytest.mark.parametrize("state", ["expired", "decided", "pending"])
+    def test_a_record_that_is_not_resolved_changes_nothing(self, state: str) -> None:
+        escalation = _park_on_input()
+        _answer(escalation)
+        stored = read_escalation(escalation.id)
+        assert stored is not None
+        # A record another path moved on: written back in the state under test.
+        write_escalation(stored.model_copy(update={"state": state}))
+
+        _apply(escalation.task)
+
+        assert _operator_hops(escalation.task) == []
+
+    def test_an_expired_question_is_not_applied_after_the_sweep(self) -> None:
+        escalation = _park_on_input()
+        settle_escalation("questionId", escalation.legacy["questionId"], "expired")
+
+        _apply(escalation.task)
+
+        assert _operator_hops(escalation.task) == []

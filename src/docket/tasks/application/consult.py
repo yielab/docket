@@ -5,24 +5,35 @@ The call is validated through ``QuestionV11`` (operator-v1.1) and then, by appro
 the event and raise ``ConsultUnavailable``, which ``agent/tools/registry.py`` renders as the
 ``approval_unavailable`` stop. In pod dispatch (``ctx.consult_park``) the pod setting
 ``consultMode`` picks the rest: ``decide`` applies the model's own recommendation in the turn
-(traced as ``question_asked`` and ``escalation_decided``, audited); otherwise a non-refuse consult raises ``ConsultParked`` and the task parks
-``waiting_input`` until ``hops.application.answers`` re-enters the same role.
+(traced as ``question_asked`` and ``escalation_decided``, audited); under ``wait`` the call blocks
+on an approval record beside its escalation until a person resolves it (``waits_in_turn``);
+otherwise a non-refuse consult raises ``ConsultParked`` and the task parks ``waiting_input``.
 Tool-visible failures are ordinary error results, never exceptions, so the model can adapt.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from docket.governance import approval as _approval
 from docket.governance import audit as _audit
+from docket.governance import gate as _gate
+from docket.governance.secrets import redact as _redact
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
 from docket.kernel.gate import HandlerParked, HandlerUnavailable
-from docket.kernel.operator_contract import AnswerResultV11, QuestionV11, new_question_id
+from docket.kernel.operator_contract import (
+    AnswerResultV11,
+    Escalation,
+    Option,
+    QuestionV11,
+    new_question_id,
+)
 from docket.observability import trace as _trace
-from docket.platform import PARK_TOKEN_PREFIX, is_question_id, write_parked
+from docket.platform import PARK_TOKEN_PREFIX, is_question_id, read_escalation, write_parked
 from docket.tasks.application import escalations as _escalations
 
 if TYPE_CHECKING:
@@ -74,13 +85,16 @@ class ConsultParked(ConsultUnavailable, HandlerParked):
 
 
 def answer_text(
-    question: QuestionV11, answer: AnswerResultV11, content: dict[str, Any] | None
+    question_id: str,
+    options: Iterable[Option],
+    answer: AnswerResultV11,
+    content: dict[str, Any] | None,
 ) -> str:
     """What the resumed role reads: the operator's answer to its parked consultation."""
-    head = f"Operator answered your consultation {question.id}:"
+    head = f"Operator answered your consultation {question_id}:"
     if answer.action != "accept":
         return f"{head} declined. Decide yourself."
-    label = next((o.label for o in question.options if o.id == answer.option_id), "")
+    label = next((o.label for o in options if o.id == answer.option_id), "")
     note = " ".join(str(v) for v in (content or {}).values())
     return f"{head} option {answer.option_id} ({label}) {note}".rstrip()
 
@@ -132,6 +146,64 @@ def _trace_question(
     )
 
 
+# Polls (of 50 ms) a wait for the resolved record that follows the grant waking it: `resolve`
+# grants the approval first and writes the record straight after.
+_SETTLE_POLLS = 40
+_WAIT_ENDED_WITHOUT_ANSWER = ("approval_timeout", "run_cancelled")
+
+
+def waits_in_turn(ctx: ToolContext) -> bool:
+    """Whether a consult here blocks for a person at the terminal: a dispatch hop under
+    ``approvalMode`` ``wait`` whose pod does not decide alone."""
+    return ctx.consult_park and ctx.approval_mode == "wait" and not ctx.consult_decides
+
+
+def _settled(escalation_id: str) -> Escalation | None:
+    """The record *escalation_id* once it leaves ``pending``, else the last read of it."""
+    record = read_escalation(escalation_id)
+    for _ in range(_SETTLE_POLLS):
+        if record is None or record.state != "pending":
+            break
+        _approval.pause(0.05)
+        record = read_escalation(escalation_id)
+    return record
+
+
+def _wait_for_person(question: QuestionV11, ctx: ToolContext) -> ConsultOutcome:
+    """Block on an approval record opened beside the question's escalation (the way a gated call
+    waits) and return what the person answered; a timeout or a cancellation is ``NO_ANSWER``."""
+    token = _approval.approval_create(
+        ctx.project or "operator",
+        ctx.role or "consult",
+        question.message,
+        context={
+            "kind": "consult",
+            "questionId": question.id,
+            "task": ctx.task_id,
+            "options": [{"id": o.id, "label": _redact(o.label)} for o in question.options],
+        },
+    )
+    escalation = _escalations.open_for_question(
+        question, kind="consult", role=ctx.role, caused_by=question.step, token=token
+    )
+    decision = _gate.wait_for_answer(token, ctx)
+    if decision.denial_kind in _WAIT_ENDED_WITHOUT_ANSWER:
+        return ConsultOutcome(True, content=NO_ANSWER)
+    settled = _settled(escalation.id)
+    resolution = settled.resolution if settled is not None else None
+    if resolution is None:
+        return ConsultOutcome(True, content=NO_ANSWER)
+    declined = resolution.option_id == "decline"
+    answer = AnswerResultV11(
+        action="decline" if declined else "accept",
+        content=resolution.content,
+        option_id=None if declined else resolution.option_id,
+    )
+    return ConsultOutcome(
+        True, content=answer_text(question.id, question.options, answer, resolution.content)
+    )
+
+
 def _decide(question: QuestionV11, ctx: ToolContext) -> ConsultOutcome:
     """Apply the model's own recommendation: trace and audit it, return it as the tool result.
     The audit row names the ids, never the question text or the options."""
@@ -166,6 +238,9 @@ def run(args: dict[str, Any], ctx: ToolContext) -> ConsultOutcome:
     ctx.consult_count += 1
     if ctx.consult_decides:
         return _decide(question, ctx)
+    if waits_in_turn(ctx):
+        _trace_question(question, ctx)
+        return _wait_for_person(question, ctx)
     if ctx.consult_park and ctx.approval_mode != "refuse":
         _trace_question(question, ctx)
         raise ConsultParked(question)

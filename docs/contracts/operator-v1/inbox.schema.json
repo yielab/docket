@@ -503,7 +503,7 @@
     },
     "Resolution": {
       "additionalProperties": false,
-      "description": "How an escalation was settled: the option chosen, any content, and who answered where.",
+      "description": "How an escalation was settled: the option chosen, any content, and who answered where.\n``applied_at`` is when the task's continuation was applied (the claim of the task for a\nquestion), unset until then.",
       "properties": {
         "optionId": {
           "anyOf": [
@@ -541,6 +541,18 @@
         "at": {
           "title": "At",
           "type": "string"
+        },
+        "appliedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Appliedat"
         }
       },
       "required": [

@@ -12,6 +12,7 @@ counterpart: an unanswered question past its deadline blocks the task, it never 
 from __future__ import annotations
 
 import json as _json
+from collections.abc import Callable
 from typing import Any, cast
 
 from pydantic import ValidationError
@@ -20,11 +21,10 @@ from docket.governance import escalation_expiry as _escalation_expiry
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.application import executor as _executor
+from docket.hops.application import resolutions as _resolutions
 from docket.hops.application import steps as _steps
-from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict, Refused
-from docket.kernel.handoff import HandoffArtifact
 from docket.kernel.operator_contract import (
     AnswerResult,
     AnswerResultV11,
@@ -58,6 +58,7 @@ __all__ = [
     "AnswerStale",
     "QuestionAnswers",
     "answer_task",
+    "record_answer",
     "sweep_expired_questions",
 ]
 
@@ -89,42 +90,6 @@ def _all_projects() -> list[str]:
     ``operator.inbox`` uses, copied rather than imported to avoid a cycle risk."""
     all_ids = [a.id for a in _fleet.list_agents()]
     return sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
-
-
-def _resolve_route(
-    on: dict[str, Any] | None,
-    label: str,
-    route_counts: dict[tuple[str, str], int],
-    id_to_index: dict[str, int],
-    step_id: str,
-    pipeline_index: int,
-) -> tuple[str | None, str]:
-    """Resolve *label* against *on* like ``hops.application.executor._route_outcome`` does for a live hop,
-    minus its tracing. Returns ``(next_step, terminal)``; *terminal* is
-    ``"failed"``/``"done"``/``""`` (ordinary advance)."""
-    route = _post_hop._match_on_route(on, label)
-    if route is None:
-        return None, ""
-    if isinstance(route, dict):
-        target: Any = route.get("goto")
-        max_cycles = route.get("max")
-    else:
-        target = route
-        max_cycles = None
-    target_str = target if isinstance(target, str) else "stop"
-    if target_str == "fail":
-        return None, "failed"
-    if target_str == "stop":
-        return None, "done"
-    target_index = id_to_index.get(target_str)
-    if target_index is None:
-        return None, "failed"
-    if target_index <= pipeline_index:
-        key = (step_id, label)
-        cap = max_cycles if isinstance(max_cycles, int) else 1
-        if route_counts.get(key, 0) >= cap:
-            return None, "failed"
-    return target_str, ""
 
 
 def _load_parked_question(t: _task.TaskRecord, task_id: str) -> Question:
@@ -188,7 +153,7 @@ def _append_answer(
     t.question = None
 
 
-def _answer_consult(
+def _receive_consult(
     project: str,
     t: _task.TaskRecord,
     question: QuestionV11,
@@ -197,9 +162,10 @@ def _answer_consult(
     channel: str,
     actor: str,
     ts: str,
-) -> QuestionV11:
-    """Resolve a parked ``consult``: validate its ``optionId`` (in *content*), record the answer
-    and reopen the task ``pending`` so the same role's step re-runs with the answer."""
+) -> tuple[AnswerResultV11, dict[str, Any]]:
+    """Validate a parked ``consult``'s answer (its ``optionId`` rides in *content*), screen it and
+    append it to ``answers[]``. Returns the answer and the content left once ``optionId`` is
+    taken out."""
     try:
         body = dict(result.content or {})
         option_id = body.pop("optionId", None)
@@ -211,10 +177,28 @@ def _answer_consult(
         raise AnswerError(str(exc)) from exc
     _screen_content(project, answer)
     _append_answer(t, question, answer, channel=channel, actor=actor, ts=ts, option_id=option_id)
+    return answer, body
+
+
+def _answer_consult(
+    project: str,
+    t: _task.TaskRecord,
+    question: QuestionV11,
+    result: AnswerResult,
+    *,
+    channel: str,
+    actor: str,
+    ts: str,
+) -> QuestionV11:
+    """Resolve a parked ``consult`` in one call: receive the answer, set the note the same role's
+    step re-runs with and reopen the task ``pending``."""
+    answer, body = _receive_consult(
+        project, t, question, result, channel=channel, actor=actor, ts=ts
+    )
     t.consult_answer = ConsultAnswer(
         step=question.step,
         question_id=question.id,
-        text=_consult.answer_text(question, answer, body),
+        text=_consult.answer_text(question.id, question.options, answer, body),
     )
     _transitions.apply_to_task(t, _state.Status.pending)
     return question
@@ -251,20 +235,7 @@ def _apply_route_outcome(
     """Persist the synthetic ``role="operator"`` hop and fold *terminal* onto *t*: a
     ``"failed"``/``"done"`` target settles the task right here (no live dispatch context
     exists to do it for it); anything else reopens it ``pending``."""
-    hop = _task.HopResult(
-        role="operator",
-        member_id="operator",
-        ok=True,
-        output=f"answered: {question.id}",
-        # `verdict` carries the outcome label ("answered"/"declined"), not a real verdict
-        # marker -- `replay_pipeline_position`'s own route_counts rebuild keys a backward/
-        # self route by `hop.artifact.verdict` (see its handling of `hop.next_step`), the
-        # same field a verdict gate's routed hop already relies on; without this a resumed
-        # cap check would key on the wrong label.
-        artifact=HandoffArtifact(summary=f"answered: {question.id}", verdict=outcome_label),
-        step_id=node.step_id,
-        next_step=target_str,
-    )
+    hop = _resolutions.routed_hop(node.step_id, question.id, outcome_label, target_str)
     t.hops.append(hop)
 
     if terminal in ("failed", "done"):
@@ -310,12 +281,7 @@ def answer_task(
     resume -- a terminal route settles the task right here; any other target reopens it
     ``pending`` behind a synthetic ``role="operator"`` hop the resume builder follows."""
     ts = now or _clock.iso()
-    try:
-        # *action* is caller-supplied raw text (CLI/HTTP); AnswerResult's own Literal field
-        # is what actually rejects anything else, at runtime, via the ValidationError below.
-        result = AnswerResult(action=cast("Any", action), content=content)
-    except ValidationError as exc:
-        raise AnswerError(str(exc)) from exc
+    result = _answer_result(action, content)
 
     outcome: dict[str, str] = {}
     # Resolved *before* the locked read-modify-write below: it reads the pod Lead's own
@@ -347,7 +313,7 @@ def answer_task(
             t, question, task_id, runtime_steps, id_to_index
         )
         outcome_label = "answered" if result.action == "accept" else "declined"
-        target_str, terminal = _resolve_route(
+        target_str, terminal = _resolutions.resolve_route(
             node.on, outcome_label, route_counts, id_to_index, node.step_id, pipeline_index
         )
         _apply_route_outcome(t, node, target_str, terminal, outcome_label, question, ts)
@@ -357,11 +323,70 @@ def answer_task(
 
     if TaskRepository.for_pod(project).update(task_id, _fn) is None:
         raise AnswerNotFound(f"task {task_id!r} not found in pod {project!r}")
+    _finish_answer(project, task_id, outcome, channel=channel, actor=actor, result=result)
+    return result
+
+
+def record_answer(
+    project: str,
+    task_id: str,
+    action: str,
+    content: dict[str, Any] | None,
+    *,
+    channel: str,
+    actor: str,
+    now: str | None = None,
+) -> AnswerResult:
+    """Receive the answer to *task_id*'s parked question: validate, screen, append to ``answers[]``
+    and reopen the task ``pending``. No pipeline is resolved and no hop appended: the claim applies
+    the route or the consult note (``hops.application.resolutions``)."""
+    ts = now or _clock.iso()
+    result = _answer_result(action, content)
+    outcome: dict[str, str] = {}
+
+    def _fn(t: _task.TaskRecord) -> None:
+        if t.status != _state.Status.waiting_input:
+            raise AnswerStale(f"task {task_id!r} is not waiting_input")
+        if isinstance(t.question, QuestionV11) and t.question_is_consultation:
+            question: Question = t.question
+            _receive_consult(project, t, t.question, result, channel=channel, actor=actor, ts=ts)
+        else:
+            question = _load_parked_question(t, task_id)
+            _validate_and_screen(project, question, result)
+            _append_answer(t, question, result, channel=channel, actor=actor, ts=ts)
+        _transitions.apply_to_task(t, _state.Status.pending)
+        outcome["step"] = question.step
+        outcome["question_id"] = question.id
+
+    if TaskRepository.for_pod(project).update(task_id, _fn) is None:
+        raise AnswerNotFound(f"task {task_id!r} not found in pod {project!r}")
+    _finish_answer(project, task_id, outcome, channel=channel, actor=actor, result=result)
+    return result
+
+
+def _answer_result(action: str, content: dict[str, Any] | None) -> AnswerResult:
+    """*action* and *content* as an ``AnswerResult``, or ``AnswerError``."""
+    try:
+        # *action* is caller-supplied raw text (CLI/HTTP); AnswerResult's own Literal field
+        # is what actually rejects anything else, at runtime, via the ValidationError below.
+        return AnswerResult(action=cast("Any", action), content=content)
+    except ValidationError as exc:
+        raise AnswerError(str(exc)) from exc
+
+
+def _finish_answer(
+    project: str,
+    task_id: str,
+    outcome: dict[str, str],
+    *,
+    channel: str,
+    actor: str,
+    result: AnswerResult,
+) -> None:
+    """The audit line and trace event of a received answer, and the correction a decline records."""
     _record_answer_audit_and_trace(
         project, task_id, outcome, channel=channel, actor=actor, result=result
     )
-
-    # Record declined answers to the corrections ledger
     if result.action == "decline":
         _corrections.record(
             project,
@@ -372,12 +397,10 @@ def answer_task(
             source="answer",
         )
 
-    return result
-
 
 class QuestionAnswers:
-    """``tasks.ports.QuestionAnswers`` over ``answer_task``: the continuation ``resolve`` runs for
-    a parked question, its refusals told in the vocabulary of a resolve."""
+    """``tasks.ports.QuestionAnswers`` over ``record_answer`` (a question with an escalation record)
+    and ``answer_task`` (one without), their refusals told in the vocabulary of a resolve."""
 
     def answer_question(
         self,
@@ -389,8 +412,33 @@ class QuestionAnswers:
         channel: str,
         actor: str,
     ) -> None:
+        self._run(answer_task, project, task_id, action, content, channel=channel, actor=actor)
+
+    def record_answer(
+        self,
+        project: str,
+        task_id: str,
+        action: str,
+        content: dict[str, Any] | None,
+        *,
+        channel: str,
+        actor: str,
+    ) -> None:
+        self._run(record_answer, project, task_id, action, content, channel=channel, actor=actor)
+
+    @staticmethod
+    def _run(
+        answer: Callable[..., AnswerResult],
+        project: str,
+        task_id: str,
+        action: str,
+        content: dict[str, Any] | None,
+        *,
+        channel: str,
+        actor: str,
+    ) -> None:
         try:
-            answer_task(project, task_id, action, content, channel=channel, actor=actor)
+            answer(project, task_id, action, content, channel=channel, actor=actor)
         except AnswerRejected as exc:
             raise EscalationRefused(exc.policy_id) from exc
         except AnswerNotFound as exc:

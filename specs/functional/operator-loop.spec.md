@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.9.0
+**Version**: 2.10.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -96,7 +96,9 @@ mechanics are `pod-dispatch.spec.md` "Parked approvals".
 3. An unset pod `approvalMode` MUST NOT resolve to a single fixed posture across every caller.
    The `docket start --dispatch` sweep and a non-interactive `docket run` MUST resolve it to
    `"park"`; an interactive `docket run` (stdin is a TTY) MUST resolve it to `"wait"`. An
-   explicit stored `approvalMode` always overrides the caller's own default.
+   explicit stored `approvalMode` always overrides the caller's own default. `"wait"` applies to a
+   `consult` too: in pod dispatch the call waits in the turn for the person at the terminal
+   (Consult item 3) instead of parking the task.
 4. A parked approval MUST carry its own `expiresAt` (now plus the pod's `approvalExpiryHours`,
    computed per hop) and MUST be expired by the same fail-closed sweep that expires every
    pending approval, resolving to **denied** past deadline — never a silent indefinite wait,
@@ -410,9 +412,10 @@ failure as a failed `DeliveryResult` without raising.
 
 ### 7. Answers
 
-1. `answer_task(project, task_id, action, content, *, channel, actor)` is the continuation of a
-   parked question: `resolve` (area 10) calls it for a `consult` or `input` escalation, and the
-   adapters call it directly for a question that has no record. It MUST refuse
+1. `answer_task(project, task_id, action, content, *, channel, actor)` is the whole answer to a
+   parked question that has no escalation record (the adapters call it directly); for a question
+   with a record `resolve` (area 10) calls `record_answer`, which does everything below up to and
+   including the audit and leaves the route and the consult note to the next claim (item 2). Both MUST refuse
    (`AnswerError`) a task that is not found in that pod, or is not `waiting_input`, or whose
    parked question does not match its position in the pipeline the task was dispatched through
    (the task's own named `pipeline` when it has one, else the pod's pipeline); it MUST validate *content* against the
@@ -425,11 +428,11 @@ failure as a failed `DeliveryResult` without raising.
    `optionId` when given), clear the task's `question`, and audit `task.answer` (never the content).
 2. Answering an `input` step MUST resolve that step's own `on:` route with the outcome label
    `answered` (accept) or `declined`: a terminal `fail`/`stop` target (or a backward route past
-   its cap, or an unknown target) settles the task `failed`/`done` immediately; any other
-   target, or no route, reopens it `pending` behind a synthetic `role="operator"` hop whose
-   `nextStep` the resume follows. Answering a consultation (a question with `kind`
-   `clarification` or `decision`) reopens the task `pending` with a `consultAnswer` for the same
-   step instead (see "Consult" item 5). Mechanics: `pod-dispatch.spec.md` "Operator input steps
+   its cap, or an unknown target) settles the task `failed`/`done` (`answer_task` immediately,
+   `resolve` at the next claim); any other target, or no route, continues behind a synthetic
+   `role="operator"` hop whose `nextStep` the resume follows. Answering a consultation (a
+   question with `kind` `clarification` or `decision`) reopens the task `pending` with a
+   `consultAnswer` for the same step instead (see "Consult" item 5). Mechanics: `pod-dispatch.spec.md` "Operator input steps
    and answers".
 3. An unanswered `waiting_input` task past its question's `expiresAt` MUST be moved by
    `sweep_expired_questions`, run on every periodic sweep of `docket start`, to `blocked` with
@@ -545,20 +548,33 @@ schema check, the `pre_input` screen or the continuation.
      `reason` (a string), which is what `--reason` and the body's `reason` become;
    - a string in *content* matches a `block` verdict of the pod's `pre_input` policy:
      `EscalationRefused` naming the policy id.
-3. **Outcome.** The continuation is today's, chosen by the record's `kind` and the option:
+3. **Outcome.** What `resolve` does is chosen by the record's `kind` and the option. It receives the
+   answer; a question's continuation (the consult note, the `on:` route) is applied by the next
+   claim of the task (item 3a):
 
-   | Kind | Option | Continuation |
+   | Kind | Option | What `resolve` does |
    | --- | --- | --- |
    | `approval`, `gate`, `check_changed` | `approve_once` | `approval_grant` then `resolve_waiting_approval_detail` (`granted`) |
    | `approval` | `approve_task` | `approval_set_option(approve_task)`, then as `approve_once` |
    | `approval`, `gate`, `check_changed` | `deny` | `approval_deny` then `resolve_waiting_approval(denied)` with the reason |
-   | `consult` | an option id | `answer_task(accept)` with `optionId` in *content* |
-   | `consult`, `input` | omitted | `answer_task(accept)` with *content* |
-   | `consult`, `input` | `decline` | `answer_task(decline)` |
+   | `consult` | an option id | records the answer (`answers[]`, `question` cleared, task `pending`) with `optionId` in *content* |
+   | `consult`, `input` | omitted | records the answer with *content* |
+   | `consult`, `input` | `decline` | records a `decline` |
+   | `consult` waiting in the turn | an option id or `decline` | grants (or, for `decline`, denies) the approval record its wait polls; no task changes |
 
-   A `gate` and a `check_changed` offer no `approve_task`. A continuation that refuses (the
-   approval or the task moved first) raises `EscalationNotPending` and leaves the record `pending`;
-   one that fails validation raises `EscalationInvalid` or `EscalationRefused` the same way.
+   A `gate` and a `check_changed` offer no `approve_task`. A step that refuses (the approval or
+   the task moved first) raises `EscalationNotPending` and leaves the record `pending`; one that
+   fails validation raises `EscalationInvalid` or `EscalationRefused` the same way.
+3a. **Receive here, apply at the claim.** For `consult` and `input` (a parked task), `resolve`
+   MUST NOT resolve a pipeline, append a hop, set `consultAnswer`, settle a route or take the
+   pod's task-list lock for anything but the one status change; it writes the record
+   (`state: "resolved"`, `resolution`), audits, traces and returns. The record's `resolution`
+   carries `appliedAt`, unset until the continuation is applied. The claim of the task
+   (`pod-dispatch.spec.md` "An escalation for every park" item 3) applies each `resolved` record
+   whose `appliedAt` is unset exactly once, then stamps it (`mark_escalation_applied`); a record
+   that is `expired`, `decided` or `pending` is never applied. A record of an approval, gate,
+   changed-check or an in-turn wait is stamped when `resolve` writes it, because its follow-up is
+   done by then.
 4. **Record.** After the continuation succeeds, `resolve` MUST write, in one store operation that
    only moves a `pending` record, `resolution` (`{optionId, content, by, channel, at}`; `optionId`
    is `decline` for a decline and absent for an omitted option) and `state: "resolved"`; audit
@@ -671,7 +687,8 @@ every output a surface prints is unchanged.
    record is created, with the same redaction approvals use), `options` (`Option` list), `recommendation`, `requestedSchema`
    (`null` when the pause asks no structured answer), `askedAt`, `expiresAt`, `onExpiry`
    (`deny | block`), `policy` (`person | recommendation | deny | fail`), `state`, `resolution`
-   (`{optionId, content, by, channel, at}` or `null`), `seq` and `legacy` (`{"token": ...}` for an
+   (`{optionId, content, by, channel, at, appliedAt?}` or `null`; `appliedAt` is when the
+   continuation was applied, absent while it has not been), `seq` and `legacy` (`{"token": ...}` for an
    approval, `{"questionId": ...}` for a question).
 2. **Kinds, options, expiry.**
 
@@ -738,7 +755,11 @@ every output a surface prints is unchanged.
     <id>` once for each question a task parks on during that run (the line comes from the
     escalation record, read for a few seconds after `question_asked` or `input_requested` is
     traced; a question already parked before the run, or a consult the pod decided alone, prints
-    none), the `options` part only when the pause offers any. Telegram `/status`
+    none), the `options` part only when the pause offers any. On a TTY the same view answers a
+    consult in place (Consult item 3): the question line, then `[1] <option>  [2] <option>  [d]ecline
+    [Enter] keep waiting`; a digit resolves that option and `d` resolves `decline` through `resolve`
+    (`channel="cli"`), and an approval answered there (`[a]pprove  [d]eny`) goes through `resolve`
+    as well, so its record settles. Telegram `/status`
     and notifications render from the same function (area 5 item 10, area 6 item 11). A task
     with a stored question and no escalation (made before records were kept) renders as before.
 11. **Escalation events.** Five trace event types carry one payload for every kind of pause. Each is
@@ -890,14 +911,25 @@ Reviewer) lets a model put a clarification or decision to its operator.
    Counting is per turn; in pod dispatch the count is task-wide (item 5). A call past the cap is
    the error result `consultation budget exhausted; decide yourself` with no `question_asked`
    event; an invalid call does not spend budget.
-3. **Wait (`approvalMode` `wait`, outside pod dispatch).** Nobody can answer a turn that is not a
-   dispatch hop, so the call returns `no answer; decide yourself` at once, without an event.
+3. **Wait.** Outside pod dispatch nobody can answer a turn that is not a dispatch hop, so the
+   call returns `no answer; decide yourself` at once, without an event. In pod dispatch under
+   `approvalMode` `wait` (a `docket run` on a TTY, or a pod that set it) the call traces
+   `question_asked`, opens its `consult` escalation with an approval record beside it
+   (`legacy.token`, a context of `kind: "consult"` with the option ids and labels) and blocks on
+   that record the way a gated call does (`governance/gate.py`, the `approval_timeout` and the
+   cancellation check included). A person who resolves the escalation (the progress prompt, `POST
+   /escalations/<id>`, MCP `resolve`, Telegram) wakes the turn: the tool result is `Operator
+   answered your consultation <id>: option <id> (<label>)` (plus any note) or `... declined.
+   Decide yourself.`, the task never leaves `running` and nothing is parked. `docket task answer`
+   does not reach it yet: it reads the task's parked question and a waiting turn has none. A
+   timeout or a cancellation returns `no answer; decide yourself`. The record's `onExpiry` is
+   `deny`.
 4. **Refuse.** The call traces `question_asked` and ends the turn with the
    `approval_unavailable` stop an unanswerable approval uses. `park` outside pod dispatch is
    treated as `refuse`; under pod dispatch `approvalMode: refuse` also keeps this behaviour.
 5. **Park and re-entry (pod dispatch).** A turn run for a dispatch hop (the driver is given the
-   task id) parks consultations unless its approval mode is `refuse` (`wait` included: a pod hop
-   has nobody waiting in-turn). A consult from any role then traces `question_asked`, ends the
+   task id) parks consultations unless its approval mode is `refuse` or `wait` (item 3). A consult
+   from any role then traces `question_asked`, ends the
    hop with the `approval_parked` stop, and the hop is persisted `parked`. The stop's token is
    `consult:<question id>`. `park_token` persists the `QuestionV11` (`consult-parked/<id>.json`
    under `DOCKET_HOME`, mode 0600) and `parked_question` takes it once (read, then removed);
@@ -907,10 +939,11 @@ Reviewer) lets a model put a clarification or decision to its operator.
    `consult_question_missing`; it never waits as an approval. The task becomes `waiting_input`
    with `question` set to the consult's `QuestionV11` (`taskId` = the task id, `step` = the
    hop's step id), so the inbox lists it under `needsYou` and `docket task answer`, HTTP and MCP
-   answers reach it through `answer_task` unchanged; `optionId` travels in the answer
-   `content`. `answer_task` validates it with `validate_answer_v11` (accept needs a valid
-   `optionId`; a refused answer leaves the task `waiting_input`), records `answers[]`, and
-   reopens the task `pending` with a `consultAnswer` for the same step; the parked hop replays
+   answers reach it through `resolve` (or `answer_task` for a question with no record);
+   `optionId` travels in the answer `content`. The answer is validated with `validate_answer_v11`
+   (accept needs a valid `optionId`; a refused answer leaves the task `waiting_input`), recorded in
+   `answers[]`, and the task reopened `pending`; the next claim sets a `consultAnswer` for the same
+   step from the resolved record (area 10 item 3a); the parked hop replays
    at its own index and its next message ends with `Operator answered your consultation <id>:
    option <id> (<label>)` (plus any note) or `... declined. Decide yourself.` A decline records
    one `declined_answer` correction. Each parked consult increments the task's `consultations`;
@@ -926,8 +959,10 @@ Reviewer) lets a model put a clarification or decision to its operator.
    the hop's own cap (item 5), so it never exceeds what the handler will accept. The sentence
    about the effect is derived from what the handler will do, never fixed: it is the parking
    sentence above when the hop parks, the immediate `no answer; decide yourself` sentence when it
-   cannot park, and, when the pod decides (item 7), that asking returns at once with the model's
-   own recommendation applied and that it should prefer deciding in its reply without the tool.
+   cannot park, when the pod decides (item 7), that asking returns at once with the model's own
+   recommendation applied and that it should prefer deciding in its reply without the tool, and,
+   when the hop waits for the person at the terminal (item 3), that the call returns their answer
+   in this turn or `no answer; decide yourself` if none comes. Deciding wins over waiting.
 7. **Decide (`consultMode`).** The pod setting `consultMode` (`park`, the default, or `decide`;
    `docket pod set consultMode decide`) reaches the turn as `ToolContext.consult_mode`, read by the
    driver from the agent's pod settings (an unreadable store is `park`). In pod dispatch (item 5)
@@ -1079,8 +1114,8 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/tasks/application/escalations.py`: `open_for_approval`, `open_for_question`,
   `attach`, `approval_opened`, `decided_consult`, `resolve`, `resolve_approval_token`,
   `resolve_question`, `Resolved` and the four `Escalation*` errors (area 10);
-  `src/docket/tasks/ports.py`: the port through which `resolve` reaches `answer_task`, bound in
-  `bootstrap.py`; the pause sites are `governance/gate.py` (through the governance
+  `src/docket/tasks/ports.py`: the port through which `resolve` reaches `record_answer` (and
+  `answer_task` for a question with no record), bound in `bootstrap.py`; the pause sites are `governance/gate.py` (through the governance
   port), `tasks/application/record.py`, `hops/application/steps.py` and `hops/gates/pre_hop.py`
 - `src/docket/operator/inbox.py`: `build_inbox`, `task_view`, `pending_memory`, `MemoryItem`,
   `escalation_views`
@@ -1097,8 +1132,10 @@ Each JSONL line is a JSON object with these fields:
   dialect's `deliver`
 - `src/docket/templates/channels/01-console.yaml` … `07-telegram.yaml`: the seven built-in
   channel documents
-- `src/docket/hops/application/answers.py`: `answer_task`, `AnswerError`, `AnswerRejected`,
-  `sweep_expired_questions`
+- `src/docket/hops/application/answers.py`: `record_answer`, `answer_task`, `AnswerError`,
+  `AnswerRejected`, `sweep_expired_questions`
+- `src/docket/hops/application/resolutions.py`: `apply_resolutions`, the claim-time application of
+  a resolved `consult` or `input` escalation
 - `src/docket/hops/application/interruptions.py`: `forecast`, `Interruption`, `ASK_KINDS`,
   `NOTHING_WILL_ASK`, `record_pregrant`, `InterruptionsError`
 - `src/docket/tasks/application/consult.py`: the `consult` handler, `park_token`, `parked_question`,
