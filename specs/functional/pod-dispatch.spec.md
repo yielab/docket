@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.2.0
+**Version**: 10.3.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1085,6 +1085,21 @@ mechanically gated step.
    read-only root. With no usable backend it **MUST NOT** run and the gate fails (`[verify not run:
    ...]`, audited `isolation.refused`). With isolation off it runs on the host.
 
+#### Verify tool
+
+8. The Implementer **MUST** be told how it will be judged: when the hop's step has a verify command
+   its instruction names it ("Hop instructions" in `role-archetypes.spec.md`), and the hop's turn
+   **MUST** be offered a `verify` tool. The tool is registered for that hop only when the step has
+   a verify command; it takes no parameters and **MUST** run exactly that command, never another.
+9. `verify` **MUST** run through the gate's own execution path, so the model sees what the gate will
+   see: the same working directory (requirement 2), the same jail or host posture (requirement 7),
+   the same timeout (the gate's `timeout`, else `verifyTimeoutS`), the same output cap and the same
+   secret redaction. Its result is `exit <N>` followed by the captured output; a command that never
+   reached an exit (refused, timed out, no usable backend) reports `exit none` and the reason the
+   runner gave. The tool is `exec`-kind, so a role denied `bash` is not offered it (Lead, Reviewer).
+10. `verify` does not replace the gate: the mechanical gate **MUST** still run after the hop and
+    decide the step, whatever the model did or did not do with the tool.
+
 ### Required verification (`requireVerify`)
 
 1. A pod **MAY** set the `requireVerify` pod setting (default `false`) to declare that every
@@ -1802,7 +1817,12 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    NOT** be reported as dropped -- only a field whose removal changed the rendered text counts. The
    token estimate this checks **MUST** be the rendered artifact's size (`summary` plus any appended
    labelled lines), not `summary` alone, so the budget bounds the same structured content the next
-   hop reasons about.
+   hop reasons about. When `diff` was non-empty and is shed, the rendered text **MUST** carry, in
+   the diff's place, the single line `[diff omitted: N chars over budget; run git diff in the
+   worktree]` (`N` the dropped diff's length in characters), so a reader is told the diff is
+   missing and where to find it. The line is not counted when deciding what to shed (the drop order
+   and the fields kept are those of the artifact without it), and it is kept when `summary` is
+   truncated. An artifact that never had a diff carries no marker.
 4. `summary` **MUST NEVER** be shed outright (it is absent from `DROP_ORDER` -- see "Structured
    handoff artifacts"). If the rendered text still does not fit its share once every droppable field
    is gone, `summary` **MUST** be truncated head + tail (kept in roughly equal shares of the

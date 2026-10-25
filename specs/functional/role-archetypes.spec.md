@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -258,6 +258,13 @@ This specification does NOT cover:
    any role the step targets, including `role: lead`: a step `{role: lead, instructions: "..."}`
    **MUST** replace the Lead's instruction text (built-in or overlaid) with the step's
    interpolated text.
+5. An Implementer hop whose step has a verify command (a mechanical gate's own `command`, else the
+   Implementer's `verifyCmd`) **MUST** end its instruction text with one added paragraph: "Your work
+   is accepted only if `<verify command>` exits 0. Run it with the `verify` tool and fix what it
+   reports before you finish." It follows the built-in text, a rework hop's text and a step's own
+   `instructions` alike, and its token cost is reserved with the rest of the instruction. A hop
+   whose step has no verify command **MUST NOT** carry it, and no other role's instruction names
+   the command. The `verify` tool is "Verify tool" in `pod-dispatch.spec.md`.
 
 ### Starter library
 
