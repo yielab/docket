@@ -78,7 +78,7 @@ class TestCompletionsMatchRegistry:
         assert arm
         listed = set(re.findall(r'"([^"]+)"', arm.group(1)))
         expected = {p for p, (_v, _o, takes) in _registry().items() if takes}
-        assert expected >= {"task show", "task approve", "task deny"}
+        assert expected >= {"task show", "task answer"}
         assert listed == expected
 
     def test_pods_come_from_lead_workspaces_and_ids_from_task_lists(self, shell: str) -> None:

@@ -39,7 +39,6 @@ __all__ = [
     "escalation_views",
     "pause_is_live",
     "pending_memory",
-    "question_escalation",
     "task_view",
 ]
 
@@ -191,23 +190,6 @@ def escalation_page(
     returned, else *since_seq*, else ``0``."""
     views = escalation_views(since_seq=since_seq, pod=pod, task=task)
     return EscalationPage(escalations=views, next=max([since_seq or 0, *(v.seq for v in views)]))
-
-
-def question_escalation(
-    escalations: Iterable[EscalationView], pod: str, task: str
-) -> EscalationView | None:
-    """The pending ``consult`` or ``input`` escalation of *task* among *escalations*: a task is
-    parked on one question at a time."""
-    return next(
-        (
-            e
-            for e in escalations
-            if (e.pod, e.task) == (pod, task)
-            and e.kind in ("consult", "input")
-            and e.state == "pending"
-        ),
-        None,
-    )
 
 
 def build_inbox(*, now: str, since: str | None = None) -> InboxView:

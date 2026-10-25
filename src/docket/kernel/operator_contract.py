@@ -195,8 +195,7 @@ class QuestionV11(Question):
 
 
 class AnswerResultV11(AnswerResult):
-    """operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``. The
-    cross-check against the question lives in ``validate_answer_v11``."""
+    """operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -232,27 +231,6 @@ def validate_content(schema: dict[str, Any], content: dict[str, Any] | None) -> 
         enum = prop.get("enum")
         if enum is not None and value not in enum:
             raise InvalidInput(f"property {name!r} is not one of {enum!r}")
-
-
-def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
-    """Validate an answer's ``content`` against the question's ``requestedSchema``;
-    ``decline``/``cancel`` ignore *content*. Raises ``ValueError`` naming the property."""
-    if result.action != "accept":
-        return result
-    validate_content(question.requested_schema, result.content)
-    return result
-
-
-def validate_answer_v11(question: QuestionV11, answer: AnswerResultV11) -> AnswerResultV11:
-    """``validate_answer`` plus the option check: an ``accept`` on a question that has
-    options MUST carry an ``optionId`` naming one. Raises ``ValueError``."""
-    if answer.action == "accept" and question.options:
-        if answer.option_id is None:
-            raise InvalidInput("accept requires optionId when the question has options")
-        if answer.option_id not in {o.id for o in question.options}:
-            raise InvalidInput(f"optionId {answer.option_id!r} names no option")
-    validate_answer(question, answer)
-    return answer
 
 
 class TaskView(BaseModel):
