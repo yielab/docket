@@ -160,7 +160,7 @@
 
 ### P51-3 — one event family and metrics folded from it
 
-**Status:** TODO (needs P51-2) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged 2026-10-25, 8571e7a9)· **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** five pause events with five payloads (`approval_requested`, `question_asked` with
   the whole question, `input_requested`, `input_answered`, `input_expired`); metrics scrape
@@ -188,7 +188,7 @@
 
 ### P51-4 — one view, one render, every surface shows the same escalation
 
-**Status:** TODO (needs P51-2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged 2026-10-25, 9ffd6f6a)· **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** `docket run` renders approvals in place and nothing for a question
   (`render/progress.py::_RENDERABLE_EVENT_TYPES`); `task show` never prints the question
