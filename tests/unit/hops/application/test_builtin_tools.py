@@ -85,9 +85,13 @@ class TestBashDescriptionPrefersTheFileTools:
 class TestConsultDescriptionTellsTheTruth:
     """The consult schema matches its handler and the description says what asking does."""
 
-    def _description(self, remaining: int, parks: bool, decides: bool = False) -> str:
+    def _description(
+        self, remaining: int, parks: bool, decides: bool = False, waits: bool = False
+    ) -> str:
         registry = builtin_registry()
-        builtin_tools.describe_consult(registry, remaining=remaining, parks=parks, decides=decides)
+        builtin_tools.describe_consult(
+            registry, remaining=remaining, parks=parks, decides=decides, waits=waits
+        )
         tool = registry.get("consult")
         assert tool is not None
         return tool.description
@@ -141,12 +145,25 @@ class TestConsultDescriptionTellsTheTruth:
         assert "no answer; decide yourself" in text
         assert "recommendation applied" not in text
 
-    def test_the_three_effects_are_distinct(self) -> None:
-        parks = self._description(remaining=3, parks=True)
-        waits = self._description(remaining=3, parks=False)
-        decides = self._description(remaining=3, parks=True, decides=True)
+    def test_a_hop_that_waits_for_the_terminal_says_the_answer_comes_back_in_the_turn(self) -> None:
+        text = self._description(remaining=2, parks=True, waits=True)
 
-        assert len({parks, waits, decides}) == 3
+        assert "ENDS your turn" not in text
+        assert "waits for the person at this terminal" in text
+        assert "2 consultations left" in text
+
+    def test_deciding_beats_waiting(self) -> None:
+        text = self._description(remaining=2, parks=True, decides=True, waits=True)
+
+        assert "returns at once with your recommendation applied" in text
+
+    def test_the_four_effects_are_distinct(self) -> None:
+        parks = self._description(remaining=3, parks=True)
+        refuses = self._description(remaining=3, parks=False)
+        decides = self._description(remaining=3, parks=True, decides=True)
+        waits = self._description(remaining=3, parks=True, waits=True)
+
+        assert len({parks, refuses, decides, waits}) == 4
 
 
 class TestBashStatesItsRules:

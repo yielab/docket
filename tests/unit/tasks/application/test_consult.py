@@ -29,7 +29,10 @@ SUBJECT = "docket.tasks.application.consult"
 def _short_waits(tmp_path: Path) -> Iterator[None]:
     with use_home(
         dataclasses.replace(
-            current_home(), tool_approval_timeout=1, policies_dir_override=tmp_path / "_policies"
+            current_home(),
+            tool_approval_timeout=1,
+            tool_approval_poll_interval_s=0.01,
+            policies_dir_override=tmp_path / "_policies",
         )
     ):
         yield
@@ -140,7 +143,7 @@ class TestRefuse:
         assert result.denial_kind == "approval_unavailable"
 
     def test_pod_dispatch_parks_a_consult_and_leaves_its_question_for_dispatch(self) -> None:
-        result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
+        result = _call(_args(), _ctx(approval_mode="park", consult_park=True))
         assert result.denial_kind == "approval_parked"
         question = parked_question(result.approval_token)
         assert question is not None and question.kind == "decision"
@@ -150,7 +153,7 @@ class TestRefuse:
         from docket.agent import loop as _loop
         from docket.tasks.application import record as _record
 
-        result = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
+        result = _call(_args(), _ctx(approval_mode="park", consult_park=True))
         error = _loop.approval_parked_error(result)
         token = _record._parked_approval_token(error)
         assert token == result.approval_token
@@ -166,12 +169,36 @@ class TestRefuse:
         assert parked_question("approval-1") is None
 
     def test_question_task_id_prefers_the_context_task_id(self) -> None:
-        result = _call(_args(), _ctx(approval_mode="wait", consult_park=True, task_id="run-7"))
+        result = _call(_args(), _ctx(approval_mode="park", consult_park=True, task_id="run-7"))
         question = parked_question(result.approval_token)
         assert question is not None and question.task_id == "run-7"
-        bare = _call(_args(), _ctx(approval_mode="wait", consult_park=True))
+        bare = _call(_args(), _ctx(approval_mode="park", consult_park=True))
         fallback = parked_question(bare.approval_token)
         assert fallback is not None and fallback.task_id == "agent:a1:default"
+
+    def test_pod_dispatch_under_wait_blocks_and_a_timeout_is_no_answer(self) -> None:
+        result = _call(_args(), _ctx(approval_mode="wait", consult_park=True, task_id="t-1"))
+
+        assert (result.ok, result.content) == (True, _consult.NO_ANSWER)
+        assert result.denial_kind is None
+        (opened,) = list_escalations()
+        assert (opened.kind, opened.task) == ("consult", "t-1")
+        assert opened.on_expiry == "deny" and opened.legacy["token"]
+
+    @pytest.mark.parametrize(
+        ("over", "waits"),
+        [
+            ({"approval_mode": "wait", "consult_park": True}, True),
+            ({"approval_mode": "park", "consult_park": True}, False),
+            ({"approval_mode": "wait", "consult_park": False}, False),
+            ({"approval_mode": "wait", "consult_park": True, "consult_mode": "decide"}, False),
+            ({"approval_mode": "refuse", "consult_park": True}, False),
+        ],
+    )
+    def test_only_a_dispatch_hop_under_wait_that_does_not_decide_waits(
+        self, over: dict[str, Any], waits: bool
+    ) -> None:
+        assert _consult.waits_in_turn(_ctx(**over)) is waits
 
     def test_refuse_wins_over_pod_dispatch_parking(self) -> None:
         result = _call(_args(), _ctx(approval_mode="refuse", consult_park=True))
@@ -255,7 +282,10 @@ class TestDecide:
             lambda r: decided.append(r) if r.get("event_type") == "escalation_decided" else None
         )
         try:
-            _call(_args(), _ctx(consult_park=True, consult_mode="park", task_id="t-1"))
+            _call(
+                _args(),
+                _ctx(approval_mode="park", consult_park=True, consult_mode="park", task_id="t-1"),
+            )
         finally:
             off()
 

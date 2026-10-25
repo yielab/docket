@@ -27,6 +27,7 @@ from docket.kernel.operator_contract import (
     Recommendation,
     new_question_id,
 )
+from docket.platform import read_escalation
 from docket.tasks.application import escalations as _escalations
 
 SUBJECT = "docket.interfaces.cli.render.progress"
@@ -158,15 +159,51 @@ class TestParseAnswer:
     def test_recognised_answers(self, line: str, expected: str) -> None:
         assert _progress.parse_answer(line) == expected
 
-    @pytest.mark.parametrize("line", ["\n", "", "x\n", "approve\n"])
+    @pytest.mark.parametrize("line", ["\n", "", "x\n", "approve\n", "0\n", "-1\n", "1.5\n"])
     def test_anything_else_keeps_waiting(self, line: str) -> None:
         assert _progress.parse_answer(line) == ""
+
+    @pytest.mark.parametrize(("line", "expected"), [("1\n", "1"), (" 12 \n", "12")])
+    def test_an_option_number_is_kept_for_a_question(self, line: str, expected: str) -> None:
+        assert _progress.parse_answer(line) == expected
 
 
 # ── handle_approval_prompt ────────────────────────────────────────────────────
 
 
 class TestHandleApprovalPrompt:
+    def test_a_prompt_answer_settles_the_escalation_record_too(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+            opened = _escalations.open_for_approval(
+                token, kind="approval", task_id="in-turn", caused_by="c1"
+            )
+
+            outcome = _progress.handle_approval_prompt(token, "a")
+
+            stored = read_escalation(opened.id)
+            assert outcome.action == "granted"
+            assert stored is not None and stored.state == "resolved"
+            assert stored.resolution is not None
+            assert (stored.resolution.option_id, stored.resolution.channel) == (
+                "approve_once",
+                "cli",
+            )
+
+    def test_a_denial_settles_the_record_with_deny(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+            opened = _escalations.open_for_approval(
+                token, kind="approval", task_id="in-turn", caused_by="c1"
+            )
+
+            outcome = _progress.handle_approval_prompt(token, "d")
+
+            stored = read_escalation(opened.id)
+            assert outcome.action == "denied"
+            assert stored is not None and stored.resolution is not None
+            assert stored.resolution.option_id == "deny"
+
     def test_a_grants_through_the_same_pair_docket_approve_uses(self, tmp_path: Path) -> None:
         with _home(tmp_path):
             token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
@@ -235,9 +272,9 @@ class TestHandleApprovalPrompt:
 class TestStdinReaderLoop:
     def test_reads_every_recognised_line_until_eof(self) -> None:
         answers: queue.Queue[str] = queue.Queue()
-        _progress.stdin_reader_loop(io.StringIO("a\n\nd\nbogus\n"), answers)
+        _progress.stdin_reader_loop(io.StringIO("a\n\nd\nbogus\n2\n"), answers)
 
-        assert list(answers.queue) == ["a", "d"]
+        assert list(answers.queue) == ["a", "d", "2"]
 
     def test_an_immediate_eof_reads_nothing(self) -> None:
         answers: queue.Queue[str] = queue.Queue()
@@ -428,3 +465,141 @@ class TestParkedQuestion:
                 return []
 
             assert [line for line in self._run(monkeypatch, fake_execute) if "asks" in line] == []
+
+
+def _waiting_consult(token_options: list[Option] | None = None) -> tuple[str, str, QuestionV11]:
+    """The approval record and the escalation a consult waiting in the turn opens, as it does."""
+    question = _consult_question()
+    token = _ap.approval_create(
+        "demo",
+        "implementer",
+        question.message,
+        context={
+            "kind": "consult",
+            "questionId": question.id,
+            "options": [{"id": o.id, "label": o.label} for o in question.options],
+        },
+    )
+    opened = _escalations.open_for_question(
+        question, kind="consult", role="implementer", caused_by="implementer", token=token
+    )
+    return token, opened.id, question
+
+
+class TestConsultPrompt:
+    def test_the_requested_approval_of_a_consult_lists_its_options(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token, _, question = _waiting_consult()
+            event = _record(
+                "approval_requested",
+                {"token": token, "action": question.message},
+                role="implementer",
+            )
+
+            options = _progress.consult_options(event)
+
+            assert options == [("redis", "Redis"), ("sqlite", "SQLite")]
+            assert _progress.consult_lines(event, options or []) == [
+                "⏸ implementer asks: Which store should the cache use? · options redis, sqlite",
+                "  [1] redis (Redis)  [2] sqlite (SQLite)  [d]ecline  [Enter] keep waiting",
+            ]
+
+    def test_an_ordinary_approval_is_not_a_consult(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+
+            event = _record("approval_requested", {"token": token, "action": "x"})
+
+            assert _progress.consult_options(event) is None
+            assert (
+                _progress.consult_options(_record("tool_call", {"hop": "a", "agent": "b"})) is None
+            )
+
+    @pytest.mark.parametrize(
+        ("answer", "option"), [("1", "redis"), ("2", "sqlite"), ("d", "decline")]
+    )
+    def test_a_number_picks_the_option_and_d_declines_through_resolve(
+        self, tmp_path: Path, answer: str, option: str
+    ) -> None:
+        with _home(tmp_path):
+            token, record_id, _ = _waiting_consult()
+
+            outcome = _progress.handle_question_prompt(token, ["redis", "sqlite"], answer)
+
+            stored = read_escalation(record_id)
+            assert outcome.action == ("denied" if option == "decline" else "granted")
+            assert stored is not None and stored.state == "resolved"
+            assert stored.resolution is not None and stored.resolution.option_id == option
+            assert _ap.approval_get(token)["state"] == (
+                "denied" if option == "decline" else "granted"
+            )
+
+    def test_a_number_out_of_range_keeps_waiting_and_says_why(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token, record_id, _ = _waiting_consult()
+
+            outcome = _progress.handle_question_prompt(token, ["redis", "sqlite"], "3")
+
+            assert outcome.action == "waiting" and "1-2" in (outcome.message or "")
+            stored = read_escalation(record_id)
+            assert stored is not None and stored.state == "pending"
+
+    def test_an_answer_that_lost_the_race_is_reported_not_raised(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            token, _, _ = _waiting_consult()
+            _progress.handle_question_prompt(token, ["redis", "sqlite"], "1")
+
+            outcome = _progress.handle_question_prompt(token, ["redis", "sqlite"], "2")
+
+            assert outcome.action == "noop" and outcome.message
+
+    def test_the_loop_prints_the_choices_and_answers_the_waiting_consult(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A real `consult` blocks on its approval record; the prompt thread answers `2`."""
+        with _home(tmp_path):
+            from docket.agent.tools.registry import ToolContext
+            from docket.tasks.application import consult as _consult
+
+            with use_home(
+                dataclasses.replace(
+                    current_home(), tool_approval_poll_interval_s=0.02, tool_approval_timeout=10
+                )
+            ):
+                outcome: dict[str, str] = {}
+
+                def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                    ctx = ToolContext(
+                        agent_id="demo-implementer",
+                        session_key=_TASK_SESSION,
+                        project="demo",
+                        role="implementer",
+                        approval_mode="wait",
+                        consult_park=True,
+                        task_id=_TASK_ID,
+                    )
+                    args = {
+                        "kind": "decision",
+                        "message": "Which store should the cache use?",
+                        "options": [
+                            {"id": "redis", "label": "Redis", "description": "fast"},
+                            {"id": "sqlite", "label": "SQLite", "description": "simple"},
+                        ],
+                        "recommendation": {"optionId": "sqlite", "rationale": "no new service"},
+                    }
+                    outcome["content"] = _consult.run(args, ctx).content
+                    return []
+
+                monkeypatch.setattr(_progress._runs, "execute", fake_execute)
+                lines: list[str] = []
+
+                _progress.dispatch_with_progress(
+                    "run-c", lambda: [], prompt=True, stdin=io.StringIO("2\n"), println=lines.append
+                )
+
+                assert (
+                    "[1] redis (Redis)  [2] sqlite (SQLite)  [d]ecline  [Enter] keep waiting"
+                    in "\n".join(f"  {line.strip()}" for line in lines)
+                )
+                assert not any("[a]pprove" in line for line in lines)
+                assert "option sqlite (SQLite)" in outcome["content"]

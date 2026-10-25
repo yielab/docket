@@ -304,6 +304,13 @@ def _wait(
     )
 
 
+def wait_for_answer(token: str, ctx: GateContext) -> GateDecision:
+    """Block on the approval record *token* until a person settles it, as a gated call does in
+    the turn: ``allow`` when it is granted, else a ``deny`` of kind ``approval_denied``,
+    ``approval_timeout`` or ``run_cancelled``. A consult that waits in the turn reuses it."""
+    return _wait(token, ctx, "", "", ToolVerdict("ask"))
+
+
 def _task_pregrant(
     token: str, ctx: GateContext, tool_name: str, digest: str
 ) -> tuple[str, str, str] | None:
