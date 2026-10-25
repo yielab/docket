@@ -34,7 +34,7 @@ steps:
 """
 
 NO_JAIL = not (seatbelt_available() if sys.platform == "darwin" else landlock_available())
-FIXES = ("isolation", "network", "external-gate", "consult")
+FIXES = ("isolation", "network", "external-gate")
 OVER_BUDGET = 6000
 
 
@@ -70,7 +70,7 @@ def test_lights_out_refuses_to_dispatch_and_names_every_violation(
         assert f"{requirement}:" in reason
     assert "docket setup sandbox on" in reason and "docket setup sandbox network none" in reason
     assert "implementer step 'implement' has no external gate" in reason
-    assert "docket pod set consultMode decide" in reason
+    assert "consult" not in reason
     refused = [r for r in oracles.audit_rows(w) if r["action"] == "profile.refused"]
     assert [r["detail"].split("requirements=")[1] for r in refused] == [",".join(FIXES)]
     assert model.requests == []
@@ -99,7 +99,6 @@ def test_lights_out_runs_once_its_violations_are_fixed(
 
     w.docket("setup", "sandbox", "on")
     w.docket("setup", "sandbox", "network", "none")
-    w.docket("pod", "set", "consultMode", "decide", "--pod", w.pod)
     w.pipeline.write_text(GATED, encoding="utf-8")
     w.docket("task", "retry", task_id, "--pod", w.pod)
     w.docket("run", "--pipeline", str(w.pipeline), "--timeout", "30")

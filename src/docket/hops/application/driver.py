@@ -29,6 +29,7 @@ from docket.agent.ports import (
     DOCKET_APPROVAL_EXPIRES_AT,
     DOCKET_APPROVAL_MODE,
     DOCKET_APPROVAL_TIMEOUT,
+    DOCKET_CONSULT_MODE,
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
     DOCKET_TASK_DENIED_TOOLS,
@@ -266,9 +267,12 @@ def _max_consultations(agent_id: str, raw: str | None) -> int:
     return DEFAULT_MAX_CONSULTATIONS
 
 
-def _consult_mode(agent_id: str) -> str:
-    """The agent's pod setting ``consultMode``; an agent outside a pod, or an unreadable settings
-    store, parks -- the mode that waits for a person rather than deciding for one."""
+def _consult_mode(agent_id: str, raw: str | None = None) -> str:
+    """What a consult does: the mode the dispatch hop settled (*raw*) when it names one, else the
+    agent's pod setting ``consultMode``; an agent outside a pod, or an unreadable settings store,
+    parks -- the mode that waits for a person rather than deciding for one."""
+    if raw in ("park", "decide"):
+        return raw
     project = _pod.pod_of(agent_id)
     if project is None:
         return "park"
@@ -516,6 +520,7 @@ class DocketDriver:
             if approval_mode_raw == "park"
             else "wait"
         )
+        consult_mode_raw = tool_env.pop(DOCKET_CONSULT_MODE, None)
         approval_timeout = _approval_timeout(tool_env.pop(DOCKET_APPROVAL_TIMEOUT, None))
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
         verify_plan = _verify.parse_plan(tool_env.pop(DOCKET_VERIFY_PLAN, None))
@@ -559,7 +564,7 @@ class DocketDriver:
             max_consultations=max_consultations,
             # A pod dispatch hop (it names its task): a consult parks the task.
             consult_park=bool(trace_task_id),
-            consult_mode=_consult_mode(agent_id),
+            consult_mode=_consult_mode(agent_id, consult_mode_raw),
             task_id=trace_task_id or "",
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,

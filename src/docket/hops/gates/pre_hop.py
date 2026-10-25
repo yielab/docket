@@ -26,7 +26,9 @@ from docket.tasks.application.record import (
     trace_locked,
 )
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import TaskRecord, TaskResult
+from docket.teams import autonomy as _autonomy
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
@@ -200,6 +202,22 @@ def _gate_pre_hop_approval(
     if choice != "require":
         return None
     action = _approval_action_text(role, ctx.task)
+    level = _autonomy.effective_level(ctx.project, ctx.task.autonomy)
+    if _autonomy.table_denies_approval(ctx.project, level):
+        # The level asks nobody: the step fails for a person to re-route, it does not wait.
+        _escalations.decided_approval(
+            pod=ctx.project,
+            role=role,
+            task_id=ctx.task_id,
+            caused_by=role,
+            prompt=action,
+            step=node.step_id,
+        )
+        return UnitOutcome(
+            kind="failed",
+            reason=f"approval required before {role} hop and a task at {level} asks nobody",
+            failure_kind=_state.FailureKind.needs_human,
+        )
     token = _ap.approval_create(
         ctx.project,
         role,

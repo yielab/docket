@@ -25,7 +25,9 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.record import UnitContext, UnitOutcome, trace_locked
+from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import HopResult, TaskRecord, TaskRunRefusal
+from docket.teams import autonomy as _autonomy
 from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
@@ -252,7 +254,20 @@ def _run_command_step(
     settings = load_pod_settings(ctx.project)
     verdict = _sec.classify_command(cmd, extra_bins=frozenset(settings.allow_commands))
     if verdict.action != "allow":
-        if pod_approval_mode(ctx.project, caller_default=ctx.approval_default) == "refuse":
+        level = _autonomy.effective_level(ctx.project, ctx.task.autonomy)
+        by_level = _autonomy.table_denies_approval(ctx.project, level)
+        if by_level or (
+            pod_approval_mode(ctx.project, caller_default=ctx.approval_default) == "refuse"
+        ):
+            if by_level:
+                _escalations.decided_approval(
+                    pod=ctx.project,
+                    role=role,
+                    task_id=ctx.task_id,
+                    caused_by=node.step_id,
+                    prompt=f"command step {node.step_id!r}: {cmd}",
+                    step=node.step_id,
+                )
             trace_locked(
                 ctx.project,
                 ctx.session_id,
@@ -272,6 +287,7 @@ def _run_command_step(
                 kind="failed",
                 hops=[hop],
                 reason=f"command step {node.step_id!r} refused: {verdict.reason}",
+                failure_kind=_state.FailureKind.needs_human if by_level else "",
             )
         # "wait" (the default): gate exactly like a pipeline `approval` step, keyed on
         # this exact pipeline position -- a granted single-use override lets a resumed

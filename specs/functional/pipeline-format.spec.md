@@ -456,8 +456,7 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    a task whose autonomy level (`security-gates.spec.md` "Autonomy levels") does not let a person
    be asked has nobody to answer. The rule is exact: a task is refused when its effective level's
    `input` row in the autonomy table is not `person` (`L4` and `L5` in the built-in table) and the
-   pipeline it runs holds at least one `input` step, at the top level or inside a `parallel`
-   group. The check is `input_refusal(spec, level)`, run when the task is claimed, with the same
+   pipeline it runs holds at least one `input` step (a `parallel` child cannot carry one). The check is `input_refusal(spec, level)`, run when the task is claimed, with the same
    validation that resolves its variables: the task fails before any hop with `failureKind:
    "pipeline"` and a `reason` naming the step ids, the level and the two ways out (lower the
    task's `autonomy` to `L3`, or take the step out). The pipeline file itself stays valid:

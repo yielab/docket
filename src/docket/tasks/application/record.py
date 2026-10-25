@@ -17,7 +17,9 @@ from docket.pipeline.domain import plan as _orch
 from docket.platform import PARK_TOKEN_PREFIX, parked_question
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import HopResult, TaskRecord
+from docket.teams import autonomy as _autonomy
 from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
 from docket.teams.workspace.worktree import hop_diff_probe, trusted_worktree_dir
@@ -419,10 +421,16 @@ def _parked_consult_question(
     return question.model_dump(by_alias=True)
 
 
-def _turn_budget_failure_kind(ctx: UnitContext, run_res: _rd.TurnResult) -> str:
-    """``"budget"`` when the turn loop stopped on the token budget a task ``maxTokens`` set."""
+def _turn_failure_kind(ctx: UnitContext, run_res: _rd.TurnResult) -> str:
+    """``"budget"`` when the turn loop stopped on the token budget a task ``maxTokens`` set,
+    ``"needs_human"`` when it stopped because the task's autonomy level denies a call that needs
+    approval (a pod's own ``approvalMode: refuse`` keeps the unmarked failure it always had)."""
     if run_res.stop_reason == "token_budget" and ctx.task.max_tokens is not None:
         return "budget"
+    if run_res.stop_reason == "approval_unavailable" and _autonomy.table_denies_approval(
+        ctx.project, _autonomy.effective_level(ctx.project, ctx.task.autonomy)
+    ):
+        return _state.FailureKind.needs_human
     return ""
 
 
@@ -567,7 +575,7 @@ def persist_hop_and_trace(
             kind="failed",
             hops=[hop],
             reason=f"{role} hop failed: {hop_error or 'no result'}",
-            failure_kind=_turn_budget_failure_kind(ctx, run_res),
+            failure_kind=_turn_failure_kind(ctx, run_res),
         )
     return None
 

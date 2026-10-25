@@ -73,6 +73,11 @@ PIPELINE_WORKTREE_ENV = "DOCKET_PIPELINE_WORKTREE"
 # before the tool env is built, and mapped onto ToolContext.approval_mode.
 DOCKET_APPROVAL_MODE = "DOCKET_APPROVAL_MODE"
 
+# Same route again: what a `consult` does in this dispatch hop, `park` or `decide`, already settled
+# from the pod's `consultMode` and the task's autonomy level. Popped by DocketDriver into
+# ToolContext.consult_mode; unset, the driver reads the pod's `consultMode` setting.
+DOCKET_CONSULT_MODE = "DOCKET_CONSULT_MODE"
+
 # Same route as DOCKET_APPROVAL_MODE: a JSON list of single-use pre-grants
 # (``[{"token", "tool", "argsDigest"}, ...]``) a resumed hop carries for the
 # exact calls a human already granted. Popped by DocketDriver into

@@ -43,6 +43,7 @@ from docket.tasks.application.record import (
 )
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import HopResult, TaskRecord, TaskResult, TaskRunRefusal
+from docket.teams import autonomy as _autonomy
 from docket.teams import roles as _archetypes
 from docket.teams.pod import pod_full_roster, pod_pipeline
 from docket.teams.settings import (
@@ -51,6 +52,17 @@ from docket.teams.settings import (
     pod_verify_timeout,
     resolve_timeout,
 )
+
+
+def _refuse_input_for_level(project: str, task: TaskRecord, spec: _pipeline.PipelineSpec) -> None:
+    """A task whose level has nobody to ask (the table's ``input`` row is not ``person``) may not run
+    a pipeline with an ``input`` step: raise ``TaskRunRefusal`` naming the step and the way out."""
+    level = _autonomy.effective_level(project, task.autonomy)
+    if _autonomy.policy_for("input", level)[0] == "person":
+        return
+    message = _pipeline.input_refusal(spec, level)
+    if message is not None:
+        raise TaskRunRefusal(message)
 
 
 def _resolve_task_run(
@@ -64,6 +76,7 @@ def _resolve_task_run(
     """Resolve a claimed task's pipeline, variables and gate, or raise ``TaskRunRefusal``."""
     spec, source = _task_pipeline(project, task, default_spec, default_source)
     _task_gate(task)
+    _refuse_input_for_level(project, task, spec)
     if spec is default_spec:
         return spec, default_vars, source
     try:

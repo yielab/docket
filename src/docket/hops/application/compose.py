@@ -27,6 +27,8 @@ from docket.tasks.application.record import (
 )
 from docket.tasks.domain.parts import Answer
 from docket.tasks.domain.task import HopResult, TaskRecord
+from docket.teams import autonomy as _autonomy
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.settings import load_pod_settings, pod_approval_mode
@@ -455,7 +457,16 @@ def _compose_hop(
     if pipeline_worktree:
         env = dict(env or {})
         env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree
+    level = _autonomy.effective_level(ctx.project, ctx.task.autonomy)
     resolved_mode = pod_approval_mode(ctx.project, caller_default=ctx.approval_default)
+    if _autonomy.table_denies_approval(ctx.project, level):
+        # The level says nobody is asked: the call is refused, not parked or waited on.
+        resolved_mode = "refuse"
+    if _autonomy.consult_mode_for(ctx.project, level) == "decide" and not _pod_settings.is_explicit(
+        ctx.project, "consultMode"
+    ):
+        # The level decides alone; a pod that sets `consultMode` itself is read by the driver.
+        env = {**(env or {}), _rd.DOCKET_CONSULT_MODE: "decide"}
     if resolved_mode in ("refuse", "park"):
         # Same internal-env route as PIPELINE_WORKTREE_ENV: DocketDriver pops this before the tool env
         # reaches ToolContext, so it is never a real tool-visible variable.
