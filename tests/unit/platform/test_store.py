@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import Escalation, new_escalation_id
+from docket.kernel.operator_contract import Escalation, Resolution, new_escalation_id
 from docket.platform import store
 
 SUBJECT = "docket.platform.store"
@@ -147,3 +147,37 @@ def test_settle_escalation_moves_only_the_pending_record_naming_the_value() -> N
     assert store.settle_escalation("token", "apr-missing", "expired") is False
     assert store.read_escalation(mine.id).state == "expired"  # type: ignore[union-attr]
     assert store.read_escalation(other.id).state == "pending"  # type: ignore[union-attr]
+
+
+def _resolved(**fields: object) -> Escalation:
+    resolution = Resolution(
+        option_id="redis", by="alice", channel="http", at="2026-10-25T10:00:00Z"
+    )
+    return _escalation(state="resolved", resolution=resolution, **fields)
+
+
+def test_mark_escalation_applied_stamps_a_resolved_record_exactly_once() -> None:
+    record = store.write_escalation(_resolved())
+
+    assert store.mark_escalation_applied(record.id, "2026-10-25T10:05:00Z") is True
+    assert store.mark_escalation_applied(record.id, "2026-10-25T10:06:00Z") is False
+
+    stored = store.read_escalation(record.id)
+    assert stored is not None and stored.resolution is not None
+    assert stored.resolution.applied_at == "2026-10-25T10:05:00Z"
+    assert stored.resolution.option_id == "redis" and stored.state == "resolved"
+
+
+@pytest.mark.parametrize("state", ["pending", "expired", "decided"])
+def test_mark_escalation_applied_leaves_any_other_state_alone(state: str) -> None:
+    record = store.write_escalation(_resolved().model_copy(update={"state": state}))
+
+    assert store.mark_escalation_applied(record.id, "2026-10-25T10:05:00Z") is False
+
+    stored = store.read_escalation(record.id)
+    assert stored is not None and stored.resolution is not None
+    assert stored.resolution.applied_at is None
+
+
+def test_mark_escalation_applied_ignores_an_absent_record() -> None:
+    assert store.mark_escalation_applied("esc-0123456789ab", "2026-10-25T10:05:00Z") is False

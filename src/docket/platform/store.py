@@ -360,6 +360,27 @@ def resolve_escalation(escalation_id: str, resolution: Resolution) -> Escalation
     return settled[0] if settled else None
 
 
+def mark_escalation_applied(escalation_id: str, at: str) -> bool:
+    """Stamp ``resolution.applied_at`` on the record *escalation_id* when it is ``resolved`` and not
+    stamped yet; whether this call did (two callers racing see exactly one ``True``)."""
+    stamped: list[bool] = []
+
+    def _stamp(doc: dict[str, Any]) -> dict[str, Any] | None:
+        current = _parse_escalation(doc)
+        if current is None or current.state != "resolved" or current.resolution is None:
+            return None
+        if current.resolution.applied_at is not None:
+            return None
+        stamped.append(True)
+        resolution = current.resolution.model_copy(update={"applied_at": at})
+        return current.model_copy(update={"resolution": resolution}).model_dump(
+            by_alias=True, mode="json"
+        )
+
+    read_modify_write(_escalation_path(escalation_id), _stamp)
+    return bool(stamped)
+
+
 def settle_escalation(key: str, value: str, state: EscalationState) -> bool:
     """Move the one pending escalation whose ``legacy[key]`` is *value* to *state*; whether one
     moved."""

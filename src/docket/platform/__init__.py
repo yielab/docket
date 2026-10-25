@@ -15,6 +15,7 @@ from docket.platform.parked_questions import (
 from docket.platform.redirects import open_same_origin
 from docket.platform.store import (
     list_escalations,
+    mark_escalation_applied,
     mkdir_private,
     read_escalation,
     read_json,
@@ -31,6 +32,7 @@ __all__ = [
     "fetch_url",
     "is_question_id",
     "list_escalations",
+    "mark_escalation_applied",
     "mkdir_private",
     "open_same_origin",
     "parked_question",

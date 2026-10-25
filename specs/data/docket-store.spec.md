@@ -1,6 +1,6 @@
 # Docket JSON Store Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented
 **Last updated**: 2026-10-25
 
@@ -90,7 +90,11 @@ quarantine and symlink rules above apply to each record.
    keeping only those in `state` when given and only those with `seq` strictly greater than
    `since_seq` when given. It MUST skip the counter, a stray file and an invalid record rather than
    fail.
-5. `settle_escalation(key, value, state)` MUST move the one pending record whose `legacy[key]`
+5. `mark_escalation_applied(id, at)` MUST stamp `resolution.appliedAt` with `at` on a record in
+   state `resolved` whose `appliedAt` is unset, under the record's lock, and return whether it did;
+   a record of any other state, one already stamped and an absent one are left as they are
+   (`False`), so two callers racing to apply one resolution see exactly one `True`.
+6. `settle_escalation(key, value, state)` MUST move the one pending record whose `legacy[key]`
    equals `value` to `state` under the record's lock and return whether one was moved. A record
    that is no longer `pending` is left as it is.
 

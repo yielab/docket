@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from docket.hops.application import driver as _dr
+from docket.hops.application import resolutions as _resolutions
 from docket.hops.application.runner import execute_unit, when_cwd
 from docket.hops.application.steps import (
     _run_command_step,
@@ -454,6 +455,18 @@ def dispatch_task(
 
         task_gate = _task_gate(task)
         runtime_steps, id_to_index, raw_step_instructions = resolve_pipeline_steps(project, spec)
+        # What a person answered while the task waited is applied here, at the claim, and not by
+        # the answering call: the resume position below reads the hops it may add.
+        applied = _resolutions.apply_resolutions(
+            project, task, list(resume_from or []), runtime_steps, id_to_index
+        )
+        resume_from = applied.hops
+        if applied.ended is not None:
+            status, reason = applied.ended
+            _trace.trace_event(
+                project, session_id, "lead", "session_end", _json.dumps({"status": status})
+            )
+            return TaskResult(task_id=task_id, status=status, reason=reason, hops=applied.hops)
         resolved_vars: dict[str, Any] = variables or {}
         step_instructions = {
             sid: _pipeline.interpolate_instructions(text, resolved_vars)

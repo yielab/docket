@@ -102,7 +102,8 @@ def _consult_chose_redis(task: Any, esc: Escalation) -> None:
     assert [(a.question_id, a.action, a.option_id) for a in task.answers] == [
         ("q-1", "accept", "redis")
     ]
-    assert task.consult_answer.question_id == "q-1"
+    # The note the re-run hop reads is set by the claim of the task, not by the answer.
+    assert task.consult_answer is None
 
 
 def _consult_declined(task: Any, esc: Escalation) -> None:

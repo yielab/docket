@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.6.0
+**Version**: 10.7.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -773,7 +773,9 @@ wired agent's conversation current with the task it is working.
    `require_approval` gate produces, carrying this hop's own pipeline index -- see "Task status
    vocabulary" item 6. The event traced is `approval_required`: "a require_approval-equivalent gate
    fired; task -> waiting_approval", whichever of the two triggers fired it. A parked token that
-   belongs to a `consult` question instead parks the task `waiting_input` (operator-loop.spec.md).
+   belongs to a `consult` question instead parks the task `waiting_input` (operator-loop.spec.md);
+   under a resolved `"wait"` (a TTY `docket run`) a `consult` does not park, it waits in the turn
+   for the person at that terminal (operator-loop.spec.md "Consult" item 3).
 5. **Expiry.** Under a resolved `"park"`, dispatch also sets `DOCKET_APPROVAL_EXPIRES_AT` (ISO UTC,
    `now + approvalExpiryHours`, computed fresh per hop); the tool gate stamps this onto the parked
    record's own `expiresAt`, which `approval_sweep_expired`'s fail-closed deadline logic prefers over
@@ -841,33 +843,44 @@ wired agent's conversation current with the task it is working.
    free-text property: `{"type": "object", "properties": {"answer": {"type": "string"}},
    "required": ["answer"]}`. A brief with questions gets a richer schema ("Task brief"
    requirement 5).
-3. **Resolution.** `answer_task(project, task_id, action, content, channel=, actor=)` validates
-   *content* against the question's schema (`validate_answer`), screens every string value in
-   *content* through `pre_input` as untrusted Lead input -- a `block` action raises `AnswerRejected`
-   and writes nothing -- appends the answer to the task's `answers[]`, and resolves the step's own
-   `on:` route (`answered` for `accept`, `declined` for `decline`/`cancel`) the way a live hop's
-   route is resolved, minus the tracing (this runs outside a live hop). The parked position is
-   located by replaying the task's hops against the pod's effective pipeline (requirement 1 of
-   "Pipeline order and participation" with no caller spec). Every string value screened is
-   caller-supplied answer content, never the question text itself.
-4. **The synthetic hop.** A resolved answer persists one `HopResult(role="operator",
+3. **Resolution.** An answer is received in two steps. `resolve` (operator-loop.spec.md area 10)
+   validates *content* against the question's schema (`validate_answer`), screens every string
+   value in *content* through `pre_input` as untrusted Lead input -- a `block` action writes
+   nothing -- appends the answer to the task's `answers[]`, clears the `question` and reopens the
+   task `pending`; it resolves no pipeline and takes the pod's task-list lock only for that one
+   status change. The next **claim** applies the answer: before the task's resume position is
+   computed, dispatch reads the escalations the task lists (`escalations`) and, for each `input`
+   record in state `resolved` whose `resolution.appliedAt` is unset, resolves the step's own `on:`
+   route (`answered` for `accept`, `declined` for `decline`/`cancel`) the way a live hop's route
+   is resolved, minus the tracing. The parked position is located by the record's own `step`
+   against the pipeline the claimed task runs with (requirement 1 of "Pipeline order and
+   participation"); a position that no longer names that step fails the task `dispatch_refused`.
+   Only then is `appliedAt` stamped, so a crash between the two leaves the record to be applied
+   again and the application is idempotent (item 4). A record in state `expired` or `decided` is
+   never applied. An answer for a task with no escalation record (made before records were kept)
+   takes `answer_task`, which receives and applies in the one call as it always did. Every string
+   value screened is caller-supplied answer content, never the question text itself.
+4. **The synthetic hop.** An applied answer persists one `HopResult(role="operator",
    member_id="operator", step_id=<the input step's id>, ok=True, output="answered:
    <questionId>", next_step=<the resolved route target, or None for an ordinary advance>)`. Its
    `artifact.verdict` is set to the outcome label (`"answered"`/`"declined"`) -- not a real verdict
    marker, but the same field resume's route-count rebuild keys a backward or self route by; a plain
    `HandoffArtifact.from_output` fallback would leave `verdict` `None` there and mis-key every
-   reconstructed route as `"fail"`.
-5. **Terminal routes settle immediately.** A route resolving to `"fail"` (or an `on:` target that
-   names no known step id, or a backward route whose cap is exhausted) moves the task straight to
-   `failed`; one resolving to `"stop"` moves it to `done` -- both settled inside `answer_task`
-   itself, with `completedAt` set, since answering happens with no live
-   dispatch context. Any other target (or no `on:` entry for the label at all) reopens the task
-   `pending`, carrying the synthetic hop's `next_step` for the next claim to follow.
+   reconstructed route as `"fail"`. The claim persists it inside the pod's task-list lock and only
+   when the task's hops hold no operator hop for that step and question already, so a task claimed
+   twice (a crash, a `stale_claim` reclaim) gains one hop, not two.
+5. **Terminal routes settle at the claim.** A route resolving to `"fail"` (or an `on:` target that
+   names no known step id, or a backward route whose cap is exhausted) settles the task `failed`;
+   one resolving to `"stop"` settles it `done` -- both by the claim that applies the answer, which
+   persists the synthetic hop and returns that result without running a hop (`session_start` and
+   `session_end` are traced around it, `completedAt` is set by the ordinary finalisation). Until
+   that claim the task is `pending`. Any other target (or no `on:` entry for the label at all)
+   leaves the task running its pipeline from the synthetic hop's `next_step`. Through
+   `answer_task` (no escalation record) the terminal routes still settle inside the call.
 6. **Resume.** Resume treats the synthetic `operator` hop like any other routed hop: `hop.next_step`
    (when it names a known step id) becomes the resume position, bumping the route count keyed by
    `(step_id, hop.artifact.verdict)` when the target is backward or self. A cap exhausted by that
-   rebuild settles the task `failed` on the *next* `answer_task` call that would have routed
-   backward again, not on a live dispatch call.
+   rebuild settles the task `failed` at the claim that would have routed backward again.
 7. **The Lead's next hop.** The Lead's hop message appends `\n\n## Operator answers\n` followed by
    one `Q: <message>\nA: <rendered content>` block per entry in `answers[]`, oldest first, capped
    near 4,000 characters with the context compiler's truncation marker (never silently cut). `A:`
@@ -2072,8 +2085,17 @@ hop records. It scores nothing and carries no dollar figure.
    in-turn tool call (`approval`), a parked `consult` (`consult`), an `input` step (`input`), the
    pipeline `approval` gate (`gate`) and a change that edits its own check (`check_changed`).
 2. The record changes nothing the pause already did: the same approval record, the same
-   `approvalToken` or `question` on the task, the same `reason`, the same trace events. A task
-   resumes exactly as before; the record is not read to continue it.
+   `approvalToken` or `question` on the task, the same `reason`, the same trace events.
+3. **Resume reads the record for a question.** A claim reads the task's `escalations` (see
+   "Operator input steps and answers" item 3): a `consult` record in state `resolved` with no
+   `resolution.appliedAt` becomes the task's `consultAnswer` for its step (the note the re-run hop's
+   message ends with), an `input` record becomes the synthetic hop and route, and each is then
+   stamped `appliedAt`. A record already stamped, `expired`, `decided` or still `pending` is
+   skipped, so a resolution is applied once however many times the task is claimed. An approval,
+   gate or changed-check keeps its continuation in `resolve` (the grant, the pre-grant, the gate
+   override and the status change), because the inbox's `approved ready` state and the gate's
+   position are read from the task as soon as a person decides; its record is stamped `appliedAt`
+   when it is resolved.
 
 ## Interface Contracts
 

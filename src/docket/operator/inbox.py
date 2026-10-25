@@ -184,7 +184,8 @@ def pause_is_live(escalation: Escalation) -> bool:
     join the views make, for one record. A record that is not stored ``pending`` never does."""
     if escalation.state != "pending":
         return False
-    if escalation.kind in ("consult", "input"):
+    # A consult waiting in the turn blocks on an approval record, so it ends as an approval does.
+    if escalation.kind in ("consult", "input") and not escalation.legacy.get("token"):
         waiting = _waiting_question_ids(_tasks.read_tasks(escalation.pod))
         return str(escalation.legacy.get("questionId", "")) in waiting
     try:

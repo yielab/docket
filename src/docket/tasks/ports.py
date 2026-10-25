@@ -1,8 +1,8 @@
 """What ``tasks`` asks of the contexts above it, bound once per entry (``bootstrap.bind_adapters``).
 
-Settling a parked question reopens the task on the route of the pipeline step it was parked at,
-and the pipeline is the business of ``hops``, which sits above ``tasks``: resolving an escalation
-names only the shape of that step.
+Receiving the answer to a parked question reopens the task, and the answer's own rules (its schema,
+the screens, the ``answers[]`` it joins) are the business of ``hops``, which sits above ``tasks``:
+resolving an escalation names only the shape of that step.
 """
 
 from __future__ import annotations
@@ -23,7 +23,23 @@ class QuestionAnswers(Protocol):
         channel: str,
         actor: str,
     ) -> None:
-        """Answer the question *task_id* is parked on and resume it; raises the errors of
+        """Answer the question *task_id* is parked on and resume it, for a question with no
+        escalation record; raises the errors of ``tasks.domain.resolution`` and writes nothing
+        then."""
+        ...
+
+    def record_answer(
+        self,
+        project: str,
+        task_id: str,
+        action: str,
+        content: dict[str, Any] | None,
+        *,
+        channel: str,
+        actor: str,
+    ) -> None:
+        """Receive the answer to the question *task_id* is parked on and reopen the task
+        ``pending``, leaving its continuation to the next claim; raises the errors of
         ``tasks.domain.resolution`` and writes nothing then."""
         ...
 

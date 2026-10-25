@@ -310,7 +310,9 @@ def is_escalation_id(value: str) -> bool:
 
 
 class Resolution(BaseModel):
-    """How an escalation was settled: the option chosen, any content, and who answered where."""
+    """How an escalation was settled: the option chosen, any content, and who answered where.
+    ``applied_at`` is when the task's continuation was applied (the claim of the task for a
+    question), unset until then."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -319,6 +321,7 @@ class Resolution(BaseModel):
     by: str
     channel: str
     at: str
+    applied_at: str | None = Field(None, alias="appliedAt")
 
 
 class _EscalationFields(BaseModel):
