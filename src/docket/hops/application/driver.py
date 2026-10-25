@@ -35,6 +35,7 @@ from docket.agent.ports import (
     DOCKET_TASK_NETWORK,
     DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
+    DOCKET_VERIFY_PLAN,
     PIPELINE_WORKTREE_ENV,
     ChatBackend,
     DriverCapabilities,
@@ -47,6 +48,7 @@ from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
+from docket.hops.application import verify_tool as _verify
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
@@ -498,6 +500,7 @@ class DocketDriver:
         )
         approval_timeout = _approval_timeout(tool_env.pop(DOCKET_APPROVAL_TIMEOUT, None))
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
+        verify_plan = _verify.parse_plan(tool_env.pop(DOCKET_VERIFY_PLAN, None))
         pregrants = _parse_pregrants(pregrants_raw)
         approval_expires_at = tool_env.pop(DOCKET_APPROVAL_EXPIRES_AT, None) or None
         max_consultations = _max_consultations(
@@ -555,6 +558,8 @@ class DocketDriver:
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
+        if verify_plan is not None:
+            registry.register(_verify.verify_tool(verify_plan, ctx.project))
         loop_config = _loop_config(backend, timeout, token_budget)
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None

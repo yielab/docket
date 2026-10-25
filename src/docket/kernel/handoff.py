@@ -105,6 +105,11 @@ def _render_brief_section(lines: list[str], title: str, items: list[str]) -> Non
     lines.extend(f"- {item}" for item in items)
 
 
+def render_diff_omitted(chars: int) -> str:
+    """The line that stands where a diff of *chars* characters was shed to fit a budget."""
+    return f"[diff omitted: {chars} chars over budget; run git diff in the worktree]"
+
+
 def render_brief(brief: TaskBrief) -> str:
     """Render *brief*'s fields in a fixed order -- the Implementer's own view of the
     Lead's intake, and the generic fallback ``HandoffArtifact.render()`` appends."""
@@ -170,7 +175,7 @@ class HandoffArtifact(BaseModel):
         invalid."""
         return cls(summary=output)
 
-    def render(self) -> str:
+    def render(self, *, diff_omitted: int = 0) -> str:
         """Deterministic text block for a hop's prompt.
 
         When only ``summary`` is set (every other field at its default — true
@@ -180,10 +185,15 @@ class HandoffArtifact(BaseModel):
         their own labelled lines in a fixed, deterministic order —
         independent of which field actually holds content, so ``render()``
         never reorders itself based on data.
+
+        *diff_omitted*, the length of a diff a budgeting consumer shed, puts the omitted-diff
+        line in the diff's place; a diff that is present wins over it.
         """
         lines = [self.summary]
         if self.diff:
             lines.append(f"Diff:\n{self.diff}")
+        elif diff_omitted:
+            lines.append(render_diff_omitted(diff_omitted))
         if self.brief is not None:
             lines.append(f"Brief:\n{render_brief(self.brief)}")
         if self.verdict is not None:

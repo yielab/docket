@@ -108,15 +108,36 @@ def _gate_cwd(ctx: UnitContext, member_id: str) -> str:
     return _pod.resolve_member_cwd(member_id, claimed_worktree_dir(ctx.task), member_codebase)
 
 
+def run_verify_command(
+    project: str, cmd: str, cwd: str, timeout: int, env: dict[str, str] | None = None
+) -> _GateRun:
+    """Run a verify command in the pod's envelope. The output is redacted here, once, so no
+    caller can persist the raw string. The gate and the Implementer's ``verify`` tool both run it."""
+    start = _clock.monotonic()
+    code, raw_output = _run_in_envelope(project, "verify", cmd, cwd, timeout, env)
+    duration_s = _clock.monotonic() - start
+    return _GateRun(code, _secrets.redact(raw_output), duration_s)
+
+
 def _run_gate_command(
     ctx: UnitContext, cmd: str, cwd: str, timeout: int, env: dict[str, str] | None = None
 ) -> _GateRun:
-    """Run a gate command in the pod's envelope. The output is redacted here, once, so no
-    caller can persist the raw string."""
-    start = _clock.monotonic()
-    code, raw_output = _run_in_envelope(ctx.project, "verify", cmd, cwd, timeout, env)
-    duration_s = _clock.monotonic() - start
-    return _GateRun(code, _secrets.redact(raw_output), duration_s)
+    """Run a gate command in the pod's envelope (see ``run_verify_command``)."""
+    return run_verify_command(ctx.project, cmd, cwd, timeout, env)
+
+
+def step_verify_command(gate: _gates.Gate | None, member_id: str) -> str:
+    """The command a mechanical *gate* runs for *member_id*: the gate's own, else the member's
+    ``verifyCmd``; ``""`` for any other gate or when neither is set."""
+    if not isinstance(gate, _gates.MechanicalGate):
+        return ""
+    return gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
+
+
+def gate_timeout(ctx: UnitContext, gate: _gates.MechanicalGate) -> int:
+    """The verify command's own timeout, decoupled from the agent-turn timeout -- a 20-minute
+    test suite and a hung LLM turn are not forced to share one budget."""
+    return gate.timeout or ctx.resolved_verify_timeout
 
 
 def _gate_evidence(cmd: str, exit_code: int, run: _GateRun) -> dict[str, Any]:
@@ -138,7 +159,7 @@ def _evaluate_mechanical_gate(
     """A ``MechanicalGate``: run ``verifyCmd`` (or the gate's own command) and gate on its
     exit, in the dir from ``teams.pod.resolve_member_cwd`` (shared with interfaces/cli/commands/pod.py so the two
     never disagree); a ``"pass"``/``"fail"`` named in the step's own ``on`` map routes instead."""
-    verify_cmd = gate.command or str(_fleet.meta_get(member_id, "verifyCmd", "") or "")
+    verify_cmd = step_verify_command(gate, member_id)
     require_verify = False if verify_cmd else load_pod_settings(ctx.project).require_verify
     pre = _decide.decide_verify_precheck(verify_cmd, require_verify)
     if pre == "fail_missing":
@@ -165,10 +186,7 @@ def _evaluate_mechanical_gate(
         return UnitOutcome(kind="advance", hops=[hop])
 
     cwd = _gate_cwd(ctx, member_id)
-    # The verify command gets its own timeout, decoupled from the agent-turn timeout -- a
-    # 20-minute test suite and a hung LLM turn are not forced to share one budget.
-    mech_timeout = gate.timeout or ctx.resolved_verify_timeout
-    run = _run_gate_command(ctx, verify_cmd, cwd, mech_timeout)
+    run = _run_gate_command(ctx, verify_cmd, cwd, gate_timeout(ctx, gate))
     hop.verify = _gate_evidence(verify_cmd, 0 if run.passed else 1, run)
     label = "pass" if run.passed else "fail"
     decision = _decide.decide_verify(

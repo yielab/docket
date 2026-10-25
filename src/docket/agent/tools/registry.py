@@ -126,13 +126,16 @@ class ToolResult:
 @dataclass(frozen=True)
 class Tool:
     """One callable tool: its schema for the model, its handler for docket. ``kind`` drives gating:
-    ``exec`` goes through the classifier, ``write`` is a mutating record, ``read`` is the cheap case."""
+    ``exec`` goes through the classifier, ``write`` is a mutating record, ``read`` is the cheap case.
+    ``pregranted`` marks an ``exec`` tool whose command the pipeline already authorises: it skips
+    the classifier and nothing else."""
 
     name: str
     description: str
     parameters: dict[str, Any]
     handler: Callable[[dict[str, Any], ToolContext], ToolOutcome]
     kind: ToolKind = "read"
+    pregranted: bool = False
 
     @property
     def required_args(self) -> tuple[str, ...]:

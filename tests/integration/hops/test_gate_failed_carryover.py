@@ -69,7 +69,10 @@ def _run(tmp_path: Path, verify_cmd: str, yaml: str) -> Iterator[tuple[Any, Fake
 
 def test_backward_route_carries_the_failed_gate_output_into_the_retry(tmp_path: Path) -> None:
     flag = tmp_path / "flag"
-    cmd = f"test -f {flag} || {{ touch {flag}; echo {MARKER}; exit 1; }}"
+    # The marker is computed, so only the command's output (never its text, which the Implementer's
+    # instruction now names) can carry it.
+    computed = MARKER.replace("4417", "$((4400 + 17))")
+    cmd = f"test -f {flag} || {{ touch {flag}; echo {computed}; exit 1; }}"
     with _run(tmp_path, cmd, _UNTIL_YAML) as (res, driver):
         assert res.status == "done", res.reason
         messages = _implementer_messages(driver)
