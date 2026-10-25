@@ -349,7 +349,7 @@
 
 ### P51-11 — close the loose ends P51-2..P51-7 left outside their files
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + docs
+**Status:** DONE (merged 2026-10-25, b23082f9) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + docs
 
 - **Trigger (measured in the integration reviews of 2026-10-25):** each item was found by a worker
   who stopped at its card boundary.
