@@ -361,7 +361,7 @@
 
 ### P51-10 — the live eval runs with `consultMode` and against a remote provider
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
+**Status:** DONE (merged 2026-10-25, 940536fa) · **Size:** M · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
 
 - **Trigger (maintainer request 2026-10-25):** run the live eval against Anthropic as well as the
   local model, and measure `consultMode decide` (P51-1). Today `scripts/smoke_workflow.py` never
