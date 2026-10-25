@@ -118,7 +118,7 @@ def test_default_run_stays_loopback_and_parks(
         seen["endpoint"] = endpoint
         return _smoke._LiveModel("http://127.0.0.1:8081/v1", "local-model")
 
-    def run(world: Path, repo: Path, live: Any, scenario: str, *rest: Any) -> None:
+    def run(world: Path, repo: Path, live: Any, scenario: str, *rest: Any, **_kwargs: Any) -> None:
         seen.update(live=live, scenario=scenario, rest=rest)
 
     monkeypatch.setattr(_smoke, "_discover_live_model", discover)
@@ -238,7 +238,9 @@ def test_main_leaves_no_key_in_a_kept_world(
 ) -> None:
     world = tmp_path / "kept"
 
-    def run(w: Path, repo: Path, live: Any, scenario: str, consult: str, key: str) -> None:
+    def run(
+        w: Path, repo: Path, live: Any, scenario: str, consult: str, key: str, sandbox: str
+    ) -> None:
         assert key == CANARY and live.remote and live.provider == "anthropic"
         (w / ".docket").mkdir(parents=True, exist_ok=True)
         (w / ".docket" / "secrets.json").write_text(json.dumps({KEY_ENV: key}), encoding="utf-8")

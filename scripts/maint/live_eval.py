@@ -9,7 +9,7 @@ hop's error text. Writes ``run-NN.json``, ``run-NN.log``, ``summary.json``, ``su
 ``skeletons.json``. Exit 1 on a governance violation, a new skeleton or a run not evaluated.
 
     live_eval.py -n 3 --out DIR [--baseline FILE] [--dry-run] [--consult-mode park|decide]
-        [--provider anthropic --allow-remote --model ID]   (the key is wiped from --out)
+        [--provider anthropic --allow-remote --model ID] [--sandbox on|off]   (the key is wiped from --out)
 """
 
 from __future__ import annotations
@@ -283,6 +283,7 @@ def smoke_command(args: argparse.Namespace, world: Path) -> list[str]:
         ("--model", args.model),
         ("--consult-mode", args.consult_mode),
         ("--provider", args.provider),
+        ("--sandbox", args.sandbox),
     ):
         if value:
             command += [flag, value]
@@ -347,6 +348,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--consult-mode",
         choices=("park", "decide"),
         help="The smoke pod's consultMode (default: the smoke's own, park).",
+    )
+    parser.add_argument(
+        "--sandbox",
+        choices=("on", "off"),
+        help="The jail the smoke runs under (default: the smoke's own, off).",
     )
     parser.add_argument(
         "--provider",
