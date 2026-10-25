@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 1.4.0
+**Version**: 1.6.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -182,11 +182,12 @@ and chain (audit.spec.md).
    sandbox 3).
 2. Path traversal out of the roots (`..`, an absolute path elsewhere, a symlink out) **MUST** be
    rejected with `PathEscapeError`; "File-tool containment" covers symlinks met during a walk.
-3. Workspace isolation is **turned on where the machine can jail** (D-67): `docket init`, finding
+3. Workspace isolation is **turned on where the machine can jail** (D-67): `docket init`, in both forms
+   (interactive and `--from <spec>`) once it has provisioned a pod, finding
    no recorded choice (`fleet.json` `security.isolationMode` unset) and a backend
    `sandbox_availability()` detects, records on and audits `gates.isolate` (`on (detected
-   <backend>)`); with no backend it records nothing and its `This machine` block says the sandbox
-   is not available. A recorded choice is never changed. A `DOCKET_HOME` with no recorded choice
+   <backend>)`); with no backend it records nothing (the interactive form's `This machine` block says the
+   sandbox is not available). A recorded choice is never changed. A `DOCKET_HOME` with no recorded choice
    runs tools on the host, exactly as an explicit off does. `docket setup sandbox on` records on and succeeds only when `sandbox_availability()`
    finds a backend (otherwise it exits 1 and records nothing); `docket setup sandbox off` records
    an explicit off; both are audited (`gates.isolate`). `docket setup sandbox` and `docket setup`
@@ -654,6 +655,14 @@ rewrite its own gate for the next turn.
    A result that executes, including an allowed handler failure, **MUST** carry no denial kind.
    `as_tool_output()` **MUST** include the denial kind in the model-visible refusal
    (`REFUSED [<kind>]: <reason>`) without raw arguments, approval tokens or private values.
+   - **The reason is the classifier's or policy's.** An `approval_parked`, `approval_timeout` or
+     `approval_denied` refusal **MUST** carry the verdict's own reason, so the model learns what
+     to avoid: `REFUSED [approval_parked]: <reason>; a person must approve this command; the task
+     resumes once they do` (`this call` for a tool other than `bash`), `REFUSED
+     [approval_timeout]: <reason>; approval timed out and was denied` and `REFUSED
+     [approval_denied]: <reason>; approval denied`. The approval token **MUST NOT** appear in any
+     of them; it lives in `ToolResult.approval_token`, the approval record, the inbox and the
+     audit log.
 8. **Scope.** This section governs `dispatch_tool`. Every pod-dispatch hop resolves the default
    driver (`DocketDriver`), whose `run_turn` runs the agent loop, which dispatches every tool call
    through `dispatch_tool`; there is no other execution path for a tool call. A pod-dispatch hop is
@@ -719,6 +728,15 @@ rewrite its own gate for the next turn.
     free text passes through the redactor. An allowed call and an ordinary failure (file not
     found, HTTP error) **MUST NOT** write one. The classifier's containment branch needs no entry
     here: it returns `ask` or `deny`, which `tool.ask` and `tool.deny` already record.
+15. **A tool the pipeline already authorises is pre-granted by construction.** A `Tool` MAY be
+    marked `pregranted`: its only effect is a command a pipeline step declares (the `verify` tool,
+    "Verify tool" in `pod-dispatch.spec.md`), so the operator's pipeline is the approval.
+    `evaluate_tool_call` **MUST NOT** run the command classifier for such a tool, so it can never
+    be an `ask` or park a task; it **MUST** still be dispatched through `dispatch_tool`, still meet
+    every `pre_tool_call` policy, be traced as a tool call, and write an audit entry only under the
+    same rules as any allowed call (none for a plain allow). The tool takes no arguments, so the
+    model cannot widen what it runs. The command itself still meets the high-risk classes in the
+    runner that executes it (`run_command`), exactly as the mechanical gate does.
 
 ### File-tool containment — symlinks
 
@@ -1057,6 +1075,18 @@ material, may be read as saying otherwise.
    `none (<scope>); jailed tool calls have no network`. The JSON surfaces carry `networkEnforced`
    (true only when isolation is on and the mode is `none`). `docket pod show --json` keeps
    `{mode, scope}`.
+15. **The model sees the command rules before it runs anything.** The `bash` tool's description
+    **MUST** state, from the rules the turn's gate actually applies, what runs without approval and
+    what needs it: one sentence of the form `Runs without approval: <names>. Needs approval:
+    <classes>.` The names are `SAFE_BINS` sorted, then the pod's `allowCommands` additions
+    (cut after 20 names with `...`); the classes are every program off that list, output
+    redirections to files outside the workspace, `$(`, backticks, `${`, `eval`, `exec`, `sed -i`,
+    `find -exec` and the high-risk action classes. For a turn whose `ToolContext.sandbox ==
+    "auto"` the allowlist stands down (requirement 1, "Inside the jail"), so the sentence says
+    every program runs without approval inside the jail and lists only the classes that still ask.
+    `DocketDriver.run_turn` renders it once per turn from `ToolContext.allow_commands` and
+    `ToolContext.sandbox`; a registry whose `bash` description is not the built-in default is left
+    as the caller made it. The sentence adds no rule: it states `classify_command`'s.
 
 ### Parked calls and single-use pre-grants (ADR 0016)
 
@@ -1072,7 +1102,9 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    `<digest>` is `canonical_args_digest(tool.name, args)`, a stable SHA-256 digest of the tool's
    canonical-JSON arguments, independent of key order. The result's `decision` **MUST** be
    `"deny"`, `denial_kind` **MUST** be `"approval_parked"`, and `ToolResult.approval_token` carries
-   the record's token.
+   the record's token. The result's `reason` is the verdict's reason followed by `; a person must
+   approve this command; the task resumes once they do` and never contains the token, because
+   `as_tool_output()` shows the reason to the model (In-turn tool-call gate 7).
 3. **The record's own expiry.** When `ToolContext.approval_expires_at` (an ISO UTC string) is set,
    the parked record carries it as `expiresAt`; dispatch sets it for each parking hop from the
    pod's `approvalExpiryHours` (default 24). Otherwise the record's `expiresAt` is
@@ -1178,7 +1210,10 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
      walked;
    - `secrets`: no variable docket injects for the pod (the Implementer's port and scratch
      variables, and the `env` of each MCP server in the pod's effective set) is named in the
-     secret store.
+     secret store;
+   - `consult`: the pod's `consultMode` is `decide`, so a consultation is answered in the turn
+     with the model's own recommendation and never waits for a person (operator-loop.spec.md
+     "Consult" item 7). The fix is `docket pod set consultMode decide`.
    There is no HTTP MCP server check: MCP servers are stdio only and run in the jail.
 4. **Refuse, do not degrade.** `dispatch_task` evaluates the profile once, after the pipeline is
    planned and before any hop runs. A violation audits `profile.refused` (pod, task and the
@@ -1353,7 +1388,8 @@ and the handler never runs:
 ```text
 >>> dispatch_tool(ToolCall(id="c1", name="bash", arguments='{"command": "rm -rf /var/data"}'), ctx, registry)
 ToolResult(decision='deny', executed=False, denial_kind='approval_timeout',
-           policy_id='block-destructive', reason='approval timed out and was denied')
+           policy_id='block-destructive',
+           reason='<policy reason>; approval timed out and was denied')
 ```
 
 `high-risk-deploy` catches a production push by argument; the same tool with a feature branch is
@@ -1642,8 +1678,8 @@ $ git clone https://anywhere.example/repo.git
   `set_profile`
 - `src/docket/teams/pod.py`: `PodSettings`, `effective_network`, `effective_read_only`, `pod_of`
 - `src/docket/teams/network_posture.py`: `network_posture`, `global_posture`
-- `src/docket/hops/gates/profile.py`: `lights_out_violations`, `gather_facts`, `Facts`,
-  `effective_profile`
+- `src/docket/hops/gates/profile.py`: `lights_out_violations`, `gather_facts`, `Facts` (with
+  `consult_mode`), `effective_profile`
 - `src/docket/kernel/protected_paths.py`: `DEFAULT_PATTERNS`, `matches`, `command_files`
 - `src/docket/governance/review.py`: `review_code` and the reviewed digest
 - `src/docket/teams/workspace/prepare.py`: `LOCKFILES`, `linked_entries`

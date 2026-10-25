@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 3.0.2
+**Version**: 3.2.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -163,7 +163,9 @@ This specification does NOT cover:
     generic function consuming it. The built-in tool set this requirement narrows is `read`,
     `write`, `edit`, `glob`, `grep`, `bash`, `skill`, `consult`, and `fetch` (when registered,
     requirement 83). A role's `deniedTools` may name any of them, and a denied tool follows the
-    same not-advertised refusal path as any other.
+    same not-advertised refusal path as any other. A hop whose step has a verify command is also
+    offered `verify`, an `exec`-kind tool the driver registers per hop (`pod-dispatch.spec.md`
+    "Verify tool"); a role denied `bash` loses it by capability.
 
 ### System prompt composition
 
@@ -642,6 +644,34 @@ This specification does NOT cover:
     written back: `session.json` and the compaction candidates are built from the stored messages,
     and the newest `HISTORY_KEEP_FULL_RESULTS` tool results of the request stay whole, with older
     ones while they fit `HISTORY_FULL_RESULTS_CHARS`.
+
+### File state the model is judged on
+
+85. `read` **MUST** end its result with the line `[N lines; no newline at end of file]` (N the
+    file's line count) when the file is not empty and does not end with a newline, in addition to
+    the paging footer of requirement 81 when both apply. An empty file **MUST** return
+    `[empty file]`, never an empty string. The numbering of requirement 81 is unchanged.
+86. `write` **MUST** reply
+    `wrote <path>: N bytes, M lines, ends with newline: yes|no (created|overwritten)`, where
+    `<path>` is the workspace-relative path other tools print, N the UTF-8 byte count of the file
+    written, M its line count, and the parenthesis says whether the file existed before the call.
+87. A tool call whose required argument is declared `"type": "string"` in the tool's parameter
+    schema but arrives as another JSON type (`null`, a number, an object) **MUST** be refused with
+    `invalid_call` through `dispatch_tool` like a missing argument (requirement 2); the value
+    **MUST NOT** be coerced to text and used.
+88. `bash` **MUST** append the line `[output had no trailing newline]` to a non-empty result whose
+    raw output did not end with a newline, so a command such as `tail -c1 file | xxd` or `cat
+    file` shows the state of the last line.
+
+### A tool that ends the turn
+
+89. A `Tool` **MAY** be declared `ends_turn`. After a batch in which such a tool's call executed and
+    succeeded, the loop **MUST**, once the round's messages are persisted, stop with
+    `stop_reason="final_message"` and `ok=True` without a further backend call. The turn's
+    `output` **MUST** be the batch's assistant text (when it has any) followed by a newline and the
+    successful result text of the last such call. A call that failed or was refused does not end
+    the turn. Every call still passes `dispatch_tool`; the approval and denial stops of the same
+    round take precedence.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 

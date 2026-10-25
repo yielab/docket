@@ -172,9 +172,7 @@ class TestBuiltinHandlers:
         assert not out.ok and "timed out" in out.error
 
     def test_bash_env_is_injected(self, workspace: Path) -> None:
-        out = toolbox.run_bash(
-            (workspace,), "printf %s $DOCKET_TEST_VAR", env={"DOCKET_TEST_VAR": "ok"}
-        )
+        out = toolbox.run_bash((workspace,), "echo $DOCKET_TEST_VAR", env={"DOCKET_TEST_VAR": "ok"})
         assert out.ok and out.content == "ok"
 
     def test_output_is_truncated_with_an_announcement(self, workspace: Path) -> None:
@@ -186,7 +184,7 @@ class TestBuiltinHandlers:
     def test_the_output_ceiling_is_a_live_setting(self, workspace: Path) -> None:
         """A small-context endpoint must be able to lower it -- 30k chars is two results away from overflowing a 16k window, and the turn dies on an HTTP 400 with no partial progress."""
         body = "x" * 5_000
-        (workspace / "mid.txt").write_text(body)
+        (workspace / "mid.txt").write_text(f"{body}\n")
         assert "[truncated:" not in toolbox.read_file((workspace,), "mid.txt").content
 
         with use_home(dataclasses.replace(current_home(), tool_max_output_chars=1_000)):
@@ -216,6 +214,16 @@ class TestDispatchChokepoint:
         res = dispatch_tool(_call("write", '{"path": "x.txt"}'), ctx, builtin_registry())
         assert res.denied and "content" in res.reason
         assert res.denial_kind == "invalid_call"
+        assert not (ctx.roots[0] / "x.txt").exists()
+
+    @pytest.mark.parametrize("content", [None, 5, {"a": 1}])
+    def test_a_required_string_argument_of_another_type_is_refused_as_invalid(
+        self, ctx: ToolContext, content: object
+    ) -> None:
+        arguments = json.dumps({"path": "x.txt", "content": content})
+        res = dispatch_tool(_call("write", arguments), ctx, builtin_registry())
+        assert res.denied and not res.executed
+        assert res.denial_kind == "invalid_call" and "content" in res.reason
         assert not (ctx.roots[0] / "x.txt").exists()
 
     def test_allowed_call_executes(self, ctx: ToolContext) -> None:

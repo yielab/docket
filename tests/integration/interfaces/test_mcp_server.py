@@ -32,6 +32,7 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import mcp as _mcp
 from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.repository import TaskRepository
@@ -489,13 +490,40 @@ class TestToolInbox:
         with _seed_pod(tmp_path, project="demo"):
             put_task("demo", task(description="ship it"))
             result = _mcp.tool_inbox()
-            assert set(result.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
+            assert set(result.keys()) == {
+                "needsYou",
+                "failed",
+                "doneSince",
+                "running",
+                "next",
+                "escalations",
+            }
 
     def test_call_is_audited(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
             (tmp_path / ".docket").mkdir(exist_ok=True)
             _mcp.tool_inbox()
             assert len(_audit_actions("mcp.inbox")) == 1
+
+
+class TestToolEscalations:
+    def test_returns_the_document_get_escalations_serves(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, project="demo"):
+            token = _approval.approval_create("demo", "implementer", "bash: rm -rf build")
+            _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
+
+            result = _mcp.tool_escalations()
+
+            assert result["next"] == 1
+            (view,) = result["escalations"]
+            assert (view["kind"], view["state"], view["seq"]) == ("approval", "pending", 1)
+            assert _mcp.tool_escalations(since=1) == {"escalations": [], "next": 1}
+
+    def test_call_is_audited(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            _mcp.tool_escalations()
+            assert len(_audit_actions("mcp.escalations")) == 1
 
 
 class TestToolApprovalsGrantDeny:
@@ -596,6 +624,7 @@ class TestEveryToolCallIsAudited:
             _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ship it"})
             _mcp.tool_task_pregrant("demo", parked.id, "git push origin main")
             _mcp.tool_inbox()
+            _mcp.tool_escalations()
             _mcp.tool_cost()
             _wait_for_terminal_run(dispatch_result["run"])
 

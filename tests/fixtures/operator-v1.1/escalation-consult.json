@@ -1,0 +1,63 @@
+{
+  "id": "<escalation-id>",
+  "task": "<task-id>",
+  "pod": "e2e",
+  "step": "implement",
+  "role": "implementer",
+  "kind": "consult",
+  "causedBy": "implement",
+  "prompt": "Which cache should the service use?",
+  "options": [
+    {
+      "id": "redis",
+      "label": "Redis",
+      "description": "already deployed",
+      "risks": [],
+      "estimatedTokens": null
+    },
+    {
+      "id": "memcached",
+      "label": "Memcached",
+      "description": "simpler",
+      "risks": [],
+      "estimatedTokens": null
+    },
+    {
+      "id": "decline",
+      "label": "Decline",
+      "description": "Refuse without choosing an option.",
+      "risks": [],
+      "estimatedTokens": null
+    }
+  ],
+  "recommendation": {
+    "optionId": "redis",
+    "rationale": "it is already deployed",
+    "evidenceRefs": []
+  },
+  "requestedSchema": {
+    "type": "object",
+    "properties": {
+      "note": {
+        "type": "string"
+      }
+    },
+    "required": []
+  },
+  "askedAt": "<time>",
+  "expiresAt": "<time>",
+  "onExpiry": "block",
+  "policy": "person",
+  "state": "pending",
+  "resolution": null,
+  "seq": 1,
+  "affordances": {
+    "options": [
+      "redis",
+      "memcached",
+      "decline"
+    ],
+    "acceptsText": true,
+    "resolveUrl": "/escalations/<escalation-id>"
+  }
+}

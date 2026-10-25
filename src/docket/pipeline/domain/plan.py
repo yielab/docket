@@ -303,24 +303,62 @@ def normalize_values(values: list[str], case_sensitive: bool) -> frozenset[str]:
     return frozenset(values) if case_sensitive else frozenset(v.lower() for v in values)
 
 
+# Markdown a model wraps around its marker line: stripped from the front (emphasis, headings,
+# bullets, quotes, code ticks, then a "Verdict:" label) and from the back (emphasis, ticks, dots).
+_LEADING_DECORATION = re.compile(r"^[\s*_#>`-]*(?:verdict[\s*_`]*:[\s*_`]*)?", re.IGNORECASE)
+_TRAILING_DECORATION = re.compile(r"[\s*_`.]+$")
+# Documented spellings of the built-in markers; each counts only as the whole line or before
+# ":", "." or "-", and only where the gate's own pattern accepts the canonical word.
+_ALIASES: tuple[tuple[str, str], ...] = (
+    (r"approved", "APPROVE"),
+    (r"request[ _]changes", "REQUEST-CHANGES"),
+)
+
+
+def _normalize_line(line: str, flags: int) -> str:
+    """*line* without its markdown decoration, with a documented alias rewritten to its marker."""
+    text = _TRAILING_DECORATION.sub("", _LEADING_DECORATION.sub("", line.strip()))
+    for alias, canonical in _ALIASES:
+        word = alias if flags & re.IGNORECASE else alias.upper()
+        match = re.match(rf"{word}(?=$|[:.\-])", text, flags)
+        if match:
+            return canonical + text[match.end() :]
+    return text
+
+
+_PLAIN_ALTERNATION = re.compile(r"\(([A-Za-z0-9_-]+(?:\|[A-Za-z0-9_-]+)*)\)")
+
+
+def verdict_values(gate: _gates.VerdictGate) -> tuple[str, ...]:
+    """The values *gate* accepts, upper-case unless the gate is case-sensitive: the plain
+    alternatives of its pattern's group, then any pass or rework value the pattern does not name."""
+    found: list[str] = []
+    group = _PLAIN_ALTERNATION.search(gate.pattern)
+    if group:
+        found.extend(group.group(1).split("|"))
+    for value in (*gate.pass_values, *(gate.rework.when if gate.rework else ())):
+        if normalize_values([value], gate.case_sensitive).isdisjoint(
+            normalize_values(found, gate.case_sensitive)
+        ):
+            found.append(value)
+    return tuple(found if gate.case_sensitive else (v.upper() for v in found))
+
+
 def parse_verdict(gate: _gates.VerdictGate, output: str) -> str | None:
-    """Return one unambiguous line-anchored marker from complete *output*. The
-    configured pattern is applied at the start of every non-blank line; repeated
-    matches of one normalized value collapse to a single verdict, while zero matches
-    or multiple distinct values are unparseable. Never falls back to substring
-    search, so it stays generic across every archetype's marker vocabulary."""
+    """The verdict in *output*, or ``None`` when no line carries one: the gate's pattern applied
+    at the start of each decoration-stripped line, the last match winning, never a substring
+    search."""
     flags = 0 if gate.case_sensitive else re.IGNORECASE
     compiled = re.compile(gate.pattern, flags)
-    values: set[str] = set()
+    verdict: str | None = None
     for line in output.splitlines():
-        stripped = line.strip()
-        if not stripped:
+        if not line.strip():
             continue
-        match = compiled.match(stripped)
+        match = compiled.match(_normalize_line(line, flags))
         if match:
             value = match.group(1)
-            values.add(value if gate.case_sensitive else value.lower())
-    return next(iter(values)) if len(values) == 1 else None
+            verdict = value if gate.case_sensitive else value.lower()
+    return verdict
 
 
 # ── Parallel group execution: bounded pool, join semantics ──────────────────

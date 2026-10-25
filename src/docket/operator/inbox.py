@@ -7,6 +7,7 @@ store lives in this module, matching every other application service.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,6 +18,10 @@ from docket.kernel import clock as _clock
 from docket.kernel.brief import TaskBrief
 from docket.kernel.operator_contract import (
     ApprovalView,
+    Escalation,
+    EscalationAffordances,
+    EscalationPage,
+    EscalationView,
     InboxView,
     Question,
     QuestionV11,
@@ -24,11 +29,20 @@ from docket.kernel.operator_contract import (
     a2a_state,
 )
 from docket.operator.ports import task_reader as _tasks
+from docket.platform import list_escalations
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
 
-__all__ = ["MemoryItem", "build_inbox", "pending_memory", "task_view"]
+__all__ = [
+    "MemoryItem",
+    "build_inbox",
+    "escalation_page",
+    "escalation_views",
+    "pending_memory",
+    "question_escalation",
+    "task_view",
+]
 
 _NEEDS_YOU_STATUSES = frozenset({"blocked"})
 
@@ -114,19 +128,108 @@ def _approval_view(record: dict[str, Any]) -> ApprovalView:
     )
 
 
+def _standalone_approvals(
+    records: Iterable[dict[str, Any]], pending_escalations: Iterable[Escalation]
+) -> list[dict[str, Any]]:
+    """The pending approval *records* in escalation order, then those with no escalation."""
+    # The approval record decides what is pending: an escalation alone cannot, because a grant
+    # does not close it yet. A record with none was made before escalations were kept, or by a
+    # runtime that keeps none.
+    pending = {str(r.get("token", "")): r for r in records}
+    ordered = [
+        pending.pop(token)
+        for e in pending_escalations
+        if e.kind == "approval" and (token := str(e.legacy.get("token", ""))) in pending
+    ]
+    return [*ordered, *pending.values()]
+
+
+def _waiting_question_ids(tasks: Iterable[dict[str, Any]]) -> set[str]:
+    """The ids of the questions that *tasks* are parked on."""
+    found: set[str] = set()
+    for task in tasks:
+        question = task.get("question")
+        if task.get("status") == "waiting_input" and isinstance(question, dict):
+            found.add(str(question.get("id", "")))
+    return found
+
+
+def _escalation_view(escalation: Escalation, live: set[str]) -> EscalationView:
+    """*escalation* as a view. A stored ``pending`` stays so only while the approval or question
+    it names is *live*; a grant or an answer does not close the record itself yet."""
+    state = escalation.state
+    key = str(escalation.legacy.get("token") or escalation.legacy.get("questionId") or "")
+    if state == "pending" and key not in live:
+        state = "resolved"
+    pending = state == "pending"
+    fields = escalation.model_dump(by_alias=True, exclude={"legacy"})
+    fields["state"] = state
+    fields["affordances"] = EscalationAffordances(
+        options=[o.id for o in escalation.options] if pending else [],
+        accepts_text=pending and bool((escalation.requested_schema or {}).get("properties")),
+        resolve_url=f"/escalations/{escalation.id}",
+    )
+    return EscalationView.model_validate(fields)
+
+
+def escalation_views(
+    *, since_seq: int | None = None, pod: str | None = None, task: str | None = None
+) -> list[EscalationView]:
+    """The stored escalations after *since_seq* (all when omitted) that name *pod* and *task*
+    when given, by ``seq``, each with its ``state`` joined with the approval or question it names."""
+    records = [
+        e
+        for e in list_escalations(since_seq=since_seq)
+        if (pod is None or e.pod == pod) and (task is None or e.task == task)
+    ]
+    live = {str(r.get("token", "")) for r in _approval.list_pending()}
+    for project in sorted({e.pod for e in records if e.kind in ("consult", "input")}):
+        live |= _waiting_question_ids(_tasks.read_tasks(project))
+    return [_escalation_view(e, live) for e in records]
+
+
+def escalation_page(
+    *, since_seq: int | None = None, pod: str | None = None, task: str | None = None
+) -> EscalationPage:
+    """The views of ``escalation_views`` with the cursor to pass back: the highest ``seq``
+    returned, else *since_seq*, else ``0``."""
+    views = escalation_views(since_seq=since_seq, pod=pod, task=task)
+    return EscalationPage(escalations=views, next=max([since_seq or 0, *(v.seq for v in views)]))
+
+
+def question_escalation(
+    escalations: Iterable[EscalationView], pod: str, task: str
+) -> EscalationView | None:
+    """The pending ``consult`` or ``input`` escalation of *task* among *escalations*: a task is
+    parked on one question at a time."""
+    return next(
+        (
+            e
+            for e in escalations
+            if (e.pod, e.task) == (pod, task)
+            and e.kind in ("consult", "input")
+            and e.state == "pending"
+        ),
+        None,
+    )
+
+
 def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     """Every pod's tasks plus every pending approval, sorted into ``needsYou``/``failed``/
-    ``doneSince`` (terminal after *since*, or every terminal task when omitted)/``running``.
-    ``next`` is the maximum timestamp seen across every item."""
+    ``doneSince`` (terminal after *since*)/``running``, ``next`` the latest timestamp seen and
+    ``escalations`` the pauses still waiting."""
     needs_you: list[TaskView | ApprovalView] = []
     failed: list[TaskView] = []
     done_since: list[TaskView] = []
     running: list[TaskView] = []
     latest: str | None = None
     since_dt = _clock.parse_iso(since) if since else None
+    waiting_questions: set[str] = set()
 
     for project in _all_projects():
-        for task in _tasks.read_tasks(project):
+        tasks = _tasks.read_tasks(project)
+        waiting_questions |= _waiting_question_ids(tasks)
+        for task in tasks:
             view = task_view(project, task, now)
             latest = _newer(latest, view.updated_at)
             if view.status.startswith("waiting_") or view.status in _NEEDS_YOU_STATUSES:
@@ -143,7 +246,9 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     # A task that holds a token already shows that approval, whether or not the record
     # itself learned its task (a parked in-turn call may not have).
     held = {t.approval_token for t in needs_you if isinstance(t, TaskView) and t.approval_token}
-    for record in _approval.list_pending():
+    pending_approvals = _approval.list_pending()
+    pending_escalations = list_escalations(state="pending")
+    for record in _standalone_approvals(pending_approvals, pending_escalations):
         context = record.get("context")
         context = context if isinstance(context, dict) else {}
         if context.get("taskId") or record.get("token") in held:
@@ -152,8 +257,17 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
         needs_you.append(approval_view)
         latest = _newer(latest, approval_view.created_at)
 
+    live = waiting_questions | {str(r.get("token", "")) for r in pending_approvals}
+    escalations = [
+        v for v in (_escalation_view(e, live) for e in pending_escalations) if v.state == "pending"
+    ]
     return InboxView(
-        needs_you=needs_you, failed=failed, done_since=done_since, running=running, next=latest
+        needs_you=needs_you,
+        failed=failed,
+        done_since=done_since,
+        running=running,
+        next=latest,
+        escalations=escalations,
     )
 
 

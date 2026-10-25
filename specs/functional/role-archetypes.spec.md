@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -230,6 +230,11 @@ This specification does NOT cover:
    `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash`
    to run things. This is guidance, not enforcement: `bash` stays available to both roles and its
    classification is unchanged.
+9. The Lead's rendered `SOUL.md` **MUST** name one escalation channel: decide from the repository
+   and list every assumption at the top of the plan, and use the `consult` tool only for a
+   decision a person alone can make. It **MUST NOT** say the Lead cannot reach the human, and it
+   **MUST NOT** name a second channel such as a `NEEDS-INPUT` marker: that marker belongs to the
+   `intake` recipe's own step instructions, which replace the Lead's hop instruction.
 
 ### Hop instructions
 
@@ -238,8 +243,8 @@ This specification does NOT cover:
    instruction"; a gated role still gets one, per requirement 2.
 2. `resolve_hop_instruction(archetype)` **MUST** return *archetype*'s own `hopInstruction` when
    non-empty; otherwise it **MUST** generate one from `gate_contract.kind`: a `verdict` role with
-   `regexes` gets "Start exactly one output line with `<marker1>` or `<marker2>` (more joined by
-   `or`) (case-insensitive)"; a `mechanical` role gets a generic "your work is verified
+   `regexes` gets "The LAST line of your FINAL message must be exactly `<marker1>` or `<marker2>`
+   (more joined by `or`), with nothing else on that line. Reasons go above it."; a `mechanical` role gets a generic "your work is verified
    mechanically before the pipeline advances"; an `approval` role gets a generic "a human must
    approve before the pipeline advances"; a `none` gate (or a `verdict` gate with no `regexes`)
    generates no instruction (`""`).
@@ -258,6 +263,13 @@ This specification does NOT cover:
    any role the step targets, including `role: lead`: a step `{role: lead, instructions: "..."}`
    **MUST** replace the Lead's instruction text (built-in or overlaid) with the step's
    interpolated text.
+5. An Implementer hop whose step has a verify command (a mechanical gate's own `command`, else the
+   Implementer's `verifyCmd`) **MUST** end its instruction text with one added paragraph: "Your work
+   is accepted only if `<verify command>` exits 0. Run it with the `verify` tool and fix what it
+   reports before you finish." It follows the built-in text, a rework hop's text and a step's own
+   `instructions` alike, and its token cost is reserved with the rest of the instruction. A hop
+   whose step has no verify command **MUST NOT** carry it, and no other role's instruction names
+   the command. The `verify` tool is "Verify tool" in `pod-dispatch.spec.md`.
 
 ### Starter library
 

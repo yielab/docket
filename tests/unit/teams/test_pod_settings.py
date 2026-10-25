@@ -151,6 +151,17 @@ class TestPodSettings:
         with pytest.raises(pod_settings.PodSettingsError, match="maxConsultationsPerTask"):
             pod_settings.PodSettings.coerce("maxConsultationsPerTask", "-1")
 
+    def test_consult_mode_defaults_to_park_and_round_trips(self) -> None:
+        _write_lead_meta("shop")
+        assert pod_settings.PodSettings.load_for("shop").consult_mode == "park"
+        _write_lead_meta("shop", {"consultMode": "decide"})
+        assert pod_settings.PodSettings.load_for("shop").consult_mode == "decide"
+
+    def test_consult_mode_coerces_case_and_rejects_anything_else(self) -> None:
+        assert pod_settings.PodSettings.coerce("consultMode", " Decide ") == "decide"
+        with pytest.raises(pod_settings.PodSettingsError, match="consultMode"):
+            pod_settings.PodSettings.coerce("consultMode", "ask")
+
     def test_require_verify_defaults_to_false(self) -> None:
         _write_lead_meta("shop")
         settings = pod_settings.PodSettings.load_for("shop")

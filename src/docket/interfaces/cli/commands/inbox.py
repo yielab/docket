@@ -14,13 +14,25 @@ from docket.governance import approval as _approval
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import status as _status
 from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.render.escalation import answer_command, options_line
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import ApprovalView, InboxView, TaskView
-from docket.operator import MemoryItem, build_inbox, pending_memory, task_view
+from docket.kernel.operator_contract import ApprovalView, EscalationView, InboxView, TaskView
+from docket.operator import (
+    MemoryItem,
+    build_inbox,
+    pending_memory,
+    question_escalation,
+    render_escalation,
+    task_view,
+)
+from docket.operator.render import render_options
 from docket.platform import read_json, write_json
+from docket.platform.store import read_escalation
 from docket.tasks.application.repository import TaskRepository
 
+# The operator's own terminal sees everything the pause carries.
+_LEVEL = "full"
 APPROVED_READY = "approved_ready"
 NEEDS_MEMORY = "needs_memory_approval"
 
@@ -89,8 +101,20 @@ def _memory_dict(item: MemoryItem) -> dict[str, Any]:
     }
 
 
+def _escalation_command(escalation: EscalationView) -> str:
+    """The one command that answers *escalation* from a terminal."""
+    if escalation.kind in ("consult", "input"):
+        return f"docket task answer {escalation.task}"
+    if escalation.task:
+        return f"docket task approve {escalation.task}"
+    stored = read_escalation(escalation.id)
+    return f"docket task approve {stored.legacy.get('token', '') if stored else ''}".rstrip()
+
+
 def _json_view(view: InboxView, ready: list[TaskView], memory: list[MemoryItem]) -> dict[str, Any]:
     body: dict[str, Any] = view.model_dump(by_alias=True, mode="json")
+    for row, escalation in zip(body["escalations"], view.escalations, strict=True):
+        row["command"] = _escalation_command(escalation)
     body["needsYou"] = (
         [_as_dict(i) for i in view.needs_you]
         + [_as_dict(t, ready=True) for t in ready]
@@ -130,7 +154,32 @@ def _render_memory(item: MemoryItem) -> None:
     _say(f'    refuse:  docket pod memory refuse {item.id} --pod {item.pod} --reason "<why>"')
 
 
-def _render_item(item: TaskView | ApprovalView, *, ready: bool = False) -> None:
+def _render_question(item: TaskView, escalations: list[EscalationView]) -> None:
+    assert item.question is not None
+    escalation = question_escalation(escalations, item.pod, item.id)
+    if escalation is not None:
+        rendered = render_escalation(escalation, _LEVEL)
+        message, options = rendered.prompt or "", rendered.options
+    else:
+        # A question parked before escalations were kept has no record; it reads from the task.
+        stored = getattr(item.question, "options", None) or []
+        recommendation = getattr(item.question, "recommendation", None)
+        options = render_options(
+            stored, recommendation.option_id if recommendation else None, labels=True
+        )
+        message = item.question.message
+    _say(_block("    Q: ", message))
+    if options:
+        _say(f"    options: {options_line(options)}")
+    _say(f"    answer: {answer_command(item.id, options)}")
+
+
+def _render_item(
+    item: TaskView | ApprovalView,
+    *,
+    ready: bool = False,
+    escalations: list[EscalationView] | None = None,
+) -> None:
     state, command = _state_and_command(item, ready=ready)
     if isinstance(item, ApprovalView):
         _say(f"  approval {item.token}  pod={item.pod}  role={item.role}")
@@ -150,15 +199,7 @@ def _render_item(item: TaskView | ApprovalView, *, ready: bool = False) -> None:
         _say(f"    approve: {command}")
         _say(f"    deny:    docket task deny {item.id}")
     elif state == "needs_answer" and item.question is not None:
-        _say(_block("    Q: ", item.question.message))
-        options = getattr(item.question, "options", None) or []
-        if options:
-            rec = getattr(getattr(item.question, "recommendation", None), "option_id", None)
-            rendered = ", ".join(
-                f"{o.id} ({o.label})" + (" (recommended)" if o.id == rec else "") for o in options
-            )
-            _say(f"    options: {rendered}")
-        _say(f"    answer: {command}")
+        _render_question(item, escalations or [])
     else:
         _say(f"    next: {command}")
 
@@ -202,7 +243,7 @@ def cmd_inbox(
         if items or (memory and title == "Needs you"):
             ui.section(title)
             for item, is_ready in items:
-                _render_item(item, ready=is_ready)
+                _render_item(item, ready=is_ready, escalations=view.escalations)
             if title == "Needs you":
                 for entry in memory:
                     _render_memory(entry)

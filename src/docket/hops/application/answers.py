@@ -16,6 +16,7 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
+from docket.governance import escalation_expiry as _escalation_expiry
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.application import executor as _executor
@@ -414,6 +415,7 @@ def sweep_expired_questions(now: str | None = None) -> int:
         TaskRepository.for_pod(project).update_each(_expire)
         for task_id, question_id in expired:
             count += 1
+            _escalation_expiry.expire("questionId", question_id)
             _trace.trace_event(
                 project,
                 f"agent:{project}:{task_id}",

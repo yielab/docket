@@ -73,18 +73,30 @@ def ask_route(approval_mode: str, pregranted: bool) -> AskRoute:
     return "wait"
 
 
-def settle_wait(
-    *, granted: bool, cancelled: bool, timed_out: bool, cancel_requested: bool
-) -> tuple[ToolDenialKind | None, str]:
-    """How an in-turn approval wait ends: ``(None, "")`` when the call may run, else the denial.
+def parked_reason(asked_because: str, tool_name: str) -> str:
+    """What the model is told about a parked ask: why it asked, who decides, and that the task
+    resumes. Never the approval token, which only the record, the inbox and the audit carry."""
+    what = "command" if tool_name == "bash" else "call"
+    return f"{asked_because}; a person must approve this {what}; the task resumes once they do"
 
-    A cancellation requested while waiting beats a grant that arrived with it."""
+
+def settle_wait(
+    *,
+    granted: bool,
+    cancelled: bool,
+    timed_out: bool,
+    cancel_requested: bool,
+    asked_because: str = "",
+) -> tuple[ToolDenialKind | None, str]:
+    """How an in-turn approval wait ends: ``(None, "")`` to run, else the denial, led by
+    *asked_because*. A cancellation requested while waiting beats a grant that arrived with it."""
     if cancel_requested:
         return "run_cancelled", CANCELLED_REASON
     if granted:
         return None, ""
     if cancelled:
         return "run_cancelled", CANCELLED_REASON
+    lead = f"{asked_because}; " if asked_because else ""
     if timed_out:
-        return "approval_timeout", "approval timed out and was denied"
-    return "approval_denied", "approval denied"
+        return "approval_timeout", f"{lead}approval timed out and was denied"
+    return "approval_denied", f"{lead}approval denied"

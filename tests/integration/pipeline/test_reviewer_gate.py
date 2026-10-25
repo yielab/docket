@@ -13,6 +13,7 @@ specs/functional/pod-dispatch.spec.md Requirements 3-4.
 from __future__ import annotations
 
 import dataclasses
+import json
 from pathlib import Path
 from typing import Any
 
@@ -100,8 +101,10 @@ class TestParseReviewerVerdict:
             _orch.parse_verdict(self._reviewer_gate(), "APPROVE\nEvidence.\napprove") == "approve"
         )
 
-    def test_conflicting_marker_lines_are_unparseable(self) -> None:
-        assert _orch.parse_verdict(self._reviewer_gate(), "APPROVE\nREQUEST-CHANGES") is None
+    def test_conflicting_marker_lines_resolve_to_the_last_one(self) -> None:
+        gate = self._reviewer_gate()
+        assert _orch.parse_verdict(gate, "APPROVE\nREQUEST-CHANGES") == "request-changes"
+        assert _orch.parse_verdict(gate, "REQUEST-CHANGES\nAPPROVE") == "approve"
 
     def test_marker_word_embedded_in_prose_does_not_count(self) -> None:
         assert _orch.parse_verdict(self._reviewer_gate(), "I APPROVE this implementation") is None
@@ -169,16 +172,16 @@ class TestReviewerGateBasic:
         assert reviewer.artifact.verdict == "approve"
         assert tester.artifact.verdict == "pass"
 
-    def test_conflicting_reviewer_markers_fail_as_unparseable(self, tmp_path: Path) -> None:
+    def test_conflicting_reviewer_markers_resolve_to_the_last_line(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task = TaskRecord(id="t1d", description="work")
         res = _executor.dispatch_task(
-            "myapp", task, runner=self._runner("APPROVE\nREQUEST-CHANGES")
+            "myapp", task, runner=self._runner("REQUEST-CHANGES\nfixed it\n**APPROVE**")
         )
 
-        assert res.status == "failed"
-        assert "unparseable" in res.reason
-        assert "first line" not in res.reason
+        assert res.status == "done"
+        reviewer = next(hop for hop in res.hops if hop.role == "reviewer")
+        assert reviewer.artifact.verdict == "approve"
 
     def test_unparseable_reviewer_output_fails(self, tmp_path: Path) -> None:
         _seed_full_pod()
@@ -206,7 +209,7 @@ class TestReviewerGateBasic:
 
         task = TaskRecord(id="t3", description="work")
         _executor.dispatch_task("myapp", task, runner=_run)
-        assert calls == ["lead", "implementer", "reviewer"]
+        assert calls == ["lead", "implementer", "reviewer", "reviewer"]  # the one re-ask
 
     def test_unparseable_emits_distinct_trace_event(self, tmp_path: Path) -> None:
         _seed_full_pod()
@@ -243,6 +246,164 @@ class TestReviewerGateBasic:
         res = _executor.dispatch_task("leanapp", task, runner=_run)
         assert res.status == "done"
         assert [h.role for h in res.hops] == ["lead", "implementer"]
+
+
+REASK = "Your reply had no verdict line. Reply with exactly one line: {values}."
+
+
+class _ReaskRunner:
+    """Scripted replies per role, one list entry per request; records ``(role, session, message)``."""
+
+    def __init__(self, replies: dict[str, list[_rd.TurnResult]]) -> None:
+        self.replies = {role: list(items) for role, items in replies.items()}
+        self.calls: list[tuple[str, str, str]] = []
+        self.envs: dict[str, dict[str, str] | None] = {}
+
+    def __call__(
+        self,
+        member_id: str,
+        session_id: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        role = _role_of(member_id)
+        self.calls.append((role, session_id, message))
+        self.envs[role] = env
+        queue = self.replies.get(role)
+        if queue:
+            return queue.pop(0)
+        return _rd.TurnResult(
+            ok=True, output="PASS" if role == "tester" else "ok", cost_usd=0.0, raw={}
+        )
+
+
+def _ok(output: str) -> _rd.TurnResult:
+    return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
+
+
+class TestVerdictToolOffer:
+    """The values a verdict-gated hop may record travel to the driver in its environment."""
+
+    def test_only_verdict_gated_hops_carry_the_values(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner({"reviewer": [_ok("APPROVE")]})
+        _executor.dispatch_task("myapp", TaskRecord(id="v1", description="work"), runner=runner)
+
+        def values(role: str) -> dict[str, Any] | None:
+            raw = (runner.envs.get(role) or {}).get(_rd.DOCKET_VERDICT_VALUES)
+            return json.loads(raw) if raw else None
+
+        assert values("reviewer") == {
+            "values": ["APPROVE", "REQUEST-CHANGES"],
+            "caseSensitive": False,
+        }
+        assert values("tester") == {"values": ["PASS", "FAIL"], "caseSensitive": False}
+        assert values("lead") is None
+        assert values("implementer") is None
+
+
+class TestVerdictReask:
+    """A verdict-gated reply with no marker is asked for once more, on the same session."""
+
+    def test_a_reply_without_a_marker_is_reasked_once_and_the_answer_counts(
+        self, tmp_path: Path
+    ) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner(
+            {"reviewer": [_ok("Looks right to me, nothing blocks."), _ok("**APPROVE**")]}
+        )
+        res = _executor.dispatch_task(
+            "myapp", TaskRecord(id="k1", description="work"), runner=runner
+        )
+
+        assert res.status == "done"
+        reviewer_calls = [c for c in runner.calls if c[0] == "reviewer"]
+        assert len(reviewer_calls) == 2
+        assert reviewer_calls[1][2] == REASK.format(values="APPROVE or REQUEST-CHANGES")
+        assert (
+            reviewer_calls[1][1] == reviewer_calls[0][1]
+        )  # same session: the model sees its reply
+        hop = next(h for h in res.hops if h.role == "reviewer")
+        assert hop.artifact.verdict == "approve"
+        assert "Looks right to me" in hop.output  # the reasons are kept
+        events = [e["event_type"] for e in _trace_events("myapp")]
+        assert events.count("verdict_reasked") == 1
+        assert "reviewer_verdict_unparseable" not in events
+
+    def test_a_reply_that_still_has_no_marker_fails_after_the_one_re_ask(
+        self, tmp_path: Path
+    ) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner({"reviewer": [_ok("fine I guess"), _ok("sure, fine")]})
+        res = _executor.dispatch_task(
+            "myapp", TaskRecord(id="k2", description="work"), runner=runner
+        )
+
+        assert res.status == "failed"
+        assert "unparseable" in res.reason
+        assert [c[0] for c in runner.calls].count("reviewer") == 2  # exactly one extra request
+        assert [c[0] for c in runner.calls].count("tester") == 0
+        events = [e["event_type"] for e in _trace_events("myapp")]
+        assert events.count("verdict_reasked") == 1
+        assert "reviewer_verdict_unparseable" in events
+
+    def test_a_reply_with_a_marker_is_never_reasked(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner({"reviewer": [_ok("All good\nAPPROVE")]})
+        res = _executor.dispatch_task(
+            "myapp", TaskRecord(id="k3", description="work"), runner=runner
+        )
+
+        assert res.status == "done"
+        assert [c[0] for c in runner.calls].count("reviewer") == 1
+        assert "verdict_reasked" not in [e["event_type"] for e in _trace_events("myapp")]
+
+    def test_a_request_changes_answer_to_the_re_ask_starts_a_rework(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner(
+            {"reviewer": [_ok("There is a bug."), _ok("REQUEST-CHANGES"), _ok("APPROVE")]}
+        )
+        res = _executor.dispatch_task(
+            "myapp", TaskRecord(id="k4", description="work"), runner=runner
+        )
+
+        assert res.status == "done"
+        assert [c[0] for c in runner.calls] == [
+            "lead",
+            "implementer",
+            "reviewer",
+            "reviewer",
+            "implementer",
+            "reviewer",
+            "tester",
+        ]
+
+    def test_a_failed_re_ask_request_leaves_the_unparseable_outcome(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        broken = _rd.TurnResult(
+            ok=False, output="", cost_usd=0.0, raw={}, error="boom", failure_kind="invalid_output"
+        )
+        runner = _ReaskRunner({"reviewer": [_ok("no marker here"), broken]})
+        res = _executor.dispatch_task(
+            "myapp", TaskRecord(id="k5", description="work"), runner=runner
+        )
+
+        assert res.status == "failed"
+        assert "unparseable" in res.reason
+
+    def test_the_tester_is_reasked_with_its_own_values(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner(
+            {"reviewer": [_ok("APPROVE")], "tester": [_ok("ran the suite, all green"), _ok("PASS")]}
+        )
+        res = _executor.dispatch_task(
+            "myapp", TaskRecord(id="k6", description="work"), runner=runner
+        )
+
+        assert res.status == "done"
+        tester_calls = [c for c in runner.calls if c[0] == "tester"]
+        assert tester_calls[1][2] == REASK.format(values="PASS or FAIL")
 
 
 # ── bounded rework loop ─────────────────────────────────────────────────────────

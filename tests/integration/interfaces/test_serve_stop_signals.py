@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 from tests.support.home import record_isolation_off, register_local_provider
-from tests.support.llm import _final_response, _ScriptedLLMServer
+from tests.support.model_server import FakeModel, Reply, Request, say
 from tests.support.pods import build_pod
 from tests.support.tasks import put_task, put_tasks, task
 
@@ -117,7 +117,7 @@ def sweep_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
         yield root
 
 
-def _wire(home: Path, server: _ScriptedLLMServer) -> None:
+def _wire(home: Path, server: FakeModel) -> None:
     register_local_provider(
         home, "local", [{"id": "stub", "contextWindow": 16384, "maxTokens": 4096}], server.base_url
     )
@@ -131,7 +131,12 @@ def test_first_signal_finishes_only_the_running_task(
     """With the stop set during the first hop, one task ends terminal and two stay pending."""
     stop = threading.Event()
     monkeypatch.setattr(_server, "sweep_stop", stop)
-    server = _ScriptedLLMServer([_final_response("done")], on_request=lambda _r: stop.set())
+
+    def stop_after_the_first_request(_request: Request) -> Reply:
+        stop.set()
+        return say("done")
+
+    server = FakeModel(sequence=[stop_after_the_first_request], repeat_last=True).start()
     try:
         _wire(sweep_home, server)
         put_tasks("demo", *(task(id=f"task-{i}", pipeline="solo") for i in (1, 2, 3)))
@@ -150,7 +155,7 @@ def test_a_dead_claim_is_reclaimed_by_the_next_sweep_and_resumes_after_its_first
 ) -> None:
     """A running task with a dead claimant is settled stale and continued from hop two."""
     monkeypatch.setattr(_server, "sweep_stop", threading.Event())
-    server = _ScriptedLLMServer([_final_response("done")])
+    server = FakeModel(sequence=[say("done")], repeat_last=True).start()
     try:
         _wire(sweep_home, server)
         hop = _task.HopResult(

@@ -246,7 +246,9 @@ class TestHopRetryLoop:
         res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
         assert res.status == "failed"
         assert "unparseable" in res.reason
-        assert calls.count("myapp-tester") == 1
+        # The single re-ask for a verdict line is not a retry: one attempt, one extra request.
+        assert calls.count("myapp-tester") == 2
+        assert next(h for h in res.hops if h.role == "tester").attempts == 1
 
     def test_retry_emits_hop_retry_trace_event_with_attempt_history(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead")

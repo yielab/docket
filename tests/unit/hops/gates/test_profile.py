@@ -15,6 +15,7 @@ _MET = Facts(
     network_scope="global",
     ungated_implementers=(),
     injected_secrets=(),
+    consult_mode="decide",
 )
 
 
@@ -32,6 +33,7 @@ def test_each_unmet_requirement_names_itself_and_a_fix() -> None:
         "network": dataclasses.replace(_MET, network_mode="open", network_scope="default"),
         "external-gate": dataclasses.replace(_MET, ungated_implementers=("build",)),
         "secrets": dataclasses.replace(_MET, injected_secrets=("MY_TOKEN",)),
+        "consult": dataclasses.replace(_MET, consult_mode="park"),
     }
     for requirement, facts in cases.items():
         found = lights_out_violations(facts)
@@ -51,6 +53,14 @@ def test_an_unrecorded_none_is_not_a_choice() -> None:
 def test_every_ungated_step_is_listed() -> None:
     facts = dataclasses.replace(_MET, ungated_implementers=("a", "b"))
     assert _requirements(facts) == ["external-gate", "external-gate"]
+
+
+def test_a_consult_that_waits_for_a_person_names_the_setting_that_fixes_it() -> None:
+    (found,) = lights_out_violations(dataclasses.replace(_MET, consult_mode="park"))
+
+    assert found.requirement == "consult"
+    assert found.detail == "a consultation would wait for a person"
+    assert found.fix == "docket pod set consultMode decide"
 
 
 def test_json_carries_requirement_and_fix_only() -> None:

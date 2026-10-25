@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from docket.governance import escalation_expiry as _escalation_expiry
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
@@ -435,6 +436,8 @@ def _resolve_timeout_as_denied(token: str) -> bool:
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
     audit_log("approval.deny", f"token={token} project={project} channel=timeout")
+    with contextlib.suppress(Exception):
+        _escalation_expiry.expire("token", token)
     with contextlib.suppress(Exception):
         _follow_up.resolve_waiting_approval(token, "denied")
     return True

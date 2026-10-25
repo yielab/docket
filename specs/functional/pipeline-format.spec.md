@@ -1,10 +1,10 @@
 # Pipeline Format Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
 operator-input steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -189,12 +189,19 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    a marker matched by `rework`'s `when` list **MUST** trigger a bounded rework cycle; any other
    outcome — including no match (unparseable output) — **MUST** fail the step, unless the step's
    own `on` map names the marker ("Outcome routing"). `passValues` and `rework.when` **MUST NOT**
-   share any value (after the same case-normalization). The pattern **MUST** be applied
-   independently at the start of every non-blank output line (each line stripped first); every
-   first capture is collected and normalized, and exactly one distinct normalized value is
-   accepted. Repeated matches of that same value collapse to one. Zero matches, or more than one
-   distinct value, are unparseable. A marker mentioned later in prose is not a match, and scanning
-   never falls back to substring search.
+   share any value (after the same case-normalization). Each non-blank output line **MUST**
+   be normalized before the pattern is applied: the line is stripped; leading markdown decoration
+   (`*`, `_`, `#`, `-`, `>`, backticks and whitespace) and a leading `Verdict:` label (any case,
+   with decoration around the colon) are removed; trailing decoration (`*`, `_`, backticks, `.`
+   and whitespace) is removed. The documented aliases `APPROVED` (for `APPROVE`) and
+   `REQUEST CHANGES` (for `REQUEST-CHANGES`) are read as their canonical word when they are the
+   whole normalized line or are followed by `:`, `.` or `-`; an alias counts only for a gate whose
+   pattern accepts the canonical word, and it keeps the gate's own case rule. The pattern **MUST**
+   then be applied independently at the start of every normalized line; each first capture is
+   normalized per `caseSensitive`. When the lines carry different values, the **last** matching
+   line is the verdict; repeated matches of one value are that value. Zero matches is
+   unparseable. A marker mentioned later in prose is not a match, and scanning never falls back to
+   substring search.
 4. **`approval`** — an optional `message` (`str`, default `""`) shown to whoever grants the
    approval. The format defines only the gate's shape; its runtime is `pod-dispatch.spec.md`
    ("require_approval gate and waiting_approval") and `security-gates.spec.md`.

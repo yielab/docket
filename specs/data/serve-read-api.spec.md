@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 4.1.4
+**Version**: 4.2.0
 **Status**: Stable
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -135,8 +135,8 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_approvals_total{channel,outcome}` | counter | Resolved approvals from the audit log's `approval.grant`/`approval.deny` entries, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`\|`tack`, or `unknown` for an entry that names none) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path, never a human channel, and only ever pairs with `outcome="denied"`. `channel="tack"` is a decision made from Tack's board. Subject to the rotation caveat below. |
 | `docket_turn_duration_seconds` | summary (`_sum`/`_count`, no quantiles) | Session wall-clock (`session_start` → `session_end`), fleet-wide, one sample per trace file that has both. `_sum`/`_count` gives the mean; no percentiles are invented. |
 | `docket_tasks_started_total` | counter | Dispatch task claims, counted from dispatch-sourced `session_start` trace events; a resumed task's second `session_start` (`"resumed": true`) is not counted. Trace-derived. |
-| `docket_questions_total{kind,outcome}` | counter | Operator questions by kind and outcome. An answered question counts under its task's `question.kind` (default `clarification`) and the answer's action (`accept`\|`decline`\|`cancel`); approvals count under `kind="approval"` with outcome `granted`\|`denied` (from the audit log's `approval.grant`/`approval.deny` entries) or `pending` (the pending approvals). |
-| `docket_decision_latency_seconds` | summary (`_sum`/`_count`, no quantiles) | Seconds from a question's `createdAt` to its answer's `answeredAt`, answered questions only, negative intervals skipped. An answer record carries the question's `kind` and `createdAt` (the task's `question` is cleared on answer); a record without them falls back to a question still on the task. |
+| `docket_escalations_total{kind,outcome,by}` | counter | Settled escalations (`operator-loop.spec.md` "Escalations"), one per `escalation_resolved`, `escalation_expired` or `escalation_decided` trace event: `kind` is the escalation's kind (`approval`\|`consult`\|`input`\|`gate`\|`check_changed`), `outcome` the event (`resolved`\|`expired`\|`decided`), `by` who settled it (`person`\|`timeout`\|`policy`, so a pod's own decision never counts as a human one). Trace-derived; an escalation still pending is not counted. |
+| `docket_escalation_wait_seconds{kind}` | summary (`_sum`/`_count`, no quantiles) | Seconds from an escalation's `askedAt` to the record of its settlement, for every settled escalation, by `kind`; a negative interval is skipped. Trace-derived. |
 
 Additional metrics may be added in minor versions. Every metric is computed fresh, on every
 scrape, from durable state already on disk (trace JSONL under `traces/`, `audit.log`, the task
@@ -147,17 +147,14 @@ restart loses nothing and every number traces back to a record `docket task trac
 **Durability caveat — every counter here is a lifetime-of-current-storage count, NOT a monotonic
 total.** The sources lose history, for different reasons:
 
-1. **Audit-derived** — `docket_approvals_total`, the `pre_tool_call` slice of
-   `docket_policy_hits_total` and the approval part of `docket_questions_total` — see only
-   `audit.log`'s *current* generation. The audit log rotates to a single-generation backup
+1. **Audit-derived** — `docket_approvals_total` and the `pre_tool_call` slice of
+   `docket_policy_hits_total` — see only `audit.log`'s *current* generation. The audit log rotates to a single-generation backup
    (`audit.log.1`, itself overwritten by the next rotation) once it exceeds
    `AUDIT_LOG_MAX_BYTES` (5MB by default), and only the current file is read, so a rotation
    drops whatever history was in the backup.
 2. **Trace-derived** — the rest of the trace-sourced counters — drop when trace retention
    (`expire_old_traces`, run by `docket task prune` and by `start`'s periodic sweep) deletes
    *terminated* traces past `TRACE_RETENTION_S`.
-3. **Task-derived** — the answer part of `docket_questions_total` and
-   `docket_decision_latency_seconds` — drop when task records are pruned.
 
 A Prometheus `rate()` reading a counter that drops to a **smaller-but-nonzero** value misreads
 that as a reset followed by real (under-counted) traffic, not as missing history. **Consumers
@@ -305,8 +302,10 @@ timestamp; omitted, `doneSince` lists every terminal task. The body is `InboxVie
 
 `needsYou` mixes `TaskView` (a `waiting_*`/`blocked` task) and `ApprovalView` (a pending approval
 not already carried by a task's `approvalToken`) items; a client distinguishes them by the
-presence of `token` vs. `id`. Identical shape to `docket inbox --json` and `docket start --mcp`'s
-`inbox` tool for the same state — one assembly function, three surfaces.
+presence of `token` vs. `id`. The body also carries `escalations`: the `EscalationView` of every
+pause still waiting (`operator-loop.spec.md` area 11), by `seq`, `[]` when none; it is additive and
+the keys above are unchanged. The same `InboxView` as `docket start --mcp`'s `inbox` tool for the
+same state, and the one `docket inbox --json` starts from — one assembly function, three surfaces.
 
 ### GET /tasks/&lt;project&gt;/&lt;id&gt;/evidence
 
@@ -820,8 +819,6 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/interfaces/http/exchange.py`: the body cap `MAX_POST_BODY_BYTES`
 - `src/docket/interfaces/http/routes/traces.py`: the `/traces` cursor and hold-back
 - `src/docket/kernel/threads.py`: `ContextHTTPServer`, `new_thread`, `start_thread`, `submit`
-- `src/docket/tasks/application/escalation.py`: `count_escalation_metrics` (`docket_tasks_started_total`,
-  `docket_questions_total`, `docket_decision_latency_seconds`)
 - `src/docket/operator/inbox.py`: `build_inbox`, `task_view`
 - `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
 - `src/docket/tasks/application/runs.py`: `create_run`, `list_runs`, `get_run`, `execute`, `cancel_run`, the

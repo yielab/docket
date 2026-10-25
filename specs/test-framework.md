@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 3.4.0
+**Version**: 4.0.0
 **Status**: Active
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Overview
 
@@ -10,9 +10,10 @@ Docket's test system has four blocking layers: pytest behavior, byte-for-byte CL
 analysis, and specification validation. Docket owns its runtime; tests exercise that runtime
 directly and replace only real external protocol/process boundaries.
 
-It also ships one executable full-workflow smoke test. That test is not a fifth exhaustive layer;
-it proves the separately tested components compose across real CLI subprocess and HTTP protocol
-boundaries into one completed, inspectable task.
+It also ships whole-flow proofs. They are not a fifth exhaustive layer; they prove the separately
+tested components compose across real CLI subprocess and HTTP protocol boundaries into completed,
+inspectable tasks. The deterministic ones are the end-to-end lane (`tests/e2e/`, rule 13); the one
+that needs a real model is the opt-in live smoke canary.
 
 Each rule below names the check that enforces it. A rule marked **convention** is followed by
 review only; no guard fails when it is broken.
@@ -65,11 +66,12 @@ Layout on disk today (the target is rules 11-15 of "Lanes and placement"):
 ```text
 tests/
 ├── conftest.py             autouse isolation (home, DOCKET_SERVICE_MANAGER=none, plain Typer errors), duration guard
-├── support/                the one owner of each shared helper and fixture: home, pods, trace, llm, git, http, cli, fakes
+├── support/                the one owner of each shared helper and fixture: home, pods, trace, llm, git, http, cli, fakes, model_server, e2e, e2e_oracles
 ├── fixtures/               recorded data and adapter-scenario fixtures shared by several lanes
 ├── unit/                   mirrors src/docket/: unit/tasks/application/test_queue.py ↔ src/docket/tasks/application/queue.py
 ├── integration/<context>/  one folder per context (plus bootstrap and product): several modules, or a real process or socket
 ├── guards/                 AST and layout invariants, with shrink-only committed baselines
+├── e2e/                    NOT in testpaths; CI job `e2e`; one file per named journey, run as subprocesses
 ├── golden/
 │   ├── cases/readonly/     expected CLI output (*.golden)
 │   ├── fixtures/seed.sh    deterministic ~/.docket state
@@ -82,7 +84,8 @@ tests/
 └── run-all-tests.sh        local aggregate gate (default lanes + golden; not the agent lane)
 ```
 
-The whole-workflow smoke test lives in `tests/integration/product/smoke/` (it spawns a real CLI subprocess).
+The deterministic whole-workflow proofs live in `tests/e2e/`. The live smoke canary's helper tests
+and its opt-in wrapper live in `tests/integration/product/smoke/`.
 
 ## Lanes and placement
 
@@ -93,10 +96,12 @@ rule changes an earlier one, the later rule names it.
 
 Requirements:
 
-1. **Default suite = product lanes.** `testpaths` lists `tests/unit`, `tests/integration` and
-   `tests/guards` only and never collects `tests/agent`. The `agent-lane` CI job runs
-   `uv run pytest tests/agent`, and the `no-sandbox` CI job runs the default suite through
-   `scripts/maint/pytest-without-sandbox.sh -q`, a host where sandbox detection reports `none`.
+1. **Default suite = product lanes.** `testpaths` lists `tests/unit`, `tests/integration`,
+   `tests/guards`, `tests/architecture` and `tests/contracts`, and never collects `tests/agent` or
+   `tests/e2e`. Each runs by path in its own CI job: `agent-lane` runs `uv run pytest tests/agent`
+   and `e2e` runs `uv run pytest tests/e2e -n auto`. The `no-sandbox` CI job runs the default
+   suite through `scripts/maint/pytest-without-sandbox.sh -q`, a host where sandbox detection
+   reports `none`.
 2. **One unit file per module, named for it.** `unit/<pkg>/test_<module>.py` declares
    `SUBJECT = "docket.<pkg>.<module>"` (a top-level module's file sits directly in `unit/`; the
    part of the stem before `__` names the module). The guard checks that `SUBJECT` equals the
@@ -130,8 +135,8 @@ Requirements:
    entry-point test. Two guards keep docs, specs, templates, help examples and the source tree free
    of removed command names and of any `docket ...` invocation that is not live in the Click tree.
 6. **Duration ceilings** are stop conditions: 2 s per test in `unit/` and `guards/`, 10 s in
-   `integration/`. A test that passes but runs past its lane's ceiling is reported as failed by
-   `tests/conftest.py`. `agent/` and the golden suite have no ceiling. No pytest marker is registered.
+   `integration/`, 60 s in `e2e/`. A test that passes but runs past its lane's ceiling is reported
+   as failed by `tests/conftest.py`. `agent/` and the golden suite have no ceiling. No pytest marker is registered.
 7. **Docstrings and comments follow the repository comment policy**: a module docstring is at
    most 12 lines and a function, class or test docstring at most 3 lines, in `src/` and `tests/`
    alike; no card ids, phases, dates or provenance narration anywhere. The comment-lint script is
@@ -192,11 +197,27 @@ Requirements:
     directories holds until the markers are registered. **Convention** until then.
 13. **Four directories exist for a reason other than mirroring a module, and one holds the shared
     fakes.** `tests/support/` is the one source of shared helpers, fixtures and fakes (`home.py`, `pods.py`,
-    `trace.py`, `llm.py`, `git.py`, `http.py`, `cli.py`, `fakes.py`); `tests/fixtures/` holds
-    recorded data only. `tests/contracts/` holds `test_<port>_contract.py`, one suite per
+    `trace.py`, `llm.py`, `git.py`, `http.py`, `cli.py`, `fakes.py`, `model_server.py`, `e2e.py`,
+    `e2e_oracles.py`); `tests/fixtures/` holds recorded data only. `tests/contracts/` holds `test_<port>_contract.py`, one suite per
     port, parametrized over the real adapter and the fake in `tests/support/fakes.py`, so a fake
-    is proven to behave as the real one. `tests/e2e/` holds named whole flows (a software pod to
-    done, the rework cycle, a park and its grant or deny, a resume after restart).
+    is proven to behave as the real one. `tests/e2e/` is real and holds named whole flows, one
+    file `test_<journey>.py` per journey, named in the operator's words (a software pod to done, the
+    rework cycle, a park and its grant or deny, a resume after restart). An end-to-end test runs
+    the product the way a person or the plan of record runs it: it enters through a `docket`
+    subprocess (`World.docket`) or over HTTP to a `docket start` subprocess (`World.service`),
+    works on a real `DOCKET_HOME` and a real git repository, replaces nothing inside docket (the
+    only fake is the model, reached through the real OpenAI-compatible wire), judges by what an
+    operator sees (task state, `task diff`, files, `log verify`, the trace), and runs a named
+    journey to its end (`done`, `failed` with the expected reason, or parked with a token). A test
+    that needs to patch docket is an integration test. An end-to-end test **MUST NOT**
+    `monkeypatch` a `docket.*` name or call docket in-process; its settings reach docket only as
+    environment variables of the subprocess; it imports `docket.*` only in
+    `tests/support/e2e_oracles.py` (read-only domain tables) and in skip conditions; it waits on a
+    condition with `World.wait_for`, never `sleep`; its expected trace skeleton is a list written
+    inline in the test and is never regenerated to hide a change. The oracles are shared in
+    `tests/support/e2e_oracles.py`: the trace skeleton, audit coverage of every gate denial and
+    handler refusal, legal task transitions, an untouched checkout, an untouched sentinel file
+    under the fake home, and a verifying audit chain.
     `tests/architecture/` holds the import-linter contracts and the shrink-only ratchets (import
     contracts, function-local `docket` imports, module size toward the 700-line ceiling, writers
     of a task's `status`, the test-id manifest). `tests/release/` is the agent lane of rule 3 under
@@ -215,48 +236,46 @@ Requirements:
 
 Run every guard with `uv run pytest tests/guards`.
 
-### Full-workflow smoke
+### Live smoke canary
 
-Run the observable happy-path proof with:
+The deterministic full-workflow proofs are journeys of the end-to-end lane (`tests/e2e/`, rule
+13), run against the fake model through real CLI subprocesses and a real `docket start`: a pod to
+done through a park and its grant, two pods in one service where one waits for a person while the
+other finishes, and a pipeline step that declares its own approval. `scripts/smoke_workflow.py`
+holds no scripted model and no deterministic mode; it is only the live canary:
 
 ```bash
-uv run python scripts/smoke_workflow.py
+uv run python scripts/smoke_workflow.py --live-model
 ```
 
-By default, the command **MUST** create a temporary `DOCKET_HOME` and codebase, start only a
-loopback OpenAI-compatible fake endpoint, and invoke Docket through real subprocess CLI commands.
-It **MUST** exercise, display, and verify this sequence:
+Run without `--live-model`, the command **MUST** print a `SMOKE FAIL` line that names
+`tests/e2e/` and exit 2, and **MUST NOT** start any endpoint. A live run **MUST** exercise,
+display, and verify this sequence:
 
 1. Declarative provisioning of an `agentic-product` pod (`docket init --from`).
 2. Task delegation and rendering of the resolved pipeline plan.
-3. Lead planning, an Implementer `write` tool call through `dispatch_tool`, and a real mechanical
-   file check.
+3. Lead planning, an Implementer tool call through `dispatch_tool`, and a real mechanical file
+   check.
 4. Reviewer verdict, a pipeline-defined human approval pause, CLI approval, exact-position resume,
    and final Tester verdict.
 5. Terminal task state plus typed handoffs, isolated durable step histories, an atomic tool-call/
    tool-result pair, traces, audit chain, measured usage, and two run records (the parked dispatch,
    then the one that succeeded).
 
-The model endpoint is fake; the protocol boundary is not. The harness **MUST** receive and validate
-real `/chat/completions` request shapes and never use a paid endpoint, credential, or non-loopback
-network. Its final output **MUST** name each verified stage and end in one unambiguous `SMOKE PASS`
-line; a failure prints `SMOKE FAIL` to stderr and exits 1, and a refused invocation exits 2.
-`--workdir <path>` preserves the otherwise-temporary world for inspection and must name a new or
-empty directory.
+Its final output **MUST** name each verified stage and end in one unambiguous `SMOKE PASS` line; a
+failure prints `SMOKE FAIL` to stderr and exits 1, and a refused invocation exits 2. `--workdir
+<path>` preserves the otherwise-temporary world for inspection and must name a new or empty
+directory.
 
-The basic scenario's artifact contract is byte-exact: `smoke-artifact.txt` **MUST** contain exactly
-the 16 UTF-8 bytes `docket smoke ok` followed by one LF. Its delegated task text **MUST** state the
-terminal-LF requirement, its Implementer mechanical gate **MUST** reject the 15-byte no-newline
-variant as well as any extra byte/line, and the harness **MUST** retain an independent final exact
-read assertion after the pipeline completes.
+The `basic` scenario's artifact contract is byte-exact: `smoke-artifact.txt` **MUST** contain
+exactly the 16 UTF-8 bytes `docket smoke ok` followed by one LF. Its delegated task text **MUST**
+state the terminal-LF requirement, its Implementer mechanical gate **MUST** reject the 15-byte
+no-newline variant as well as any extra byte/line, and the harness **MUST** retain an independent
+final exact read assertion after the pipeline completes.
 
-Options: `--live-model` (genuine inference), `--endpoint` (loopback base URL for `--live-model`,
-default `http://127.0.0.1:8081/v1`), `--model` (requires `--live-model`),
-`--scenario basic|memory-maintenance|operator-loop` (default `memory-maintenance` with
-`--live-model`, `basic` without; `memory-maintenance` requires `--live-model`), `--workdir`,
-and `--report PATH` (`operator-loop` only). `--scenario operator-loop` records a baseline rather
-than asserting the workflow: a real `docket start --dispatch` sweep against two pods, one blocked
-on an unanswered in-turn approval, written as JSON to `--report`.
+Options: `--live-model` (required), `--endpoint` (loopback base URL, default
+`http://127.0.0.1:8081/v1`), `--model`, `--scenario basic|memory-maintenance` (default
+`memory-maintenance`), and `--workdir`.
 
 An explicitly selected live-local canary **MUST** run the same workflow against a real
 OpenAI-compatible model without replacing its replies. An endpoint override **MUST** remain
@@ -328,13 +347,13 @@ un-scripted agent requests a policy-gated `bash` validation, the canary **MUST**
 operator grant through `docket task approve` in its isolated home; it **MUST NOT** disable the
 policy or shorten its timeout. Pipeline approval remains a distinct, explicit pause/resume
 assertion. `--scenario basic` **MUST** retain the smaller live workflow for focused infrastructure
-diagnosis, while the deterministic default invocation remains unchanged.
+diagnosis.
 
 Because the canary requires mutable local infrastructure and un-scripted inference, it **MUST** be
-opt-in rather than a blocking default-suite dependency. The pytest wrapper runs the deterministic
-default invocation always, and the live `memory-maintenance` run only when `DOCKET_RUN_LIVE_SMOKE=1`
-(`DOCKET_LIVE_SMOKE_ENDPOINT` and `DOCKET_LIVE_SMOKE_MODEL` select the endpoint and model); the
-standalone live command is the acceptance evidence.
+opt-in rather than a blocking default-suite dependency. The pytest wrapper runs the live
+`memory-maintenance` scenario only when `DOCKET_RUN_LIVE_SMOKE=1` (`DOCKET_LIVE_SMOKE_ENDPOINT` and
+`DOCKET_LIVE_SMOKE_MODEL` select the endpoint and model); the standalone live command is the
+acceptance evidence.
 
 Test files use `test_<owned_behavior>.py`; card IDs belong in commit history, not permanent
 filenames.
@@ -365,9 +384,9 @@ def test_example(tmp_path):
 a given home) and `record_isolation_off` / `record_isolation_on` (record the sandbox mode in a
 home's `fleet.json`).
 
-For turn behavior, inject a deterministic `ChatBackend`, or use the `llm_server` fixture
-(`tests/support/llm.py`), a loopback OpenAI-compatible stub that serves scripted
-chat-completion bodies one per POST. For driver-bound behavior, use `FakeDriver` from
+For turn behavior, inject a deterministic `ChatBackend`, or use the `fake_model` fixture
+(`tests/support/model_server.py`), a loopback OpenAI-compatible fake that serves scripted
+replies by role or by request order, and fails on demand. For driver-bound behavior, use `FakeDriver` from
 `tests/support/fakes.py` or a purpose-built fake implementing `RuntimeDriver`. Patch an edge adapter only
 when the contract being tested ends at that external boundary.
 
@@ -383,8 +402,8 @@ when the contract being tested ends at that external boundary.
   runs it with `DOCKET_SANDBOX_PROBE=none`, which hides Landlock and `sandbox-exec` (Docker is never
   probed unless the operator chose it), after asserting that detection reports `none`. Forcing
   `DOCKET_SANDBOX_BACKEND=none` is not that check: a fixture that deletes the variable falls back to
-  detection. A test that wants no jail calls `record_isolation_off`. The script is a local gate; no CI
-  job runs it.
+  detection. A test that wants no jail calls `record_isolation_off`. The `no-sandbox` CI job runs the
+  script.
 
 ## Golden parity suite
 
@@ -551,7 +570,9 @@ Where the names used above live today.
   `src/docket/sandbox/seatbelt.py`: sandbox detection and `DOCKET_SANDBOX_PROBE`.
 - `tests/conftest.py`: the autouse home fixture,
   `register_local_provider`, `record_isolation_off`, `record_isolation_on`, the lane duration guard.
-- `tests/support/fakes.py`: `FakeDriver`; `tests/support/llm.py`: `llm_server`.
+- `tests/support/fakes.py`: `FakeDriver`; `tests/support/model_server.py`: `FakeModel`, `fake_model`.
+- `tests/support/e2e.py`: `World`, `Result`, `Service`; `tests/support/e2e_oracles.py`: the oracles
+  of rule 13; `tests/e2e/conftest.py`: the `world` fixture.
 - `tests/guards/`: `test_layout.py` (unit and integration `SUBJECT`, large-module baseline
   `layout_baseline.txt`, CLI registry), `test_lane_headers.py` (agent headers, no `subprocess` in
   unit), `test_agent_lane_budget.py` (`agent_lane_baseline.txt`), `test_comment_hygiene.py` (with
@@ -570,7 +591,7 @@ Where the names used above live today.
 - `tests/unit/test_store_writer.py`: the store single-writer guard;
   `tests/unit/agent/tools/test_registry.py`: the tool-chokepoint import guard.
 - `tests/integration/bootstrap/test_console_script_entry_point.py`: retired names are unknown commands;
-  `tests/integration/product/smoke/`: the smoke wrapper;
+  `tests/integration/product/smoke/`: the live smoke canary's helper tests and opt-in wrapper;
   `tests/integration/sandbox/test_escape_matrix.py`: the escape matrix.
 - `tests/agent/release/`: `test_public_release_truth.py`, `test_release_artifacts.py`,
   `test_release_journey.py`, `test_distribution_package.py`, `test_runtime_package_boundary.py`.

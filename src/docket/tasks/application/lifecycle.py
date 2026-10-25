@@ -122,13 +122,19 @@ def sweep_stale_claims(project: str) -> None:
         return True
 
     for record in TaskRepository.for_pod(project).update_each(_sweep):
-        _trace.trace_event(
-            project,
-            f"agent:{project}:{record.id}",
-            "lead",
-            "stale_claim",
-            _json.dumps({"task": record.id, "claimedAt": record.claimed_at}),
-        )
+        _trace_stale_claim(project, record)
+
+
+def _trace_stale_claim(project: str, record: TaskRecord) -> None:
+    """Mark *record*'s trace with the ``stale_claim`` event, so a hop that starts again after
+    its claim was lost reads differently from an ordinary retry."""
+    _trace.trace_event(
+        project,
+        f"agent:{project}:{record.id}",
+        "lead",
+        "stale_claim",
+        _json.dumps({"task": record.id, "claimedAt": record.claimed_at}),
+    )
 
 
 def _claim_stale_reason(record: TaskRecord, now: _dt.datetime, lease_s: int) -> str:
@@ -147,12 +153,13 @@ def _claim_stale_reason(record: TaskRecord, now: _dt.datetime, lease_s: int) -> 
 
 def reclaim_stale_running(project: str) -> None:
     """``--resume``: settle every stale ``running`` claim to ``failed``/``stale_claim`` so the
-    claim step that follows picks it up from its last persisted hop; audited ``task.reclaimed``."""
+    claim step that follows picks it up from its last persisted hop; audited ``task.reclaimed``
+    and traced as ``stale_claim``, as the timeout sweep does."""
     now = _clock.now()
     lease_s = resolve_timeout(None, pod_turn_timeout(project)) + resolve_timeout(
         None, pod_verify_timeout(project)
     )
-    reclaimed: list[tuple[str, str]] = []
+    reasons: dict[str, str] = {}
 
     def _reclaim(record: TaskRecord) -> bool:
         if record.status != _state.Status.running:
@@ -166,12 +173,12 @@ def reclaim_stale_running(project: str) -> None:
             reason="stale claim — " + why,
             failure_kind=_state.FailureKind.stale_claim,
         )
-        reclaimed.append((record.id, why))
+        reasons[record.id] = why
         return True
 
-    TaskRepository.for_pod(project).update_each(_reclaim)
-    for task_id, why in reclaimed:
-        _audit.audit_log("task.reclaimed", f"{project}/{task_id}: {why}")
+    for record in TaskRepository.for_pod(project).update_each(_reclaim):
+        _trace_stale_claim(project, record)
+        _audit.audit_log("task.reclaimed", f"{project}/{record.id}: {reasons[record.id]}")
 
 
 def retry_task(project: str, task_id: str) -> bool:

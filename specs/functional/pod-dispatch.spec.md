@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.1.1
+**Version**: 10.6.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -217,8 +217,10 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    `verifyTimeoutS` (each falling back to `DEFAULT_TIMEOUT` when unset). Under `--resume`,
    `dispatch_pod` **MUST** reclaim a stale `running` task immediately, with no wait for
    `CLAIM_STALE_TIMEOUT` (`reclaim_stale_running`): it is settled to `failed`/`stale_claim`, its
-   `hops[]` kept, claimed again and continued from its last persisted hop, and a `task.reclaimed`
-   audit entry records the task id and which condition fired. A `running` task whose claimant is
+   `hops[]` kept, claimed again and continued from its last persisted hop, a `task.reclaimed`
+   audit entry records the task id and which condition fired, and the same `stale_claim` trace
+   event as requirement 3 (payload: the task and its `claimedAt`) marks the task's trace, so a
+   restarted hop is distinguishable from an ordinary retry. A `running` task whose claimant is
    alive and whose claim is inside the lease **MUST NOT** be reclaimed. Without `--resume` nothing
    is reclaimed this way (requirement 4); the `CLAIM_STALE_TIMEOUT` sweep of requirement 3 still
    runs.
@@ -457,7 +459,7 @@ wired agent's conversation current with the task it is working.
    earlier roles produced, subject to the per-role token budget (see "Bounded hop prompts" below);
    the Reviewer and Tester messages additionally state their required verdict-marker reply
    convention verbatim, and a non-Implementer verdict-gated hop with a task worktree is reminded
-   that its final reply must carry one recognized marker at the start of a line.
+   that its final message must end with the marker as its last line.
 3. An **Implementer** hop with an allocated pod port range (`portRangeStart` set) **MUST** receive
    `DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`, and `DOCKET_SCRATCH_DIR` in its tool subprocesses' real
    environment (layered on top of the parent environment, which is never mutated). Every other hop
@@ -591,7 +593,7 @@ wired agent's conversation current with the task it is working.
 1. Every pod setting (`PodSettings.KEYS`: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
    `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
    `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
-   `maxConsultationsPerTask`, `network`, `profile`, `readOnly`, `prepare`, `protects`) **MUST** be
+   `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`, `protects`) **MUST** be
    read through one typed, validated model (`PodSettings.load_for`), not independent ad hoc
    parsers. A missing or blank stored key resolves to that field's declared default (e.g. `0.0`,
    `1`, `None`, `None` for `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`); a
@@ -1083,6 +1085,21 @@ mechanically gated step.
    read-only root. With no usable backend it **MUST NOT** run and the gate fails (`[verify not run:
    ...]`, audited `isolation.refused`). With isolation off it runs on the host.
 
+#### Verify tool
+
+8. The Implementer **MUST** be told how it will be judged: when the hop's step has a verify command
+   its instruction names it ("Hop instructions" in `role-archetypes.spec.md`), and the hop's turn
+   **MUST** be offered a `verify` tool. The tool is registered for that hop only when the step has
+   a verify command; it takes no parameters and **MUST** run exactly that command, never another.
+9. `verify` **MUST** run through the gate's own execution path, so the model sees what the gate will
+   see: the same working directory (requirement 2), the same jail or host posture (requirement 7),
+   the same timeout (the gate's `timeout`, else `verifyTimeoutS`), the same output cap and the same
+   secret redaction. Its result is `exit <N>` followed by the captured output; a command that never
+   reached an exit (refused, timed out, no usable backend) reports `exit none` and the reason the
+   runner gave. The tool is `exec`-kind, so a role denied `bash` is not offered it (Lead, Reviewer).
+10. `verify` does not replace the gate: the mechanical gate **MUST** still run after the hop and
+    decide the step, whatever the model did or did not do with the tool.
+
 ### Required verification (`requireVerify`)
 
 1. A pod **MAY** set the `requireVerify` pod setting (default `false`) to declare that every
@@ -1102,12 +1119,13 @@ mechanically gated step.
 The built-in Reviewer step carries a `verdict` gate; "Generalized gate execution" states the same
 parsing for any verdict-gated step (`parse_verdict`).
 
-1. After a **successful** Reviewer hop, dispatch **MUST** apply `^\s*(APPROVE|REQUEST-CHANGES)\b`
-   case-insensitively at the start of every non-blank output line. Exactly one distinct normalized
-   marker is the verdict wherever that line appears. Repeated identical marker lines collapse to
-   one; a marker embedded later in prose does not count; zero matches or both distinct markers are
-   unparseable. The same generic parser and structural convention apply to the Tester's PASS/FAIL
-   gate.
+1. After a **successful** Reviewer hop, dispatch **MUST** read the verdict with `parse_verdict`
+   (`pipeline-format.spec.md` "Gates") against `^\s*(APPROVE|REQUEST-CHANGES)\b`,
+   case-insensitively: each line is stripped of markdown decoration, the last marker line is the
+   verdict, a marker embedded later in prose does not count, and zero marker lines is
+   unparseable. The Reviewer's instruction **MUST** say that the last line of its final message is
+   exactly `APPROVE` or `REQUEST-CHANGES`, with nothing else on that line and reasons above it.
+   The same generic parser and instruction convention apply to the Tester's PASS/FAIL gate.
 2. An `APPROVE` verdict **MUST** allow the pipeline to advance past the Reviewer normally.
 3. A `REQUEST-CHANGES` verdict **MUST NOT** immediately fail the task. Instead, while the pod's
    rework budget (`maxReworkCycles`, a pod setting, default `1`; `0` disables rework entirely,
@@ -1124,8 +1142,8 @@ parsing for any verdict-gated step (`parse_verdict`).
    transitions to `failed`, a `review_rejected` trace event is emitted naming the number of rework
    cycles consumed, and the reason states the rejection occurred "after N rework cycle(s)"
    (`reviewer rejected after N rework cycle(s): REQUEST-CHANGES`).
-5. Reviewer output with zero recognized marker lines, or with conflicting distinct marker lines,
-   **MUST** be treated as unparseable -- distinct from an explicit `REQUEST-CHANGES` rejection,
+5. Reviewer output with zero recognized marker lines, after the one re-ask of "Generalized gate
+   execution", **MUST** be treated as unparseable -- distinct from an explicit `REQUEST-CHANGES` rejection,
    mirroring the Tester gate's FAIL-vs-unparseable distinction. This **MUST** emit a
    `reviewer_verdict_unparseable` trace event and fail the task immediately (unparseable output is
    never given a rework cycle).
@@ -1138,14 +1156,13 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 ### Tester PASS/FAIL gate
 
-1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** apply
-   `^\s*(PASS|FAIL)\b` case-insensitively at the start of every non-blank output line. Exactly one
-   distinct normalized marker is the verdict; repeated identical marker lines collapse to one, while
-   zero matches or both distinct markers are unparseable. Marker words embedded later in a prose
-   line do not count.
+1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** read the verdict
+   with `parse_verdict` against `^\s*(PASS|FAIL)\b` case-insensitively, under the same rule as the
+   Reviewer's: decoration stripped, the last marker line is the verdict, zero marker lines is
+   unparseable. Marker words embedded later in a prose line do not count.
 2. A `PASS` verdict **MUST** allow the pipeline to advance normally.
-3. A `FAIL` verdict, or unparseable output (empty, no recognized marker line, or conflicting
-   distinct marker lines), **MUST** block pipeline advancement: the task transitions to `failed`
+3. A `FAIL` verdict, or unparseable output (empty or no recognized marker line, after the one
+   re-ask), **MUST** block pipeline advancement: the task transitions to `failed`
    with a distinct reason (`"tester reported FAIL"` vs `tester output unparseable (expected one
    unambiguous recognized verdict marker at the start of a line)`), and a `tester_verdict_failed`
    trace event **MUST** be emitted carrying the parsed verdict (`"fail"` or `"unparseable"`) and the
@@ -1185,6 +1202,25 @@ parsing for any verdict-gated step (`parse_verdict`).
      rework cycle to `rework.to` (any earlier top-level step id) while that gate's own rework-cycle
      count (tracked per gated step id) is below `rework.maxCycles`; anything else (no rework
      configured, the value matches neither list, or no match at all) **MUST** fail the step.
+   - A verdict-gated hop whose successful reply carries no marker **MUST** be asked once more
+     before that failure: dispatch sends exactly one further request on the hop's own session
+     with the message `Your reply had no verdict line. Reply with exactly one line: <v1> or <v2>.`
+     (the gate's allowed values, upper-case unless the gate is case-sensitive, joined by ` or `),
+     emits one `verdict_reasked` trace event, and reads the verdict from the original reply
+     followed by the answer. The re-ask happens at most once per hop attempt, never when the first
+     reply carries a marker, and a failed re-ask request leaves the original reply and its
+     unparseable outcome in place. A reply that still has no marker fails exactly as before.
+   - A verdict-gated hop **MUST** be offered a `verdict` tool (`kind="read"`) whose single required
+     `value` parameter is a string with a JSON-schema `enum` of the gate's allowed values (upper-case
+     unless the gate is case-sensitive) and whose description is "Record your verdict and finish.
+     Call this once, as your last action.". A call with a value in the enum (matched ignoring case
+     unless the gate is case-sensitive) **MUST** succeed and end the turn (`agent-loop.spec.md`
+     "A tool that ends the turn"): the hop's output is the assistant text of that message followed
+     by a final line holding exactly the recorded value, so `parse_verdict` reads it like any
+     other reply and the verdict, gate, rework and routing handling are unchanged. A value outside
+     the enum **MUST** fail the call with the allowed values named and **MUST NOT** end the turn.
+     The text marker remains accepted: a hop that never calls `verdict` is parsed, and re-asked,
+     exactly as above. A hop with no verdict gate **MUST NOT** be offered the tool.
    - An `ApprovalGate` **MUST** be evaluated **pre-hop** (see "require_approval gate and
      waiting_approval") -- by the time a hop's turn has run, an `ApprovalGate` simply advances.
      Outcome routing (item 5) does not apply to an approval gate.
@@ -1800,7 +1836,12 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    NOT** be reported as dropped -- only a field whose removal changed the rendered text counts. The
    token estimate this checks **MUST** be the rendered artifact's size (`summary` plus any appended
    labelled lines), not `summary` alone, so the budget bounds the same structured content the next
-   hop reasons about.
+   hop reasons about. When `diff` was non-empty and is shed, the rendered text **MUST** carry, in
+   the diff's place, the single line `[diff omitted: N chars over budget; run git diff in the
+   worktree]` (`N` the dropped diff's length in characters), so a reader is told the diff is
+   missing and where to find it. The line is not counted when deciding what to shed (the drop order
+   and the fields kept are those of the artifact without it), and it is kept when `summary` is
+   truncated. An artifact that never had a diff carries no marker.
 4. `summary` **MUST NEVER** be shed outright (it is absent from `DROP_ORDER` -- see "Structured
    handoff artifacts"). If the rendered text still does not fit its share once every droppable field
    is gone, `summary` **MUST** be truncated head + tail (kept in roughly equal shares of the
@@ -2023,6 +2064,17 @@ hop records. It scores nothing and carries no dollar figure.
    labelled estimate, never billed spend) and one `Next:` line (`docket inbox` when anything failed,
    waits or is blocked, else `docket status`). It exits 1 when the run record ended `failed`.
 
+### An escalation for every park
+
+1. Each of the five ways a task stops for a person MUST open one escalation record
+   (`operator-loop.spec.md` "Escalations") when the pause is created, before the task is written
+   `waiting_approval` or `waiting_input`, and append its id to the task's `escalations`: a parked
+   in-turn tool call (`approval`), a parked `consult` (`consult`), an `input` step (`input`), the
+   pipeline `approval` gate (`gate`) and a change that edits its own check (`check_changed`).
+2. The record changes nothing the pause already did: the same approval record, the same
+   `approvalToken` or `question` on the task, the same `reason`, the same trace events. A task
+   resumes exactly as before; the record is not read to continue it.
+
 ## Interface Contracts
 
 This spec defines behaviour only; the CLI surface that triggers it (`docket task retry <task-id>`,
@@ -2055,7 +2107,8 @@ verification_failed          # a mechanical or external gate did not pass (any r
 tester_verdict_failed        # the Tester's reply was FAIL or unparseable
 rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle
 review_rejected              # a REQUEST-CHANGES after the rework budget was exhausted
-reviewer_verdict_unparseable # the Reviewer's reply had no single unambiguous marker
+verdict_reasked              # a verdict-gated hop's reply had no marker; one more request was sent
+reviewer_verdict_unparseable # the Reviewer's reply had no marker, even after the re-ask
 verdict_rework_started       # another role's verdict gate triggered a rework cycle
 verdict_rejected             # another role's verdict matched but was neither pass nor rework
 verdict_unparseable          # another role's verdict gate found no recognized marker
@@ -2273,6 +2326,8 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/tasks/application/lifecycle.py`: `reclaim_stale_running`, `retry_task`, `cancel_task`,
   `cancel_parked_task`, `task_diff`, `unblock_pod`; `finalize_task`, `_apply_result`,
   `sweep_stale_claims`
+- `src/docket/tasks/application/escalations.py`: the escalation opener (`operator-loop.spec.md`
+  "Escalations"), called from the five park sites
 - `src/docket/tasks/application/actions.py`: `TASK_GRANT_CAP`, `resolve_waiting_approval`,
   `resolve_waiting_approval_detail`
 - `src/docket/tasks/domain/task.py`: `DispatchError`, `TaskRestrictionError`, `TaskRunRefusal`,

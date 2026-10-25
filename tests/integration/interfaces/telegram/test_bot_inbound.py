@@ -20,6 +20,7 @@ from docket.interfaces.telegram import bot as _tg
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import QuestionV11
 from docket.kernel.threads import new_thread
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
@@ -320,6 +321,30 @@ class TestStatus:
 
         assert outcome.ok
         assert blocked.id in outcome.reply
+
+    def test_status_shows_a_parked_questions_options_and_the_reply_to_send(self) -> None:
+        record = _park_consult("demo")
+        _bind("demo-lead", "-100300")
+        assert record.question is not None
+        _escalations.open_for_question(
+            record.question, kind="consult", role="implementer", caused_by="c1"
+        )
+
+        outcome = _tg.handle_message(_msg("-100300", "/status"))
+
+        assert outcome.ok
+        assert "Q: Which design?" in outcome.reply
+        assert "options: iterative, bigbang (recommended iterative)" in outcome.reply
+        assert f"reply: /answer {record.id} <option>" in outcome.reply
+        assert "decline" not in outcome.reply
+
+    def test_status_of_a_question_without_a_record_still_names_the_task(self) -> None:
+        record = _park_consult("demo")
+        _bind("demo-lead", "-100300")
+
+        outcome = _tg.handle_message(_msg("-100300", "/status"))
+
+        assert record.id in outcome.reply
 
 
 class TestDelegate:

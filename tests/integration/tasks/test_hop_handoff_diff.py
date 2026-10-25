@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from tests.support.home import record_isolation_off, register_local_provider
-from tests.support.llm import _final_response, _tool_call_response
+from tests.support.model_server import call, say
 from tests.support.pods import build_pod
 
 from docket.hops.application import sweep as _sweep
@@ -61,13 +61,13 @@ def _seed_research_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
 
 @contextmanager
 def _run_pipeline(
-    tmp_path: Path, llm_server: Any, note: str
+    tmp_path: Path, fake_model: Any, note: str
 ) -> Iterator[tuple[Any, list[HopResult]]]:
-    server = llm_server(
-        [
-            _tool_call_response("write", {"path": "notes/x.md", "content": note}),
-            _final_response("researcher done"),
-            _final_response("APPROVE"),
+    server = fake_model(
+        sequence=[
+            call("write", path="notes/x.md", content=note),
+            say("researcher done"),
+            say("APPROVE"),
         ]
     )
     with _seed_research_pod(tmp_path, server.base_url):
@@ -79,21 +79,21 @@ def _run_pipeline(
 
 
 def test_critic_first_request_carries_the_researchers_note_once(
-    tmp_path: Path, llm_server: Any
+    tmp_path: Path, fake_model: Any
 ) -> None:
     """The next hop's first request holds the note the previous hop wrote, exactly once."""
-    with _run_pipeline(tmp_path, llm_server, _NOTE) as (server, _hops):
-        critic_first = json.dumps(server.requests[2])
+    with _run_pipeline(tmp_path, fake_model, _NOTE) as (server, _hops):
+        critic_first = json.dumps(server.requests[2].body)
 
         assert critic_first.count(_NOTE) == 1
 
 
-def test_a_note_past_the_cap_is_cut_with_a_marker(tmp_path: Path, llm_server: Any) -> None:
+def test_a_note_past_the_cap_is_cut_with_a_marker(tmp_path: Path, fake_model: Any) -> None:
     """A 50k-character note reaches the critic cut at the cap, and the cut is announced."""
     note = "\n".join(f"line-{i:05d}" for i in range(5000))
     assert len(note) > 50_000
-    with _run_pipeline(tmp_path, llm_server, note) as (server, hops):
-        critic_first = json.dumps(server.requests[2])
+    with _run_pipeline(tmp_path, fake_model, note) as (server, hops):
+        critic_first = json.dumps(server.requests[2].body)
 
         assert "line-00001" in critic_first
         assert "line-04999" not in critic_first
@@ -101,9 +101,9 @@ def test_a_note_past_the_cap_is_cut_with_a_marker(tmp_path: Path, llm_server: An
         assert len(hops[0].artifact.diff) < current_home().handoff_diff_max_chars + 200
 
 
-def test_a_hop_that_changed_nothing_adds_no_diff(tmp_path: Path, llm_server: Any) -> None:
+def test_a_hop_that_changed_nothing_adds_no_diff(tmp_path: Path, fake_model: Any) -> None:
     """The writing hop's artifact carries the diff; the read-only critic after it carries none."""
-    with _run_pipeline(tmp_path, llm_server, _NOTE) as (_server, hops):
+    with _run_pipeline(tmp_path, fake_model, _NOTE) as (_server, hops):
         assert _NOTE in hops[0].artifact.diff
         assert hops[1].artifact.diff == ""
         assert hops[1].artifact.files_changed == []

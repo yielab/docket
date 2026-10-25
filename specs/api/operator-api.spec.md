@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.2.3
+**Version**: 6.3.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -24,6 +24,7 @@ This specification covers:
 - `GET /tasks/<pod>` filtering, `GET /tasks/<pod>/<id>`, `POST .../cancel`, `POST .../retry`,
   `GET .../diff`
 - The `hop_started` / `hop_finished` trace events a consumer reads from `GET /traces/<pod>`
+- `GET /escalations`, the pauses a task waits on, one record each (`operator-loop.spec.md` area 11)
 - `GET /pods`, `GET /pods/<p>`, `POST /pods` with `ensure`, `POST /pods/<p>/apply`,
   `GET /pods/<p>/corrections`
 - The `dispatch` block of `GET /health` under `--dispatch`
@@ -59,6 +60,7 @@ over 1 MiB is `413`.
 | `POST /tasks/<pod>/<id>/cancel` | stop a running or parked task |
 | `POST /tasks/<pod>/<id>/retry` | put a `blocked` or `failed` task back on the queue |
 | `GET /tasks/<pod>/<id>/diff` | what the task's branch changed |
+| `GET /escalations?since=<seq>&pod=&task=` | the escalation records after a cursor, each joined with its pause |
 | `GET /pods` | every dispatchable pod with its queue counts |
 | `GET /pods/<p>` | one pod's report |
 | `POST /pods` (`ensure`) | provision a pod, or find it |
@@ -292,6 +294,31 @@ is audited as `pod.apply` with `channel=http`; an accepted code is remembered as
  "next": "2026-10-03T10:12:00Z"}
 ```
 
+### Escalations
+
+`GET /escalations?since=<seq>&pod=<pod>&task=<id>` answers `200` with
+
+```json
+{"escalations": [{"id": "esc-0123456789ab", "task": "task-1", "pod": "demo", "step": "implementer",
+  "role": "implementer", "kind": "consult", "causedBy": "c1", "prompt": "Which store?",
+  "options": [{"id": "redis", "label": "Redis", "description": "fast", "risks": []}],
+  "recommendation": {"optionId": "redis", "rationale": "...", "evidenceRefs": []},
+  "requestedSchema": {}, "askedAt": "...", "expiresAt": "...", "onExpiry": "block",
+  "policy": "person", "state": "pending", "resolution": null, "seq": 1,
+  "affordances": {"options": ["redis", "decline"], "acceptsText": true,
+                  "resolveUrl": "/escalations/esc-0123456789ab"}}],
+ "next": 1}
+```
+
+Each entry is an `EscalationView` (`operator-loop.spec.md` area 11 item 7): the stored record
+without `legacy`, its `state` joined with the approval or question it names, in `seq` order.
+`since` is an integer `seq` (default `0`): only records with a greater `seq` are returned, whatever
+their state, so a poller never misses a record that settled between two reads. `pod` and `task`
+narrow the list. `next` is the highest `seq` returned, else `since`; pass it back as `since`. A
+`since` that is not a non-negative integer answers `400`. `resolveUrl` names the route that
+resolves the escalation; no route answers it yet. `GET /inbox` carries the pending ones as
+`escalations` (additive; `needsYou` is unchanged).
+
 ### `/health` under dispatch
 
 The keys and the unauthenticated access of `GET /health` are owned by `serve-read-api.spec.md`.
@@ -357,7 +384,7 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 |---|---|
 | `200` | a read; an idempotent re-post; cancel/retry/apply/ensure done |
 | `201` | a new task or a new pod |
-| `400` | malformed JSON or a non-object body, missing `description`, a bad project id, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens` of the wrong shape, a naive `since`, a bad `apply` body |
+| `400` | malformed JSON or a non-object body, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
 | `404` | no pod (checked before an `apply` body is read), no task, no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command |
@@ -375,6 +402,8 @@ consumer that polls for `done` does not see an unreviewed change to a check.
   pod's task list.
 - The routes are tested against a real server on a loopback port, a pod seeded in a temporary
   `DOCKET_HOME`, and a stub OpenAI-compatible server on loopback for the routes that run a hop.
+- `GET /escalations` is pinned through the real route by a contract test that parks a consult
+  through dispatch and compares both it and `GET /inbox` to a recorded fixture.
 - Each example body above is asserted key-for-key by the route's test (the oracle is the key
   set and the status code, not the prose).
 - Unit tests cover enqueue idempotency, `restrictions` validation, `maxTokens` arithmetic, the two
@@ -387,6 +416,7 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 
 - `src/docket/interfaces/http/routes/`: the handler for every route above (`table.py` is the
   route table, one module per resource).
+- `src/docket/interfaces/http/routes/escalations.py`: `get_escalations`.
 - `src/docket/interfaces/http/server.py`: `render_health`.
 - `src/docket/interfaces/http/routes/health.py`: `SERVE_API_VERSION`, the `tokenBudget`
   computation on read.
@@ -406,5 +436,5 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 - `src/docket/platform/git.py`: `git_diff_range`, `git_untracked`, `DIFF_MAX_CHARS`.
 - `tests/integration/interfaces/test_serve_reattach.py`, `test_serve_tasks_endpoint.py`,
   `test_serve_task_lifecycle.py`, `test_serve_pods_endpoint.py`, `test_serve_pods_config.py`,
-  `test_serve_pods_corrections.py`, `test_task_check_changed.py`; `tests/support/llm.py`
-  (fixture `llm_server`).
+  `test_serve_pods_corrections.py`, `test_task_check_changed.py`; `tests/support/model_server.py`
+  (fixture `fake_model`).

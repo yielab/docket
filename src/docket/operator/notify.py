@@ -23,6 +23,7 @@ from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
     ApprovalView,
     CloudEvent,
+    EscalationView,
     InboxView,
     QuestionV11,
     TaskView,
@@ -31,6 +32,7 @@ from docket.kernel.operator_contract import (
 from docket.operator import channel as _channel
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
+from docket.operator import render as _render
 from docket.platform import read_json, write_json
 
 __all__ = [
@@ -59,7 +61,6 @@ _NEEDS_YOU_KINDS: frozenset[str] = frozenset(
 # How much of an approval's life must have elapsed before `approval.expiring` fires, once,
 # per token (ADR 0016 SS7).
 _EXPIRING_FRACTION = 0.8
-_LABEL_MAX = 80
 
 _DELIVERY_TIMEOUT_S = 5.0
 _DELIVERY_ATTEMPTS = 3  # one try plus two retries, within this one flush call only
@@ -222,10 +223,12 @@ def diff_events(
     return events, snapshot
 
 
-def render_data(item: TaskView | ApprovalView, level: str) -> dict[str, Any]:
-    """The event payload for *item* at content *level* (`minimal < actions < conversation`).
-    `minimal` never carries a command line or question text; `actions` adds the rendered
-    `action` (approvals only); `conversation` adds `question`/`brief` (tasks only)."""
+def render_data(
+    item: TaskView | ApprovalView, level: str, escalation: EscalationView | None = None
+) -> dict[str, Any]:
+    """The event payload for *item* at content *level* (`minimal < actions < conversation`):
+    `actions` adds an approval's `action`, `conversation` a task's `question`/`brief`; a task's
+    option ids are at every level, from its pending *escalation* when it has one."""
     if isinstance(item, ApprovalView):
         data: dict[str, Any] = {"pod": item.pod, "role": item.role, "token": item.token}
         if item.task_id:
@@ -257,19 +260,31 @@ def render_data(item: TaskView | ApprovalView, level: str) -> dict[str, Any]:
             data["question"] = item.question.message
         if item.brief is not None:
             data["brief"] = item.brief.model_dump(by_alias=True, mode="json")
-        if isinstance(item.question, QuestionV11) and item.question.options:
-            data["options"] = [
-                {"id": o.id, "label": _clean_label(o.label)} for o in item.question.options
-            ]
-            if item.question.recommendation is not None:
-                data["recommendation"] = {"optionId": item.question.recommendation.option_id}
+    options, recommended = _task_options(item, level, escalation)
+    if options:
+        data["options"] = [{"id": o.id, **({"label": o.label} if o.label else {})} for o in options]
+        if recommended:
+            data["recommendation"] = {"optionId": recommended}
     return data
 
 
-def _clean_label(label: str) -> str:
-    """Model text bound for a chat or a terminal: control characters dropped, length capped."""
-    text = "".join(ch for ch in label if ch.isprintable())
-    return text[:_LABEL_MAX]
+def _task_options(
+    item: TaskView, level: str, escalation: EscalationView | None
+) -> tuple[tuple[_render.RenderedOption, ...], str | None]:
+    """The options a task's pause offers at *level* and the recommended id: those of its pending
+    *escalation*, else those of the question the task still stores."""
+    if escalation is not None:
+        options = _render.render_escalation(escalation, level).options
+    elif isinstance(item.question, QuestionV11):
+        recommendation = item.question.recommendation
+        options = _render.render_options(
+            item.question.options,
+            recommendation.option_id if recommendation else None,
+            labels=level == "conversation",
+        )
+    else:
+        return (), None
+    return options, next((o.id for o in options if o.recommended), None)
 
 
 def render_text(event: CloudEvent) -> tuple[str, str]:
@@ -300,13 +315,21 @@ def render_text(event: CloudEvent) -> tuple[str, str]:
     if isinstance(options, list) and options:
         recommended = (event.data.get("recommendation") or {}).get("optionId")
         lines = [
-            f"{_clean_label(str(o['id']))} - {o['label']}"
+            _render.clean_label(str(o["id"]))
+            + (f" - {o['label']}" if o.get("label") else "")
             + (" (recommended)" if o["id"] == recommended else "")
             for o in options
         ]
         lines.append(f"reply: /answer {task_id} <id>")
         body = "\n".join([body, *lines])
     return title, body
+
+
+def _escalation_of(item: TaskView | ApprovalView, inbox: InboxView) -> EscalationView | None:
+    """The pending question escalation of a task *item* in *inbox*, if it has one."""
+    if not isinstance(item, TaskView):
+        return None
+    return _inbox.question_escalation(inbox.escalations, item.pod, item.id)
 
 
 def build_test_event(spec: Any, *, now: str) -> CloudEvent:
@@ -435,7 +458,11 @@ def _flush(
                     notify_event.kind,
                     notify_event.pod,
                     notify_event.subject,
-                    render_data(notify_event.item, getattr(spec, "content", "minimal")),
+                    render_data(
+                        notify_event.item,
+                        getattr(spec, "content", "minimal"),
+                        _escalation_of(notify_event.item, inbox_view),
+                    ),
                     time=notify_event.time,
                     version=notify_event.version,
                 )

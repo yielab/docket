@@ -149,7 +149,8 @@ class _Recorder:
                 "tool result was not paired with the release write call",
             )
             _require(
-                "wrote 26 characters" in str(tool_results[-1].get("content", "")),
+                "wrote release-journey.txt: 26 bytes, 1 lines, ends with newline: yes"
+                in str(tool_results[-1].get("content", "")),
                 "write result did not report the exact release artifact",
             )
             self.final_turn = True

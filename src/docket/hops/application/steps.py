@@ -23,6 +23,7 @@ from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.record import UnitContext, UnitOutcome, trace_locked
 from docket.tasks.domain.task import HopResult, TaskRecord, TaskRunRefusal
 from docket.teams import blueprints as _blueprints
@@ -367,6 +368,7 @@ def _run_input_step(
         created_at=_clock.iso(),
         expires_at=expires_at,
     )
+    _escalations.open_for_question(question, kind="input", role="", caused_by=node.step_id)
     trace_locked(
         ctx.project,
         ctx.session_id,

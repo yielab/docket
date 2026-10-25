@@ -19,10 +19,14 @@ from dataclasses import dataclass
 from typing import Any, Literal, TextIO
 
 from docket.governance import approval as _ap
+from docket.interfaces.cli.render.escalation import answer_command
 from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import EscalationView
 from docket.observability import trace as _trace
+from docket.operator import escalation_views, ids_line, render_escalation
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain.refs import short_id
@@ -32,6 +36,11 @@ _RENDERABLE_EVENT_TYPES = frozenset(
     {"session_start", "tool_call", "approval_requested", "approval_required", "session_end"}
 )
 _HOP_MARKER_KEYS = frozenset({"hop", "agent"})
+# A question's trace event comes before, or just after, the record of the pause it opens; the
+# record is what carries the options, so the line waits for it for a few seconds.
+_QUESTION_EVENTS = frozenset({"question_asked", "input_requested"})
+_QUESTION_WAIT_S = 5.0
+_PROMPT_MAX = 300
 _PROMPT_LINE = "  [a]pprove  [d]eny  [Enter] keep waiting"
 
 
@@ -106,6 +115,32 @@ def render_event(record: dict[str, Any], *, now: float | None = None) -> str | N
         f"⏸ {role} wants: {action} · token {token} · denies in {remaining}s · "
         f"docket task approve {token}"
     )
+
+
+def question_line(view: EscalationView) -> str:
+    """The one stderr line for a task parked on a question: who asks what, which options, and the
+    command that answers it. The operator's own terminal gets everything the pause carries."""
+    rendered = render_escalation(view, "full")
+    prompt = _text.ellipsize(_text.one_line(rendered.prompt or ""), _PROMPT_MAX)
+    parts = [f"⏸ {view.role or view.step} asks: {rendered.title}: {prompt}"]
+    if rendered.options:
+        parts.append(f"options {ids_line(rendered.options)}")
+    parts.append(answer_command(view.task, rendered.options))
+    return " · ".join(parts)
+
+
+def _announce_questions(baseline: int, announced: set[str]) -> list[str]:
+    """The lines for questions parked since *baseline* that were not announced yet."""
+    lines = []
+    for view in escalation_views(since_seq=baseline):
+        if (
+            view.kind in ("consult", "input")
+            and view.state == "pending"
+            and view.id not in announced
+        ):
+            announced.add(view.id)
+            lines.append(question_line(view))
+    return lines
 
 
 def parse_answer(line: str) -> str:
@@ -195,12 +230,16 @@ def dispatch_with_progress(
         with _trace.subscribe(_sink):
             outcome.append(_runs.execute(run_id, fn))
 
+    # Questions already parked are old news; only those that appear during this run are announced.
+    baseline = max((v.seq for v in escalation_views()), default=0)
     worker = _threads.new_thread(_worker)
     if prompt:
         _threads.start_thread(stdin_reader_loop, (stdin, answers))
     worker.start()
 
     current_token: str | None = None
+    announced: set[str] = set()
+    watch_questions_until = 0.0
     while True:
         try:
             record: dict[str, Any] | None = events.get(timeout=_POLL_TIMEOUT_S)
@@ -210,12 +249,19 @@ def dispatch_with_progress(
             line = render_event(record)
             if line is not None:
                 out(line)
+            if record.get("event_type") in _QUESTION_EVENTS:
+                watch_questions_until = _clock.monotonic() + _QUESTION_WAIT_S
             if record.get("event_type") == "approval_requested":
                 payload = record.get("payload")
                 token = payload.get("token", "") if isinstance(payload, dict) else ""
                 current_token = str(token) or None
                 if prompt and current_token:
                     out(_PROMPT_LINE)
+        if watch_questions_until:
+            for line in _announce_questions(baseline, announced):
+                out(line)
+            if _clock.monotonic() >= watch_questions_until:
+                watch_questions_until = 0.0
         if prompt and current_token:
             try:
                 answer = answers.get_nowait()

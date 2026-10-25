@@ -345,6 +345,11 @@ class Home:
     def consult_parked_dir(self) -> Path:
         return self.root / "consult-parked"
 
+    # One 0600 file per escalation, plus the counter that orders them.
+    @property
+    def escalations_dir(self) -> Path:
+        return self.root / "escalations"
+
     @property
     def schedule_file(self) -> Path:
         if self.schedule_file_override is not None:

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, date, datetime, timedelta
+
+import pytest
 
 from docket.kernel import clock
 from docket.kernel.clock import use_clock
@@ -87,3 +90,26 @@ def test_parse_iso_is_none_for_empty_or_unparseable_text() -> None:
     assert clock.parse_iso("") is None
     assert clock.parse_iso(None) is None
     assert clock.parse_iso("not a time") is None
+
+
+def test_the_system_clock_is_unshifted_without_an_offset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DOCKET_CLOCK_OFFSET_S", raising=False)
+    before = datetime.now(UTC)
+    moment = clock.now()
+    assert before <= moment <= datetime.now(UTC)
+
+
+def test_the_offset_shifts_now_and_never_the_monotonic_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DOCKET_CLOCK_OFFSET_S", "7200.5")
+    shifted = clock.now() - datetime.now(UTC)
+    assert timedelta(seconds=7200) < shifted < timedelta(seconds=7201)
+    assert clock.monotonic() <= time.monotonic() <= clock.monotonic() + 1
+
+
+@pytest.mark.parametrize("value", ["", "soon", "nan", "inf"])
+def test_an_invalid_offset_means_none(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("DOCKET_CLOCK_OFFSET_S", value)
+    before = datetime.now(UTC)
+    assert before <= clock.now() <= datetime.now(UTC)

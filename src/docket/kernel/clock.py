@@ -7,11 +7,13 @@ disk or to a wire; changing one changes stored data.
 
 from __future__ import annotations
 
+import math
+import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol
 
 
@@ -25,9 +27,18 @@ class Clock(Protocol):
         ...
 
 
+def _offset() -> timedelta:
+    """``DOCKET_CLOCK_OFFSET_S`` seconds, read per call so a test sets it per child process."""
+    try:
+        seconds = float(os.environ.get("DOCKET_CLOCK_OFFSET_S", "0"))
+    except ValueError:
+        return timedelta(0)
+    return timedelta(seconds=seconds) if math.isfinite(seconds) else timedelta(0)
+
+
 class _SystemClock:
     def now(self) -> datetime:
-        return datetime.now(UTC)
+        return datetime.now(UTC) + _offset()
 
     def monotonic(self) -> float:
         return time.monotonic()

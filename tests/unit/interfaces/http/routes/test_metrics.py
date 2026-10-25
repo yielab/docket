@@ -53,8 +53,8 @@ class TestRenderMetrics:
             "docket_cost_usd_total",
             "docket_approvals_pending_total",
             "docket_tasks_started_total",
-            "docket_questions_total",
-            "docket_decision_latency_seconds",
+            "docket_escalations_total",
+            "docket_escalation_wait_seconds",
         ):
             assert name in text
 

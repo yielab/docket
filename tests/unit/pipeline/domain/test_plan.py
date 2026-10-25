@@ -211,6 +211,76 @@ class TestParseVerdict:
         assert _orch.parse_verdict(gate, "\n\nAPPROVE\nfine") == "approve"
 
 
+class TestParseVerdictTolerance:
+    """The final line is the verdict; markdown decoration and the documented aliases around
+    it are tolerated, and the last marker line wins."""
+
+    GATE = _gates.VerdictGate(pattern=r"^\s*(APPROVE|REQUEST-CHANGES)\b", pass_values=["approve"])
+
+    @pytest.mark.parametrize(
+        ("output", "expected"),
+        [
+            ("**APPROVE**", "approve"),
+            ("__APPROVE__", "approve"),
+            ("# APPROVE", "approve"),
+            ("## REQUEST-CHANGES", "request-changes"),
+            ("- APPROVE", "approve"),
+            ("* APPROVE", "approve"),
+            ("> APPROVE", "approve"),
+            ("`APPROVE`", "approve"),
+            ("Verdict: APPROVE", "approve"),
+            ("**Verdict:** APPROVE", "approve"),
+            ("verdict: request-changes", "request-changes"),
+            ("APPROVE.", "approve"),
+            ("**REQUEST-CHANGES**.", "request-changes"),
+            ("APPROVED", "approve"),
+            ("approved.", "approve"),
+            ("**Approved**", "approve"),
+            ("REQUEST CHANGES", "request-changes"),
+            ("request changes: fix the test", "request-changes"),
+            ("Looks fine.\n\n**APPROVE**\n", "approve"),
+            ("REQUEST-CHANGES\nthe checklist says APPROVE if green\n- APPROVE", "approve"),
+            ("APPROVE\nbut on reflection\nREQUEST-CHANGES", "request-changes"),
+            ("REQUEST-CHANGES\nfixed now\nAPPROVE", "approve"),
+        ],
+    )
+    def test_shape_is_parsed(self, output: str, expected: str) -> None:
+        assert _orch.parse_verdict(self.GATE, output) == expected
+
+    @pytest.mark.parametrize(
+        "output",
+        [
+            "",
+            "   \n\n",
+            "looks fine to me",
+            "I APPROVE this implementation",
+            "Approved by default settings",
+            "disapproved",
+            "no verdict here **bold**",
+            "request changes please",
+        ],
+    )
+    def test_no_marker_stays_unparseable(self, output: str) -> None:
+        assert _orch.parse_verdict(self.GATE, output) is None
+
+    def test_a_gate_without_the_built_in_words_ignores_the_aliases(self) -> None:
+        gate = _gates.VerdictGate(pattern=r"^\s*(SHIP|HOLD)\b", pass_values=["ship"])
+        assert _orch.parse_verdict(gate, "APPROVED") is None
+        assert _orch.parse_verdict(gate, "**SHIP**") == "ship"
+
+    def test_case_sensitive_gate_keeps_the_alias_in_the_gates_case(self) -> None:
+        gate = _gates.VerdictGate(
+            pattern=r"^(APPROVE|REJECT)\b", pass_values=["APPROVE"], case_sensitive=True
+        )
+        assert _orch.parse_verdict(gate, "**APPROVED**") == "APPROVE"
+        assert _orch.parse_verdict(gate, "approved") is None
+
+    def test_tester_markers_get_the_same_tolerance(self) -> None:
+        gate = _gates.VerdictGate(pattern=r"^\s*(PASS|FAIL)\b", pass_values=["pass"])
+        assert _orch.parse_verdict(gate, "- PASS: unit\n- FAIL: lint\n\n**PASS**") == "pass"
+        assert _orch.parse_verdict(gate, "PASS: unit\n**FAIL**") == "fail"
+
+
 # ── run_group: bounded pool, join semantics ───────────────────────────────────
 
 

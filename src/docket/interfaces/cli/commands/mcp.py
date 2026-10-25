@@ -22,7 +22,7 @@ from docket.interfaces.http.routes import health as _health
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.errors import DispatchError, InvalidInput
-from docket.operator import build_inbox
+from docket.operator import build_inbox, escalation_page
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
@@ -50,6 +50,7 @@ _TOOL_NAMES: tuple[str, ...] = (
     "approvals_grant",
     "approvals_deny",
     "inbox",
+    "escalations",
     "cost",
     "task_answer",
     "task_pregrant",
@@ -244,6 +245,14 @@ def tool_inbox(since: str | None = None) -> dict[str, Any]:
     return view.model_dump(by_alias=True, mode="json")
 
 
+def tool_escalations(since: int | None = None) -> dict[str, Any]:
+    """The escalation records after a cursor, each joined with the pause it names: identical to
+    `docket start`'s `GET /escalations`. *since* is the `seq` to read after."""
+    _audit("escalations", f"since={since if since is not None else ''}")
+    page = escalation_page(since_seq=since)
+    return page.model_dump(by_alias=True, mode="json")
+
+
 def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
     *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
@@ -290,6 +299,7 @@ def _build_server() -> Any:
     server.add_tool(tool_task_answer, name="task_answer")
     server.add_tool(tool_task_pregrant, name="task_pregrant")
     server.add_tool(tool_inbox, name="inbox")
+    server.add_tool(tool_escalations, name="escalations")
     server.add_tool(tool_cost, name="cost")
     return server
 

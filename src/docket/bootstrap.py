@@ -19,7 +19,7 @@ from typing import Any
 from docket.agent.ports import bind_role_composer, bind_tool_gate
 from docket.governance import gate as _gate
 from docket.governance import security as _security
-from docket.governance.ports import bind_approval_follow_up
+from docket.governance.ports import bind_approval_escalations, bind_approval_follow_up
 from docket.hops.application import driver as _driver
 from docket.kernel.home import Home
 from docket.kernel.ports import (
@@ -43,6 +43,7 @@ from docket.platform import process as _process_adapter
 from docket.platform import store as _store
 from docket.sandbox.launch import Launcher
 from docket.tasks.application import actions as _actions
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams.ports import bind_channel_documents
@@ -75,6 +76,7 @@ def bind_adapters() -> None:
     bind_tool_gate(_gate)
     bind_tracer(LocalTracer())
     bind_approval_follow_up(_actions)
+    bind_approval_escalations(_escalations)
     bind_task_reader(_QueueTaskReader())
     bind_endpoint_prober(_openai_http)
     bind_channel_documents(_channel)

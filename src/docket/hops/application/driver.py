@@ -35,6 +35,8 @@ from docket.agent.ports import (
     DOCKET_TASK_NETWORK,
     DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
+    DOCKET_VERDICT_VALUES,
+    DOCKET_VERIFY_PLAN,
     PIPELINE_WORKTREE_ENV,
     ChatBackend,
     DriverCapabilities,
@@ -47,7 +49,13 @@ from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
-from docket.hops.application.builtin_tools import builtin_registry
+from docket.hops.application import verify_tool as _verify
+from docket.hops.application.builtin_tools import (
+    builtin_registry,
+    describe_consult,
+    state_bash_rules,
+)
+from docket.hops.application.verdict_tool import parse_values, verdict_tool
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
@@ -256,6 +264,18 @@ def _max_consultations(agent_id: str, raw: str | None) -> int:
         except _pod_settings.PodSettingsError:
             pass
     return DEFAULT_MAX_CONSULTATIONS
+
+
+def _consult_mode(agent_id: str) -> str:
+    """The agent's pod setting ``consultMode``; an agent outside a pod, or an unreadable settings
+    store, parks -- the mode that waits for a person rather than deciding for one."""
+    project = _pod.pod_of(agent_id)
+    if project is None:
+        return "park"
+    try:
+        return _pod_settings.PodSettings.load_for(project).consult_mode
+    except _pod_settings.PodSettingsError:
+        return "park"
 
 
 def _turn_token_budget(raw: str | None) -> int:
@@ -498,12 +518,14 @@ class DocketDriver:
         )
         approval_timeout = _approval_timeout(tool_env.pop(DOCKET_APPROVAL_TIMEOUT, None))
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
+        verify_plan = _verify.parse_plan(tool_env.pop(DOCKET_VERIFY_PLAN, None))
         pregrants = _parse_pregrants(pregrants_raw)
         approval_expires_at = tool_env.pop(DOCKET_APPROVAL_EXPIRES_AT, None) or None
         max_consultations = _max_consultations(
             agent_id, tool_env.pop(DOCKET_MAX_CONSULTATIONS, None)
         )
         token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
+        verdict_gate = parse_values(tool_env.pop(DOCKET_VERDICT_VALUES, None))
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
         # trace events under the identical coordinate `agent/loop.py`'s own
@@ -517,6 +539,7 @@ class DocketDriver:
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
+            trace_session_key=trace_session_key or "",
             roots=ctx_roots,
             timeout=timeout,
             env=tool_env,
@@ -536,6 +559,7 @@ class DocketDriver:
             max_consultations=max_consultations,
             # A pod dispatch hop (it names its task): a consult parks the task.
             consult_park=bool(trace_task_id),
+            consult_mode=_consult_mode(agent_id),
             task_id=trace_task_id or "",
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
@@ -554,7 +578,13 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
+        describe_consult(registry, ctx.max_consultations, ctx.consult_park, ctx.consult_decides)
+        state_bash_rules(registry, ctx)
+        if verdict_gate is not None:
+            registry.register(verdict_tool(*verdict_gate))
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
+        if verify_plan is not None:
+            registry.register(_verify.verify_tool(verify_plan, ctx.project))
         loop_config = _loop_config(backend, timeout, token_budget)
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None

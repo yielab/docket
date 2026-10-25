@@ -20,6 +20,7 @@ from docket.governance import approval as _approval
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import gate_rules as _rules
 from docket.governance import policy as _policy
+from docket.governance import ports as _ports
 from docket.governance.audit import audit_log
 from docket.governance.gate_rules import AskRoute
 from docket.governance.secrets import redact as _redact
@@ -66,14 +67,14 @@ def render_tool_call(name: str, args: dict[str, Any]) -> str:
 
 def evaluate_tool_call(tool: GatedTool, args: dict[str, Any], ctx: GateContext) -> ToolVerdict:
     """Decide whether this call may proceed. **The** decision point: combines the
-    argument-aware command classifier (``exec`` tools only) and the ``pre_tool_call``
+    argument-aware command classifier (``exec`` tools only, not a ``pregranted`` one) and the ``pre_tool_call``
     policy hook in this one function so "what gates a call" has a single answer,
     most-restrictive-wins (deny beats ask beats allow) -- see
     specs/functional/security-gates.spec.md items 1-3 for why argument-awareness
     matters (``git`` is allowlisted, ``git push origin production`` is not). Never audits or
     traces, that is ``govern``'s job."""
     command: tuple[Decision, str] = ("allow", "")
-    if tool.kind == "exec":
+    if tool.kind == "exec" and not tool.pregranted:
         cmd_verdict = classify_command(
             str(args.get("command") or ""),
             extra_bins=frozenset(ctx.allow_commands),
@@ -206,7 +207,7 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
     rationale, blocked = _approval.screen_rationale(ctx.rationale, ctx.project)
     if route == "park":
         token = _park(call, ctx, summary, digest, rationale, blocked)
-        reason = f"parked for approval (token={token})"
+        reason = _rules.parked_reason(verdict.reason, tool.name)
         return GateDecision(
             "deny",
             reason,
@@ -224,7 +225,8 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
         rationale=rationale,
         rationale_blocked=blocked,
     )
-    return _wait(token, ctx, tool.name, digest, verdict.policy_id)
+    _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
+    return _wait(token, ctx, tool.name, digest, verdict)
 
 
 def _park(
@@ -245,7 +247,7 @@ def _park(
         park_context["role"] = ctx.role
     if ctx.task_id:
         park_context["taskId"] = ctx.task_id  # lets the inbox fold this approval into its task
-    return _approval.approval_create(
+    token = _approval.approval_create(
         ctx.project or "operator",
         ctx.role or "tool",
         summary,
@@ -254,6 +256,8 @@ def _park(
         rationale=rationale,
         rationale_blocked=blocked,
     )
+    _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
+    return token
 
 
 def consume_matching_pregrant(ctx: GateContext, tool_name: str, digest: str) -> str | None:
@@ -271,7 +275,7 @@ def consume_matching_pregrant(ctx: GateContext, tool_name: str, digest: str) -> 
 
 
 def _wait(
-    token: str, ctx: GateContext, tool_name: str, digest: str, policy_id: str
+    token: str, ctx: GateContext, tool_name: str, digest: str, verdict: ToolVerdict
 ) -> GateDecision:
     """Block on *token* (the ``wait`` posture, the in-turn gate) and report how it ended."""
     kwargs: dict[str, Any] = {}
@@ -286,7 +290,9 @@ def _wait(
         cancelled=bool(outcome.cancelled),
         timed_out=bool(outcome.timed_out),
         cancel_requested=ctx.cancellation_check is not None and ctx.cancellation_check(),
+        asked_because=verdict.reason,
     )
+    policy_id = verdict.policy_id
     if kind is not None:
         return GateDecision("deny", reason, policy_id=policy_id, denial_kind=kind, error=reason)
     # Granted: the call is now allowed, and falls through to execute.

@@ -80,3 +80,119 @@ class TestBashDescriptionPrefersTheFileTools:
         assert tool is not None
         assert "`write`/`edit`" in tool.description
         assert "heredocs" in tool.description
+
+
+class TestConsultDescriptionTellsTheTruth:
+    """The consult schema matches its handler and the description says what asking does."""
+
+    def _description(self, remaining: int, parks: bool, decides: bool = False) -> str:
+        registry = builtin_registry()
+        builtin_tools.describe_consult(registry, remaining=remaining, parks=parks, decides=decides)
+        tool = registry.get("consult")
+        assert tool is not None
+        return tool.description
+
+    def test_schema_requires_the_recommendation_the_handler_requires(self) -> None:
+        specs = {s.name: s for s in builtin_registry().specs()}
+
+        assert specs["consult"].parameters["required"] == [
+            "kind",
+            "message",
+            "options",
+            "recommendation",
+        ]
+
+    def test_the_default_description_says_asking_ends_the_turn(self) -> None:
+        tool = builtin_registry().get("consult")
+
+        assert tool is not None
+        assert "ENDS your turn" in tool.description
+        assert "decide" in tool.description
+        assert "no answer" not in tool.description
+
+    def test_a_dispatch_hop_states_the_consultations_left(self) -> None:
+        text = self._description(remaining=2, parks=True)
+
+        assert "ENDS your turn" in text
+        assert "2 consultations left" in text
+
+    def test_one_left_is_singular_and_none_left_says_so(self) -> None:
+        assert "1 consultation left" in self._description(remaining=1, parks=True)
+        assert "no consultations left" in self._description(remaining=0, parks=True)
+
+    def test_outside_dispatch_the_call_returns_no_answer_at_once(self) -> None:
+        text = self._description(remaining=3, parks=False)
+
+        assert "ENDS your turn" not in text
+        assert "no answer; decide yourself" in text
+
+    def test_a_pod_that_decides_says_the_recommendation_applies_at_once(self) -> None:
+        text = self._description(remaining=2, parks=True, decides=True)
+
+        assert "ENDS your turn" not in text
+        assert "no answer; decide yourself" not in text
+        assert "returns at once with your recommendation applied" in text
+        assert "prefer deciding in your reply without the tool" in text
+        assert "2 consultations left" in text
+
+    def test_deciding_only_applies_where_the_hop_would_park(self) -> None:
+        text = self._description(remaining=3, parks=False, decides=True)
+
+        assert "no answer; decide yourself" in text
+        assert "recommendation applied" not in text
+
+    def test_the_three_effects_are_distinct(self) -> None:
+        parks = self._description(remaining=3, parks=True)
+        waits = self._description(remaining=3, parks=False)
+        decides = self._description(remaining=3, parks=True, decides=True)
+
+        assert len({parks, waits, decides}) == 3
+
+
+class TestBashStatesItsRules:
+    """The `bash` description names what runs unattended and what asks, from the turn's gate."""
+
+    @staticmethod
+    def _stated(**context: object) -> str:
+        registry = builtin_registry()
+        builtin_tools.state_bash_rules(registry, ToolContext(**context))  # type: ignore[arg-type]
+        tool = registry.get("bash")
+        assert tool is not None
+        return tool.description
+
+    def test_the_built_in_description_lists_the_allowlist_and_the_asking_classes(self) -> None:
+        tool = builtin_registry().get("bash")
+
+        assert tool is not None
+        stated = tool.description
+        assert "Runs without approval: " in stated and "Needs approval: " in stated
+        for name in ("git", "pytest", "python3", "rg"):
+            assert f" {name}," in stated
+        for rule in ("`sed -i`", "`find -exec`", "`$(`", "backticks", "outside the workspace"):
+            assert rule in stated
+
+    def test_a_pods_extra_bins_join_the_list(self) -> None:
+        stated = self._stated(allow_commands=("tox", "uv"))
+
+        assert "tox" in stated and "uv" in stated
+
+    def test_a_long_extra_list_is_cut(self) -> None:
+        stated = self._stated(allow_commands=tuple(f"tool{i:02d}" for i in range(40)))
+
+        assert "tool00" in stated and "tool39" not in stated and "..." in stated
+
+    def test_a_jailed_turn_is_told_every_program_runs(self) -> None:
+        stated = self._stated(sandbox="auto")
+
+        assert "any program" in stated and "Needs approval: " in stated
+        assert "pytest," not in stated
+
+    def test_a_bash_the_caller_made_is_left_alone(self) -> None:
+        registry = builtin_registry()
+        custom = dataclasses.replace(registry.get("bash"), description="mine")  # type: ignore[type-var]
+        registry.register(custom)
+
+        builtin_tools.state_bash_rules(registry, ToolContext(allow_commands=("tox",)))
+
+        tool = registry.get("bash")
+        assert tool is not None and tool.description == "mine"

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -14,7 +14,7 @@ import pytest
 from tests.support import home as _support_home
 from tests.support.git import git_quiet as _git
 from tests.support.home import record_isolation_off, register_local_provider
-from tests.support.llm import _final_response, _ScriptedLLMServer, _tool_call_response
+from tests.support.model_server import FakeModel, Reply, call, say
 from tests.support.pods import build_pod
 from tests.support.tasks import update_task
 
@@ -41,17 +41,8 @@ steps:
 
 
 @pytest.fixture()
-def stub() -> Iterator[Any]:
-    servers: list[_ScriptedLLMServer] = []
-
-    def _start(responses: list[dict[str, Any]]) -> _ScriptedLLMServer:
-        server = _ScriptedLLMServer(responses)
-        servers.append(server)
-        return server
-
-    yield _start
-    for server in servers:
-        server.stop()
+def stub(fake_model: Callable[..., FakeModel]) -> Callable[[list[Reply]], FakeModel]:
+    return lambda replies: fake_model(sequence=replies, repeat_last=True)
 
 
 @contextmanager
@@ -107,8 +98,8 @@ def test_a_task_denied_tool_is_refused_in_a_hop(tmp_path: Path, stub: Any) -> No
     """A task's deniedTools refuses the call under policy id task-restriction and the hop goes on."""
     server = stub(
         [
-            _tool_call_response("write", {"path": "out.txt", "content": "x"}),
-            _final_response("could not write; done"),
+            call("write", path="out.txt", content="x"),
+            say("could not write; done"),
         ]
     )
     with _seed_pod(tmp_path, server.base_url):
@@ -122,7 +113,7 @@ def test_a_task_denied_tool_is_refused_in_a_hop(tmp_path: Path, stub: Any) -> No
         assert "policy_id='task-restriction'" in denied[0]["detail"]
         assert "tool=write" in denied[0]["detail"]
         assert len(server.requests) == 2
-        tool_message = server.requests[1]["messages"][-1]
+        tool_message = server.requests[1].messages[-1]
         assert tool_message["role"] == "tool"
         assert "task-restriction" in tool_message["content"]
 
@@ -131,8 +122,8 @@ def test_a_task_policy_document_blocks_a_matching_call(tmp_path: Path, stub: Any
     """A task policy document blocks a call by path and audits it as task-restriction."""
     server = stub(
         [
-            _tool_call_response("write", {"path": "secret.txt", "content": "x"}),
-            _final_response("done"),
+            call("write", path="secret.txt", content="x"),
+            say("done"),
         ]
     )
     with _seed_pod(tmp_path, server.base_url):
@@ -154,9 +145,7 @@ def test_a_task_policy_document_blocks_a_matching_call(tmp_path: Path, stub: Any
 
 def test_a_task_without_restrictions_writes_normally(tmp_path: Path, stub: Any) -> None:
     """The same scripted write is not refused when the task carries no restrictions."""
-    server = stub(
-        [_tool_call_response("write", {"path": "out.txt", "content": "x"}), _final_response("ok")]
-    )
+    server = stub([call("write", path="out.txt", content="x"), say("ok")])
     with _seed_pod(tmp_path, server.base_url):
         _queue_task()
 
@@ -168,7 +157,7 @@ def test_a_task_without_restrictions_writes_normally(tmp_path: Path, stub: Any) 
 
 def test_a_task_policy_that_does_not_block_refuses_the_hop(tmp_path: Path, stub: Any) -> None:
     """A non-block task document is refused before the hop and no model call is made."""
-    server = stub([_final_response("never reached")])
+    server = stub([say("never reached")])
     with _seed_pod(tmp_path, server.base_url):
         document = {
             "kind": "policy",
@@ -188,7 +177,7 @@ def test_a_task_policy_that_does_not_block_refuses_the_hop(tmp_path: Path, stub:
 
 def test_a_task_network_none_is_refused_when_nothing_can_cut_it(tmp_path: Path, stub: Any) -> None:
     """Network none with isolation off fails closed before any model call, scope task."""
-    server = stub([_final_response("never reached")])
+    server = stub([say("never reached")])
     with _seed_pod(tmp_path, server.base_url):
         _queue_task(restrictions={"network": "none"})
 
@@ -207,7 +196,7 @@ def test_the_jail_network_is_none_for_a_task_whatever_the_pod_records(
     from docket.teams import fleet as fleet
     from docket.teams.isolation_posture import _resolve_network
 
-    with _seed_pod(tmp_path, stub([_final_response("x")]).base_url):
+    with _seed_pod(tmp_path, stub([say("x")]).base_url):
         fleet.set_network_mode("open")
         member = "demo-implementer"
 
@@ -219,7 +208,7 @@ def test_a_task_max_tokens_stops_the_task_with_failure_kind_budget(
     tmp_path: Path, stub: Any
 ) -> None:
     """A maxTokens the first call overruns fails the task as budget after at most one call."""
-    server = stub([_final_response("this answer costs 60 tokens")])
+    server = stub([say("this answer costs 60 tokens")])
     with _seed_pod(tmp_path, server.base_url):
         _queue_task(max_tokens=10)
 
@@ -234,7 +223,7 @@ def test_a_task_max_tokens_stops_the_task_with_failure_kind_budget(
 
 def test_a_spent_max_tokens_refuses_the_next_hop_without_a_call(tmp_path: Path, stub: Any) -> None:
     """A task whose persisted hops used the whole cap starts no further hop."""
-    server = stub([_final_response("never reached")])
+    server = stub([say("never reached")])
     with _seed_pod(tmp_path, server.base_url):
         spent_hop = HopResult(
             role="lead", member_id="demo-lead", ok=True, usage={"input": 5, "output": 5}
@@ -259,7 +248,7 @@ def test_each_hop_runs_with_what_the_cap_has_left(tmp_path: Path, stub: Any) -> 
         seen.append((args[4] or {}).get(DOCKET_TURN_TOKEN_BUDGET))
         return TurnResult(True, "done", 0.0, {})
 
-    with _seed_pod(tmp_path, stub([_final_response("x")]).base_url):
+    with _seed_pod(tmp_path, stub([say("x")]).base_url):
         spent_hop = HopResult(
             role="lead", member_id="demo-lead", ok=True, usage={"input": 30, "output": 10}
         )

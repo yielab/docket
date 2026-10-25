@@ -40,7 +40,7 @@ specs/
 ├── api/                                   # API contracts
 │   ├── cli-interface.spec.md             # CLI command contracts and return codes
 │   ├── mcp-server.spec.md                # docket start --mcp: the MCP tool surface
-│   ├── operator-api.spec.md              # HTTP operator API 6: tasks, lifecycle, pods
+│   ├── operator-api.spec.md              # HTTP operator API 6: tasks, lifecycle, pods, escalations
 │   └── runtime-library.spec.md           # docket-runtime: the embeddable substrate
 ├── data/                                  # Data specifications
 │   ├── cli-json-shapes.spec.md           # --json output shapes per command
@@ -94,37 +94,37 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.0 | Complete |
-| Agent Loop | 3.0.2 | Implemented and live |
+| Agent Loop | 3.2.0 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
-| Audit | 3.0.2 | Implemented |
+| Audit | 3.1.0 | Implemented |
 | Config Format | 2.0.0 | Implemented |
 | Cost Tracking | 1.12.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 5.0.3 | Complete |
-| Observability Export | 2.1.3 | Implemented and live |
-| Pipeline Format | 4.0.0 | Implemented |
-| Pod Blueprints | 2.1.0 | Implemented |
-| Pod Dispatch | 10.1.1 | Implemented |
-| Role Archetypes | 4.0.0 | Implemented |
-| Security Gates | 1.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Observability Export | 2.3.0 | Implemented and live |
+| Pipeline Format | 4.1.0 | Implemented |
+| Pod Blueprints | 2.2.0 | Implemented |
+| Pod Dispatch | 10.6.0 | Implemented |
+| Role Archetypes | 4.1.0 | Implemented |
+| Security Gates | 1.6.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
-| Telegram Integration | 4.0.1 | Implemented |
-| Trace Store | 3.0.3 | Implemented and live |
+| Telegram Integration | 4.1.0 | Implemented |
+| Trace Store | 3.2.0 | Implemented and live |
 | Workspace Structure | 2.2.0 | Complete |
-| CLI Interface | 4.2.0 | Complete |
+| CLI Interface | 4.3.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
-| MCP Server | 1.9.7 | Implemented |
-| CLI JSON Shapes | 4.0.1 | Complete |
-| docket-meta schema | 5.3.0 | Complete |
-| Docket Store | 2.0.0 | Implemented |
-| Operator API | 6.2.3 | Implemented (Phase 43, ADR 0027) |
-| Serve Read API | 4.1.4 | Stable |
+| MCP Server | 1.10.0 | Implemented |
+| CLI JSON Shapes | 4.2.0 | Complete |
+| docket-meta schema | 5.4.0 | Complete |
+| Docket Store | 2.1.0 | Implemented |
+| Operator API | 6.3.0 | Implemented (Phase 43, ADR 0027) |
+| Serve Read API | 4.2.0 | Stable |
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
-| Test Framework | 3.4.0 | Active |
+| Test Framework | 4.0.0 | Active |
 | Starter Journey | 2.0.1 | Implemented |
-| Operator Loop | 2.3.0 | Implemented |
+| Operator Loop | 2.8.0 | Implemented |
 | User Stories | 2.0.1 | Active |
 
 ## Tools

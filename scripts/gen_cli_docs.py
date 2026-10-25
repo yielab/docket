@@ -539,6 +539,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`30000`",
     ),
     (
+        ("DOCKET_CLOCK_OFFSET_S",),
+        "Shifts the wall clock by this many seconds so a test can expire a deadline without waiting; unset or invalid is `0`",
+        "`0`",
+    ),
+    (
         ("AGENT_LOOP_WALL_CLOCK_TIMEOUT_S",),
         "Default overall wall-clock budget for one turn with no explicit `LoopConfig`",
         "`300`",

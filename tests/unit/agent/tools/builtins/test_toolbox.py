@@ -350,3 +350,59 @@ class TestToolOutputBudget:
             out = toolbox.grep_files((workspace,), "needle")
             assert out.ok and out.content.endswith("more characters]")
             assert len(out.content) <= 120 + 60
+
+
+class TestFileStateIsVisible:
+    """`read`, `write` and `bash` tell the model the state a gate will judge: the final newline."""
+
+    def test_read_names_a_missing_trailing_newline(self, workspace: Path) -> None:
+        (workspace / "a.txt").write_text("one\ntwo", encoding="utf-8")
+        out = toolbox.read_file((workspace,), "a.txt")
+        assert out.content == "1\tone\n2\ttwo\n[2 lines; no newline at end of file]"
+
+    def test_read_of_a_file_with_a_trailing_newline_has_no_footer(self, workspace: Path) -> None:
+        (workspace / "a.txt").write_text("one\ntwo\n", encoding="utf-8")
+        assert toolbox.read_file((workspace,), "a.txt").content == "1\tone\n2\ttwo"
+
+    def test_read_of_an_empty_file_says_so(self, workspace: Path) -> None:
+        (workspace / "a.txt").write_text("", encoding="utf-8")
+        assert toolbox.read_file((workspace,), "a.txt").content == "[empty file]"
+
+    def test_read_of_a_paged_file_without_a_final_newline_keeps_both_footers(
+        self, workspace: Path
+    ) -> None:
+        (workspace / "a.txt").write_text("\n".join(f"l{i}" for i in range(1, 501)), "utf-8")
+        tail = toolbox.read_file((workspace,), "a.txt").content.splitlines()[-2:]
+        assert tail[0] == "[lines 1-400 of 500; call read with offset=401 for more]"
+        assert tail[1] == "[500 lines; no newline at end of file]"
+
+    def test_write_reports_path_bytes_lines_newline_and_whether_it_existed(
+        self, workspace: Path
+    ) -> None:
+        first = toolbox.write_file((workspace,), "sub/a.txt", "café\n")
+        assert (
+            first.content == "wrote sub/a.txt: 6 bytes, 1 lines, ends with newline: yes (created)"
+        )
+        again = toolbox.write_file((workspace,), "sub/a.txt", "x\ny")
+        assert (
+            again.content
+            == "wrote sub/a.txt: 3 bytes, 2 lines, ends with newline: no (overwritten)"
+        )
+
+    def test_write_of_nothing_counts_zero_lines(self, workspace: Path) -> None:
+        out = toolbox.write_file((workspace,), "a.txt", "")
+        assert out.content == "wrote a.txt: 0 bytes, 0 lines, ends with newline: no (created)"
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            ("printf 'a\\nb'", "a\nb\n[output had no trailing newline]"),
+            ("printf 'a\\nb\\n'", "a\nb"),
+            ("echo hi", "hi"),
+            ("true", "(no output)"),
+        ],
+    )
+    def test_bash_names_a_missing_trailing_newline(
+        self, workspace: Path, command: str, expected: str
+    ) -> None:
+        assert toolbox.run_bash((workspace,), command, timeout=5).content == expected

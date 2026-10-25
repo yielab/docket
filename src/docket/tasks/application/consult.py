@@ -3,11 +3,10 @@
 The call is validated through ``QuestionV11`` (operator-v1.1) and then, by approval mode:
 ``wait`` has nobody to ask and answers "no answer; decide yourself"; ``refuse``/``park`` trace
 the event and raise ``ConsultUnavailable``, which ``agent/tools/registry.py`` renders as the
-``approval_unavailable`` stop.
-In pod dispatch (``ctx.consult_park``) a non-refuse consult raises ``ConsultParked`` instead:
-the hop ends, the task parks ``waiting_input`` and ``hops.application.answers`` re-enters the same role.
-The per-task count lives on the task; dispatch passes the remaining budget to each hop.
-
+``approval_unavailable`` stop. In pod dispatch (``ctx.consult_park``) the pod setting
+``consultMode`` picks the rest: ``decide`` applies the model's own recommendation in the turn
+(traced as ``question_asked`` and ``escalation_decided``, audited); otherwise a non-refuse consult raises ``ConsultParked`` and the task parks
+``waiting_input`` until ``hops.application.answers`` re-enters the same role.
 Tool-visible failures are ordinary error results, never exceptions, so the model can adapt.
 """
 
@@ -17,19 +16,23 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from docket.governance import audit as _audit
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
 from docket.kernel.gate import HandlerParked, HandlerUnavailable
 from docket.kernel.operator_contract import AnswerResultV11, QuestionV11, new_question_id
 from docket.observability import trace as _trace
 from docket.platform import PARK_TOKEN_PREFIX, is_question_id, write_parked
+from docket.tasks.application import escalations as _escalations
 
 if TYPE_CHECKING:
     from docket.agent.tools.registry import ToolContext
 
 NO_ANSWER = "no answer; decide yourself"
 BUDGET_EXHAUSTED = "consultation budget exhausted; decide yourself"
+DECIDED = "no operator on duty; your recommendation stands: option {id} ({label}). Continue."
 QUESTION_EVENT = "question_asked"
+DECIDED_AUDIT = "consult.decided"
 
 # What an answer may carry besides ``optionId``: one free-text note.
 _REQUESTED_SCHEMA: dict[str, Any] = {
@@ -109,20 +112,47 @@ def build_question(args: dict[str, Any], ctx: ToolContext) -> QuestionV11:
     )
 
 
-def _trace_question(question: QuestionV11, ctx: ToolContext) -> None:
-    payload = {
+def _trace_question(
+    question: QuestionV11, ctx: ToolContext, decided_option_id: str | None = None
+) -> None:
+    payload: dict[str, Any] = {
         "questionId": question.id,
         "kind": question.kind,
-        "mode": ctx.approval_mode,
+        "mode": ctx.approval_mode if decided_option_id is None else "decided",
         "question": question.model_dump(by_alias=True, mode="json"),
     }
+    if decided_option_id is not None:
+        payload["decidedOptionId"] = decided_option_id
     _trace.trace_event(
         ctx.project or ctx.agent_id,
-        ctx.session_key,
+        ctx.trace_session_key or ctx.session_key,
         ctx.role,
         QUESTION_EVENT,
         json.dumps(payload),
     )
+
+
+def _decide(question: QuestionV11, ctx: ToolContext) -> ConsultOutcome:
+    """Apply the model's own recommendation: trace and audit it, return it as the tool result.
+    The audit row names the ids, never the question text or the options."""
+    recommendation = question.recommendation
+    if recommendation is None:
+        return ConsultOutcome(False, error="invalid consultation: no recommendation to apply")
+    option_id = recommendation.option_id
+    label = next((o.label for o in question.options if o.id == option_id), option_id)
+    _trace_question(question, ctx, decided_option_id=option_id)
+    _escalations.decided_consult(
+        question,
+        role=ctx.role,
+        option_id=option_id,
+        session_id=ctx.trace_session_key or ctx.session_key,
+    )
+    _audit.audit_log(
+        DECIDED_AUDIT,
+        f"project={ctx.project} task={ctx.task_id} role={ctx.role} "
+        f"questionId={question.id} optionId={option_id}",
+    )
+    return ConsultOutcome(True, content=DECIDED.format(id=option_id, label=label))
 
 
 def run(args: dict[str, Any], ctx: ToolContext) -> ConsultOutcome:
@@ -134,6 +164,8 @@ def run(args: dict[str, Any], ctx: ToolContext) -> ConsultOutcome:
     except ValueError as exc:
         return ConsultOutcome(False, error=f"invalid consultation: {exc}")
     ctx.consult_count += 1
+    if ctx.consult_decides:
+        return _decide(question, ctx)
     if ctx.consult_park and ctx.approval_mode != "refuse":
         _trace_question(question, ctx)
         raise ConsultParked(question)

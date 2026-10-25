@@ -344,7 +344,7 @@ Codebase: ${codebaseOrConfigured} (stack: ${stack}).
 
 ## Role — Security reviewer
 - Review the change for injection, secrets in code, unsafe deserialization and authz gaps.
-- You are read-only. Start exactly one line with `APPROVE` or `REQUEST-CHANGES`.
+- You are read-only. Make the last line of your final message exactly `APPROVE` or `REQUEST-CHANGES`.
 
 ## AGENTS
 
@@ -671,7 +671,9 @@ The command writes `docket-mcp-servers.json`. Its tools appear in a turn as
   each dispatch refuse a task before its first hop unless isolation is on with a usable backend,
   the jail's network is a recorded `none` (`docket setup sandbox network none` or
   `docket pod set network none`), every Implementer step has an external gate (§3.5), and no
-  variable docket injects for the pod is named in the secret store. The refusal names each fix,
+  variable docket injects for the pod is named in the secret store, and the pod's `consultMode` is
+  `decide` (`docket pod set consultMode decide`: a `consult` is then answered in the turn with the
+  model's own recommendation, audited as `consult.decided`, instead of waiting for a person). The refusal names each fix,
   is audited (`profile.refused`), and the task can be retried once the fix is in.
   `docket status` and `docket setup` show the profile and what it still lacks. The default is
   `attended`, which changes nothing.

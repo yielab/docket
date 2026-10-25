@@ -106,7 +106,7 @@ _STRUCTURAL_SUBJECTS = {
     "test_runtime_adapter_fixture_contract.py",
 }
 # Tests of the module that reads the environment may set it.
-_ENVIRONMENT_PARSERS = {"unit/kernel/test_home.py"}
+_ENVIRONMENT_PARSERS = {"unit/kernel/test_clock.py", "unit/kernel/test_home.py"}
 
 
 def _rel(path: Path, root: Path) -> str:

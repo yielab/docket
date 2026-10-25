@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import urllib.parse
 from collections.abc import Callable
 from typing import Any
@@ -12,7 +13,8 @@ from docket.agent.tools.registry import (
     str_arg,
 )
 from docket.agent.tools.screening import screen_tool_result
-from docket.kernel.gate import CONSULT_TOOL
+from docket.governance.security import SAFE_BINS
+from docket.kernel.gate import CONSULT_TOOL, DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 from docket.kernel.tool_outcome import text_outcome
@@ -113,6 +115,51 @@ def _consult_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     return ToolOutcome(outcome.ok, outcome.content, outcome.error)
 
 
+def consult_description(remaining: int, parks: bool, decides: bool = False) -> str:
+    """What the model reads about `consult`: asking ends the turn in dispatch (*parks*) unless the
+    pod *decides* for it, and *remaining* is what the handler will still accept on this task."""
+    if parks and decides:
+        effect = (
+            "Asking returns at once with your recommendation applied; prefer deciding in your "
+            "reply without the tool."
+        )
+    elif parks:
+        effect = (
+            "Asking ENDS your turn: the task waits for a person and the answer arrives "
+            "in your next message."
+        )
+    else:
+        effect = (
+            "Nobody can answer during this run: the call returns 'no answer; decide "
+            "yourself' at once and your turn continues."
+        )
+    if remaining <= 0:
+        left = "You have no consultations left on this task."
+    else:
+        left = (
+            f"You have {remaining} consultation{'' if remaining == 1 else 's'} left on this task."
+        )
+    return (
+        "Ask a person only when the repository cannot settle the decision. "
+        f"{effect} "
+        "If you can recommend one option from what is in the repository, do not ask: decide, "
+        "state the assumption in your reply, and continue. "
+        "Give at least two options and mark the one you recommend. "
+        f"{left}"
+    )
+
+
+def describe_consult(
+    registry: ToolRegistry, remaining: int, parks: bool, decides: bool = False
+) -> None:
+    """Re-register `consult` in *registry* with this hop's real budget and effect."""
+    tool = registry.get(CONSULT_TOOL)
+    if tool is not None:
+        registry.register(
+            dataclasses.replace(tool, description=consult_description(remaining, parks, decides))
+        )
+
+
 def _consult_tool() -> Tool:
     """The `consult` built-in: ask the operator a clarification or decision question."""
     option = {
@@ -128,12 +175,7 @@ def _consult_tool() -> Tool:
     }
     return Tool(
         name=CONSULT_TOOL,
-        description=(
-            "Ask the operator a question when the task cannot be decided from the "
-            "repository alone. Give at least two options and your recommendation. The "
-            "result is the operator's chosen optionId and content, or 'no answer; decide "
-            "yourself'. The number of consultations per task is capped; use it sparingly."
-        ),
+        description=consult_description(DEFAULT_MAX_CONSULTATIONS, parks=True),
         parameters={
             "type": "object",
             "properties": {
@@ -150,7 +192,7 @@ def _consult_tool() -> Tool:
                     "required": ["optionId", "rationale"],
                 },
             },
-            "required": ["kind", "message", "options"],
+            "required": ["kind", "message", "options", "recommendation"],
         },
         handler=_consult_handler,
         kind="read",
@@ -220,7 +262,8 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
 _READ_DESCRIPTION = (
     "Read a text file as numbered lines, 400 at a time. Paths are relative to the workspace. "
     "For a larger file pass offset (1-indexed line) and limit, or follow the footer's offset "
-    "to continue. Copy text from the window without the numbers when editing."
+    "to continue. Copy text from the window without the numbers when editing. The footer says "
+    "when the file has no trailing newline."
 )
 _GLOB_DESCRIPTION = (
     "List files matching a glob pattern, as paths relative to the workspace, sorted. Vendored and "
@@ -232,6 +275,46 @@ _GREP_DESCRIPTION = (
     "workspace, sorted by path; vendored and generated directories are skipped. Search for a "
     "symbol here before listing files with glob."
 )
+
+
+_ASKING = (
+    "output redirections to files outside the workspace, `$(`, backticks, `${`, `eval`, `exec`, "
+    "`sed -i`, `find -exec` and high-risk actions (publishing, deploying, pushing to main)"
+)
+_EXTRA_BINS_SHOWN = 20
+
+
+def _bash_description(allow_commands: tuple[str, ...], *, jailed: bool) -> str:
+    """The ``bash`` description, stating the rules ``classify_command`` applies to this turn."""
+    if jailed:
+        rules = f"Runs without approval inside the jail: any program. Needs approval: {_ASKING}."
+    else:
+        shown = list(allow_commands[:_EXTRA_BINS_SHOWN])
+        names = ", ".join(sorted({*SAFE_BINS, *shown} - {"["}))
+        more = "..." if len(allow_commands) > _EXTRA_BINS_SHOWN else ""
+        rules = (
+            f"Runs without approval: {names}{more}. Needs approval: any other program, {_ASKING}."
+        )
+    return (
+        f"Run a shell command in the workspace. {rules} If sandboxing is enabled for this "
+        "agent, an approved command additionally runs inside the strongest exec jail "
+        "(landlock, seatbelt or docker) available on the host; otherwise it runs directly in "
+        "the workspace. Create or change files with `write`/`edit`, not `cat >`, heredocs or "
+        "`sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things."
+    )
+
+
+def state_bash_rules(registry: ToolRegistry, ctx: ToolContext) -> None:
+    """Re-describe the built-in ``bash`` with this turn's pod allowlist and jail; a ``bash`` the
+    caller registered itself is left as made."""
+    tool = registry.get("bash")
+    if tool is None or tool.description != _bash_description((), jailed=False):
+        return
+    registry.register(
+        dataclasses.replace(
+            tool, description=_bash_description(ctx.allow_commands, jailed=ctx.sandbox == "auto")
+        )
+    )
 
 
 def _offered_fetch() -> list[Tool]:
@@ -274,7 +357,10 @@ def builtin_registry() -> ToolRegistry:
     registry.register(
         Tool(
             name="write",
-            description="Create or overwrite a text file with the given content.",
+            description=(
+                "Create or overwrite a text file with the given content. The reply states bytes, "
+                "lines and whether the file ends with a newline."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
@@ -363,15 +449,7 @@ def builtin_registry() -> ToolRegistry:
     registry.register(
         Tool(
             name="bash",
-            description=(
-                "Run a shell command in the workspace. Commands are classified before they "
-                "run; anything off the allowlist or matching a high-risk action class "
-                "requires human approval. If sandboxing is enabled for this agent, an "
-                "approved command additionally runs inside the strongest exec jail (landlock, "
-                "seatbelt or docker) available on the host; otherwise it runs directly in "
-                "the workspace. Create or change files with `write`/`edit`, not `cat >`, "
-                "heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things."
-            ),
+            description=_bash_description((), jailed=False),
             parameters={
                 "type": "object",
                 "properties": {

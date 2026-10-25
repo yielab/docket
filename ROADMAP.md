@@ -9,10 +9,11 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-25.** Phases 0–49 are complete. **Phase 50 is active** (D-71,
+**Last updated: 2026-10-25.** Phases 0–50 are complete. **Phase 51 is active** (D-72,
+[ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)): one escalation record and one
+`resolve` for every pause that waits on someone outside the task. Phase 50 (D-71,
 [ADR 0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)): end-to-end tests that run the
-product the way an operator or Tack does, in `tests/e2e/`, with one fake model and shared oracles.
-The cards are on [TODO.md](TODO.md). Phase 49 (D-70) made the task one typed record behind one
+product the way an operator or Tack does, in `tests/e2e/`, with one fake model and shared oracles. Phase 49 (D-70) made the task one typed record behind one
 store, with the same JSON on disk. A new phase starts from a measured trigger or a maintainer
 request, never from this file.
 
@@ -76,7 +77,8 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 47 | The seams: layered contexts with each module where its data lives, ports for git, processes, the jail, the tracer and the tool gate, one state owner, tests by context, one authored config form, policies on the parsed command | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-24: import baseline 1 line, local imports 1, corpus-measured policies, live-home defects fixed; fresh-install real run matches the Phase 46 baseline |
 | 48 | Isolation where the machine can jail, a task keeps its pipeline file, contract v5, positioning | D-67, D-68, D-69 | 2026-10-24 |
 | 49 | The task as a typed record behind one store: `TaskRecord` (flat, same JSON), `JsonTaskStore` + `TaskRepository` as the only writers of the queue, `hops` and `interfaces` read attributes, `claimId` and `source` deleted | D-70 | **complete** 2026-10-24 (`4a22a5be`..`423b67a1`); `dict[str, Any]` in `tasks/` and `hops/` 156 to 94, queue writers 19 to 0 outside the store, `src` +40 lines net |
-| 50 | End-to-end tests that run the product: `tests/e2e/` (one file per journey, a `docket` subprocess or `docket start` over HTTP, a real git repo, only the model faked), one fake model in `tests/support/model_server.py`, shared oracles, a CI job; the deterministic smoke moves into the lane | D-71 · [0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md) | **active** (opened 2026-10-25; 10 cards P50-1..P50-10) |
+| 50 | End-to-end tests that run the product: `tests/e2e/` (one file per journey, a `docket` subprocess or `docket start` over HTTP, a real git repo, only the model faked), one fake model in `tests/support/model_server.py`, shared oracles, a CI job; the deterministic smoke moves into the lane | D-71 · [0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md) | **complete** 2026-10-25: 10 cards, 15 journey files and 48 e2e tests (lane about 32 s under `-n auto`, green twice in a row), `init --from` turns isolation on, `stale_claim` trace event, `DOCKET_CLOCK_OFFSET_S`; the tool-contract fixes A1-A5 (read/write state, consult truth, bash rules, verdict tolerance, `verify()`) landed with it |
+| 51 | One escalation: a durable `Escalation` record behind the store for approval, consult, input, gate and check-changed pauses; one `resolve` verb, one event family, one render, a policy table for when nobody is there (`consultMode: decide` first), then the A2A facade and a per-task level | D-72 · [0032](docs/adr/0032-one-escalation-record-and-one-resolve.md) | **active** (opened 2026-10-25; cards P51-1..P51-9) |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -227,7 +229,7 @@ address exactly those.
 
 ## 6. Decisions
 
-Every decision D-1…D-71 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
+Every decision D-1…D-72 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
 in [docs/cycles-ended/roadmap-decisions.md](docs/cycles-ended/roadmap-decisions.md); from D-35 on,
 the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. That file is byte-preserved, so a
 new decision gets its ADR and a row in the table below. The decisions that act as standing rules
@@ -248,6 +250,7 @@ today:
 | D-69 | Positioning (2026-10-24): docket complements the governance coding agents ship by governing a team, not a session, and leads with its versatility: roles, pipelines and policies are configuration, so any team is a combination of files. No comparison against another product without a benchmark |
 | D-70 | The task is one typed record (2026-10-24): `tasks/domain/task.py::TaskRecord`, flat, camelCase aliases, `extra="ignore"` (a queue written before a retired key still loads; unknown keys are not written back), the same keys on disk, behind `tasks/application/json_store.py` (the layer contract forbids `application` importing `adapters`; the only caller of `read_modify_write` on the queue) and `tasks/application/repository.py` (the pod's door, which also syncs the HEARTBEAT ledger). Readers use attributes; `_normalize_task`, `hop_record` and `hop_from_record` are deleted. No nested record (D-68 stands), no port protocol, no unit of work, no hooks: one implementation each. `claimId` and `source` are deleted outright (nothing read them); `Status.in_progress` likewise. The design and the measured counts are the Phase 49 cards; the architecture test `test_task_queue_writers.py` keeps the store the only writer |
 | D-71 | An end-to-end test runs the product as an operator or Tack does (2026-10-25): a `docket` subprocess or `docket start` over HTTP, a real `DOCKET_HOME` and git repo, nothing inside docket replaced, only the model faked over the real wire, judged by what an operator sees. It lives in `tests/e2e/` (one file per journey, outside `testpaths`, 60 s ceiling, its own CI job); one fake model (`tests/support/model_server.py`) and shared oracles; a real model never gates CI ([0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)) |
+| D-72 | A pause that waits on someone outside the task is one `Escalation` record behind `platform/store.py`, resolved by one `resolve` verb, applied by dispatch on claim, with a policy table for when nobody is there; the name is `Escalation` (2026-10-25). The maintainer approved the A2A facade and the per-task level too (2026-10-25: `autonomy: L3|L4|L5` on `POST /tasks`, narrowing only, the pod profile as the ceiling; the table as a `kind: autonomy` document) ([0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)) |
 
 ---
 

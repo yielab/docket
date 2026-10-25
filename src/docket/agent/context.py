@@ -61,7 +61,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from docket.agent.ports import estimate_tokens, role_composer
-from docket.kernel.handoff import HandoffArtifact, render_brief
+from docket.kernel.handoff import HandoffArtifact, render_brief, render_diff_omitted
 from docket.kernel.home import current_home
 
 #: Fallback token budget for a role with no archetype in the live registry,
@@ -225,7 +225,9 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
        `tasks/application/record.py`) is skipped rather than reported as "dropped": there
        was nothing there to shed, so claiming otherwise in the trace would be
        dishonest. ``dropped_fields`` therefore only ever names a field that
-       actually changed the rendered text.
+       actually changed the rendered text. A shed diff leaves one line announcing how many
+       characters were dropped (``render_diff_omitted``); the line is not counted when deciding
+       what to shed, so announcing a small diff never costs the reader another field.
     3. If it still doesn't fit with every droppable (and non-empty) field
        gone — only ``summary`` (and, when set, ``brief``) left — truncate
        ``summary`` itself via ``truncate_summary``, with a visible marker.
@@ -247,22 +249,25 @@ def compile_artifact(artifact: HandoffArtifact, budget_tokens: int) -> CompiledA
 
     current = artifact
     dropped: list[str] = []
+    omitted = 0  # characters of a shed diff, announced in its place
     for field_name in HandoffArtifact.DROP_ORDER:
         if not getattr(current, field_name):
             continue  # already empty -- nothing to shed, nothing to report
+        if field_name == "diff":
+            omitted = len(current.diff)
         current = current.dropped(field_name)
         dropped.append(field_name)
-        rendered = current.render()
-        tokens = estimate_tokens(rendered)
-        if tokens <= budget_tokens:
+        if estimate_tokens(current.render()) <= budget_tokens:
+            rendered = current.render(diff_omitted=omitted)
             return CompiledArtifact(
-                rendered, budget_tokens, tokens, original_tokens, tuple(dropped)
+                rendered, budget_tokens, estimate_tokens(rendered), original_tokens, tuple(dropped)
             )
 
+    omitted_line = f"\n{render_diff_omitted(omitted)}" if omitted else ""
     brief_block = f"\nBrief:\n{render_brief(current.brief)}" if current.brief is not None else ""
-    summary_budget = max(budget_tokens - estimate_tokens(brief_block), 0)
+    summary_budget = max(budget_tokens - estimate_tokens(omitted_line + brief_block), 0)
     truncated_summary, was_truncated = truncate_summary(current.summary, summary_budget)
-    final_text = f"{truncated_summary}{brief_block}"
+    final_text = f"{truncated_summary}{omitted_line}{brief_block}"
     return CompiledArtifact(
         final_text,
         budget_tokens,

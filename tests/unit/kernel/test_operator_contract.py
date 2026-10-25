@@ -20,6 +20,8 @@ from docket.kernel.operator_contract import (
     AnswerResultV11,
     ApprovalView,
     CloudEvent,
+    EscalationAffordances,
+    EscalationView,
     InboxView,
     Option,
     Question,
@@ -430,3 +432,43 @@ class TestValidateAnswerV11:
         answer = AnswerResultV11(action="accept", optionId="a", content={"note": 3})
         with pytest.raises(ValueError, match="note"):
             validate_answer_v11(_question_v11(), answer)
+
+
+class TestEscalationView:
+    def _fields(self) -> dict[str, object]:
+        return {
+            "id": "esc-0123456789ab",
+            "task": "task-1",
+            "pod": "demo",
+            "step": "implementer",
+            "role": "implementer",
+            "kind": "consult",
+            "causedBy": "c1",
+            "prompt": "Which?",
+            "askedAt": "2026-10-25T00:00:00+00:00",
+            "onExpiry": "block",
+            "affordances": {"resolveUrl": "/escalations/esc-0123456789ab"},
+        }
+
+    def test_it_is_the_record_without_legacy_plus_affordances(self) -> None:
+        view = EscalationView.model_validate(self._fields())
+
+        body = view.model_dump(by_alias=True, mode="json")
+
+        assert "legacy" not in body
+        assert body["affordances"] == {
+            "options": [],
+            "acceptsText": False,
+            "resolveUrl": "/escalations/esc-0123456789ab",
+        }
+        assert body["state"] == "pending" and body["seq"] == 0
+
+    def test_it_refuses_a_field_it_does_not_know_and_a_bad_id(self) -> None:
+        with pytest.raises(ValidationError):
+            EscalationView.model_validate({**self._fields(), "legacy": {"token": "x"}})
+        with pytest.raises(ValueError, match="esc-"):
+            EscalationView.model_validate({**self._fields(), "id": "q-1"})
+
+    def test_the_inbox_carries_escalations_empty_by_default(self) -> None:
+        assert InboxView().model_dump(by_alias=True)["escalations"] == []
+        assert EscalationAffordances(resolveUrl="/x").options == []

@@ -34,7 +34,7 @@ SUBJECT = "docket.hops.application.driver"
 
 def _tool_reply(backend: _ScriptedBackend) -> str:
     """The tool message's text, without the leading line number `read` prefixes."""
-    return next(m for m in backend.calls[1] if m.role == "tool").content.removeprefix("1\t")
+    return next(m for m in backend.calls[1] if m.role == "tool").content.removeprefix("1\t").strip()
 
 
 class TestRunTurn:
@@ -321,7 +321,7 @@ class TestRootResolutionPrecedence:
 
     def test_bare_workspace_is_the_base_fallback(self) -> None:
         ws = _write_meta("prec-a")
-        (ws / "marker.txt").write_text("workspace")
+        (ws / "marker.txt").write_text("workspace\n")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
         DocketDriver(backend_factory=lambda model: backend).run_turn(
             "prec-a", "agent:prec-a:default", "go", 30
@@ -331,7 +331,7 @@ class TestRootResolutionPrecedence:
     def test_work_dir_wins_over_bare_workspace(self, tmp_path: Path) -> None:
         work_dir = tmp_path / "work"
         work_dir.mkdir()
-        (work_dir / "marker.txt").write_text("workdir")
+        (work_dir / "marker.txt").write_text("workdir\n")
         _write_meta("prec-b", workDir=str(work_dir))
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
         DocketDriver(backend_factory=lambda model: backend).run_turn(
@@ -342,10 +342,10 @@ class TestRootResolutionPrecedence:
     def test_codebase_wins_over_work_dir(self, tmp_path: Path) -> None:
         work_dir = tmp_path / "work2"
         work_dir.mkdir()
-        (work_dir / "marker.txt").write_text("workdir2")
+        (work_dir / "marker.txt").write_text("workdir2\n")
         codebase = tmp_path / "code"
         codebase.mkdir()
-        (codebase / "marker.txt").write_text("codebase")
+        (codebase / "marker.txt").write_text("codebase\n")
         _write_meta("prec-c", workDir=str(work_dir), codebase=str(codebase))
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
         DocketDriver(backend_factory=lambda model: backend).run_turn(
@@ -356,12 +356,12 @@ class TestRootResolutionPrecedence:
     def test_task_worktree_root_wins_over_codebase(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin"
         origin.mkdir()
-        (origin / "marker.txt").write_text("origin")
+        (origin / "marker.txt").write_text("origin\n")
         _write_meta("demo-implementer", role="implementer", codebase=str(origin))
         _fleet.add_agent("demo-implementer")
         task_dir = current_home().projects_dir / "demo-implementer" / "tasks" / "t1"
         task_dir.mkdir(parents=True)
-        (task_dir / "marker.txt").write_text("task worktree")
+        (task_dir / "marker.txt").write_text("task worktree\n")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
 
         DocketDriver(backend_factory=lambda model: backend).run_turn(
@@ -377,14 +377,14 @@ class TestRootResolutionPrecedence:
     def test_task_worktree_root_wins_for_reviewer(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin"
         origin.mkdir()
-        (origin / "marker.txt").write_text("origin")
+        (origin / "marker.txt").write_text("origin\n")
         _write_meta("demo-implementer", role="implementer", codebase=str(origin))
         _write_meta("demo-reviewer", role="reviewer", codebase=str(origin))
         _fleet.add_agent("demo-implementer")
         _fleet.add_agent("demo-reviewer")
         task_dir = current_home().projects_dir / "demo-implementer" / "tasks" / "t1"
         task_dir.mkdir(parents=True)
-        (task_dir / "marker.txt").write_text("implementation")
+        (task_dir / "marker.txt").write_text("implementation\n")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])
 
         DocketDriver(backend_factory=lambda model: backend).run_turn(
@@ -400,10 +400,10 @@ class TestRootResolutionPrecedence:
     def test_pipeline_root_outside_every_tasks_dir_is_ignored(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin"
         origin.mkdir()
-        (origin / "marker.txt").write_text("origin")
+        (origin / "marker.txt").write_text("origin\n")
         stray = tmp_path / "stray"
         stray.mkdir()
-        (stray / "marker.txt").write_text("stray")
+        (stray / "marker.txt").write_text("stray\n")
         _write_meta("demo-implementer", role="implementer", codebase=str(origin))
         _fleet.add_agent("demo-implementer")
         backend = _ScriptedBackend([_read_call_response("marker.txt"), _final_response("ok")])

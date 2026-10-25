@@ -1,8 +1,8 @@
 # Docket JSON Store Specification
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Implemented
-**Last updated**: 2026-10-22
+**Last updated**: 2026-10-25
 
 ## Purpose
 
@@ -64,6 +64,36 @@ non-reentrant directory lock. Concurrent readers therefore observe one recovery 
 concurrent locked mutation preserves one complete generation and cannot rotate malformed bytes
 over the valid backup.
 
+## Escalation records
+
+The store also owns the second typed record family after the task queue: one durable record per
+escalation (`operator-loop.spec.md` "Escalations"), kept under `DOCKET_HOME/escalations/`.
+
+| Path | Purpose |
+| --- | --- |
+| `escalations/esc-<12 hex>.json` | One `Escalation` record, the camelCase JSON of the operator contract model |
+| `escalations/_seq.json` | `{"seq": n}`, the last `seq` handed out |
+
+The directory is `0700` and every file in it `0600`, written through `write_json`, so the backup,
+quarantine and symlink rules above apply to each record.
+
+1. `next_escalation_seq()` MUST increment the counter under the directory's lock and return the new
+   value. The first value is `1`; two calls never return the same value, whichever process makes
+   them.
+2. `write_escalation(escalation)` MUST give a record whose `seq` is `0` the next `seq`, keep the
+   stored `seq` of a record already written, persist it, and return the record as stored. An `id`
+   that is not `esc-` plus twelve lower-case hex characters cannot be built (the model refuses
+   it), so it never becomes a filename.
+3. `read_escalation(id)` MUST return the record, or `None` for a malformed id, an absent file or a
+   file that is not a valid `Escalation`.
+4. `list_escalations(state=None, since_seq=None)` MUST return the valid records ordered by `seq`,
+   keeping only those in `state` when given and only those with `seq` strictly greater than
+   `since_seq` when given. It MUST skip the counter, a stray file and an invalid record rather than
+   fail.
+5. `settle_escalation(key, value, state)` MUST move the one pending record whose `legacy[key]`
+   equals `value` to `state` under the record's lock and return whether one was moved. A record
+   that is no longer `pending` is left as it is.
+
 ## Validation
 
 The behavioral matrix uses temporary registries created by two real `write_json` calls:
@@ -95,5 +125,7 @@ state.json.bak     {"generation": 1}
 
 ## Implementation
 
-- `src/docket/platform/store.py`: `read_json`, `write_json`, `read_modify_write`, `StoreRecoveryError`
+- `src/docket/platform/store.py`: `read_json`, `write_json`, `read_modify_write`, `StoreRecoveryError`,
+  `next_escalation_seq`, `write_escalation`, `read_escalation`, `list_escalations`,
+  `settle_escalation`
 - `src/docket/interfaces/cli/commands/task.py`: the `docket task prune` command, which reads the run registry through the store

@@ -818,7 +818,9 @@ MCP `approvals_grant` `option`. `docket task approve|deny <task-id> --reason TEX
 `reason` record why, with an `actor`, in the audit entry.
 The `consult` built-in (kind `read`) asks a typed question with options and an optional
 recommendation. In a pod hop it parks the task `waiting_input` and `answer_task` re-runs the same
-role with the answer in its message, bounded per task by `maxConsultationsPerTask`. The parked
+role with the answer in its message, bounded per task by `maxConsultationsPerTask`. A pod set to
+`consultMode decide` does not park: the call returns the model's own recommendation at once and
+the audit log records `consult.decided`. The parked
 question is persisted (0600, `consult-parked/`) until dispatch stores it on the task, so any process
 can answer it. A channel at the `conversation` level lists the options and the recommended id, and
 Telegram `/answer <task> <option id>` picks one.
@@ -828,9 +830,11 @@ evidence-v1 document: per-hop measured token usage (null when the endpoint repor
 and a trace link made of the session key and a one-second window. A corrections ledger at
 `<DOCKET_HOME>/corrections/<project>.jsonl` collects deny reasons, Reviewer `REQUEST-CHANGES` texts
 and declined answers.
-Metrics expose `docket_tasks_started_total`,
-`docket_questions_total{kind,outcome}` and `docket_decision_latency_seconds` on `/metrics`. Like the other
-counters they are lifetime-of-current-storage counts and must not be alerted on as monotonic.
+Metrics expose `docket_tasks_started_total`, `docket_escalations_total{kind,outcome,by}` (settled
+pauses, with a pod's own decision told apart from a person's) and
+`docket_escalation_wait_seconds{kind}` on `/metrics`, folded from the `escalation_*` trace events.
+Like the other counters they are lifetime-of-current-storage counts and must not be alerted on as
+monotonic.
 
 ### Pipeline resolution and generalized gates
 

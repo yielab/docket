@@ -15,8 +15,9 @@ from docket.agent.ports import ToolCall
 from docket.agent.tools.registry import ToolContext, ToolResult, dispatch_tool
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
+from docket.kernel.operator_contract import is_escalation_id
 from docket.observability import trace as _trace
-from docket.platform import parked_question
+from docket.platform import list_escalations, parked_question
 from docket.tasks.application import consult as _consult
 from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _arch
@@ -95,7 +96,7 @@ class TestValidation:
         finally:
             off()
         assert not result.ok and "recommendation" in result.as_tool_output()
-        assert result.denial_kind is None
+        assert result.denial_kind == "invalid_call"
         assert seen == []
 
     def test_fewer_than_two_options_is_an_error_result(self) -> None:
@@ -175,6 +176,115 @@ class TestRefuse:
     def test_refuse_wins_over_pod_dispatch_parking(self) -> None:
         result = _call(_args(), _ctx(approval_mode="refuse", consult_park=True))
         assert result.denial_kind == "approval_unavailable"
+
+
+class TestDecide:
+    def _decide(self, **over: Any) -> tuple[ToolResult, list[dict[str, Any]]]:
+        seen, off = _events()
+        try:
+            result = _call(
+                _args(),
+                _ctx(consult_park=True, consult_mode="decide", task_id="t-1", **over),
+            )
+        finally:
+            off()
+        return result, seen
+
+    def test_the_recommendation_is_the_tool_result_and_the_turn_continues(self) -> None:
+        result, _ = self._decide()
+
+        assert result.ok
+        assert result.content == (
+            "no operator on duty; your recommendation stands: option sqlite (SQLite). Continue."
+        )
+
+    def test_the_trace_marks_the_question_decided_with_the_option(self) -> None:
+        _, seen = self._decide()
+
+        (event,) = seen
+        assert event["payload"]["mode"] == "decided"
+        assert event["payload"]["decidedOptionId"] == "sqlite"
+        assert event["payload"]["question"]["kind"] == "decision"
+
+    def test_the_event_is_filed_under_the_task_session_when_the_context_names_one(self) -> None:
+        _, seen = self._decide(trace_session_key="task:t-1")
+
+        assert [e["session_id"] for e in seen] == ["task:t-1"]
+
+    def test_the_audit_row_names_ids_and_never_the_question(self) -> None:
+        from docket.governance import audit as _audit
+
+        self._decide(project="demo")
+
+        (row,) = [e for e in _audit.read_audit() if e["action"] == "consult.decided"]
+        assert row["detail"].split()[:3] == ["project=demo", "task=t-1", "role=lead"]
+        assert "optionId=sqlite" in row["detail"] and "questionId=q" in row["detail"]
+        assert "Which store" not in row["detail"] and "Redis" not in row["detail"]
+
+    def test_the_decision_is_one_escalation_decided_beside_the_question(self) -> None:
+        decided: list[dict[str, Any]] = []
+        off = _trace.add_subscriber(
+            lambda r: decided.append(r) if r.get("event_type") == "escalation_decided" else None
+        )
+        try:
+            _, asked = self._decide(trace_session_key="task:t-1")
+        finally:
+            off()
+
+        (event,) = decided
+        payload = event["payload"]
+        assert is_escalation_id(payload["escalation"])
+        assert (payload["kind"], payload["policy"], payload["by"]) == (
+            "consult",
+            "recommendation",
+            "policy",
+        )
+        assert (payload["optionId"], payload["task"]) == ("sqlite", "t-1")
+        assert payload["askedAt"] == asked[0]["payload"]["question"]["createdAt"]
+        assert (event["session_id"], event["task_id"]) == ("task:t-1", "t-1")
+        assert "Which store" not in json.dumps(payload)
+
+    def test_no_record_is_stored_for_a_pause_nobody_waited_on(self) -> None:
+        self._decide()
+
+        assert list_escalations() == []
+
+    def test_a_consult_that_parks_decides_nothing(self) -> None:
+        decided: list[dict[str, Any]] = []
+        off = _trace.add_subscriber(
+            lambda r: decided.append(r) if r.get("event_type") == "escalation_decided" else None
+        )
+        try:
+            _call(_args(), _ctx(consult_park=True, consult_mode="park", task_id="t-1"))
+        finally:
+            off()
+
+        assert decided == []
+
+    def test_nothing_is_parked(self) -> None:
+        result, _ = self._decide()
+
+        assert result.approval_token == "" or result.approval_token is None
+
+    def test_a_decided_consult_spends_budget(self) -> None:
+        ctx = _ctx(consult_park=True, consult_mode="decide", max_consultations=1)
+
+        assert _call(_args(), ctx, "c1").ok
+        second = _call(_args(), ctx, "c2")
+
+        assert not second.ok and "budget exhausted" in second.as_tool_output()
+
+    def test_an_invalid_call_is_still_the_ordinary_error(self) -> None:
+        ctx = _ctx(consult_park=True, consult_mode="decide")
+
+        result = _call(_args(options=_args()["options"][:1]), ctx)
+
+        assert not result.ok and "options" in result.as_tool_output()
+
+    def test_outside_pod_dispatch_the_mode_changes_nothing(self) -> None:
+        result = _call(_args(), _ctx(consult_mode="decide"))
+
+        assert result.ok and result.content == "no answer; decide yourself"
 
 
 class TestCap:

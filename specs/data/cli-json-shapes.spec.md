@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.0.1
+**Version**: 4.2.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -184,14 +184,17 @@ production driver, which keeps one running total per session rather than per-day
 ### `docket inbox --json`
 
 The `InboxView` shape `GET /inbox` returns (`needsYou`, `failed`, `doneSince`, `running`,
-`next`), except that every item also carries `state`
+`next`, `escalations`), except that every item also carries `state`
 (`needs_approval | needs_answer | blocked | failed | done | running | approved_ready`) and
 `command` (the one `docket ...` command that moves it forward). `next` is the cursor a plain call
 stores; `--peek` and `--since` leave it alone. A pending task whose approval was granted is listed
 in `needsYou` with `state: "approved_ready"` and `command: "docket run --pod <pod>"`. A pending
 pod-memory entry is listed in `needsYou` as `{"kind": "memory", "pod", "id", "entryKind",
 "subject", "note", "reason", "task", "state": "needs_memory_approval", "command": "docket pod
-memory approve <id> --pod <pod>"}`; `GET /inbox` does not carry it.
+memory approve <id> --pod <pod>"}`; `GET /inbox` does not carry it. Each `escalations` entry is
+an `EscalationView` (`operator-loop.spec.md` area 11) with the CLI's own `command` added
+(`docket task answer <task>` for a `consult` or `input`, `docket task approve <task-or-token>`
+otherwise).
 
 ### `docket init --json`
 
@@ -249,7 +252,8 @@ each of these keys that was set and omits the rest: `externalRef`, `idempotencyK
   "evidence": "the evidence-v1.1 document of docs/contracts/evidence-v1.1/schema.json",
   "runs":     "array of run records (below)",
   "corrections": "array of corrections-ledger records for this task",
-  "interruptions": [{ "kind": "string", "description": "string", "detail": "string" }]
+  "interruptions": [{ "kind": "string", "description": "string", "detail": "string" }],
+  "escalations": "array of the task's pending EscalationView (operator-loop.spec.md area 11), [] when none"
 }
 ```
 
@@ -325,7 +329,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
 `settings` has one entry per pod setting: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
 `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
-`maxConsultationsPerTask`, `network`, `profile`, `readOnly`, `prepare` and `protects`.
+`maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare` and `protects`.
 
 An unset `approvalMode` resolves per caller: `wait` on a terminal, `park` without one. A stored
 value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an error to stderr

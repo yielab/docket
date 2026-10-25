@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import dataclasses
 import json as _json
+from collections.abc import Callable
 
 from docket.agent import ports as _rd
 from docket.hops.application import driver as _dr
@@ -16,6 +18,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
+from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.record import (
@@ -37,6 +40,50 @@ from docket.teams.settings import retries_for_role
 # verdict is a real answer and must never be retried (retrying would risk
 # masking a genuine failure as a transient one, and burns budget for nothing).
 _RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"})
+
+
+def _reask_unmarked_verdict(
+    ctx: UnitContext,
+    role: str,
+    gate: _gates.VerdictGate,
+    first: _rd.TurnResult,
+    call: Callable[[str], _rd.TurnResult],
+) -> _rd.TurnResult:
+    """A reply with no verdict marker is asked for once more on the same session; the answer is
+    appended to the original reply. A failed extra request leaves *first* as it was."""
+    if _orch.parse_verdict(gate, first.output) is not None:
+        return first
+    values = _orch.verdict_values(gate)
+    trace_locked(
+        ctx.project,
+        ctx.session_id,
+        role,
+        "verdict_reasked",
+        _json.dumps({"hop": role, "values": list(values)}),
+    )
+    second = call(
+        f"Your reply had no verdict line. Reply with exactly one line: {' or '.join(values)}."
+    )
+    if not second.ok:
+        return first
+    return dataclasses.replace(
+        first,
+        output=f"{first.output}\n{second.output}".strip(),
+        cost_usd=first.cost_usd + second.cost_usd,
+        usage=_sum_usage(first.usage, second.usage),
+        raw=second.raw,
+    )
+
+
+def _sum_usage(a: _rd.TokenUsage | None, b: _rd.TokenUsage | None) -> _rd.TokenUsage | None:
+    if a is None or b is None:
+        return a or b
+    return _rd.TokenUsage(
+        a.input_tokens + b.input_tokens,
+        a.output_tokens + b.output_tokens,
+        a.cached_tokens + b.cached_tokens,
+        a.cache_write_tokens + b.cache_write_tokens,
+    )
 
 
 def _run_hop_turn(
@@ -75,19 +122,24 @@ def _run_hop_turn(
         if run_id_for_pids is not None:
             _runs.add_hop_pid(run_id_for_pids, pid)
 
-    attempt = 1
-    while True:
+    def _call(turn_message: str) -> _rd.TurnResult:
         spawned_pid.clear()
+        run_res = _run(turn_message)
+        if run_id_for_pids is not None and spawned_pid:
+            _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
+        return run_res
+
+    def _run(turn_message: str) -> _rd.TurnResult:
         if ctx.track_pid:
             # `ctx.run` is typed as the plain 5-arg `Runner` Callable (every
             # test double's exact shape); calling the concrete production
             # driver directly here (rather than through `ctx.run`) is what
             # lets it take the extra `on_spawn` kwarg type-safely.
             driver: _rd.RuntimeDriver = _dr.default_driver()
-            run_res = driver.run_turn(
+            return driver.run_turn(
                 member_id,
                 history_session_key,
-                message,
+                turn_message,
                 hop_timeout,
                 env,
                 on_spawn=_on_spawn,
@@ -96,10 +148,11 @@ def _run_hop_turn(
                 trace_task_id=ctx.task_id,
                 model=resolved_model,
             )
-        else:
-            run_res = ctx.run(member_id, history_session_key, message, hop_timeout, env)
-        if run_id_for_pids is not None and spawned_pid:
-            _runs.remove_hop_pid(run_id_for_pids, spawned_pid[-1])
+        return ctx.run(member_id, history_session_key, turn_message, hop_timeout, env)
+
+    attempt = 1
+    while True:
+        run_res = _call(message)
         if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
             break
         if attempt > retry_budget:
@@ -139,6 +192,8 @@ def _run_hop_turn(
             )
         )
         attempt += 1
+    if run_res.ok and isinstance(node.gate, _gates.VerdictGate):
+        run_res = _reask_unmarked_verdict(ctx, role, node.gate, run_res, _call)
     return run_res, attempt
 
 

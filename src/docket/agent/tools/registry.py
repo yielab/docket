@@ -54,6 +54,9 @@ class ToolContext:
 
     agent_id: str = ""
     session_key: str = ""
+    # The session a dispatch hop's trace events are filed under (the task's); "" files under
+    # `session_key`. A consult's `question_asked` follows it so the task's trace shows the question.
+    trace_session_key: str = ""
     roots: tuple[Path, ...] = ()
     timeout: int = 120
     env: dict[str, str] = field(default_factory=dict)
@@ -82,8 +85,15 @@ class ToolContext:
     consult_count: int = 0
     # Pod dispatch sets it: a consult parks the task (``waiting_input``) rather than waiting.
     consult_park: bool = False
+    # "decide": a parking consult answers with the model's own recommendation instead of waiting.
+    consult_mode: str = "park"
     # The task this turn serves (a pod task id); stamps a consult's question.
     task_id: str = ""
+
+    @property
+    def consult_decides(self) -> bool:
+        """Whether a consult here is answered by the model's own recommendation, not parked."""
+        return self.consult_park and self.consult_mode == "decide"
 
 
 @dataclass
@@ -126,18 +136,35 @@ class ToolResult:
 @dataclass(frozen=True)
 class Tool:
     """One callable tool: its schema for the model, its handler for docket. ``kind`` drives gating:
-    ``exec`` goes through the classifier, ``write`` is a mutating record, ``read`` is the cheap case."""
+    ``exec`` goes through the classifier, ``write`` is a mutating record, ``read`` is the cheap case.
+    ``ends_turn`` marks a tool whose successful call closes the turn (the agent loop's own rule).
+    ``pregranted`` marks an ``exec`` tool whose command the pipeline already authorises: it skips
+    the classifier and nothing else."""
 
     name: str
     description: str
     parameters: dict[str, Any]
     handler: Callable[[dict[str, Any], ToolContext], ToolOutcome]
     kind: ToolKind = "read"
+    ends_turn: bool = False
+    pregranted: bool = False
 
     @property
     def required_args(self) -> tuple[str, ...]:
         required = self.parameters.get("required")
         return tuple(str(r) for r in required) if isinstance(required, list) else ()
+
+    def mistyped_strings(self, args: dict[str, Any]) -> tuple[str, ...]:
+        """Required arguments the schema declares as strings that arrived as another JSON type."""
+        properties = self.parameters.get("properties")
+        declared = properties if isinstance(properties, dict) else {}
+        return tuple(
+            name
+            for name in self.required_args
+            if isinstance(declared.get(name), dict)
+            and declared[name].get("type") == "string"
+            and not isinstance(args[name], str)
+        )
 
     def spec(self) -> ToolSpec:
         """The advertisement sent to the model."""
@@ -225,6 +252,14 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         result.decision = "deny"
         result.denial_kind = "invalid_call"
         result.reason = f"missing required argument(s): {', '.join(missing)}"
+        result.error = result.reason
+        return result
+
+    mistyped = tool.mistyped_strings(args)
+    if mistyped:
+        result.decision = "deny"
+        result.denial_kind = "invalid_call"
+        result.reason = f"argument(s) must be text: {', '.join(mistyped)}"
         result.error = result.reason
         return result
 

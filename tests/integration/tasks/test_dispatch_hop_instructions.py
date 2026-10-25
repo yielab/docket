@@ -102,8 +102,8 @@ class TestCustomRoleGeneratedHopInstruction:
             results = _sweep.dispatch_pod("proj", runner=_runner, spec=_review_pipeline())
 
             assert results[0].status == "done", results[0].reason
-            assert "APPROVE or REQUEST-CHANGES" in seen["review"]
-            assert "one output line" in seen["review"]
+            assert "exactly `APPROVE` or `REQUEST-CHANGES`" in seen["review"]
+            assert "LAST line of your FINAL message" in seen["review"]
 
 
 class TestStepInstructionsOverrideAndInterpolation:

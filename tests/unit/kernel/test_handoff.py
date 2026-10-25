@@ -186,3 +186,23 @@ class TestDiff:
 
     def test_cap_diff_cuts_and_says_how_much_is_missing(self) -> None:
         assert cap_diff("abcdef", 4) == "abcd\n[diff cut at 4 characters; 2 more not shown]"
+
+
+class TestDiffOmittedMarker:
+    """`render(diff_omitted=N)` says a diff was shed and where to find it, in the diff's place."""
+
+    def test_the_marker_takes_the_place_of_the_diff_block(self) -> None:
+        art = HandoffArtifact(summary="done", files_changed=["a.py"], verdict="x")
+        assert art.render(diff_omitted=1234).splitlines() == [
+            "done",
+            "[diff omitted: 1234 chars over budget; run git diff in the worktree]",
+            "Verdict: x",
+            "Files changed: a.py",
+        ]
+
+    def test_a_present_diff_wins_over_the_marker(self) -> None:
+        art = HandoffArtifact(summary="done", diff="+x")
+        assert "diff omitted" not in art.render(diff_omitted=5)
+
+    def test_the_default_render_is_unchanged(self) -> None:
+        assert HandoffArtifact(summary="done").render() == "done"
