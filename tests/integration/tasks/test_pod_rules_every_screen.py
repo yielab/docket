@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.approvals import answer_question
 from tests.support.cli import invoke_pod
 from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off
@@ -22,7 +23,6 @@ from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
 from docket.governance import approval as _approval
-from docket.hops.application import answers as _answers
 from docket.hops.application import executor as _executor
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
@@ -34,6 +34,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
+from docket.tasks.domain.resolution import EscalationRefused
 from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
@@ -203,15 +204,8 @@ class TestDefect39PodPolicyOnEveryScreen:
         assert parked.status == "waiting_input"
         _pod_policy("pod-block-input", _INPUT_BLOCK)
 
-        with pytest.raises(_answers.AnswerRejected):
-            _answers.answer_task(
-                "demo",
-                parked.id,
-                "accept",
-                {"answer": "CANARY-PHRASE"},
-                channel="cli",
-                actor="op",
-            )
+        with pytest.raises(EscalationRefused):
+            answer_question("demo", parked.id, "accept", {"answer": "CANARY-PHRASE"})
 
         assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from docket.kernel.operator_contract import ApprovalView, make_event
+from docket.kernel.operator_contract import EscalationView, make_event
 
 
 class _ChannelSpecLike:
@@ -27,14 +27,20 @@ def _event_approval() -> Any:
 
 def _event_minimal_with_canary() -> Any:
     """A minimal-content event whose underlying action is the literal CANARY_7f3 string."""
-    approval = ApprovalView(
-        token="tok-canary",
-        pod="alpha",
-        role="implementer",
-        action="git push origin CANARY_7f3",
-        policy="prod-approval",
-        state="pending",
-        created_at="2026-09-28T00:00:00Z",
+    approval = EscalationView.model_validate(
+        {
+            "id": "esc-0123456789ab",
+            "task": "",
+            "pod": "alpha",
+            "step": "",
+            "role": "implementer",
+            "kind": "approval",
+            "causedBy": "c1",
+            "prompt": "git push origin CANARY_7f3",
+            "askedAt": "2026-09-28T00:00:00Z",
+            "onExpiry": "deny",
+            "affordances": {"resolveUrl": "/escalations/esc-0123456789ab"},
+        }
     )
     # Build the event at minimal content level
     from docket.operator.notify import render_data
@@ -43,8 +49,8 @@ def _event_minimal_with_canary() -> Any:
     return make_event(
         "approval.requested",
         "alpha",
-        "approval:tok-canary",
+        "escalation:esc-0123456789ab",
         data,
         time="2026-09-28T00:00:00Z",
-        version="pending:tok-canary",
+        version="pending",
     )

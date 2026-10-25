@@ -10,24 +10,22 @@ from typing import Any
 
 import typer
 
-from docket.governance import approval as _approval
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import status as _status
 from docket.interfaces.cli.render import ui
 from docket.interfaces.cli.render.escalation import answer_command, decision_line, options_line
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import ApprovalView, EscalationView, InboxView, TaskView
+from docket.kernel.operator_contract import EscalationView, InboxView, TaskView
 from docket.operator import (
     MemoryItem,
     build_inbox,
     pending_memory,
-    question_escalation,
     render_escalation,
     task_view,
 )
-from docket.operator.render import render_options
 from docket.platform import read_json, write_json
+from docket.tasks.application.actions import approved_ready
 from docket.tasks.application.repository import TaskRepository
 
 # The operator's own terminal sees everything the pause carries.
@@ -35,8 +33,9 @@ _LEVEL = "full"
 APPROVED_READY = "approved_ready"
 NEEDS_MEMORY = "needs_memory_approval"
 
+_APPROVE = "docket task answer {id} --option approve_once"
 _TASK_STATES = {
-    "waiting_approval": ("needs_approval", "docket task approve {id}"),
+    "waiting_approval": ("needs_approval", _APPROVE),
     "waiting_input": ("needs_answer", "docket task answer {id}"),
     "blocked": ("blocked", "docket task retry {id}"),
     "failed": ("failed", "docket task retry {id}"),
@@ -59,22 +58,24 @@ def _approved_ready_tasks() -> list[TaskView]:
     out: list[TaskView] = []
     for project in _status.pod_ids():
         for record in TaskRepository.for_pod(project).list():
-            if record.approved_ready:
+            if approved_ready(record):
                 out.append(task_view(project, record.model_dump(by_alias=True, mode="json")))
     return out
 
 
-def _state_and_command(item: TaskView | ApprovalView, *, ready: bool = False) -> tuple[str, str]:
+def _state_and_command(item: TaskView | EscalationView, *, ready: bool = False) -> tuple[str, str]:
     """The item's state word and the one command that moves it forward."""
-    if isinstance(item, ApprovalView):
-        return "needs_approval", f"docket task approve {item.token}"
+    if isinstance(item, EscalationView):
+        if item.kind in ("consult", "input"):
+            return "needs_answer", f"docket task answer {item.id}"
+        return "needs_approval", _APPROVE.format(id=item.id)
     if ready:
         return APPROVED_READY, f"docket run --pod {item.pod}"
     state, command = _TASK_STATES.get(item.status, (item.status, "docket task show {id}"))
     return state, command.format(id=item.id)
 
 
-def _as_dict(item: TaskView | ApprovalView, *, ready: bool = False) -> dict[str, Any]:
+def _as_dict(item: TaskView | EscalationView, *, ready: bool = False) -> dict[str, Any]:
     state, command = _state_and_command(item, ready=ready)
     row = item.model_dump(by_alias=True, mode="json")
     row.update(state=state, command=command)
@@ -125,13 +126,6 @@ def _json_view(view: InboxView, ready: list[TaskView], memory: list[MemoryItem])
     return body
 
 
-def _held_action(token: str) -> str:
-    try:
-        return str(_approval.approval_get(token).get("action") or "")
-    except _approval.ApprovalError:
-        return ""
-
-
 def _say(text: str) -> None:
     ui.console.print(text, markup=False)
 
@@ -150,52 +144,48 @@ def _render_memory(item: MemoryItem) -> None:
     _say(f'    refuse:  docket pod memory refuse {item.id} --pod {item.pod} --reason "<why>"')
 
 
-def _render_question(item: TaskView, escalations: list[EscalationView]) -> None:
-    assert item.question is not None
-    escalation = question_escalation(escalations, item.pod, item.id)
-    if escalation is not None:
-        rendered = render_escalation(escalation, _LEVEL)
-        message, options = rendered.prompt or "", rendered.options
-    else:
-        # A question parked before escalations were kept has no record; it reads from the task.
-        stored = getattr(item.question, "options", None) or []
-        recommendation = getattr(item.question, "recommendation", None)
-        options = render_options(
-            stored, recommendation.option_id if recommendation else None, labels=True
+def _render_pause(item: TaskView | EscalationView, escalations: list[EscalationView]) -> None:
+    """What the pause an item waits on asks and the commands that answer it."""
+    pause = (
+        item
+        if isinstance(item, EscalationView)
+        else next((e for e in escalations if e.id == item.escalation), None)
+    )
+    if pause is None:
+        return
+    rendered = render_escalation(pause, _LEVEL)
+    if pause.kind in ("consult", "input"):
+        _say(_block("    Q: ", rendered.prompt or ""))
+        if rendered.options:
+            _say(f"    options: {options_line(rendered.options)}")
+        _say(
+            f"    answer: {answer_command(item.id if isinstance(item, TaskView) else pause.task or pause.id, rendered.options)}"
         )
-        message = item.question.message
-    _say(_block("    Q: ", message))
-    if options:
-        _say(f"    options: {options_line(options)}")
-    _say(f"    answer: {answer_command(item.id, options)}")
+        return
+    if rendered.prompt:
+        _say(_block("    asks: ", rendered.prompt))
+    ref = item.id if isinstance(item, TaskView) else pause.id
+    _say(f"    approve: docket task answer {ref} --option approve_once")
+    _say(f"    deny:    docket task answer {ref} --option deny")
 
 
 def _render_item(
-    item: TaskView | ApprovalView,
+    item: TaskView | EscalationView,
     *,
     ready: bool = False,
     escalations: list[EscalationView] | None = None,
 ) -> None:
     state, command = _state_and_command(item, ready=ready)
-    if isinstance(item, ApprovalView):
-        _say(f"  approval {item.token}  pod={item.pod}  role={item.role}")
-        if item.action:
-            _say(_block("    asks: ", item.action))
-        _say(f"    approve: {command}")
-        _say(f"    deny:    docket task deny {item.token}")
+    if isinstance(item, EscalationView):
+        _say(f"  {item.kind} {item.id}  pod={item.pod}  role={item.role}")
+        _render_pause(item, escalations or [])
         return
     _say(f"  task {item.id}  pod={item.pod}  {state.replace('_', ' ')}")
     label = item.description or item.reason or ""
     if label:
         _say(_block("    ", label))
-    if state == "needs_approval":
-        action = _held_action(item.approval_token) if item.approval_token else ""
-        if action:
-            _say(_block("    asks: ", action))
-        _say(f"    approve: {command}")
-        _say(f"    deny:    docket task deny {item.id}")
-    elif state == "needs_answer" and item.question is not None:
-        _render_question(item, escalations or [])
+    if state in ("needs_approval", "needs_answer") and item.escalation:
+        _render_pause(item, escalations or [])
     else:
         _say(f"    next: {command}")
 
@@ -232,7 +222,7 @@ def cmd_inbox(
         _contract.emit_json(_json_view(view, ready, memory))
         return
     ui.header("Inbox")
-    sections: list[tuple[str, list[tuple[TaskView | ApprovalView, bool]]]] = [
+    sections: list[tuple[str, list[tuple[TaskView | EscalationView, bool]]]] = [
         (
             "Needs you",
             [(i, False) for i in view.needs_you] + [(t, True) for t in ready],

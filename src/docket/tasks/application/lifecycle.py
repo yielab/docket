@@ -15,6 +15,7 @@ from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
+from docket.platform import read_escalation
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.repository import TaskRepository
@@ -25,7 +26,6 @@ from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
 from docket.teams.settings import (
-    load_pod_settings,
     pod_task_list_path,
     pod_turn_timeout,
     pod_verify_timeout,
@@ -33,22 +33,13 @@ from docket.teams.settings import (
 )
 
 
-def _apply_result(
-    record: TaskRecord, res: TaskResult, *, input_expiry_hours: int | None = None
-) -> None:
+def _apply_result(record: TaskRecord, res: TaskResult) -> None:
     """Fold a TaskResult back onto the stored task (terminal state; pod-dispatch.spec.md,
     "blocked and terminal-failure re-entry"). ``blocked``/``waiting_approval``/``waiting_input``
-    are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/
-    ``resolve_waiting_approval``/``hops.application.answers.answer_task``. Pure -- the repository
-    syncs the HEARTBEAT.md ledger."""
-    if res.status == _state.Status.waiting_input and (
-        res.question and not res.question.get("expiresAt") and input_expiry_hours
-    ):
-        deadline = _clock.now() + _dt.timedelta(hours=input_expiry_hours)
-        res.question["expiresAt"] = deadline.isoformat()
+    are never rewritten to ``pending`` here, only via ``unblock_pod``/``retry_task``/an escalation's
+    ``resolve``. Pure -- the repository syncs the HEARTBEAT.md ledger."""
     # A fresh ordinary terminal result (no failure kind) supersedes any stale-claim or
-    # settled-refusal marker left by an earlier attempt at this same task; a consult answer is
-    # delivered to the hop this result came from (``ran``).
+    # settled-refusal marker left by an earlier attempt at this same task.
     _transitions.apply_to_task(
         record,
         _state.Status(res.status),
@@ -56,16 +47,11 @@ def _apply_result(
         reason=res.reason,
         failure_kind=res.failure_kind,
         blocked_reason=res.blocked_reason or res.reason,
-        approval_token=res.approval_token,
         pending_index=res.pending_approval_index,
-        question=res.question,
-        ran=True,
     )
     record.hops = list(res.hops)
     record.cost_usd = res.cost_usd
     record.check_changed = list(res.check_changed)
-    if res.status == _state.Status.waiting_input and record.question_is_consultation:
-        record.consultations += 1
 
 
 def _task_usage(res: TaskResult) -> TaskUsage:
@@ -86,13 +72,10 @@ def finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     """Persist a task's terminal outcome (status/reason/hops/cost), clear its claim, and
     re-sync HEARTBEAT.md. The only trigger that ever *removes* a ledger entry --
     ``claim_next_task``/``persist_hop``/``touch_claim`` only add or keep one current."""
-    expiry = (
-        load_pod_settings(project).input_expiry_hours if res.status == "waiting_input" else None
-    )
     usage = _task_usage(res)
 
     def _fn(record: TaskRecord) -> None:
-        _apply_result(record, res, input_expiry_hours=expiry)
+        _apply_result(record, res)
         record.usage = usage
 
     TaskRepository.for_pod(project).update(task_id, _fn)
@@ -204,17 +187,17 @@ def cancel_parked_task(
     project: str, task_id: str, *, channel: str, actor: str = "", reason: str = ""
 ) -> str:
     """Cancel a task parked in ``waiting_input`` or ``waiting_approval``: it ends ``cancelled``,
-    its question or approval is cleared (a pending approval record is denied) and no hop runs.
+    its pause stops waiting (a pending approval record behind it is denied) and no hop runs.
     Audited ``task.cancel``. Returns the prior status, or ``""`` when the task is not parked."""
     prior = ""
-    token = ""
+    listed: list[str] = []
 
     def _cancel(record: TaskRecord) -> bool:
-        nonlocal prior, token
+        nonlocal prior
         if record.status not in (_state.Status.waiting_input, _state.Status.waiting_approval):
             return False
         prior = record.status.value
-        token = record.approval_token or ""
+        listed.extend(record.escalations)
         _transitions.apply_to_task(
             record, _state.Status.cancelled, now=_clock.iso(), reason="cancelled by operator"
         )
@@ -223,9 +206,13 @@ def cancel_parked_task(
     TaskRepository.for_pod(project).update(task_id, _cancel)
     if not prior:
         return ""
-    if token:
-        with _contextlib.suppress(_ap.ApprovalError):
-            _ap.approval_deny(token, channel, actor=actor)
+    tokens = _ap.approvals_of()
+    for escalation_id in listed:
+        pending = read_escalation(escalation_id)
+        if pending is None or pending.state != "pending" or escalation_id not in tokens:
+            continue
+        with _contextlib.suppress(_ap.ApprovalError, _ap.ApprovalNoop):
+            _ap.approval_deny(tokens[escalation_id], channel, actor=actor)
     _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, reason))
     return prior
 

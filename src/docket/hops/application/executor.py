@@ -346,13 +346,11 @@ def _run_pipeline(
         if outcome.kind == "waiting_approval":
             result.status = "waiting_approval"
             result.reason = outcome.reason
-            result.approval_token = outcome.approval_token
             result.pending_approval_index = outcome.pending_approval_index
             break
         if outcome.kind == "waiting_input":
             result.status = "waiting_input"
             result.reason = outcome.reason
-            result.question = outcome.question
             break
         if outcome.kind == "failed":
             result.status = "failed"
@@ -400,7 +398,6 @@ def dispatch_task(
     project: str,
     task: TaskRecord,
     *,
-    gate_override_index: int | None = None,
     runner: Runner | None = None,
     turn_timeout: int | None = None,
     verify_timeout: int | None = None,
@@ -430,8 +427,8 @@ def dispatch_task(
     that skips ``dispatch_pod`` gets no unresolved-reference refusal, only best-effort
     interpolation. *approval_default* is this call's own resolution for an *unset* pod
     ``approvalMode`` (``pod_approval_mode``); an explicit pod value always wins over it.
-    *gate_override_index* is the pipeline position a granted approval stopped at, from the
-    claim (``Claim.gate_override_index``): the pre-hop approval at that position is skipped once.
+    The pipeline position a granted pre-hop approval stopped at is read from the task's resolved
+    gate escalation (``apply_resolutions``): the approval at that position is skipped once.
 
     A ``DispatchError`` raised anywhere on this claimed task's path (the membership check near
     the top of ``execute_unit``, or this function's own up-front ``pod_pipeline`` revalidation)
@@ -489,9 +486,9 @@ def dispatch_task(
             _resolve_resume_state(runtime_steps, resume_from)
         )
 
-        # *gate_override_index* is the pipeline position a granted approval stopped at, handed to
-        # this one claim: consumed the first time this run reaches that position, so a later hop
-        # at the same position (a rework cycle revisiting it) still gates normally.
+        # The pipeline position a granted approval stopped at is handed to this one claim:
+        # consumed the first time this run reaches that position, so a later hop at the same
+        # position (a rework cycle revisiting it) still gates normally.
         ctx = UnitContext(
             project=project,
             task=task,
@@ -502,7 +499,7 @@ def dispatch_task(
             resolved_verify_timeout=resolved_verify_timeout,
             id_to_index=id_to_index,
             rework_counts=rework_counts,
-            override_index=gate_override_index,
+            override_index=applied.gate_override_index,
             track_pid=track_pid,
             run=run,
             do_sleep=do_sleep,

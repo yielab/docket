@@ -11,10 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "Answer",
-    "ConsultAnswer",
-    "Grant",
     "Prepared",
-    "TaskGrant",
     "TaskUsage",
     "UsageTotals",
     "Worktree",
@@ -54,7 +51,7 @@ class Prepared(_Part):
 
 
 class Answer(_Part):
-    """One answered question, kept after the question itself is cleared."""
+    """One answered question, as a hop's prompt renders it: a projection of a resolved escalation."""
 
     question_id: str = Field(alias="questionId")
     step: str
@@ -67,31 +64,6 @@ class Answer(_Part):
     kind: str = "clarification"
     created_at: str = Field(alias="createdAt")
     option_id: str | None = Field(None, alias="optionId", exclude_if=is_none)
-
-
-class ConsultAnswer(_Part):
-    """The answer to a consultation, delivered to the step that asked it."""
-
-    step: str
-    question_id: str = Field(alias="questionId")
-    text: str
-
-
-class Grant(_Part):
-    """A single-use approval a human already resolved for one parked call."""
-
-    token: str
-    tool: str
-    args_digest: str = Field(alias="argsDigest")
-
-
-class TaskGrant(Grant):
-    """An ``approve_task`` grant: the same call approved for the rest of the task, for one role."""
-
-    role: str
-    granted_at: str = Field(alias="grantedAt")
-    actor: str
-    channel: str
 
 
 class UsageTotals(_Part):

@@ -15,7 +15,7 @@ production reliability, competitor performance, or savings.
   no policy hook evaluated a tool call. The driver also writes the changed target bytes in the
   cases that mutate.
 - **The CLI is called four ways, and no more.** The driver runs `docket run --pod demo --dry-run`
-  to provision the pod, `docket task approve` and `docket task deny` to resolve a pre-written
+  to provision the pod, `docket task answer --option approve_once` and `--option deny` to resolve a pre-written
   approval record, and `docket task show` to read the registry in the corrupt-primary case. It
   does not import a `docket` module. No agent turn, tool dispatch, policy decision or dispatch
   hop runs.

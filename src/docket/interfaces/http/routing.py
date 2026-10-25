@@ -6,7 +6,7 @@ prefix and the suffix, slashes included, and reaches the handler as its second a
 are tried in table order and the first match wins. The table itself is ``routes.table.ROUTES``.
 
 ``auth`` demands the Bearer token before the handler runs. ``bare`` also matches the prefix without
-its trailing slash, with an empty capture (``/approvals`` for ``/approvals/<token>``). ``overlap``
+its trailing slash, with an empty capture (``/escalations`` for ``/escalations/<id>``). ``overlap``
 lets the prefix and the suffix share characters, so ``/tasks/diff`` still matches
 ``/tasks/<pod>/<id>/diff`` with an empty capture; a route without it needs the suffix wholly
 after the prefix, as the ``/tasks/.../cancel`` family does. ``label`` is how the startup banner

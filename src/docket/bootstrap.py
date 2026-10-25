@@ -20,7 +20,6 @@ from docket.agent.ports import bind_role_composer, bind_tool_gate
 from docket.governance import gate as _gate
 from docket.governance import security as _security
 from docket.governance.ports import bind_approval_escalations, bind_approval_follow_up
-from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _driver
 from docket.kernel.home import Home
 from docket.kernel.ports import (
@@ -46,7 +45,6 @@ from docket.sandbox.launch import Launcher
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
-from docket.tasks.ports import bind_question_answers
 from docket.teams import fleet as _fleet
 from docket.teams.ports import bind_channel_documents
 from docket.teams.role_composer import TeamsRoleComposer
@@ -79,7 +77,6 @@ def bind_adapters() -> None:
     bind_tracer(LocalTracer())
     bind_approval_follow_up(_actions)
     bind_approval_escalations(_escalations)
-    bind_question_answers(_answers.QuestionAnswers())
     bind_task_reader(_QueueTaskReader())
     bind_endpoint_prober(_openai_http)
     bind_channel_documents(_channel)

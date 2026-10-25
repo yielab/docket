@@ -172,12 +172,12 @@ def test_one_pod_waits_for_a_person_while_the_other_finishes(
             30,
             "one run parked and the other succeeded",
         )
-        token = parked["approvalToken"]
-        assert token.startswith("apr-")
+        escalation = parked["escalations"][-1]
+        assert escalation.startswith("esc-")
         heard = {role: len(model.by_role(role)) for role in ROLES}
         assert heard == {"lead": 2, "implementer": 3, "reviewer": 1, "tester": 1}
 
-        w.docket("task", "approve", token, "--task", "--pod", PARKED_POD)
+        w.docket("task", "answer", escalation, "--option", "approve_task", "--pod", PARKED_POD)
         w.wait_for(lambda: _status(svc, PARKED_POD, ledger) == "done", 30, "the ledger task")
 
     assert oracles.trace_skeleton(w, FREE_POD, gallery) == GALLERY_RUN

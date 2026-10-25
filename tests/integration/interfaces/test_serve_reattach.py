@@ -151,25 +151,26 @@ def _park_on_consult(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> str:
 
 
 class TestServedFromDisk:
-    def test_a_fresh_instance_serves_a_waiting_approval_task_with_its_token_and_expiry(
+    def test_a_fresh_instance_serves_a_waiting_approval_task_with_its_escalation_and_expiry(
         self,
     ) -> None:
         _gated_pod()
         task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
         _sweep.dispatch_pod("demo", runner=FakeDriver())
-        token = _task_list()[0].approval_token
+        (escalation,) = _task_list()[0].escalations
 
         with _server() as first:
             status, before = _call("GET", f"{first}/tasks/demo/{task.id}")
         with _server() as second:
             status2, after = _call("GET", f"{second}/tasks/demo/{task.id}")
-            _, approvals = _call("GET", f"{second}/approvals")
+            _, page = _call("GET", f"{second}/escalations")
 
         assert (status, status2) == (200, 200)
         assert before["status"] == after["status"] == "waiting_approval"
-        assert before["approvalToken"] == after["approvalToken"] == token
-        record = next(a for a in approvals["pending"] if a["token"] == token)
-        assert record["expiresAt"]
+        assert before["escalations"] == after["escalations"] == [escalation]
+        assert "approvalToken" not in after
+        record = next(e for e in page["escalations"] if e["id"] == escalation)
+        assert record["expiresAt"] and record["state"] == "pending"
 
     def test_a_consultation_serves_its_options_from_disk(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -180,7 +181,10 @@ class TestServedFromDisk:
 
         assert status == 200
         assert body["status"] == "waiting_input"
-        assert [o["id"] for o in body["question"]["options"]] == ["redis", "sqlite"]
+        with _server() as url:
+            _, page = _call("GET", f"{url}/escalations")
+        (asked,) = [e for e in page["escalations"] if e["task"] == task_id]
+        assert [o["id"] for o in asked["options"]] == ["redis", "sqlite", "decline"]
 
 
 class TestAnswerAcrossRestart:
@@ -191,16 +195,18 @@ class TestAnswerAcrossRestart:
         task = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
         runner = FakeDriver()
         _sweep.dispatch_pod("demo", runner=runner)
-        token = _task_list()[0].approval_token
+        (escalation,) = _task_list()[0].escalations
         hops_before = len(runner.calls)
 
         with _server():
             pass
         with _server() as second:
-            status, body = _call("POST", f"{second}/approvals/{token}", {"action": "grant"})
+            status, body = _call(
+                "POST", f"{second}/escalations/{escalation}", {"optionId": "approve_once"}
+            )
 
         assert status == 200
-        assert body["state"] == "granted"
+        assert body["state"] == "resolved"
         parked = _task_list()[0]
         assert parked.status == "pending"
         assert len(runner.calls) == hops_before
@@ -214,14 +220,13 @@ class TestAnswerAcrossRestart:
     def test_an_answer_through_a_fresh_instance_resumes_at_the_next_sweep(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        task_id = _park_on_consult(monkeypatch, tmp_path)
+        _park_on_consult(monkeypatch, tmp_path)
+        (escalation,) = _task_list()[0].escalations
         with _server():
             pass
         with _server() as second:
             status, _body = _call(
-                "POST",
-                f"{second}/tasks/{task_id}/answer",
-                {"pod": "demo", "action": "accept", "content": {"optionId": "redis"}},
+                "POST", f"{second}/escalations/{escalation}", {"optionId": "redis"}
             )
         assert status == 200
         assert _task_list()[0].status == "pending"
@@ -259,7 +264,7 @@ class TestExpiryStates:
         _gated_pod()
         gated = _queue.enqueue_task_once("demo", "Ship it", channel="cli")[0]
         _sweep.dispatch_pod("demo", runner=FakeDriver())
-        token = _task_list()[0].approval_token
+        token = _ap.approval_of(_task_list()[0].escalations[0])
         record = _ap.approval_get(token)
         record["expiresAt"] = "2000-01-01T00:00:00Z"
         (current_home().approvals_dir / f"{token}.json").write_text(json.dumps(record))

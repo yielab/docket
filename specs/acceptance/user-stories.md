@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 2.0.1
+**Version**: 2.1.0
 **Status**: Active
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Overview
 
@@ -243,8 +243,8 @@ The surface is `docket pod reset <member>`.
       prints `ask`; `test_rm_rf_bash_call_is_gated_and_handler_never_runs`,
       `test_push_to_main_is_gated_push_to_a_feature_branch_is_not`); `docker stop` has no test
       *(untested)*
-- [ ] A pending approval is answered with `docket task approve <task>` or `docket task deny <task>`
-      (`--reason` records why), through the CLI, HTTP, MCP or Telegram channel, all audited with
+- [ ] A pending approval is answered with `docket task answer <task> --option approve_once` or
+      `--option deny` (`--reason` records why), through the CLI, HTTP, MCP or Telegram channel, all audited with
       their channel (`test_grant_via_cli_audits_channel_cli`,
       `test_deny_via_http_audits_channel_http`,
       `test_approve_grants_and_writes_a_telegram_tagged_audit_entry`)
@@ -252,14 +252,14 @@ The surface is `docket pod reset <member>`.
       `TOOL_APPROVAL_TIMEOUT` seconds (default 120), and a parked approval expires after the pod's
       `approvalExpiryHours` (`test_gated_command_is_not_executed`)
 - [ ] One command can be pre-approved before the task asks with
-      `docket task approve <task> --for "<command>"`, single use; `--task` extends one granted call
-      to the rest of the task (`test_park_grant_resumes_the_parked_hop_with_a_single_use_pregrant`)
+      `docket task pregrant <task> "<command>"`, single use; `--option approve_task` extends one
+      granted call to the rest of the task (`test_park_grant_resumes_the_parked_hop_with_a_single_use_pregrant`)
 - [ ] Policies are scoped by role, and a pod chooses its approval mode with
       `docket pod set approvalMode` (`test_a_role_scoped_policy_does_not_fire_for_a_different_role`)
 - [ ] Every approval and denial is in the audit log (`docket log`)
       (`test_grant_via_cli_audits_channel_cli`, `test_deny_via_cli_audits_channel_cli`)
 - [ ] `docket inbox` shows a held approval with the whole command and the exact
-      `docket task approve` and `docket task deny` commands
+      `docket task answer <id> --option approve_once` and `--option deny` commands
       (`test_a_held_approval_prints_the_whole_command_and_both_decisions`)
 
 **Definition of Done:**
@@ -279,12 +279,12 @@ The surface is `docket pod reset <member>`.
 - [ ] A pod member is bound to a chat with `docket setup notify bind <member>` (or
       `docket setup notify enable telegram`, which binds every pod Lead); a peer maps to at most
       one member at a time
-- [ ] The bot accepts five commands from a bound chat: `/approve`, `/deny`, `/status`,
-      `/delegate` and `/answer`. Anything else, including plain prose, is refused
+- [ ] The bot accepts three commands from a bound chat: `/status`, `/delegate` and
+      `/answer` (which settles an approval too, by its escalation id). Anything else, including plain prose, is refused
       (`test_plain_text_with_no_slash_command_is_not_treated_as_delegate`,
       `test_unrecognized_command_never_defaults_to_a_grant`)
-- [ ] An unbound chat cannot approve, deny, check status, delegate or answer, even with a real
-      pending token (`test_an_unbound_chat_approving_never_grants_even_with_a_real_token`)
+- [ ] An unbound chat cannot check status, delegate or answer, even with a real pending
+      escalation id (`test_an_unbound_chat_answering_never_grants_even_with_a_real_escalation`)
 - [ ] `/status` lists the bound pod's pending approvals (`test_status_lists_only_this_projects_pending_approvals`)
 - [ ] The bot replies to a message and never messages a chat first; the separate `telegram`
       notification channel (off by default) sends only to the chat ids in its own `actors` list
@@ -413,7 +413,7 @@ And an Implementer that tries to run "rm -rf build"
 When I run "docket run"
 Then the task should park as "waiting approval" with a trace event "approval_required"
 
-When I run "docket task approve <task>"
+When I run "docket task answer <task> --option approve_once"
 And I run "docket run"
 Then the Implementer hop should run again
 And the exact approved command should pass once

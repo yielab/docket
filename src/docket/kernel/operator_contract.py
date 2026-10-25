@@ -1,8 +1,8 @@
-"""operator-v1: the shared data model for the operator loop (ADR 0016).
+"""operator-v2: the shared data model for the operator loop (ADR 0016, ADR 0032).
 
 Every value that reaches a human channel, an HTTP client, an MCP tool or a CloudEvent is
 built through this module, never hand-built twice: task/A2A state, a typed intake brief, a
-question/answer pair shaped as an MCP elicitation, an approval/task/inbox view, and one
+question/answer pair shaped as an MCP elicitation, an escalation/task/inbox view, and one
 CloudEvent constructor. Pure data and validation; no I/O.
 """
 
@@ -43,7 +43,7 @@ EVENT_KINDS: tuple[str, ...] = (
 )
 
 _PRIMITIVE_TYPES = ("string", "number", "integer", "boolean")
-_EVENT_SCHEMA_URL = "https://docket.dev/schemas/operator-v1/event.schema.json"
+_EVENT_SCHEMA_URL = "https://docket.dev/schemas/operator-v2/event.schema.json"
 
 
 def a2a_state(
@@ -195,8 +195,7 @@ class QuestionV11(Question):
 
 
 class AnswerResultV11(AnswerResult):
-    """operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``. The
-    cross-check against the question lives in ``validate_answer_v11``."""
+    """operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -234,47 +233,8 @@ def validate_content(schema: dict[str, Any], content: dict[str, Any] | None) -> 
             raise InvalidInput(f"property {name!r} is not one of {enum!r}")
 
 
-def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
-    """Validate an answer's ``content`` against the question's ``requestedSchema``;
-    ``decline``/``cancel`` ignore *content*. Raises ``ValueError`` naming the property."""
-    if result.action != "accept":
-        return result
-    validate_content(question.requested_schema, result.content)
-    return result
-
-
-def validate_answer_v11(question: QuestionV11, answer: AnswerResultV11) -> AnswerResultV11:
-    """``validate_answer`` plus the option check: an ``accept`` on a question that has
-    options MUST carry an ``optionId`` naming one. Raises ``ValueError``."""
-    if answer.action == "accept" and question.options:
-        if answer.option_id is None:
-            raise InvalidInput("accept requires optionId when the question has options")
-        if answer.option_id not in {o.id for o in question.options}:
-            raise InvalidInput(f"optionId {answer.option_id!r} names no option")
-    validate_answer(question, answer)
-    return answer
-
-
-class ApprovalView(BaseModel):
-    """The operator-v1 rendering of a pending or resolved approval record."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    token: str
-    pod: str
-    task_id: str | None = Field(None, alias="taskId")
-    role: str
-    tool: str | None = None
-    action: str | None = None
-    policy: str | None = None
-    state: str
-    created_at: str = Field(alias="createdAt")
-    expires_at: str | None = Field(None, alias="expiresAt")
-    a2a_state: str = Field("INPUT_REQUIRED", alias="a2aState")
-
-
 class TaskView(BaseModel):
-    """The operator-v1 rendering of one docket task: lifecycle plus its A2A state."""
+    """The operator-v2 rendering of one docket task: lifecycle plus its A2A state."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -287,8 +247,8 @@ class TaskView(BaseModel):
     priority: str = ""
     created_at: str = Field("", alias="createdAt")
     updated_at: str = Field("", alias="updatedAt")
-    question: QuestionV11 | Question | None = None
-    approval_token: str | None = Field(None, alias="approvalToken")
+    # The id of the escalation the task waits on, when it waits on one: the id `resolve` takes.
+    escalation: str | None = None
     brief: TaskBrief | None = None
 
 
@@ -360,13 +320,27 @@ class _EscalationFields(BaseModel):
             raise InvalidInput(f"escalation id must be esc-<12 hex>: {v!r}")
         return v
 
+    def as_question(self) -> QuestionV11:
+        """The question a ``consult`` or ``input`` pause asks, as the elicitation request surfaces
+        read it: the escalation id is the question's id, ``decline`` is not one of its options."""
+        return QuestionV11(
+            id=self.id,
+            task_id=self.task,
+            pod=self.pod,
+            step=self.step,
+            message=self.prompt,
+            requested_schema=self.requested_schema
+            or {"type": "object", "properties": {"note": {"type": "string"}}},
+            created_at=self.asked_at,
+            expires_at=self.expires_at,
+            kind="decision" if self.recommendation is not None else "clarification",
+            options=[o for o in self.options if o.id != "decline"],
+            recommendation=self.recommendation,
+        )
+
 
 class Escalation(_EscalationFields):
     """One pause: docket needs a decision from outside the task, kept as one durable record."""
-
-    # ``legacy`` names the pause in the older fields the task still carries (``token`` of an
-    # approval, ``questionId`` of a question), so a surface that knows only those keeps working.
-    legacy: dict[str, Any] = Field(default_factory=dict)
 
 
 class EscalationAffordances(BaseModel):
@@ -380,8 +354,8 @@ class EscalationAffordances(BaseModel):
 
 
 class EscalationView(_EscalationFields):
-    """An escalation as a surface reads it: the record without ``legacy``, its ``state`` joined
-    with the pause it names, and what can be done with it."""
+    """An escalation as a surface reads it: the record, its ``state`` joined with the pause it
+    names, and what can be done with it."""
 
     affordances: EscalationAffordances
 
@@ -400,7 +374,7 @@ class InboxView(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    needs_you: list[TaskView | ApprovalView] = Field(default_factory=list, alias="needsYou")
+    needs_you: list[TaskView | EscalationView] = Field(default_factory=list, alias="needsYou")
     failed: list[TaskView] = Field(default_factory=list)
     done_since: list[TaskView] = Field(default_factory=list, alias="doneSince")
     running: list[TaskView] = Field(default_factory=list)

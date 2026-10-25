@@ -56,10 +56,10 @@ def decision_in_turn(world: World, task_id: str, call_id: str) -> tuple[str, boo
     return verdict, bool(result["executed"])
 
 
-def approval_token(world: World, task_id: str) -> str:
-    """The token of the approval a parked task waits on, as the inbox shows it."""
+def pending_escalation(world: World, task_id: str) -> str:
+    """The escalation a parked task waits on, as the inbox shows it."""
     waiting = world.docket("inbox", "--json").json()["needsYou"]
-    return next(w["approvalToken"] for w in waiting if w["id"] == task_id)
+    return next(w["escalation"] for w in waiting if w["id"] == task_id)
 
 
 def task_dir(world: World, task_id: str) -> Path:
@@ -184,7 +184,7 @@ def park_an_edit_of_the_check(
         ("approval_required", "lead", "check_changed"),
         ("session_end", "lead", "waiting_approval"),
     ]
-    return w, task_id, approval_token(w, task_id), head_before
+    return w, task_id, pending_escalation(w, task_id), head_before
 
 
 def test_a_change_that_edits_its_own_check_waits_for_a_person(
@@ -192,7 +192,7 @@ def test_a_change_that_edits_its_own_check_waits_for_a_person(
 ) -> None:
     w, task_id, token, head_before = park_an_edit_of_the_check(world, fake_model)
 
-    w.docket("task", "deny", token, "--reason", "no", "--pod", w.pod)
+    w.docket("task", "answer", token, "--option", "deny", "--reason", "no", "--pod", w.pod)
 
     failed = w.docket("inbox", "--json").json()["failed"]
     assert [f["id"] for f in failed] == [task_id]
@@ -210,7 +210,7 @@ def test_a_person_who_grants_an_edited_check_ends_the_task_done(
 ) -> None:
     w, task_id, token, head_before = park_an_edit_of_the_check(world, fake_model)
 
-    w.docket("task", "approve", token, "--pod", w.pod)
+    w.docket("task", "answer", token, "--option", "approve_once", "--pod", w.pod)
 
     assert w.task(task_id)["task"]["status"] == "done"
     assert w.docket("inbox", "--json").json()["failed"] == []

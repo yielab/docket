@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from tests.support.pods import seed_lead_implementer_pod as _seed
+from tests.support.tasks import pregrant as _pregrant
 from tests.support.tasks import put_task, put_tasks, task
 from typer.testing import CliRunner
 
@@ -59,13 +60,14 @@ class TestHumanView:
                 Option(id="opt2", label="Search", description="Search."),
             )
             question.recommendation = Recommendation(option_id="opt2", rationale="safer")
-            put_task("demo", task(id="task-q", status="waiting_input", question=question))
+            put_task("demo", task(id="task-q", status="waiting_input"))
+            _escalations.open_for_question(question, kind="consult", role="lead", caused_by="lead")
 
             out = _inbox("--peek").output
 
             assert "Q: Where is README.md?" in out
             assert "opt2 (Search) (recommended)" in out
-            assert "docket task answer task-q" in out
+            assert "docket task answer task-q --option opt2" in out
 
     def test_a_multi_line_question_indents_every_continuation_line(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
@@ -75,7 +77,8 @@ class TestHumanView:
                 "First line?\nSecond line.\nThird line.",
                 Option(id="opt1", label="Root", description="At the root."),
             )
-            put_task("demo", task(id="task-m", status="waiting_input", question=question))
+            put_task("demo", task(id="task-m", status="waiting_input"))
+            _escalations.open_for_question(question, kind="consult", role="lead", caused_by="lead")
 
             out = _inbox("--peek").output
 
@@ -92,13 +95,16 @@ class TestHumanView:
             token = _approval.approval_create(
                 "demo", "implementer", action, context={"tool": "bash", "parked": True}
             )
-            put_task("demo", task(id="task-a", status="waiting_approval", approval_token=token))
+            put_task("demo", task(id="task-a", status="waiting_approval"))
+            _escalations.open_for_approval(
+                token, kind="approval", task_id="task-a", caused_by="call-1"
+            )
 
             out = _inbox("--peek").output
 
-            assert action in out
-            assert "docket task approve task-a" in out
-            assert "docket task deny task-a" in out
+            assert "    asks: " + action in out
+            assert "docket task answer task-a --option approve_once" in out
+            assert "docket task answer task-a --option deny" in out
             assert token not in out
 
 
@@ -171,7 +177,8 @@ class TestJsonView:
 
     def test_a_granted_task_is_approved_ready_and_points_at_run(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            put_task("demo", task(id="t-ok", gate_override_pipeline_index=2))
+            put_task("demo", task(id="t-ok"))
+            _pregrant("demo", "t-ok")
 
             body = json.loads(_inbox("--json", "--peek").stdout)
 

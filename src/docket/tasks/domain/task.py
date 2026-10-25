@@ -20,18 +20,8 @@ from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
 from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import DispatchError
-from docket.kernel.operator_contract import Question, QuestionV11
 from docket.tasks.domain.options import TaskGate, TaskRestrictions
-from docket.tasks.domain.parts import (
-    Answer,
-    ConsultAnswer,
-    Grant,
-    Prepared,
-    TaskGrant,
-    TaskUsage,
-    Worktree,
-    is_none,
-)
+from docket.tasks.domain.parts import Prepared, TaskUsage, Worktree, is_none
 from docket.tasks.domain.state import Status
 
 # The Reviewer/Tester verdict patterns live in exactly one place:
@@ -163,16 +153,9 @@ class TaskResult:
     )
     reason: str = ""
     hops: list[HopResult] = field(default_factory=list)
-    # Only meaningful when status == "waiting_approval" — the token the
-    # gate created and the pipeline position it stopped at, so the caller
-    # (``_apply_result``) can persist enough to resume correctly on a grant.
-    approval_token: str = ""
+    # Only meaningful when status == "waiting_approval" — the pipeline position the gate
+    # stopped at, so the caller (``_apply_result``) can persist it with the task.
     pending_approval_index: int | None = None
-    # Only meaningful when status == "waiting_input" -- the minted ``Question``
-    # (operator_contract, dumped by alias), so the caller (``_apply_result``) can
-    # persist it for `hops.application.answers.answer_task` to resolve later. See
-    # pod-dispatch.spec.md ("Operator input steps and answers").
-    question: dict[str, Any] | None = None
     # Only meaningful when status == "failed" -- see RESUMABLE_FAILURE_KINDS.
     # Empty for an ordinary graded hop/gate failure (``_apply_result`` then
     # clears any stale persisted ``failureKind`` instead of writing this).
@@ -199,8 +182,8 @@ def _is_empty(value: object) -> bool:
 class TaskRecord(BaseModel):
     """One task of a pod's queue; its alias dump is the stored record."""
 
-    # One rule for absent against null. A key the queue always writes (startedAt, approvalToken,
-    # hops, pregrants, ...) dumps even when unset; every other key is absent until something writes
+    # One rule for absent against null. A key the queue always writes (startedAt, pendingApprovalIndex,
+    # hops, ...) dumps even when unset; every other key is absent until something writes
     # it and absent again after a drop (exclude_if), never null or []. No global exclude_none or
     # exclude_unset: either would drop a key of the first kind.
     #
@@ -235,13 +218,7 @@ class TaskRecord(BaseModel):
     reason: str = ""
     failure_kind: str | None = Field(None, alias="failureKind", exclude_if=is_none)
     blocked_reason: str | None = Field(None, alias="blockedReason", exclude_if=is_none)
-    approval_token: str | None = Field(None, alias="approvalToken")
     pending_approval_index: int | None = Field(None, alias="pendingApprovalIndex")
-    # Single-use handoff from a grant to the next claim of this task: read and cleared by that
-    # claim, so it never leaks into an unrelated later one.
-    gate_override_pipeline_index: int | None = Field(None, alias="gateOverridePipelineIndex")
-    question: QuestionV11 | Question | None = Field(None, exclude_if=is_none)
-    consult_answer: ConsultAnswer | None = Field(None, alias="consultAnswer", exclude_if=is_none)
 
     # The execution: what running it produced.
     hops: list[HopResult] = Field(default_factory=list)
@@ -257,11 +234,6 @@ class TaskRecord(BaseModel):
         default_factory=list, alias="checkChanged", exclude_if=_is_empty
     )
     consultations: int = Field(0, exclude_if=_is_empty)
-    answers: list[Answer] = Field(default_factory=list, exclude_if=_is_empty)
-    pregrants: list[Grant] = Field(default_factory=list)
-    task_grants: list[TaskGrant] = Field(
-        default_factory=list, alias="taskGrants", exclude_if=_is_empty
-    )
     # The ids of the escalation records opened for this task, oldest first.
     escalations: list[str] = Field(default_factory=list, exclude_if=_is_empty)
 
@@ -274,21 +246,6 @@ class TaskRecord(BaseModel):
     @property
     def is_terminal(self) -> bool:
         return self.status in Status.TERMINAL
-
-    @property
-    def approved_ready(self) -> bool:
-        """A pending task a human already approved: a pre-grant or a gate override is waiting."""
-        return self.status == Status.pending and (
-            bool(self.pregrants) or self.gate_override_pipeline_index is not None
-        )
-
-    @property
-    def question_is_consultation(self) -> bool:
-        """Whether the parked question is one an agent asked (a clarification or a decision)."""
-        return self.question is not None and getattr(self.question, "kind", None) in (
-            "clarification",
-            "decision",
-        )
 
 
 class TaskRunRefusal(DispatchError):

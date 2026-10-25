@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 4.3.0
+**Version**: 4.4.0
 **Status**: Active
 **Last Updated**: 2026-10-25
 
@@ -367,14 +367,14 @@ distinct diagnostic outcomes, but both disqualify the canary and fail closed. Wh
 approval's role, tool, and call id rather than wrapper prose or an older colliding id. A diagnostic
 contains only source, role, tool, call id, verdict, and a privacy-safe marker; it never includes
 raw arguments or private values. On the first disqualifying pending approval, the operator **MUST**
-cancel the active run (`docket task cancel`) and deny the approval (`docket task deny`) through the
+cancel the active run (`docket task cancel`) and deny the approval (`docket task answer --option deny`) through the
 public CLI, then terminate the blocking canary subprocess so no later model transport or tool grant
 can occur. This fail-fast cleanup preserves the already-durable approval/session/trace/audit
 evidence, never executes the denied handler, and cannot turn the cancelled run into success.
 
 Exact model prose is not contractual; retained fact values and the resulting behavior are. If the
 un-scripted agent requests a policy-gated `bash` validation, the canary **MUST** exercise a genuine
-operator grant through `docket task approve` in its isolated home; it **MUST NOT** disable the
+operator grant through `docket task answer --option approve_once` in its isolated home; it **MUST NOT** disable the
 policy or shorten its timeout. Pipeline approval remains a distinct, explicit pause/resume
 assertion. `--scenario basic` **MUST** retain the smaller live workflow for focused infrastructure
 diagnosis.

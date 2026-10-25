@@ -22,9 +22,7 @@ _FACTS = {
     "failure_kind": "gate_failed",
     "blocked_reason": "resources",
     "pid": 42,
-    "approval_token": "tok",
     "pending_index": 2,
-    "question": {"id": "q-1"},
 }
 
 
@@ -50,20 +48,16 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
     else:
         assert fields["reason"] == "why"
         assert "claim_pid" in transition.drop
-    if to is S.waiting_input:
-        assert fields["question"] == {"id": "q-1"}
     if to is S.waiting_approval:
-        assert (fields["approval_token"], fields["pending_approval_index"]) == ("tok", 2)
+        assert fields["pending_approval_index"] == 2
     if to is S.blocked:
         assert fields["blocked_reason"] == "resources"
     if to in {_state.Status.done, _state.Status.failed, _state.Status.cancelled}:
         assert fields["completed_at"] == _FACTS["now"]
         assert fields["failure_kind"] == "gate_failed"
-        assert "task_grants" in transition.drop
+        assert transition.ends_grants
     if frm is S.waiting_approval and to is not S.waiting_approval:
-        assert {"approval_token", "pending_approval_index"} <= set(transition.drop)
-    if frm is S.waiting_input and to is not S.waiting_input:
-        assert "question" in transition.drop
+        assert "pending_approval_index" in transition.drop
 
 
 @pytest.mark.parametrize("pair", [p for p in _PAIRS if p not in _state.ALLOWED], ids=_id)
@@ -106,7 +100,13 @@ def test_a_stale_claim_is_evidence_not_a_finished_task() -> None:
     stale = _state.decide("running", S.failed, now="t", failure_kind=_state.FailureKind.stale_claim)
     assert "completed_at" not in stale.fields
     assert "claim_pid" not in stale.drop
-    assert "task_grants" not in stale.drop
+    assert not stale.ends_grants
+
+
+def test_a_terminal_move_ends_task_wide_grants_unless_asked_to_keep_them() -> None:
+    assert _state.decide("running", S.failed, now="t").ends_grants
+    assert not _state.decide("running", S.failed, now="t", keep_grants=True).ends_grants
+    assert not _state.decide("running", S.blocked, reason="r").ends_grants
 
 
 def test_a_terminal_result_without_a_failure_kind_clears_a_stale_marker() -> None:

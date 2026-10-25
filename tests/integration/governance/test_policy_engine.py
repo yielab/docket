@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.approvals import pending_token, resolve_token
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
 from tests.support.pods import write_policy as _write_policy
 from tests.support.trace import trace_events as _trace_events
@@ -191,13 +192,14 @@ class TestEnqueuePreInputGate:
         task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
 
         assert task.status == "waiting_approval"
-        assert task.approval_token.startswith("apr-")
+        token = pending_token("myapp")
+        assert token.startswith("apr-")
         assert task.pending_approval_index == 0
         stored = TaskRepository.for_pod("myapp").list()[0]
         assert stored.status == "waiting_approval"
-        assert stored.approval_token == task.approval_token
+        assert len(stored.escalations) == 1
 
-        rec = _ap.approval_get(task.approval_token)
+        rec = _ap.approval_get(token)
         assert rec["project"] == "myapp"
         assert rec["role"] == "lead"
         assert rec["state"] == "pending"
@@ -206,7 +208,7 @@ class TestEnqueuePreInputGate:
         events = _trace_events("myapp")
         approval_events = [e for e in events if e["event_type"] == "approval_required"]
         assert len(approval_events) == 1
-        assert approval_events[0]["payload"]["token"] == task.approval_token
+        assert approval_events[0]["payload"]["escalation"] == stored.escalations[0]
         assert approval_events[0]["payload"]["policy"] == "big-spend"
 
     def test_require_approval_task_is_not_claimable_until_granted(self) -> None:
@@ -222,15 +224,13 @@ class TestEnqueuePreInputGate:
     def test_require_approval_grant_resumes_and_runs_the_pipeline(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
-        token = task.approval_token
+        _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")
+        token = pending_token("myapp")
 
-        _ap.approval_grant(token)
-        assert _actions.resolve_waiting_approval(token, "granted") is True
+        resolve_token(token, "approve_once")
 
         resumed = TaskRepository.for_pod("myapp").list()[0]
         assert resumed.status == "pending"
-        assert resumed.gate_override_pipeline_index == 0
 
         runner = _RecordingRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -241,8 +241,8 @@ class TestEnqueuePreInputGate:
     def test_require_approval_deny_fails_task_terminally(self) -> None:
         _seed_lean_pod()
         _write_policy("big-spend", "pre_input", "URGENT WIRE", "require_approval")
-        task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
-        token = task.approval_token
+        _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")
+        token = pending_token("myapp")
 
         _ap.approval_deny(token)
         assert _actions.resolve_waiting_approval(token, "denied") is True

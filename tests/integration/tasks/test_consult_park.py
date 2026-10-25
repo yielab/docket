@@ -15,27 +15,30 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
+from tests.support.approvals import answer_question
 from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
 from tests.support.pods import build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
-from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.operator_contract import Question, QuestionV11
+from docket.kernel.operator_contract import Escalation
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
+from docket.platform import list_escalations
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record_mod
+from docket.tasks.application.answers import answers_of, consult_note
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.resolution import EscalationInvalid, EscalationRefused
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 from docket.teams import pod_settings as _pod_settings
@@ -147,7 +150,17 @@ def _resume(run: _Run) -> TaskRecord:
 
 
 def _answer(run: _Run, action: str, content: dict[str, Any] | None) -> None:
-    _answers.answer_task(run.project, run.task_id, action, content, channel="cli", actor="op")
+    answer_question(run.project, run.task_id, action, content)
+
+
+def _pending(run: _Run) -> Escalation:
+    """The one escalation the task waits on."""
+    (pending,) = [
+        e
+        for e in list_escalations(state="pending")
+        if (e.pod, e.task) == (run.project, run.task_id)
+    ]
+    return pending
 
 
 class TestPark:
@@ -158,8 +171,7 @@ class TestPark:
 
         task = _task(run)
         assert task.status == "waiting_input"
-        question = task.question
-        assert isinstance(question, QuestionV11)
+        question = _pending(run).as_question()
         assert question.kind == "decision"
         assert question.task_id == task.id
         assert question.step == "implementer"
@@ -177,11 +189,13 @@ class TestPark:
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
         view = _inbox.build_inbox(now=_clock.iso())
         (item,) = [v for v in view.needs_you if getattr(v, "pod", "") == run.project]
-        data = _notify.render_data(item, "conversation")
+        pending = _pending(run)
+        view_of = {e.id: e for e in view.escalations}
+        data = _notify.render_data(item, "conversation", view_of[pending.id])
         assert data["question"]
         assert [o["id"] for o in data["options"]] == ["redis", "sqlite"]
         assert data["recommendation"] == {"optionId": "sqlite"}
-        minimal = _notify.render_data(item, "minimal")
+        minimal = _notify.render_data(item, "minimal", view_of[pending.id])
         assert minimal["options"] == [{"id": "redis"}, {"id": "sqlite"}]
         assert "question" not in minimal
 
@@ -217,9 +231,9 @@ steps:
 """
 
 
-def _hours_from_now(question: Question | QuestionV11 | None) -> float:
-    assert question is not None and question.expires_at is not None
-    stamp = dt.datetime.fromisoformat(question.expires_at)
+def _hours_from_now(escalation: Escalation) -> float:
+    assert escalation.expires_at is not None
+    stamp = dt.datetime.fromisoformat(escalation.expires_at)
     return (stamp - dt.datetime.now(dt.UTC)).total_seconds() / 3600
 
 
@@ -230,7 +244,7 @@ class TestParkedQuestionExpiry:
         backend = _Backend([_final("plan"), _consult()])
         run = _start(tmp_path, monkeypatch, backend, expiry_hours=1)
 
-        assert _hours_from_now(_task(run).question) == pytest.approx(1, abs=0.02)
+        assert _hours_from_now(_pending(run)) == pytest.approx(1, abs=0.02)
 
     def test_an_input_step_keeps_its_own_expires_hours(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -242,7 +256,7 @@ class TestParkedQuestionExpiry:
 
         task = _task(run)
         assert task.status == "waiting_input"
-        assert _hours_from_now(task.question) == pytest.approx(2, abs=0.02)
+        assert _hours_from_now(_pending(run)) == pytest.approx(2, abs=0.02)
 
     def test_the_sweep_blocks_an_expired_consultation_and_retry_reopens_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -273,8 +287,8 @@ class TestAnswer:
         assert resumed.role == "user"
         assert "Operator answered your consultation" in resumed.content
         assert "option redis (Redis)" in resumed.content
-        assert task.answers[0].step == "implementer"
-        assert task.consult_answer is None
+        assert answers_of(task)[0].step == "implementer"
+        assert consult_note(task, "implementer") == ""
 
     def test_defect_39_consult_answer_is_blocked_by_a_pod_only_policy(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -288,7 +302,7 @@ class TestAnswer:
             "when:\n  matches: 'CANARY-PHRASE'\nthen: block\nmessage: canary\n"
         )
 
-        with pytest.raises(_answers.AnswerRejected):
+        with pytest.raises(EscalationRefused):
             _answer(run, "accept", {"optionId": "redis", "note": "CANARY-PHRASE"})
 
         assert _task(run).status == "waiting_input"
@@ -311,14 +325,14 @@ class TestAnswer:
     ) -> None:
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]))
 
-        with pytest.raises(_answers.AnswerError):
+        with pytest.raises(EscalationInvalid):
             _answer(run, "accept", {"note": "whatever"})
-        with pytest.raises(_answers.AnswerError):
+        with pytest.raises(EscalationInvalid):
             _answer(run, "accept", {"optionId": "mongo"})
 
         task = _task(run)
         assert task.status == "waiting_input"
-        assert task.answers == []
+        assert answers_of(task) == []
 
 
 class TestTaskWideCap:

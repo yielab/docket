@@ -17,7 +17,7 @@ from docket.governance import approval as _approval
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import Question
+from docket.kernel.operator_contract import Escalation, EscalationKind, Question
 from docket.platform import list_escalations
 from docket.platform import store as _store
 from docket.tasks.application import escalation_sweep as _sweep
@@ -50,9 +50,11 @@ def _question(expires_at: str | None = None) -> Question:
     )
 
 
-def _waiting_task(expires_at: str | None, **fields: Any) -> None:
-    TaskRepository.for_pod("demo").add(
-        _make_task(id="t1", status="waiting_input", question=_question(expires_at), **fields)
+def _waiting_task(expires_at: str, kind: EscalationKind = "consult") -> Escalation:
+    """Task ``t1`` parked on a question that expires at *expires_at*; its escalation."""
+    TaskRepository.for_pod("demo").add(_make_task(id="t1", status="waiting_input"))
+    return _escalations.open_for_question(
+        _question(expires_at), kind=kind, role="lead", caused_by="s"
     )
 
 
@@ -135,33 +137,23 @@ class TestPreGrants:
 class TestQuestions:
     def test_an_expired_question_blocks_the_task_never_fails_it(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        _waiting_task("2020-01-01T00:00:00+00:00")
+        escalation = _waiting_task("2020-01-01T00:00:00+00:00")
 
         assert _sweep.sweep_escalations("2026-01-01T00:00:00+00:00") == 1
 
         task = TaskRepository.for_pod("demo").list()[0]
-        assert (task.status, task.blocked_reason, task.question) == (
-            "blocked",
-            "input_expired",
-            None,
-        )
-        assert len(_events("input_expired")) == 1
+        assert (task.status, task.blocked_reason) == ("blocked", "input_expired")
+        assert task.reason == f"question {escalation.id!r} expired unanswered"
         # A blocked task is reopened like any other: an unanswered question never fails it.
         assert _lifecycle.retry_task("demo", "t1") is True
         assert TaskRepository.for_pod("demo").list()[0].status == "pending"
 
-    def test_a_question_not_yet_expired_or_without_a_deadline_is_left_alone(self) -> None:
+    def test_a_question_not_yet_expired_is_left_alone(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         _waiting_task("2030-01-01T00:00:00+00:00")
 
         assert _sweep.sweep_escalations("2026-01-01T00:00:00+00:00") == 0
         assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
-
-    def test_a_question_with_no_expiry_is_never_swept(self) -> None:
-        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        _waiting_task(None)
-
-        assert _sweep.sweep_escalations("2099-01-01T00:00:00+00:00") == 0
 
     def test_only_waiting_input_tasks_are_considered(self) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
@@ -175,9 +167,6 @@ class TestQuestions:
     ) -> None:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         _waiting_task("2020-01-01T00:00:00+00:00")
-        _escalations.open_for_question(
-            _question("2020-01-01T00:00:00+00:00"), kind="consult", role="lead", caused_by="s"
-        )
 
         assert _sweep.sweep_escalations("2026-01-01T00:00:00+00:00") == 1
         assert _sweep.sweep_escalations("2026-01-01T00:00:00+00:00") == 0
@@ -185,7 +174,18 @@ class TestQuestions:
         (stored,) = list_escalations()
         assert stored.state == "expired"
         assert len(_events("escalation_expired")) == 1
-        assert len(_events("input_expired")) == 1
+
+    def test_a_pause_whose_task_was_cancelled_is_settled_without_ending_anything(self) -> None:
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+        _waiting_task("2020-01-01T00:00:00+00:00")
+        _lifecycle.cancel_parked_task("demo", "t1", channel="cli")
+
+        assert _sweep.sweep_escalations("2026-01-01T00:00:00+00:00") == 0
+
+        (stored,) = list_escalations()
+        assert stored.state == "expired"
+        assert _events("escalation_expired") == []
+        assert TaskRepository.for_pod("demo").list()[0].status == "cancelled"
 
 
 class TestEachRecordsOwnOnExpiry:
@@ -195,10 +195,7 @@ class TestEachRecordsOwnOnExpiry:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         token = _approval.approval_create("demo", "implementer", "x", expires_at=EARLIER)
         denying = _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c")
-        _waiting_task("2020-01-01T00:00:00+00:00")
-        blocking = _escalations.open_for_question(
-            _question("2020-01-01T00:00:00+00:00"), kind="input", role="lead", caused_by="s"
-        )
+        blocking = _waiting_task("2020-01-01T00:00:00+00:00", kind="input")
         assert (denying.on_expiry, blocking.on_expiry) == ("deny", "block")
 
         assert _sweep.sweep_escalations("2026-01-01T00:00:00+00:00") == 2

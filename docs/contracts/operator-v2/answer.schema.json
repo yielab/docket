@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docket.dev/schemas/operator-v1/answer.schema.json",
+  "$id": "https://docket.dev/schemas/operator-v2/answer.schema.json",
   "title": "AnswerResult",
   "additionalProperties": false,
   "description": "The result of answering a ``Question``, shaped as an MCP elicitation result.",

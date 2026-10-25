@@ -16,9 +16,6 @@ from docket.kernel.brief import TaskBrief
 from docket.kernel.operator_contract import (
     EVENT_KINDS,
     A2AState,
-    AnswerResult,
-    AnswerResultV11,
-    ApprovalView,
     CloudEvent,
     EscalationAffordances,
     EscalationView,
@@ -32,8 +29,7 @@ from docket.kernel.operator_contract import (
     canonical_args_digest,
     make_event,
     new_question_id,
-    validate_answer,
-    validate_answer_v11,
+    validate_content,
     validate_requested_schema,
 )
 
@@ -200,86 +196,69 @@ class TestQuestion:
         assert "properties" in schema
 
 
-# ── AnswerResult / validate_answer ──────────────────────────────────────────────
+# ── validate_content ───────────────────────────────────────────────────────────
 
 
-class TestValidateAnswer:
-    def test_accept_with_every_required_property_present_passes(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "staging"})
-        assert validate_answer(q, result) is result
+class TestValidateContent:
+    def test_every_required_property_present_passes(self) -> None:
+        validate_content(_question().requested_schema, {"env": "staging"})
 
-    def test_accept_missing_required_property_raises(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={})
+    def test_missing_required_property_raises(self) -> None:
         with pytest.raises(ValueError, match="missing required property: 'env'"):
-            validate_answer(q, result)
+            validate_content(_question().requested_schema, {})
 
-    def test_accept_wrong_type_raises(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "staging", "count": "not-a-number"})
+    def test_wrong_type_raises(self) -> None:
+        content = {"env": "staging", "count": "not-a-number"}
         with pytest.raises(ValueError, match="does not match type"):
-            validate_answer(q, result)
+            validate_content(_question().requested_schema, content)
 
-    def test_accept_enum_violation_raises(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "canary"})
+    def test_enum_violation_raises(self) -> None:
         with pytest.raises(ValueError, match="is not one of"):
-            validate_answer(q, result)
+            validate_content(_question().requested_schema, {"env": "canary"})
 
-    def test_accept_boolean_type_matches(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "prod", "ok": True})
-        assert validate_answer(q, result) is result
-
-    @pytest.mark.parametrize("action", ["decline", "cancel"])
-    def test_decline_and_cancel_ignore_content(self, action: str) -> None:
-        q = _question()
-        result = AnswerResult(action=action, content={"env": "nonsense", "count": "nan"})
-        assert validate_answer(q, result) is result
+    def test_boolean_type_matches(self) -> None:
+        validate_content(_question().requested_schema, {"env": "prod", "ok": True})
 
 
-# ── ApprovalView / TaskView / InboxView ─────────────────────────────────────────
+# ── TaskView / InboxView ─────────────────────────────────────────
 
 
 class TestViews:
-    def test_approval_view_defaults_to_input_required(self) -> None:
-        view = ApprovalView(
-            token="apr-1",
-            pod="alpha",
-            role="implementer",
-            state="pending",
-            created_at="2026-09-28T00:00:00Z",
-        )
-        assert view.a2a_state == "INPUT_REQUIRED"
-        assert view.model_dump(by_alias=True)["a2aState"] == "INPUT_REQUIRED"
-
-    def test_task_view_holds_a_nested_question_and_brief(self) -> None:
+    def test_task_view_names_the_escalation_it_waits_on_and_holds_a_brief(self) -> None:
         view = TaskView(
             id="t-1",
             pod="alpha",
             status="waiting_input",
             a2a_state=a2a_state("waiting_input"),
-            question=_question(),
+            escalation="esc-0123456789ab",
             brief=TaskBrief(objective="ship it"),
         )
-        assert view.question is not None
-        assert view.question.pod == "alpha"
+        assert view.model_dump(by_alias=True)["escalation"] == "esc-0123456789ab"
         assert view.brief is not None
         assert view.brief.objective == "ship it"
 
-    def test_inbox_view_needs_you_accepts_task_or_approval(self) -> None:
+    def test_inbox_view_needs_you_accepts_a_task_or_an_escalation(self) -> None:
         task = TaskView(id="t-1", pod="alpha", status="pending", a2a_state="SUBMITTED")
-        approval = ApprovalView(
-            token="apr-1",
-            pod="alpha",
-            role="implementer",
-            state="pending",
-            created_at="2026-09-28T00:00:00Z",
+        escalation = EscalationView.model_validate(
+            {
+                "id": "esc-0123456789ab",
+                "task": "",
+                "pod": "alpha",
+                "step": "",
+                "role": "implementer",
+                "kind": "approval",
+                "causedBy": "c1",
+                "prompt": "rm -rf build",
+                "askedAt": "2026-09-28T00:00:00Z",
+                "onExpiry": "deny",
+                "affordances": {"resolveUrl": "/escalations/esc-0123456789ab"},
+            }
         )
-        inbox = InboxView(needs_you=[task, approval], next="2026-09-28T00:00:01Z")
+        inbox = InboxView(needs_you=[task, escalation], next="2026-09-28T00:00:01Z")
         assert len(inbox.needs_you) == 2
-        assert inbox.model_dump(by_alias=True)["needsYou"][0]["id"] == "t-1"
+        dumped = inbox.model_dump(by_alias=True)["needsYou"]
+        assert (dumped[0]["id"], dumped[1]["id"]) == ("t-1", "esc-0123456789ab")
+        assert isinstance(inbox.needs_you[1], EscalationView)
 
     def test_unknown_field_rejected_on_every_view(self) -> None:
         with pytest.raises(ValidationError):
@@ -407,34 +386,6 @@ class TestQuestionV11:
     def test_inherits_requested_schema_validation(self) -> None:
         with pytest.raises(ValidationError):
             _question_v11(requestedSchema={"type": "array"})
-
-
-class TestValidateAnswerV11:
-    def test_accept_without_option_id_when_options_exist(self) -> None:
-        with pytest.raises(ValueError, match="optionId"):
-            validate_answer_v11(_question_v11(), AnswerResultV11(action="accept"))
-
-    def test_accept_with_unknown_option_id(self) -> None:
-        answer = AnswerResultV11(action="accept", optionId="nope")
-        with pytest.raises(ValueError, match="nope"):
-            validate_answer_v11(_question_v11(), answer)
-
-    def test_accept_with_known_option_id(self) -> None:
-        answer = AnswerResultV11(action="accept", optionId="b")
-        assert validate_answer_v11(_question_v11(), answer) is answer
-
-    def test_decline_without_option_id_is_fine(self) -> None:
-        answer = AnswerResultV11(action="decline")
-        assert validate_answer_v11(_question_v11(), answer) is answer
-
-    def test_accept_without_options_needs_no_option_id(self) -> None:
-        answer = AnswerResultV11(action="accept")
-        assert validate_answer_v11(_question_v11(options=[]), answer) is answer
-
-    def test_content_still_validated_against_schema(self) -> None:
-        answer = AnswerResultV11(action="accept", optionId="a", content={"note": 3})
-        with pytest.raises(ValueError, match="note"):
-            validate_answer_v11(_question_v11(), answer)
 
 
 class TestEscalationView:

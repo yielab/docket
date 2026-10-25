@@ -14,13 +14,13 @@ from tests.support.pods import seed_pod as _seed_pod
 
 from docket.agent.ports import ToolCall
 from docket.agent.tools import registry as core_tools
+from docket.governance import approval_pregrant as _pregrants
 from docket.hops.application import builtin_tools
 from docket.hops.application import interruptions as _interruptions
 from docket.kernel import operator_contract as _oc
 from docket.kernel.home import current_home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
-from docket.tasks.domain.parts import Grant
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
 
@@ -142,7 +142,9 @@ class TestRecordPregrant:
                 "demo", "no-such-task", "git push origin main", channel="cli"
             )
 
-    def test_records_the_same_shape_a_live_park_grant_appends(self, tmp_path: Path) -> None:
+    def test_records_the_same_grant_a_parked_call_a_person_granted_leaves(
+        self, tmp_path: Path
+    ) -> None:
         with _seed_pod(tmp_path):
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
@@ -150,11 +152,9 @@ class TestRecordPregrant:
                 "demo", task.id, "git push origin main", channel="cli", actor="tester"
             )
 
-            stored = TaskRepository.for_pod("demo").list()[0]
             expected_digest = _oc.canonical_args_digest("bash", {"command": "git push origin main"})
-            assert stored.pregrants == [
-                Grant(token=token, tool="bash", args_digest=expected_digest)
-            ]
+            (found,) = _pregrants.pending_pregrants(task.id)
+            assert (found.token, found.tool, found.args_digest) == (token, "bash", expected_digest)
 
     def test_collapses_whitespace_before_digesting(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -164,9 +164,8 @@ class TestRecordPregrant:
                 "demo", task.id, "git   push  origin\tmain", channel="cli"
             )
 
-            stored = TaskRepository.for_pod("demo").list()[0]
             expected_digest = _oc.canonical_args_digest("bash", {"command": "git push origin main"})
-            assert stored.pregrants[0].args_digest == expected_digest
+            assert _pregrants.pending_pregrants(task.id)[0].args_digest == expected_digest
 
     def test_custom_tool_changes_the_digest(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -174,11 +173,9 @@ class TestRecordPregrant:
 
             _interruptions.record_pregrant("demo", task.id, "hello", tool="write", channel="cli")
 
-            stored = TaskRepository.for_pod("demo").list()[0]
-            assert stored.pregrants[0].tool == "write"
-            assert stored.pregrants[0].args_digest == _oc.canonical_args_digest(
-                "write", {"command": "hello"}
-            )
+            (found,) = _pregrants.pending_pregrants(task.id)
+            assert found.tool == "write"
+            assert found.args_digest == _oc.canonical_args_digest("write", {"command": "hello"})
 
 
 class TestPregrantAtTheChokepoint:
@@ -188,7 +185,7 @@ class TestPregrantAtTheChokepoint:
     def _pregrants_for(self, task: TaskRecord) -> tuple[core_tools.Pregrant, ...]:
         return tuple(
             core_tools.Pregrant(token=g.token, tool=g.tool, args_digest=g.args_digest)
-            for g in task.pregrants
+            for g in _pregrants.pending_pregrants(task.id)
         )
 
     def test_the_named_command_passes_once_a_rephrased_one_still_asks(self, tmp_path: Path) -> None:

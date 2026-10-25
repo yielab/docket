@@ -25,9 +25,9 @@ class TestMatch:
         assert route.match("/runs") is None
 
     def test_bare_also_matches_the_prefix_with_an_empty_capture(self) -> None:
-        route = Route("POST", "/approvals/<token>", _noop, bare=True)
-        assert route.match("/approvals") == ""
-        assert Route("POST", "/approvals/<token>", _noop).match("/approvals") is None
+        route = Route("POST", "/escalations/<id>", _noop, bare=True)
+        assert route.match("/escalations") == ""
+        assert Route("POST", "/escalations/<id>", _noop).match("/escalations") is None
 
     def test_suffix_is_cut_from_the_capture(self) -> None:
         route = Route("GET", "/tasks/<pod>/<id>/diff", _noop, overlap=True)

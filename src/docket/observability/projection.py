@@ -36,7 +36,6 @@ DEFAULT_EVENTS: frozenset[str] = frozenset(
         "tool_result",
         "guardrail_check",
         "guardrail_block",
-        "approval_requested",
         "approval_granted",
         "approval_denied",
         "approval_required",
@@ -429,6 +428,9 @@ def _escalation_attributes(payload: dict[str, Any], policy: ExportPolicy) -> Att
         if isinstance(value := payload.get(key), str | int | bool) and value != ""
     }
     payload_key, attr_name, cls = _GENERIC_CONTENT_ATTRS["escalation_asked"]
+    if payload.get("kind") in ("approval", "gate", "check_changed"):
+        # What an approval asks is the command line waiting for a human: a tool's arguments.
+        attr_name, cls = "docket.approval.action", "toolArguments"
     prompt = payload.get(payload_key)
     if _granted(policy, cls) and isinstance(prompt, str) and prompt:
         attributes[attr_name] = _text.cut_chars(prompt, policy.content_max_chars)

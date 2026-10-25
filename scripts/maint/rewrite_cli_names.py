@@ -166,8 +166,8 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
     # tasks and runs
     (_c("delegate"), "docket task add"),
     (_c("dispatch"), "docket run"),
-    (_c("approve"), "docket task approve"),
-    (_c("deny"), "docket task deny"),
+    (_c("approve"), "docket task answer"),
+    (_c("deny"), "docket task answer"),
     (_c("chat"), "docket task answer"),
     (_c("runs[ \t]+show"), "docket task show"),
     (_c("runs[ \t]+list", r"[ \t]+--project\b"), "docket task list --pod"),

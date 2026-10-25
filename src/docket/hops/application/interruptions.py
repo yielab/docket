@@ -3,8 +3,8 @@ pre-grant for an expected risky action ahead of time (ADR 0016 SS10).
 
 `forecast` is a pure derivation over a pod's already-effective policies, security classifier,
 pipeline gates, `approvalMode` and notifying channels. `record_pregrant`
-calls `governance.approval.create_pregrant` exactly as the in-turn park path does, then appends the
-grant to the task's own `pregrants` list -- the same shape a live park already produces.
+calls `governance.approval.create_pregrant`; the task's hops read it back from the approval store,
+exactly as they read a parked call a person granted.
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ from docket.operator import load_catalog
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import step as _step
 from docket.tasks.application.repository import TaskRepository
-from docket.tasks.domain.parts import Grant
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import settings as _settings
 
@@ -206,8 +205,4 @@ def record_pregrant(
         actor=actor,
     )
 
-    repo.update(
-        task_id,
-        lambda r: r.pregrants.append(Grant(token=token, tool=tool, args_digest=args_digest)),
-    )
     return token

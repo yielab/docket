@@ -21,9 +21,10 @@ from docket.interfaces.telegram import bot as _tg
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Escalation, QuestionV11
 from docket.kernel.threads import new_thread
-from docket.platform import read_escalation
+from docket.platform import list_escalations, read_escalation, write_escalation
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.answers import answers_of
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
 from docket.tasks.domain.task import TaskRecord
@@ -49,6 +50,13 @@ def _seed_other_pod_escalation() -> Escalation:
     return _escalations.open_for_approval(token, kind="gate", task_id=other_task.id, caused_by="c1")
 
 
+def _ask(project: str, action: str, role: str = "implementer") -> tuple[str, Escalation]:
+    """A pending approval of *project* with the escalation that backs it; its token and record."""
+    token = _approval.approval_create(project, role, action)
+    escalation = _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
+    return token, escalation
+
+
 def _park_consult(project: str = "demo") -> TaskRecord:
     """A real pod whose one task is parked on a v1.1 consult question with two options."""
     build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
@@ -71,21 +79,17 @@ def _park_consult(project: str = "demo") -> TaskRecord:
         }
     )
     record.status = Status.waiting_input
-    record.question = question
     put_task(project, record)
+    _escalations.open_for_question(question, kind="consult", role="implementer", caused_by="c1")
     return record
 
 
 class TestUnauthorizedSenderIsRefused:
-    def test_an_unbound_chat_cannot_approve(self) -> None:
-        outcome = _tg.handle_message(_msg("-999999", "/approve apr-fake"))
+    def test_an_unbound_chat_cannot_answer(self) -> None:
+        outcome = _tg.handle_message(_msg("-999999", "/answer esc-000000000000 approve_once"))
         assert not outcome.ok
         assert not outcome.authorized
         assert outcome.action == "unauthorized"
-
-    def test_an_unbound_chat_cannot_deny(self) -> None:
-        outcome = _tg.handle_message(_msg("-999999", "/deny apr-fake"))
-        assert not outcome.authorized
 
     def test_an_unbound_chat_cannot_check_status(self) -> None:
         outcome = _tg.handle_message(_msg("-999999", "/status"))
@@ -101,7 +105,7 @@ class TestUnauthorizedSenderIsRefused:
 
     def test_unauthorized_attempt_is_audited_without_the_message_body(self) -> None:
         _tg.handle_message(
-            _msg("-999999", "/approve apr-fake-token-should-not-appear", update_id=7)
+            _msg("-999999", "/answer esc-should-not-appear approve_once", update_id=7)
         )
         entries = _read_audit()
         matches = [e for e in entries if e.get("action") == "telegram.unauthorized"]
@@ -110,7 +114,7 @@ class TestUnauthorizedSenderIsRefused:
         assert "-999999" in detail
         assert "7" in detail
         # the raw command/token text is never written to the audit log
-        assert "apr-fake-token-should-not-appear" not in detail
+        assert "esc-should-not-appear" not in detail
 
     def test_an_authorized_binding_can_reach_status(self) -> None:
         _bind("security", "-100200")
@@ -149,76 +153,80 @@ class TestUnauthorizedSenderIsAPlantedDriftProof:
         assert outcome.action == "status"
 
 
-class TestApproveDeny:
+class TestAnswerAnApproval:
     def test_approve_grants_and_writes_a_telegram_tagged_audit_entry(self) -> None:
         _bind("security", "-100200")
-        token = _approval.approval_create("security", "security", "delete prod bucket")
+        token, escalation = _ask("security", "delete prod bucket", "security")
 
-        outcome = _tg.handle_message(_msg("-100200", f"/approve {token}"))
+        outcome = _tg.handle_message(_msg("-100200", f"/answer {escalation.id} approve_once"))
 
         assert outcome.ok
-        assert outcome.action == "approve"
-        rec = _approval.approval_get(token)
-        assert rec["state"] == "granted"
-
-        entries = _read_audit()
-        grants = [e for e in entries if e.get("action") == "approval.grant"]
+        assert outcome.action == "answer"
+        assert _approval.approval_get(token)["state"] == "granted"
+        grants = [e for e in _read_audit() if e.get("action") == "approval.grant"]
         assert len(grants) == 1
         assert "channel=telegram" in str(grants[0]["detail"])
-        assert f"token={token}" in str(grants[0]["detail"])
 
     def test_deny_denies_and_writes_a_telegram_tagged_audit_entry(self) -> None:
         _bind("security", "-100200")
-        token = _approval.approval_create("security", "security", "rotate root key")
+        token, escalation = _ask("security", "rotate root key", "security")
 
-        outcome = _tg.handle_message(_msg("-100200", f"/deny {token}"))
+        outcome = _tg.handle_message(_msg("-100200", f"/answer {escalation.id} deny"))
 
         assert outcome.ok
-        rec = _approval.approval_get(token)
-        assert rec["state"] == "denied"
-        entries = _read_audit()
-        denies = [e for e in entries if e.get("action") == "approval.deny"]
+        assert _approval.approval_get(token)["state"] == "denied"
+        denies = [e for e in _read_audit() if e.get("action") == "approval.deny"]
         assert len(denies) == 1
         assert "channel=telegram" in str(denies[0]["detail"])
 
-    def test_an_unbound_chat_approving_never_grants_even_with_a_real_token(self) -> None:
-        """The token being real and pending must not matter -- authorization
-        is checked before the token is even looked at."""
+    def test_an_unbound_chat_answering_never_grants_even_with_a_real_escalation(self) -> None:
+        """The escalation being real and pending must not matter -- authorization
+        is checked before the id is even looked at."""
         _bind("security", "-100200")
-        token = _approval.approval_create("security", "security", "delete prod bucket")
+        token, escalation = _ask("security", "delete prod bucket", "security")
 
-        outcome = _tg.handle_message(_msg("-1-not-bound", f"/approve {token}"))
+        outcome = _tg.handle_message(_msg("-1-not-bound", f"/answer {escalation.id} approve_once"))
 
         assert not outcome.authorized
-        rec = _approval.approval_get(token)
-        assert rec["state"] == "pending"  # untouched
+        assert _approval.approval_get(token)["state"] == "pending"  # untouched
 
-    def test_missing_token_is_refused_not_a_crash(self) -> None:
+    def test_a_missing_id_is_refused_not_a_crash(self) -> None:
         _bind("security", "-100200")
-        outcome = _tg.handle_message(_msg("-100200", "/approve"))
+        outcome = _tg.handle_message(_msg("-100200", "/answer"))
         assert not outcome.ok
         assert outcome.authorized  # sender was fine; the command was incomplete
 
-    def test_unknown_token_reports_an_error_not_a_grant(self) -> None:
+    def test_an_unknown_escalation_reports_an_error_not_a_grant(self) -> None:
         _bind("security", "-100200")
-        outcome = _tg.handle_message(_msg("-100200", "/approve apr-does-not-exist"))
+        outcome = _tg.handle_message(_msg("-100200", "/answer esc-000000000000 approve_once"))
         assert not outcome.ok
 
-    def test_double_approve_is_a_benign_noop_not_a_second_grant(self) -> None:
+    def test_a_double_approve_is_a_benign_noop_not_a_second_grant(self) -> None:
         _bind("security", "-100200")
-        token = _approval.approval_create("security", "security", "x")
-        _tg.handle_message(_msg("-100200", f"/approve {token}"))
-        outcome = _tg.handle_message(_msg("-100200", f"/approve {token}", update_id=2))
+        _token, escalation = _ask("security", "x", "security")
+        _tg.handle_message(_msg("-100200", f"/answer {escalation.id} approve_once"))
+        outcome = _tg.handle_message(
+            _msg("-100200", f"/answer {escalation.id} approve_once", update_id=2)
+        )
         assert not outcome.ok
-        # exactly one grant audit entry, not two
         grants = [e for e in _read_audit() if e.get("action") == "approval.grant"]
         assert len(grants) == 1
+
+    def test_the_retired_approve_and_deny_verbs_are_unrecognized(self) -> None:
+        _bind("security", "-100200")
+        token, _escalation = _ask("security", "x", "security")
+
+        for command in (f"/approve {token}", f"/deny {token}", "/approve", "/deny"):
+            outcome = _tg.handle_message(_msg("-100200", command))
+            assert outcome.action == "unparseable", command
+            assert "/answer" in outcome.reply and "/approve" not in outcome.reply
+        assert _approval.approval_get(token)["state"] == "pending"
 
     def test_concurrent_telegram_grant_and_deny_have_one_winner(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _bind("security", "-100200")
-        token = _approval.approval_create("security", "security", "delete prod bucket")
+        token, escalation = _ask("security", "delete prod bucket", "security")
         original = _approval.set_state
         barrier = threading.Barrier(2, timeout=2)
 
@@ -233,8 +241,8 @@ class TestApproveDeny:
             outcomes.append(_tg.handle_message(_msg("-100200", command, update_id=update_id)))
 
         threads = [
-            new_thread(target=decide, args=(f"/approve {token}", 2)),
-            new_thread(target=decide, args=(f"/deny {token}", 3)),
+            new_thread(target=decide, args=(f"/answer {escalation.id} approve_once", 2)),
+            new_thread(target=decide, args=(f"/answer {escalation.id} deny", 3)),
         ]
         for thread in threads:
             thread.start()
@@ -254,67 +262,59 @@ class TestApproveDeny:
 
 
 class TestADecisionStaysInTheChatsOwnPod:
-    def _two_pods(self) -> tuple[str, str]:
+    def _two_pods(self) -> tuple[Escalation, Escalation, str]:
         _seed_pod("demo")
         _seed_pod("other")
         _bind("demo-lead", "-100300")
-        own = _approval.approval_create("demo", "implementer", "deploy demo")
-        foreign = _approval.approval_create("other", "implementer", "deploy other")
-        return own, foreign
+        _token, own = _ask("demo", "deploy demo")
+        foreign_token, foreign = _ask("other", "deploy other")
+        return own, foreign, foreign_token
 
-    def test_approve_refuses_another_pods_token_and_leaves_it_pending(self) -> None:
-        _own, foreign = self._two_pods()
+    def test_answering_another_pods_escalation_is_refused_and_leaves_it_pending(self) -> None:
+        _own, foreign, foreign_token = self._two_pods()
 
-        outcome = _tg.handle_message(_msg("-100300", f"/approve {foreign}"))
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {foreign.id} approve_once"))
 
         assert not outcome.ok
         assert outcome.authorized
-        assert outcome.action == "approve"
-        assert _approval.approval_get(foreign)["state"] == "pending"
+        assert outcome.action == "answer"
+        assert _approval.approval_get(foreign_token)["state"] == "pending"
         assert not [e for e in _read_audit() if e.get("action") == "approval.grant"]
         assert [e for e in _read_audit() if e.get("action") == "telegram.cross_pod_refused"]
 
-    def test_deny_refuses_another_pods_token_and_leaves_it_pending(self) -> None:
-        _own, foreign = self._two_pods()
-
-        outcome = _tg.handle_message(_msg("-100300", f"/deny {foreign}"))
-
-        assert not outcome.ok
-        assert _approval.approval_get(foreign)["state"] == "pending"
-        assert not [e for e in _read_audit() if e.get("action") == "approval.deny"]
-
-    def test_the_refusal_does_not_echo_the_other_pods_name(self) -> None:
-        _own, foreign = self._two_pods()
-        outcome = _tg.handle_message(_msg("-100300", f"/approve {foreign}"))
+    def test_the_refusal_does_not_say_which_pod_owns_it(self) -> None:
+        _own, foreign, _token = self._two_pods()
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {foreign.id} approve_once"))
         assert "other" not in outcome.reply
 
-    def test_the_chats_own_pod_token_still_grants(self) -> None:
-        own, _foreign = self._two_pods()
-        outcome = _tg.handle_message(_msg("-100300", f"/approve {own}"))
+    def test_the_chats_own_pod_escalation_still_resolves(self) -> None:
+        own, _foreign, _token = self._two_pods()
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {own.id} approve_once"))
         assert outcome.ok
-        assert _approval.approval_get(own)["state"] == "granted"
 
-    def test_a_non_lead_member_binding_decides_for_its_own_pod_only(self) -> None:
+    def test_a_non_lead_member_binding_answers_for_its_own_pod_only(self) -> None:
         _seed_pod("demo")
         _seed_pod("other")
         _bind("demo-implementer", "-100301")
-        own = _approval.approval_create("demo", "implementer", "deploy demo")
-        foreign = _approval.approval_create("other", "implementer", "deploy other")
-        assert _tg.handle_message(_msg("-100301", f"/approve {foreign}")).ok is False
-        assert _tg.handle_message(_msg("-100301", f"/approve {own}", update_id=2)).ok is True
+        _token, own = _ask("demo", "deploy demo")
+        _foreign_token, foreign = _ask("other", "deploy other")
+        refused = _tg.handle_message(_msg("-100301", f"/answer {foreign.id} approve_once"))
+        granted = _tg.handle_message(_msg("-100301", f"/answer {own.id} approve_once", update_id=2))
+        assert (refused.ok, granted.ok) == (False, True)
 
 
 class TestStatus:
     def test_status_lists_only_this_projects_pending_approvals(self) -> None:
         _seed_pod("demo")
         _bind("demo-lead", "-100300")
-        tok_demo = _approval.approval_create("demo", "lead", "deploy demo")
-        _approval.approval_create("other-project", "lead", "deploy other")
+        _token, mine = _ask("demo", "deploy demo", "lead")
+        _ask("other-project", "deploy other", "lead")
 
         outcome = _tg.handle_message(_msg("-100300", "/status"))
 
         assert outcome.ok
-        assert tok_demo in outcome.reply
+        assert mine.id in outcome.reply
+        assert f"reply: /answer {mine.id} <approve_once|approve_task|deny>" in outcome.reply
         assert "other-project" not in outcome.reply
 
     def test_status_with_no_pending_approvals_says_so(self) -> None:
@@ -337,26 +337,16 @@ class TestStatus:
     def test_status_shows_a_parked_questions_options_and_the_reply_to_send(self) -> None:
         record = _park_consult("demo")
         _bind("demo-lead", "-100300")
-        assert record.question is not None
-        _escalations.open_for_question(
-            record.question, kind="consult", role="implementer", caused_by="c1"
-        )
+        (pending,) = list_escalations(state="pending")
 
         outcome = _tg.handle_message(_msg("-100300", "/status"))
 
         assert outcome.ok
+        assert record.id in outcome.reply
         assert "Q: Which design?" in outcome.reply
         assert "options: iterative, bigbang (recommended iterative)" in outcome.reply
-        assert f"reply: /answer {record.id} <option>" in outcome.reply
+        assert f"reply: /answer {pending.id} <option>" in outcome.reply
         assert "decline" not in outcome.reply
-
-    def test_status_of_a_question_without_a_record_still_names_the_task(self) -> None:
-        record = _park_consult("demo")
-        _bind("demo-lead", "-100300")
-
-        outcome = _tg.handle_message(_msg("-100300", "/status"))
-
-        assert record.id in outcome.reply
 
 
 class TestDelegate:
@@ -496,8 +486,8 @@ class TestAnswer:
         assert parked.id in outcome.reply
         after = TaskRepository.for_pod("demo").list()[0]
         assert after.status == "pending"
-        assert after.answers[0].content == {"answer": "ship it"}
-        assert after.answers[0].channel == "telegram"
+        assert answers_of(after)[0].content == {"answer": "ship it"}
+        assert answers_of(after)[0].channel == "telegram"
 
     def test_missing_task_id_and_text_replies_with_usage(self) -> None:
         _bind("security", "-100200")
@@ -534,9 +524,10 @@ class TestAnswer:
         ``_task_answer`` bare-text refusal for the same case."""
         parked = _seed_parked_task("demo")
         _bind("demo-lead", "-100300")
-        assert parked.question is not None
-        parked.question.requested_schema["properties"]["confirm"] = {"type": "boolean"}
-        put_task("demo", parked)
+        (pending,) = list_escalations(state="pending")
+        schema = dict(pending.requested_schema or {})
+        schema["properties"] = {**schema["properties"], "confirm": {"type": "boolean"}}
+        write_escalation(pending.model_copy(update={"requested_schema": schema}))
 
         outcome = _tg.handle_message(_msg("-100300", f"/answer {parked.id} ship it"))
 
@@ -571,7 +562,7 @@ class TestAnswer:
         assert "blocked by policy" in outcome.reply
         after = TaskRepository.for_pod("demo").list()[0]
         assert after.status == "waiting_input"
-        assert after.answers == []
+        assert answers_of(after) == []
         blocked = [e for e in _read_audit() if e.get("action") == "telegram.answer_blocked"]
         assert len(blocked) == 1
 
@@ -586,8 +577,8 @@ class TestAnswerPicksAnOption:
         assert outcome.ok, outcome.reply
         after = TaskRepository.for_pod("demo").list()[0]
         assert after.status == "pending"
-        assert after.answers[0].option_id == "iterative"
-        assert after.answers[0].channel == "telegram"
+        assert answers_of(after)[0].option_id == "iterative"
+        assert answers_of(after)[0].channel == "telegram"
 
     def test_text_that_is_not_an_option_id_keeps_the_free_text_path(self) -> None:
         parked = _park_consult()
@@ -607,10 +598,7 @@ class TestAnswerAnEscalation:
     ) -> None:
         record = _park_consult("demo")
         _bind("demo-lead", "-100300")
-        assert record.question is not None
-        escalation = _escalations.open_for_question(
-            record.question, kind="consult", role="implementer", caused_by="c1"
-        )
+        (escalation,) = list_escalations(state="pending")
 
         outcome = _tg.handle_message(_msg("-100300", f"/answer {record.id} do the first one"))
 
@@ -620,12 +608,9 @@ class TestAnswerAnEscalation:
         assert read_escalation(escalation.id) == escalation
 
     def test_an_escalation_id_with_an_option_resolves_it_as_telegram(self) -> None:
-        record = _park_consult("demo")
+        _park_consult("demo")
         _bind("demo-lead", "-100300")
-        assert record.question is not None
-        escalation = _escalations.open_for_question(
-            record.question, kind="consult", role="implementer", caused_by="c1"
-        )
+        (escalation,) = list_escalations(state="pending")
 
         outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} bigbang"))
 
@@ -638,15 +623,12 @@ class TestAnswerAnEscalation:
             "bigbang",
             "telegram",
         )
-        assert TaskRepository.for_pod("demo").list()[0].answers[0].option_id == "bigbang"
+        assert answers_of(TaskRepository.for_pod("demo").list()[0])[0].option_id == "bigbang"
 
     def test_an_escalation_id_with_free_text_on_an_options_question_lists_the_ids(self) -> None:
-        record = _park_consult("demo")
+        _park_consult("demo")
         _bind("demo-lead", "-100300")
-        assert record.question is not None
-        escalation = _escalations.open_for_question(
-            record.question, kind="consult", role="implementer", caused_by="c1"
-        )
+        (escalation,) = list_escalations(state="pending")
 
         outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} hmm"))
 
@@ -662,7 +644,7 @@ class TestAnswerAnEscalation:
         outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} approve_once"))
 
         assert outcome.ok, outcome.reply
-        assert _approval.approval_get(escalation.legacy["token"])["state"] == "granted"
+        assert _approval.approval_get(_approval.approval_of(escalation.id))["state"] == "granted"
         stored = read_escalation(escalation.id)
         assert stored is not None and stored.state == "resolved"
 
@@ -675,7 +657,7 @@ class TestAnswerAnEscalation:
 
         assert not outcome.ok
         assert "options: approve_once, deny" in outcome.reply
-        assert _approval.approval_get(escalation.legacy["token"])["state"] == "pending"
+        assert _approval.approval_get(_approval.approval_of(escalation.id))["state"] == "pending"
 
     def test_an_escalation_of_another_pod_is_not_found_in_this_chats_pod(self) -> None:
         _seed_pod("demo")
@@ -698,19 +680,7 @@ class TestAnswerAnEscalation:
 
         assert not outcome.ok
         assert "not pending" in outcome.reply
-        assert escalation.legacy["token"] not in outcome.reply
-
-    def test_approve_settles_the_approvals_escalation_too(self) -> None:
-        _seed_pod("demo")
-        _bind("demo-lead", "-100300")
-        escalation = approval_escalation("gate")
-
-        outcome = _tg.handle_message(_msg("-100300", f"/approve {escalation.legacy['token']}"))
-
-        assert outcome.ok
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.state == "resolved"
-        assert stored.resolution is not None and stored.resolution.channel == "telegram"
+        assert "apr-" not in outcome.reply
 
 
 class TestUnrecognizedInput:

@@ -204,6 +204,17 @@ def set_state(token: str, new_state: str) -> dict[str, Any]:
     return read_modify_write(path, transition)
 
 
+def _annotate(token: str, **extra: Any) -> dict[str, Any]:
+    """Write *extra* keys on the record *token* under the store lock; the record as stored."""
+    path = _approval_path(token)
+
+    def write(data: dict[str, Any]) -> dict[str, Any]:
+        data.update(extra)
+        return data
+
+    return read_modify_write(path, write)
+
+
 def approval_create(
     project: str,
     role: str,
@@ -218,8 +229,8 @@ def approval_create(
     data stored verbatim, never redacted; always ``{}`` when omitted. ``expires_at``,
     is the record's own deadline; omitted, it is ``created + APPROVAL_TIMEOUT``.
     ``rationale`` (already screened and bounded; ``""`` when none) makes this a gated-call
-    pack: the record and ``approval_requested`` gain ``rationale`` and the three ``options``.
-    ``None`` leaves both out."""
+    pack: the record gains ``rationale`` and the three ``options``, and ``rationaleBlocked`` when
+    the model's rationale was withheld by a policy. ``None`` leaves all of them out."""
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
@@ -243,26 +254,32 @@ def approval_create(
     if rationale is not None:
         data["rationale"] = rationale
         data["options"] = approval_options()
+        if rationale_blocked:
+            data["rationaleBlocked"] = True
     write_json(_approval_path(token), data)
 
-    # The call a paused approval is for, when the caller names it.
-    requested: dict[str, Any] = {"token": token, "action": redacted_action}
-    for key in ("tool", "callId"):
-        if (context or {}).get(key):
-            requested[key] = str((context or {})[key])
-    if rationale is not None:
-        requested["rationale"] = rationale
-        requested["options"] = data["options"]
-        if rationale_blocked:
-            requested["rationaleBlocked"] = True
-    _emit_trace(
-        project,
-        f"{project}-approval-{os.getpid()}",
-        role,
-        "approval_requested",
-        requested,
-    )
     return token
+
+
+def approval_link(token: str, escalation_id: str) -> None:
+    """Record on approval *token* the escalation it backs: the one place the two meet, so the
+    escalation record never holds a token and a surface names the pause by its escalation id."""
+    _annotate(token, escalation=escalation_id)
+
+
+def approvals_of() -> dict[str, str]:
+    """The approval token behind each escalation id that has one, read in one pass."""
+    return {
+        str(data["escalation"]): str(data.get("token", ""))
+        for data in list_records()
+        if data.get("escalation") and data.get("token")
+    }
+
+
+def approval_of(escalation_id: str) -> str:
+    """The token of the approval record that backs *escalation_id*, else ``""`` (a pause that waits
+    on no approval: a parked question)."""
+    return approvals_of().get(escalation_id, "")
 
 
 def approval_set_option(token: str, option_id: str) -> None:
@@ -306,6 +323,10 @@ def approval_grant(
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
 
     data = set_state(token, "granted")
+    # Who granted it and through what stays on the record: a task-wide grant mints its later
+    # pre-grants from here (``approval_pregrant.task_grants``). Only the winner of the transition
+    # reaches this line.
+    data = _annotate(token, grantedVia=channel, grantedBy=actor)
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
 
@@ -362,9 +383,9 @@ def approval_deny(
     audit_log("approval.deny", audit_detail)
 
 
-def list_pending() -> list[dict[str, Any]]:
-    """Return every pending approval record in filename order; records that fail to
-    parse are skipped."""
+def list_records() -> list[dict[str, Any]]:
+    """Return every approval record, whatever its state, in filename order; records that fail
+    to parse are skipped."""
     if not current_home().approvals_dir.is_dir():
         return []
     out: list[dict[str, Any]] = []
@@ -374,9 +395,14 @@ def list_pending() -> list[dict[str, Any]]:
                 data: dict[str, Any] = json.load(f)
         except Exception:
             continue
-        if data.get("state") == "pending":
-            out.append(data)
+        out.append(data)
     return out
+
+
+def list_pending() -> list[dict[str, Any]]:
+    """Return every pending approval record in filename order; records that fail to
+    parse are skipped."""
+    return [data for data in list_records() if data.get("state") == "pending"]
 
 
 def prune_resolved(
@@ -436,8 +462,10 @@ def expire_approval(token: str) -> bool:
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
     audit_log("approval.deny", f"token={token} project={project} channel=timeout")
-    with contextlib.suppress(Exception):
-        _escalation_expiry.expire("token", token)
+    escalation_id = str(data.get("escalation", ""))
+    if escalation_id:
+        with contextlib.suppress(Exception):
+            _escalation_expiry.expire(escalation_id)
     with contextlib.suppress(Exception):
         _follow_up.resolve_waiting_approval(token, "denied")
     return True

@@ -140,17 +140,6 @@ class TestClaimNext:
         assert stored_low is not None and stored_low.status == _state.Status.pending
         assert _ledger_ids() == ["task-high"]
 
-    def test_the_override_is_handed_back_and_cleared_from_the_stored_record(
-        self, repo: TaskRepository
-    ) -> None:
-        repo.add(TaskRecord(id="task-1", description="a", gate_override_pipeline_index=2))
-        claim = repo.claim_next(resume=False)
-        assert claim is not None and claim.gate_override_index == 2
-        assert claim.record.gate_override_pipeline_index is None
-        stored = repo.get("task-1")
-        assert stored is not None and stored.gate_override_pipeline_index is None
-        assert _stored()[0]["gateOverridePipelineIndex"] is None
-
     def test_a_claim_carries_the_recorded_hops_to_resume_from(self, repo: TaskRepository) -> None:
         hop = HopResult(role="lead", member_id="demo-lead", ok=True, output="plan")
         repo.add(TaskRecord(id="task-1", description="a", hops=[hop]))

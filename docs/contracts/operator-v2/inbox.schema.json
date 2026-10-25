@@ -1,108 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docket.dev/schemas/operator-v1/inbox.schema.json",
+  "$id": "https://docket.dev/schemas/operator-v2/inbox.schema.json",
   "title": "InboxView",
   "$defs": {
-    "ApprovalView": {
-      "additionalProperties": false,
-      "description": "The operator-v1 rendering of a pending or resolved approval record.",
-      "properties": {
-        "token": {
-          "title": "Token",
-          "type": "string"
-        },
-        "pod": {
-          "title": "Pod",
-          "type": "string"
-        },
-        "taskId": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Taskid"
-        },
-        "role": {
-          "title": "Role",
-          "type": "string"
-        },
-        "tool": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Tool"
-        },
-        "action": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Action"
-        },
-        "policy": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Policy"
-        },
-        "state": {
-          "title": "State",
-          "type": "string"
-        },
-        "createdAt": {
-          "title": "Createdat",
-          "type": "string"
-        },
-        "expiresAt": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Expiresat"
-        },
-        "a2aState": {
-          "default": "INPUT_REQUIRED",
-          "title": "A2Astate",
-          "type": "string"
-        }
-      },
-      "required": [
-        "token",
-        "pod",
-        "role",
-        "state",
-        "createdAt"
-      ],
-      "title": "ApprovalView",
-      "type": "object"
-    },
     "EscalationAffordances": {
       "additionalProperties": false,
       "description": "What a client may do with a pending escalation, without naming any surface's command.",
@@ -132,7 +32,7 @@
     },
     "EscalationView": {
       "additionalProperties": false,
-      "description": "An escalation as a surface reads it: the record without ``legacy``, its ``state`` joined\nwith the pause it names, and what can be done with it.",
+      "description": "An escalation as a surface reads it: the record, its ``state`` joined with the pause it\nnames, and what can be done with it.",
       "properties": {
         "id": {
           "title": "Id",
@@ -347,150 +247,6 @@
       "title": "Option",
       "type": "object"
     },
-    "Question": {
-      "additionalProperties": false,
-      "description": "A question posed to a human, shaped as an MCP elicitation request.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "taskId": {
-          "title": "Taskid",
-          "type": "string"
-        },
-        "pod": {
-          "title": "Pod",
-          "type": "string"
-        },
-        "step": {
-          "title": "Step",
-          "type": "string"
-        },
-        "message": {
-          "title": "Message",
-          "type": "string"
-        },
-        "requestedSchema": {
-          "additionalProperties": true,
-          "title": "Requestedschema",
-          "type": "object"
-        },
-        "createdAt": {
-          "title": "Createdat",
-          "type": "string"
-        },
-        "expiresAt": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Expiresat"
-        }
-      },
-      "required": [
-        "id",
-        "taskId",
-        "pod",
-        "step",
-        "message",
-        "requestedSchema",
-        "createdAt"
-      ],
-      "title": "Question",
-      "type": "object"
-    },
-    "QuestionV11": {
-      "additionalProperties": false,
-      "description": "operator-v1.1 question: a ``Question`` plus ``kind``, ``options`` and a\n``recommendation``.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "taskId": {
-          "title": "Taskid",
-          "type": "string"
-        },
-        "pod": {
-          "title": "Pod",
-          "type": "string"
-        },
-        "step": {
-          "title": "Step",
-          "type": "string"
-        },
-        "message": {
-          "title": "Message",
-          "type": "string"
-        },
-        "requestedSchema": {
-          "additionalProperties": true,
-          "title": "Requestedschema",
-          "type": "object"
-        },
-        "createdAt": {
-          "title": "Createdat",
-          "type": "string"
-        },
-        "expiresAt": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Expiresat"
-        },
-        "kind": {
-          "enum": [
-            "approval",
-            "clarification",
-            "decision"
-          ],
-          "title": "Kind",
-          "type": "string"
-        },
-        "options": {
-          "items": {
-            "$ref": "#/$defs/Option"
-          },
-          "title": "Options",
-          "type": "array"
-        },
-        "recommendation": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Recommendation"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        }
-      },
-      "required": [
-        "id",
-        "taskId",
-        "pod",
-        "step",
-        "message",
-        "requestedSchema",
-        "createdAt",
-        "kind"
-      ],
-      "title": "QuestionV11",
-      "type": "object"
-    },
     "Recommendation": {
       "additionalProperties": false,
       "description": "The option the asker recommends, with its reasons and evidence.",
@@ -654,7 +410,7 @@
     },
     "TaskView": {
       "additionalProperties": false,
-      "description": "The operator-v1 rendering of one docket task: lifecycle plus its A2A state.",
+      "description": "The operator-v2 rendering of one docket task: lifecycle plus its A2A state.",
       "properties": {
         "id": {
           "title": "Id",
@@ -704,22 +460,7 @@
           "title": "Updatedat",
           "type": "string"
         },
-        "question": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/QuestionV11"
-            },
-            {
-              "$ref": "#/$defs/Question"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Question"
-        },
-        "approvalToken": {
+        "escalation": {
           "anyOf": [
             {
               "type": "string"
@@ -729,7 +470,7 @@
             }
           ],
           "default": null,
-          "title": "Approvaltoken"
+          "title": "Escalation"
         },
         "brief": {
           "anyOf": [
@@ -763,7 +504,7 @@
             "$ref": "#/$defs/TaskView"
           },
           {
-            "$ref": "#/$defs/ApprovalView"
+            "$ref": "#/$defs/EscalationView"
           }
         ]
       },

@@ -1,4 +1,4 @@
-"""Acting on one task: cancel, retry, answer a parked question, pre-grant a command."""
+"""Acting on one task: cancel, retry, pre-grant a command."""
 
 from __future__ import annotations
 
@@ -6,10 +6,7 @@ import json
 
 from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.http.exchange import HttpExchange
-from docket.kernel.errors import DocketError
-from docket.operator import task_view
 from docket.tasks.application import lifecycle as _lifecycle
-from docket.tasks.application.escalations import resolve_question
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 
@@ -57,55 +54,8 @@ def post_task_retry(h: HttpExchange, rest: str) -> None:
     h._send_json({"ok": True, "task": task_id, "status": "pending"})
 
 
-def post_task_answer(h: HttpExchange, task_id: str) -> None:
-    """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket task answer`; it settles the
-    task's question escalation like `POST /escalations/<id>`. Body: `{"pod", "action", "content"?, "actor"?}`; `actor` is a label only, and the
-    channel is always `"http"`."""
-    if not task_id:
-        h._send_json_error("Missing task id", 400)
-        return
-    body = h._read_json_object()
-    if body is None:
-        return
-
-    project = body.get("pod")
-    if not isinstance(project, str) or not project:
-        h._send_json_error("pod is required", 400)
-        return
-    if h._reject_bad_project_id(project):
-        return
-    action = body.get("action")
-    if not isinstance(action, str) or not action:
-        h._send_json_error("action is required", 400)
-        return
-    content = body.get("content")
-    if content is not None and not isinstance(content, dict):
-        h._send_json_error("content must be an object", 400)
-        return
-    actor_raw = body.get("actor")
-    actor = actor_raw if isinstance(actor_raw, str) and actor_raw else "http"
-
-    try:
-        resolve_question(project, task_id, action, content, channel="http", actor=actor)
-    except DocketError as exc:
-        h._send_refusal(exc)
-        return
-
-    task = next((t for t in TaskRepository.for_pod(project).list() if t.id == task_id), None)
-    if task is None:
-        # Answered, then vanished from its own pod's queue before this read — not
-        # expected in practice (nothing deletes a task), but report it honestly
-        # rather than crash rendering a view for it.
-        h._send_json_error(f"task {task_id!r} not found after answering", 500)
-        return
-    view = task_view(project, task.model_dump(by_alias=True, mode="json")).model_dump(
-        by_alias=True, mode="json"
-    )
-    h._send(json.dumps(view).encode(), "application/json")
-
-
 def post_task_pregrant(h: HttpExchange, task_id: str) -> None:
-    """`POST /tasks/<id>/pregrants` -- the HTTP counterpart of `docket task approve --for`.
+    """`POST /tasks/<id>/pregrants` -- the HTTP counterpart of `docket task pregrant`.
     Body: `{"pod", "command", "tool"?, "actor"?}`; the channel is always `"http"`."""
     if not task_id:
         h._send_json_error("Missing task id", 400)

@@ -256,7 +256,7 @@ docket pod check 'git push origin production' --role implementer
   Policy: 'high-risk-deploy' -> require_approval
 ```
 
-In a live run from a terminal that call waits for `docket task approve <token>` (also over HTTP,
+In a live run from a terminal that call waits for `docket task answer <escalation-id> --option approve_once` (also over HTTP,
 MCP or Telegram) and is denied on timeout with an `approval.deny ... channel=timeout` audit
 line; unattended it parks the task as `waiting_approval` instead. Either way the command never
 executes, the audit log carries `tool.ask`, and the trace records the denial with
@@ -382,7 +382,7 @@ docket setup notify test desktop                          # one synthetic event,
 `desktop` needs only a desktop session on the host running docket. `ntfy` reaches you anywhere;
 pick a topic nobody can guess, since the public server shows it to anyone who does (a
 notification carries `content: minimal` by default: pod, task and state, nothing more).
-`telegram` is the one channel that can also *decide* (`/approve`, `/answer`); `enable telegram
+`telegram` is the one channel that can also *decide* (`/answer`); `enable telegram
 --chat <id>` also stores the bot token (`--token`, else `TELEGRAM_BOT_TOKEN` in the environment,
 else a hidden prompt) and binds every pod's Lead. `webhook` and `command` wire anything
 else (Slack, n8n, a pager); `email` notifies and never decides.
@@ -396,7 +396,7 @@ docket inbox                              # everything across every pod that nee
 A gated call hit by an unattended sweep no longer waits on a thread: it **parks** instead,
 recorded as an ordinary `waiting_approval` task with nothing blocking behind it. `docket inbox`
 lists every task and approval that needs you (`--peek` reads without advancing its cursor); grant
-or deny it exactly like any other approval: `docket task approve <id>` (also HTTP, MCP or Telegram).
+or deny it exactly like any other approval: `docket task answer <id> --option approve_once|deny` (also HTTP, MCP or Telegram).
 `docket setup notify flush` pushes what changed since the last flush to every enabled channel;
 `docket start --dispatch` and a real `docket run` already call it after every state change. Prefer a hard failure
 over a parked one in CI?
@@ -404,8 +404,8 @@ over a parked one in CI?
 and the policy that asked.
 
 `docket start` also exposes a read API and `POST /dispatch/<project>` for CI. `--telegram`
-adds an inbound-only approval channel with five verbs (`/status`, `/delegate`, `/approve`,
-`/deny`, `/answer`); it is not a chat, and its poll loop only replies; a push to your phone comes from the `telegram`
+adds an inbound-only approval channel with three verbs (`/status`, `/delegate`,
+`/answer`); it is not a chat, and its poll loop only replies; a push to your phone comes from the `telegram`
 channel you enabled above. Schedules, webhooks and the
 run registry are in the [Workflow guide](WORKFLOW-GUIDE.md).
 

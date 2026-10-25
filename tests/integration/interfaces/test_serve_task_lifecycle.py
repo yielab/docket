@@ -24,7 +24,6 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
-from docket.kernel.operator_contract import Question
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
@@ -225,19 +224,7 @@ def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
     """A task waiting for an answer is cancelled over HTTP and audited with the channel."""
     with _seed_pod(tmp_path), _live_server() as live_server:
         task = _queue.enqueue_task_once("demo", "ask", channel="cli")[0]
-        _set_task(
-            task.id,
-            status="waiting_input",
-            question=Question(
-                id="q-1",
-                task_id=task.id,
-                pod="demo",
-                step="s",
-                message="which?",
-                requested_schema={"type": "object", "properties": {"a": {"type": "string"}}},
-                created_at="2020-01-01T00:00:00+00:00",
-            ),
-        )
+        _set_task(task.id, status="waiting_input")
 
         status, body = _call("POST", f"{live_server}/tasks/demo/{task.id}/cancel")
 

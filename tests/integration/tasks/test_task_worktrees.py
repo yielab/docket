@@ -13,13 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from tests.support import home as _support_home
+from tests.support.approvals import answer_question
 from tests.support.git import git as _git
 from tests.support.git import init_repo as _init_repo
 from tests.support.pods import bind_demo_pipeline as _bind_pipeline
 from tests.support.pods import seed_pod_at_codebase as _seed_pod
 
 from docket.agent.ports import PIPELINE_WORKTREE_ENV, TurnResult
-from docket.hops.application import answers as _answers
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
@@ -207,9 +207,7 @@ def test_a_parked_then_answered_task_resumes_in_the_same_worktree(tmp_path: Path
         assert Path(recorded.dir).is_dir()
         assert runner.roots == []
 
-        _answers.answer_task(
-            "demo", queued.id, "accept", {"answer": "yes"}, channel="cli", actor="op"
-        )
+        answer_question("demo", queued.id, "accept", {"answer": "yes"})
         (done,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
 
         assert done.status == "done", done.reason

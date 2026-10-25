@@ -35,12 +35,12 @@ def approval_escalation(kind: EscalationKind = "gate", **context: Any) -> Escala
     ctx: dict[str, Any] = {"taskId": task.id, **context}
     if kind == "check_changed":
         ctx["kind"] = "check_changed"
+    if kind == "gate":
+        ctx["pipelineIndex"] = 1
     token = _ap.approval_create(
         PROJECT, "implementer", "tool call 'bash': rm -rf build", context=ctx
     )
-    update_task(
-        PROJECT, task.id, status="waiting_approval", approval_token=token, pending_approval_index=1
-    )
+    update_task(PROJECT, task.id, status="waiting_approval", pending_approval_index=1)
     return _esc.open_for_approval(
         token,
         kind=kind,
@@ -76,7 +76,7 @@ def consult_escalation() -> Escalation:
             "recommendation": {"optionId": "sqlite", "rationale": "no new service"},
         }
     )
-    update_task(PROJECT, task.id, status="waiting_input", question=question)
+    update_task(PROJECT, task.id, status="waiting_input")
     return _esc.open_for_question(
         question, kind="consult", role="implementer", caused_by="implementer"
     )

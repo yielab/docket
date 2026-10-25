@@ -52,27 +52,27 @@ class TestCompareDigestAuth:
 
         monkeypatch.setattr(_secrets, "compare_digest", spy)
         base_url, token = live_server
-        status, _body = _get(f"{base_url}/approvals", token=token)
+        status, _body = _get(f"{base_url}/escalations", token=token)
         assert status == 200
         assert calls, "_check_auth should call secrets.compare_digest"
         assert calls[0] == (f"Bearer {token}", f"Bearer {token}")
 
     def test_wrong_token_still_rejected(self, live_server: tuple[str, str]) -> None:
         base_url, _token = live_server
-        status, body = _get(f"{base_url}/approvals", token="not-the-right-token")
+        status, body = _get(f"{base_url}/escalations", token="not-the-right-token")
         assert status == 401
         assert body["ok"] is False
 
     def test_no_token_still_rejected(self, live_server: tuple[str, str]) -> None:
         base_url, _token = live_server
-        status, _body = _get(f"{base_url}/approvals")
+        status, _body = _get(f"{base_url}/escalations")
         assert status == 401
 
     def test_correct_token_accepted(self, live_server: tuple[str, str]) -> None:
         base_url, token = live_server
-        status, body = _get(f"{base_url}/approvals", token=token)
+        status, body = _get(f"{base_url}/escalations", token=token)
         assert status == 200
-        assert body == {"pending": []}
+        assert body == {"escalations": [], "next": 0}
 
     def test_empty_serve_token_denies_all_even_with_compare_digest(
         self, approvals_dir: Path
@@ -88,7 +88,7 @@ class TestCompareDigestAuth:
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
         try:
-            status, _body = _get(f"http://127.0.0.1:{port}/approvals", token="")
+            status, _body = _get(f"http://127.0.0.1:{port}/escalations", token="")
             assert status == 401
         finally:
             srv.shutdown()

@@ -16,7 +16,8 @@ from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.tasks.application.actions import mint_task_grant_pregrants
+from docket.tasks.application.actions import mint_task_grant_pregrants, pregrants_for
+from docket.tasks.application.answers import answers_of, consult_note
 from docket.tasks.application.record import (
     UnitContext,
     claimed_worktree_dir,
@@ -217,7 +218,7 @@ def _hop_message(
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
         if root_block:
             message = f"{message}\n\n{root_block}"
-        answers_block = _render_operator_answers(task.answers)
+        answers_block = _render_operator_answers(answers_of(task))
         if answers_block:
             message = f"{message}\n\n## Operator answers\n{answers_block}"
         comp = _HopComposition(
@@ -250,7 +251,7 @@ def _hop_message(
     if gate_failed_hop is not None:
         # Resumed right behind an operator's answer: that answer is what the human decided.
         answered = bool(prior) and prior[-1].role == "operator"
-        answer = _render_operator_answers(task.answers[-1:]) if answered else ""
+        answer = _render_operator_answers(answers_of(task)[-1:]) if answered else ""
         lines.append(_compose_gate_failed(gate_failed_hop, carryover_budget, comp, answer))
     elif rework_hop is not None and rework_hop.output:
         # Rendered from the hop's *artifact*, not its raw output, so this
@@ -338,7 +339,7 @@ _ANSWERS_CHAR_BUDGET = 4000
 
 def _render_answer_value(entry: Answer) -> str:
     """One answered entry's ``A: ...`` line: the single ``answer`` property's value for an
-    ``accept``, else a plain marker -- see ``hops.application.answers.answer_task``."""
+    ``accept``, else a plain marker."""
     action = entry.action
     if action == "accept":
         content = entry.content or {}
@@ -365,15 +366,6 @@ def _render_operator_answers(answers: list[Answer]) -> str:
     return capped
 
 
-def _consult_answer_note(task: TaskRecord, step_id: str) -> str:
-    """The operator's answer to this step's parked consultation, as a trailing message block
-    (empty when the step has none)."""
-    answer = task.consult_answer
-    if answer is None or answer.step != step_id:
-        return ""
-    return f"\n\n{answer.text}\n"
-
-
 def _compose_hop(
     ctx: UnitContext,
     node: _orch.PlannedUnit,
@@ -396,7 +388,7 @@ def _compose_hop(
         project=ctx.project,
         verify_cmd=verify_plan.command if verify_plan is not None else "",
     )
-    message += _consult_answer_note(ctx.task, node.step_id)
+    message += consult_note(ctx.task, node.step_id)
     pipeline_worktree = ""
     if role != "lead":
         pipeline_worktree = claimed_worktree_dir(ctx.task)
@@ -491,17 +483,12 @@ def _compose_hop(
         )
     env = _consult_budget_env(ctx, env)
     env = _apply_task_restrictions(ctx, env)
-    pregrants_raw = [
-        *(g.model_dump(by_alias=True) for g in ctx.task.pregrants),
-        *mint_task_grant_pregrants(ctx, role),
-    ]
+    pregrants_raw = [*pregrants_for(ctx.task_id), *mint_task_grant_pregrants(ctx, role)]
     if pregrants_raw:
-        # Every pre-grant this task's human has already resolved (ADR 0016
-        # SS2) -- a human already consumed one carries no live effect
-        # (`consume_pregrant` is single-use and atomic), so passing the whole
-        # list along is a harmless no-op for anything already spent; it only
-        # ever lets an unconsumed exact-match call through without asking
-        # again.
+        # Every call this task's human has already approved and nothing has spent yet (ADR 0016
+        # SS2). `consume_pregrant` is single-use and atomic, so a call another turn spends in
+        # the meantime carries no live effect; the list only ever lets an exact-match call
+        # through without asking again.
         env = dict(env or {})
         env[_rd.DOCKET_PREGRANTS] = _json.dumps(pregrants_raw)
     return message, env

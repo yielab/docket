@@ -16,11 +16,9 @@ import pytest
 from docket.kernel.brief import TaskBrief
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
-    ApprovalView,
     EscalationAffordances,
     EscalationView,
     InboxView,
-    Question,
     QuestionV11,
     Resolution,
     TaskView,
@@ -36,8 +34,7 @@ def _task(
     pod: str = "alpha",
     status: str = "waiting_input",
     reason: str | None = None,
-    question: Question | None = None,
-    approval_token: str | None = None,
+    escalation: str | None = None,
     a2a_state: str = "INPUT_REQUIRED",
     brief: TaskBrief | None = None,
 ) -> TaskView:
@@ -47,44 +44,42 @@ def _task(
         status=status,
         a2a_state=a2a_state,
         reason=reason,
-        question=question,
-        approval_token=approval_token,
+        escalation=escalation,
         brief=brief,
     )
 
 
 def _approval(
     *,
-    token: str = "tok-1",
+    id: str = "esc-aaaaaaaaaaaa",
     pod: str = "alpha",
     role: str = "implementer",
     action: str = "git push origin main",
-    policy: str = "prod-approval",
-    state: str = "pending",
-    created_at: str = "",
+    created_at: str = "2026-09-28T00:00:00Z",
     expires_at: str | None = None,
-) -> ApprovalView:
-    return ApprovalView(
-        token=token,
-        pod=pod,
-        role=role,
-        action=action,
-        policy=policy,
-        state=state,
-        created_at=created_at,
-        expires_at=expires_at,
-    )
-
-
-def _question(id: str = "q-abc123456789") -> Question:
-    return Question(
-        id=id,
-        task_id="t1",
-        pod="alpha",
-        step="implementer",
-        message="Which environment?",
-        requested_schema={"type": "object", "properties": {"env": {"type": "string"}}},
-        created_at="2026-09-28T00:00:00Z",
+    task: str = "",
+) -> EscalationView:
+    """A pending approval escalation, standalone unless it names a *task*."""
+    return EscalationView.model_validate(
+        {
+            "id": id,
+            "task": task,
+            "pod": pod,
+            "step": "",
+            "role": role,
+            "kind": "approval",
+            "causedBy": "c1",
+            "prompt": action,
+            "options": [
+                {"id": "approve_once", "label": "Approve once", "description": "x"},
+                {"id": "approve_task", "label": "Approve for this task", "description": "x"},
+                {"id": "deny", "label": "Deny", "description": "x"},
+            ],
+            "askedAt": created_at,
+            "expiresAt": expires_at,
+            "onExpiry": "deny",
+            "affordances": {"resolveUrl": f"/escalations/{id}"},
+        }
     )
 
 
@@ -102,7 +97,9 @@ class TestDiffEventsPure:
         assert events2 == []
 
     def test_waiting_approval_task_emits_approval_requested(self) -> None:
-        inbox = InboxView(needs_you=[_task(status="waiting_approval", approval_token="tok-9")])
+        inbox = InboxView(
+            needs_you=[_task(status="waiting_approval", escalation="esc-bbbbbbbbbbbb")]
+        )
         events, _snapshot = _notify.diff_events({}, inbox, now="2026-09-28T00:00:00Z")
         assert [e.kind for e in events] == ["approval.requested"]
 
@@ -111,14 +108,14 @@ class TestDiffEventsPure:
         events, snapshot = _notify.diff_events({}, inbox, now="2026-09-28T00:00:00Z")
         assert len(events) == 1
         assert events[0].kind == "approval.requested"
-        assert events[0].subject == "approval:tok-1"
+        assert events[0].subject == "escalation:esc-aaaaaaaaaaaa"
         events2, _snapshot2 = _notify.diff_events(snapshot, inbox, now="2026-09-28T00:01:00Z")
         assert events2 == []
 
     def test_new_question_on_the_same_task_emits_again(self) -> None:
-        inbox1 = InboxView(needs_you=[_task(question=_question("q-first0000"))])
+        inbox1 = InboxView(needs_you=[_task(escalation="esc-111111111111")])
         _events1, snapshot1 = _notify.diff_events({}, inbox1, now="2026-09-28T00:00:00Z")
-        inbox2 = InboxView(needs_you=[_task(question=_question("q-second0000"))])
+        inbox2 = InboxView(needs_you=[_task(escalation="esc-222222222222")])
         events2, _snapshot2 = _notify.diff_events(snapshot1, inbox2, now="2026-09-28T00:01:00Z")
         assert [e.kind for e in events2] == ["task.input_required"]
 
@@ -146,7 +143,7 @@ class TestDiffEventsPure:
         events_late, snapshot_late = _notify.diff_events({}, inbox, now="2026-09-28T00:08:30Z")
         expiring_kinds = [e.kind for e in events_late if e.kind == "approval.expiring"]
         assert len(expiring_kinds) == 1
-        assert "tok-1" in snapshot_late["expiring"]
+        assert "esc-aaaaaaaaaaaa" in snapshot_late["expiring"]
 
         events_again, _snap_again = _notify.diff_events(
             snapshot_late, inbox, now="2026-09-28T00:09:00Z"
@@ -249,23 +246,33 @@ class TestRenderDataContentLevels:
         data = _notify.render_data(approval, "actions")
         assert data["action"] == "git push origin CANARY_7f3"
 
+    def test_a_pending_approval_names_itself_and_how_to_answer_it(self) -> None:
+        data = _notify.render_data(_approval(), "minimal")
+        assert data["escalationId"] == "esc-aaaaaaaaaaaa"
+        assert data["respond"] == {
+            "cli": "docket task answer esc-aaaaaaaaaaaa",
+            "http": "/escalations/esc-aaaaaaaaaaaa",
+        }
+        assert "token" not in data
+        assert [o["id"] for o in data["options"]] == ["approve_once", "approve_task", "deny"]
+
     def test_task_minimal_never_carries_the_question_text(self) -> None:
-        task = _task(question=_question())
-        data = _notify.render_data(task, "minimal")
+        task = _task(escalation="esc-0123456789ab")
+        data = _notify.render_data(task, "minimal", _escalation_view())
         assert "question" not in data
-        assert "Which environment?" not in repr(data)
-        assert data["questionId"] == "q-abc123456789"
+        assert "Which design?" not in repr(data)
+        assert data["escalationId"] == "esc-0123456789ab"
 
     def test_task_conversation_carries_the_question_and_brief(self) -> None:
         brief = TaskBrief(objective="Ship the thing")
-        task = _task(question=_question(), brief=brief)
-        data = _notify.render_data(task, "conversation")
-        assert data["question"] == "Which environment?"
+        task = _task(escalation="esc-0123456789ab", brief=brief)
+        data = _notify.render_data(task, "conversation", _escalation_view())
+        assert data["question"] == "Which design?"
         assert data["brief"]["objective"] == "Ship the thing"
 
     def test_task_actions_still_omits_the_question(self) -> None:
-        task = _task(question=_question())
-        data = _notify.render_data(task, "actions")
+        task = _task(escalation="esc-0123456789ab")
+        data = _notify.render_data(task, "actions", _escalation_view())
         assert "question" not in data
 
 
@@ -314,8 +321,18 @@ def _escalation_view() -> EscalationView:
 
 
 class TestRenderOptions:
+    def _view(self, label: str = "Iterative") -> EscalationView:
+        view = _escalation_view()
+        options = [
+            o.model_copy(update={"label": label}) if o.id == "iterative" else o
+            for o in view.options
+        ]
+        return view.model_copy(update={"options": options})
+
     def test_conversation_carries_options_and_recommendation_id_only(self) -> None:
-        data = _notify.render_data(_task(question=_consult_question()), "conversation")
+        data = _notify.render_data(
+            _task(escalation="esc-0123456789ab"), "conversation", self._view()
+        )
         assert data["options"] == [
             {"id": "iterative", "label": "Iterative"},
             {"id": "bigbang", "label": "Big bang"},
@@ -326,40 +343,39 @@ class TestRenderOptions:
 
     @pytest.mark.parametrize("level", ["minimal", "actions"])
     def test_lower_levels_carry_the_option_ids_and_nothing_else(self, level: str) -> None:
-        data = _notify.render_data(_task(question=_consult_question()), level)
+        data = _notify.render_data(_task(escalation="esc-0123456789ab"), level, self._view())
         assert data["options"] == [{"id": "iterative"}, {"id": "bigbang"}]
         assert data["recommendation"] == {"optionId": "iterative"}
         assert "Iterative" not in repr(data)
         assert "question" not in data
         assert "SECRETWHY" not in repr(data)
 
-    def test_the_options_of_a_pending_escalation_are_the_ones_rendered(self) -> None:
-        view = _escalation_view()
-        data = _notify.render_data(_task(question=_consult_question()), "conversation", view)
-        assert data["options"] == [
-            {"id": "iterative", "label": "Iterative"},
-            {"id": "bigbang", "label": "Big bang"},
-        ]
+    def test_decline_is_never_one_of_the_options(self) -> None:
+        data = _notify.render_data(
+            _task(escalation="esc-0123456789ab"), "conversation", self._view()
+        )
         assert "decline" not in repr(data)
-        assert _notify.render_data(_task(question=_consult_question()), "minimal", view)[
-            "options"
-        ] == [{"id": "iterative"}, {"id": "bigbang"}]
 
-    def test_a_plain_question_adds_no_options(self) -> None:
-        data = _notify.render_data(_task(question=_question()), "conversation")
+    def test_a_task_with_no_pending_escalation_adds_no_options(self) -> None:
+        data = _notify.render_data(_task(), "conversation")
         assert "options" not in data
         assert "recommendation" not in data
+        assert "escalationId" not in data
 
     def test_labels_lose_control_characters_and_are_truncated(self) -> None:
         label = "A\x1b[31mB\nC" + "x" * 500
-        data = _notify.render_data(_task(question=_consult_question(label)), "conversation")
+        data = _notify.render_data(
+            _task(escalation="esc-0123456789ab"), "conversation", self._view(label)
+        )
         shown = data["options"][0]["label"]
         assert "\x1b" not in shown
         assert "\n" not in shown
         assert len(shown) <= 80
 
     def test_text_lists_each_option_marks_the_recommended_and_names_the_reply(self) -> None:
-        data = _notify.render_data(_task(question=_consult_question()), "conversation")
+        data = _notify.render_data(
+            _task(escalation="esc-0123456789ab"), "conversation", self._view()
+        )
         event = _notify.make_event(
             "task.input_required",
             "alpha",
@@ -371,10 +387,10 @@ class TestRenderOptions:
         _title, body = _notify.render_text(event)
         assert "iterative - Iterative (recommended)" in body
         assert "bigbang - Big bang" in body
-        assert "reply: /answer t1 <id>" in body
+        assert "reply: /answer esc-0123456789ab <id>" in body
 
     def test_minimal_text_names_the_ids_to_reply_with_but_no_label(self) -> None:
-        data = _notify.render_data(_task(question=_consult_question()), "minimal")
+        data = _notify.render_data(_task(escalation="esc-0123456789ab"), "minimal", self._view())
         event = _notify.make_event(
             "task.input_required",
             "alpha",
@@ -387,7 +403,7 @@ class TestRenderOptions:
         assert "iterative (recommended)" in body
         assert "bigbang" in body
         assert "Iterative" not in body and "Big bang" not in body
-        assert "reply: /answer t1 <id>" in body
+        assert "reply: /answer esc-0123456789ab <id>" in body
 
 
 class TestRenderTextAndTestEvent:
@@ -396,10 +412,10 @@ class TestRenderTextAndTestEvent:
         event = _notify.make_event(
             "approval.requested",
             "alpha",
-            "approval:tok-1",
+            "escalation:esc-aaaaaaaaaaaa",
             _notify.render_data(approval, "actions"),
             time="2026-09-28T00:00:00Z",
-            version="pending:tok-1",
+            version="pending",
         )
         title, body = _notify.render_text(event)
         assert "approval.requested" in title
@@ -471,7 +487,7 @@ class TestFlush:
     def test_new_parked_approval_yields_exactly_one_approval_requested(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        inbox = InboxView(needs_you=[_approval(token="tok-parked")])
+        inbox = InboxView(needs_you=[_approval(id="esc-cccccccccccc")])
         self._patch_inbox(monkeypatch, inbox)
         deliver = _RecordingDeliver(ok=True)
         _notify.flush([_spec()], lambda _spec: deliver, now="2026-09-28T00:00:00Z")
@@ -510,12 +526,13 @@ class TestFlush:
         )
 
         heard = sorted(
-            (c[0].name, c[1].data.get("taskId") or c[1].data.get("token")) for c in deliver.calls
+            (c[0].name, c[1].data.get("taskId") or c[1].data.get("escalationId"))
+            for c in deliver.calls
         )
         assert heard == [
+            ("everything", "esc-aaaaaaaaaaaa"),
             ("everything", "t1"),
             ("everything", "t2"),
-            ("everything", "tok-1"),
             ("scoped", "t1"),
         ]
 
@@ -599,3 +616,83 @@ class TestFlush:
         )
         assert report.events == 1
         assert deliver.calls == []
+
+
+class TestEscalationDelivered:
+    """`flush` says which escalation a delivered notification carried: the trace gets
+    `escalation_delivered` with the channel, and the event's data names the escalation."""
+
+    def _store(self) -> None:
+        from docket.kernel.operator_contract import Escalation
+        from docket.platform import write_escalation
+
+        view = _escalation_view()
+        record = Escalation.model_validate(view.model_dump(by_alias=True, exclude={"affordances"}))
+        write_escalation(record)
+
+    def _inbox(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from docket.operator import inbox as _inbox_mod
+
+        task = _task(escalation="esc-0123456789ab")
+        inbox = InboxView(needs_you=[task], escalations=[_escalation_view()])
+        monkeypatch.setattr(_inbox_mod, "build_inbox", lambda **_kw: inbox)
+
+    def _delivered(self) -> list[dict[str, Any]]:
+        from tests.support.trace import trace_events
+
+        return [e for e in trace_events("alpha") if e["event_type"] == "escalation_delivered"]
+
+    def test_a_delivered_notification_traces_the_escalation_and_the_channel(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._store()
+        self._inbox(monkeypatch)
+        deliver = _RecordingDeliver(ok=True)
+
+        _notify.flush([_spec(name="ntfy-main")], lambda _spec: deliver, now="2026-09-28T00:00:00Z")
+
+        (sent,) = deliver.calls
+        assert sent[1].data["escalationId"] == "esc-0123456789ab"
+        (event,) = self._delivered()
+        assert event["payload"]["escalation"] == "esc-0123456789ab"
+        assert (event["payload"]["channel"], event["task_id"]) == ("ntfy-main", "t1")
+
+    def test_each_channel_that_delivers_traces_its_own_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._store()
+        self._inbox(monkeypatch)
+        deliver = _RecordingDeliver(ok=True)
+
+        _notify.flush(
+            [_spec(name="one"), _spec(name="two")],
+            lambda _spec: deliver,
+            now="2026-09-28T00:00:00Z",
+        )
+
+        assert sorted(e["payload"]["channel"] for e in self._delivered()) == ["one", "two"]
+
+    def test_a_failed_delivery_traces_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._store()
+        self._inbox(monkeypatch)
+        deliver = _RecordingDeliver(ok=False, error="boom")
+
+        _notify.flush(
+            [_spec()], lambda _spec: deliver, now="2026-09-28T00:00:00Z", sleep=lambda s: None
+        )
+
+        assert self._delivered() == []
+
+    def test_a_notification_that_names_no_escalation_traces_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.operator import inbox as _inbox_mod
+
+        inbox = InboxView(needs_you=[_task(status="blocked")])
+        monkeypatch.setattr(_inbox_mod, "build_inbox", lambda **_kw: inbox)
+        deliver = _RecordingDeliver(ok=True)
+
+        _notify.flush([_spec()], lambda _spec: deliver, now="2026-09-28T00:00:00Z")
+
+        assert "escalationId" not in deliver.calls[0][1].data
+        assert self._delivered() == []

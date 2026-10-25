@@ -1,8 +1,8 @@
 # Extractable Starter Journey
 
-**Version**: 2.0.1
+**Version**: 2.1.0
 **Status**: Implemented — artifact-installed Python 3.11 journey tested outside the checkout
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Overview
 
@@ -56,14 +56,14 @@ CLI run registry.
    only the starter's ephemeral loopback model endpoint (`NO_PROXY` names loopback only). The starter
    MUST print that endpoint as `STARTER LOOPBACK <url>`; its OS-assigned port MUST NOT be 8081.
 4. The public command MUST first reach a persisted `waiting_approval` state, listed by
-   `docket inbox --peek` as needing approval, and print `STARTER DENIAL PAUSED <token>`. Until the
+   `docket inbox --peek` as needing approval, and print `STARTER DENIAL PAUSED <escalation id>`. Until the
    test sends `deny` at the starter's prompt, the declared target bytes MUST remain unchanged. After
-   public CLI denial (`docket task deny <token>`), it MUST print `STARTER DENIAL CONFIRMED`, leave
+   public CLI denial (`docket task answer <escalation id> --option deny`), it MUST print `STARTER DENIAL CONFIRMED`, leave
    those bytes unchanged, and persist the denied task as `failed` with `failureKind`
    `approval_denied`.
 5. The same command MUST enqueue a fresh task with `docket task add`, reach a second persisted
-   approval pause, and print `STARTER GRANT PAUSED <token>`. Until the test sends `grant`, the target
-   bytes MUST remain unchanged. Public CLI grant (`docket task approve <token>`) plus resumed dispatch
+   approval pause, and print `STARTER GRANT PAUSED <escalation id>`. Until the test sends `grant`, the target
+   bytes MUST remain unchanged. Public CLI grant (`docket task answer <escalation id> --option approve_once`) plus resumed dispatch
    MUST mutate exactly `starter-output.txt`, changing its bytes from `starter pending\n` to
    `docket starter approved\n`. No other workspace file MAY be created, removed, or changed.
 6. The deterministic model MUST issue exactly one admitted `write` call with call id
@@ -123,7 +123,7 @@ all use their production paths.
 - `pyproject.toml`: the `docket` console entry point (`[project.scripts]`).
 - `src/docket/interfaces/cli/commands/agents.py`: `init --from`.
 - `src/docket/interfaces/cli/commands/setup_model.py`: `setup provider add`, `setup model set`.
-- `src/docket/interfaces/cli/commands/task.py`: `task add`, `task show`, `task trace --export`, `task list`, `task approve`, `task deny`.
+- `src/docket/interfaces/cli/commands/task.py`: `task add`, `task show`, `task trace --export`, `task list`, `task answer`.
 - `src/docket/interfaces/cli/commands/inbox.py`: `inbox --peek`.
 - `src/docket/interfaces/cli/commands/run.py`: `run --pipeline`.
 - `src/docket/interfaces/cli/commands/log.py`: `log verify`.

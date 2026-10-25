@@ -129,7 +129,7 @@ def test_a_question_typed_at_the_terminal_is_answered_in_the_same_turn(
     first, resumed = model.by_role("implementer")
     assert first.tool_result("k1") is None
     answer = resumed.tool_result("k1") or ""
-    assert answer.startswith("Operator answered your consultation q-")
+    assert answer.startswith("Operator answered your consultation esc-")
     assert answer.endswith("option redis (Redis)")
     assert _inbox_rows(w) == []
     skeleton = oracles.trace_skeleton(w, w.pod, task_id)

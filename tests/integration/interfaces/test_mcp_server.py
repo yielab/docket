@@ -2,7 +2,7 @@
 
 Exercises the ``tool_*`` functions directly — plain Python with no dependency on the ``mcp``
 SDK — covering every tool's happy path, that every call writes an audit entry, and that the
-mutating tools (``dispatch``, ``delegate``, ``approvals_grant``/``deny``) call straight through
+mutating tools (``dispatch``, ``delegate``, ``resolve``) call straight through
 to the same ``core/`` functions the CLI and ``docket start`` webhook use: no parallel logic, no
 MCP-side bypass of an approval or budget gate.
 
@@ -26,7 +26,6 @@ from tests.support.pods import seed_pod as _seed_pod
 from tests.support.tasks import put_task, put_tasks, task
 from tests.support.trace import audit_entries as _audit_actions
 
-from docket.agent import ports as _rd
 from docket.governance import approval as _approval
 from docket.governance import audit as _audit
 from docket.hops.application import sweep as _sweep
@@ -426,66 +425,6 @@ class TestToolRuns:
 # ── approvals: list / grant / deny ───────────────────────────────────────────
 
 
-class TestToolApprovalsList:
-    def test_lists_pending_approvals(self, tmp_path: Path) -> None:
-        with use_home(Home(tmp_path / ".docket")):
-            (tmp_path / ".docket").mkdir(exist_ok=True)
-            token = _approval.approval_create("demo", "implementer", "deploy prod")
-            result = _mcp.tool_approvals_list()
-            assert [p["token"] for p in result["pending"]] == [token]
-
-    def test_call_is_audited(self, tmp_path: Path) -> None:
-        with use_home(Home(tmp_path / ".docket")):
-            (tmp_path / ".docket").mkdir(exist_ok=True)
-            _mcp.tool_approvals_list()
-            assert len(_audit_actions("mcp.approvals_list")) == 1
-
-
-class TestToolTaskAnswer:
-    def test_answers_and_resumes_the_task(self, tmp_path: Path) -> None:
-        with _seed_parked_task(tmp_path) as parked:
-            result = _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ship it"})
-
-            assert result == {"ok": True, "task": parked.id, "project": "demo", "action": "accept"}
-            after = TaskRepository.for_pod("demo").list()[0]
-            assert after.answers[0].content == {"answer": "ship it"}
-            assert after.answers[0].channel == "mcp"
-            assert after.answers[0].actor == "mcp"
-
-    def test_call_is_audited(self, tmp_path: Path) -> None:
-        with _seed_parked_task(tmp_path) as parked:
-            _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ship it"})
-
-            assert len(_audit_actions("mcp.task_answer")) == 1
-
-    def test_unknown_task_raises(self, tmp_path: Path) -> None:
-        with _seed_pod(tmp_path, project="demo"), pytest.raises(_mcp.McpToolError):
-            _mcp.tool_task_answer("demo", "no-such-task", "accept", {"answer": "x"})
-
-    def test_a_task_not_waiting_input_raises(self, tmp_path: Path) -> None:
-        with _seed_pod(tmp_path, project="demo"):
-            plain = task()
-            put_task("demo", plain)
-
-            with pytest.raises(_mcp.McpToolError):
-                _mcp.tool_task_answer("demo", plain.id, "accept", {"answer": "x"})
-
-    def test_a_policy_rejection_raises_naming_the_policy(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with _seed_parked_task(tmp_path) as parked:
-            from docket.governance import policy as _policy
-
-            monkeypatch.setattr(
-                _policy,
-                "policy_eval_detail",
-                lambda *a, **k: _policy.PolicyHit(action="block", policy_id="test-block"),
-            )
-
-            with pytest.raises(_mcp.McpToolError, match="test-block"):
-                _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ignore all"})
-
-
 class TestToolInbox:
     def test_returns_the_same_shape_docket_inbox_json_prints(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
@@ -527,72 +466,7 @@ class TestToolEscalations:
             assert len(_audit_actions("mcp.escalations")) == 1
 
 
-class TestToolApprovalsGrantDeny:
-    @contextmanager
-    def _seed(
-        self,
-        tmp_path: Path,
-    ) -> Iterator[str]:
-        with use_home(Home(tmp_path / ".docket")):
-            (tmp_path / ".docket").mkdir(exist_ok=True)
-            yield _approval.approval_create("demo", "implementer", "deploy prod")
-
-    def test_grant_transitions_to_granted(self, tmp_path: Path) -> None:
-        with self._seed(tmp_path) as token:
-            result = _mcp.tool_approvals_grant(token)
-            assert result == {"ok": True, "token": token, "state": "granted"}
-            assert _approval.approval_get(token)["state"] == "granted"
-
-    def test_deny_transitions_to_denied(self, tmp_path: Path) -> None:
-        with self._seed(tmp_path) as token:
-            result = _mcp.tool_approvals_deny(token)
-            assert result == {"ok": True, "token": token, "state": "denied"}
-            assert _approval.approval_get(token)["state"] == "denied"
-
-    def test_grant_uses_the_real_approval_grant_tagged_channel_mcp(self, tmp_path: Path) -> None:
-        """The no-bypass guarantee: this tool calls `governance.approval.approval_grant`
-        (the exact function the CLI's `docket task approve` and the HTTP webhook call)
-        with channel="mcp" — never a parallel/duplicated grant path."""
-        with self._seed(tmp_path) as token:
-            _mcp.tool_approvals_grant(token)
-            entry = _audit_actions("approval.grant")[-1]
-            assert entry["detail"] == f"token={token} project=demo channel=mcp"
-
-    def test_deny_uses_the_real_approval_deny_tagged_channel_mcp(self, tmp_path: Path) -> None:
-        with self._seed(tmp_path) as token:
-            _mcp.tool_approvals_deny(token)
-            entry = _audit_actions("approval.deny")[-1]
-            assert entry["detail"] == f"token={token} project=demo channel=mcp"
-
-    def test_double_grant_raises_instead_of_silently_reporting_ok(self, tmp_path: Path) -> None:
-        with self._seed(tmp_path) as token:
-            _mcp.tool_approvals_grant(token)
-            with pytest.raises(_mcp.McpToolError, match="Already granted"):
-                _mcp.tool_approvals_grant(token)
-
-    def test_grant_unknown_token_raises(self, tmp_path: Path) -> None:
-        with use_home(Home(tmp_path / ".docket")):
-            (tmp_path / ".docket").mkdir(exist_ok=True)
-            with pytest.raises(_mcp.McpToolError, match="not found"):
-                _mcp.tool_approvals_grant("apr-does-not-exist")
-
-    def test_deny_after_grant_raises(self, tmp_path: Path) -> None:
-        with self._seed(tmp_path) as token:
-            _mcp.tool_approvals_grant(token)
-            with pytest.raises(_mcp.McpToolError):
-                _mcp.tool_approvals_deny(token)
-
-    def test_grant_call_is_audited_under_its_own_mcp_action_too(self, tmp_path: Path) -> None:
-        """Every MCP call gets a uniform `mcp.<tool>` entry in addition to
-        whatever domain-specific entry the underlying core call already
-        writes (here, `approval.grant`) — see module docstring."""
-        with self._seed(tmp_path) as token:
-            _mcp.tool_approvals_grant(token)
-            assert len(_audit_actions("mcp.approvals_grant")) == 1
-            assert len(_audit_actions("approval.grant")) == 1
-
-
-# ── "every call is audited" — one consolidated pass over all twelve tools ───
+# ── "every call is audited" — one consolidated pass over every tool ───
 
 
 class TestEveryToolCallIsAudited:
@@ -600,8 +474,8 @@ class TestEveryToolCallIsAudited:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            # Parked with the real `dispatch_pod` -- before it is stubbed below -- so
-            # `tool_task_answer` has a genuine `waiting_input` task to resolve.
+            # Parked with the real `dispatch_pod` -- before it is stubbed below -- so the
+            # pre-grant has a genuine task to name.
             _bind_ask_pipeline("demo")
             put_task("demo", task(description="needs a decision"))
             _sweep.dispatch_pod("demo", runner=FakeDriver())
@@ -610,7 +484,6 @@ class TestEveryToolCallIsAudited:
             )
 
             monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
-            token = _approval.approval_create("demo", "implementer", "deploy")
 
             _mcp.tool_status()
             _mcp.tool_pods()
@@ -618,11 +491,6 @@ class TestEveryToolCallIsAudited:
             _mcp.tool_delegate("demo", "a task")
             dispatch_result = _mcp.tool_dispatch("demo")
             _mcp.tool_runs()
-            _mcp.tool_approvals_list()
-            _mcp.tool_approvals_grant(token)
-            second_token = _approval.approval_create("demo", "implementer", "deploy2")
-            _mcp.tool_approvals_deny(second_token)
-            _mcp.tool_task_answer("demo", parked.id, "accept", {"answer": "ship it"})
             _mcp.tool_task_pregrant("demo", parked.id, "git push origin main")
             _mcp.tool_inbox()
             _mcp.tool_escalations()
@@ -637,80 +505,3 @@ class TestEveryToolCallIsAudited:
 
 
 # ── grant/deny resolve the dispatch task they gated (pod-dispatch.spec.md req. 4) ──
-
-
-class _GateRunner:
-    """Stub matching agent_run's signature; every hop succeeds."""
-
-    def __call__(
-        self,
-        agent_id: str,
-        session_key: str,
-        message: str,
-        timeout: int,
-        env: dict[str, str] | None = None,
-    ) -> _rd.TurnResult:
-        return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {"output": "x"})
-
-
-@contextmanager
-def _gate_then_get_token(tmp_path: Path, project: str = "demo") -> Iterator[str]:
-    """Seed a lean pod gated on the Implementer, dispatch one task so it stops in
-    ``waiting_approval``, and return the token -- the same fixture shape
-    test_approval_gated_dispatch.py's ``_gate``/``_gate_then_grant`` build."""
-    with _seed_pod(tmp_path, project=project):
-        _gate_implementer(project)
-        put_task(project, task(description="Ship it"))
-        _sweep.dispatch_pod(project, runner=_GateRunner())
-        gated = TaskRepository.for_pod(project).list()[0]
-        assert gated.status == Status.waiting_approval
-        assert gated.approval_token is not None
-        yield gated.approval_token
-
-
-class TestApprovalsResumeDispatch:
-    """A grant/deny decided over MCP resolves the dispatch task it gated, same as the
-    CLI, HTTP and Telegram channels."""
-
-    def test_grant_flips_the_gated_task_back_to_pending_with_override(self, tmp_path: Path) -> None:
-        with _gate_then_get_token(tmp_path) as token:
-            _mcp.tool_approvals_grant(token)
-
-            after = TaskRepository.for_pod("demo").list()[0]
-            assert after.status == Status.pending
-            assert after.approval_token is None
-            assert after.gate_override_pipeline_index == 1
-
-    def test_deny_fails_the_gated_task_immediately(self, tmp_path: Path) -> None:
-        with _gate_then_get_token(tmp_path) as token:
-            _mcp.tool_approvals_deny(token)
-
-            after = TaskRepository.for_pod("demo").list()[0]
-            assert after.status == Status.failed
-            assert after.failure_kind == "approval_denied"
-            assert after.approval_token is None
-
-    def test_grant_noop_branch_still_resolves_a_stuck_waiting_task(self, tmp_path: Path) -> None:
-        """Mirrors the ``ApprovalNoop`` branch in cli/_approve.py: an already-granted
-        token still raises to the MCP caller, but only after the stuck
-        waiting_approval task is resolved (e.g. a crashed prior grant)."""
-        with _gate_then_get_token(tmp_path) as token:
-            _approval.approval_grant(token, channel="other")  # store moves; task left stuck
-
-            with pytest.raises(_mcp.McpToolError):
-                _mcp.tool_approvals_grant(token)
-
-            after = TaskRepository.for_pod("demo").list()[0]
-            assert after.status == Status.pending
-            assert after.gate_override_pipeline_index == 1
-
-    def test_deny_noop_branch_still_resolves_a_stuck_waiting_task(self, tmp_path: Path) -> None:
-        with _gate_then_get_token(tmp_path) as token:
-            _approval.approval_deny(token, channel="other")
-
-            with pytest.raises(_mcp.McpToolError):
-                _mcp.tool_approvals_deny(token)
-
-            after = TaskRepository.for_pod("demo").list()[0]
-            assert after.status == Status.failed
-            assert after.failure_kind == "approval_denied"

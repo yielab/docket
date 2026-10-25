@@ -10,6 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+from tests.support.approvals import pending_token, resolve_token
 from tests.support.dispatch_harness import (
     _ScriptedBackend,
 )
@@ -20,6 +21,7 @@ from tests.support.pods import seed_pod_isolation_off as _seed_pod
 from docket.agent import ports as _rd
 from docket.agent import session as _session
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
+from docket.governance import approval_pregrant as _pregrants
 from docket.hops.application import driver as _dr
 from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _runner
@@ -29,6 +31,7 @@ from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
+from docket.platform import list_escalations
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import queue as _queue
@@ -179,10 +182,11 @@ class TestEndToEnd:
 
             assert elapsed < 1.0, f"took {elapsed:.2f}s -- park mode should not wait"
             assert results[0].status == "waiting_approval", results[0].reason
-            assert results[0].approval_token
+            token = pending_token("demo")
+            assert token
             tasks = TaskRepository.for_pod("demo").list()
             assert tasks[0].status == "waiting_approval"
-            assert tasks[0].approval_token == results[0].approval_token
+            assert len(tasks[0].escalations) == 1
             # The parked hop is persisted (audit/trace history stays true) --
             # `parked: true`, not silently dropped.
             assert tasks[0].hops[-1].role == "implementer"
@@ -192,19 +196,17 @@ class TestEndToEnd:
             trace_events = [
                 json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
             ]
-            assert any(
-                ev["event_type"] == "approval_required"
-                and ev["payload"].get("token") == results[0].approval_token
-                for ev in trace_events
-            )
+            assert any(ev["event_type"] == "approval_required" for ev in trace_events)
+            # The token that backs the pause is withheld from the record and the trace.
+            assert all(token not in json.dumps(ev) for ev in trace_events)
+            assert token not in json.dumps(tasks[0].model_dump(by_alias=True, mode="json"))
 
     def test_park_grant_resumes_the_parked_hop_with_a_single_use_pregrant(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The resume path: `docket task approve <t>` then `docket run` re-runs the
+        """The resume path: `docket task answer <t> --option approve_once` then `docket run` re-runs the
         implementer hop (not the lead's already-persisted one) at its own index, and the exact
         same tool call the human approved passes once via a single-use pre-grant."""
-        from docket.governance import approval as _approval_mod
         from docket.governance.policy import install_policies
 
         with (
@@ -230,22 +232,23 @@ class TestEndToEnd:
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
             _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
-            parked = _sweep.dispatch_pod("demo")
-            token = parked[0].approval_token
+            _sweep.dispatch_pod("demo")
+            token = pending_token("demo")
             assert token
 
-            # docket task approve <token>
-            _approval_mod.approval_grant(token, channel="cli")
-            assert _actions.resolve_waiting_approval(token, "granted") is True
+            # docket task answer <escalation> --option approve_once
+            resolve_token(token, "approve_once", channel="cli", actor="")
             task = TaskRepository.for_pod("demo").list()[0]
             assert task.status == "pending"
-            assert len(task.pregrants) == 1
-            assert task.pregrants[0].token == token
-            assert task.pregrants[0].tool == "bash"
-            assert task.pregrants[0].args_digest
-            # The override-index field is for skipping a pre-hop approval *gate*,
-            # never reused to re-run an already-attempted hop.
-            assert task.gate_override_pipeline_index is None
+            (granted,) = _pregrants.pending_pregrants(task.id)
+            assert granted.token == token
+            assert granted.tool == "bash"
+            assert granted.args_digest
+            # A parked call's escalation is stamped when it is resolved: nothing is left for the
+            # claim to apply, and no gate position is handed to it.
+            (parked_escalation,) = [e for e in list_escalations() if e.kind == "approval"]
+            assert parked_escalation.resolution is not None
+            assert parked_escalation.resolution.applied_at is not None
 
             # docket run -- the implementer's identical call is
             # re-issued by the model and this time passes via the pre-grant, then
@@ -307,8 +310,8 @@ class TestEndToEnd:
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
             _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
-            parked = _sweep.dispatch_pod("demo")
-            token = parked[0].approval_token
+            _sweep.dispatch_pod("demo")
+            token = pending_token("demo")
 
             _approval_mod.approval_deny(token, channel="cli")
             assert _actions.resolve_waiting_approval(token, "denied") is True
@@ -348,8 +351,8 @@ class TestEndToEnd:
             monkeypatch.setattr(_dr, "default_driver", lambda: driver)
 
             _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
-            parked = _sweep.dispatch_pod("demo")
-            token = parked[0].approval_token
+            _sweep.dispatch_pod("demo")
+            token = pending_token("demo")
             assert token
 
             # Force this record's own expiresAt into the past -- the parked

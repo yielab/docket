@@ -84,11 +84,13 @@ ALLOWED: frozenset[tuple[Status, Status]] = _REOPEN_EDGES | frozenset(
 @dataclass(frozen=True)
 class Transition:
     """What a move does to a record: fields to set and to remove, by ``TaskRecord`` field name.
-    Removals apply first, so a field both removed and set ends up set."""
+    Removals apply first, so a field both removed and set ends up set. ``ends_grants`` says the
+    move ends the task-wide grants its approvals gave."""
 
     to: Status
     fields: Mapping[str, Any] = field(default_factory=dict)
     drop: tuple[str, ...] = ()
+    ends_grants: bool = False
 
 
 def decide(
@@ -100,19 +102,16 @@ def decide(
     failure_kind: str = "",
     blocked_reason: str = "",
     pid: int = 0,
-    approval_token: str | None = None,
     pending_index: int | None = None,
-    question: Mapping[str, Any] | None = None,
     retry: bool = False,
-    ran: bool = False,
     keep_grants: bool = False,
 ) -> Transition:
     """The record changes for moving a task from *status* to *to*, or ``IllegalTransition``.
 
     Pure: the caller supplies every fact, including the time. ``reason`` is written when given;
-    ``retry`` also clears the previous outcome on the way back to ``pending``; ``ran`` marks an
-    outcome the pipeline reached by running hops (their consult answer is delivered);
-    ``keep_grants`` leaves a terminal task's task-wide grants in place. A ``stale_claim`` failure is
+    ``retry`` also clears the previous outcome on the way back to ``pending``;
+    ``keep_grants`` leaves a terminal task's task-wide grants in place (``Transition.ends_grants``
+    is otherwise set on a terminal move). A ``stale_claim`` failure is
     evidence of a lost claim, not a finished task: it keeps the claim's pid and grants and stamps
     no ``completed_at``."""
     if (frm := _status_or_none(status)) is None:
@@ -123,10 +122,9 @@ def decide(
 
     fields: dict[str, Any] = {}
     drop: list[str] = []
+    ends_grants = False
     if status == Status.waiting_approval:
-        drop += ["approval_token", "pending_approval_index"]
-    if status == Status.waiting_input and to != Status.waiting_input:
-        drop.append("question")
+        drop.append("pending_approval_index")
 
     if to == Status.running:
         fields.update(started_at=now, claimed_at=now, claim_pid=pid)
@@ -141,24 +139,19 @@ def decide(
             fields["reason"] = reason
         if not stale:
             drop.append("claim_pid")
-        if ran:
-            drop.append("consult_answer")
-        if to == Status.waiting_input:
-            fields["question"] = question
-        elif to == Status.waiting_approval:
-            fields.update(approval_token=approval_token, pending_approval_index=pending_index)
+        if to == Status.waiting_approval:
+            fields["pending_approval_index"] = pending_index
         elif to == Status.blocked:
             fields["blocked_reason"] = blocked_reason
-        else:
+        elif to != Status.waiting_input:
             if not stale:
                 fields["completed_at"] = now
             if failure_kind:
                 fields["failure_kind"] = failure_kind
             else:
                 drop.append("failure_kind")
-            if not (keep_grants or stale):
-                drop.append("task_grants")
-    return Transition(to=to, fields=fields, drop=tuple(drop))
+            ends_grants = not (keep_grants or stale)
+    return Transition(to=to, fields=fields, drop=tuple(drop), ends_grants=ends_grants)
 
 
 def _status_or_none(status: str) -> Status | None:

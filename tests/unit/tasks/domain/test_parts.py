@@ -54,20 +54,6 @@ class TestRoundTrip:
                 {"command": "npm ci", "source": "lockfile", "lockHash": "h", "cacheHit": False},
             ),
             (_parts.Answer, _ANSWER),
-            (_parts.ConsultAnswer, {"step": "s", "questionId": "q-1", "text": "go"}),
-            (_parts.Grant, {"token": "apr-1", "tool": "bash", "argsDigest": "d"}),
-            (
-                _parts.TaskGrant,
-                {
-                    "token": "apr-1",
-                    "tool": "bash",
-                    "argsDigest": "d",
-                    "role": "implementer",
-                    "grantedAt": "2026-10-24T00:00:00+00:00",
-                    "actor": "me",
-                    "channel": "cli",
-                },
-            ),
             (
                 _parts.TaskUsage,
                 {
@@ -106,8 +92,15 @@ class TestClosed:
             )
 
     def test_the_field_name_is_accepted_beside_the_alias(self) -> None:
-        grant = _parts.Grant(token="t", tool="bash", args_digest="d")
-        assert _dump(grant)["argsDigest"] == "d"
-
-    def test_a_task_grant_is_a_grant(self) -> None:
-        assert issubclass(_parts.TaskGrant, _parts.Grant)
+        answer = _parts.Answer(
+            question_id="q-1",
+            step="s",
+            message="m",
+            action="accept",
+            channel="cli",
+            actor="me",
+            answered_at="t",
+            created_at="t",
+            option_id="yes",
+        )
+        assert _dump(answer)["optionId"] == "yes"

@@ -29,6 +29,7 @@ from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.platform import read_json
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.actions import approved_ready
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _np
@@ -155,7 +156,7 @@ def _project_summary(project: str) -> dict[str, Any]:
         "tasks": {
             **queue,
             "approvedReady": sum(
-                1 for record in TaskRepository.for_pod(project).list() if record.approved_ready
+                1 for record in TaskRepository.for_pod(project).list() if approved_ready(record)
             ),
         },
         "usage": _usage([m["id"] for m in member_rows]),

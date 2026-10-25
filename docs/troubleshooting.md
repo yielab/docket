@@ -8,15 +8,15 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 ### Common Causes
 
 #### 0. **It isn't a chat**
-docket's inbound Telegram bot is inbound-only and understands exactly five verbs: `/approve`,
-`/deny`, `/status`, `/delegate <task>`, and `/answer <escalation-id> <option or text>` (for any
-pause; the older `/answer <task-id> <text>` still answers a parked question).
+docket's inbound Telegram bot is inbound-only and understands exactly three verbs: `/status`,
+`/delegate <task>`, and `/answer <escalation-id> <option or text>` (for any
+pause, an approval included; the older `/answer <task-id> <text>` still answers a parked question).
 Plain prose is refused by design, this bot never messages a chat first, and `/delegate`/`/answer`
 answer with a task id or a confirmation, never the pipeline's output. Use `docket task list`/`docket task trace <task-id>`
 to see results. A *push* notification into the chat is a separate,
 opt-in mechanism — the `telegram` channel (`docket setup notify enable telegram --set
 actors=<chat-id>`) — scoped to the chat ids you explicitly list; it never turns on by itself and
-never replaces the five verbs above.
+never replaces the three verbs above.
 
 #### 1. **Invalid Model Name**
 
@@ -351,9 +351,8 @@ exactly this.
 docket inbox                              # everything across every pod that needs you, right now
 docket task answer <escalation-id> --option approve_once   # grant it -- the exact same hop re-runs, once
 docket task answer <escalation-id> --option deny           # deny it -- the task fails with approval_denied
-# the older verbs reach the same result:
-docket task approve <task-id>                  # grant it
-docket task deny <task-id>                     # deny it
+# a task id works in place of the escalation id (its newest pending pause):
+docket task answer <task-id> --option approve_once
 docket setup notify enable desktop            # this machine; or webhook/ntfy/telegram/email
 ```
 

@@ -19,13 +19,12 @@ from typing import Any, Protocol
 
 from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
+from docket.kernel import escalation_events as _events
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
-    ApprovalView,
     CloudEvent,
     EscalationView,
     InboxView,
-    QuestionV11,
     TaskView,
     make_event,
 )
@@ -33,7 +32,7 @@ from docket.operator import channel as _channel
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
 from docket.operator import render as _render
-from docket.platform import read_json, write_json
+from docket.platform import read_escalation, read_json, write_json
 
 __all__ = [
     "Deliver",
@@ -77,7 +76,7 @@ class NotifyEvent:
     subject: str
     version: str
     time: str
-    item: TaskView | ApprovalView | EscalationView
+    item: TaskView | EscalationView
 
 
 @dataclass(frozen=True)
@@ -119,33 +118,27 @@ SinkFactory = Callable[[Any], "Deliver | None"]
 # ── pure: item identity, diffing, rendering ──────────────────────────────────
 
 
-def _item_key(item: TaskView | ApprovalView | EscalationView) -> str:
-    if isinstance(item, ApprovalView):
-        return f"approval:{item.token}"
+_APPROVAL_KINDS = frozenset({"approval", "gate", "check_changed"})
+
+
+def _item_key(item: TaskView | EscalationView) -> str:
     if isinstance(item, EscalationView):
         return f"escalation:{item.id}"
     return f"task:{item.pod}:{item.id}"
 
 
-def _item_version(item: TaskView | ApprovalView | EscalationView) -> str:
-    """The status plus the question id or token -- so a task re-asking a new question, or an
-    approval resolving, is always seen as a changed version even when the status string
-    itself repeats (e.g. two different questions both leave a task `waiting_input`)."""
-    if isinstance(item, ApprovalView):
-        return f"{item.state}:{item.token}"
+def _item_version(item: TaskView | EscalationView) -> str:
+    """The status plus the escalation the task waits on -- so a task re-asking a new question, or
+    a pause resolving, is always seen as a changed version even when the status string itself
+    repeats (e.g. two different questions both leave a task `waiting_input`)."""
     if isinstance(item, EscalationView):
         return item.state
-    extra = ""
-    if item.question is not None:
-        extra = item.question.id
-    elif item.approval_token:
-        extra = item.approval_token
-    return f"{item.status}:{extra}"
+    return f"{item.status}:{item.escalation or ''}"
 
 
-def _needs_you_kind(item: TaskView | ApprovalView) -> str:
-    if isinstance(item, ApprovalView):
-        return "approval.requested"
+def _needs_you_kind(item: TaskView | EscalationView) -> str:
+    if isinstance(item, EscalationView):
+        return "approval.requested" if item.kind in _APPROVAL_KINDS else "task.input_required"
     if item.status == "waiting_approval":
         return "approval.requested"
     if item.status == "blocked":
@@ -163,9 +156,13 @@ def _expiring_events(inbox: InboxView, already_warned: set[str], now: str) -> li
         return []
     events: list[NotifyEvent] = []
     for item in inbox.needs_you:
-        if not isinstance(item, ApprovalView) or item.token in already_warned:
+        if (
+            not isinstance(item, EscalationView)
+            or item.kind not in _APPROVAL_KINDS
+            or item.id in already_warned
+        ):
             continue
-        created = _clock.parse_iso(item.created_at)
+        created = _clock.parse_iso(item.asked_at)
         expires = _clock.parse_iso(item.expires_at)
         if created is None or expires is None:
             continue
@@ -179,8 +176,8 @@ def _expiring_events(inbox: InboxView, already_warned: set[str], now: str) -> li
             NotifyEvent(
                 kind="approval.expiring",
                 pod=item.pod,
-                subject=f"approval:{item.token}",
-                version=f"expiring:{item.token}",
+                subject=f"escalation:{item.id}",
+                version=f"expiring:{item.id}",
                 time=now,
                 item=item,
             )
@@ -193,7 +190,7 @@ def diff_events(
 ) -> tuple[list[NotifyEvent], dict[str, Any]]:
     """Which items in *inbox* are new or changed into a notifiable state since *prev*, plus
     the snapshot to persist next. Pure; *now* is the caller's own reading, never the clock.
-    Also emits `approval.expiring` once per approval at 80% of its life."""
+    Also emits `approval.expiring` once per approval escalation at 80% of its life."""
     raw_versions = prev.get("items")
     versions: dict[str, str] = dict(raw_versions) if isinstance(raw_versions, dict) else {}
     raw_expiring = prev.get("expiring")
@@ -201,7 +198,7 @@ def diff_events(
 
     events: list[NotifyEvent] = []
 
-    def _consider(item: TaskView | ApprovalView | EscalationView, kind: str) -> None:
+    def _consider(item: TaskView | EscalationView, kind: str) -> None:
         key = _item_key(item)
         version = _item_version(item)
         if versions.get(key) != version:
@@ -223,22 +220,23 @@ def diff_events(
 
     for expiring_event in _expiring_events(inbox, expiring, now):
         events.append(expiring_event)
-        expiring.add(expiring_event.subject.removeprefix("approval:"))
+        expiring.add(expiring_event.subject.removeprefix("escalation:"))
 
     snapshot = {"items": versions, "expiring": sorted(expiring)}
     return events, snapshot
 
 
 def render_data(
-    item: TaskView | ApprovalView | EscalationView,
+    item: TaskView | EscalationView,
     level: str,
     escalation: EscalationView | None = None,
 ) -> dict[str, Any]:
     """The event payload for *item* at content *level* (`minimal < actions < conversation`):
-    `actions` adds an approval's `action`, `conversation` a task's `question`/`brief`; a task's
-    option ids are at every level, from its pending *escalation* when it has one. A decision the
-    pod took alone carries only ids and the level, at every level."""
-    if isinstance(item, EscalationView):
+    `actions` adds an approval's `action`, `conversation` a question's `question` and a task's
+    `brief`. *escalation* is the pause a person is asked to settle behind *item* when it has one:
+    its id is `escalationId`, its option ids are at every level, and the exact way to answer is
+    `respond`. A decision the pod took alone carries only ids and the level, at every level."""
+    if isinstance(item, EscalationView) and item.state == "decided":
         decision: dict[str, Any] = {"pod": item.pod}
         if item.task:
             decision["taskId"] = item.task
@@ -248,38 +246,35 @@ def render_data(
         if item.level:
             decision["level"] = item.level
         return decision
-    if isinstance(item, ApprovalView):
-        data: dict[str, Any] = {"pod": item.pod, "role": item.role, "token": item.token}
-        if item.task_id:
-            data["taskId"] = item.task_id
-        if item.policy:
-            data["reasonCode"] = item.policy
-        if item.expires_at:
-            data["expiresAt"] = item.expires_at
-        data["respond"] = {
-            "cli": f"docket task approve {item.token}",
-            "http": f"/approvals/{item.token}",
-        }
-        if level != "minimal" and item.action:
-            data["action"] = item.action
-        return data
 
-    data = {"pod": item.pod, "taskId": item.id}
-    if item.reason:
-        data["reasonCode"] = item.reason
-    if item.approval_token:
-        data["token"] = item.approval_token
-    if item.question is not None:
-        data["questionId"] = item.question.id
-        if item.question.expires_at:
-            data["expiresAt"] = item.question.expires_at
-    data["respond"] = {"cli": "docket inbox", "http": f"/tasks/{item.id}"}
-    if level == "conversation":
-        if item.question is not None:
-            data["question"] = item.question.message
-        if item.brief is not None:
-            data["brief"] = item.brief.model_dump(by_alias=True, mode="json")
-    options, recommended = _task_options(item, level, escalation)
+    pending = item if isinstance(item, EscalationView) else escalation
+    data: dict[str, Any] = {"pod": item.pod}
+    if isinstance(item, TaskView):
+        data["taskId"] = item.id
+        if item.reason:
+            data["reasonCode"] = item.reason
+    elif item.task:
+        data["taskId"] = item.task
+    if pending is not None:
+        data["escalationId"] = pending.id
+        data["kind"] = pending.kind
+        if pending.role:
+            data["role"] = pending.role
+        if pending.expires_at:
+            data["expiresAt"] = pending.expires_at
+        data["respond"] = {
+            "cli": f"docket task answer {pending.id}",
+            "http": pending.affordances.resolve_url,
+        }
+    elif isinstance(item, TaskView):
+        data["respond"] = {"cli": "docket inbox", "http": f"/tasks/{item.id}"}
+    if pending is not None and level != "minimal" and pending.kind in _APPROVAL_KINDS:
+        data["action"] = pending.prompt
+    if pending is not None and level == "conversation" and pending.kind not in _APPROVAL_KINDS:
+        data["question"] = pending.prompt
+    if isinstance(item, TaskView) and level == "conversation" and item.brief is not None:
+        data["brief"] = item.brief.model_dump(by_alias=True, mode="json")
+    options, recommended = _options_of(pending, level)
     if options:
         data["options"] = [{"id": o.id, **({"label": o.label} if o.label else {})} for o in options]
         if recommended:
@@ -287,22 +282,13 @@ def render_data(
     return data
 
 
-def _task_options(
-    item: TaskView, level: str, escalation: EscalationView | None
+def _options_of(
+    escalation: EscalationView | None, level: str
 ) -> tuple[tuple[_render.RenderedOption, ...], str | None]:
-    """The options a task's pause offers at *level* and the recommended id: those of its pending
-    *escalation*, else those of the question the task still stores."""
-    if escalation is not None:
-        options = _render.render_escalation(escalation, level).options
-    elif isinstance(item.question, QuestionV11):
-        recommendation = item.question.recommendation
-        options = _render.render_options(
-            item.question.options,
-            recommendation.option_id if recommendation else None,
-            labels=level == "conversation",
-        )
-    else:
+    """The options a pending *escalation* offers at *level* and the recommended id."""
+    if escalation is None:
         return (), None
+    options = _render.render_escalation(escalation, level).options
     return options, next((o.id for o in options if o.recommended), None)
 
 
@@ -323,9 +309,6 @@ def render_text(event: CloudEvent) -> tuple[str, str]:
             f"{event.data.get('kind', 'pause')} decided {event.data['optionId']}"
             + (f" at {level}" if level else "")
         )
-    token = event.data.get("token")
-    if token:
-        parts.append(f"token {token}")
     reason = event.data.get("reasonCode")
     if reason:
         parts.append(str(reason))
@@ -345,18 +328,26 @@ def render_text(event: CloudEvent) -> tuple[str, str]:
             + (" (recommended)" if o["id"] == recommended else "")
             for o in options
         ]
-        lines.append(f"reply: /answer {task_id} <id>")
+        lines.append(f"reply: /answer {event.data.get('escalationId') or task_id} <id>")
         body = "\n".join([body, *lines])
     return title, body
 
 
-def _escalation_of(
-    item: TaskView | ApprovalView | EscalationView, inbox: InboxView
-) -> EscalationView | None:
-    """The pending question escalation of a task *item* in *inbox*, if it has one."""
-    if not isinstance(item, TaskView):
-        return None
-    return _inbox.question_escalation(inbox.escalations, item.pod, item.id)
+def _pending_of(item: TaskView | EscalationView, inbox: InboxView) -> EscalationView | None:
+    """The pending escalation a person is asked to settle behind *item*: the item itself when it is
+    one, else the pending escalation of the task it is; ``None`` for anything else (a decision the
+    pod took alone, a task that waits on nothing)."""
+    if isinstance(item, EscalationView):
+        return item if item.state == "pending" else None
+    return next((e for e in inbox.escalations if (e.pod, e.task) == (item.pod, item.id)), None)
+
+
+def _trace_delivery(escalation_id: str, channel: str) -> None:
+    """Write `escalation_delivered` for *escalation_id*, delivered through *channel*; a record that
+    is gone traces nothing."""
+    record = read_escalation(escalation_id)
+    if record is not None:
+        _events.emit(_events.DELIVERED, record, channel=channel)
 
 
 def build_test_event(spec: Any, *, now: str) -> CloudEvent:
@@ -402,19 +393,14 @@ def _matches_on(spec: Any, kind: str) -> bool:
     return "needs_you" in on and kind in _NEEDS_YOU_KINDS
 
 
-def _in_scope(spec: Any, item: TaskView | ApprovalView | EscalationView) -> bool:
+def _in_scope(spec: Any, item: TaskView | EscalationView) -> bool:
     """Whether *spec* hears *item*: a channel scoped to one task (``config.scopeTask`` in
     ``config.scopePod``) hears only that task's events, any other channel hears everything."""
     config = getattr(spec, "config", None) or {}
     task = config.get("scopeTask")
     if not task:
         return True
-    if isinstance(item, ApprovalView):
-        task_id = item.task_id
-    elif isinstance(item, EscalationView):
-        task_id = item.task
-    else:
-        task_id = item.id
+    task_id = item.task if isinstance(item, EscalationView) else item.id
     return (item.pod, task_id) == (config.get("scopePod"), task)
 
 
@@ -501,20 +487,19 @@ def _flush(
                 if deliver is None:
                     skipped += 1
                     continue
+                pending = _pending_of(notify_event.item, inbox_view)
                 cloud_event = make_event(
                     notify_event.kind,
                     notify_event.pod,
                     notify_event.subject,
-                    render_data(
-                        notify_event.item,
-                        getattr(spec, "content", "minimal"),
-                        _escalation_of(notify_event.item, inbox_view),
-                    ),
+                    render_data(notify_event.item, getattr(spec, "content", "minimal"), pending),
                     time=notify_event.time,
                     version=notify_event.version,
                 )
                 secret = resolve_secret(spec)
                 ok, error = _deliver_with_retry(deliver, spec, cloud_event, secret, sleep)
+                if ok and pending is not None:
+                    _trace_delivery(pending.id, str(spec.name))
             except Exception as exc:
                 ok, error = False, f"{type(exc).__name__}: {exc}"
             entry = dict(health.get(spec.name) or {})

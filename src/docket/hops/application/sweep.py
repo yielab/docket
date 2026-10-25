@@ -119,7 +119,6 @@ def dispatch_pod(
         res = dispatch_task(
             project,
             task,
-            gate_override_index=claim.gate_override_index,
             runner=runner,
             turn_timeout=turn_timeout,
             verify_timeout=verify_timeout,

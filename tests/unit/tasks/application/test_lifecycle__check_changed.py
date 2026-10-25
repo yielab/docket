@@ -14,8 +14,6 @@ def test_a_stale_check_changed_is_cleared_by_a_result_that_does_not_set_it() -> 
     )
     _lifecycle._apply_result(task, _task.TaskResult(task_id="t", status="done"))
     assert task.check_changed == []
-    parked = _task.TaskResult(
-        task_id="t", status="waiting_approval", approval_token="apr-1", check_changed=["a"]
-    )
+    parked = _task.TaskResult(task_id="t", status="waiting_approval", check_changed=["a"])
     _lifecycle._apply_result(task, parked)
-    assert task.check_changed == ["a"] and task.approval_token == "apr-1"
+    assert task.check_changed == ["a"] and task.status == "waiting_approval"

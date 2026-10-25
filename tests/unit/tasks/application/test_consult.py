@@ -13,6 +13,7 @@ import pytest
 
 from docket.agent.ports import ToolCall
 from docket.agent.tools.registry import ToolContext, ToolResult, dispatch_tool
+from docket.governance import approval as _approval
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
 from docket.kernel.operator_contract import is_escalation_id
@@ -72,7 +73,11 @@ def _ctx(**over: Any) -> ToolContext:
 def _events() -> tuple[list[dict[str, Any]], Callable[[], None]]:
     seen: list[dict[str, Any]] = []
     unsubscribe = _trace.add_subscriber(
-        lambda r: seen.append(r) if r.get("event_type") == "question_asked" else None
+        lambda r: (
+            seen.append(r)
+            if str(r.get("event_type", "")).startswith(("question", "escalation"))
+            else None
+        )
     )
     return seen, unsubscribe
 
@@ -127,7 +132,7 @@ class TestWait:
 
 
 class TestRefuse:
-    def test_refuse_ends_the_turn_blocked_and_still_records_the_question(self) -> None:
+    def test_refuse_ends_the_turn_blocked_and_traces_no_question_event(self) -> None:
         seen, off = _events()
         try:
             result = _call(_args(), _ctx(approval_mode="refuse"))
@@ -135,8 +140,7 @@ class TestRefuse:
             off()
         assert result.denial_kind == "approval_unavailable"
         assert result.tool == "consult" and result.call_id == "c1"
-        (event,) = seen
-        assert event["payload"]["question"]["kind"] == "decision"
+        assert seen == []
 
     def test_park_outside_pod_dispatch_behaves_like_refuse(self) -> None:
         result = _call(_args(), _ctx(approval_mode="park"))
@@ -183,7 +187,7 @@ class TestRefuse:
         assert result.denial_kind is None
         (opened,) = list_escalations()
         assert (opened.kind, opened.task) == ("consult", "t-1")
-        assert opened.on_expiry == "deny" and opened.legacy["token"]
+        assert opened.on_expiry == "deny" and _approval.approval_of(opened.id)
 
     @pytest.mark.parametrize(
         ("over", "waits"),
@@ -225,18 +229,17 @@ class TestDecide:
             "no operator on duty; your recommendation stands: option sqlite (SQLite). Continue."
         )
 
-    def test_the_trace_marks_the_question_decided_with_the_option(self) -> None:
+    def test_no_question_event_is_traced_only_the_decision(self) -> None:
         _, seen = self._decide()
 
-        (event,) = seen
-        assert event["payload"]["mode"] == "decided"
-        assert event["payload"]["decidedOptionId"] == "sqlite"
-        assert event["payload"]["question"]["kind"] == "decision"
+        assert [e["event_type"] for e in seen] == ["escalation_decided"]
 
     def test_the_event_is_filed_under_the_task_session_when_the_context_names_one(self) -> None:
         _, seen = self._decide(trace_session_key="task:t-1")
 
-        assert [e["session_id"] for e in seen] == ["task:t-1"]
+        assert [e["session_id"] for e in seen if e["event_type"] == "escalation_decided"] == [
+            "task:t-1"
+        ]
 
     def test_the_audit_row_names_ids_and_never_the_question(self) -> None:
         from docket.governance import audit as _audit
@@ -245,7 +248,7 @@ class TestDecide:
 
         (row,) = [e for e in _audit.read_audit() if e["action"] == "consult.decided"]
         assert row["detail"].split()[:3] == ["project=demo", "task=t-1", "role=lead"]
-        assert "optionId=sqlite" in row["detail"] and "questionId=q" in row["detail"]
+        assert "optionId=sqlite" in row["detail"] and "escalation=esc-" in row["detail"]
         assert "Which store" not in row["detail"] and "Redis" not in row["detail"]
 
     def test_the_decision_is_one_escalation_decided_beside_the_question(self) -> None:
@@ -254,7 +257,7 @@ class TestDecide:
             lambda r: decided.append(r) if r.get("event_type") == "escalation_decided" else None
         )
         try:
-            _, asked = self._decide(trace_session_key="task:t-1")
+            self._decide(trace_session_key="task:t-1")
         finally:
             off()
 
@@ -267,7 +270,7 @@ class TestDecide:
             "policy",
         )
         assert (payload["optionId"], payload["task"]) == ("sqlite", "t-1")
-        assert payload["askedAt"] == asked[0]["payload"]["question"]["createdAt"]
+        assert payload["askedAt"] == list_escalations(state="decided")[0].asked_at
         assert (event["session_id"], event["task_id"]) == ("task:t-1", "t-1")
         assert "Which store" not in json.dumps(payload)
 

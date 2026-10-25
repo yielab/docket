@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docket.dev/schemas/operator-v1/brief.schema.json",
+  "$id": "https://docket.dev/schemas/operator-v2/brief.schema.json",
   "title": "TaskBrief",
   "additionalProperties": false,
   "description": "The Lead's typed intake output: objective, acceptance, what the Implementer needs,\nand the resources a deterministic check must confirm before another turn runs.",

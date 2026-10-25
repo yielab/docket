@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.6.0
+**Version**: 7.0.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-25
 
@@ -35,11 +35,11 @@ It does NOT cover:
 
 - The other read routes (`/status.json`, `/metrics`, `/runs`, `/inbox`,
   `GET /traces/<pod>`'s cursor, `GET .../evidence`) -- `serve-read-api.spec.md`
-- `POST /approvals/<token>`, `POST /tasks/<id>/answer`, `POST /tasks/<id>/pregrants`,
-  `POST /dispatch/<pod>` -- `serve-read-api.spec.md` and `operator-loop.spec.md`
+- `POST /tasks/<id>/pregrants` and `POST /dispatch/<pod>` -- `serve-read-api.spec.md` and
+  `operator-loop.spec.md`
 - The task record's persisted shape -- `pod-dispatch.spec.md`; the trace record --
   `trace-store.spec.md`; the `.docket/teams/<pod>/` layout -- `pod-blueprints.spec.md`
-- The `/health` body itself and `GET /approvals` -- `serve-read-api.spec.md`
+- The `/health` body itself -- `serve-read-api.spec.md`
 - `--bind`, the Bearer token and the stop signals of `docket start` --
   `serve-read-api.spec.md` and `pod-dispatch.spec.md`
 - The A2A JSON-RPC binding (`POST /a2a`, `GET /.well-known/agent.json`) -- `a2a-binding.spec.md`;
@@ -157,7 +157,7 @@ Query parameters:
 ```
 
 A task gated by a `require_approval` `pre_input` verdict is created (`201`) with `"status":
-"waiting_approval"` and an extra `"approvalToken"`. The same body with an `idempotencyKey` already
+"waiting_approval"` and an extra `"escalation"`, the id of the escalation to resolve. The same body with an `idempotencyKey` already
 in the queue (`200`):
 
 ```json
@@ -316,13 +316,13 @@ is audited as `pod.apply` with `channel=http`; an accepted code is remembered as
 ```
 
 Each entry is an `EscalationView` (`operator-loop.spec.md` area 11 item 7): the stored record
-without `legacy`, its `state` joined with the approval or question it names, in `seq` order.
+plus `affordances`, its `state` joined with the pause it names, in `seq` order.
 `since` is an integer `seq` (default `0`): only records with a greater `seq` are returned, whatever
 their state, so a poller never misses a record that settled between two reads. `pod` and `task`
 narrow the list. `next` is the highest `seq` returned, else `since`; pass it back as `since`. A
 `since` that is not a non-negative integer answers `400`. `resolveUrl` names the route that
 resolves the escalation (below). `GET /inbox` carries the pending ones as
-`escalations` (additive; `needsYou` is unchanged) and the pauses the pod settled alone as
+`escalations` (and lists a pause no waiting task carries in `needsYou`) and the pauses the pod settled alone as
 `decided`, newest first and at most twenty, a key that is absent while there are none.
 
 `POST /escalations/<id>` takes `{"optionId"?: string, "content"?: object, "actor"?: string}` and
@@ -336,9 +336,29 @@ empty), plus a `note` only when a task-wide grant was refused. A body that is no
 an object or an `actor` that is not a string answers `400`; an id no record has `404`; an
 escalation already settled, or whose approval or question is no longer waiting, `409`; an
 unknown option, a `content` that fails `requestedSchema` or a `content` blocked by a `pre_input`
-policy `422`. `POST /approvals/<token>` and `POST /tasks/<id>/answer` stay as adapters that look
-the escalation up and call the same function; a token or a question with no record keeps its
-direct path and its answers.
+policy `422`.
+
+`POST /escalations/<id>` is the only route that settles a pause, whatever its kind, and
+`GET /escalations` is the only list of them. A client written against the earlier per-kind
+surfaces adapts as follows; the names on the left do not exist, and a request to a retired route
+answers `404`:
+
+| Retired | Use instead |
+|---|---|
+| `GET /approvals` | `GET /escalations?since=<seq>` (an approval is an escalation of kind `approval`, `gate` or `check_changed`) |
+| `POST /approvals/<token>` | `POST /escalations/<id>` with `optionId` `approve_once`, `approve_task` or `deny`, and `content` `{"reason"}` at most; `actor` replaces the body's `channel` (the channel is always `http`) |
+| `POST /tasks/<id>/answer` | `POST /escalations/<id>` with `optionId` and `content`; `optionId` `decline` declines |
+| MCP `approvals_list`, `approvals_grant`, `approvals_deny`, `task_answer` | MCP `escalations`, `resolve` |
+| `task approve`, `task deny` (CLI) | `docket task answer <ref> --option approve_once\|approve_task\|deny`; `docket task pregrant` for a command approved ahead |
+| Telegram `/approve`, `/deny` | Telegram `/answer <esc-id> <option>` |
+| task keys `approvalToken`, `question`, `answers`, `consultAnswer`, `pregrants`, `taskGrants`, `gateOverridePipelineIndex` | `escalations` on the task record; `escalation` on a task view and on the `POST /tasks/<pod>` answer of a gated enqueue |
+| inbox `needsYou` approval items (`ApprovalView`, `token`) | `EscalationView` items (`id`, `kind`, `affordances`) |
+| trace events `approval_requested`, `question_asked`, `input_requested`, `input_answered`, `input_expired` | `escalation_asked`, `escalation_delivered`, `escalation_resolved`, `escalation_expired`, `escalation_decided` |
+| contract `operator-v1` (`docs/contracts/operator-v1/`) | `operator-v2` (`docs/contracts/operator-v2/`); `operator-v1.1` stays |
+
+A task record lists the escalations opened for it as `escalations`, and `GET /inbox` shows the
+one a task waits on as the `escalation` of its task view. An approval's `apr-` token is not an
+address: no response and no request body carries it.
 
 ### `/health` under dispatch
 
@@ -360,15 +380,14 @@ rule below holds because the pod's task list and the approval records, on disk u
 `DOCKET_HOME`, are the only state; a server instance holds none.
 
 1. `GET /tasks/<pod>/<id>` serves any task of the pod from disk, whatever its status and
-   whichever server instance started its hops. A `waiting_approval` task carries its
-   `approvalToken`; a `waiting_input` task carries its `question`, with `options` when the park
-   was a consultation or a decision.
-2. A token or a question is answerable after either process restarts: `POST /approvals/<token>`
-   and `POST /tasks/<id>/answer` read the same files, so a fresh instance over the same
-   `DOCKET_HOME` accepts the grant or answer a previous instance parked. The approval's own
-   `expiresAt` is on its record (`GET /approvals`).
-3. An answer or grant moves the task to `pending` and starts nothing (a grant of a `check_changed`
-   approval is the exception: it ends the task `done`, see "Check changed" below). The next sweep tick
+   whichever server instance started its hops. A `waiting_approval` or `waiting_input` task lists
+   the escalations opened for it in `escalations`, and the one it waits on is a record of
+   `GET /escalations?task=<id>` with `state` `pending`.
+2. An escalation is resolvable after either process restarts: `POST /escalations/<id>` reads the
+   same files, so a fresh instance over the same `DOCKET_HOME` accepts the answer a previous
+   instance parked. The pause's own `expiresAt` is on its record (`GET /escalations`).
+3. A resolution moves the task to `pending` and starts nothing (a grant of a `check_changed`
+   escalation is the exception: it ends the task `done`, see "Check changed" below). The next sweep tick
    (every 30 s by default under `--dispatch`) or `POST /dispatch/<pod>` resumes it at the hop it stopped on; a
    completed hop is never re-run.
 4. Use one `idempotencyKey` per attempt. The key binds to the task for as long as the task is in
@@ -395,12 +414,11 @@ the reviewed digest") is not `done`: it is `waiting_approval` whatever the pod's
 consumer that polls for `done` does not see an unreviewed change to a check.
 
 1. The task record (`GET /tasks/<pod>/<id>`, `GET /inbox`'s task view reason) carries
-   `checkChanged`, the sorted protected paths the diff touched, with `approvalToken`; `GET
-   /approvals` lists the approval with context kind `check_changed`
-   (`serve-read-api.spec.md`).
-2. `POST /approvals/<token>` with a grant ends the task `done`; a deny (or an approval past its
-   `expiresAt`) ends it `failed` with `failureKind: "check_changed"`, which is final until
-   `POST .../retry`. `checkChanged` stays on the record either way.
+   `checkChanged`, the sorted protected paths the diff touched; `GET /escalations?task=<id>`
+   lists the escalation of kind `check_changed` it waits on (`serve-read-api.spec.md`).
+2. `POST /escalations/<id>` with `optionId` `approve_once` ends the task `done`; `deny` (or an
+   escalation past its `expiresAt`) ends it `failed` with `failureKind: "check_changed"`, which is
+   final until `POST .../retry`. `checkChanged` stays on the record either way.
 3. `checkChanged` and `failureKind: "check_changed"` are additive keys of version 6.
 
 ## Return
@@ -442,7 +460,7 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 - `src/docket/interfaces/http/routes/`: the handler for every route above (`table.py` is the
   route table, one module per resource).
 - `src/docket/interfaces/http/routes/escalations.py`: `get_escalations`, `post_escalation`.
-- `src/docket/tasks/application/escalations.py`: `resolve`, `resolve_approval_token`, `resolve_question`.
+- `src/docket/tasks/application/escalations.py`: `resolve`.
 - `src/docket/interfaces/http/server.py`: `render_health`.
 - `src/docket/interfaces/http/routes/health.py`: `SERVE_API_VERSION`, the `tokenBudget`
   computation on read.

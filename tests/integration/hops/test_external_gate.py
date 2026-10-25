@@ -15,18 +15,19 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.approvals import answer_question
 from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off
 from tests.support.llm import implementer_messages as _implementer_messages
 from tests.support.pods import build_pod
 
 from docket.governance import secrets as _secrets
-from docket.hops.application import answers as _answers
 from docket.hops.application import sweep as _sweep
 from docket.hops.gates import post_hop as _post_hop
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import Home, use_home
 from docket.pipeline.domain import spec as _pipeline
+from docket.platform import list_escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
@@ -306,7 +307,7 @@ steps:
 
 class TestNeedsHumanSeam:
     """Real code on both sides: the gate parks the task on an ``input`` step, the real
-    ``answer_task`` reopens it, and the retry's message still carries the gate's reasons."""
+    ``resolve`` reopens it, and the retry's message still carries the gate's reasons."""
 
     def test_reasons_survive_the_input_steps_answer_and_resume(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
@@ -323,9 +324,7 @@ class TestNeedsHumanSeam:
             assert first.status == "waiting_input", first.reason
             assert len(_implementer_messages(driver)) == 1
 
-            _answers.answer_task(
-                "demo", task.id, "accept", {"answer": "go"}, channel="cli", actor="op"
-            )
+            answer_question("demo", task.id, "accept", {"answer": "go"})
             final = _sweep.dispatch_pod("demo", runner=driver)[0]
 
             assert final.status == "done", final.reason
@@ -349,13 +348,11 @@ class TestNeedsHumanSeam:
             driver = FakeDriver()
 
             _sweep.dispatch_pod("demo", runner=driver)
-            question = TaskRepository.for_pod("demo").list()[0].question
-            assert REASON in question.message, "the operator must see why the verifier asked"
+            (question,) = list_escalations(state="pending")
+            assert REASON in question.prompt, "the operator must see why the verifier asked"
 
             note = "zz-operator-note-8812"
-            _answers.answer_task(
-                "demo", task.id, "accept", {"answer": note}, channel="cli", actor="op"
-            )
+            answer_question("demo", task.id, "accept", {"answer": note})
             _sweep.dispatch_pod("demo", runner=driver)
             retry = _implementer_messages(driver)[1].split("--- GATE FAILED: build ---", 1)[1]
             assert note in retry, "the answer must reach the hop it routes back to"
@@ -368,7 +365,8 @@ class TestNeedsHumanSeam:
             driver = FakeDriver()
 
             assert _sweep.dispatch_pod("demo", runner=driver)[0].status == "waiting_input"
-            _answers.answer_task("demo", task.id, "decline", None, channel="cli", actor="op")
+            answer_question("demo", task.id, "decline")
+            _sweep.dispatch_pod("demo", runner=driver)
 
             persisted = TaskRepository.for_pod("demo").list()[0]
             assert persisted.status == "failed"

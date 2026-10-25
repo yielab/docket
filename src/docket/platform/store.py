@@ -398,12 +398,6 @@ def _settle_pending(
     return moved[0]
 
 
-def _settle(escalation_id: str, state: EscalationState) -> bool:
-    return (
-        _settle_pending(escalation_id, lambda e: e.model_copy(update={"state": state})) is not None
-    )
-
-
 def resolve_escalation(escalation_id: str, resolution: Resolution) -> Escalation | None:
     """Move the record *escalation_id* from ``pending`` to ``resolved`` carrying *resolution*; the
     record as stored, or ``None`` when it was not pending (another caller settled it first)."""
@@ -434,13 +428,11 @@ def mark_escalation_applied(escalation_id: str, at: str) -> bool:
     return bool(stamped)
 
 
-def settle_escalation(key: str, value: str, state: EscalationState) -> bool:
-    """Move the one pending escalation whose ``legacy[key]`` is *value* to *state*; whether one
-    moved."""
-    return any(
-        _settle(e.id, state)
-        for e in list_escalations(state="pending")
-        if e.legacy.get(key) == value
+def settle_escalation(escalation_id: str, state: EscalationState) -> bool:
+    """Move the record *escalation_id* from ``pending`` to *state*; whether this call moved it
+    (``False`` when it was not pending, or is no record)."""
+    return (
+        _settle_pending(escalation_id, lambda e: e.model_copy(update={"state": state})) is not None
     )
 
 

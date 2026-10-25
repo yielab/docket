@@ -1,6 +1,6 @@
 """docket start --mcp -- expose the control plane as an MCP server over stdio. Every call goes
 through the same governance spine a CLI call does and audit-logs into the same tamper-evident
-chain; dispatch, delegate and approvals call the exact same application functions the CLI and HTTP
+chain; dispatch, delegate and resolve call the exact same application functions the CLI and HTTP
 API call. A server, never a host. stdio discipline: tool functions never touch `docket.interfaces.cli.render.ui`;
 stdout is reserved for JSON-RPC once the server runs. The `mcp` SDK is optional, imported lazily
 in `serve_stdio()` guarded by `try/except ImportError`; a missing SDK prints `MISSING_SDK_HINT`.
@@ -12,7 +12,6 @@ import contextlib
 import sys
 from typing import Any
 
-from docket.governance import approval as _approval
 from docket.governance.audit import audit_log
 from docket.hops.application import interruptions as _interruptions
 from docket.hops.application import sweep as _sweep
@@ -25,7 +24,7 @@ from docket.operator import build_inbox, escalation_page
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
-from docket.tasks.application.escalations import resolve, resolve_approval_token, resolve_question
+from docket.tasks.application.escalations import resolve
 from docket.tasks.application.repository import TaskRepository
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
@@ -45,14 +44,10 @@ _TOOL_NAMES: tuple[str, ...] = (
     "delegate",
     "dispatch",
     "runs",
-    "approvals_list",
-    "approvals_grant",
-    "approvals_deny",
     "inbox",
     "escalations",
     "cost",
     "resolve",
-    "task_answer",
     "task_pregrant",
 )
 
@@ -160,41 +155,6 @@ def tool_runs(project: str | None = None, run_id: str | None = None) -> dict[str
     return {"runs": _runs.list_runs(project)}
 
 
-def tool_approvals_list() -> dict[str, Any]:
-    """List pending HITL approvals awaiting a grant/deny decision."""
-    _audit("approvals_list")
-    return {"pending": _approval.list_pending()}
-
-
-def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
-    """Grant a pending approval token. Identical to `docket task approve`/`docket start`'s
-    `POST /approvals/<token>` -- the same resolve of the approval's escalation
-    (``channel="mcp"``), which grants it and resumes any task it gated.
-    *option* ``approve_task`` also grants the same call for the rest of its task."""
-    _audit("approvals_grant", f"token={token}")
-    if option not in ("", "approve_once", "approve_task"):
-        raise McpToolError(f"unknown option {option!r}: use approve_once or approve_task")
-    try:
-        note = resolve_approval_token(token, option or "approve_once", channel="mcp", actor="mcp")
-    except DocketError as exc:
-        raise McpToolError(exc.message) from exc
-    rec = _approval.approval_get(token)
-    return {"ok": True, "token": token, "state": rec["state"], **({"note": note} if note else {})}
-
-
-def tool_approvals_deny(token: str) -> dict[str, Any]:
-    """Deny a pending approval token. Identical to `docket task deny`/`docket start`'s
-    `POST /approvals/<token>` -- the same resolve of the approval's escalation
-    (``channel="mcp"``), which denies it and fails any task it gated."""
-    _audit("approvals_deny", f"token={token}")
-    try:
-        resolve_approval_token(token, "deny", channel="mcp", actor="mcp")
-    except DocketError as exc:
-        raise McpToolError(exc.message) from exc
-    rec = _approval.approval_get(token)
-    return {"ok": True, "token": token, "state": rec["state"]}
-
-
 def tool_resolve(
     escalation_id: str, option_id: str | None = None, content: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -214,25 +174,11 @@ def tool_resolve(
     }
 
 
-def tool_task_answer(
-    project: str, task_id: str, action: str, content: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    """Answer a task's parked ``input`` question. Identical to `docket task answer`
-    / `docket start`'s `POST /tasks/<task_id>/answer` -- the same resolve of the question's
-    escalation (``channel="mcp"``, ``actor="mcp"``)."""
-    _audit("task_answer", f"project={project} task={task_id} action={action}")
-    try:
-        resolve_question(project, task_id, action, content, channel="mcp", actor="mcp")
-    except DocketError as exc:
-        raise McpToolError(exc.message) from exc
-    return {"ok": True, "task": task_id, "project": project, "action": action}
-
-
 def tool_task_pregrant(
     project: str, task_id: str, command: str, tool: str = "bash"
 ) -> dict[str, Any]:
     """Record a single-use pre-grant for one command on one task, ahead of dispatch.
-    Identical to `docket task approve --for` / `POST /tasks/<task_id>/pregrants`."""
+    Identical to `docket task pregrant` / `POST /tasks/<task_id>/pregrants`."""
     _audit("task_pregrant", f"project={project} task={task_id} tool={tool}")
     try:
         token = _interruptions.record_pregrant(
@@ -244,7 +190,7 @@ def tool_task_pregrant(
 
 
 def tool_inbox(since: str | None = None) -> dict[str, Any]:
-    """The derived operator inbox: every pod's tasks needing a human, plus pending approvals,
+    """The derived operator inbox: every pod's tasks needing a human, plus pending escalations,
     failed/done/running context, and a cursor. Identical shape to `docket start`'s `GET /inbox`."""
     _audit("inbox", f"since={since or ''}")
 
@@ -287,8 +233,8 @@ def _build_server() -> Any:
     server = MCPServer(
         name="docket",
         instructions=(
-            "docket's control plane: pods, dispatch, runs, approvals, the inbox, and cost. "
-            "Every call is audit-logged; dispatch/delegate/approvals go through the "
+            "docket's control plane: pods, dispatch, runs, escalations, the inbox, and cost. "
+            "Every call is audit-logged; dispatch/delegate/resolve go through the "
             "exact same gates as the docket CLI — nothing here bypasses an approval "
             "or budget check."
         ),
@@ -300,11 +246,7 @@ def _build_server() -> Any:
     server.add_tool(tool_delegate, name="delegate")
     server.add_tool(tool_dispatch, name="dispatch")
     server.add_tool(tool_runs, name="runs")
-    server.add_tool(tool_approvals_list, name="approvals_list")
-    server.add_tool(tool_approvals_grant, name="approvals_grant")
-    server.add_tool(tool_approvals_deny, name="approvals_deny")
     server.add_tool(tool_resolve, name="resolve")
-    server.add_tool(tool_task_answer, name="task_answer")
     server.add_tool(tool_task_pregrant, name="task_pregrant")
     server.add_tool(tool_inbox, name="inbox")
     server.add_tool(tool_escalations, name="escalations")

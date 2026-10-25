@@ -1,4 +1,4 @@
-"""The task commands: add, list, show, diff, trace, prune, approve, deny, answer, retry, cancel."""
+"""The task commands: add, list, show, diff, trace, prune, pregrant, answer, retry, cancel."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import typer
 from pydantic import ValidationError
 from rich.markup import escape
 
-from docket.governance import approval as _ap
 from docket.hops.application import interruptions as _interruptions
 from docket.hops.application import report as _report
 from docket.interfaces.cli.commands import contract as _contract
@@ -37,21 +36,20 @@ from docket.interfaces.cli.commands.task_render import (
 from docket.interfaces.cli.render import ui
 from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError, DocketError
-from docket.kernel.operator_contract import Escalation, Question, QuestionV11, is_escalation_id
+from docket.kernel.operator_contract import EscalationView, is_escalation_id
 from docket.observability import trace as _trace
-from docket.operator import pause_is_live
-from docket.platform import list_escalations, read_escalation
+from docket.operator import escalation_view, escalation_views
+from docket.platform import prune_settled_escalations, read_escalation
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import worktree_prune as _worktree_prune
-from docket.tasks.application.escalations import resolve_approval_token, resolve_question
+from docket.tasks.application.escalations import resolve
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
 from docket.tasks.domain.resolution import EscalationNotPending, EscalationRefused
-from docket.tasks.domain.state import Status
 from docket.tasks.domain.task import TaskRecord
 
 task_app = typer.Typer(
@@ -317,6 +315,8 @@ def _prune_records(project: str, days: int | None, dry_run: bool) -> None:
     ui.info(f"{verb} {report.expired_count} trace file(s) past {report.retention_s // 86400} days.")
     removed = _runs.prune_terminal(retention_s=retention_s, dry_run=dry_run, project=project)
     ui.info(f"{'Would remove' if dry_run else 'Removed'} {removed} terminal run record(s).")
+    settled = prune_settled_escalations(retention_s=retention_s, dry_run=dry_run)
+    ui.info(f"{'Would remove' if dry_run else 'Removed'} {settled} settled escalation record(s).")
 
 
 @task_app.command("prune")
@@ -346,158 +346,88 @@ def cmd_prune(
     _contract.next_step("docket task list")
 
 
-def _pending_token(pod: str | None, ref: str) -> tuple[str, str | None, str]:
-    """The approval token *ref* stands for, its pod and the label to confirm with: an
-    ``apr-`` token as given (its pod read from the record), or the token the named task is
-    parked on."""
-    if ref.startswith("apr-"):
-        try:
-            project = str(_ap.approval_get(ref).get("project") or "")
-        except _ap.ApprovalError:
-            project = ""
-        return ref, project or None, ref
-    found = _resolve(pod, ref)
-    record = _task_record(found)
-    token = record.approval_token or ""
-    if record.status != Status.waiting_approval or not token:
-        ui.error(
-            f"Task {short_id(found.task_id)} is {record.status}, not waiting for approval",
-            "Run docket inbox",
-        )
-        raise typer.Exit(1)
-    return token, found.project, short_id(found.task_id)
+@task_app.command("pregrant")
+def _task_pregrant(
+    ref: str = typer.Argument(..., help="Task id, short id or run id"),
+    command: str = typer.Argument(..., help="The exact command to approve before the task asks"),
+    tool: str = typer.Option("bash", "--tool", help="Tool the command runs under"),
+    pod: str | None = pod_option(),
+) -> None:
+    """Approve one exact command for a task before it asks; the approval is single-use.
 
-
-def _pregrant(pod: str | None, ref: str, command: str, tool: str) -> None:
+    Example: docket task pregrant task-04ff "git push origin main"
+    """
     found = _resolve(pod, ref)
     try:
-        token = _interruptions.record_pregrant(
+        _interruptions.record_pregrant(
             found.project, found.task_id, command, tool=tool, channel="cli", actor=_actor()
         )
     except _interruptions.InterruptionsError as exc:
         ui.error(str(exc))
         raise typer.Exit(1) from exc
-    ui.success(escape(f"Pre-granted '{command}' on task {short_id(found.task_id)} ({token})"))
+    ui.success(escape(f"Pre-granted '{command}' on task {short_id(found.task_id)}"))
     _resume_hint(found.project)
-
-
-@task_app.command("approve")
-def _task_approve(
-    ref: str = typer.Argument(..., help="Task id, short id or run id"),
-    reason: str = typer.Option("", "--reason", help="Why you approve"),
-    once: bool = typer.Option(False, "--once", help="Approve this call only (the default)"),
-    task: bool = typer.Option(
-        False, "--task", help="Also allow this exact call for the rest of the task"
-    ),
-    for_command: str | None = typer.Option(
-        None, "--for", help="Pre-grant one exact command before the task asks"
-    ),
-    tool: str = typer.Option("bash", "--tool", help="Tool the --for command runs under"),
-    pod: str | None = pod_option(),
-) -> None:
-    """Approve what a task is waiting on, or pre-grant one command before it asks.
-
-    Resolves the task's pending approval and grants it; with --task the same call is also
-    allowed for the rest of the task. --for records a single-use pre-grant for one exact
-    command instead.
-
-    Example: docket task approve task-04ff --reason "reviewed the diff"
-    """
-    if once and task:
-        ui.error("--once and --task conflict", "Pass one of them")
-        raise typer.Exit(2)
-    if for_command is not None:
-        if task:
-            ui.error("--for and --task conflict", "Pre-grants are single-use")
-            raise typer.Exit(2)
-        _pregrant(pod, ref, for_command, tool)
-        return
-    token, project, label = _pending_token(pod, ref)
-    _decide(token, "approve_task" if task else "approve_once", label, project, reason)
-
-
-@task_app.command("deny")
-def _task_deny(
-    ref: str = typer.Argument(..., help="Task id, short id or run id"),
-    reason: str = typer.Option("", "--reason", help="Why you deny"),
-    pod: str | None = pod_option(),
-) -> None:
-    """Deny what a task is waiting on; the task fails and nothing runs.
-
-    Example: docket task deny task-04ff --reason "touches production"
-    """
-    token, project, label = _pending_token(pod, ref)
-    _decide(token, "deny", label, project, reason)
-
-
-def _decide(token: str, option: str, label: str, project: str | None, reason: str) -> None:
-    """Settle the approval *token* with *option* and say how it went: the one place `approve`,
-    `deny` and `answer --option` end. A repeat of the decision already taken is a warning."""
-    try:
-        note = resolve_approval_token(token, option, channel="cli", actor=_actor(), reason=reason)
-    except EscalationNotPending as err:
-        if err.already_so:
-            ui.warn(err.message)
-            return
-        ui.error(err.message)
-        raise typer.Exit(1) from err
-    except DocketError as err:
-        ui.error(err.message)
-        raise typer.Exit(1) from err
-    if option == "deny":
-        ui.success(f"Denied {label}; the action is blocked")
-        return
-    ui.success(f"Approved {label}")
-    if note:
-        ui.warn(note)
-    context = _ap.approval_get(token).get("context")
-    if project and not (isinstance(context, dict) and context.get("kind") == "check_changed"):
-        _resume_hint(project)
-
-
-def _waiting_consult(found: TaskRef) -> QuestionV11 | None:
-    """The consult a running turn of *found* blocks on, as the question it asks, else ``None``.
-    The task carries no parked question then; the pending escalation is the only record of it."""
-    for record in reversed(list_escalations(state="pending")):
-        if (
-            (record.pod, record.task) == (found.project, found.task_id)
-            and record.kind == "consult"
-            and record.legacy.get("token")
-            and pause_is_live(record)
-        ):
-            return QuestionV11(
-                id=str(record.legacy.get("questionId", "")),
-                task_id=record.task,
-                pod=record.pod,
-                step=record.step,
-                message=record.prompt,
-                requested_schema=record.requested_schema or {"type": "object", "properties": {}},
-                created_at=record.asked_at,
-                kind="decision",
-                options=[o for o in record.options if o.id != "decline"],
-                recommendation=record.recommendation,
-            )
-    return None
-
-
-def _question_of(found: TaskRef) -> Question:
-    record = _task_record(found)
-    question = record.question
-    if record.status == Status.waiting_input and question is not None:
-        return question
-    waiting = _waiting_consult(found)
-    if waiting is None:
-        ui.error(f"Task {short_id(found.task_id)} has no pending question", "Run docket inbox")
-        raise typer.Exit(1)
-    return waiting
 
 
 _APPROVAL_OPTIONS = ("approve_once", "approve_task", "deny")
 _APPROVAL_KINDS = ("approval", "gate", "check_changed")
 
 
+def _escalation_of(pod: str | None, ref: str) -> tuple[EscalationView, str]:
+    """The pause *ref* names, as a view, with the label to confirm it by: an ``esc-`` id as
+    given, else the task's newest pending escalation (the command ends when it has none)."""
+    if is_escalation_id(ref):
+        record = read_escalation(ref)
+        if record is None:
+            ui.error(f"No escalation {ref}", "Run docket inbox")
+            raise typer.Exit(1)
+        return escalation_view(record), record.id
+    found = _resolve(pod, ref)
+    pending = [
+        v for v in escalation_views(pod=found.project, task=found.task_id) if v.state == "pending"
+    ]
+    if not pending:
+        ui.error(
+            f"Task {short_id(found.task_id)} waits on no question or approval", "Run docket inbox"
+        )
+        raise typer.Exit(1)
+    return pending[-1], short_id(found.task_id)
+
+
+def _settle(
+    view: EscalationView, label: str, option: str | None, content: dict[str, Any] | None
+) -> bool:
+    """Resolve *view* with *option* and *content* as the operator and say how it went (a repeat of
+    the decision already taken is a warning); whether the pause was settled by this call."""
+    try:
+        resolved = resolve(view.id, option, content, by=_actor(), channel="cli")
+    except EscalationNotPending as err:
+        if err.already_so:
+            ui.warn(err.message)
+            return False
+        ui.error(err.message)
+        raise typer.Exit(1) from err
+    except EscalationRefused as exc:
+        ui.error(f"Answer blocked by policy '{exc.policy_id}'")
+        raise typer.Exit(1) from exc
+    except DocketError as err:
+        ui.error(err.message)
+        raise typer.Exit(1) from err
+    if option == "deny":
+        ui.success(f"Denied {label}; the action is blocked")
+    elif view.kind in _APPROVAL_KINDS:
+        ui.success(f"Approved {label}")
+    elif option == "decline":
+        ui.success(f"Declined task {label}")
+    else:
+        ui.success(f"Answered task {label}")
+    if resolved.note:
+        ui.warn(resolved.note)
+    return True
+
+
 def _answer_an_approval(
-    token: str, project: str, label: str, option: str | None, others: bool
+    view: EscalationView, label: str, option: str | None, others: bool, reason: str
 ) -> None:
     """`task answer --option <id>` on an approval: only its three options, and no text."""
     if others or option not in _APPROVAL_OPTIONS:
@@ -505,19 +435,9 @@ def _answer_an_approval(
             f"{label} waits on an approval", f"Pass only --option {'|'.join(_APPROVAL_OPTIONS)}"
         )
         raise typer.Exit(1)
-    _decide(token, option, label, project, "")
-
-
-def _named_escalation(ref: str) -> Escalation | None:
-    """The escalation *ref* names when it is an escalation id (the command ends when none is
-    stored); ``None`` for a task reference."""
-    if not is_escalation_id(ref):
-        return None
-    record = read_escalation(ref)
-    if record is None:
-        ui.error(f"No escalation {ref}", "Run docket inbox")
-        raise typer.Exit(1)
-    return record
+    settled = _settle(view, label, option, {"reason": reason} if reason else None)
+    if settled and option != "deny" and view.kind != "check_changed":
+        _resume_hint(view.pod)
 
 
 @task_app.command("answer")
@@ -527,6 +447,7 @@ def _task_answer(
     option: str | None = typer.Option(None, "--option", help="Pick one of the options"),
     field: list[str] = typer.Option([], "--field", help="Answer one property, name=value"),
     decline: bool = typer.Option(False, "--decline", help="Decline instead of answering"),
+    reason: str = typer.Option("", "--reason", help="Why, for an approval"),
     pod: str | None = pod_option(),
 ) -> None:
     """Answer what a task is waiting on and let it continue.
@@ -534,45 +455,28 @@ def _task_answer(
     A question takes text, --field or --option; on a terminal with none of them it shows the
     question and prompts. Off a terminal pass text, --field name=value or --option <id>; a
     question with options needs --option. An approval takes --option approve_once, approve_task
-    or deny. The reference may be the escalation id that `docket inbox` prints.
+    or deny, and --reason. The reference may be the escalation id that `docket inbox` prints.
 
-    Example: docket task answer task-04ff --option opt2
+    Example: docket task answer esc-1a2b3c4d5e6f --option approve_once
     """
     others = bool(text or field or decline)
-    escalation = _named_escalation(ref)
-    if escalation is not None and escalation.kind in _APPROVAL_KINDS:
-        token = str(escalation.legacy.get("token", ""))
-        _answer_an_approval(token, escalation.pod, escalation.id, option, others)
+    view, label = _escalation_of(pod, ref)
+    if view.kind in _APPROVAL_KINDS:
+        _answer_an_approval(view, label, option, others, reason)
         return
-    if escalation is not None:
-        pod, ref = escalation.pod, escalation.task
-    found = _resolve(pod, ref)
-    record = _task_record(found)
-    if record.status == Status.waiting_approval and record.approval_token:
-        _answer_an_approval(
-            record.approval_token, found.project, short_id(found.task_id), option, others
-        )
+    question = view.as_question()
+    if decline:
+        if _settle(view, label, "decline", None):
+            _resume_hint(view.pod)
         return
-    question = _question_of(found)
-    action = "decline" if decline else "accept"
-    content = None if decline else _answer_content(question, text, option, field)
+    content = _answer_content(question, text, option, field)
     ids = _option_ids(question)
-    if content is not None and ids and not content.get("optionId"):
+    if ids and not content.get("optionId"):
         ui.error("This question has options", f"Pass --option <id>: {', '.join(ids)}")
         raise typer.Exit(1)
-    try:
-        resolve_question(
-            found.project, found.task_id, action, content, channel="cli", actor=_actor()
-        )
-    except EscalationRefused as exc:
-        ui.error(f"Answer blocked by policy '{exc.policy_id}'")
-        raise typer.Exit(1) from exc
-    except DocketError as exc:
-        ui.error(exc.message)
-        raise typer.Exit(1) from exc
-    verb = "Declined" if decline else "Answered"
-    ui.success(f"{verb} task {short_id(found.task_id)}")
-    _resume_hint(found.project)
+    chosen = content.pop("optionId", None)
+    if _settle(view, label, chosen, content or None):
+        _resume_hint(view.pod)
 
 
 @task_app.command("retry")

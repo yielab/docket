@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 3.2.0
+**Version**: 4.0.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
@@ -42,8 +42,7 @@ This specification does NOT cover:
   meaning of `llm_call`; `pod-dispatch.spec.md` owns the verdict/rework/approval/run-cancellation
   and hop event family, `cost_charged` and `budget_exceeded`; `security-gates.spec.md` owns
   `guardrail_check`/`guardrail_block`; `cost-tracking.spec.md` owns `budget_warning`'s unpriced
-  action; `operator-loop.spec.md` owns `input_requested`, `input_answered`, `question_asked`,
-  `input_expired` and the `escalation_*` family
+  action; `operator-loop.spec.md` owns the `escalation_*` family
 - The read API surface over this store (`docket task trace`, `GET` routes) — see
   `serve-read-api.spec.md`
 - How a trace record is projected into an exported span — see `observability-export.spec.md`
@@ -70,16 +69,16 @@ This specification does NOT cover:
 5. `cost_usd` **MUST** be included on a record only when the caller passes a value that parses
    as `float`; when included, it **MUST** be the field name `cost_usd`. `duration_ms` follows the
    same optional-inclusion rule, parsed as `int`.
-6. `EVENT_TYPES` **MUST** be exactly these 54 members: `session_start`, `tool_call`,
+6. `EVENT_TYPES` **MUST** be exactly these 49 members: `session_start`, `tool_call`,
    `tool_result`, `context_composed`, `prompt_composed`, `session_compaction`, `request_fit`,
-   `guardrail_check`, `guardrail_block`, `approval_requested`, `approval_granted`,
+   `guardrail_check`, `guardrail_block`, `approval_granted`,
    `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`,
    `verification_failed`, `tester_verdict_failed`, `reviewer_verdict_unparseable`,
    `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
    `paused_refused`, `approval_required`, `approval_resumed`, `approval_task_denied`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
-   `verdict_unparseable`, `verdict_reasked`, `step_skipped`, `command_step`, `route_taken`, `input_requested`,
-   `input_answered`, `question_asked`, `input_expired`, `escalation_asked`,
+   `verdict_unparseable`, `verdict_reasked`, `step_skipped`, `command_step`, `route_taken`,
+   `escalation_asked`,
    `escalation_delivered`, `escalation_resolved`, `escalation_expired`, `escalation_decided`,
    `llm_call`, `hop_started`,
    `hop_finished`, `memory_update`, `prepare`, `process_started`, `process_exited`, `error`,

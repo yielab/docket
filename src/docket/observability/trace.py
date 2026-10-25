@@ -56,7 +56,6 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "request_fit",
         "guardrail_check",
         "guardrail_block",
-        "approval_requested",
         "approval_granted",
         "approval_denied",
         "cost_charged",
@@ -88,10 +87,6 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "step_skipped",  # a `when` predicate was false; the step advanced with no hop
         "command_step",  # a `run` (command) step executed, with its exit code
         "route_taken",  # a step's own `on:` map resolved a gate outcome (pipeline-format.spec.md)
-        "input_requested",  # an `input` step parked the task, waiting on an operator question
-        "input_answered",  # `hops.application.answers.answer_task` resumed a parked `input` step
-        "question_asked",  # a `consult` call posed a QuestionV11 to the operator (tasks/application/consult.py)
-        "input_expired",  # an unanswered question passed its deadline; task -> blocked
         # One pause, one payload (kernel/escalation_events.py): asked at the opening, delivered to
         # a person by a channel, then settled as resolved, expired or decided.
         "escalation_asked",

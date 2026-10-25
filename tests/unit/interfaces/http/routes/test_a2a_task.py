@@ -128,6 +128,16 @@ class TestEscalationMessage:
         assert data["data"]["onExpiry"] == "block"
         assert data["data"]["recommendation"]["optionId"] == "redis"
 
+    def test_it_carries_the_level_the_pause_was_decided_at(self) -> None:
+        data = a2a_task.escalation_message(_view(level="L4"))["parts"][1]["data"]
+
+        assert data["level"] == "L4"
+
+    def test_a_pause_that_names_no_queued_task_has_no_level_key(self) -> None:
+        data = a2a_task.escalation_message(_view())["parts"][1]["data"]
+
+        assert "level" not in data
+
     def test_its_options_and_recommendation_are_the_operator_v11_models(self) -> None:
         data = a2a_task.escalation_message(_view())["parts"][1]["data"]
 
@@ -181,16 +191,11 @@ class TestTaskObject:
         assert message["parts"] == [{"kind": "text", "text": "budget"}]
 
     def test_a_reason_left_over_from_an_earlier_pause_is_not_a_status_message(self) -> None:
-        resumed = _task("pending", "SUBMITTED", reason="parked a consultation (question=q-1)")
+        resumed = _task(
+            "pending", "SUBMITTED", reason="parked a consultation (escalation=esc-0123456789ab)"
+        )
 
         assert "message" not in a2a_task.task_object(resumed, None)["status"]
-
-    def test_the_approval_token_never_reaches_the_object(self) -> None:
-        parked = _task("waiting_approval", approval_token="apr-secret")
-
-        assert "apr-secret" not in json.dumps(
-            a2a_task.task_object(parked, None, external_ref="B-7")
-        )
 
     def test_an_external_ref_travels_in_the_docket_metadata(self) -> None:
         task = a2a_task.task_object(_task("pending", "SUBMITTED"), None, external_ref="B-7")

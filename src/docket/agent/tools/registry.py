@@ -55,7 +55,7 @@ class ToolContext:
     agent_id: str = ""
     session_key: str = ""
     # The session a dispatch hop's trace events are filed under (the task's); "" files under
-    # `session_key`. A consult's `question_asked` follows it so the task's trace shows the question.
+    # `session_key`. A consult's escalation events follow it so the task's trace shows the question.
     trace_session_key: str = ""
     roots: tuple[Path, ...] = ()
     timeout: int = 120

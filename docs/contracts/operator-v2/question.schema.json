@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docket.dev/schemas/operator-v1/question.schema.json",
+  "$id": "https://docket.dev/schemas/operator-v2/question.schema.json",
   "title": "Question",
   "additionalProperties": false,
   "description": "A question posed to a human, shaped as an MCP elicitation request.",
