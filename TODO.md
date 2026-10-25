@@ -483,7 +483,7 @@
 
 ### P51-14 — the scripts that drive the CLI stop calling the removed verbs
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts, examples, benchmarks; no `src/`)
+**Status:** DONE (merged 2026-10-25, 14620301) · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts, examples, benchmarks; no `src/`)
 
 - **Trigger (found in the P51-9 integration, 2026-10-25):** `scripts/smoke_workflow.py` reads
   `approvalToken` from the task and runs `docket task approve` and `docket task deny`
