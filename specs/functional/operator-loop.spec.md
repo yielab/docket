@@ -1,9 +1,9 @@
 # Operator Loop Specification
 
-**Version**: 2.3.0
+**Version**: 2.3.1
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, answers, the interruption forecast, pre-grants and consultations.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -421,6 +421,9 @@ failure as a failed `DeliveryResult` without raising.
    `blockedReason: "input_expired"` — never `failed`; `docket task retry` reopens it. A question
    parked without its own `expiresAt` (a consultation) carries now plus the pod's
    `inputExpiryHours`.
+   For tests, `DOCKET_CLOCK_OFFSET_S` (float seconds, unset or invalid is 0) shifts the wall
+   clock `now()` that stamps and compares these deadlines; it never shifts the monotonic clock,
+   so measured durations stay real.
 4. An `input` step whose `from:` hop carries a Lead intake brief with its own `questions[]`
    asks those questions instead of the generic single free-text `answer` property; this changes
    only what `validate_answer` checks *content* against, never how an answer resolves or

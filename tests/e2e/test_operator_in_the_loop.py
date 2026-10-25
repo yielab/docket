@@ -243,6 +243,46 @@ def test_a_parked_question_carries_the_deadline_the_pod_sets(
     oracles.assert_log_verifies(w)
 
 
+def test_an_unanswered_question_expires_to_blocked(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(script={"implementer": [call("consult", "k1", **CACHE_QUESTION)]})
+    w = world(model)
+    w.make_pod(PIPELINE)
+    w.docket("pod", "set", "inputExpiryHours", "1", "--pod", w.pod)
+    task_id = w.add_task("Add a cache to the service")
+    statuses = [_status(w, task_id)]
+
+    _run_the_queue(w)
+    statuses.append(_status(w, task_id))
+    (asked,) = _needs_you(w)
+    assert (asked["id"], asked["state"]) == (task_id, "needs_answer")
+
+    w.env["DOCKET_CLOCK_OFFSET_S"] = "7200"
+    with w.service(dispatch=False):
+        w.wait_for(lambda: _status(w, task_id) == "blocked", what="the question to expire")
+    del w.env["DOCKET_CLOCK_OFFSET_S"]
+    statuses.append(_status(w, task_id))
+
+    assert statuses == ["pending", "waiting_input", "blocked"]
+    (blocked,) = _needs_you(w)
+    assert (blocked["id"], blocked["state"], blocked["command"]) == (
+        task_id,
+        "blocked",
+        f"docket task retry {task_id}",
+    )
+    assert blocked["reason"] == f"question {asked['question']['id']!r} expired unanswered"
+    assert blocked["question"] is None
+    assert ("input_expired", "lead", "") in oracles.trace_skeleton(w, w.pod, task_id)
+    assert len(model.by_role("implementer")) == 1
+
+    w.docket("task", "retry", task_id, "--pod", w.pod)
+    statuses.append(_status(w, task_id))
+    assert statuses[-1] == "pending"
+    oracles.assert_transitions_legal(statuses)
+    oracles.assert_log_verifies(w)
+
+
 def test_a_denied_approval_fails_the_task_with_the_reason(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
