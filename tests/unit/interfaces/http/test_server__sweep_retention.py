@@ -18,15 +18,18 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support.tasks import put_tasks, task
 from tests.support.trace import write_trace as _write_trace
 
 from docket.governance import approval as _ap
 from docket.interfaces.http import server as _server
 from docket.interfaces.http import sweeps as _sweeps
+from docket.interfaces.http.routes import a2a_push
 from docket.kernel import threads as _threads
-from docket.kernel.operator_contract import Escalation, new_escalation_id
 from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.operator_contract import Escalation, new_escalation_id
 from docket.observability import trace as _trace
+from docket.operator import load_catalog, save_channel
 from docket.platform import store as _store
 
 SUBJECT = "docket.interfaces.http.server"
@@ -61,6 +64,29 @@ def swept_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
     ):
         monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
         yield d
+
+
+class TestSweepRemovesFinishedPushChannels:
+    def test_the_channel_goes_after_the_flush_that_delivers_the_closing_event(
+        self, swept_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        done = task(status="done")
+        running = task(status="running")
+        put_tasks("demo", done, running)
+        for record in (done, running):
+            save_channel(a2a_push.channel_for("demo", record.id, {"url": "http://127.0.0.1:9/h"}))
+        present_at_flush: list[bool] = []
+        monkeypatch.setattr(
+            _server,
+            "flush_notify_channels",
+            lambda _sink: present_at_flush.append(f"a2a-{done.id}" in load_catalog().entries),
+        )
+
+        _server._run_sweeps()
+
+        assert present_at_flush == [True]
+        names = set(load_catalog().entries)
+        assert f"a2a-{done.id}" not in names and f"a2a-{running.id}" in names
 
 
 class TestSweepRunsRetention:
