@@ -56,7 +56,8 @@ def _status(w: World, task_id: str) -> str:
 
 def _escalations(w: World, task_id: str) -> list[tuple[str, str, str]]:
     """The task's ``escalation_*`` events as ``(event, kind, by)``, in trace order. The trace
-    skeleton keeps the older events; this is the same pauses told with the one payload."""
+    skeleton keeps the older events; this is the same pauses told with the one payload. The
+    pod's console channel is on, so each pause is also delivered to the terminal once."""
     return [
         (e["event_type"], e["payload"]["kind"], e["payload"].get("by", ""))
         for e in oracles.trace_events(w, w.pod, task_id)
@@ -157,6 +158,7 @@ def test_a_parked_approval_shows_in_the_inbox_and_a_task_grant_covers_the_rest(
     ]
     assert _escalations(w, task_id) == [
         ("escalation_asked", "approval", ""),
+        ("escalation_delivered", "approval", ""),
         ("escalation_resolved", "approval", "person"),
     ]
     assert len(model.by_role("implementer")) == 5
@@ -257,6 +259,7 @@ def test_a_question_from_the_model_waits_for_an_answer(
     ]
     assert _escalations(w, task_id) == [
         ("escalation_asked", "consult", ""),
+        ("escalation_delivered", "consult", ""),
         ("escalation_resolved", "consult", "person"),
     ]
     first, resumed = model.by_role("implementer")
@@ -329,6 +332,7 @@ def test_an_unanswered_question_expires_to_blocked(
     assert ("input_expired", "lead", "") in oracles.trace_skeleton(w, w.pod, task_id)
     assert _escalations(w, task_id) == [
         ("escalation_asked", "consult", ""),
+        ("escalation_delivered", "consult", ""),
         ("escalation_expired", "consult", "timeout"),
     ]
     assert len(model.by_role("implementer")) == 1
