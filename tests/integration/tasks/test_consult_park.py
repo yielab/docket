@@ -31,6 +31,7 @@ from docket.kernel.operator_contract import Question, QuestionV11
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
 from docket.tasks.application import corrections as _corrections
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import record as _record_mod
@@ -249,7 +250,7 @@ class TestParkedQuestionExpiry:
         run = _start(tmp_path, monkeypatch, _Backend([_final("plan"), _consult()]), expiry_hours=1)
         later = (dt.datetime.now(dt.UTC) + dt.timedelta(hours=2)).isoformat()
 
-        assert _answers.sweep_expired_questions(later) == 1
+        assert _escalation_sweep.sweep_escalations(later) == 1
         task = _task(run)
         assert (task.status, task.blocked_reason) == ("blocked", "input_expired")
         assert _lifecycle.retry_task(run.project, run.task_id)

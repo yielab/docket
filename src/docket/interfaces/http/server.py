@@ -24,7 +24,6 @@ from pathlib import Path
 
 from docket import bootstrap as _bootstrap
 from docket.governance import approval
-from docket.hops.application import answers
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.auth import authorize
@@ -46,6 +45,7 @@ from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
 from docket.operator import flush_notify_channels as flush_notify_channels
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.teams import conversations
@@ -175,9 +175,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
     with contextlib.suppress(Exception):
         trace.expire_old_traces()
     with contextlib.suppress(Exception):
-        approval.approval_sweep_expired()
-    with contextlib.suppress(Exception):
-        answers.sweep_expired_questions()
+        _escalation_sweep.sweep_escalations()
     with contextlib.suppress(Exception):
         _runs.prune_terminal()
     with contextlib.suppress(Exception):

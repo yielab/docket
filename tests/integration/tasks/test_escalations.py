@@ -35,7 +35,6 @@ from docket.agent.ports import (
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.governance import approval as _ap
 from docket.governance.policy import install_policies
-from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.builtin_tools import builtin_registry
@@ -46,6 +45,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.operator_contract import Escalation
 from docket.operator import inbox as _inbox
 from docket.platform import store as _store
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -422,7 +422,7 @@ class TestConsult:
         assert [v.id for v in view.needs_you if getattr(v, "pod", "") == "demo"] == [task.id]
 
         later = "2999-01-01T00:00:00+00:00"
-        assert _answers.sweep_expired_questions(later) == 1
+        assert _escalation_sweep.sweep_escalations(later) == 1
 
         escalation = _only_escalation()
         assert escalation.state == "expired"
@@ -435,7 +435,7 @@ class TestConsult:
         )
         assert expired["askedAt"] == escalation.asked_at
         assert len(_events("input_expired")) == 1
-        assert _answers.sweep_expired_questions(later) == 0
+        assert _escalation_sweep.sweep_escalations(later) == 0
         assert len(_events("escalation_expired")) == 1
 
 
@@ -555,7 +555,7 @@ class TestCheckChanged:
                 data = _ap.approval_get(token)
                 data["expiresAt"] = "2000-01-01T00:00:00+00:00"
                 _store.write_json(current_home().approvals_dir / f"{token}.json", data)
-                assert _ap.approval_sweep_expired() == 1
+                assert _escalation_sweep.sweep_escalations() == 1
 
             escalation = _only_escalation()
             assert escalation.state == "expired"

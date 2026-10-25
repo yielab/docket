@@ -30,6 +30,7 @@ from docket.kernel.threads import new_thread
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -322,7 +323,6 @@ class TestEndToEnd:
         """A parked approval's own `expiresAt` (not the default APPROVAL_TIMEOUT) governs it,
         and the fail-closed sweep denies it once past that deadline -- same resolution path as
         an explicit human deny."""
-        from docket.governance import approval as _approval_mod
         from docket.governance.policy import install_policies
 
         with (
@@ -361,7 +361,7 @@ class TestEndToEnd:
             rec["expiresAt"] = "2000-01-01T00:00:00Z"
             rec_path.write_text(json.dumps(rec), encoding="utf-8")
 
-            swept = _approval_mod.approval_sweep_expired()
+            swept = _escalation_sweep.sweep_escalations()
             assert swept == 1
 
             task = TaskRepository.for_pod("demo").list()[0]

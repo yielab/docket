@@ -811,9 +811,10 @@ every output a surface prints is unchanged.
     recommendation in the turn (Consult item 7). `deny` ends the call with the
     `approval_unavailable` denial, fails the task `needs_human` and writes a `decided` record, so
     nothing waits and a person is told. `fail` refuses what would ask a person: an `input` step is
-    refused when the task is claimed (`pipeline-format.spec.md` "Operator input steps" item 5) and
-    an external gate's `needs_human` or `error` outcome is not routed (it fails the task
-    `gate_needs_human` or `gate_error`). A `check_changed` pause is `person` at every level: a check
+    refused when the task is claimed (`pipeline-format.spec.md` "Operator input steps" item 5).
+    An external gate's `needs_human` or `error` outcome reaches a person only through an `input`
+    step, so under `fail` it fails the task `gate_needs_human` or `gate_error` as an unrouted
+    outcome always did; a route to any other step is unchanged. A `check_changed` pause is `person` at every level: a check
     the change itself defines cannot be satisfied by a machine. The pod settings stay and win where
     set: `consultMode` is the alias of the `consult` row (`decide` is `recommendation`, `park` is
     `person`) and `approvalMode` of the `approval` row (`refuse` is `deny`; `wait` and `park` are

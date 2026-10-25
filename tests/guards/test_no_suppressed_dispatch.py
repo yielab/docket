@@ -6,7 +6,7 @@ id, no record, no trace of what happened.
 
 Grep-pinned regression test: scans ``interfaces/http/server.py`` for every such block and
 fails if any still mentions dispatch in its body. ``trace.sweep_all()``
-and ``approval.approval_sweep_expired()`` are unrelated sweeps left alone
+and ``sweep_escalations()`` are unrelated sweeps left alone
 on purpose -- this guard is scoped to dispatch specifically.
 """
 

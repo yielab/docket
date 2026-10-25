@@ -31,6 +31,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.observability import trace as _trace
 from docket.platform import store as _store
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 
 SUBJECT = "docket.governance.approval"
 
@@ -304,7 +305,7 @@ class TestAtomicApprovalDecisions:
         errors = _race_pending_transitions(
             monkeypatch,
             lambda: _ap.approval_deny(token, channel="cli"),
-            lambda: sweep_counts.append(_ap.approval_sweep_expired()),
+            lambda: sweep_counts.append(_escalation_sweep.sweep_escalations()),
         )
 
         assert errors[1] is None
@@ -324,7 +325,7 @@ class TestAtomicApprovalDecisions:
         # A terminal record is not swept a second time, and an unknown token
         # remains an error with no trace/audit side effect.
         monkeypatch.setattr(_ap, "set_state", real_set_state)
-        assert _ap.approval_sweep_expired() == 0
+        assert _escalation_sweep.sweep_escalations() == 0
         with pytest.raises(_ap.ApprovalError):
             _ap.approval_grant("apr-unknown-atomic", channel="cli")
         assert [

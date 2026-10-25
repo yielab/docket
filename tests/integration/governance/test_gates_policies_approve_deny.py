@@ -29,6 +29,7 @@ from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
 from docket.sandbox.launch import Launcher
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 
 SUBJECT = "docket.governance.policy"
 
@@ -451,7 +452,7 @@ class TestSweep:
         rec["created"] = "2000-01-01T00:00:00Z"
         rec["expiresAt"] = rec["created"]
         path.write_text(json.dumps(rec))
-        swept = _ap.approval_sweep_expired()
+        swept = _escalation_sweep.sweep_escalations()
         assert swept == 1
         # The timeout sweep resolves to "denied" (fail-closed), not the
         # prior, read-by-nobody "expired" state.
@@ -459,7 +460,7 @@ class TestSweep:
 
     def test_sweep_leaves_fresh(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
-        assert _ap.approval_sweep_expired() == 0
+        assert _escalation_sweep.sweep_escalations() == 0
         rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "pending"
 
