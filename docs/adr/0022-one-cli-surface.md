@@ -1,4 +1,4 @@
-# ADR 0022 (D-57): one CLI surface, and nothing kept for the past
+# ADR 0022 (D-57): one CLI surface
 
 **Question:** docket's CLI is 46 flat top-level commands over 161 named entry points, none of them
 a real Typer sub-command. The maintainer asked for the commands to be "way more intuitive and
@@ -97,14 +97,10 @@ flag it; re-verifying the inventory against the live turn path did.
    README and the landing page keep "team" in prose and define `pod` with that sentence where
    the first command appears. `pod.yaml`, `kind: pod`, `/pods` and the MCP `pods` tool stand.
 
-4. **Nothing is kept for the past.** docket has no users. A removed or renamed command, flag,
-   alias, route, persisted shape or behaviour is deleted in the same change that replaces it,
-   together with its tests, its spec text and its documentation. No alias table, no retirement
-   notice, no "did you mean the old name", no migration, no `_REMOVED` map, no hidden command, no
-   deprecated no-op flag. A retired name is an ordinary unknown command (exit 2) and
-   `CHANGELOG.md` is the only record. This rule is written into `CONTRIBUTING.md` ("Rules that
-   have cost this project time"), `AGENTS.md` and `ROADMAP.md` §3, and it stands until docket has
-   an installed base, which is a fact about the world and not a release number.
+4. **Withdrawn 2026-10-24.** This point was a rule, "nothing is kept for the past": no alias,
+   notice or migration for a removed name. It existed so that compatibility was not designed
+   for while docket had no users. Compatibility is now decided per change. The commands this ADR
+   removed stay removed, and a retired name is still an ordinary unknown command (exit 2).
 
 5. **Where every old name went, and what goes with nothing in its place.** A command survived
    only with a live consumer: the daily loop uses it, or it is the only operator path to a
