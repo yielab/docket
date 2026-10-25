@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -238,8 +238,8 @@ This specification does NOT cover:
    instruction"; a gated role still gets one, per requirement 2.
 2. `resolve_hop_instruction(archetype)` **MUST** return *archetype*'s own `hopInstruction` when
    non-empty; otherwise it **MUST** generate one from `gate_contract.kind`: a `verdict` role with
-   `regexes` gets "Start exactly one output line with `<marker1>` or `<marker2>` (more joined by
-   `or`) (case-insensitive)"; a `mechanical` role gets a generic "your work is verified
+   `regexes` gets "The LAST line of your FINAL message must be exactly `<marker1>` or `<marker2>`
+   (more joined by `or`), with nothing else on that line. Reasons go above it."; a `mechanical` role gets a generic "your work is verified
    mechanically before the pipeline advances"; an `approval` role gets a generic "a human must
    approve before the pipeline advances"; a `none` gate (or a `verdict` gate with no `regexes`)
    generates no instruction (`""`).
