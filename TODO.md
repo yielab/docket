@@ -19,8 +19,9 @@
 > **Active: Phase 51** (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)),
 > opened 2026-10-25 at the maintainer's request. Phase 50 closed the same day (D-71). The
 > integration branch is `plan/phase-46-structure` until the maintainer merges it.
-> **Planned: Phase 52** (D-73, [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)),
-> cut by file ownership; its Wave A shares no file with Phase 51's open cards.
+> **Planned: Phase 52** (D-73, [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md);
+> D-74, [ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)), twelve cards cut by
+> file ownership over four waves; its Wave A shares no file with Phase 51's open cards.
 
 ## ▶ PHASE 51 ACTIVE — one escalation: ask, resolve, decide (D-72, ADR 0032)
 
@@ -513,15 +514,19 @@
 - After P51-7: one A2A client replaces `approval_question`, `held_approval_question`,
   `consult_question` and the task-view workaround.
 
-## ○ PHASE 52 PLANNED — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033)
+## ○ PHASE 52 PLANNED — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033); the turn owns its processes and its time (D-74, ADR 0034)
 
 > Planned 2026-10-25 by the maintainer from a code audit against a harness-engineering survey
 > ([ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) holds the findings and the
 > refusals). Cards are cut by **file ownership**, not by technique: everything one worker would
-> change in the same files is one card, so no file is edited twice across the phase. Wave A may
-> start beside Phase 51's remaining cards: no Phase 52 card edits `hops/application/dispatch*`,
+> change in the same files is one card, so no file is edited twice in the same wave. Wave A may
+> start beside Phase 51's remaining cards: no Wave A or B card edits `hops/application/dispatch*`,
 > `tasks/`, `operator/` or `interfaces/http/` (P52-1 writes only `observability/`; `/metrics`
-> reads the fold).
+> reads the fold). P52-9 to P52-12 were added the same day from a second reading
+> ([ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md): a tool's clock, background
+> processes, `fetch`, search, machine waits). They continue files Waves A and B own, so they run as
+> Waves C and D; the exception is P52-11, whose files nobody in Wave A touches. P52-12 (the fourth
+> proposal, search) is folded into P52-6: same owner, same files.
 
 ### How a Phase 52 card runs (read before claiming one)
 
@@ -538,7 +543,13 @@
   per card; the remote provider once at the phase close, after a go.
 - **Every card:** focused tests by path under `timeout 120`; before handoff `ruff`, `mypy src`,
   `pytest --co -q`, `tests/architecture`, `comment_lint.py --check` on touched files. The e2e lane
-  only on cards that change a tool's output or the wire (P52-2, P52-3, P52-7, P52-8).
+  only on cards that change a tool's output or the wire (P52-2, P52-3, P52-7, P52-8, P52-10,
+  P52-11).
+- **Spend by model.** Haiku runs the data card (P52-6) and, on any card, the spec and doc edits the
+  card spells out; Sonnet runs behaviour in `src/`; no Opus on this phase. A worker opens only the
+  files its card names (no card names more than eight) and the one spec section it names; a card
+  that turns out to need more parks with the missing locator instead of exploring. Every card's
+  trigger carries its line numbers so the worker greps, never reads a module whole.
 - **Integrator seams:** P52-2 and P52-3 both bump `agent-loop.spec.md`; the integrator renumbers at
   merge (as in Phase 44). The full default suite runs once per merge, `--lf` after.
 - Workers in `.claude/worktrees/p52-<n>`, one card per worktree. **Model per card** is on the
@@ -549,8 +560,11 @@
 
 | Wave | Cards | Why this order |
 | --- | --- | --- |
-| A | P52-1 ∥ P52-2 ∥ P52-3 ∥ P52-6 (∥ P52-4 once unblocked) | disjoint owners: `observability/`+bench · `kernel/text.py`+toolbox+`session.py` · request/wire/catalog · recipes · `governance/` |
-| B | P52-5 ∥ P52-7 ∥ P52-8 | P52-5 needs P52-1's re-read figure; P52-7 continues P52-3's files; P52-8 continues P52-2's files |
+| A | P52-1 ∥ P52-2 ∥ P52-3 ∥ P52-6 ∥ P52-11 (∥ P52-4 once unblocked) | disjoint owners: `observability/`+bench · `kernel/text.py`+toolbox+`session.py` · request/wire/catalog · recipes · `platform/fetch.py`+`_fetch_tool` · `governance/`; P52-4 and P52-11 share only `security-gates.spec.md` (integrator renumbers) |
+| B | P52-5 ∥ P52-7 ∥ P52-8 | P52-5 needs P52-1's re-read figure; P52-7 continues P52-3's files and P52-11's `builtin_tools.py`; P52-8 continues P52-2's files and covers `fetch` results |
+| C | P52-9 | continues P52-7's `builtin_tools.py` and `driver.py`; `lifecycle.py` after P51-9 |
+| D | P52-10 | continues P52-9's files, P52-8's `toolbox.py` and P52-4's `security.py` |
+| — | P52-12 | blocked on a recorded run and on P51-9; no wave until the trigger fires |
 
 ### P52-1 — the numbers: cache hits, tokens per accepted task, re-reads
 
@@ -663,12 +677,13 @@
   the unclosed heredoc keep asking: they are risk, not syntax.
 - **Non-goals:** `bash -n`; any change to SAFE_BINS or `allowCommands`; the denial counter (a
   refusal still counts toward the three-denials stop).
-- **Spec:** `security-gates.spec.md` (1.6.0 → 1.7.0, the classifier table row).
+- **Spec:** `security-gates.spec.md` (1.7.0 → 1.8.0, the classifier table row; P52-11 bumps the same
+  spec in Wave A, the integrator renumbers).
 - **Change:** `governance/security.py::classify_command` (one branch), the policy corpus row.
 - **Acceptance:** `bash` with `echo "unclosed` → `REFUSED [syntax]` and no escalation record, no
   audit `approval` entry (oracle: `tests/integration/governance/test_security*` plus the audit
   oracle from `tests/support/e2e_oracles.py`); the 310-row corpus unchanged except the parse rows.
-- **Contention:** `governance/` only.
+- **Contention:** `governance/` only; P52-10 continues `security.py` and `command_lexer.py` in Wave D.
 
 ### P52-5 — the Lead's locators: the code it found reaches the Implementer
 
@@ -713,14 +728,26 @@
   `lead` on `strong`, `implementer` on `cheap`, `verifyCmd` gate with `on: {fail: {goto:
   implementer, max: 1}}`; (c) `parallel-explore`: a `parallel` group of two cheap researchers
   with disjoint instructions → join → implementer, plus `on: {fail: {goto: lead, max: 1}}` from
-  the implementer's step back to the Lead.
-- **Non-goals:** code; a new role; a sub-agent tool; claims about savings in the README.
+  the implementer's step back to the Lead; (d) `web-research` (ADR 0034 decision 4): `lead` →
+  a `parallel` group of three `researcher` children (`modelClass: cheap`, read-only) with disjoint
+  instructions (two over the allowed hosts, one over the repository with `grep`/`read`) → `analyst`
+  → `writer`, the roles `research-review` already uses; the pages stay in the children's sessions
+  and only their replies reach the analyst as handoffs. Its `README.md` states the two
+  prerequisites verbatim and nothing else about the network: `FETCH_ALLOWED_DOMAINS=<hosts>` for
+  the pages the researchers may read, and `docket setup mcp add <name> --kind read -- <command>`
+  for a search server, because docket has no built-in search; the README's example is a
+  self-hosted SearXNG behind its MCP server (no vendor, no key, the operator's own host on the
+  allowlist), and it says a hosted search API works through the same command with its key in
+  the secret store.
+- **Non-goals:** code; a new role; a sub-agent tool; claims about savings in the README; an
+  `mcp-servers/` file naming a search server docket cannot validate at apply time.
 - **Spec:** none (recipes are data; `pipeline-format.spec.md` 4.1.0 already allows every field).
-- **Change:** `templates/recipes/<name>/pipeline.yaml` + `README.md` × 3; the recipe index test's
+- **Change:** `templates/recipes/<name>/pipeline.yaml` + `README.md` × 4; the recipe index test's
   expected list.
 - **Acceptance:** `docket pod apply <recipe>` on a fresh home loads each without a validation
   error (oracle: the recipe lane's existing parametrized test picks them up); the `parallel`
-  group validates (`pipeline/domain/step.py:90-193`).
+  group validates (`pipeline/domain/step.py:90-193`); `web-research`'s README contains both
+  prerequisite commands (the recipe README test, `tests/integration/teams/test_recipes.py`).
 - **Contention:** `templates/recipes/` only.
 
 ### P52-7 — `ModelProfile`: the contract varies with the model
@@ -762,14 +789,17 @@
 - **Trigger:** ADR 0033: what passes `DOCKET_TOOL_MAX_OUTPUT_CHARS` is gone (the trace keeps a
   capped copy, `agent/loop_trace.py:219-220`, and no tool reads it); the condensation notice says
   "call X again", which re-runs a command whose result may differ and costs a round. A lower cap
-  (the local endpoint needs 2,500) is only safe when the whole result stays reachable.
+  (the local endpoint needs 2,500) is only safe when the whole result stays reachable. `fetch`'s
+  result is cut in `kernel/tool_outcome.py::text_outcome`, not in the toolbox: the write must cover
+  that path too (P52-11 makes the text worth keeping).
 - **Goal:** a tool result over the cap is written whole to `<pod cache>/artifacts/<sha256>.txt`
   (plain text, not docket-owned JSON; the jail's HOME is the pod cache, so it is readable without a
   grant); the truncated result ends with `[full output: <path> — read it with read(path, offset,
   limit)]`; the condensation notice points at the artifact when one exists instead of inviting a
-  re-run; retention follows the trace's. `read` must accept that path: check `toolbox.read`'s root
-  containment first and, if it refuses, add the artifacts directory to the readable roots in the
-  same card.
+  re-run; retention follows the trace's. `read` and `grep` must accept that path: check
+  `toolbox.read`'s root containment first and, if it refuses, add the artifacts directory to the
+  readable roots in the same card (`grep` over a kept page is how the model finds one section of
+  it without reading it; the artifact is the one place a `fetch` result can be searched).
 - **Non-goals:** lifecycle condensation (deferred); indexing or search over artifacts; a new tool.
 - **Spec:** `session-history.spec.md` (1.10.0 → 1.11.0, the notice); `agent-loop.spec.md` (the
   artifact line in the tool-output section); `workspace-structure.spec.md` (the directory).
@@ -779,9 +809,154 @@
 - **Acceptance:** a `bash` with 50 KB output under a 2,500 cap → the result carries the marker, the
   file exists with the full bytes, and a following `read(path, offset=2400, limit=50)` returns the
   bytes past the cut (oracle: `tests/integration/agent/test_tool_artifacts.py`, jailed variant in
-  `tests/integration/sandbox/`); the notice for a condensed result names the path; the e2e jailed
-  journey stays green.
-- **Contention:** continues P52-2's files.
+  `tests/integration/sandbox/`); a `fetch` whose text exceeds the cap carries the same marker
+  (`tests/unit/platform/test_fetch.py`, fake opener); the notice for a condensed result names the
+  path; the e2e jailed journey stays green.
+- **Contention:** continues P52-2's files; P52-11 (Wave A) precedes it on `fetch`.
+
+### P52-9 — a tool's clock fits inside the turn's
+
+**Status:** TODO (after P52-7 and P52-8 merge; `lifecycle.py` after P51-9) · **Size:** M ·
+**Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** the 2026-10-24 run on `fab-dev` asked `bash` for `timeout: 600` and `timeout: 900`
+  inside a 300 s turn and `_bash_handler` (`hops/application/builtin_tools.py:272`) honoured both:
+  the argument has no ceiling. `agent/loop_budget.py:135` checks the wall clock only between
+  iterations, so a tool that overruns ends the turn with `failure_kind: timeout`, which
+  `runner.py:42` retries whole. `claimedAt` moves only at hop end and before a retry
+  (`tasks/application/record.py:585`, `queue.py:360`), while `sweep_stale_claims`
+  (`lifecycle.py:102`) fails a claim at a fixed `CLAIM_STALE_TIMEOUT` (1800 s), below the
+  turn + verify lease `reclaim_stale_running` (`lifecycle.py:159`) already computes.
+- **Goal, in order:** (1) `ToolContext.deadline` (monotonic seconds), set once by
+  `run_agent_turn` from the clock it checks the wall clock with; `_bash_handler` runs the command
+  for `min(requested or ctx.timeout, remaining)` with `remaining = max(1, deadline - now)`; a result
+  the clamp killed ends with `[killed at the turn's remaining time (N s); run it as a verify gate or
+  raise turnTimeoutS]`; the `timeout` argument's description names the ceiling. (2)
+  `_build_on_process` (`driver.py:370`) calls `touch_claim(project, task_id)` on `started` when the
+  turn has a task. (3) `sweep_stale_claims` fails a claim only past `max(CLAIM_STALE_TIMEOUT,
+  lease)`, the lease taken from the one helper `reclaim_stale_running` uses.
+- **Non-goals:** MCP timeouts (capped at 60 s already); a tool-caused timeout made non-retryable
+  (deferred, ADR 0034); `verify`'s own timeout; interrupting a running tool from the loop.
+- **Spec:** `agent-loop.spec.md` (requirement 9 gains the tool clamp; the `bash` tool's `timeout`
+  sentence); `pod-dispatch.spec.md` ("Per-hop incremental persistence and crash recovery": the
+  refresh on process start and the sweep floor).
+- **Change:** `agent/tools/registry.py` (`ToolContext.deadline`), `agent/loop.py` (set it),
+  `hops/application/builtin_tools.py` (`_bash_handler`, the `bash` schema text),
+  `hops/application/driver.py::_build_on_process`, `tasks/application/lifecycle.py` (the floor).
+- **Acceptance:** a fake clock 250 s into a 300 s turn and `bash` asking `timeout: 900` → the
+  recording `run_bash` receives 50 and the killed result carries the marker (oracle: the
+  `builtin_tools` unit module under `tests/unit/hops/`, new beside it if none; the deadline's
+  setting in `tests/integration/agent/loop/test_stop_conditions.py`); a `process_started` under a
+  dispatch run → the task's `claimedAt` moves (`tests/integration/tasks/test_retries_and_timeouts.py`,
+  beside `TestRetryDoesNotTripStaleClaimSweep`); a pod with `turnTimeoutS: 2400` and a claim
+  1,900 s old → the sweep leaves it `running` (same file). No bench: the model reads nothing new
+  but the marker.
+- **Contention:** continues P52-7's `builtin_tools.py` and `driver.py`; `lifecycle.py` after
+  P51-9; `loop.py` and `registry.py` are nobody else's in this phase.
+
+### P52-10 — a background process belongs to its turn
+
+**Status:** TODO (after P52-9; `security.py` after P52-4) · **Size:** L · **Model:** Sonnet ·
+**Kind:** behaviour + spec
+
+- **Trigger:** probe of 2026-10-25: `nohup sleep 47 > bg.log 2>&1 &` through `run_bash` returned
+  in 0.02 s and the child outlived the calling process; `classify_command` allows the shape jailed
+  or not, although the lexer already sees the trailing `&` (it stops `cd` placement,
+  security-gates "Redirects"). No handle, no exit event, nothing killed at turn end: the one shape
+  that escapes `dispatch_tool`'s reach today. Every peer harness has a background mode with a
+  handle (ADR 0034).
+- **Goal, in order:** (1) `bash` gains `background: true`: `run_bash` starts the process as today
+  (its own session), sends its output to `<ctx.cache_dir or the scratch dir>/processes/<pgid>.log`,
+  registers the pgid in `ctx.processes` and returns `started pgid=<n> log=<path>` at once;
+  `process_started` carries `background: true`. (2) two built-ins: `process_output(pgid, offset=0)`
+  (kind `read`: the log from `offset` with `read`'s footer form, and whether the process is alive)
+  and `process_stop(pgid)` (kind `write`: `_kill_group`, then `process_exited` with `signal`). (3)
+  `_run_turn_body`'s `finally` stops every live entry of `ctx.processes` and traces each exit with
+  `reason: turn_end`. (4) a trailing `&` (the control operator; not `&&`, `2>&1` or `&>`) joins the
+  opaque markers in `classify_command`: asks jailed or not, reason `background a process with
+  bash background=true`; the corpus gains its rows. (5) under the Docker backend `background` is
+  refused with that reason (deferred, ADR 0034).
+- **Non-goals:** stdin or a PTY; a process shared across hops or tasks; a new trace event type
+  (the two existing ones carry the fields); the cancel path (`add_hop_pid` already tracks the pgid).
+- **Spec:** `agent-loop.spec.md` (tool-output section: the argument and the two tools);
+  `security-gates.spec.md` (the opaque-marker row; "Exec sandbox" requirement 7 extends the
+  no-orphan rule to turn end); `trace-store.spec.md` (requirement 30: the optional fields).
+- **Change:** `agent/tools/builtins/toolbox.py` (`run_bash`'s background branch, `process_output`,
+  `process_stop`, the table type), `agent/tools/registry.py` (`ToolContext.processes`),
+  `hops/application/builtin_tools.py` (schema, two tools), `hops/application/driver.py::_run_turn_body`
+  (the `finally`), `governance/security.py` and `governance/command_lexer.py` (the marker), the
+  policy corpus.
+- **Acceptance:** `bash {command: "sleep 30", background: true}` → returns under 1 s with a pgid;
+  `process_output` shows the log and `alive: true`; the turn ends → no process of that group
+  remains and the trace holds `process_exited` with `reason: turn_end` (oracle:
+  `tests/integration/agent/test_bash_background.py`, built like `test_bash_cancellation.py`; the
+  landlock variant in `tests/integration/sandbox/`); `bash {command: "sleep 30 &"}` → `ask` with
+  the reason, jailed and not (`tests/unit/governance/`); `a && b` and `ls 2>&1` keep today's
+  verdict (the corpus changes only by the added rows). Lane e2e green.
+- **Contention:** continues P52-9's files and P52-8's `toolbox.py`; `security.py` after P52-4, or
+  beside it while P52-4 stays blocked (a different branch of `classify_command`; say so in the packet).
+
+### P52-11 — `fetch` returns text the model can read
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** `fetch_url` returns the raw body (`platform/fetch.py`, the `text_outcome` call) and
+  the cap keeps the head (`kernel/text.py:35`), so at `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` the model
+  reads a page's `<head>` element. Claude Code and Gemini CLI convert a page before the model sees
+  it (ADR 0034).
+- **Goal:** when `Content-Type` is `text/html` (or the body starts with `<!doctype html` or
+  `<html`), the body becomes plain text with the standard library's `html.parser`: `script`,
+  `style`, `noscript` and `svg` dropped; block elements and `br` as line breaks; `h1` to `h3` as
+  one to three `#` and a space; list items as a dash and a space; `pre` and `code` verbatim; a
+  link as `text (href)` when the text differs from the href; whitespace collapsed to at most one
+  blank line. Other content types pass as today. The header line reads `HTTP <status>
+  <content-type>; <n> chars of text`. The tool's description says the page arrives as text and
+  that a long page is kept whole and read back with `read` (P52-8).
+- **Non-goals:** JavaScript; a readability heuristic; wildcard domains; a cache between calls; any
+  change to the allowlist, the deadline, the size cap or the redirect guard.
+- **Spec:** `security-gates.spec.md` ("Network egress and the `fetch` tool", requirement 2: a fifth
+  bullet, the conversion; P52-4 bumps the same spec, the integrator renumbers).
+- **Change:** `platform/fetch.py` (`_html_to_text`, applied before `text_outcome`),
+  `hops/application/builtin_tools.py::_fetch_tool` (the description only).
+- **Acceptance:** a fixture page (`tests/fixtures/fetch/page.html`: title, nav, two headings, a
+  paragraph with a link, a `pre` block, a script) through a fake opener → the committed expected
+  text byte for byte, under 15 % of the HTML's length (oracle: `tests/unit/platform/test_fetch.py`,
+  a class beside `TestDomainAllowlist`); `application/json` → the body unchanged; the allowlist and
+  redirect tests untouched and green. No bench: the fixtures record no `fetch`.
+- **Contention:** `platform/fetch.py` is nobody else's; `builtin_tools.py` precedes P52-7, which
+  continues it in Wave B. Spec seam with P52-4.
+
+### P52-12 — a wait on a machine is an escalation
+
+**Status:** BLOCKED (needs a measured trigger, none recorded; and P51-9, which owns the record) ·
+**Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger (to be filled from a recorded run):** source: a task's trace and `escalations[]`;
+  metric: tasks that fail, re-poll or spend a hop waiting on CI, a deploy or a URL; window: the
+  first ten Tack-driven runs after Phase 51 closes; threshold: one; observed: _none_. Today's
+  estimate, labelled as such: Tack's pipelines end at a push, so the wait sits in Tack, not in
+  docket (ADR 0034 decision 5).
+- **Goal:** `EscalationKind` gains `wait` with `condition: {kind: http|command, target, everyS,
+  untilS}`; a pipeline step `wait: {...}` parks the task like a consult park; `sweep_escalations`
+  probes the condition on its interval and calls `resolve` with `met` or `timed_out`; `docket
+  inbox` lists it with the next probe time; `whenNobody[wait]` is `fail` at every level, since
+  nobody can answer it.
+- **Non-goals:** a wait inside a turn; webhooks from CI (the probe polls); a condition that makes a
+  model call.
+- **Spec:** `operator-api.spec.md` (the kind and the condition; a contract bump after P51-9's
+  `operator-v2`), `pod-dispatch.spec.md` (the step and the park), `security-gates.spec.md`
+  ("Autonomy levels": the `wait` row).
+- **Change:** `kernel/operator_contract.py` (`EscalationKind` at `:295`, the condition),
+  `pipeline/domain/step.py` (the step),
+  `hops/application/sweep.py` and `governance/escalation_expiry.py` (the probe),
+  `interfaces/cli/commands/inbox*` (the line), `teams/autonomy.py` (the row).
+- **Acceptance:** a pipeline with `wait: {kind: http, target: <fake server>, everyS: 1, untilS: 5}`
+  → the task parks with a `wait` escalation; the server starts answering 200 → the next sweep
+  resolves `met` and the following step runs; a server that never answers → `timed_out` and the
+  task fails with the reason (oracle: the harness of
+  `tests/integration/tasks/dispatch/test_operator_input.py`, in a new module beside it; the e2e
+  lane for the inbox line).
+- **Contention:** the escalation record and `sweep.py` after P51-9; `step.py` is nobody else's.
 
 ## How work runs on this board (read before claiming a card)
 
