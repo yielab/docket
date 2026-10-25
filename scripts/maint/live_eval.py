@@ -2,14 +2,14 @@
 """Repeat a live scenario of ``scripts/smoke_workflow.py`` N times and compare the runs by skeleton.
 
 Each run is one smoke subprocess with ``--workdir`` inside ``--out``; its trace is read from the
-JSONL files docket wrote under ``<world>/.docket/traces/`` (what ``docket task trace --json``
-prints), and ``tests/support/e2e_oracles.py::skeleton_of`` gives the skeleton. Tokens are the
-endpoint's measured counts from ``hop_finished``; there is no cost figure. The trace has no typed
-stop reason, so a turn that hit a bound is read from the hop's error text. Writes ``run-NN.json``,
-``run-NN.log``, ``summary.json``, ``summary.md`` and ``skeletons.json`` (a ``--baseline`` file).
-Exit 1 on any governance violation, a skeleton the baseline lacks, or a run not evaluated.
+JSONL files docket wrote under ``<world>/.docket/traces/``, and
+``tests/support/e2e_oracles.py::skeleton_of`` gives the skeleton. Tokens are the endpoint's measured
+counts from ``hop_finished``; there is no cost figure. A turn that hit a bound is read from the
+hop's error text. Writes ``run-NN.json``, ``run-NN.log``, ``summary.json``, ``summary.md`` and
+``skeletons.json``. Exit 1 on a governance violation, a new skeleton or a run not evaluated.
 
-    live_eval.py -n 3 --out DIR [--baseline FILE] [--dry-run]
+    live_eval.py -n 3 --out DIR [--baseline FILE] [--dry-run] [--consult-mode park|decide]
+        [--provider anthropic --allow-remote --model ID]   (the key is wiped from --out)
 """
 
 from __future__ import annotations
@@ -34,6 +34,8 @@ REPO = Path(__file__).resolve().parents[2]
 SMOKE = REPO / "scripts" / "smoke_workflow.py"
 
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / "scripts"))
+import live_credentials  # noqa: E402
 from tests.support.e2e_oracles import skeleton_of  # noqa: E402
 
 Skeleton = tuple[tuple[str, ...], ...]
@@ -279,14 +281,18 @@ def smoke_command(args: argparse.Namespace, world: Path) -> list[str]:
         ("--scenario", args.scenario),
         ("--endpoint", args.endpoint),
         ("--model", args.model),
+        ("--consult-mode", args.consult_mode),
+        ("--provider", args.provider),
     ):
         if value:
             command += [flag, value]
+    if args.allow_remote:
+        command.append("--allow-remote")
     return command
 
 
-def run_once(args: argparse.Namespace, index: int) -> dict[str, Any]:
-    """Run the smoke once and evaluate what it left; the log is kept beside the record."""
+def run_once(args: argparse.Namespace, index: int, key: str | None = None) -> dict[str, Any]:
+    """Run the smoke once and evaluate what it left; a remote *key* is wiped before the read-back."""
     run_dir = args.out / f"run-{index:02d}"
     world = run_dir / "world"
     run_dir.mkdir(parents=True)
@@ -307,6 +313,9 @@ def run_once(args: argparse.Namespace, index: int) -> dict[str, Any]:
         except subprocess.TimeoutExpired:
             code = None
             log.write(f"\nlive_eval: run exceeded {args.run_timeout}s and was stopped\n")
+    if key:
+        live_credentials.scrub_tree(run_dir, key)
+        live_credentials.scrub_file(log_path, key)
     output = log_path.read_text(encoding="utf-8", errors="replace")
     events = load_events(world / ".docket" / "traces") if world.is_dir() else []
     record = evaluate_run(index, code, output, events)
@@ -335,6 +344,21 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--model", help="Loaded model id for the smoke (default: discovered).")
     parser.add_argument(
+        "--consult-mode",
+        choices=("park", "decide"),
+        help="The smoke pod's consultMode (default: the smoke's own, park).",
+    )
+    parser.add_argument(
+        "--provider",
+        help="A built-in remote provider for the smoke instead of a loopback endpoint; "
+        "needs --model and --allow-remote.",
+    )
+    parser.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="Consent to sending the runs' prompts to the --provider's remote service.",
+    )
+    parser.add_argument(
         "--run-timeout", type=float, default=3600.0, help="Seconds per run (default: 3600)."
     )
     parser.add_argument(
@@ -343,6 +367,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.runs < 1:
         parser.error("-n/--runs must be at least 1")
+    if args.provider and not args.allow_remote:
+        parser.error(f"--provider {args.provider} is a remote service: pass --allow-remote")
+    if args.allow_remote and not args.provider:
+        parser.error("--allow-remote needs --provider")
     return args
 
 
@@ -355,11 +383,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.out.exists() and any(args.out.iterdir()):
         print(f"live_eval: --out must be new or empty: {args.out}", file=sys.stderr)
         return 2
+    key: str | None = None
+    if args.provider:
+        if args.provider not in live_credentials.REMOTE_KEY_ENV:
+            known = ", ".join(live_credentials.REMOTE_KEY_ENV)
+            print(
+                f"live_eval: unsupported --provider {args.provider}; supported: {known}",
+                file=sys.stderr,
+            )
+            return 2
+        key = live_credentials.resolve_key(args.provider, os.environ, Path.home())
+        if key is None:
+            name = live_credentials.REMOTE_KEY_ENV[args.provider]
+            print(f"live_eval: no {args.provider} key: export {name}", file=sys.stderr)
+            return 2
     baseline = load_baseline(args.baseline) if args.baseline else None
     args.out.mkdir(parents=True, exist_ok=True)
     runs = []
     for index in range(1, args.runs + 1):
-        runs.append(run_once(args, index))
+        runs.append(run_once(args, index, key))
         print(f"run {index}/{args.runs}: {runs[-1]['outcome']}", flush=True)
     summary = summarise(runs)
     distinct = [d["skeleton"] for d in summary["distinctSkeletons"]]
@@ -370,6 +412,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     markdown = render_markdown(summary, runs, new)
     (args.out / "summary.md").write_text(markdown, encoding="utf-8")
+    if key:
+        live_credentials.scrub_tree(args.out, key)
     print(
         f"pass rate {summary['passRate']:.0%}; skeletons {len(distinct)}; "
         f"violations {summary['violations']}; summary in {args.out / 'summary.md'}"

@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Active
 **Last Updated**: 2026-10-25
 
@@ -275,7 +275,25 @@ final exact read assertion after the pipeline completes.
 
 Options: `--live-model` (required), `--endpoint` (loopback base URL, default
 `http://127.0.0.1:8081/v1`), `--model`, `--scenario basic|memory-maintenance` (default
-`memory-maintenance`), and `--workdir`.
+`memory-maintenance`), `--workdir`, `--consult-mode park|decide` (default `park`) and
+`--provider <name> --allow-remote`.
+
+`--consult-mode decide` is applied with `docket pod set consultMode decide` on the smoke pod after
+provisioning; `park`, the default, runs no such command. `--provider` registers that built-in
+remote provider (`anthropic`) in place of the loopback endpoint and needs `--model`, because a
+remote catalog is never probed to pick one. Without `--allow-remote` a `--provider` run **MUST**
+exit 2 with a one-line reason before it makes any request, and `--provider` with `--endpoint` is a
+refused invocation. The banner of such a run says `remote: <provider>`, never `(loopback only)`.
+The default run (no `--provider`) stays loopback-only and unchanged.
+
+The remote key comes from the provider's environment variable (`ANTHROPIC_API_KEY`) or, when that
+is unset, from the operator's own `~/.docket/secrets.json`, read at run time. It **MUST NOT** be
+passed as an argument, printed, or left in the world or in anything `scripts/maint/live_eval.py`
+writes under its `--out` (the run log, the records, a kept world): the smoke removes the world's
+own secrets files and redacts the key value from the rest of the world when it ends, and
+`live_eval.py` redacts its log and its `--out` the same way. `live_eval.py` passes `--consult-mode`,
+`--provider` and `--allow-remote` through to the smoke and refuses `--provider` without
+`--allow-remote`.
 
 An explicitly selected live-local canary **MUST** run the same workflow against a real
 OpenAI-compatible model without replacing its replies. An endpoint override **MUST** remain

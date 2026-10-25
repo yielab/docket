@@ -24,7 +24,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
@@ -34,6 +34,9 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import live_credentials
+
 
 class SmokeFailure(RuntimeError):
     """A smoke assertion or subprocess failed."""
@@ -42,6 +45,8 @@ class SmokeFailure(RuntimeError):
 _BASIC_SCENARIO = "basic"
 _MEMORY_SCENARIO = "memory-maintenance"
 _SCENARIOS = (_BASIC_SCENARIO, _MEMORY_SCENARIO)
+_CONSULT_MODES = ("park", "decide")
+_DEFAULT_ENDPOINT = "http://127.0.0.1:8081/v1"
 
 
 def _basic_task_description() -> str:
@@ -634,6 +639,8 @@ class _LiveModel:
     endpoint: str
     model_id: str
     context_tokens: int | None = None
+    provider: str = "smoke-local"
+    remote: bool = False
 
 
 def _loopback_endpoint(raw: str) -> str:
@@ -1438,27 +1445,38 @@ def _verify_final_state(
 
 
 def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> None:
-    provider_args = [
-        "setup",
-        "provider",
-        "add",
-        "smoke-local",
-        live.endpoint,
-        "--model",
-        live.model_id,
-        "--no-preset",
-    ]
+    if live.remote:
+        # A catalog provider needs no URL; its key is read from the subprocess environment.
+        provider_args = ["setup", "provider", "add", live.provider, "--no-preset"]
+    else:
+        provider_args = [
+            "setup",
+            "provider",
+            "add",
+            live.provider,
+            live.endpoint,
+            "--model",
+            live.model_id,
+            "--no-preset",
+        ]
     if live.context_tokens is not None:
         provider_args.extend(["--ctx", str(live.context_tokens)])
     _run_cli(repo, env, *provider_args, process_timeout=None)
 
-    model_ref = f"smoke-local/{live.model_id}"
+    model_ref = f"{live.provider}/{live.model_id}"
     for role in ("lead", "implementer", "reviewer", "tester"):
         _run_cli(repo, env, "setup", "model", "set", role, model_ref, process_timeout=None)
     _run_cli(repo, env, "setup", "model", "set", "default", model_ref, process_timeout=None)
 
 
-def _run(world: Path, repo: Path, live: _LiveModel, scenario: str) -> None:
+def _run(
+    world: Path,
+    repo: Path,
+    live: _LiveModel,
+    scenario: str,
+    consult_mode: str = "park",
+    api_key: str | None = None,
+) -> None:
     home, codebase, pod_spec, pipeline = _write_inputs(world, scenario)
     env = os.environ.copy()
     env.update(
@@ -1473,6 +1491,8 @@ def _run(world: Path, repo: Path, live: _LiveModel, scenario: str) -> None:
     )
     for inherited in ("DOCKET_LLM_BASE_URL", "DOCKET_LLM_API_KEY", "SMOKE_LOCAL_API_KEY"):
         env.pop(inherited, None)
+    if live.remote and api_key:
+        env[live_credentials.REMOTE_KEY_ENV[live.provider]] = api_key
 
     def run_cli(
         *args: str, abort_event: threading.Event | None = None
@@ -1480,7 +1500,10 @@ def _run(world: Path, repo: Path, live: _LiveModel, scenario: str) -> None:
         return _run_cli(repo, env, *args, process_timeout=None, abort_event=abort_event)
 
     print(f"Docket smoke world: {world}")
-    print(f"Real model endpoint: {live.endpoint} (loopback only)")
+    if live.remote:
+        print(f"Real model endpoint: remote: {live.provider}")
+    else:
+        print(f"Real model endpoint: {live.endpoint} (loopback only)")
     print(f"Loaded model: {live.model_id}")
     if live.context_tokens is not None:
         print(f"Reported context window: {live.context_tokens:,} tokens")
@@ -1494,6 +1517,8 @@ def _run(world: Path, repo: Path, live: _LiveModel, scenario: str) -> None:
 
     run_cli("init", "--from", str(pod_spec))
     run_cli("setup", "sandbox", "off")
+    if consult_mode != "park":
+        run_cli("pod", "set", "consultMode", consult_mode, "--pod", "smoke")
     fleet = _load_json(home / "fleet.json")
     project_agents = [
         agent for agent in fleet.get("agents", []) if str(agent.get("id", "")).startswith("smoke-")
@@ -1548,7 +1573,7 @@ def _run(world: Path, repo: Path, live: _LiveModel, scenario: str) -> None:
     print("\nSMOKE PASS — complete Docket workflow is operational")
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--live-model",
@@ -1557,8 +1582,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--endpoint",
-        default="http://127.0.0.1:8081/v1",
-        help="Loopback base URL of the model (default: http://127.0.0.1:8081/v1).",
+        help=f"Loopback base URL of the model (default: {_DEFAULT_ENDPOINT}).",
     )
     parser.add_argument(
         "--model",
@@ -1570,15 +1594,49 @@ def _parse_args() -> argparse.Namespace:
         help="Scenario to run (default: memory-maintenance).",
     )
     parser.add_argument(
+        "--consult-mode",
+        choices=_CONSULT_MODES,
+        default="park",
+        help="The smoke pod's consultMode (default: park, which sets nothing).",
+    )
+    parser.add_argument(
+        "--provider",
+        help="Use this built-in remote provider instead of a loopback endpoint; needs --model "
+        f"and --allow-remote (one of: {', '.join(live_credentials.REMOTE_KEY_ENV)}).",
+    )
+    parser.add_argument(
+        "--allow-remote",
+        action="store_true",
+        help="Consent to sending the run's prompts to the --provider's remote service.",
+    )
+    parser.add_argument(
         "--workdir",
         type=Path,
         help="Preserve the smoke world at this new or empty directory for inspection.",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = _parse_args()
+def _remote_model(args: argparse.Namespace) -> tuple[_LiveModel, str] | str:
+    """The remote model and its key, or the one-line reason this invocation is refused."""
+    if not args.allow_remote:
+        return f"--provider {args.provider} is a remote service: pass --allow-remote to use it"
+    if args.endpoint:
+        return "--provider and --endpoint are exclusive: a remote run has no loopback endpoint"
+    if args.provider not in live_credentials.REMOTE_KEY_ENV:
+        known = ", ".join(live_credentials.REMOTE_KEY_ENV)
+        return f"unsupported --provider {args.provider}; supported: {known}"
+    if not args.model:
+        return "--provider needs --model: a remote catalog is not probed to pick one"
+    key = live_credentials.resolve_key(args.provider, os.environ, Path.home())
+    if key is None:
+        name = live_credentials.REMOTE_KEY_ENV[args.provider]
+        return f"no {args.provider} key: export {name}, or store it with docket setup provider"
+    return _LiveModel("", args.model, provider=args.provider, remote=True), key
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
     if not args.live_model:
         print(
             "SMOKE FAIL — this script needs a real model: pass --live-model. The deterministic "
@@ -1587,6 +1645,14 @@ def main() -> int:
         )
         return 2
     scenario = args.scenario or _MEMORY_SCENARIO
+    api_key: str | None = None
+    remote: _LiveModel | None = None
+    if args.provider:
+        resolved = _remote_model(args)
+        if isinstance(resolved, str):
+            print(f"SMOKE FAIL — {resolved}", file=sys.stderr)
+            return 2
+        remote, api_key = resolved
     repo = Path(__file__).resolve().parents[1]
     temp: tempfile.TemporaryDirectory[str] | None = None
     if args.workdir is None:
@@ -1600,7 +1666,8 @@ def main() -> int:
         world.mkdir(parents=True, exist_ok=True)
 
     try:
-        _run(world, repo, _discover_live_model(args.endpoint, args.model), scenario)
+        live = remote or _discover_live_model(args.endpoint or _DEFAULT_ENDPOINT, args.model)
+        _run(world, repo, live, scenario, args.consult_mode, api_key)
     except (
         SmokeFailure,
         OSError,
@@ -1608,13 +1675,18 @@ def main() -> int:
         subprocess.SubprocessError,
         json.JSONDecodeError,
     ) as exc:
-        print(f"\nSMOKE FAIL — {exc}", file=sys.stderr)
+        reason = str(exc).replace(api_key, live_credentials.REDACTED) if api_key else str(exc)
+        print(f"\nSMOKE FAIL — {reason}", file=sys.stderr)
         if temp is not None:
             print("Rerun with --workdir PATH to preserve failed state.", file=sys.stderr)
             temp.cleanup()
         else:
             print(f"Inspect state at: {world}", file=sys.stderr)
         return 1
+
+    finally:
+        if api_key:
+            live_credentials.scrub_tree(world, api_key)
 
     if temp is not None:
         print("Smoke world was temporary; rerun with --workdir PATH to preserve it.")
