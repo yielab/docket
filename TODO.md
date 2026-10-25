@@ -406,28 +406,29 @@
   command line stays byte-identical; `live_eval.py --dry-run` prints the flag.
 - **Contention:** `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py` and their tests.
 
-### P51-13 — the smoke with the jail on grants the toolchain its fixture needs
+### P51-13 — the smoke refuses a world inside a git work tree
 
 **Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
 
-- **Trigger (measured 2026-10-25):** `live_eval.py --sandbox on` fails in the prepare step before
-  any model call: `prepare failed: uv sync --frozen (exit 126): uv: Permission denied`. The smoke
-  fixture has a `uv.lock`, so docket infers `uv sync --frozen`; inside the jail only the default
-  read roots run, and `uv` resolves to a path outside them (a symlink into a package manager under
-  `/home`). An operator grants such a toolchain with `docket setup sandbox read add PATH`; the
-  smoke's throwaway home has no grants.
-- **Goal:** with `--sandbox on`, after `setup sandbox on`, the smoke grants read of the resolved
-  directory of each tool its fixture's prepare step needs (`uv` today), by calling
-  `docket setup sandbox read add <dir>` on its throwaway home only. Never the operator's home.
-- **Non-goals:** any change under `src/`; changing what the jail grants by default; granting
-  anything when `--sandbox off`.
+- **Trigger (measured 2026-10-25, corrected):** `live_eval.py --out` and `smoke_workflow.py
+  --workdir` accept a path inside a git work tree. The `basic` scenario creates no repository of its
+  own, so docket climbs to the enclosing repository and prepares and branches that one: the runs of
+  that day left 18 `docket/smoke/*` branches and linked worktrees in this repository, and a
+  `uv.lock` at the enclosing root made `prepare` run `uv sync --frozen`, which the jail refused
+  (`uv: Permission denied`, exit 126) before any model call. The first diagnosis, that the fixture
+  needs a toolchain grant, was wrong: the fixture has no lockfile. The same run outside a repository
+  passed.
+- **Goal:** both scripts refuse a world path whose nearest ancestor is a git work tree or has a
+  `.git`, with one `SMOKE FAIL` line naming the path and suggesting a directory under the system
+  temp root; `live_eval.py` refuses before the first run. A `--workdir` that is itself a new empty
+  directory outside any repository stays as it is.
+- **Non-goals:** any change under `src/` (that docket follows an enclosing repository when the
+  pod's path is not one is the measured behaviour of `git rev-parse --show-toplevel`; record it as a
+  follow-up with its trigger, do not change it here); a toolchain grant.
 - **Acceptance:** tests (style of `tests/integration/product/smoke/test_sandbox_flag.py`) for the
-  exact `setup sandbox read add` commands and their order, none when `off`, and a tool that is not
-  found being a one-line `SMOKE FAIL` before any request. One manual verification by the worker:
-  a single run of `uv run python scripts/smoke_workflow.py --live-model --scenario basic
-  --consult-mode decide --sandbox on --workdir <new dir in the scratch>` against the local model
-  (loopback, free; never a remote provider) gets past the prepare step.
-- **Contention:** `scripts/smoke_workflow.py` and its tests. Not P51-9's files.
+  refusal in each script with a fake enclosing repository (`git init` in a tmp dir), no refusal
+  for a plain tmp dir, and the default command lines unchanged.
+- **Contention:** `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py` and their tests.
 
 ### P51-9 — retire the old shapes
 
