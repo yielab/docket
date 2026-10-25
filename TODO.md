@@ -316,7 +316,7 @@
 
 ### P51-8 — the level travels with the task; the table is a document
 
-**Status:** TODO (needs P51-6; direction approved 2026-10-25) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged 2026-10-25, eb55a12d)· **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** `lights-out` has four requirements, none about pauses (`profile.py::lights_out_violations`);
   Tack computes a level per task (`tack-core::autonomy::level_for`) that docket never receives;
