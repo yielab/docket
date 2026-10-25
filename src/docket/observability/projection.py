@@ -12,6 +12,8 @@ from docket.observability import trace
 from docket.observability.spans import (
     _GENERIC_CONTENT_ATTRS,
     _STRUCTURAL_KEYS,
+    ESCALATION_ATTRIBUTES,
+    ESCALATION_EVENTS,
     MINIMAL_POLICY,
     Attributes,
     ExportPolicy,
@@ -58,6 +60,7 @@ DEFAULT_EVENTS: frozenset[str] = frozenset(
         "stale_claim",
         "paused_refused",
         "run_cancelled",
+        *ESCALATION_EVENTS,
     }
 )
 
@@ -411,6 +414,115 @@ def _handle_generic_event(
     return []
 
 
+# An escalation's settling events: the outcome its span records and the status it closes with.
+_ESCALATION_SETTLED: dict[str, tuple[str, str]] = {
+    "escalation_resolved": ("resolved", "ok"),
+    "escalation_expired": ("expired", "error"),
+    "escalation_decided": ("decided", "ok"),
+}
+
+
+def _escalation_attributes(payload: dict[str, Any], policy: ExportPolicy) -> Attributes:
+    attributes: Attributes = {
+        f"docket.escalation.{name}": value
+        for key, name in ESCALATION_ATTRIBUTES.items()
+        if isinstance(value := payload.get(key), str | int | bool) and value != ""
+    }
+    payload_key, attr_name, cls = _GENERIC_CONTENT_ATTRS["escalation_asked"]
+    prompt = payload.get(payload_key)
+    if _granted(policy, cls) and isinstance(prompt, str) and prompt:
+        attributes[attr_name] = _text.cut_chars(prompt, policy.content_max_chars)
+    return attributes
+
+
+def _escalation_parent(state: ProjectionState, session_id: str) -> str:
+    """The innermost open hop span of *session_id*, else that session's root (open or not)."""
+    for span in reversed(state.stacks.get(session_id, [])[1:]):
+        if _is_hop_span(span):
+            return span.span_id
+    return _span_id(session_id, "session", "root")
+
+
+def _handle_escalation_asked(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
+    session_id = str(record.get("session_id", ""))
+    _ensure_root(state, session_id, record, policy)
+    payload = record.get("payload") or {}
+    escalation_id = str(payload.get("escalation", ""))
+    state.escalations[escalation_id] = (
+        session_id,
+        _OpenSpan(
+            span_id=_span_id(session_id, "escalation", escalation_id),
+            parent_id=_escalation_parent(state, session_id),
+            name="docket.escalation",
+            start_ts=str(payload.get("askedAt") or record.get("ts", "")),
+            kind="escalation",
+            key=escalation_id,
+            attributes=_escalation_attributes(payload, policy),
+        ),
+    )
+    return []
+
+
+def _handle_escalation_settled(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
+    session_id = str(record.get("session_id", ""))
+    payload = record.get("payload") or {}
+    ts = str(record.get("ts", ""))
+    escalation_id = str(payload.get("escalation", ""))
+    outcome, status = _ESCALATION_SETTLED[str(record.get("event_type", ""))]
+    held = state.escalations.pop(escalation_id, None)
+    if held is not None:
+        session_id, open_span = held
+    else:
+        # No ask was seen here: a restart between ask and settlement, or a pause a policy decided
+        # without ever asking. The settling payload carries what the span needs.
+        open_span = _OpenSpan(
+            span_id=_span_id(session_id, "escalation", escalation_id),
+            parent_id=_span_id(session_id, "session", "root"),
+            name="docket.escalation",
+            start_ts=str(payload.get("askedAt") or ts),
+            kind="escalation",
+            key=escalation_id,
+            attributes={},
+        )
+    attributes = {**open_span.attributes, **_escalation_attributes(payload, policy)}
+    attributes["docket.escalation.outcome"] = outcome
+    return [
+        Span(
+            trace_id=_trace_id(session_id),
+            span_id=open_span.span_id,
+            parent_id=open_span.parent_id,
+            name=open_span.name,
+            start_ts=open_span.start_ts,
+            end_ts=ts,
+            status=status,
+            attributes=attributes,
+            events=tuple(open_span.events),
+        )
+    ]
+
+
+def _handle_escalation_delivered(
+    state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
+) -> list[Span]:
+    payload = record.get("payload") or {}
+    held = state.escalations.get(str(payload.get("escalation", "")))
+    if held is None:
+        return _handle_generic_event(state, record, policy)
+    channel = payload.get("channel")
+    held[1].events.append(
+        SpanEvent(
+            name="escalation_delivered",
+            ts=str(record.get("ts", "")),
+            attributes={"docket.escalation.channel": channel} if isinstance(channel, str) else {},
+        )
+    )
+    return []
+
+
 _Handler = Callable[[ProjectionState, dict[str, Any], ExportPolicy], list[Span]]
 
 _SPECIAL: dict[str, _Handler] = {
@@ -419,6 +531,11 @@ _SPECIAL: dict[str, _Handler] = {
     "tool_call": _handle_tool_call,
     "tool_result": _handle_tool_result,
     "session_end": _handle_session_end,
+    "escalation_asked": _handle_escalation_asked,
+    "escalation_resolved": _handle_escalation_settled,
+    "escalation_expired": _handle_escalation_settled,
+    "escalation_decided": _handle_escalation_settled,
+    "escalation_delivered": _handle_escalation_delivered,
 }
 
 
@@ -475,6 +592,12 @@ def flush_open(state: ProjectionState) -> list[Span]:
     """Force-close every span still open in ``state`` (children before their root),
     at each session's last-seen timestamp, and clear that session's state."""
     closed: list[Span] = []
+    for escalation_id, (asked_in, pending) in list(state.escalations.items()):
+        # A later settlement sends the whole span again under the same id, so a destination that
+        # upserts ends with the real wait.
+        asked_ts = state.last_ts.get(asked_in) or pending.start_ts
+        closed.append(_close(pending, _trace_id(asked_in), asked_ts, "unset"))
+        del state.escalations[escalation_id]
     for session_id in list(state.stacks):
         stack = state.stacks.pop(session_id)
         ts = state.last_ts.pop(session_id, None) or (stack[0].start_ts if stack else "")

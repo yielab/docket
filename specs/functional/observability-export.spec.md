@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Implemented and live. Trace records project into vendor-neutral spans and are sent,
 off the turn's thread, to every enabled `kind: exporter` destination over the one `otlp-http`
 dialect; what a destination receives beyond structure is set by its own privacy level.
@@ -98,7 +98,7 @@ This specification does NOT cover:
     `tester_verdict_failed`, and `verification_failed` **MUST** become a `SpanEvent` on the
     session root (never on a nested span), named for the record's `event_type`, carrying
     `docket.hop`/`docket.task_id` only when the record supplies them.
-11. Every other `EVENT_TYPES` record type **MUST** become a `SpanEvent` on the innermost span
+11. Every other `EVENT_TYPES` record type (the `escalation_*` family aside, requirements 110-115) **MUST** become a `SpanEvent` on the innermost span
     still open for that session, named for the record's `event_type`, carrying one
     `docket.<key>` attribute for each of that event type's *declared* structural payload keys
     present with a scalar (`str`/`int`/`bool`) value (requirement 70). An undeclared key
@@ -107,10 +107,14 @@ This specification does NOT cover:
     unconditionally.
 12. A `session_end` record **MUST** close the root span and every span still open for that
     session, each with `status: "unset"`, and **MUST** remove that session's state so nothing
-    further is emitted for it.
+    further is emitted for it. An escalation span (requirement 110) is not a span of the session:
+    it stays open across `session_end` and `flush_turn`, and only `flush_open` closes it (requirement 13).
 13. `flush_open(state)` **MUST** close every span still open across every session `state` still
     holds, at that session's last-seen timestamp, and **MUST** clear `state` for each session it
-    closes.
+    closes. It also closes every open escalation span, at the last timestamp seen for the session
+    that asked it (its `start_ts` when that session has ended), with status `"unset"`; the
+    settlement that follows sends the span whole under the same `span_id`, so a destination that
+    upserts ends with the real wait.
 14. A record whose `event_type` this layer does not recognise **MUST** be ignored: it
     **MUST NOT** raise, and **MUST NOT** mutate `state`.
 
@@ -403,6 +407,38 @@ This specification does NOT cover:
     `docket.privacy.classes` (its `classes`, comma-joined in sorted order, the empty string for
     `minimal`).
 
+### Escalation spans
+
+An escalation is one pause for a decision from outside the task (`operator-loop.spec.md` "Escalations");
+its trace events share one payload (`operator-loop.spec.md` "Escalation events"), and the span is the
+wait: its duration is the time between the ask and the settlement.
+
+110. An `escalation_asked` record **MUST** open one span named `docket.escalation` and return no
+     closed span. Its `span_id` is derived from `(session_id, "escalation", <escalation id>)`,
+     its `start_ts` is the payload's `askedAt` (the record's `ts` when absent), and its parent is
+     the innermost open hop span of the record's session, else that session's root. The open span
+     is held by escalation id, outside every session's stack, so it survives the session's end
+     and the turn's flush (requirement 12).
+111. An `escalation_resolved`, `escalation_expired` or `escalation_decided` record **MUST** close
+     that escalation's span with `end_ts` the record's `ts`, and `status` `"ok"` for resolved and
+     decided, `"error"` for expired. A settling record whose escalation has no open span (a
+     restart between ask and settlement, or a pod-decided consult, which is never asked) **MUST**
+     still return the complete span, built from its payload: `start_ts` is `askedAt`, the parent
+     is the session root. The projection **MUST NOT** open a session root for it.
+112. An `escalation_delivered` record **MUST** become a `SpanEvent` named `escalation_delivered`,
+     carrying `docket.escalation.channel`, on that escalation's open span; with no open span it
+     is a generic event (requirement 11) on the innermost open span of its session.
+113. The `docket.escalation` span **MUST** carry the structural attributes
+     `docket.escalation.id`, `.kind`, `.policy`, `.task`, `.step` and `.outcome` (`resolved`,
+     `expired` or `decided`, set when it closes), plus `.by` (`person`, `policy` or `timeout`) and
+     `.channel` and `.level` whenever the payload that closes it, or the one that opened it,
+     carries them. No payload carries `level` yet.
+114. The escalation's `prompt` payload key **MUST** be exposed as `docket.escalation.prompt`, class
+     `prompts`, gated by requirement 69; at `minimal`, `actions` and any `share` list without
+     `prompts` the attribute **MUST** be absent. The ids and labels of the options and the
+     recommendation are not exported.
+115. `DEFAULT_EVENTS` **MUST** include the five `escalation_*` event types.
+
 ### Exporter privacy fields
 
 80. `ExporterSpec` **MUST** carry `privacy` (`Literal["minimal", "actions", "conversation",
@@ -614,6 +650,7 @@ def flush_open(state: ProjectionState) -> list[Span]: ...   # closes everything
 
 DEFAULT_EVENTS: frozenset[str]
 ATTRIBUTE_CLASSES: dict[str, str]     # non-structural attribute name -> its content class
+                                      # (docket.escalation.prompt -> prompts)
 ```
 
 ### Pipeline and registry

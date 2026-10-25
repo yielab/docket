@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.6.0
+**Version**: 2.7.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -34,7 +34,8 @@ This specification covers:
   diff/render/delivery framework and every delivery dialect, the outbound `telegram` dialect
   included
 - Answering a parked question (`answer_task`), question expiry, and the trace events
-  `input_requested`, `question_asked`, `input_answered` and `input_expired`
+  `input_requested`, `question_asked`, `input_answered` and `input_expired`, and the
+  `escalation_*` family that records the same pauses with one payload
 - The stable digest that matches a tool call to a single-use pre-grant
   (`canonical_args_digest`), the interruption forecast and the pre-grant surfaces
 - The `consult` built-in tool, the corrections ledger, the `lights-out` profile lines and the
@@ -428,11 +429,14 @@ failure as a failed `DeliveryResult` without raising.
    asks those questions instead of the generic single free-text `answer` property; this changes
    only what `validate_answer` checks *content* against, never how an answer resolves or
    resumes.
-5. This area owns four trace event types, each written to the task's session:
+5. This area owns four trace event types, each written to the task's session. They are the older
+   shapes of a pause; every pause also writes the `escalation_*` family of area 11, item 8, which
+   is the one to read.
    - `input_requested` — an `input` step parked the task; payload `{task, step, questionId}`.
    - `question_asked` — a `consult` call posed a question; payload `{questionId, kind, mode,
      question}` (the full `QuestionV11`). When the pod decided it alone (Consult item 7) `mode` is
-     `decided` and the payload adds `decidedOptionId`.
+     `decided` and the payload adds `decidedOptionId`, which the span projection forwards as the
+     `docket.decidedOptionId` attribute.
    - `input_answered` — `answer_task` succeeded; payload `{task, step, questionId, action}`.
    - `input_expired` — the expiry sweep blocked the task; payload `{task, questionId}`.
 
@@ -606,8 +610,31 @@ every output a surface prints is unchanged.
    blocked task is listed through its own status as before, because a blocked task and one parked
    earlier have no escalation. The scan of every task remains for `failed`, `doneSince`,
    `running` and `next`.
-7. **No new surface.** No route, tool, verb, event or trace payload gains a field in this version;
-   the record is read through the store only.
+7. **No new surface.** No route, tool or verb gains a field because of the record, and the record
+   is read through the store only. The trace events of item 8 are the one addition.
+8. **Escalation events.** Five trace event types carry one payload for every kind of pause. Each is
+   written to the task's session (`agent:<pod>:<task>`; `<pod>-approval` when the pause names no
+   task), with the record's `task` as the event's task id and its `role` (`operator` when empty)
+   as the agent role. The payload is always `{escalation, kind, task, step, policy, askedAt}`
+   (the record's `id`, `kind`, `task`, `step`, `policy` and `askedAt`), plus:
+
+   | Event | Written when | Adds |
+   | --- | --- | --- |
+   | `escalation_asked` | the record is opened (item 1) | `causedBy`, `onExpiry`, `expiresAt` when set, `options` (the option ids), `prompt` (already redacted) |
+   | `escalation_delivered` | a channel delivered it to a person | `channel` |
+   | `escalation_resolved` | a person settled it | `by: "person"`, `optionId`, `channel` |
+   | `escalation_expired` | an expiry sweep settled it (item 5) | `by: "timeout"` |
+   | `escalation_decided` | the pod settled it without a person | `by: "policy"`, `optionId` |
+
+   `escalation_asked` is written by the store's opener after the record and the task link exist.
+   `escalation_expired` is written by the two expiry sweeps only when they moved a still-`pending`
+   record. `escalation_decided` is written where a pod-decided consult applies its recommendation
+   (Consult item 7), with `policy` `recommendation` and a fresh escalation id: that pause never
+   parks, so no record is stored for it in this version. `escalation_delivered` and
+   `escalation_resolved` have a builder and a projection and no writer yet; the resolve step
+   writes them. The older events of area 7 item 5 and `approval_*` are still written as before.
+   `prompt` is in the trace for every record and reaches an exporter only at a privacy level that
+   grants `prompts` (`observability-export.spec.md` requirement 114).
 
 ### Profile lines (ADR 0025 D2)
 
@@ -914,8 +941,11 @@ Each JSONL line is a JSON object with these fields:
   `validate_answer`, `validate_answer_v11`, `ApprovalView`, `TaskView`, `InboxView`,
   `CloudEvent`, `make_event`, `canonical_args_digest`, `EscalationKind`, `Resolution`,
   `Escalation`, `new_escalation_id`, `is_escalation_id`
+- `src/docket/kernel/escalation_events.py`: the five event names, `payload`, `emit`
+- `src/docket/governance/escalation_expiry.py`: `expire` (settle the pending record and write
+  `escalation_expired`)
 - `src/docket/tasks/application/escalations.py`: `open_for_approval`, `open_for_question`,
-  `attach`, `approval_opened`; the pause sites are `governance/gate.py` (through the governance
+  `attach`, `approval_opened`, `decided_consult`; the pause sites are `governance/gate.py` (through the governance
   port), `tasks/application/record.py`, `hops/application/steps.py` and `hops/gates/pre_hop.py`
 - `src/docket/operator/inbox.py`: `build_inbox`, `task_view`, `pending_memory`, `MemoryItem`
 - `src/docket/operator/notify.py`: `diff_events`, `render_data`, `render_text`, `flush`,

@@ -21,6 +21,7 @@ from tests.support.git import git as _git
 from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
 from tests.support.pods import build_pod
+from tests.support.trace import trace_events as _trace_events
 
 from docket.agent.ports import (
     PIPELINE_WORKTREE_ENV,
@@ -95,6 +96,26 @@ def _only_escalation() -> Escalation:
     return escalation
 
 
+def _events(event_type: str) -> list[dict[str, Any]]:
+    """The payloads of every *event_type* in the demo pod's traces, oldest first."""
+    return [e["payload"] for e in _trace_events("demo") if e["event_type"] == event_type]
+
+
+def _asked_matches(escalation: Escalation) -> dict[str, Any]:
+    """The one ``escalation_asked`` payload, checked against the record it describes."""
+    (asked,) = _events("escalation_asked")
+    assert asked["escalation"] == escalation.id
+    assert (asked["kind"], asked["task"], asked["step"]) == (
+        escalation.kind,
+        escalation.task,
+        escalation.step,
+    )
+    assert asked["options"] == [o.id for o in escalation.options]
+    assert asked["onExpiry"] == escalation.on_expiry
+    assert asked["prompt"] == escalation.prompt
+    return asked
+
+
 def _the_task() -> TaskRecord:
     (task,) = TaskRepository.for_pod("demo").list()
     return task
@@ -152,6 +173,10 @@ class TestApproval:
         assert "rm -rf build" in escalation.prompt
         assert escalation.expires_at == _ap.approval_get(result.approval_token)["expiresAt"]
         assert _the_task().escalations == [escalation.id]
+        asked = _asked_matches(escalation)
+        assert asked["causedBy"] == "c1"
+        (traced,) = [e for e in _trace_events("demo") if e["event_type"] == "escalation_asked"]
+        assert (traced["session_id"], traced["task_id"]) == (f"agent:demo:{task.id}", task.id)
 
     def test_a_wait_without_a_queued_task_stores_the_record_and_lists_it_nowhere(
         self, tmp_path: Path
@@ -166,6 +191,9 @@ class TestApproval:
         escalation = _only_escalation()
         assert (escalation.kind, escalation.task, escalation.caused_by) == ("approval", "", "c1")
         assert TaskRepository.for_pod("demo").list() == []
+        _asked_matches(escalation)
+        (traced,) = [e for e in _trace_events("demo") if e["event_type"] == "escalation_asked"]
+        assert traced["session_id"] == "demo-approval"
 
 
 class _Backend:
@@ -247,6 +275,7 @@ class TestConsult:
         assert escalation.requested_schema == task.question.requested_schema
         assert escalation.expires_at is not None
         assert task.escalations == [escalation.id]
+        _asked_matches(escalation)
 
     def test_the_inbox_lists_the_parked_task_once_and_the_sweep_expires_the_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -260,8 +289,19 @@ class TestConsult:
         later = "2999-01-01T00:00:00+00:00"
         assert _answers.sweep_expired_questions(later) == 1
 
-        assert _only_escalation().state == "expired"
+        escalation = _only_escalation()
+        assert escalation.state == "expired"
         assert _the_task().status == "blocked"
+        (expired,) = _events("escalation_expired")
+        assert (expired["escalation"], expired["kind"], expired["by"]) == (
+            escalation.id,
+            "consult",
+            "timeout",
+        )
+        assert expired["askedAt"] == escalation.asked_at
+        assert len(_events("input_expired")) == 1
+        assert _answers.sweep_expired_questions(later) == 0
+        assert len(_events("escalation_expired")) == 1
 
 
 class TestInput:
@@ -282,6 +322,9 @@ class TestInput:
         assert escalation.legacy == {"questionId": task.question.id}
         assert escalation.expires_at == task.question.expires_at
         assert task.escalations == [escalation.id]
+        asked = _asked_matches(escalation)
+        assert asked["expiresAt"] == task.question.expires_at
+        assert len(_events("input_requested")) == 1
 
 
 def _init_repo(path: Path) -> None:
@@ -342,6 +385,8 @@ class TestPipelineGate:
             assert [o.id for o in escalation.options] == ["approve_once", "deny"]
             assert escalation.legacy == {"token": task.approval_token}
             assert task.escalations == [escalation.id]
+            _asked_matches(escalation)
+            assert len(_events("approval_required")) == 1
 
 
 class TestCheckChanged:
@@ -361,6 +406,7 @@ class TestCheckChanged:
             assert "package.json" in escalation.prompt
             assert escalation.legacy == {"token": task.approval_token}
             assert task.escalations == [escalation.id]
+            _asked_matches(escalation)
 
     def test_the_approval_sweep_expires_the_escalation_with_its_approval(
         self, tmp_path: Path
@@ -376,7 +422,18 @@ class TestCheckChanged:
                 _store.write_json(current_home().approvals_dir / f"{token}.json", data)
                 assert _ap.approval_sweep_expired() == 1
 
-            assert _only_escalation().state == "expired"
+            escalation = _only_escalation()
+            assert escalation.state == "expired"
+            (expired,) = _events("escalation_expired")
+            assert (expired["escalation"], expired["kind"], expired["by"]) == (
+                escalation.id,
+                "check_changed",
+                "timeout",
+            )
+            (traced,) = [
+                e for e in _trace_events("demo") if e["event_type"] == "escalation_expired"
+            ]
+            assert traced["session_id"] == f"agent:demo:{escalation.task}"
 
 
 class TestInbox:

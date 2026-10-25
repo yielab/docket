@@ -100,7 +100,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Config Format | 2.0.0 | Implemented |
 | Cost Tracking | 1.12.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 5.0.3 | Complete |
-| Observability Export | 2.2.0 | Implemented and live |
+| Observability Export | 2.3.0 | Implemented and live |
 | Pipeline Format | 4.1.0 | Implemented |
 | Pod Blueprints | 2.2.0 | Implemented |
 | Pod Dispatch | 10.6.0 | Implemented |
@@ -109,7 +109,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Session History | 1.9.2 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 4.0.1 | Implemented |
-| Trace Store | 3.1.0 | Implemented and live |
+| Trace Store | 3.2.0 | Implemented and live |
 | Workspace Structure | 2.2.0 | Complete |
 | CLI Interface | 4.2.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
@@ -119,12 +119,12 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | docket-meta schema | 5.4.0 | Complete |
 | Docket Store | 2.1.0 | Implemented |
 | Operator API | 6.2.3 | Implemented (Phase 43, ADR 0027) |
-| Serve Read API | 4.1.4 | Stable |
+| Serve Read API | 4.2.0 | Stable |
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.0.0 | Active |
 | Starter Journey | 2.0.1 | Implemented |
-| Operator Loop | 2.6.0 | Implemented |
+| Operator Loop | 2.7.0 | Implemented |
 | User Stories | 2.0.1 | Active |
 
 ## Tools
