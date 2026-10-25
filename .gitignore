@@ -72,3 +72,6 @@ dist/
 
 # mkdocs build output (CI rebuilds with --strict; never committed, like dist/)
 site/
+
+# Coordinator handoff packets: working notes with local paths and environment details, never published.
+.agents/handoffs/
