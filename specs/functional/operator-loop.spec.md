@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.12.0
+**Version**: 2.13.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -306,7 +306,11 @@ CloudEvents 1.0 structured-mode shape. Area 6.1 holds the remaining dialects.
     when the task has a pending escalation, else from the stored question. The `TaskView` these read MUST carry the task's
     stored `question` and `brief`: `task_view` (the one builder, used by the inbox and by
     `POST /tasks/<id>/answer`) validates a stored question that has a `kind` as `QuestionV11`
-    and any other as `Question`, so options reach `render_data` and the JSON views.
+    and any other as `Question`, so options reach `render_data` and the JSON views. An event
+    whose item is a pending escalation, or a task waiting on one, MUST carry that escalation's
+    id as `escalationId` in `data` at every level, and `flush` MUST write `escalation_delivered`
+    (area 11 item 11) for it, once per channel that delivered it: the notification carries the id,
+    so the delivery can say which pause a person was told about. A delivery that failed writes none.
 12. `flush(specs, sink_for, *, now) -> FlushReport` MUST load the persisted dedupe snapshot
     (`notify-state.json` under `DOCKET_HOME`), compute `diff_events` over `build_inbox(now=now)`,
     and save the new snapshot **before** delivering anything, so a crash mid-delivery never
@@ -584,8 +588,7 @@ schema check, the `pre_input` screen or the continuation.
    `escalation.resolve` with the escalation id, kind, pod, task, option id, channel and actor
    (never *content* or the reason, as the consult audit never carries the question); and write
    `escalation_resolved` (area 11 item 11) with `by: "person"`, `optionId` and `channel`.
-   `escalation_delivered` still has no writer: no site knows which escalation a notification
-   carried. The older records of the continuation (`approval.grant`, `task.answer`,
+   The older records of the continuation (`approval.grant`, `task.answer`,
    `input_answered`, `approval_granted`...) are written as before.
 5. **Errors.** One set, mapped once per surface:
 
@@ -792,8 +795,8 @@ every output a surface prints is unchanged.
    (Consult item 7, `policy` `recommendation`) and where the level denies an approval (item 12,
    `policy` `deny`, `optionId` `deny`): the record is stored `decided` and listed on the task in
    the same call, so the pause is visible after the fact. `escalation_resolved` is written by
-   `resolve` (area 10 item 4); `escalation_delivered` has a builder and a projection and no
-   writer yet. The older events of area 7 item 5 and `approval_*` are still written as before.
+   `resolve` (area 10 item 4); `escalation_delivered` is written by `flush` (area 6 item 11) after
+   a channel delivered a notification that names the escalation, with that channel's name. The older events of area 7 item 5 and `approval_*` are still written as before.
    `prompt` is in the trace for every record and reaches an exporter only at a privacy level that
    grants `prompts` (`observability-export.spec.md` requirement 114).
 

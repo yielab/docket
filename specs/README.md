@@ -126,7 +126,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.1.0 | Active |
 | Starter Journey | 2.0.1 | Implemented |
-| Operator Loop | 2.12.0 | Implemented |
+| Operator Loop | 2.13.0 | Implemented |
 | User Stories | 2.0.1 | Active |
 
 ## Tools

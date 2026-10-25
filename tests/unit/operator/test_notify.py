@@ -599,3 +599,83 @@ class TestFlush:
         )
         assert report.events == 1
         assert deliver.calls == []
+
+
+class TestEscalationDelivered:
+    """`flush` says which escalation a delivered notification carried: the trace gets
+    `escalation_delivered` with the channel, and the event's data names the escalation."""
+
+    def _store(self) -> None:
+        from docket.kernel.operator_contract import Escalation
+        from docket.platform import write_escalation
+
+        view = _escalation_view()
+        record = Escalation.model_validate(view.model_dump(by_alias=True, exclude={"affordances"}))
+        write_escalation(record)
+
+    def _inbox(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from docket.operator import inbox as _inbox_mod
+
+        task = _task(question=_consult_question())
+        inbox = InboxView(needs_you=[task], escalations=[_escalation_view()])
+        monkeypatch.setattr(_inbox_mod, "build_inbox", lambda **_kw: inbox)
+
+    def _delivered(self) -> list[dict[str, Any]]:
+        from tests.support.trace import trace_events
+
+        return [e for e in trace_events("alpha") if e["event_type"] == "escalation_delivered"]
+
+    def test_a_delivered_notification_traces_the_escalation_and_the_channel(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._store()
+        self._inbox(monkeypatch)
+        deliver = _RecordingDeliver(ok=True)
+
+        _notify.flush([_spec(name="ntfy-main")], lambda _spec: deliver, now="2026-09-28T00:00:00Z")
+
+        (sent,) = deliver.calls
+        assert sent[1].data["escalationId"] == "esc-0123456789ab"
+        (event,) = self._delivered()
+        assert event["payload"]["escalation"] == "esc-0123456789ab"
+        assert (event["payload"]["channel"], event["task_id"]) == ("ntfy-main", "t1")
+
+    def test_each_channel_that_delivers_traces_its_own_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._store()
+        self._inbox(monkeypatch)
+        deliver = _RecordingDeliver(ok=True)
+
+        _notify.flush(
+            [_spec(name="one"), _spec(name="two")],
+            lambda _spec: deliver,
+            now="2026-09-28T00:00:00Z",
+        )
+
+        assert sorted(e["payload"]["channel"] for e in self._delivered()) == ["one", "two"]
+
+    def test_a_failed_delivery_traces_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._store()
+        self._inbox(monkeypatch)
+        deliver = _RecordingDeliver(ok=False, error="boom")
+
+        _notify.flush(
+            [_spec()], lambda _spec: deliver, now="2026-09-28T00:00:00Z", sleep=lambda s: None
+        )
+
+        assert self._delivered() == []
+
+    def test_a_notification_that_names_no_escalation_traces_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.operator import inbox as _inbox_mod
+
+        inbox = InboxView(needs_you=[_approval()])
+        monkeypatch.setattr(_inbox_mod, "build_inbox", lambda **_kw: inbox)
+        deliver = _RecordingDeliver(ok=True)
+
+        _notify.flush([_spec()], lambda _spec: deliver, now="2026-09-28T00:00:00Z")
+
+        assert "escalationId" not in deliver.calls[0][1].data
+        assert self._delivered() == []

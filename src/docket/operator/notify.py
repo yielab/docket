@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 from docket.governance import secrets as _secrets
 from docket.kernel import clock as _clock
+from docket.kernel import escalation_events as _events
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
     ApprovalView,
@@ -33,7 +34,7 @@ from docket.operator import channel as _channel
 from docket.operator import inbox as _inbox
 from docket.operator import notify as _notify
 from docket.operator import render as _render
-from docket.platform import read_json, write_json
+from docket.platform import read_escalation, read_json, write_json
 
 __all__ = [
     "Deliver",
@@ -233,11 +234,13 @@ def render_data(
     item: TaskView | ApprovalView | EscalationView,
     level: str,
     escalation: EscalationView | None = None,
+    pending_id: str = "",
 ) -> dict[str, Any]:
     """The event payload for *item* at content *level* (`minimal < actions < conversation`):
     `actions` adds an approval's `action`, `conversation` a task's `question`/`brief`; a task's
-    option ids are at every level, from its pending *escalation* when it has one. A decision the
-    pod took alone carries only ids and the level, at every level."""
+    option ids are at every level, from its pending *escalation* when it has one. *pending_id* is
+    the escalation a person is asked to settle, carried as `escalationId` so a reply can name it.
+    A decision the pod took alone carries only ids and the level, at every level."""
     if isinstance(item, EscalationView):
         decision: dict[str, Any] = {"pod": item.pod}
         if item.task:
@@ -274,6 +277,8 @@ def render_data(
         if item.question.expires_at:
             data["expiresAt"] = item.question.expires_at
     data["respond"] = {"cli": "docket inbox", "http": f"/tasks/{item.id}"}
+    if pending_id:
+        data["escalationId"] = pending_id
     if level == "conversation":
         if item.question is not None:
             data["question"] = item.question.message
@@ -357,6 +362,28 @@ def _escalation_of(
     if not isinstance(item, TaskView):
         return None
     return _inbox.question_escalation(inbox.escalations, item.pod, item.id)
+
+
+def _pending_id(item: TaskView | ApprovalView | EscalationView, inbox: InboxView) -> str:
+    """The id of the escalation a person is asked to settle behind *item*: the item itself when it
+    is a pending escalation, else the pending escalation of the task it is; ``""`` for anything
+    else (a decision the pod took alone, an approval no escalation names)."""
+    if isinstance(item, EscalationView):
+        return item.id if item.state == "pending" else ""
+    if isinstance(item, ApprovalView):
+        return ""
+    return next(
+        (e.id for e in inbox.escalations if (e.pod, e.task) == (item.pod, item.id)),
+        "",
+    )
+
+
+def _trace_delivery(escalation_id: str, channel: str) -> None:
+    """Write `escalation_delivered` for *escalation_id*, delivered through *channel*; a record that
+    is gone traces nothing."""
+    record = read_escalation(escalation_id)
+    if record is not None:
+        _events.emit(_events.DELIVERED, record, channel=channel)
 
 
 def build_test_event(spec: Any, *, now: str) -> CloudEvent:
@@ -501,6 +528,7 @@ def _flush(
                 if deliver is None:
                     skipped += 1
                     continue
+                pending_id = _pending_id(notify_event.item, inbox_view)
                 cloud_event = make_event(
                     notify_event.kind,
                     notify_event.pod,
@@ -509,12 +537,15 @@ def _flush(
                         notify_event.item,
                         getattr(spec, "content", "minimal"),
                         _escalation_of(notify_event.item, inbox_view),
+                        pending_id,
                     ),
                     time=notify_event.time,
                     version=notify_event.version,
                 )
                 secret = resolve_secret(spec)
                 ok, error = _deliver_with_retry(deliver, spec, cloud_event, secret, sleep)
+                if ok and pending_id:
+                    _trace_delivery(pending_id, str(spec.name))
             except Exception as exc:
                 ok, error = False, f"{type(exc).__name__}: {exc}"
             entry = dict(health.get(spec.name) or {})
