@@ -18,6 +18,7 @@ from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.record import (
     UnitContext,
     UnitOutcome,
@@ -205,6 +206,9 @@ def _gate_pre_hop_approval(
         action,
         context={"taskId": ctx.task_id, "pipelineIndex": index_for_context},
     )
+    _escalations.open_for_approval(
+        token, kind="gate", task_id=ctx.task_id, caused_by=role, step=node.step_id
+    )
     trace_locked(
         ctx.project,
         ctx.session_id,
@@ -334,6 +338,9 @@ def _park_if_check_changed(
         "lead",
         f"pod dispatch -- task {ctx.task_id} edits what checks it: {listed}",
         context={"kind": "check_changed", "taskId": ctx.task_id, "paths": paths},
+    )
+    _escalations.open_for_approval(
+        token, kind="check_changed", task_id=ctx.task_id, caused_by="", step=""
     )
     trace_locked(
         ctx.project,

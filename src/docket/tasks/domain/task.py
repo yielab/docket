@@ -260,6 +260,8 @@ class TaskRecord(BaseModel):
     task_grants: list[TaskGrant] = Field(
         default_factory=list, alias="taskGrants", exclude_if=_is_empty
     )
+    # The ids of the escalation records opened for this task, oldest first.
+    escalations: list[str] = Field(default_factory=list, exclude_if=_is_empty)
 
     @property
     def worktree_dir(self) -> str:

@@ -34,6 +34,7 @@ from docket.kernel.operator_contract import (
 )
 from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
+from docket.platform import settle_escalation
 from docket.tasks.application import consult as _consult
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import transitions as _transitions
@@ -414,6 +415,7 @@ def sweep_expired_questions(now: str | None = None) -> int:
         TaskRepository.for_pod(project).update_each(_expire)
         for task_id, question_id in expired:
             count += 1
+            settle_escalation("questionId", question_id, "expired")
             _trace.trace_event(
                 project,
                 f"agent:{project}:{task_id}",

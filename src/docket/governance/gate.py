@@ -20,6 +20,7 @@ from docket.governance import approval as _approval
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import gate_rules as _rules
 from docket.governance import policy as _policy
+from docket.governance import ports as _ports
 from docket.governance.audit import audit_log
 from docket.governance.gate_rules import AskRoute
 from docket.governance.secrets import redact as _redact
@@ -224,6 +225,7 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
         rationale=rationale,
         rationale_blocked=blocked,
     )
+    _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
     return _wait(token, ctx, tool.name, digest, verdict)
 
 
@@ -245,7 +247,7 @@ def _park(
         park_context["role"] = ctx.role
     if ctx.task_id:
         park_context["taskId"] = ctx.task_id  # lets the inbox fold this approval into its task
-    return _approval.approval_create(
+    token = _approval.approval_create(
         ctx.project or "operator",
         ctx.role or "tool",
         summary,
@@ -254,6 +256,8 @@ def _park(
         rationale=rationale,
         rationale_blocked=blocked,
     )
+    _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
+    return token
 
 
 def consume_matching_pregrant(ctx: GateContext, tool_name: str, digest: str) -> str | None:

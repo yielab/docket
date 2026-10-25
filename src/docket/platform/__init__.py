@@ -13,18 +13,30 @@ from docket.platform.parked_questions import (
     write_parked,
 )
 from docket.platform.redirects import open_same_origin
-from docket.platform.store import mkdir_private, read_json, read_modify_write, with_lock, write_json
+from docket.platform.store import (
+    list_escalations,
+    mkdir_private,
+    read_json,
+    read_modify_write,
+    settle_escalation,
+    with_lock,
+    write_escalation,
+    write_json,
+)
 
 __all__ = [
     "PARK_TOKEN_PREFIX",
     "fetch_url",
     "is_question_id",
+    "list_escalations",
     "mkdir_private",
     "open_same_origin",
     "parked_question",
     "read_json",
     "read_modify_write",
+    "settle_escalation",
     "with_lock",
+    "write_escalation",
     "write_json",
     "write_parked",
 ]
