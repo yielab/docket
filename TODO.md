@@ -347,10 +347,54 @@
 - **Contention:** `profile.py`, `pod_settings.py`, `escalations.py`, `task_create.py`,
   `pipeline/domain/*`. Serial after P51-6.
 
+### P51-11 — close the loose ends P51-2..P51-7 left outside their files
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + docs
+
+- **Trigger (measured in the integration reviews of 2026-10-25):** each item was found by a worker
+  who stopped at its card boundary.
+- **Goal:** six independent fixes, none touching `tasks/application/escalations.py`, `consult.py`,
+  `profile.py` or `pod_settings.py` (P51-8's files).
+- **Items:**
+  1. **Retention.** `list_escalations` reads every record file on each `GET /inbox` (Tack polls it
+     every 2 s) and nothing prunes them. Settled records (`resolved|expired|decided`) move out of
+     the directory the inbox scans and are deleted by the same retention that prunes traces. The
+     pending scan must not read a settled file. Spec: `docket-store`.
+  2. **`queue.py` enqueue with `require_approval`.** It creates an approval and parks the task but
+     opens no escalation (`tasks/application/queue.py`, search `require_approval`). It opens one
+     through `open_for_approval` like the other five pause sites.
+  3. **The A2A push channel.** `a2a-<task>` channels (`interfaces/http/routes/a2a_push.py`) are never
+     deleted and show in `docket setup notify`. Remove a task's channel when the task is terminal
+     (done, failed, aborted), in the service sweep.
+  4. **`docket task answer` for an in-turn consult.** `interfaces/cli/commands/task.py::_question_of`
+     refuses a consult that is being answered inside the turn; answer it through `resolve` like the
+     prompt, HTTP and MCP do.
+  5. **Docs.** `docs/DOCKET.md`, `docs/troubleshooting.md`, `docs/SECURITY-SIMPLE.md` and
+     `docs/WORKFLOW-GUIDE.md` still tell the operator `/answer <task-id>` and `task approve <token>`
+     as the only way; say `task answer <escalation-id> --option ...` first, the old verbs second.
+     `docs/CONFIGURATION.md` and `docs/DOCKET.md` list `escalations/` among the files under Home.
+  6. **Privacy listing.** `governance/privacy.py::_CLASS_ATTRIBUTES["prompts"]` omits
+     `docket.escalation.prompt`, so the "leaves this host" listing is incomplete. Add it, with a
+     test that every exported prompt attribute is listed.
+- **Non-goals:** moving the approval continuation out of `resolve`, `escalation_delivered`, the
+  record of a pod-decided consult and the consult budget (all P51-9, after P51-8).
+- **Acceptance:** one failing-first test per item 1 to 4 and 6 (retention: after settling N records
+  the pending scan opens zero settled files and a retention pass deletes the old ones; queue: a
+  `require_approval` enqueue yields one `approval` escalation and the inbox lists it once; push: the
+  channel is gone after the task is `done`; task answer: an in-turn consult is answered and the
+  record is `resolved`); docs verified with a grep that no sentence names a verb that does not exist.
+- **Contention:** `platform/store.py` (settled directory), `operator/inbox.py`, `queue.py`,
+  `a2a_push.py`, `commands/task.py`, `governance/privacy.py`, the four docs. Not P51-8's files.
+
 ### P51-9 — retire the old shapes
 
 **Status:** TODO (needs P51-8; no external trigger: Tack adapts to docket, decided by the maintainer 2026-10-25) · **Size:** M · **Model:** Sonnet · **Kind:** deletion + spec
 
+- **Also (left by P51-6 and P51-3, decided here because the deletions force the question):**
+  move the approval, gate and `check_changed` follow-up (`approval_grant`, pre-grants, gate override,
+  task grants) out of `resolve` into the claim path; give `escalation_delivered` a real emitter or
+  delete it (no event without a writer); store a record for a pod-decided consult or drop its
+  `decided_consult` id; count in-turn consults in the task's consult budget.
 - **Goal:** delete the seven task fields (keep `escalations[]`), `ApprovalView` from `needsYou`,
   `POST /approvals/<token>`, `POST /tasks/<id>/answer`, MCP `approvals_*`/`task_answer`, the five
   old trace events, `resolve_waiting_approval` and `answer_task`; contract `operator-v2`;
