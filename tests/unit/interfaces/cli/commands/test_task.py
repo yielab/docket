@@ -430,14 +430,30 @@ class TestTaskDiffJson:
             assert plain.output == doc["patch"]
 
 
-@pytest.mark.parametrize("verb", ["approve", "deny", "answer", "retry", "cancel"])
-def test_task_verb_help_example_uses_a_task_id(verb: str) -> None:
-    """The Example line of each task verb passes a task id, not a timestamp."""
+@pytest.mark.parametrize(
+    ("verb", "example"),
+    [
+        ("pregrant", "docket task pregrant task-04ff"),
+        ("answer", "docket task answer esc-1a2b3c4d5e6f --option approve_once"),
+        ("retry", "docket task retry task-04ff"),
+        ("cancel", "docket task cancel task-04ff"),
+    ],
+)
+def test_task_verb_help_example_uses_a_record_id(verb: str, example: str) -> None:
+    """The Example line of each task verb passes a task or escalation id, not a timestamp."""
     result = _runner.invoke(app, ["task", verb, "--help"])
 
     flat = " ".join(result.output.replace("\u2502", " ").split())
-    assert f"docket task {verb} task-04ff" in flat
+    assert example in flat
     assert "2026-10-08T10-00" not in flat
+
+
+@pytest.mark.parametrize("verb", ["approve", "deny"])
+def test_the_retired_task_verbs_are_ordinary_unknown_commands(verb: str) -> None:
+    result = _runner.invoke(app, ["task", verb, "task-04ff"])
+
+    assert result.exit_code == 2
+    assert f"No such command '{verb}'" in result.output
 
 
 class TestShowForecast:
@@ -562,7 +578,7 @@ class TestShowWaitingOnYou:
     def test_a_held_approval_prints_the_action_and_both_decisions(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             token = _approval.approval_create("demo", "implementer", "bash: rm -rf build")
-            put_task("demo", task(id="task-a", status="waiting_approval", approval_token=token))
+            put_task("demo", task(id="task-a", status="waiting_approval"))
             escalation = _escalations.open_for_approval(
                 token, kind="approval", task_id="task-a", caused_by="c1"
             )

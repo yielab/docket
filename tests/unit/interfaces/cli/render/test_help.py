@@ -26,7 +26,7 @@ def test_a_word_that_is_a_verb_of_two_groups_names_both() -> None:
 
 
 def test_a_group_verb_points_at_its_group() -> None:
-    assert "docket task approve" in _error_text(["approve", "task-1"])
+    assert "docket task pregrant" in _error_text(["pregrant", "task-1"])
     assert "docket task list" in _error_text(["list"])
     show = _error_text(["show"])
     assert "docket pod show" in show and "docket task show" in show
