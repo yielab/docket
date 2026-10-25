@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off, register_local_provider
-from tests.support.llm import _final_response, _ScriptedLLMServer
+from tests.support.model_server import FakeModel, say
 from tests.support.pods import build_pod
 
 from docket.hops.application import sweep as _sweep
@@ -55,10 +55,9 @@ def _task_events(task_id: str, event_type: str) -> list[dict[str, Any]]:
 
 
 @pytest.fixture()
-def stub() -> Iterator[_ScriptedLLMServer]:
-    server = _ScriptedLLMServer([_final_response("done, nothing to change")])
-    yield server
-    server.stop()
+def stub() -> Iterator[FakeModel]:
+    with FakeModel(sequence=[say("done, nothing to change")], repeat_last=True) as server:
+        yield server
 
 
 def _queue(**options: Any) -> str:
@@ -69,7 +68,7 @@ def _queue(**options: Any) -> str:
 
 class TestPipelineOnTheStubServer:
     def test_a_named_pod_pipeline_runs_two_hops_on_the_real_driver(
-        self, home: Path, stub: _ScriptedLLMServer
+        self, home: Path, stub: FakeModel
     ) -> None:
         register_local_provider(
             home,

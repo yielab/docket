@@ -16,7 +16,7 @@ from typing import Any
 
 from tests.support import home as _support_home
 from tests.support.home import record_isolation_off, register_local_provider
-from tests.support.llm import _final_response, _tool_call_response
+from tests.support.model_server import call, say
 from tests.support.pods import build_pod
 
 from docket.governance import audit as _audit
@@ -119,12 +119,12 @@ def _status(task_id: str) -> str:
     return stored.status
 
 
-def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, llm_server: Any) -> None:
+def test_diff_reports_the_task_branch_against_its_base(tmp_path: Path, fake_model: Any) -> None:
     """The patch names the committed file, untracked lists a loose one, and it survives pruning."""
-    server = llm_server(
-        [
-            _tool_call_response("write", {"path": "out.txt", "content": "made\n"}),
-            _final_response("done"),
+    server = fake_model(
+        sequence=[
+            call("write", path="out.txt", content="made\n"),
+            say("done"),
         ]
     )
     with _seed_pod(tmp_path, server.base_url) as codebase, _live_server() as live_server:

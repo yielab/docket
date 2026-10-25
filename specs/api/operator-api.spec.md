@@ -406,5 +406,5 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 - `src/docket/platform/git.py`: `git_diff_range`, `git_untracked`, `DIFF_MAX_CHARS`.
 - `tests/integration/interfaces/test_serve_reattach.py`, `test_serve_tasks_endpoint.py`,
   `test_serve_task_lifecycle.py`, `test_serve_pods_endpoint.py`, `test_serve_pods_config.py`,
-  `test_serve_pods_corrections.py`, `test_task_check_changed.py`; `tests/support/llm.py`
-  (fixture `llm_server`).
+  `test_serve_pods_corrections.py`, `test_task_check_changed.py`; `tests/support/model_server.py`
+  (fixture `fake_model`).

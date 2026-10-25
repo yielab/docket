@@ -12,13 +12,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.support import llm as _stub
 from tests.support.loop_harness import (
     ScriptedBackend,
     _final,
     _tool_call_response,
     _write_gate_policy,
 )
+from tests.support.model_server import call, say
 
 from docket.agent import loop as _loop
 from docket.agent import loop_trace as _loop_trace
@@ -572,11 +572,9 @@ class TestTracing:
 
 class TestLlmCallRequestBreakdown:
     def test_request_parts_match_the_bytes_the_endpoint_received(
-        self, ctx: ToolContext, registry: ToolRegistry, llm_server: Any
+        self, ctx: ToolContext, registry: ToolRegistry, fake_model: Any
     ) -> None:
-        server = llm_server(
-            [_stub._tool_call_response("echo", {"text": "hi"}, "c1"), _stub._final_response("ok")]
-        )
+        server = fake_model(sequence=[call("echo", "c1", text="hi"), say("ok")])
         backend = _llm_adapter.OpenAIChatClient(
             Endpoint(base_url=server.base_url, model_id="local-model")
         )
@@ -589,10 +587,10 @@ class TestLlmCallRequestBreakdown:
         assert result.ok
         payloads = [e["payload"] for e in events if e["event_type"] == "llm_call"]
         assert len(payloads) == len(server.requests) == 2
-        for payload, body in zip(payloads, server.requests, strict=True):
+        for payload, sent_request in zip(payloads, server.requests, strict=True):
             request = payload["request"]
             assert set(request) == {"system", "tools", "toolResults", "assistant", "user"}
-            sent = _wire_parts(body)
+            sent = _wire_parts(sent_request.body)
             assert {part: request[part]["bytes"] for part in request} == sent
             for part in request.values():
                 assert part["estTokens"] == part["bytes"] // current_home().context_bytes_per_token
