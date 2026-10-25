@@ -1,8 +1,8 @@
-"""operator-v1: the shared data model for the operator loop (ADR 0016).
+"""operator-v2: the shared data model for the operator loop (ADR 0016, ADR 0032).
 
 Every value that reaches a human channel, an HTTP client, an MCP tool or a CloudEvent is
 built through this module, never hand-built twice: task/A2A state, a typed intake brief, a
-question/answer pair shaped as an MCP elicitation, an approval/task/inbox view, and one
+question/answer pair shaped as an MCP elicitation, an escalation/task/inbox view, and one
 CloudEvent constructor. Pure data and validation; no I/O.
 """
 
@@ -43,7 +43,7 @@ EVENT_KINDS: tuple[str, ...] = (
 )
 
 _PRIMITIVE_TYPES = ("string", "number", "integer", "boolean")
-_EVENT_SCHEMA_URL = "https://docket.dev/schemas/operator-v1/event.schema.json"
+_EVENT_SCHEMA_URL = "https://docket.dev/schemas/operator-v2/event.schema.json"
 
 
 def a2a_state(
@@ -256,7 +256,7 @@ def validate_answer_v11(question: QuestionV11, answer: AnswerResultV11) -> Answe
 
 
 class TaskView(BaseModel):
-    """The operator-v1 rendering of one docket task: lifecycle plus its A2A state."""
+    """The operator-v2 rendering of one docket task: lifecycle plus its A2A state."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 

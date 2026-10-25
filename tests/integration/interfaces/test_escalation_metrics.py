@@ -18,12 +18,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from tests.support.pods import seed_parked_task
 
-from docket.hops.application import answers as _answers
 from docket.interfaces.http.routes import metrics
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel import clock as _clock
-from docket.kernel import escalation_events as _events
-from docket.kernel.operator_contract import QuestionV11, Resolution
+from docket.kernel.operator_contract import QuestionV11
 from docket.kernel.threads import ContextHTTPServer
 from docket.observability.trace import trace_event
 from docket.platform import list_escalations
@@ -101,19 +99,8 @@ def test_a_parked_then_answered_task_is_counted_with_its_wait(metrics_url: str) 
     assert not any(ln.startswith("docket_escalations_total{") for ln in waiting)
     assert not any(ln.startswith("docket_escalation_wait_seconds_") for ln in waiting)
 
-    _answers.answer_task(
-        "demo", parked.id, "accept", {"answer": "ship it"}, channel="cli", actor="alice"
-    )
     with _offset(90):
-        _events.emit(
-            _events.RESOLVED,
-            escalation.model_copy(
-                update={
-                    "state": "resolved",
-                    "resolution": Resolution(by="alice", channel="cli", at="2026-10-25T10:01:30Z"),
-                }
-            ),
-        )
+        _escalations.resolve(escalation.id, None, {"answer": "ship it"}, by="alice", channel="cli")
 
     answered = _scrape(metrics_url)
     assert (

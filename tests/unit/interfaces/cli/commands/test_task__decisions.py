@@ -1,4 +1,4 @@
-"""docket task: approve, deny, answer, retry and cancel."""
+"""docket task: pregrant, answer, retry and cancel."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.approvals import escalation_of
 from tests.support.pods import parked_task_in_pod as _seed_parked_task
 from tests.support.pods import seed_pod_isolation_off as _seed_pod
 from tests.support.task_unit_harness import _runner
@@ -19,6 +20,7 @@ from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.operator_contract import Option, QuestionV11, Recommendation
 from docket.platform import list_escalations, settle_escalation
 from docket.tasks.application import escalations as _escalations
+from docket.tasks.application.answers import answers_of
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
 from docket.tasks.domain.task import TaskRecord
@@ -27,29 +29,28 @@ SUBJECT = "docket.interfaces.cli.commands.task"
 
 
 def _give_options(project: str, task_id: str) -> None:
-    """Turn the parked task's question into one with options, as a Lead consult writes."""
-
-    def _fn(record: TaskRecord) -> None:
-        assert record.question is not None
-        record.question = QuestionV11.model_validate(
-            {
-                **record.question.model_dump(by_alias=True),
-                "kind": "clarification",
-                "options": [
-                    Option(id="opt1", label="Root", description="At the root."),
-                    Option(id="opt2", label="Search", description="Search for it."),
-                ],
-                "recommendation": Recommendation(option_id="opt2", rationale="safer"),
-            }
-        )
-
-    updated = TaskRepository.for_pod(project).update(task_id, _fn)
-    assert updated is not None and updated.question is not None
-    # The input step's escalation described the old question; a consult opens its own.
+    """Turn the parked task's question into one with options, as a Lead consult writes: the
+    input step's escalation ends and a consult opens its own."""
     for stale in list_escalations(state="pending"):
-        settle_escalation("questionId", stale.legacy["questionId"], "expired")
+        if stale.task == task_id:
+            settle_escalation(stale.id, "expired")
+    question = QuestionV11(
+        id="q-options",
+        task_id=task_id,
+        pod=project,
+        step="implementer",
+        message="Where is it?",
+        requested_schema={"type": "object", "properties": {"answer": {"type": "string"}}},
+        created_at="2026-10-25T00:00:00+00:00",
+        kind="clarification",
+        options=[
+            Option(id="opt1", label="Root", description="At the root."),
+            Option(id="opt2", label="Search", description="Search for it."),
+        ],
+        recommendation=Recommendation(option_id="opt2", rationale="safer"),
+    )
     _escalations.open_for_question(
-        updated.question, kind="consult", role="implementer", caused_by="implementer"
+        question, kind="consult", role="implementer", caused_by="implementer"
     )
 
 
@@ -61,20 +62,25 @@ def _park_on_approval(project: str, kind: str = "") -> tuple[TaskRecord, str]:
     context: dict[str, Any] = {"taskId": record.id, **({"kind": kind} if kind else {})}
     token = _ap.approval_create(project, "implementer", "deploy", context=context)
     record.status = Status.waiting_approval
-    record.approval_token = token
     record.pending_approval_index = 1
     put_task(project, record)
+    _escalations.open_for_approval(
+        token,
+        kind="check_changed" if kind == "check_changed" else "gate",
+        task_id=record.id,
+        caused_by="call-1",
+    )
     return record, token
 
 
-class TestTaskApprove:
-    def test_resolves_the_tasks_pending_token(self, tmp_path: Path) -> None:
+class TestTaskAnswerAnApproval:
+    def test_resolves_the_tasks_pending_approval(self, tmp_path: Path) -> None:
         from docket.governance import approval as _ap
 
         with _seed_pod(tmp_path):
             record, token = _park_on_approval("demo")
 
-            result = _task("approve", record.id[:18])
+            result = _task("answer", record.id[:18], "--option", "approve_once")
 
             assert result.exit_code == 0
             assert _ap.approval_get(token)["state"] == "granted"
@@ -86,10 +92,10 @@ class TestTaskApprove:
             record = task()
             put_task("demo", record)
 
-            result = _task("approve", record.id)
+            result = _task("answer", record.id, "--option", "approve_once")
 
             assert result.exit_code == 1
-            assert "not waiting for approval" in result.stderr
+            assert "waits on no question or approval" in result.stderr
 
     def test_the_hint_is_the_run_command_when_nothing_is_serving(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -100,7 +106,7 @@ class TestTaskApprove:
             record, _ = _park_on_approval("demo")
             monkeypatch.setattr(_service, "is_running", lambda: False)
 
-            result = _task("approve", record.id)
+            result = _task("answer", record.id, "--option", "approve_once")
 
             assert "docket run --pod demo" in result.stderr
 
@@ -113,7 +119,7 @@ class TestTaskApprove:
             record, _ = _park_on_approval("demo")
             monkeypatch.setattr(_service, "is_running", lambda: True)
 
-            result = _task("approve", record.id)
+            result = _task("answer", record.id, "--option", "approve_once")
 
             assert "docket run" not in result.stderr
             assert "will pick it up" in result.stdout
@@ -127,13 +133,13 @@ class TestTaskApprove:
             record, _ = _park_on_approval("demo", kind="check_changed")
             monkeypatch.setattr(_service, "is_running", lambda: True)
 
-            result = _task("approve", record.id)
+            result = _task("answer", record.id, "--option", "approve_once")
 
             assert result.exit_code == 0
             assert "will pick it up" not in result.stdout
             assert "docket run" not in result.stderr
 
-    def test_a_token_ref_resolves_its_pod_and_ends_with_the_hint(
+    def test_an_escalation_ref_resolves_its_pod_and_ends_with_the_hint(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from docket.interfaces.cli.commands import service as _service
@@ -142,51 +148,64 @@ class TestTaskApprove:
             _, token = _park_on_approval("demo")
             monkeypatch.setattr(_service, "is_running", lambda: False)
 
-            result = _task("approve", token)
+            result = _task("answer", escalation_of(token), "--option", "approve_once")
 
             assert result.exit_code == 0
             assert TaskRepository.for_pod("demo").list()[0].status == Status.pending
             assert "docket run --pod demo" in result.stderr
 
-    def test_for_writes_a_single_use_pregrant_on_the_task(self, tmp_path: Path) -> None:
+    def test_the_retired_approve_and_deny_verbs_are_unknown_commands(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            record, _token = _park_on_approval("demo")
+
+            for verb in ("approve", "deny"):
+                result = _task(verb, record.id)
+                assert result.exit_code == 2
+                assert "No such command" in result.stderr
+            assert TaskRepository.for_pod("demo").list()[0].status == Status.waiting_approval
+
+
+class TestTaskPregrant:
+    def test_writes_a_single_use_pregrant_on_the_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             record = task()
             put_task("demo", record)
 
-            result = _task("approve", record.id, "--for", "git push origin main")
+            result = _task("pregrant", record.id, "git push origin main")
 
             assert result.exit_code == 0
             assert [g.tool for g in pending_pregrants(record.id)] == ["bash"]
+            assert "apr-" not in result.stdout + result.stderr
 
-    def test_for_honours_the_tool_flag(self, tmp_path: Path) -> None:
+    def test_honours_the_tool_flag(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             record = task()
             put_task("demo", record)
 
-            _task("approve", record.id, "--for", "some content", "--tool", "write")
+            _task("pregrant", record.id, "some content", "--tool", "write")
 
             assert pending_pregrants(record.id)[0].tool == "write"
 
-    def test_for_on_an_unknown_task_is_refused(self, tmp_path: Path) -> None:
+    def test_on_an_unknown_task_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            assert _task("approve", "no-such-task", "--for", "ls").exit_code == 1
+            assert _task("pregrant", "no-such-task", "ls").exit_code == 1
 
-    def test_task_and_once_conflict(self, tmp_path: Path) -> None:
+    def test_the_retired_for_flag_of_approve_is_gone(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             record = task()
             put_task("demo", record)
 
-            assert _task("approve", record.id, "--once", "--task").exit_code == 2
+            assert _task("approve", record.id, "--for", "ls").exit_code == 2
 
 
 class TestTaskDeny:
-    def test_denies_the_tasks_token_and_fails_the_task(self, tmp_path: Path) -> None:
+    def test_denies_the_tasks_approval_and_fails_the_task(self, tmp_path: Path) -> None:
         from docket.governance import approval as _ap
 
         with _seed_pod(tmp_path):
             record, token = _park_on_approval("demo")
 
-            result = _task("deny", record.id, "--reason", "too risky")
+            result = _task("answer", record.id, "--option", "deny", "--reason", "too risky")
 
             assert result.exit_code == 0
             assert _ap.approval_get(token)["state"] == "denied"
@@ -196,7 +215,10 @@ class TestTaskDeny:
         with _seed_pod(tmp_path):
             record, _ = _park_on_approval("demo")
 
-            assert _task("deny", record.id, "--reason", "too risky").exit_code == 0
+            assert (
+                _task("answer", record.id, "--option", "deny", "--reason", "too risky").exit_code
+                == 0
+            )
 
             after = TaskRepository.for_pod("demo").list()[0]
             assert after.reason == "approval denied: too risky"
@@ -206,13 +228,6 @@ class TestTaskDeny:
             ]
             inbox = json.loads(_runner.invoke(app, ["inbox", "--json"]).stdout)
             assert [i["reason"] for i in inbox["failed"]] == ["approval denied: too risky"]
-
-    def test_a_task_waiting_on_nothing_is_refused(self, tmp_path: Path) -> None:
-        with _seed_pod(tmp_path):
-            record = task()
-            put_task("demo", record)
-
-            assert _task("deny", record.id).exit_code == 1
 
 
 class TestTaskAnswer:
@@ -226,8 +241,8 @@ class TestTaskAnswer:
 
             assert result.exit_code == 0
             after = TaskRepository.for_pod("demo").list()[0]
-            assert after.answers[0].option_id == "opt1"
-            assert after.answers[0].content == {"answer": "at the root"}
+            assert answers_of(after)[0].option_id == "opt1"
+            assert answers_of(after)[0].content == {"answer": "at the root"}
             assert "docket run --pod demo" in result.stderr
 
     def test_options_question_without_option_flag_names_the_ids(self, tmp_path: Path) -> None:
@@ -253,24 +268,23 @@ class TestTaskAnswer:
             assert _task("answer", parked.id, "ship it").exit_code == 0
 
             after = TaskRepository.for_pod("demo").list()[0]
-            assert after.answers[0].content == {"answer": "ship it"}
-            assert after.answers[0].channel == "cli"
+            assert answers_of(after)[0].content == {"answer": "ship it"}
+            assert answers_of(after)[0].channel == "cli"
 
     def test_field_flag_sets_named_properties(self, tmp_path: Path) -> None:
         with _seed_parked_task(tmp_path) as parked:
             assert _task("answer", parked.id, "--field", "answer=ship it").exit_code == 0
 
-            assert TaskRepository.for_pod("demo").list()[0].answers[0].content == {
-                "answer": "ship it"
-            }
+            after = TaskRepository.for_pod("demo").list()[0]
+            assert answers_of(after)[0].content == {"answer": "ship it"}
 
     def test_decline_ignores_text_and_fields(self, tmp_path: Path) -> None:
         with _seed_parked_task(tmp_path) as parked:
             assert _task("answer", parked.id, "--decline").exit_code == 0
 
             after = TaskRepository.for_pod("demo").list()[0]
-            assert after.answers[0].action == "decline"
-            assert after.answers[0].content is None
+            assert answers_of(after)[0].action == "decline"
+            assert answers_of(after)[0].content is None
 
     def test_no_ref_is_a_usage_error(self) -> None:
         assert _task("answer").exit_code == 2
@@ -287,7 +301,7 @@ class TestTaskAnswer:
             result = _task("answer", record.id, "x")
 
             assert result.exit_code == 1
-            assert "no pending question" in result.stderr
+            assert "waits on no question or approval" in result.stderr
 
     def test_a_policy_block_reports_the_policy_and_writes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -307,7 +321,7 @@ class TestTaskAnswer:
             assert "test-block" in result.stderr
             after = TaskRepository.for_pod("demo").list()[0]
             assert after.status == Status.waiting_input
-            assert after.answers == []
+            assert answers_of(after) == []
 
     def test_on_a_tty_enter_takes_the_recommended_option_then_the_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -324,8 +338,8 @@ class TestTaskAnswer:
             assert result.exit_code == 0
             assert "opt2 - Search (recommended)" in result.stdout
             after = TaskRepository.for_pod("demo").list()[0]
-            assert after.answers[0].option_id == "opt2"
-            assert after.answers[0].content == {"answer": "at the root"}
+            assert answers_of(after)[0].option_id == "opt2"
+            assert answers_of(after)[0].content == {"answer": "at the root"}
 
 
 class TestTaskRetry:
@@ -398,7 +412,6 @@ class TestTaskCancel:
             assert result.exit_code == 0, result.output
             after = TaskRepository.for_pod("demo").list()[0]
             assert after.status == Status.cancelled
-            assert after.question is None
             assert len(after.hops) == hops
             listed = [
                 i.model_dump_json()
@@ -420,7 +433,7 @@ class TestTaskCancel:
 
             assert result.exit_code == 0, result.output
             after = TaskRepository.for_pod("demo").list()[0]
-            assert after.status == Status.cancelled and not after.approval_token
+            assert after.status == Status.cancelled
             assert _ap.approval_get(token)["state"] == "denied"
             assert not _ap.list_pending()
 

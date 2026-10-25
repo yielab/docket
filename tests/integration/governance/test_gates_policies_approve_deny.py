@@ -30,6 +30,7 @@ from docket.interfaces.cli.commands import setup_sandbox as _setup_sandbox
 from docket.kernel.home import Home, current_home, use_home
 from docket.sandbox.launch import Launcher
 from docket.tasks.application import escalation_sweep as _escalation_sweep
+from docket.tasks.application import escalations as _escalations
 
 SUBJECT = "docket.governance.policy"
 
@@ -387,60 +388,78 @@ def _create(oc_dir: Path, action: str = "rm -rf /tmp") -> str:
     return _ap.approval_create("myshop", "programmer", action)
 
 
-def _task_cmd(verb: str, *args: str) -> Any:
-    return CliRunner().invoke(app, ["task", verb, *args])
+def _answer(ref: str, *args: str) -> Any:
+    return CliRunner().invoke(app, ["task", "answer", ref, *args])
+
+
+def _ask(oc_dir: Path) -> tuple[str, str]:
+    """A pending approval and the escalation that backs it; the token and the id."""
+    token = _create(oc_dir)
+    escalation = _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c")
+    return token, escalation.id
 
 
 class TestApprove:
     def test_no_ref_is_a_usage_error(self, oc_dir: Path) -> None:
-        assert _task_cmd("approve").exit_code == 2
+        assert CliRunner().invoke(app, ["task", "answer"]).exit_code == 2
+
+    def test_the_retired_approve_verb_is_an_unknown_command(self, oc_dir: Path) -> None:
+        token = _create(oc_dir)
+        result = CliRunner().invoke(app, ["task", "approve", token])
+        assert result.exit_code == 2
+        assert "No such command" in result.stderr
+        assert (
+            json.loads((oc_dir / "approvals" / f"{token}.json").read_text())["state"] == "pending"
+        )
 
     def test_grant_transitions_state(self, oc_dir: Path) -> None:
-        token = _create(oc_dir)
-        result = _task_cmd("approve", token)
+        token, escalation = _ask(oc_dir)
+        result = _answer(escalation, "--option", "approve_once")
         assert result.exit_code == 0
         assert "Approved" in result.stdout
         rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "granted"
 
     def test_grant_already_granted_warns(self, oc_dir: Path) -> None:
-        token = _create(oc_dir)
-        _task_cmd("approve", token)
-        result = _task_cmd("approve", token)
+        _token, escalation = _ask(oc_dir)
+        _answer(escalation, "--option", "approve_once")
+        result = _answer(escalation, "--option", "approve_once")
         assert result.exit_code == 0
-        assert "Already granted" in result.stdout  # warn() -> stdout
+        assert "not pending" in result.stdout  # warn() -> stdout
 
-    def test_grant_missing_token_errors(self, oc_dir: Path) -> None:
-        result = _task_cmd("approve", "apr-does-not-exist")
+    def test_grant_missing_escalation_errors(self, oc_dir: Path) -> None:
+        result = _answer("esc-000000000000", "--option", "approve_once")
         assert result.exit_code == 1
-        assert "Approval not found" in result.stderr
+        assert "No escalation" in result.stderr
 
 
 class TestDeny:
     def test_deny_transitions_state(self, oc_dir: Path) -> None:
-        token = _create(oc_dir)
-        result = _task_cmd("deny", token)
+        token, escalation = _ask(oc_dir)
+        result = _answer(escalation, "--option", "deny")
         assert result.exit_code == 0
         assert "Denied" in result.stdout
         rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "denied"
 
-    def test_deny_no_ref_is_a_usage_error(self, oc_dir: Path) -> None:
-        assert _task_cmd("deny").exit_code == 2
+    def test_the_retired_deny_verb_is_an_unknown_command(self, oc_dir: Path) -> None:
+        result = CliRunner().invoke(app, ["task", "deny", "esc-000000000000"])
+        assert result.exit_code == 2
+        assert "No such command" in result.stderr
 
     def test_deny_after_grant_errors(self, oc_dir: Path) -> None:
-        token = _create(oc_dir)
-        _task_cmd("approve", token)
-        result = _task_cmd("deny", token)
+        _token, escalation = _ask(oc_dir)
+        _answer(escalation, "--option", "approve_once")
+        result = _answer(escalation, "--option", "deny")
         assert result.exit_code == 1
-        assert "Cannot deny approval in state 'granted'" in result.stderr
+        assert "not pending" in result.stderr
 
     def test_deny_already_denied_warns(self, oc_dir: Path) -> None:
-        token = _create(oc_dir)
-        _task_cmd("deny", token)
-        result = _task_cmd("deny", token)
+        _token, escalation = _ask(oc_dir)
+        _answer(escalation, "--option", "deny")
+        result = _answer(escalation, "--option", "deny")
         assert result.exit_code == 0
-        assert "Already denied" in result.stdout  # warn() -> stdout
+        assert "not pending" in result.stdout  # warn() -> stdout
 
 
 class TestSweep:

@@ -32,6 +32,7 @@ from docket.kernel.threads import ContextHTTPServer, new_thread
 from docket.observability import trace as _trace
 from docket.platform import store as _store
 from docket.tasks.application import escalation_sweep as _escalation_sweep
+from docket.tasks.application import escalations as _escalations
 
 SUBJECT = "docket.governance.approval"
 
@@ -114,16 +115,25 @@ def _race_pending_transitions(
 # ── CLI channel ────────────────────────────────────────────────────────────────
 
 
-def _task_cmd(verb: str, *args: str) -> int:
-    return CliRunner().invoke(app, ["task", verb, *args]).exit_code
+def _ask(project: str, role: str, action: str) -> tuple[str, str]:
+    """A pending approval of *project* and the escalation that backs it; the token and the id."""
+    token = _ap.approval_create(project, role, action)
+    escalation = _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c")
+    return token, escalation.id
+
+
+def _answer_cmd(escalation: str, option: str, *args: str) -> int:
+    return (
+        CliRunner().invoke(app, ["task", "answer", escalation, "--option", option, *args]).exit_code
+    )
 
 
 class TestGrantDenyViaCli:
     def test_grant_via_cli_audits_channel_cli(
         self, home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        token = _ap.approval_create("proj-cli-grant", "implementer", "deploy")
-        rc = _task_cmd("approve", token)
+        token, escalation = _ask("proj-cli-grant", "implementer", "deploy")
+        rc = _answer_cmd(escalation, "approve_once")
         assert rc == 0
 
         entry = _last_audit_entry("approval.grant")
@@ -137,8 +147,8 @@ class TestGrantDenyViaCli:
     def test_deny_via_cli_audits_channel_cli(
         self, home: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        token = _ap.approval_create("proj-cli-deny", "reviewer", "nope")
-        rc = _task_cmd("deny", token)
+        token, escalation = _ask("proj-cli-deny", "reviewer", "nope")
+        rc = _answer_cmd(escalation, "deny")
         assert rc == 0
 
         entry = _last_audit_entry("approval.deny")
@@ -150,8 +160,8 @@ class TestGrantDenyViaCli:
         assert denies[0]["payload"] == {"token": token}
 
     def test_approve_with_reason_records_actor_and_reason(self, home: Path) -> None:
-        token = _ap.approval_create("proj-cli-approve-reason", "reviewer", "ok")
-        rc = _task_cmd("approve", token, "--reason", "looks good")
+        _token, escalation = _ask("proj-cli-approve-reason", "reviewer", "ok")
+        rc = _answer_cmd(escalation, "approve_once", "--reason", "looks good")
         assert rc == 0
 
         entry = _last_audit_entry("approval.grant")
@@ -159,8 +169,8 @@ class TestGrantDenyViaCli:
         assert "reason=" in entry["detail"]
 
     def test_deny_with_reason_records_actor_and_reason(self, home: Path) -> None:
-        token = _ap.approval_create("proj-cli-deny-reason", "reviewer", "nope")
-        rc = _task_cmd("deny", token, "--reason", "not ready")
+        _token, escalation = _ask("proj-cli-deny-reason", "reviewer", "nope")
+        rc = _answer_cmd(escalation, "deny", "--reason", "not ready")
         assert rc == 0
 
         entry = _last_audit_entry("approval.deny")
@@ -168,7 +178,7 @@ class TestGrantDenyViaCli:
         assert "reason=" in entry["detail"]
 
 
-# ── HTTP channel (serve.py webhook) ─────────────────────────────────────────────
+# ── HTTP channel (POST /escalations) ─────────────────────────────────────────────
 
 
 class TestGrantDenyViaHttp:
@@ -176,10 +186,10 @@ class TestGrantDenyViaHttp:
         self, home: Path, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        apr_token = _ap.approval_create("proj-http-grant", "implementer", "deploy")
-        status, body = _post(f"{url}/approvals/{apr_token}", {"action": "grant"}, token)
+        apr_token, escalation = _ask("proj-http-grant", "implementer", "deploy")
+        status, body = _post(f"{url}/escalations/{escalation}", {"optionId": "approve_once"}, token)
         assert status == 200
-        assert body["state"] == "granted"
+        assert body["state"] == "resolved"
 
         entry = _last_audit_entry("approval.grant")
         assert entry["detail"] == f"token={apr_token} project=proj-http-grant channel=http"
@@ -193,10 +203,10 @@ class TestGrantDenyViaHttp:
         self, home: Path, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        apr_token = _ap.approval_create("proj-http-deny", "reviewer", "nope")
-        status, body = _post(f"{url}/approvals/{apr_token}", {"action": "deny"}, token)
+        apr_token, escalation = _ask("proj-http-deny", "reviewer", "nope")
+        status, body = _post(f"{url}/escalations/{escalation}", {"optionId": "deny"}, token)
         assert status == 200
-        assert body["state"] == "denied"
+        assert body["state"] == "resolved"
 
         entry = _last_audit_entry("approval.deny")
         assert entry["detail"] == f"token={apr_token} project=proj-http-deny channel=http"

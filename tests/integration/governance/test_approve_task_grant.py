@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from tests.support.approvals import escalation_of, resolve_token
 from tests.support.pods import build_pod
 from tests.support.tasks import stored_task, update_task
 from typer.testing import CliRunner
@@ -39,8 +40,10 @@ from docket.teams import fleet as _fleet
 SUBJECT = "docket.governance.gate"
 
 
-def run_approve(token: str, *flags: str) -> int:
-    return CliRunner().invoke(app, ["task", "approve", token, *flags]).exit_code
+def run_answer(token: str, option: str) -> int:
+    """`docket task answer <escalation of token> --option <option>`; its exit code."""
+    ref = escalation_of(token)
+    return CliRunner().invoke(app, ["task", "answer", ref, "--option", option]).exit_code
 
 
 PROJECT = "demo"
@@ -71,7 +74,7 @@ def _park(task_id: str, args: dict[str, Any] | None = None) -> str:
         rationale="",
     )
 
-    update_task(PROJECT, task_id, status="waiting_approval", approval_token=token)
+    update_task(PROJECT, task_id, status="waiting_approval")
     _escalations.approval_opened(token, task_id=task_id, caused_by="call-1")
     return token
 
@@ -119,7 +122,7 @@ class TestApproveTaskCli:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         token = _park(task.id)
 
-        assert run_approve(token, "--task") == 0
+        assert run_answer(token, "approve_task") == 0
 
         grants = _pregrants.task_grants(task.id)
         assert len(grants) == 1
@@ -145,20 +148,20 @@ class TestApproveTaskCli:
     def test_without_the_option_nothing_is_task_wide(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         token = _park(task.id)
-        assert run_approve(token) == 0
+        assert run_answer(token, "approve_once") == 0
         assert not _pregrants.task_grants(task.id)
         assert len(_pregrants.pending_pregrants(task.id)) == 1
 
     def test_another_task_with_the_same_call_still_parks(self) -> None:
         first = _queue.enqueue_task_once(PROJECT, "one", channel="cli")[0]
         second = _queue.enqueue_task_once(PROJECT, "two", channel="cli")[0]
-        run_approve(_park(first.id), "--task")
+        run_answer(_park(first.id), "approve_task")
         assert not _pregrants.task_grants(second.id)
         assert _spend(_later_hop_env(second.id)) is None
 
     def test_a_later_hop_of_another_role_gets_no_task_grant(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        run_approve(_park(task.id), "--task")
+        run_answer(_park(task.id), "approve_task")
         assert _pregrants.task_grants(task.id)[0].role == "implementer"
         env = _later_hop_env(task.id, "reviewer")
         assert _spend(env) is not None  # the parked call's own single-use pre-grant
@@ -166,19 +169,13 @@ class TestApproveTaskCli:
 
     def test_a_different_argument_digest_still_parks(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        run_approve(_park(task.id), "--task")
+        run_answer(_park(task.id), "approve_task")
         env = _later_hop_env(task.id)
         assert _spend(env, {"command": "git push origin main"}) is None
 
-    def test_conflicting_scopes_are_refused_and_leave_the_approval_pending(self) -> None:
-        task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        token = _park(task.id)
-        assert run_approve(token, "--once", "--task") == 2
-        assert _approval.approval_get(token)["state"] == "pending"
-
     def test_grants_are_dropped_when_the_task_reaches_a_terminal_status(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        run_approve(_park(task.id), "--task")
+        run_answer(_park(task.id), "approve_task")
         assert _pregrants.task_grants(task.id)
         _lifecycle.finalize_task(PROJECT, task.id, _domain_task.TaskResult(task.id, "done"))
         assert not _pregrants.task_grants(task.id)
@@ -195,13 +192,11 @@ class TestApproveTaskCli:
     def test_the_twenty_first_grant_is_refused_with_a_message(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         for i in range(_actions.TASK_GRANT_CAP):
-            run_approve(_park(task.id, {"command": f"echo {i}"}), "--task")
+            run_answer(_park(task.id, {"command": f"echo {i}"}), "approve_task")
         assert len(_pregrants.task_grants(task.id)) == _actions.TASK_GRANT_CAP
 
         token = _park(task.id, {"command": "echo extra"})
-        note = _escalations.resolve_approval_token(
-            token, "approve_task", channel="cli", actor="", reason=""
-        )
+        note = resolve_token(token, "approve_task")
 
         assert "task-wide grants" in note
         stored = stored_task(PROJECT, task.id)
@@ -223,28 +218,22 @@ class TestApproveTaskTelegram:
         self._bind()
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         token = _park(task.id)
-        assert self._say(f"/approve {token} task").ok
+        assert self._say(f"/answer {escalation_of(token)} approve_task").ok
         assert [g.channel for g in _pregrants.task_grants(task.id)] == ["telegram"]
 
     def test_plain_approve_stays_single_use(self) -> None:
         self._bind()
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         token = _park(task.id)
-        assert self._say(f"/approve {token}").ok
+        assert self._say(f"/answer {escalation_of(token)} approve_once").ok
         assert not _pregrants.task_grants(task.id)
 
     def test_unbound_chat_cannot_grant_task_wide(self) -> None:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         token = _park(task.id)
-        out = self._say(f"/approve {token} task")
+        out = self._say(f"/answer {escalation_of(token)} approve_task")
         assert not out.authorized
         assert _approval.approval_get(token)["state"] == "pending"
-
-    def test_an_unknown_trailing_word_is_unrecognized(self) -> None:
-        self._bind()
-        out = self._say("/approve apr-x forever")
-        assert out.action == "unparseable"
-        assert "Unrecognized" in out.reply
 
 
 class TestApproveTaskHttpAndMcp:
@@ -252,8 +241,8 @@ class TestApproveTaskHttpAndMcp:
         from docket.interfaces.cli.commands import mcp as _mcp
 
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
-        result = _mcp.tool_approvals_grant(_park(task.id), option="approve_task")
-        assert result["state"] == "granted"
+        result = _mcp.tool_resolve(escalation_of(_park(task.id)), "approve_task")
+        assert result["state"] == "resolved"
         (grant,) = _pregrants.task_grants(task.id)
         assert grant.channel == "mcp"
 
@@ -273,9 +262,9 @@ class TestApproveTaskHttpAndMcp:
         try:
             task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
             token = _park(task.id)
-            body = json.dumps({"action": "grant", "option": "approve_task"}).encode()
+            body = json.dumps({"optionId": "approve_task"}).encode()
             req = urllib.request.Request(
-                f"http://127.0.0.1:{srv.server_address[1]}/approvals/{token}",
+                f"http://127.0.0.1:{srv.server_address[1]}/escalations/{escalation_of(token)}",
                 data=body,
                 method="POST",
                 headers={
@@ -284,7 +273,7 @@ class TestApproveTaskHttpAndMcp:
                 },
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
-                assert json.loads(resp.read())["state"] == "granted"
+                assert json.loads(resp.read())["state"] == "resolved"
         finally:
             srv.shutdown()
         (grant,) = _pregrants.task_grants(task.id)
@@ -296,5 +285,5 @@ class TestApproveTaskHttpAndMcp:
         task = _queue.enqueue_task_once(PROJECT, "ship it", channel="cli")[0]
         token = _park(task.id)
         with pytest.raises(_mcp.McpToolError):
-            _mcp.tool_approvals_grant(token, option="approve_forever")
+            _mcp.tool_resolve(escalation_of(token), "approve_forever")
         assert _approval.approval_get(token)["state"] == "pending"

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docket.dev/schemas/operator-v1/event.schema.json",
+  "$id": "https://docket.dev/schemas/operator-v2/event.schema.json",
   "title": "CloudEvent",
   "additionalProperties": false,
   "description": "A CloudEvents 1.0 structured-mode envelope.",

@@ -7,6 +7,9 @@ escalation record and the task, and that the older routes (`POST /approvals/<tok
 
 from __future__ import annotations
 
+import urllib.error
+import urllib.request
+
 import pytest
 from tests.support import escalations as _support_escalations
 from tests.support import http as _support_http
@@ -23,6 +26,7 @@ from tests.support.tasks import stored_task
 from docket.governance import approval as _ap
 from docket.governance import policy as _policy
 from docket.platform import read_escalation
+from docket.tasks.application.answers import answers_of
 
 live_server = _support_http.live_server
 pod_home = _support_pods.pod_home
@@ -65,7 +69,7 @@ class TestResolveRoute:
         }
         task = stored_task(PROJECT, escalation.task)
         assert task.status == "pending"
-        assert _ap.approval_get(escalation.legacy["token"])["state"] == "granted"
+        assert _ap.approval_get(_ap.approval_of(escalation.id))["state"] == "granted"
 
     def test_a_denial_carries_its_reason_to_the_failed_task(
         self, live_server: tuple[str, str]
@@ -98,7 +102,7 @@ class TestResolveRoute:
         assert status == 200
         assert body["resolution"]["content"] == {"note": "hot path"}
         task = stored_task(PROJECT, escalation.task)
-        assert (task.status, [a.option_id for a in task.answers]) == ("pending", ["redis"])
+        assert (task.status, [a.option_id for a in answers_of(task)]) == ("pending", ["redis"])
 
     def test_cancel_is_a_decline(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
@@ -110,7 +114,7 @@ class TestResolveRoute:
 
         assert status == 200
         assert body["resolution"]["optionId"] == "decline"
-        assert [a.action for a in stored_task(PROJECT, escalation.task).answers] == ["decline"]
+        assert [a.action for a in answers_of(stored_task(PROJECT, escalation.task))] == ["decline"]
 
     def test_a_second_resolve_is_a_conflict_and_changes_nothing(
         self, live_server: tuple[str, str]
@@ -125,7 +129,7 @@ class TestResolveRoute:
         )
 
         assert (status, body["ok"]) == (409, False)
-        assert escalation.legacy["token"] not in body["error"]
+        assert "apr-" not in body["error"]
         assert read_escalation(escalation.id) == settled
 
     def test_an_unknown_escalation_is_not_found(self, live_server: tuple[str, str]) -> None:
@@ -200,56 +204,44 @@ class TestResolveRoute:
         assert read_escalation(escalation.id) == escalation
 
 
-class TestTheOlderRoutesSettleTheRecord:
-    def test_posting_a_decision_on_the_token_resolves_its_escalation(
+class TestTheRetiredRoutesAreOrdinaryUnknowns:
+    def test_posting_a_decision_on_a_token_is_not_found_and_changes_nothing(
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
         escalation = approval_escalation("gate")
+        approval = _ap.approval_of(escalation.id)
 
-        status, body = _post(
-            f"{url}/approvals/{escalation.legacy['token']}", {"action": "grant"}, token=token
-        )
+        status, _body = _post(f"{url}/approvals/{approval}", {"action": "grant"}, token=token)
 
-        assert (status, body["state"]) == (200, "granted")
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.state == "resolved"
-        assert stored.resolution is not None and stored.resolution.channel == "http"
-        assert stored_task(PROJECT, escalation.task).status == "pending"
+        assert status == 404
+        assert _ap.approval_get(approval)["state"] == "pending"
+        assert read_escalation(escalation.id) == escalation
 
-    def test_a_repeat_on_the_token_is_a_conflict(self, live_server: tuple[str, str]) -> None:
+    def test_listing_the_approvals_is_not_found(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        escalation = approval_escalation("gate")
-        approval_url = f"{url}/approvals/{escalation.legacy['token']}"
-        _post(approval_url, {"action": "grant"}, token=token)
+        approval_escalation("gate")
 
-        same, _ = _post(approval_url, {"action": "grant"}, token=token)
-        opposite, _ = _post(approval_url, {"action": "deny"}, token=token)
+        req = urllib.request.Request(f"{url}/approvals")
+        req.add_header("Authorization", f"Bearer {token}")
+        with pytest.raises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(req, timeout=5)
 
-        assert (same, opposite) == (409, 409)
+        assert caught.value.code == 404
 
-    def test_answering_the_task_resolves_its_escalation(self, live_server: tuple[str, str]) -> None:
+    def test_answering_a_task_is_not_found_and_changes_nothing(
+        self, live_server: tuple[str, str]
+    ) -> None:
         url, token = live_server
         escalation = input_escalation()
 
-        status, body = _post(
+        status, _body = _post(
             f"{url}/tasks/{escalation.task}/answer",
             {"pod": PROJECT, "action": "accept", "content": {"answer": "ship it"}},
             token=token,
         )
+        unknown, _ = _post(f"{url}/tasks/{escalation.task}/frobnicate", {}, token=token)
 
-        assert (status, body["status"]) == (200, "pending")
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.state == "resolved"
-        assert stored.resolution is not None
-        assert stored.resolution.content == {"answer": "ship it"}
-
-    def test_a_repeat_answer_is_a_conflict(self, live_server: tuple[str, str]) -> None:
-        url, token = live_server
-        escalation = input_escalation()
-        answer = {"pod": PROJECT, "action": "accept", "content": {"answer": "ship it"}}
-        _post(f"{url}/tasks/{escalation.task}/answer", answer, token=token)
-
-        status, _body = _post(f"{url}/tasks/{escalation.task}/answer", answer, token=token)
-
-        assert status == 409
+        assert status == unknown >= 400
+        assert stored_task(PROJECT, escalation.task).status == "waiting_input"
+        assert read_escalation(escalation.id) == escalation

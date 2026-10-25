@@ -324,4 +324,3 @@ class TestEscalationSpans:
 
         (span,) = _escalation_spans(spans)
         assert not any("option" in key.lower() for key in span.attributes)
-

@@ -1,4 +1,4 @@
-"""docket task: approve, deny and answer settling an escalation through `resolve`."""
+"""docket task: answer settling an escalation of any kind through `resolve`."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from docket.governance import approval as _ap
 from docket.kernel.operator_contract import Escalation, Option, QuestionV11, Recommendation
 from docket.platform import read_escalation
 from docket.tasks.application import escalations as _escalations
+from docket.tasks.application.answers import answers_of
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
 
@@ -24,7 +25,6 @@ def _held_approval() -> tuple[Escalation, str]:
     record = task()
     token = _ap.approval_create("demo", "implementer", "deploy", context={"taskId": record.id})
     record.status = Status.waiting_approval
-    record.approval_token = token
     record.pending_approval_index = 1
     put_task("demo", record)
     escalation = _escalations.open_for_approval(
@@ -52,7 +52,6 @@ def _held_question() -> Escalation:
         }
     )
     record.status = Status.waiting_input
-    record.question = question
     put_task("demo", record)
     return _escalations.open_for_question(
         question, kind="consult", role="implementer", caused_by="c1"
@@ -87,12 +86,12 @@ def _only_task() -> Any:
     return TaskRepository.for_pod("demo").list()[0]
 
 
-class TestApproveAndDenySettleTheRecord:
-    def test_approve_resolves_the_escalation_as_cli(self, tmp_path: Path) -> None:
+class TestAnswerAnApprovalByItsTask:
+    def test_an_approval_option_resolves_the_escalation_as_cli(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             escalation, _token = _held_approval()
 
-            result = _task("approve", escalation.task)
+            result = _task("answer", escalation.task, "--option", "approve_once")
 
             assert result.exit_code == 0, result.output
             stored = read_escalation(escalation.id)
@@ -104,11 +103,13 @@ class TestApproveAndDenySettleTheRecord:
             )
             assert _only_task().status == "pending"
 
-    def test_deny_resolves_the_escalation_with_the_reason_on_the_task(self, tmp_path: Path) -> None:
+    def test_a_denial_resolves_the_escalation_with_the_reason_on_the_task(
+        self, tmp_path: Path
+    ) -> None:
         with _seed_pod(tmp_path):
             escalation, _token = _held_approval()
 
-            result = _task("deny", escalation.task, "--reason", "not today")
+            result = _task("answer", escalation.task, "--option", "deny", "--reason", "not today")
 
             assert result.exit_code == 0, result.output
             stored = read_escalation(escalation.id)
@@ -116,24 +117,26 @@ class TestApproveAndDenySettleTheRecord:
             assert stored.resolution.option_id == "deny"
             assert _only_task().reason == "approval denied: not today"
 
-    def test_a_repeat_is_a_warning_and_exit_zero(self, tmp_path: Path) -> None:
+    def test_a_repeat_by_the_task_finds_nothing_waiting_and_by_the_id_is_a_warning(
+        self, tmp_path: Path
+    ) -> None:
         with _seed_pod(tmp_path):
             escalation, _token = _held_approval()
-            _task("approve", escalation.task)
+            _task("answer", escalation.task, "--option", "approve_once")
 
-            result = _task("approve", escalation.task)
+            by_task = _task("answer", escalation.task, "--option", "approve_once")
+            by_id = _task("answer", escalation.id, "--option", "approve_once")
 
-            assert result.exit_code == 1  # the task no longer waits for approval
-            again = _task("approve", _token)
-            assert again.exit_code == 0, again.output
-            assert "Already granted" in again.output + again.stderr
+            assert by_task.exit_code == 1  # the task no longer waits for anything
+            assert by_id.exit_code == 0, by_id.output
+            assert "not pending" in by_id.output + by_id.stderr
 
     def test_the_opposite_decision_after_a_decision_is_an_error(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            escalation, token = _held_approval()
-            _task("approve", escalation.task)
+            escalation, _token = _held_approval()
+            _task("answer", escalation.id, "--option", "approve_once")
 
-            result = _task("deny", token)
+            result = _task("answer", escalation.id, "--option", "deny")
 
             assert result.exit_code == 1
 
@@ -182,17 +185,17 @@ class TestAnswerSettlesAnEscalation:
             assert "approve_once|approve_task|deny" in result.output + result.stderr
             assert _ap.approval_get(token)["state"] == "pending"
 
-    def test_a_task_wide_choice_on_a_gate_is_a_plain_grant(self, tmp_path: Path) -> None:
+    def test_a_task_wide_choice_is_refused_on_a_gate_which_does_not_offer_it(
+        self, tmp_path: Path
+    ) -> None:
         with _seed_pod(tmp_path):
             escalation, token = _held_approval()
 
             result = _task("answer", escalation.id, "--option", "approve_task")
 
-            assert result.exit_code == 0, result.output
-            stored = read_escalation(escalation.id)
-            assert stored is not None and stored.resolution is not None
-            assert stored.resolution.option_id == "approve_once"
-            assert _ap.approval_get(token)["state"] == "granted"
+            assert result.exit_code == 1
+            assert "approve_once, deny" in result.output + result.stderr
+            assert _ap.approval_get(token)["state"] == "pending"
 
     def test_an_approval_needs_an_option_and_takes_no_text(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -214,7 +217,7 @@ class TestAnswerSettlesAnEscalation:
             stored = read_escalation(escalation.id)
             assert stored is not None and stored.resolution is not None
             assert (stored.resolution.option_id, stored.resolution.channel) == ("redis", "cli")
-            assert _only_task().answers[0].option_id == "redis"
+            assert answers_of(_only_task())[0].option_id == "redis"
 
     def test_an_unknown_escalation_id_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -235,7 +238,7 @@ class TestAnswerAConsultWaitingInTheTurn:
             assert stored is not None and stored.state == "resolved"
             assert stored.resolution is not None
             assert (stored.resolution.option_id, stored.resolution.channel) == ("redis", "cli")
-            assert _ap.approval_get(str(escalation.legacy["token"]))["state"] == "granted"
+            assert _ap.approval_get(_ap.approval_of(escalation.id))["state"] == "granted"
 
     def test_it_is_answered_by_its_task_and_can_be_declined(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -247,7 +250,7 @@ class TestAnswerAConsultWaitingInTheTurn:
             stored = read_escalation(escalation.id)
             assert stored is not None and stored.resolution is not None
             assert stored.resolution.option_id == "decline"
-            assert _ap.approval_get(str(escalation.legacy["token"]))["state"] == "denied"
+            assert _ap.approval_get(_ap.approval_of(escalation.id))["state"] == "denied"
 
     def test_a_running_task_with_no_consult_still_has_no_pending_question(
         self, tmp_path: Path
@@ -259,4 +262,4 @@ class TestAnswerAConsultWaitingInTheTurn:
             result = _task("answer", record.id, "--option", "redis")
 
             assert result.exit_code == 1
-            assert "no pending question" in result.output + result.stderr
+            assert "waits on no question or approval" in result.output + result.stderr

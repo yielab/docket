@@ -323,12 +323,22 @@ def _text_content(properties: dict[str, Any], text: str, ref: str) -> dict[str, 
 
 
 def _settle(
-    project: str, task_id: str, escalation_id: str, option: str | None, content: Any
+    project: str,
+    task_id: str,
+    escalation_id: str,
+    option: str | None,
+    content: Any,
+    *,
+    by_task: bool = False,
 ) -> TelegramActionResult:
-    """Resolve what the chat answered and say how it went."""
+    """Resolve what the chat answered and say how it went; a chat that named the task is told the
+    task, one that named the escalation is told the escalation."""
     try:
         resolved = resolve(escalation_id, option, content, by="telegram", channel="telegram")
-        reply = f"Resolved {escalation_id}." + (f"\n{resolved.note}" if resolved.note else "")
+        named = f"task {task_id}" if by_task else escalation_id
+        reply = f"{'Answered' if by_task else 'Resolved'} {named}." + (
+            f"\n{resolved.note}" if resolved.note else ""
+        )
     except EscalationRefused as exc:
         audit_log(
             "telegram.answer_blocked",
@@ -342,11 +352,18 @@ def _settle(
     return TelegramActionResult(True, reply, True, "answer")
 
 
-def _answer_escalation(agent_id: str, escalation_id: str, text: str) -> TelegramActionResult:
+def _answer_escalation(
+    agent_id: str, escalation_id: str, text: str, *, by_task: bool = False
+) -> TelegramActionResult:
     """`/answer esc-... <option|text>`: an option id resolves it; anything else resolves a question
     with no options (text filling its one property) and otherwise lists the ids."""
     bound = _pod.pod_of(agent_id) or agent_id
     record = read_escalation(escalation_id)
+    if record is not None and record.pod != bound:
+        audit_log(
+            "telegram.cross_pod_refused",
+            f"agent={agent_id!r} escalation={escalation_id} action=answer",
+        )
     if record is None or record.pod != bound:
         return TelegramActionResult(
             False, f"Escalation {escalation_id!r} not found in pod {bound!r}.", True, "answer"
@@ -354,7 +371,7 @@ def _answer_escalation(agent_id: str, escalation_id: str, text: str) -> Telegram
     view = escalation_view(record)
     # A settled escalation takes the same path, so that `resolve` says why it is refused.
     if view.state != "pending" or text in view.affordances.options:
-        return _settle(record.pod, record.task, record.id, text, None)
+        return _settle(record.pod, record.task, record.id, text, None, by_task=by_task)
     offers_options = any(o != "decline" for o in view.affordances.options)
     if offers_options or record.kind in ("approval", "gate", "check_changed"):
         return TelegramActionResult(False, _options_reply(view), True, "answer")
@@ -363,7 +380,7 @@ def _answer_escalation(agent_id: str, escalation_id: str, text: str) -> Telegram
     )
     if isinstance(content, str):
         return TelegramActionResult(False, content, True, "answer")
-    return _settle(record.pod, record.task, record.id, None, content)
+    return _settle(record.pod, record.task, record.id, None, content, by_task=by_task)
 
 
 def _handle_answer(agent_id: str, ref: str, text: str) -> TelegramActionResult:
@@ -391,7 +408,7 @@ def _handle_answer(agent_id: str, ref: str, text: str) -> TelegramActionResult:
     )
     if pending is None:
         return TelegramActionResult(False, f"Task {ref!r} has no pending question.", True, "answer")
-    return _answer_escalation(agent_id, pending.id, text)
+    return _answer_escalation(agent_id, pending.id, text, by_task=True)
 
 
 def handle_message(

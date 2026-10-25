@@ -47,7 +47,7 @@ class TestToolResolve:
 
         _mcp.tool_resolve(escalation.id, "approve_once")
 
-        assert _approval.approval_get(escalation.legacy["token"])["state"] == "granted"
+        assert _approval.approval_get(_approval.approval_of(escalation.id))["state"] == "granted"
         (line,) = audit_entries("approval.grant")
         assert "channel=mcp" in line["detail"]
         assert stored_task(PROJECT, escalation.task).status == "pending"
@@ -79,46 +79,29 @@ class TestToolResolve:
         assert "resolve" in _mcp._TOOL_NAMES
 
 
-class TestTheOlderToolsSettleTheRecord:
-    def test_granting_the_token_resolves_its_escalation(self) -> None:
+class TestResolveReplacesTheOlderTools:
+    def test_a_denial_fails_the_task_it_gated_with_the_reason(self) -> None:
         escalation = approval_escalation("gate")
 
-        result = _mcp.tool_approvals_grant(escalation.legacy["token"])
-
-        assert result["state"] == "granted"
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.state == "resolved"
-        assert stored.resolution is not None and stored.resolution.channel == "mcp"
-
-    def test_denying_the_token_resolves_its_escalation(self) -> None:
-        escalation = approval_escalation("gate")
-
-        _mcp.tool_approvals_deny(escalation.legacy["token"])
+        _mcp.tool_resolve(escalation.id, "deny", {"reason": "not today"})
 
         stored = read_escalation(escalation.id)
         assert stored is not None and stored.state == "resolved"
         assert stored.resolution is not None and stored.resolution.option_id == "deny"
-        assert stored_task(PROJECT, escalation.task).status == "failed"
+        task = stored_task(PROJECT, escalation.task)
+        assert (task.status, task.reason) == ("failed", "approval denied: not today")
 
-    def test_a_repeat_grant_raises_without_the_token_leaving_the_record(self) -> None:
+    def test_a_repeat_grant_raises_without_the_token_in_the_error(self) -> None:
         escalation = approval_escalation("gate")
-        _mcp.tool_approvals_grant(escalation.legacy["token"])
+        token = _approval.approval_of(escalation.id)
+        _mcp.tool_resolve(escalation.id, "approve_once")
 
-        with pytest.raises(_mcp.McpToolError):
-            _mcp.tool_approvals_grant(escalation.legacy["token"])
+        with pytest.raises(_mcp.McpToolError) as caught:
+            _mcp.tool_resolve(escalation.id, "approve_once")
 
-    def test_answering_the_task_resolves_its_escalation(self) -> None:
-        escalation = input_escalation()
+        assert token not in str(caught.value)
 
-        result = _mcp.tool_task_answer(PROJECT, escalation.task, "accept", {"answer": "ship it"})
-
-        assert result["action"] == "accept"
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.state == "resolved"
-
-    def test_a_repeat_answer_raises(self) -> None:
-        escalation = input_escalation()
-        _mcp.tool_task_answer(PROJECT, escalation.task, "accept", {"answer": "ship it"})
-
-        with pytest.raises(_mcp.McpToolError):
-            _mcp.tool_task_answer(PROJECT, escalation.task, "accept", {"answer": "ship it"})
+    def test_the_retired_tools_are_gone(self) -> None:
+        for name in ("approvals_list", "approvals_grant", "approvals_deny", "task_answer"):
+            assert name not in _mcp._TOOL_NAMES
+            assert not hasattr(_mcp, f"tool_{name}")
