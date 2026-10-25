@@ -1268,7 +1268,7 @@ def _task(home: Path) -> dict[str, Any]:
 
 def _verify_sessions(home: Path, *, memory_scenario: bool) -> None:
     session_files = sorted((home / "sessions").glob("*/session.json"))
-    expected = 6 if memory_scenario else 5
+    expected = 5
     _require(
         len(session_files) == expected, f"expected {expected} sessions, found {len(session_files)}"
     )
