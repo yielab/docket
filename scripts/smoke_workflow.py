@@ -776,6 +776,31 @@ def _run_cli(
     return result
 
 
+def _pending_escalations(repo: Path, env: dict[str, str]) -> list[dict[str, Any]]:
+    """The pending escalations the CLI's own inbox lists: what a person is asked to answer."""
+    result = _run_cli(repo, env, "inbox", "--peek", "--json", process_timeout=30)
+    listing = json.loads(result.stdout)
+    return [e for e in listing.get("escalations") or [] if isinstance(e, dict)]
+
+
+def _answer_escalation(
+    repo: Path, env: dict[str, str], escalation_id: str, option: str, pod: str = "smoke"
+) -> None:
+    """Answer one escalation through the public verb, as an operator would."""
+    _run_cli(
+        repo,
+        env,
+        "task",
+        "answer",
+        escalation_id,
+        "--option",
+        option,
+        "--pod",
+        pod,
+        process_timeout=30,
+    )
+
+
 @dataclass
 class _LiveApprovalState:
     granted: list[str] = dataclass_field(default_factory=list)
@@ -857,6 +882,13 @@ def _approve_live_tool_calls(
                 project = str(record.get("project", ""))
                 if not token or token in seen or not project.startswith("smoke-"):
                     continue
+                try:
+                    pending = {e.get("id") for e in _pending_escalations(repo, env)}
+                except (OSError, subprocess.SubprocessError, SmokeFailure, ValueError):
+                    continue
+                escalation_id = str(record.get("escalation", ""))
+                if escalation_id not in pending:
+                    continue
                 resolved, verdict = _approval_tool_verdict(
                     home,
                     record,
@@ -883,7 +915,7 @@ def _approve_live_tool_calls(
                         )
                     state.abort.set()
                     try:
-                        _run_cli(repo, env, "task", "deny", token, process_timeout=30)
+                        _answer_escalation(repo, env, escalation_id, "deny")
                     except (OSError, subprocess.SubprocessError, SmokeFailure) as exc:
                         del exc
                         state.failures.append(
@@ -911,7 +943,7 @@ def _approve_live_tool_calls(
                     )
                     return
                 try:
-                    _run_cli(repo, env, "task", "approve", token, process_timeout=30)
+                    _answer_escalation(repo, env, escalation_id, "approve_once")
                 except (OSError, subprocess.SubprocessError, SmokeFailure) as exc:
                     del exc
                     state.failures.append(
@@ -1551,11 +1583,14 @@ def _run(
             "pipeline did not pause for approval",
         )
         _require(len(waiting.get("hops", [])) == 3, "approval pause occurred at the wrong step")
-        token = str(waiting.get("approvalToken") or "")
-        _require(bool(token), "waiting task has no approval token")
+        (escalation,) = [
+            e
+            for e in _pending_escalations(repo, env)
+            if e.get("task") == waiting.get("id") and e.get("kind") in {"approval", "gate"}
+        ]
         print("[check] tool write + mechanical check + reviewer verdict reached approval pause")
 
-        run_cli("task", "approve", token)
+        _answer_escalation(repo, env, str(escalation["id"]), "approve_once")
         run_cli(*run_pipeline, abort_event=canary_abort)
     if approval_state.granted:
         print(f"[check] operator granted {len(approval_state.granted)} in-turn tool approval(s)")

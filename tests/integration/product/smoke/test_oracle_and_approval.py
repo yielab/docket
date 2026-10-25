@@ -15,6 +15,7 @@ from tests.support.smoke_script import (
 )
 
 SUBJECT = "docket.__main__"
+ESCALATION = "esc-0123456789ab"
 
 
 def _write_private_oracle_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -326,6 +327,7 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
         json.dumps(
             {
                 "token": "approval-private",
+                "escalation": ESCALATION,
                 "project": "smoke-implementer",
                 "role": "implementer",
                 "state": "pending",
@@ -349,7 +351,8 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
     ) -> subprocess.CompletedProcess[str]:
         del repo, env, process_timeout, abort_event
         calls.append(args)
-        return subprocess.CompletedProcess(args, 0, "", "")
+        listing = json.dumps({"escalations": [{"id": ESCALATION, "task": "task-fixture"}]})
+        return subprocess.CompletedProcess(args, 0, listing if args[0] == "inbox" else "", "")
 
     monkeypatch.setattr(_smoke, "_run_cli", fake_run_cli)
 
@@ -359,9 +362,9 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
     ):
         assert state.abort.wait(2)
 
-    assert calls == [
+    assert [c for c in calls if c[0] != "inbox"] == [
         ("task", "cancel", "run-live"),
-        ("task", "deny", "approval-private"),
+        ("task", "answer", ESCALATION, "--option", "deny", "--pod", "smoke"),
     ]
     error = str(exc_info.value)
     assert "source=approval" in error
@@ -409,6 +412,7 @@ def test_live_approval_grants_only_typed_allowed_call(
         json.dumps(
             {
                 "token": "approval-allowed",
+                "escalation": ESCALATION,
                 "project": "smoke-implementer",
                 "role": "implementer",
                 "state": "pending",
@@ -432,7 +436,8 @@ def test_live_approval_grants_only_typed_allowed_call(
     ) -> subprocess.CompletedProcess[str]:
         del repo, env, process_timeout, abort_event
         calls.append(args)
-        return subprocess.CompletedProcess(args, 0, "", "")
+        listing = json.dumps({"escalations": [{"id": ESCALATION, "task": "task-fixture"}]})
+        return subprocess.CompletedProcess(args, 0, listing if args[0] == "inbox" else "", "")
 
     monkeypatch.setattr(_smoke, "_run_cli", fake_run_cli)
 
@@ -444,7 +449,9 @@ def test_live_approval_grants_only_typed_allowed_call(
         assert state.granted == ["approval-allowed"]
         assert state.abort.is_set() is False
 
-    assert calls == [("task", "approve", "approval-allowed")]
+    assert [c for c in calls if c[0] != "inbox"] == [
+        ("task", "answer", ESCALATION, "--option", "approve_once", "--pod", "smoke")
+    ]
 
 
 def test_run_cli_does_not_start_after_canary_abort(

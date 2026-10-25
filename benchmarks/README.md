@@ -41,7 +41,7 @@ fails it restores the first.
 `benchmarks/scenarios/run.py` writes the run, task, session, audit and trace records itself,
 including a fabricated `guardrail_block` trace event for the two denial cases, and the changed
 target bytes in the cases that mutate. It calls the Docket CLI only for `run --pod demo --dry-run`,
-`task approve`, `task deny` and `task show`. It imports no `docket` module, and no agent turn, tool
+`task answer` and `task show`. It imports no `docket` module, and no agent turn, tool
 dispatch or policy decision runs. It sets each approval's creation time to the time of its
 resolution, so approval latency is deterministic by construction rather than measured. The
 `public_actions` labels in `evidence.json` are case data, not a record of calls.
