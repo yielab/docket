@@ -359,6 +359,36 @@
 
 ---
 
+### P51-10 — the live eval runs with `consultMode` and against a remote provider
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
+
+- **Trigger (maintainer request 2026-10-25):** run the live eval against Anthropic as well as the
+  local model, and measure `consultMode decide` (P51-1). Today `scripts/smoke_workflow.py` never
+  sets `consultMode` (the basic scenario still parks on a consult) and accepts only a loopback
+  endpoint (`_loopback_endpoint`).
+- **Goal:** `smoke_workflow.py --live-model` gains `--consult-mode park|decide` (default `park`,
+  applied with `docket pod set` on the smoke pod) and `--provider <name> --allow-remote` to use a
+  built-in remote provider such as `anthropic` with `--model`; `scripts/maint/live_eval.py` passes
+  both through.
+- **Non-goals:** any change under `src/`; a remote run in CI (a real model never gates CI); the
+  default behaviour (no flag means loopback and `park`, unchanged).
+- **Change:**
+  - The key comes from the environment (`ANTHROPIC_API_KEY`) or, when unset, is read at run time
+    from the operator's `$DOCKET_HOME`-independent default `~/.docket/secrets.json`. It is never
+    written to `--out`, a run log, a trace copy or a kept world (`--keep-worlds` must scrub it);
+    a test proves a canary key does not appear anywhere under `--out`.
+  - `--provider` without `--allow-remote` exits 2 with a one-line reason; the endpoint printed in
+    the banner says `remote: <provider>`, not `(loopback only)`.
+  - The existing loopback-only test stays and still passes for the default path.
+- **Acceptance:** unit/integration tests under `tests/` for the argument rules (remote needs the
+  flag, default stays loopback, `--consult-mode` reaches `pod set`), the canary-key scrub test,
+  `live_eval.py --dry-run` printing both flags; `uv run ruff check . && uv run ruff format --check
+  . && uv run --all-extras mypy src`, `tests/guards`, `tests/e2e`. No live call is made by the
+  worker; the coordinator runs the live evals.
+- **Contention:** `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py` and their tests. Not
+  P51-5's files.
+
 **Notes for Tack (not docket cards)**
 
 - Pause the attempt clock while the task is `INPUT_REQUIRED`; the deadline is the escalation's
