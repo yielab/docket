@@ -168,8 +168,8 @@ cannot silently go stale.
 Run the full aggregator before submitting:
 
 ```bash
-# Observable full workflow (temporary state + deterministic loopback model; no credentials)
-uv run python scripts/smoke_workflow.py
+# Deterministic whole-workflow journeys against the fake model (no credentials)
+uv run pytest tests/e2e -n auto -q
 
 # Opt-in realistic memory-backed repair with genuine inference on port 8081
 uv run python scripts/smoke_workflow.py --live-model

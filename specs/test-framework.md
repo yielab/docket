@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 3.5.0
+**Version**: 4.0.0
 **Status**: Active
 **Last Updated**: 2026-10-25
 
@@ -10,9 +10,10 @@ Docket's test system has four blocking layers: pytest behavior, byte-for-byte CL
 analysis, and specification validation. Docket owns its runtime; tests exercise that runtime
 directly and replace only real external protocol/process boundaries.
 
-It also ships one executable full-workflow smoke test. That test is not a fifth exhaustive layer;
-it proves the separately tested components compose across real CLI subprocess and HTTP protocol
-boundaries into one completed, inspectable task.
+It also ships whole-flow proofs. They are not a fifth exhaustive layer; they prove the separately
+tested components compose across real CLI subprocess and HTTP protocol boundaries into completed,
+inspectable tasks. The deterministic ones are the end-to-end lane (`tests/e2e/`, rule 13); the one
+that needs a real model is the opt-in live smoke canary.
 
 Each rule below names the check that enforces it. A rule marked **convention** is followed by
 review only; no guard fails when it is broken.
@@ -83,7 +84,8 @@ tests/
 └── run-all-tests.sh        local aggregate gate (default lanes + golden; not the agent lane)
 ```
 
-The whole-workflow smoke test lives in `tests/integration/product/smoke/` (it spawns a real CLI subprocess).
+The deterministic whole-workflow proofs live in `tests/e2e/`. The live smoke canary's helper tests
+and its opt-in wrapper live in `tests/integration/product/smoke/`.
 
 ## Lanes and placement
 
@@ -234,48 +236,46 @@ Requirements:
 
 Run every guard with `uv run pytest tests/guards`.
 
-### Full-workflow smoke
+### Live smoke canary
 
-Run the observable happy-path proof with:
+The deterministic full-workflow proofs are journeys of the end-to-end lane (`tests/e2e/`, rule
+13), run against the fake model through real CLI subprocesses and a real `docket start`: a pod to
+done through a park and its grant, two pods in one service where one waits for a person while the
+other finishes, and a pipeline step that declares its own approval. `scripts/smoke_workflow.py`
+holds no scripted model and no deterministic mode; it is only the live canary:
 
 ```bash
-uv run python scripts/smoke_workflow.py
+uv run python scripts/smoke_workflow.py --live-model
 ```
 
-By default, the command **MUST** create a temporary `DOCKET_HOME` and codebase, start only a
-loopback OpenAI-compatible fake endpoint, and invoke Docket through real subprocess CLI commands.
-It **MUST** exercise, display, and verify this sequence:
+Run without `--live-model`, the command **MUST** print a `SMOKE FAIL` line that names
+`tests/e2e/` and exit 2, and **MUST NOT** start any endpoint. A live run **MUST** exercise,
+display, and verify this sequence:
 
 1. Declarative provisioning of an `agentic-product` pod (`docket init --from`).
 2. Task delegation and rendering of the resolved pipeline plan.
-3. Lead planning, an Implementer `write` tool call through `dispatch_tool`, and a real mechanical
-   file check.
+3. Lead planning, an Implementer tool call through `dispatch_tool`, and a real mechanical file
+   check.
 4. Reviewer verdict, a pipeline-defined human approval pause, CLI approval, exact-position resume,
    and final Tester verdict.
 5. Terminal task state plus typed handoffs, isolated durable step histories, an atomic tool-call/
    tool-result pair, traces, audit chain, measured usage, and two run records (the parked dispatch,
    then the one that succeeded).
 
-The model endpoint is fake; the protocol boundary is not. The harness **MUST** receive and validate
-real `/chat/completions` request shapes and never use a paid endpoint, credential, or non-loopback
-network. Its final output **MUST** name each verified stage and end in one unambiguous `SMOKE PASS`
-line; a failure prints `SMOKE FAIL` to stderr and exits 1, and a refused invocation exits 2.
-`--workdir <path>` preserves the otherwise-temporary world for inspection and must name a new or
-empty directory.
+Its final output **MUST** name each verified stage and end in one unambiguous `SMOKE PASS` line; a
+failure prints `SMOKE FAIL` to stderr and exits 1, and a refused invocation exits 2. `--workdir
+<path>` preserves the otherwise-temporary world for inspection and must name a new or empty
+directory.
 
-The basic scenario's artifact contract is byte-exact: `smoke-artifact.txt` **MUST** contain exactly
-the 16 UTF-8 bytes `docket smoke ok` followed by one LF. Its delegated task text **MUST** state the
-terminal-LF requirement, its Implementer mechanical gate **MUST** reject the 15-byte no-newline
-variant as well as any extra byte/line, and the harness **MUST** retain an independent final exact
-read assertion after the pipeline completes.
+The `basic` scenario's artifact contract is byte-exact: `smoke-artifact.txt` **MUST** contain
+exactly the 16 UTF-8 bytes `docket smoke ok` followed by one LF. Its delegated task text **MUST**
+state the terminal-LF requirement, its Implementer mechanical gate **MUST** reject the 15-byte
+no-newline variant as well as any extra byte/line, and the harness **MUST** retain an independent
+final exact read assertion after the pipeline completes.
 
-Options: `--live-model` (genuine inference), `--endpoint` (loopback base URL for `--live-model`,
-default `http://127.0.0.1:8081/v1`), `--model` (requires `--live-model`),
-`--scenario basic|memory-maintenance|operator-loop` (default `memory-maintenance` with
-`--live-model`, `basic` without; `memory-maintenance` requires `--live-model`), `--workdir`,
-and `--report PATH` (`operator-loop` only). `--scenario operator-loop` records a baseline rather
-than asserting the workflow: a real `docket start --dispatch` sweep against two pods, one blocked
-on an unanswered in-turn approval, written as JSON to `--report`.
+Options: `--live-model` (required), `--endpoint` (loopback base URL, default
+`http://127.0.0.1:8081/v1`), `--model`, `--scenario basic|memory-maintenance` (default
+`memory-maintenance`), and `--workdir`.
 
 An explicitly selected live-local canary **MUST** run the same workflow against a real
 OpenAI-compatible model without replacing its replies. An endpoint override **MUST** remain
@@ -347,13 +347,13 @@ un-scripted agent requests a policy-gated `bash` validation, the canary **MUST**
 operator grant through `docket task approve` in its isolated home; it **MUST NOT** disable the
 policy or shorten its timeout. Pipeline approval remains a distinct, explicit pause/resume
 assertion. `--scenario basic` **MUST** retain the smaller live workflow for focused infrastructure
-diagnosis, while the deterministic default invocation remains unchanged.
+diagnosis.
 
 Because the canary requires mutable local infrastructure and un-scripted inference, it **MUST** be
-opt-in rather than a blocking default-suite dependency. The pytest wrapper runs the deterministic
-default invocation always, and the live `memory-maintenance` run only when `DOCKET_RUN_LIVE_SMOKE=1`
-(`DOCKET_LIVE_SMOKE_ENDPOINT` and `DOCKET_LIVE_SMOKE_MODEL` select the endpoint and model); the
-standalone live command is the acceptance evidence.
+opt-in rather than a blocking default-suite dependency. The pytest wrapper runs the live
+`memory-maintenance` scenario only when `DOCKET_RUN_LIVE_SMOKE=1` (`DOCKET_LIVE_SMOKE_ENDPOINT` and
+`DOCKET_LIVE_SMOKE_MODEL` select the endpoint and model); the standalone live command is the
+acceptance evidence.
 
 Test files use `test_<owned_behavior>.py`; card IDs belong in commit history, not permanent
 filenames.
@@ -593,7 +593,7 @@ Where the names used above live today.
 - `tests/unit/test_store_writer.py`: the store single-writer guard;
   `tests/unit/agent/tools/test_registry.py`: the tool-chokepoint import guard.
 - `tests/integration/bootstrap/test_console_script_entry_point.py`: retired names are unknown commands;
-  `tests/integration/product/smoke/`: the smoke wrapper;
+  `tests/integration/product/smoke/`: the live smoke canary's helper tests and opt-in wrapper;
   `tests/integration/sandbox/test_escape_matrix.py`: the escape matrix.
 - `tests/agent/release/`: `test_public_release_truth.py`, `test_release_artifacts.py`,
   `test_release_journey.py`, `test_distribution_package.py`, `test_runtime_package_boundary.py`.
