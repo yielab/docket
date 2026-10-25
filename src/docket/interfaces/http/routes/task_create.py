@@ -11,6 +11,7 @@ from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.state import Status
 
@@ -97,11 +98,11 @@ def post_task(h: HttpExchange, project: str) -> None:
         "status": task.status.value,
     }
     # A `require_approval` pre_input verdict leaves the task itself
-    # created but gated — surface its real status and token rather than
-    # a 200 that implies it is queued to run (see enqueue_task_once, which
-    # already sets both on the returned record for this case).
+    # created but gated — surface its real status and the escalation to resolve rather than
+    # a 200 that implies it is queued to run.
     if task.status == Status.waiting_approval:
-        task_resp["approvalToken"] = task.approval_token or ""
+        stored = TaskRepository.for_pod(project).get(task.id)
+        task_resp["escalation"] = stored.escalations[-1] if stored and stored.escalations else ""
     elif created and h.dispatch_on:
         h._submit_sweep(project)
     h._send(json.dumps(task_resp).encode(), "application/json", status=201 if created else 200)

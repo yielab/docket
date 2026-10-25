@@ -224,7 +224,7 @@ def _gate_pre_hop_approval(
         action,
         context={"taskId": ctx.task_id, "pipelineIndex": index_for_context},
     )
-    _escalations.open_for_approval(
+    escalation = _escalations.open_for_approval(
         token, kind="gate", task_id=ctx.task_id, caused_by=role, step=node.step_id
     )
     trace_locked(
@@ -232,12 +232,13 @@ def _gate_pre_hop_approval(
         ctx.session_id,
         role,
         "approval_required",
-        _json.dumps({"role": role, "token": token, "pipelineIndex": index_for_context}),
+        _json.dumps(
+            {"role": role, "escalation": escalation.id, "pipelineIndex": index_for_context}
+        ),
     )
     return UnitOutcome(
         kind="waiting_approval",
-        reason=f"approval required before {role} hop (token={token})",
-        approval_token=token,
+        reason=f"approval required before {role} hop (escalation={escalation.id})",
         pending_approval_index=index_for_context,
     )
 
@@ -358,7 +359,7 @@ def _park_if_check_changed(
         f"pod dispatch -- task {ctx.task_id} edits what checks it: {listed}",
         context={"kind": "check_changed", "taskId": ctx.task_id, "paths": paths},
     )
-    _escalations.open_for_approval(
+    escalation = _escalations.open_for_approval(
         token, kind="check_changed", task_id=ctx.task_id, caused_by="", step=""
     )
     trace_locked(
@@ -366,10 +367,16 @@ def _park_if_check_changed(
         ctx.session_id,
         "lead",
         "approval_required",
-        _json.dumps({"role": "lead", "token": token, "kind": "check_changed", "paths": paths}),
+        _json.dumps(
+            {
+                "role": "lead",
+                "escalation": escalation.id,
+                "kind": "check_changed",
+                "paths": paths,
+            }
+        ),
     )
     result.status = "waiting_approval"
-    result.reason = f"the change edits what checks it: {listed} (token={token})"
-    result.approval_token = token
+    result.reason = f"the change edits what checks it: {listed} (escalation={escalation.id})"
     result.pending_approval_index = None
     result.check_changed = paths

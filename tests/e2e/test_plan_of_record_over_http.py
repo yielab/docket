@@ -136,12 +136,12 @@ def test_a_task_posted_over_http_runs_the_team_and_serves_its_diff(
 
         task_id = _post_the_task(w, svc)
         parked = _wait_for_status(w, svc, task_id, "waiting_approval")
-        token = parked["approvalToken"]
-        assert token.startswith("apr-") and parked["externalRef"] == "BOARD-7"
+        escalation = parked["escalations"][-1]
+        assert escalation.startswith("esc-") and parked["externalRef"] == "BOARD-7"
         assert [h["role"] for h in parked["hops"]] == ["lead", "implementer"]
 
-        status, granted = svc.post(f"/approvals/{token}", {"action": "grant"})
-        assert (status, granted["state"]) == (200, "granted")
+        status, granted = svc.post(f"/escalations/{escalation}", {"optionId": "approve_once"})
+        assert (status, granted["state"]) == (200, "resolved")
         status, dispatched = svc.post(f"/dispatch/{w.pod}")
         assert (status, dispatched["status"]) == (200, "dispatched")
         done = _wait_for_status(w, svc, task_id, "done")
@@ -179,10 +179,12 @@ def test_a_parked_task_survives_a_service_restart_and_resumes_from_disk(
 
     with w.service() as second:
         again = _wait_for_status(w, second, task_id, "waiting_approval")
-        assert again["approvalToken"] == parked["approvalToken"]
+        assert again["escalations"] == parked["escalations"]
         assert again["hops"] == parked["hops"]
-        status, granted = second.post(f"/approvals/{parked['approvalToken']}", {"action": "grant"})
-        assert (status, granted["state"]) == (200, "granted")
+        status, granted = second.post(
+            f"/escalations/{parked['escalations'][-1]}", {"optionId": "approve_once"}
+        )
+        assert (status, granted["state"]) == (200, "resolved")
         second.post(f"/dispatch/{w.pod}")
         _wait_for_status(w, second, task_id, "done")
 

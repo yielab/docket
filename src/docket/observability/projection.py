@@ -36,7 +36,6 @@ DEFAULT_EVENTS: frozenset[str] = frozenset(
         "tool_result",
         "guardrail_check",
         "guardrail_block",
-        "approval_requested",
         "approval_granted",
         "approval_denied",
         "approval_required",

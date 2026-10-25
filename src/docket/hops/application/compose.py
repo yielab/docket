@@ -17,6 +17,7 @@ from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.actions import mint_task_grant_pregrants, pregrants_for
+from docket.tasks.application.answers import answers_of, consult_note
 from docket.tasks.application.record import (
     UnitContext,
     claimed_worktree_dir,
@@ -217,7 +218,7 @@ def _hop_message(
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
         if root_block:
             message = f"{message}\n\n{root_block}"
-        answers_block = _render_operator_answers(task.answers)
+        answers_block = _render_operator_answers(answers_of(task))
         if answers_block:
             message = f"{message}\n\n## Operator answers\n{answers_block}"
         comp = _HopComposition(
@@ -250,7 +251,7 @@ def _hop_message(
     if gate_failed_hop is not None:
         # Resumed right behind an operator's answer: that answer is what the human decided.
         answered = bool(prior) and prior[-1].role == "operator"
-        answer = _render_operator_answers(task.answers[-1:]) if answered else ""
+        answer = _render_operator_answers(answers_of(task)[-1:]) if answered else ""
         lines.append(_compose_gate_failed(gate_failed_hop, carryover_budget, comp, answer))
     elif rework_hop is not None and rework_hop.output:
         # Rendered from the hop's *artifact*, not its raw output, so this
@@ -338,7 +339,7 @@ _ANSWERS_CHAR_BUDGET = 4000
 
 def _render_answer_value(entry: Answer) -> str:
     """One answered entry's ``A: ...`` line: the single ``answer`` property's value for an
-    ``accept``, else a plain marker -- see ``hops.application.answers.answer_task``."""
+    ``accept``, else a plain marker."""
     action = entry.action
     if action == "accept":
         content = entry.content or {}
@@ -365,15 +366,6 @@ def _render_operator_answers(answers: list[Answer]) -> str:
     return capped
 
 
-def _consult_answer_note(task: TaskRecord, step_id: str) -> str:
-    """The operator's answer to this step's parked consultation, as a trailing message block
-    (empty when the step has none)."""
-    answer = task.consult_answer
-    if answer is None or answer.step != step_id:
-        return ""
-    return f"\n\n{answer.text}\n"
-
-
 def _compose_hop(
     ctx: UnitContext,
     node: _orch.PlannedUnit,
@@ -396,7 +388,7 @@ def _compose_hop(
         project=ctx.project,
         verify_cmd=verify_plan.command if verify_plan is not None else "",
     )
-    message += _consult_answer_note(ctx.task, node.step_id)
+    message += consult_note(ctx.task, node.step_id)
     pipeline_worktree = ""
     if role != "lead":
         pipeline_worktree = claimed_worktree_dir(ctx.task)

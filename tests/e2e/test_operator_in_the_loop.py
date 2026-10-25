@@ -65,8 +65,17 @@ def _escalations(w: World, task_id: str) -> list[tuple[str, str, str]]:
     ]
 
 
+def _inbox_escalations(w: World) -> list[dict[str, Any]]:
+    return list(w.docket("inbox", "--peek", "--json").json()["escalations"])
+
+
 def _needs_you(w: World) -> list[dict[str, Any]]:
     return list(w.docket("inbox", "--peek", "--json").json()["needsYou"])
+
+
+def _answer(w: World, ref: str, *args: str, check: bool = True) -> Any:
+    """`docket task answer <ref> ...`: the one operator verb for every pause."""
+    return w.docket("task", "answer", ref, *args, "--pod", w.pod, check=check)
 
 
 def _consult_description(request: Request) -> str:
@@ -82,11 +91,11 @@ def _audit_actions(w: World, prefix: str) -> list[str]:
     return [str(r["action"]) for r in oracles.audit_rows(w) if str(r["action"]).startswith(prefix)]
 
 
-def _the_model_saw_the_rules_and_the_reason_but_no_token(model: FakeModel, token: str) -> None:
+def _the_model_saw_the_rules_and_the_reason_but_no_token(model: FakeModel, ident: str) -> None:
     """Everything the Implementer was sent states the bash rules, explains the park, hides the token."""
     sent = model.by_role("implementer")
     wire = json.dumps([r.body for r in sent])
-    assert token not in wire and not re.search(r"apr[-_][0-9A-Za-z-]+", wire)
+    assert ident not in wire and not re.search(r"apr[-_][0-9A-Za-z-]+", wire)
     bash = next(
         t["function"]["description"]
         for t in sent[-1].body["tools"]
@@ -130,16 +139,17 @@ def test_a_parked_approval_shows_in_the_inbox_and_a_task_grant_covers_the_rest(
     statuses.append(_status(w, task_id))
 
     (parked,) = _needs_you(w)
-    token = parked["approvalToken"]
+    escalation = parked["escalation"]
     assert (parked["id"], parked["state"]) == (task_id, "needs_approval")
-    assert token.startswith("apr-")
-    assert parked["command"] == f"docket task approve {task_id}"
+    assert escalation.startswith("esc-")
+    assert "approvalToken" not in parked
+    assert parked["command"] == f"docket task answer {task_id} --option approve_once"
     listing = w.docket("inbox", "--peek").out
     assert f"task {task_id}" in listing and GATED in listing and "needs approval" in listing
     assert (_worktree(w, task_id) / "build" / "out.txt").exists()
     assert len(model.by_role("implementer")) == 2
 
-    w.docket("task", "approve", token, "--task", "--pod", w.pod)
+    _answer(w, escalation, "--option", "approve_task")
     statuses.append(_status(w, task_id))
     (ready,) = _needs_you(w)
     assert (ready["id"], ready["state"]) == (task_id, "approved_ready")
@@ -162,7 +172,7 @@ def test_a_parked_approval_shows_in_the_inbox_and_a_task_grant_covers_the_rest(
         ("escalation_resolved", "approval", "person"),
     ]
     assert len(model.by_role("implementer")) == 5
-    _the_model_saw_the_rules_and_the_reason_but_no_token(model, token)
+    _the_model_saw_the_rules_and_the_reason_but_no_token(model, escalation)
     assert not (_worktree(w, task_id) / "build").exists()
     assert _needs_you(w) == []
     assert "Needs you" not in w.docket("inbox", "--peek").out
@@ -192,7 +202,7 @@ def test_a_pre_grant_lets_a_run_pass_without_stopping(
     task_id = w.add_task("Remove the build directory")
     statuses = [_status(w, task_id)]
 
-    granted = w.docket("task", "approve", task_id, "--for", GATED, "--pod", w.pod)
+    granted = w.docket("task", "pregrant", task_id, GATED, "--pod", w.pod)
     statuses.append(_status(w, task_id))
     _run_the_queue(w)
     statuses.append(_status(w, task_id))
@@ -232,9 +242,10 @@ def test_a_question_from_the_model_waits_for_an_answer(
 
     (asked,) = _needs_you(w)
     assert (asked["id"], asked["state"]) == (task_id, "needs_answer")
-    assert asked["question"]["message"] == CACHE_QUESTION["message"]
-    assert [o["id"] for o in asked["question"]["options"]] == ["redis", "memcached"]
-    assert asked["question"]["recommendation"]["optionId"] == "redis"
+    (pending,) = [e for e in _inbox_escalations(w) if e["id"] == asked["escalation"]]
+    assert pending["prompt"] == CACHE_QUESTION["message"]
+    assert [o["id"] for o in pending["options"]] == ["redis", "memcached", "decline"]
+    assert pending["recommendation"]["optionId"] == "redis"
     assert asked["command"] == f"docket task answer {task_id}"
     listing = w.docket("inbox", "--peek").out
     assert (
@@ -242,10 +253,10 @@ def test_a_question_from_the_model_waits_for_an_answer(
         and "redis (Redis) (recommended)" in listing
     )
 
-    unknown = w.docket("task", "answer", task_id, "--option", "etcd", "--pod", w.pod, check=False)
+    unknown = _answer(w, task_id, "--option", "etcd", check=False)
     assert unknown.code != 0 and _status(w, task_id) == "waiting_input"
 
-    w.docket("task", "answer", task_id, "--option", "redis", "--pod", w.pod)
+    _answer(w, task_id, "--option", "redis")
     statuses.append(_status(w, task_id))
     _run_the_queue(w)
     statuses.append(_status(w, task_id))
@@ -254,7 +265,6 @@ def test_a_question_from_the_model_waits_for_an_answer(
     assert oracles.trace_skeleton(w, w.pod, task_id) == [
         *PARKED,
         ("session_end", "lead", "waiting_input"),
-        ("input_answered", "lead", "implement"),
         *DONE,
     ]
     assert _escalations(w, task_id) == [
@@ -267,9 +277,7 @@ def test_a_question_from_the_model_waits_for_an_answer(
     assert "3 consultations left" in _consult_description(first)
     assert "2 consultations left" in _consult_description(resumed)
     assert "Operator answered" not in first.last_user_text
-    assert (
-        f"Operator answered your consultation {asked['question']['id']}" in resumed.last_user_text
-    )
+    assert f"Operator answered your consultation {pending['id']}" in resumed.last_user_text
     assert "option redis (Redis)" in resumed.last_user_text
     assert _needs_you(w) == []
     assert _audit_actions(w, "task.answer") == ["task.answer"]
@@ -291,7 +299,8 @@ def test_a_parked_question_carries_the_deadline_the_pod_sets(
     _run_the_queue(w)
 
     (asked,) = _needs_you(w)
-    deadline = dt.datetime.fromisoformat(asked["question"]["expiresAt"])
+    (pending,) = [e for e in _inbox_escalations(w) if e["id"] == asked["escalation"]]
+    deadline = dt.datetime.fromisoformat(pending["expiresAt"])
     remaining = (deadline - dt.datetime.now(dt.UTC)).total_seconds()
     assert (asked["id"], asked["state"]) == (task_id, "needs_answer")
     assert 3000 < remaining <= 3600
@@ -327,9 +336,7 @@ def test_an_unanswered_question_expires_to_blocked(
         "blocked",
         f"docket task retry {task_id}",
     )
-    assert blocked["reason"] == f"question {asked['question']['id']!r} expired unanswered"
-    assert blocked["question"] is None
-    assert ("input_expired", "lead", "") in oracles.trace_skeleton(w, w.pod, task_id)
+    assert blocked["reason"] == f"question {asked['escalation']!r} expired unanswered"
     assert _escalations(w, task_id) == [
         ("escalation_asked", "consult", ""),
         ("escalation_delivered", "consult", ""),
@@ -364,7 +371,7 @@ def test_a_denied_approval_fails_the_task_with_the_reason(
 
     _run_the_queue(w)
     statuses.append(_status(w, task_id))
-    denied = w.docket("task", "deny", task_id, "--reason", "not today", "--pod", w.pod)
+    denied = _answer(w, task_id, "--option", "deny", "--reason", "not today")
     statuses.append(_status(w, task_id))
 
     assert statuses == ["pending", "waiting_approval", "failed"]

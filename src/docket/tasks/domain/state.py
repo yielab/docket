@@ -102,18 +102,14 @@ def decide(
     failure_kind: str = "",
     blocked_reason: str = "",
     pid: int = 0,
-    approval_token: str | None = None,
     pending_index: int | None = None,
-    question: Mapping[str, Any] | None = None,
     retry: bool = False,
-    ran: bool = False,
     keep_grants: bool = False,
 ) -> Transition:
     """The record changes for moving a task from *status* to *to*, or ``IllegalTransition``.
 
     Pure: the caller supplies every fact, including the time. ``reason`` is written when given;
-    ``retry`` also clears the previous outcome on the way back to ``pending``; ``ran`` marks an
-    outcome the pipeline reached by running hops (their consult answer is delivered);
+    ``retry`` also clears the previous outcome on the way back to ``pending``;
     ``keep_grants`` leaves a terminal task's task-wide grants in place (``Transition.ends_grants``
     is otherwise set on a terminal move). A ``stale_claim`` failure is
     evidence of a lost claim, not a finished task: it keeps the claim's pid and grants and stamps
@@ -128,9 +124,7 @@ def decide(
     drop: list[str] = []
     ends_grants = False
     if status == Status.waiting_approval:
-        drop += ["approval_token", "pending_approval_index"]
-    if status == Status.waiting_input and to != Status.waiting_input:
-        drop.append("question")
+        drop.append("pending_approval_index")
 
     if to == Status.running:
         fields.update(started_at=now, claimed_at=now, claim_pid=pid)
@@ -145,15 +139,11 @@ def decide(
             fields["reason"] = reason
         if not stale:
             drop.append("claim_pid")
-        if ran:
-            drop.append("consult_answer")
-        if to == Status.waiting_input:
-            fields["question"] = question
-        elif to == Status.waiting_approval:
-            fields.update(approval_token=approval_token, pending_approval_index=pending_index)
+        if to == Status.waiting_approval:
+            fields["pending_approval_index"] = pending_index
         elif to == Status.blocked:
             fields["blocked_reason"] = blocked_reason
-        else:
+        elif to != Status.waiting_input:
             if not stale:
                 fields["completed_at"] = now
             if failure_kind:

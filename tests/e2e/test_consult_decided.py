@@ -76,12 +76,6 @@ def test_a_deciding_pod_applies_the_recommendation_and_finishes_without_a_person
     assert second.tool_result("k1") == DECIDED
     consult = next(t for t in third.body["tools"] if t["function"]["name"] == "consult")
     assert "returns at once with your recommendation applied" in consult["function"]["description"]
-    asked = [
-        e["payload"]
-        for e in oracles.trace_events(w, w.pod, task_id)
-        if e["event_type"] == "question_asked"
-    ]
-    assert [(p["mode"], p["decidedOptionId"]) for p in asked] == [("decided", "redis")]
     (decision,) = [
         e["payload"]
         for e in oracles.trace_events(w, w.pod, task_id)
@@ -93,13 +87,14 @@ def test_a_deciding_pod_applies_the_recommendation_and_finishes_without_a_person
         "redis",
     )
     assert (decision["policy"], decision["task"]) == ("recommendation", task_id)
+    assert all(e["event_type"] != "question_asked" for e in oracles.trace_events(w, w.pod, task_id))
     decided = [r for r in oracles.audit_rows(w) if r["action"] == "consult.decided"]
     assert len(decided) == 1
     assert f"task={task_id}" in decided[0]["detail"] and "optionId=redis" in decided[0]["detail"]
+    assert f"escalation={decision['escalation']}" in decided[0]["detail"]
     assert CACHE_QUESTION["message"] not in decided[0]["detail"]
     assert _waiting_on_you(w) == []
     assert "waiting_input" not in statuses
-    assert all(e["event_type"] != "input_answered" for e in oracles.trace_events(w, w.pod, task_id))
     oracles.assert_checkout_untouched(w, head_before)
     oracles.assert_sentinel_untouched(w)
     oracles.assert_audit_covers_tool_calls(w, w.pod, task_id)

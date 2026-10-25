@@ -3,10 +3,11 @@
 ``tasks.application.escalations.resolve`` receives an answer to a parked question or a granted
 approval at a pipeline position (it records it and reopens the task ``pending``) and resolves no
 pipeline. The claim applies it: before the resume position is computed, ``apply_resolutions``
-reads the escalations the task lists and, for each ``consult``, ``input``, ``approval`` or ``gate``
-record that is ``resolved`` and not yet stamped, sets the consult note the re-run hop reads,
-persists the synthetic operator hop and follows the step's ``on:`` route, or hands back the
-position the granted approval fired at. A record is stamped (``mark_escalation_applied``) only
+reads the escalations the task lists and, for each ``input``, ``approval`` or ``gate`` record that
+is ``resolved`` and not yet stamped, persists the synthetic operator hop and follows the step's
+``on:`` route, or hands back the position the granted approval fired at. The answer to a
+``consult`` needs no applying: the re-run hop reads it from the record
+(``tasks.application.answers.consult_note``). A record is stamped (``mark_escalation_applied``) only
 after its effect is on the task, and each effect is idempotent, so a task claimed twice (a crash, a
 ``stale_claim`` reclaim) is changed once. Records that are ``expired``, ``decided`` or still
 ``pending`` are never applied.
@@ -22,13 +23,11 @@ from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.kernel.handoff import HandoffArtifact
-from docket.kernel.operator_contract import AnswerResultV11, Escalation
+from docket.kernel.operator_contract import Escalation
 from docket.pipeline.domain import plan as _orch
 from docket.platform import mark_escalation_applied, read_escalation
-from docket.tasks.application import consult as _consult
 from docket.tasks.application.record import replay_pipeline_position
 from docket.tasks.application.repository import TaskRepository
-from docket.tasks.domain.parts import ConsultAnswer
 from docket.tasks.domain.task import HopResult, TaskRecord
 
 __all__ = [
@@ -90,35 +89,35 @@ def resolve_route(
     return target_str, ""
 
 
-def routed_hop(step_id: str, question_id: str, label: str, target: str | None) -> HopResult:
+def routed_hop(step_id: str, escalation_id: str, label: str, target: str | None) -> HopResult:
     """The synthetic ``role="operator"`` hop an answer to an ``input`` step persists."""
     return HopResult(
         role="operator",
         member_id="operator",
         ok=True,
-        output=f"answered: {question_id}",
+        output=f"answered: {escalation_id}",
         # `verdict` carries the outcome label ("answered"/"declined"), not a real verdict
         # marker -- `replay_pipeline_position`'s own route_counts rebuild keys a backward/
         # self route by `hop.artifact.verdict` (see its handling of `hop.next_step`), the
         # same field a verdict gate's routed hop already relies on; without this a resumed
         # cap check would key on the wrong label.
-        artifact=HandoffArtifact(summary=f"answered: {question_id}", verdict=label),
+        artifact=HandoffArtifact(summary=f"answered: {escalation_id}", verdict=label),
         step_id=step_id,
         next_step=target,
     )
 
 
 def _unapplied(task: TaskRecord) -> list[Escalation]:
-    """The task's ``consult``, ``input``, ``approval`` and ``gate`` escalations that are resolved and
-    not applied yet. A parked call, a changed check and a wait in the turn are stamped when they
-    are resolved."""
+    """The task's ``input``, ``approval`` and ``gate`` escalations that are resolved and not applied
+    yet. A parked call, a changed check and a wait in the turn are stamped when they are resolved;
+    a consult's answer is read by the re-run hop and stamped once a hop of its step is persisted."""
     found: list[Escalation] = []
     for escalation_id in task.escalations:
         escalation = read_escalation(escalation_id)
         if (
             escalation is not None
             and escalation.state == "resolved"
-            and escalation.kind in ("consult", "input", "approval", "gate")
+            and escalation.kind in ("input", "approval", "gate")
             and escalation.resolution is not None
             and escalation.resolution.applied_at is None
         ):
@@ -134,31 +133,11 @@ def _gate_position(escalation: Escalation) -> int | None:
     if resolution.option_id == _DENY:
         return None
     try:
-        context = _approval.approval_get(str(escalation.legacy.get("token", ""))).get("context")
+        context = _approval.approval_get(_approval.approval_of(escalation.id)).get("context")
     except _approval.ApprovalError:
         return None
     index = context.get("pipelineIndex") if isinstance(context, dict) else None
     return index if isinstance(index, int) else None
-
-
-def _apply_consult(repository: TaskRepository, task: TaskRecord, escalation: Escalation) -> None:
-    """Set the answer the re-run hop of *escalation*'s step ends its message with."""
-    resolution = escalation.resolution
-    assert resolution is not None
-    declined = resolution.option_id == _DECLINE
-    answer = AnswerResultV11(
-        action="decline" if declined else "accept",
-        content=resolution.content,
-        option_id=None if declined else resolution.option_id,
-    )
-    question_id = str(escalation.legacy.get("questionId", ""))
-    note = ConsultAnswer(
-        step=escalation.step,
-        question_id=question_id,
-        text=_consult.answer_text(question_id, escalation.options, answer, resolution.content),
-    )
-    repository.update(task.id, lambda record: setattr(record, "consult_answer", note))
-    task.consult_answer = note
 
 
 def _append_once(record: TaskRecord, hop: HopResult) -> bool:
@@ -189,7 +168,7 @@ def _apply_input(
     node = runtime_steps[index] if index is not None else None
     if index is None or not isinstance(node, _orch.PlannedUnit):
         raise DispatchError(f"the answer for step {step_id!r} names no step of this pipeline")
-    question_id = str(escalation.legacy.get("questionId", ""))
+    question_id = escalation.id
     label = "declined" if resolution.option_id == _DECLINE else "answered"
     done = any(
         h.role == "operator" and h.step_id == step_id and h.output == f"answered: {question_id}"
@@ -229,9 +208,7 @@ def apply_resolutions(
     override: int | None = None
     for escalation in _unapplied(task):
         ended: tuple[str, str] | None = None
-        if escalation.kind == "consult":
-            _apply_consult(repository, task, escalation)
-        elif escalation.kind in ("approval", "gate"):
+        if escalation.kind in ("approval", "gate"):
             override = _gate_position(escalation)
         else:
             hops, ended = _apply_input(

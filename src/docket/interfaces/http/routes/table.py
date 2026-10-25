@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from docket.interfaces.http.routes import (
     a2a,
-    approvals,
     dispatch,
     escalations,
     health,
@@ -31,7 +30,6 @@ GET_ROUTES: tuple[Route, ...] = (
     Route("GET", "/metrics", metrics.get_metrics, auth=False),
     Route("GET", "/health", health.get_health, auth=False),
     Route("GET", "/.well-known/agent.json", a2a.get_agent_card),
-    Route("GET", "/approvals", approvals.get_approvals),
     Route("GET", "/inbox", inbox.get_inbox),
     Route("GET", "/escalations", escalations.get_escalations),
     Route("GET", "/runs", runs.get_runs),
@@ -48,8 +46,6 @@ GET_ROUTES: tuple[Route, ...] = (
 POST_ROUTES: tuple[Route, ...] = (
     Route("POST", "/a2a", a2a.post_a2a),
     Route("POST", "/escalations/<id>", escalations.post_escalation, bare=True),
-    Route("POST", "/approvals/<token>", approvals.post_approval, bare=True),
-    Route("POST", "/tasks/<id>/answer", task_control.post_task_answer),
     Route("POST", "/tasks/<id>/pregrants", task_control.post_task_pregrant),
     Route("POST", "/tasks/<pod>/<id>/cancel", task_control.post_task_cancel),
     Route("POST", "/tasks/<pod>/<id>/retry", task_control.post_task_retry),

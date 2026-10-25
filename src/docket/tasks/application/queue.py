@@ -168,12 +168,22 @@ def enqueue_task_once(
     approval_token: str | None = None
     if hit.action == "require_approval":
         action_text = f"pod dispatch — task enqueue for '{project}': {description}"[:1000]
-        token = _ap.approval_create(
+        approval_token = _ap.approval_create(
             project, "lead", action_text, context={"taskId": task_id, "pipelineIndex": 0}
         )
-        approval_token = token
-        _transitions.apply_to_task(
-            record, _state.Status.waiting_approval, approval_token=token, pending_index=0
+        _transitions.apply_to_task(record, _state.Status.waiting_approval, pending_index=0)
+
+    stored, created = repo.add(record)
+    if not created:
+        return stored, False
+    if approval_token is not None:
+        # Opened only once the task is stored, so a lost idempotency race leaves no orphan.
+        escalation = _escalations.open_for_approval(
+            approval_token,
+            kind="approval",
+            task_id=task_id,
+            caused_by=hit.policy_id or "enqueue",
+            step=LEAD_STEP_ID,
         )
         _trace.trace_event(
             project,
@@ -181,21 +191,13 @@ def enqueue_task_once(
             "lead",
             "approval_required",
             _json.dumps(
-                {"role": "lead", "token": token, "pipelineIndex": 0, "policy": hit.policy_id}
+                {
+                    "role": "lead",
+                    "escalation": escalation.id,
+                    "pipelineIndex": 0,
+                    "policy": hit.policy_id,
+                }
             ),
-        )
-
-    stored, created = repo.add(record)
-    if not created:
-        return stored, False
-    if approval_token is not None:
-        # Opened only once the task is stored, so a lost idempotency race leaves no orphan.
-        _escalations.open_for_approval(
-            approval_token,
-            kind="approval",
-            task_id=task_id,
-            caused_by=hit.policy_id or "enqueue",
-            step=LEAD_STEP_ID,
         )
     _audit.audit_log("task.enqueue", f"project={project} task={task_id} channel={channel}")
     return stored, True

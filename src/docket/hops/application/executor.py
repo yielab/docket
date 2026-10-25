@@ -346,13 +346,11 @@ def _run_pipeline(
         if outcome.kind == "waiting_approval":
             result.status = "waiting_approval"
             result.reason = outcome.reason
-            result.approval_token = outcome.approval_token
             result.pending_approval_index = outcome.pending_approval_index
             break
         if outcome.kind == "waiting_input":
             result.status = "waiting_input"
             result.reason = outcome.reason
-            result.question = outcome.question
             break
         if outcome.kind == "failed":
             result.status = "failed"

@@ -353,9 +353,9 @@ def _run_input_step(
     prior: list[HopResult],
     index_for_context: int,
 ) -> UnitOutcome:
-    """Park the task for an operator question minted from *node.input*, trace
-    ``input_requested``, and stop ``waiting_input`` -- no hop persisted for this attempt.
-    Resumed only by ``hops.application.answers.answer_task``. See pod-dispatch.spec.md."""
+    """Park the task for an operator question minted from *node.input* -- its ``input`` escalation
+    -- and stop ``waiting_input``; no hop is persisted for this attempt. The answer is applied by
+    the next claim (``hops.application.resolutions``). See pod-dispatch.spec.md."""
     assert node.input is not None
     spec = node.input
     # When the `from` step's latest hop carries a Lead intake brief with its own
@@ -384,16 +384,10 @@ def _run_input_step(
         created_at=_clock.iso(),
         expires_at=expires_at,
     )
-    _escalations.open_for_question(question, kind="input", role="", caused_by=node.step_id)
-    trace_locked(
-        ctx.project,
-        ctx.session_id,
-        node.step_id,
-        "input_requested",
-        _json.dumps({"task": ctx.task_id, "step": node.step_id, "questionId": question.id}),
+    escalation = _escalations.open_for_question(
+        question, kind="input", role="", caused_by=node.step_id
     )
     return UnitOutcome(
         kind="waiting_input",
-        reason=f"awaiting operator answer for step {node.step_id!r} (question={question.id})",
-        question=question.model_dump(by_alias=True),
+        reason=f"awaiting operator answer for step {node.step_id!r} (escalation={escalation.id})",
     )

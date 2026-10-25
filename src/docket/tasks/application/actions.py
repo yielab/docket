@@ -38,12 +38,10 @@ def resolve_waiting_approval(
     parked call once, pass it for the rest of the task) is read at that claim from the approval
     store and the task's escalations (``hops.application.resolutions``, ``hops.application.compose``).
 
-    A **parked** in-turn call (ADR 0016 SS2, ``context["parked"] is True``) carries no
-    ``taskId`` -- ``governance/gate.py``'s ``_park`` has no task to name -- so its task is
-    found by matching ``approvalToken`` directly instead. A plain in-turn ``wait``-mode ask
-    also carries no ``taskId`` (its wait blocks the calling thread directly, so there is no
-    task-level state to update here) and is unaffected: not parked and no ``taskId`` still
-    no-ops, exactly as before.
+    The task is the one the approval's context names, else the one its escalation belongs to
+    (a parked in-turn call, ADR 0016 SS2, may carry only the escalation). A plain in-turn
+    ``wait``-mode ask carries no task (its wait blocks the calling thread directly, so there is
+    no task-level state to update here) and is unaffected: it no-ops.
 
     A deny carries the operator's *reason* into the task's ``reason`` as
     ``approval denied: <reason>`` so the inbox and ``task show`` say why; without one the
@@ -57,9 +55,10 @@ def resolve_waiting_approval(
         return False
     context = rec.get("context")
     context = context if isinstance(context, dict) else {}
-    parked = bool(context.get("parked"))
     check_changed = context.get("kind") == "check_changed"
-    task_id = str(context.get("taskId", ""))
+    escalation_id = str(rec.get("escalation", ""))
+    backed = read_escalation(escalation_id) if escalation_id else None
+    task_id = str(context.get("taskId", "")) or (backed.task if backed is not None else "")
     project = str(rec.get("project", ""))
     if decision == "denied" and reason and project and project != "operator":
         # The denial reason joins the corrections ledger under the task the gate named (dispatch
@@ -67,12 +66,12 @@ def resolve_waiting_approval(
         _corrections.record(
             project,
             "deny_reason",
-            task_id=str(rec.get("taskId") or task_id),
+            task_id=task_id,
             role=str(rec.get("role", "")) or "operator",
             text=reason,
             source=channel or "unknown",
         )
-    if not project or (not task_id and not parked):
+    if not project or not task_id:
         return False
 
     updated = False
@@ -81,14 +80,11 @@ def resolve_waiting_approval(
 
     def _resolve(record: TaskRecord) -> bool:
         nonlocal updated, resolved_task_id
-        if updated:
+        if updated or record.id != task_id:
             return False
-        if task_id:
-            if record.id != task_id:
-                return False
-        elif record.approval_token != token:
+        if record.status != _state.Status.waiting_approval:
             return False
-        if record.status != _state.Status.waiting_approval or record.approval_token != token:
+        if escalation_id and escalation_id not in record.escalations:
             return False
         resolved_task_id = record.id
         if decision == "granted" and check_changed:
@@ -119,7 +115,7 @@ def resolve_waiting_approval(
             f"agent:{project}:{resolved_task_id}",
             "lead",
             "approval_resumed" if decision == "granted" else "approval_task_denied",
-            _json.dumps({"task": resolved_task_id, "token": token}),
+            _json.dumps({"task": resolved_task_id, "escalation": escalation_id}),
         )
     return updated
 

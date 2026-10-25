@@ -1,19 +1,18 @@
 """Open the escalation record for a pause, and settle it: the two ends of one wait.
 
 Every way a task stops for a person calls an opener here, when the pause is created. The record is
-written by the store and its id appended to the task; the fields the task already carried
-(``approvalToken``, ``question``) are still written from the same values and equal what ``legacy``
-names. ``governance`` sits below this context, so the tool gate reaches ``approval_opened``
-through its port. ``resolve`` is the one verb that settles a record; the older verbs reach it
-through ``resolve_approval_token`` and ``resolve_question``. It receives an answer to a parked
-question and leaves its continuation to the next claim of the task
-(``hops.application.resolutions``); an approval's follow-up is done here.
+written by the store and its id appended to the task; an approval's own record names the escalation
+it backs (``governance.approval.approval_link``), so no token is kept anywhere else.
+``governance`` sits below this context, so the tool gate reaches ``approval_opened`` through its
+port. ``resolve`` is the one verb that settles a record, and every surface calls it. It receives an
+answer to a parked question and leaves its continuation to the next claim of the task
+(``hops.application.resolutions``); a parked approval is followed up here, by moving its task.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from typing import Any, cast
 
 from docket.governance import approval as _approval
@@ -36,9 +35,12 @@ from docket.kernel.operator_contract import (
     validate_content,
 )
 from docket.operator import pause_is_live
-from docket.platform import list_escalations, read_escalation, resolve_escalation, write_escalation
+from docket.platform import read_escalation, resolve_escalation, write_escalation
 from docket.tasks.application import actions as _actions
+from docket.tasks.application import corrections as _corrections
+from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain import state as _state
 from docket.tasks.domain.resolution import (
     EscalationInvalid,
     EscalationNotFound,
@@ -47,7 +49,6 @@ from docket.tasks.domain.resolution import (
     Resolved,
 )
 from docket.tasks.domain.task import TaskRecord
-from docket.tasks.ports import question_answers as _answers
 from docket.teams import autonomy as _autonomy
 from docket.teams.settings import load_pod_settings
 
@@ -60,9 +61,6 @@ __all__ = [
     "open_for_approval",
     "open_for_question",
     "resolve",
-    "resolve_approval_token",
-    "resolve_question",
-    "waiting_for_token",
 ]
 
 _DECLINE = Option(id="decline", label="Decline", description="Refuse without choosing an option.")
@@ -122,9 +120,13 @@ def _persist(escalation: Escalation) -> Escalation:
     return stored
 
 
-def _store(escalation: Escalation) -> Escalation:
-    """Persist *escalation*, which a person is asked to settle, and trace that it was asked."""
+def _store(escalation: Escalation, token: str = "") -> Escalation:
+    """Persist *escalation*, which a person is asked to settle, tie it to the approval record
+    *token* that backs it (when it has one) and trace that it was asked. The tie comes first so a
+    surface that sees the event can already tell what the pause waits on."""
     stored = _persist(escalation)
+    if token:
+        _approval.approval_link(token, stored.id)
     _events.emit(_events.ASKED, stored)
     return stored
 
@@ -171,8 +173,8 @@ def open_for_approval(
             expires_at=record.get("expiresAt"),
             on_expiry=_expiry(kind, level),
             level=level,
-            legacy={"token": token},
-        )
+        ),
+        token,
     )
 
 
@@ -201,11 +203,9 @@ def open_for_question(
     options then ``decline``, an input step ``decline`` and the schema. *token* names the approval
     record a consult waiting in the turn blocks on: the pause then expires like an approval."""
     v11 = question if isinstance(question, QuestionV11) else None
-    legacy: dict[str, Any] = {"questionId": question.id}
     expires_at = _question_expiry(question)
     level = _level_of(question.pod, question.task_id)
     if token:
-        legacy["token"] = token
         expires_at = _approval.approval_get(token).get("expiresAt")
     return _store(
         Escalation(
@@ -224,8 +224,8 @@ def open_for_question(
             expires_at=expires_at,
             on_expiry="deny" if token else _expiry(kind, level),
             level=level,
-            legacy=legacy,
-        )
+        ),
+        token,
     )
 
 
@@ -252,7 +252,6 @@ def decided_consult(
         level=level,
         state="decided",
         resolution=Resolution(option_id=option_id, by="policy", channel="policy", at=_clock.iso()),
-        legacy={"questionId": question.id},
     )
     return _store_decided(decided, option_id=option_id, session_id=session_id)
 
@@ -385,26 +384,51 @@ def _apply_approval(
 
 
 def _receive_question(
-    project: str,
-    task_id: str,
+    escalation: Escalation,
     option: str | None,
     content: dict[str, Any] | None,
-    *,
+    by: str,
     channel: str,
-    actor: str,
 ) -> None:
-    """Receive the answer *option* and *content* to the question *task_id* is parked on."""
-    if option == _DECLINE.id:
-        _answers.record_answer(project, task_id, "decline", None, channel=channel, actor=actor)
-        return
-    body = dict(content or {})
-    if option:
-        body["optionId"] = option
-    _answers.record_answer(project, task_id, "accept", body or None, channel=channel, actor=actor)
+    """Receive the answer to the question *escalation* parks its task on: screen it, reopen the
+    task ``pending`` (the one status change) and leave the rest to the next claim. A task that no
+    longer waits on this question is ``EscalationNotPending``."""
+    _screen(escalation.pod, (content or {}).values())
+    reopened: list[bool] = []
+
+    def _reopen(record: TaskRecord) -> bool:
+        if record.status != _state.Status.waiting_input or escalation.id not in record.escalations:
+            return False
+        _transitions.apply_to_task(record, _state.Status.pending)
+        reopened.append(True)
+        return True
+
+    updated = TaskRepository.for_pod(escalation.pod).update(escalation.task, _reopen)
+    if not reopened:
+        raise EscalationNotPending(
+            f"task {escalation.task!r} is not waiting on escalation {escalation.id}"
+            if updated is not None
+            else f"task {escalation.task!r} is not in pod {escalation.pod!r}"
+        )
+    declined = option == _DECLINE.id
+    audit_log(
+        "task.answer",
+        f"project={escalation.pod} task={escalation.task} step={escalation.step} "
+        f"channel={channel} actor={by} action={'decline' if declined else 'accept'}",
+    )
+    if declined:
+        _corrections.record(
+            escalation.pod,
+            "declined_answer",
+            task_id=escalation.task,
+            role="operator",
+            text="(declined)",
+            source="answer",
+        )
 
 
 def _wake_waiting_turn(
-    token: str, option: str | None, content: dict[str, Any] | None, *, project: str, channel: str
+    token: str, option: str | None, *, project: str, channel: str, content: dict[str, Any] | None
 ) -> None:
     """A consult waiting in the turn blocks on the approval record *token*: grant it for an option,
     deny it for a decline, and the turn reads the answer from the resolved escalation."""
@@ -422,6 +446,17 @@ def _wake_waiting_turn(
         raise EscalationNotFound(str(exc)) from exc
 
 
+def _same_outcome(escalation: Escalation, option: str | None) -> bool:
+    """Whether the settled *escalation* ended the way *option* asks (a repeat of the decision)."""
+    resolution = escalation.resolution
+    if escalation.state != "resolved" or resolution is None:
+        return False
+    chosen = _DECLINE.id if option == _CANCEL else option
+    if escalation.kind in _APPROVAL_KINDS:
+        return (chosen == _DENY) == (resolution.option_id == _DENY)
+    return resolution.option_id == chosen
+
+
 def resolve(
     escalation_id: str,
     option_id: str | None,
@@ -431,21 +466,28 @@ def resolve(
     channel: str,
 ) -> Resolved:
     """Settle the pending *escalation_id* with *option_id* and *content*: check, receive the answer,
-    then record, audit and trace it; a refusal leaves the record pending. An approval is followed
-    up here, a parked question by the next claim of its task (``applied_at`` stays unset)."""
+    then record, audit and trace it; a refusal leaves the record pending. An approval moves the
+    task it gated here; a parked question and a granted position are applied by the next claim of
+    the task (``applied_at`` stays unset)."""
     escalation = read_escalation(escalation_id)
     if escalation is None:
         raise EscalationNotFound(f"no escalation {escalation_id!r}")
     if not pause_is_live(escalation):
-        raise EscalationNotPending(f"escalation {escalation.id} is not pending")
+        raise EscalationNotPending(
+            f"escalation {escalation.id} is not pending",
+            already_so=_same_outcome(escalation, option_id),
+        )
     option = _chosen_option(escalation, option_id)
     body = _checked_content(escalation, option, content)
+    token = _approval.approval_of(escalation.id)
     note = ""
     applied = True
     if escalation.kind in _APPROVAL_KINDS:
+        if not token:
+            raise EscalationNotFound(f"escalation {escalation.id} has no approval record")
         chosen = option or _APPROVE_ONCE
         note, moved = _apply_approval(
-            str(escalation.legacy.get("token", "")),
+            token,
             chosen,
             project=escalation.pod,
             channel=channel,
@@ -454,19 +496,16 @@ def resolve(
         )
         # A granted gate (or enqueue screen) leaves the task `pending` for the claim to continue
         # from its position; a parked call's grant is read from the approval store by the hop.
-        token = str(escalation.legacy.get("token", ""))
         applied = not (
             moved
             and chosen != _DENY
             and escalation.kind != "check_changed"
             and not _actions.is_parked(token)
         )
-    elif escalation.legacy.get("token"):
-        _wake_waiting_turn(
-            str(escalation.legacy["token"]), option, body, project=escalation.pod, channel=channel
-        )
+    elif token:
+        _wake_waiting_turn(token, option, project=escalation.pod, channel=channel, content=body)
     else:
-        _receive_question(escalation.pod, escalation.task, option, body, channel=channel, actor=by)
+        _receive_question(escalation, option, body, by, channel)
         applied = False
     at = _clock.iso()
     resolution = Resolution(
@@ -487,66 +526,3 @@ def resolve(
     )
     _events.emit(_events.RESOLVED, settled, channel=channel, option_id=option or "")
     return Resolved(settled, note)
-
-
-def _live_record(matches: Callable[[Escalation], bool]) -> Escalation | None:
-    """The newest pending escalation that *matches* and whose pause still waits, else ``None``."""
-    return next(
-        (e for e in reversed(list_escalations(state="pending")) if matches(e) and pause_is_live(e)),
-        None,
-    )
-
-
-def waiting_for_token(token: str) -> bool:
-    """Whether a pending escalation names the approval record *token* and its pause still waits."""
-    return _live_record(lambda e: e.legacy.get("token") == token) is not None
-
-
-def resolve_approval_token(
-    token: str, option_id: str, *, channel: str, actor: str, reason: str = ""
-) -> str:
-    """Resolve the escalation of approval *token* (a consult waiting in the turn is found by its
-    token too), returning the note a refused task-wide grant produces. An approval with no live
-    record takes the direct path: same follow-up, same messages."""
-    record = _live_record(lambda e: e.legacy.get("token") == token)
-    if record is None:
-        try:
-            project = str(_approval.approval_get(token).get("project", ""))
-        except _approval.ApprovalError as exc:
-            raise EscalationNotFound(str(exc)) from exc
-        return _apply_approval(
-            token, option_id, project=project, channel=channel, actor=actor, reason=reason
-        )[0]
-    # A gate or a changed check offers no task-wide grant; asking for one is a plain grant.
-    if option_id == _APPROVE_TASK and _APPROVE_TASK not in (o.id for o in record.options):
-        option_id = _APPROVE_ONCE
-    reasoned = {"reason": reason} if reason else None
-    return resolve(record.id, option_id, reasoned, by=actor, channel=channel).note
-
-
-def resolve_question(
-    project: str,
-    task_id: str,
-    action: str,
-    content: dict[str, Any] | None,
-    *,
-    channel: str,
-    actor: str,
-) -> None:
-    """The older answer verbs: resolve the escalation of the question *task_id* is parked on.
-    *action* is ``accept``, ``decline`` or ``cancel``; an ``optionId`` in *content* names the
-    option. A question with no live record is answered directly."""
-    record = _live_record(
-        lambda e: (e.pod, e.task) == (project, task_id) and e.kind in ("consult", "input")
-    )
-    if record is None:
-        _answers.answer_question(project, task_id, action, content, channel=channel, actor=actor)
-        return
-    if action in ("decline", _CANCEL):
-        resolve(record.id, _DECLINE.id, None, by=actor, channel=channel)
-        return
-    if action != "accept":
-        raise EscalationInvalid(f"action must be accept, decline or cancel, not {action!r}")
-    body = dict(content or {})
-    option = body.pop("optionId", None)
-    resolve(record.id, option, body, by=actor, channel=channel)

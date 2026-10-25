@@ -146,7 +146,6 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
     ),
     "guardrail_check": ("hook", "policy", "action"),
     "guardrail_block": ("hook", "policy", "action"),
-    "approval_requested": ("token",),
     "approval_granted": ("token",),
     "approval_denied": ("token",),
     "cost_charged": ("role",),
@@ -167,15 +166,12 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
     "budget_exceeded": ("spent", "cap", "role", "estimated"),
     "stale_claim": ("task", "claimedAt"),
     "paused_refused": ("reason",),
-    "approval_required": ("role", "token", "pipelineIndex", "policy"),
-    "approval_resumed": ("task", "token"),
-    "approval_task_denied": ("task", "token"),
+    "approval_required": ("role", "escalation", "pipelineIndex", "policy"),
+    "approval_resumed": ("task", "escalation"),
+    "approval_task_denied": ("task", "escalation"),
     "run_cancellation_observed": ("run", "source"),
     "run_cancelled": ("run", "source"),
     "step_skipped": ("step",),
-    "input_requested": ("task", "step", "questionId"),
-    "question_asked": ("questionId", "kind", "mode", "decidedOptionId"),
-    "input_answered": ("task", "step", "questionId", "action"),
     **dict.fromkeys(ESCALATION_EVENTS, tuple(ESCALATION_ATTRIBUTES)),
     "process_started": ("pgid", "tool"),
     "process_exited": ("pgid", "tool", "exitCode", "signal"),
@@ -184,13 +180,12 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
 
 # Per generic event type, the one payload key that carries free-text content instead of
 # structure: (payload key, attribute name, content class). Closes the two leaks ADR 0015
-# names by name: `approval_requested.action` is the command line waiting for a human
-# (toolArguments, like a tool call's own arguments); `error.error` is a run's free-text
-# failure message (errors). `guardrail_*`'s `action` is a verdict, not this -- it stays in
+# names by name: `escalation_asked.prompt` is what a person is asked (prompts, and for a gated
+# call the command line waiting for them); `error.error` is a run's free-text failure message
+# (errors). `guardrail_*`'s `action` is a verdict, not this -- it stays in
 # `_STRUCTURAL_KEYS` above under the same key name; the two are told apart by event type,
 # never by key name (ADR 0015's "action" collision).
 _GENERIC_CONTENT_ATTRS: dict[str, tuple[str, str, str]] = {
-    "approval_requested": ("action", "docket.approval.action", "toolArguments"),
     "error": ("error", "docket.error.message", "errors"),
     "escalation_asked": ("prompt", "docket.escalation.prompt", "prompts"),
 }

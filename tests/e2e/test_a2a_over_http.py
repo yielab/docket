@@ -20,7 +20,6 @@ CONSULT_TRACE = [
     ("hop_started", "implementer", "implement"),
     ("hop_finished", "implementer", "fail"),
     ("session_end", "lead", "waiting_input"),
-    ("input_answered", "lead", "implement"),
     ("hop_started", "implementer", "implement"),
     ("hop_finished", "implementer", "ok"),
     ("verification", "implementer", "skipped"),

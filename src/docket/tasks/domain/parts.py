@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "Answer",
-    "ConsultAnswer",
     "Prepared",
     "TaskUsage",
     "UsageTotals",
@@ -52,7 +51,7 @@ class Prepared(_Part):
 
 
 class Answer(_Part):
-    """One answered question, kept after the question itself is cleared."""
+    """One answered question, as a hop's prompt renders it: a projection of a resolved escalation."""
 
     question_id: str = Field(alias="questionId")
     step: str
@@ -65,14 +64,6 @@ class Answer(_Part):
     kind: str = "clarification"
     created_at: str = Field(alias="createdAt")
     option_id: str | None = Field(None, alias="optionId", exclude_if=is_none)
-
-
-class ConsultAnswer(_Part):
-    """The answer to a consultation, delivered to the step that asked it."""
-
-    step: str
-    question_id: str = Field(alias="questionId")
-    text: str
 
 
 class UsageTotals(_Part):

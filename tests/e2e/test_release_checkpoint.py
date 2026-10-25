@@ -79,7 +79,7 @@ def test_a_release_step_with_its_own_approval_pauses_and_resumes_at_that_step(
     assert len(model.by_role("tester")) == 0
     assert oracles.trace_skeleton(w, w.pod, task_id) == PARKED
 
-    w.docket("task", "approve", parked["approvalToken"], "--pod", w.pod)
+    w.docket("task", "answer", parked["escalation"], "--option", "approve_once", "--pod", w.pod)
     w.docket("run", "--pipeline", str(w.pipeline), "--timeout", "30")
     shown = w.task(task_id)
     statuses.append(shown["task"]["status"])

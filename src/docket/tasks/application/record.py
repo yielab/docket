@@ -15,6 +15,7 @@ from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.platform import PARK_TOKEN_PREFIX, parked_question
+from docket.tasks.application import answers as _answers
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
@@ -227,11 +228,8 @@ class UnitOutcome:
     hops: list[HopResult] = field(default_factory=list)
     reason: str = ""
     rework_target_index: int | None = None
-    approval_token: str = ""
     pending_approval_index: int | None = None
     label: str = ""
-    # Only set for kind == "waiting_input" -- the minted Question, dumped by alias.
-    question: dict[str, Any] | None = None
     # Only set for an external gate's unrouted failure (``gate_failed`` and its siblings).
     failure_kind: str = ""
 
@@ -374,7 +372,7 @@ def build_hop_result(
         ok=hop_ok,
         output=hop_output,
         cost_usd=run_res.cost_usd,
-        error=hop_error,
+        error=withhold_approval_token(hop_error),
         attempts=attempt,
         step_id=node.step_id,
         artifact=artifact,
@@ -393,6 +391,15 @@ _PARKED_ERROR_PREFIX = "approval_parked:"
 _APPROVAL_TOKEN_RE = _re.compile(r"approval_token=(?:'([^']*)'|\"([^\"]*)\"|(\S+))")
 
 
+_TOKEN_PAIR = _re.compile(r"\s*approval_token=(?:'[^']*'|\"[^\"]*\"|\S+)")
+
+
+def withhold_approval_token(error: str) -> str:
+    """*error* without the ``approval_token=...`` pair of a parked call: the record and the trace
+    name the pause by its escalation, never by the token that backs it."""
+    return _TOKEN_PAIR.sub("", error)
+
+
 def _parked_approval_token(error: str) -> str | None:
     """The approval token from a hop's ``approval_parked`` stop, or ``None`` for an
     ordinary failure or an unparseable one."""
@@ -408,9 +415,9 @@ def _parked_approval_token(error: str) -> str | None:
 
 def _parked_consult_question(
     ctx: UnitContext, hop: HopResult, token: str | None
-) -> dict[str, Any] | None:
-    """The question a parked ``consult`` left, rebound to this task and step (stored on the
-    task like an input step's), or ``None`` when *token* is not a consultation's."""
+) -> QuestionV11 | None:
+    """The question a parked ``consult`` left, rebound to this task and step, or ``None`` when
+    *token* is not a consultation's."""
     if token is None or not token.startswith(PARK_TOKEN_PREFIX):
         return None
     question = parked_question(token)
@@ -418,7 +425,7 @@ def _parked_consult_question(
         return None
     question.task_id = ctx.task_id
     question.step = hop.step_id or hop.role
-    return question.model_dump(by_alias=True)
+    return question
 
 
 def _turn_failure_kind(ctx: UnitContext, run_res: _rd.TurnResult) -> str:
@@ -456,6 +463,7 @@ def persist_hop_and_trace(
     if parked_token is not None:
         hop.parked = True
     consult_question = _parked_consult_question(ctx, hop, parked_token)
+    hop_error = withhold_approval_token(hop_error)
 
     trace_locked(
         ctx.project,
@@ -530,17 +538,13 @@ def persist_hop_and_trace(
                 reason="run cancellation requested",
             )
         if consult_question is not None:
-            _escalations.open_for_question(
-                QuestionV11.model_validate(consult_question),
-                kind="consult",
-                role=role,
-                caused_by=hop.step_id or role,
+            escalation = _escalations.open_for_question(
+                consult_question, kind="consult", role=role, caused_by=hop.step_id or role
             )
             return UnitOutcome(
                 kind="waiting_input",
                 hops=[hop],
-                reason=f"{role} hop parked a consultation (question={consult_question['id']})",
-                question=consult_question,
+                reason=f"{role} hop parked a consultation (escalation={escalation.id})",
             )
         if parked_token is not None and parked_token.startswith(PARK_TOKEN_PREFIX):
             # No approval record can resolve a consult token, so parking on it would be stuck.
@@ -560,15 +564,12 @@ def persist_hop_and_trace(
                 ctx.session_id,
                 role,
                 "approval_required",
-                _json.dumps(
-                    {"role": role, "token": parked_token, "pipelineIndex": index_for_context}
-                ),
+                _json.dumps({"role": role, "pipelineIndex": index_for_context}),
             )
             return UnitOutcome(
                 kind="waiting_approval",
                 hops=[hop],
-                reason=f"{role} hop parked for approval (token={parked_token})",
-                approval_token=parked_token,
+                reason=f"{role} hop parked for approval",
                 pending_approval_index=index_for_context,
             )
         return UnitOutcome(
@@ -592,7 +593,9 @@ def persist_hop(project: str, task_id: str, hop: HopResult) -> None:
         record.cost_usd = round(sum(h.cost_usd for h in record.hops), 6)
         record.claimed_at = _clock.iso()
 
-    TaskRepository.for_pod(project).update(task_id, _append)
+    updated = TaskRepository.for_pod(project).update(task_id, _append)
+    if updated is not None:
+        _answers.consult_note_delivered(updated, hop.step_id or hop.role, _clock.iso())
     _conv.touch_for_hop_durable(
         agent_id=hop.member_id, task_ref=task_id, last_message=hop.output, now=_clock.iso()
     )

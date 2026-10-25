@@ -255,24 +255,6 @@ def validate_answer_v11(question: QuestionV11, answer: AnswerResultV11) -> Answe
     return answer
 
 
-class ApprovalView(BaseModel):
-    """The operator-v1 rendering of a pending or resolved approval record."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    token: str
-    pod: str
-    task_id: str | None = Field(None, alias="taskId")
-    role: str
-    tool: str | None = None
-    action: str | None = None
-    policy: str | None = None
-    state: str
-    created_at: str = Field(alias="createdAt")
-    expires_at: str | None = Field(None, alias="expiresAt")
-    a2a_state: str = Field("INPUT_REQUIRED", alias="a2aState")
-
-
 class TaskView(BaseModel):
     """The operator-v1 rendering of one docket task: lifecycle plus its A2A state."""
 
@@ -287,8 +269,8 @@ class TaskView(BaseModel):
     priority: str = ""
     created_at: str = Field("", alias="createdAt")
     updated_at: str = Field("", alias="updatedAt")
-    question: QuestionV11 | Question | None = None
-    approval_token: str | None = Field(None, alias="approvalToken")
+    # The id of the escalation the task waits on, when it waits on one: the id `resolve` takes.
+    escalation: str | None = None
     brief: TaskBrief | None = None
 
 
@@ -360,13 +342,27 @@ class _EscalationFields(BaseModel):
             raise InvalidInput(f"escalation id must be esc-<12 hex>: {v!r}")
         return v
 
+    def as_question(self) -> QuestionV11:
+        """The question a ``consult`` or ``input`` pause asks, as the elicitation request surfaces
+        read it: the escalation id is the question's id, ``decline`` is not one of its options."""
+        return QuestionV11(
+            id=self.id,
+            task_id=self.task,
+            pod=self.pod,
+            step=self.step,
+            message=self.prompt,
+            requested_schema=self.requested_schema
+            or {"type": "object", "properties": {"note": {"type": "string"}}},
+            created_at=self.asked_at,
+            expires_at=self.expires_at,
+            kind="decision" if self.recommendation is not None else "clarification",
+            options=[o for o in self.options if o.id != "decline"],
+            recommendation=self.recommendation,
+        )
+
 
 class Escalation(_EscalationFields):
     """One pause: docket needs a decision from outside the task, kept as one durable record."""
-
-    # ``legacy`` names the pause in the older fields the task still carries (``token`` of an
-    # approval, ``questionId`` of a question), so a surface that knows only those keeps working.
-    legacy: dict[str, Any] = Field(default_factory=dict)
 
 
 class EscalationAffordances(BaseModel):
@@ -380,8 +376,8 @@ class EscalationAffordances(BaseModel):
 
 
 class EscalationView(_EscalationFields):
-    """An escalation as a surface reads it: the record without ``legacy``, its ``state`` joined
-    with the pause it names, and what can be done with it."""
+    """An escalation as a surface reads it: the record, its ``state`` joined with the pause it
+    names, and what can be done with it."""
 
     affordances: EscalationAffordances
 
@@ -400,7 +396,7 @@ class InboxView(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    needs_you: list[TaskView | ApprovalView] = Field(default_factory=list, alias="needsYou")
+    needs_you: list[TaskView | EscalationView] = Field(default_factory=list, alias="needsYou")
     failed: list[TaskView] = Field(default_factory=list)
     done_since: list[TaskView] = Field(default_factory=list, alias="doneSince")
     running: list[TaskView] = Field(default_factory=list)
