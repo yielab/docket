@@ -34,7 +34,7 @@ from docket.kernel.errors import NotFound
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Option
 from docket.kernel.ports import tracer as _tracer
-from docket.platform import read_modify_write, with_lock, write_json
+from docket.platform import read_modify_write, settle_escalation, with_lock, write_json
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
 # (see the module docstring). ``timeout`` is the fail-closed expiry path
@@ -435,6 +435,8 @@ def _resolve_timeout_as_denied(token: str) -> bool:
     role = str(data.get("role", "")) or "operator"
     _emit_trace(project, f"{project}-approval", role, "approval_denied", {"token": token})
     audit_log("approval.deny", f"token={token} project={project} channel=timeout")
+    with contextlib.suppress(Exception):
+        settle_escalation("token", token, "expired")
     with contextlib.suppress(Exception):
         _follow_up.resolve_waiting_approval(token, "denied")
     return True

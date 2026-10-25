@@ -22,7 +22,10 @@ from pathlib import Path
 from typing import Any, cast
 
 from filelock import FileLock, Timeout
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+from docket.kernel.home import current_home
+from docket.kernel.operator_contract import Escalation, EscalationState, is_escalation_id
 
 _LOCK_TIMEOUT = 10  # seconds
 
@@ -249,3 +252,97 @@ def _replace_bytes(path: Path, content: bytes) -> None:
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
+
+
+# ── escalations ──────────────────────────────────────────────────────────────
+# One 0600 file per pause beside a counter file; the directory's one lock orders every change.
+
+
+def _escalation_path(escalation_id: str) -> Path:
+    return current_home().escalations_dir / f"{escalation_id}.json"
+
+
+def next_escalation_seq() -> int:
+    """The next ``seq`` for an escalation: one counter file, incremented under the store lock."""
+    folder = current_home().escalations_dir
+    mkdir_private(folder)
+    issued: list[int] = []
+
+    def _bump(doc: dict[str, Any]) -> dict[str, Any]:
+        issued[:] = [int(doc.get("seq", 0)) + 1]
+        return {"seq": issued[0]}
+
+    read_modify_write(folder / "_seq.json", _bump)
+    return issued[0]
+
+
+def write_escalation(escalation: Escalation) -> Escalation:
+    """Persist *escalation*, numbering it when it has no ``seq`` yet; returns the record as stored."""
+    stored = (
+        escalation
+        if escalation.seq
+        else escalation.model_copy(update={"seq": next_escalation_seq()})
+    )
+    mkdir_private(current_home().escalations_dir)
+    write_json(_escalation_path(stored.id), stored.model_dump(by_alias=True, mode="json"))
+    return stored
+
+
+def read_escalation(escalation_id: str) -> Escalation | None:
+    """The record named *escalation_id*; ``None`` for a malformed id, an absent file or a file
+    that is not a valid escalation."""
+    if not is_escalation_id(escalation_id):
+        return None
+    return _parse_escalation(read_json(_escalation_path(escalation_id)))
+
+
+def _parse_escalation(doc: dict[str, Any]) -> Escalation | None:
+    try:
+        return Escalation.model_validate(doc) if doc else None
+    except ValidationError:
+        return None
+
+
+def list_escalations(
+    state: EscalationState | None = None, since_seq: int | None = None
+) -> list[Escalation]:
+    """Every valid record ordered by ``seq``; only those in *state* and with ``seq`` greater than
+    *since_seq* when given."""
+    folder = current_home().escalations_dir
+    if not folder.is_dir():
+        return []
+    found = (read_escalation(path.stem) for path in sorted(folder.glob("esc-*.json")))
+    return sorted(
+        (
+            e
+            for e in found
+            if e is not None
+            and (state is None or e.state == state)
+            and (since_seq is None or e.seq > since_seq)
+        ),
+        key=lambda e: e.seq,
+    )
+
+
+def _settle(escalation_id: str, state: EscalationState) -> bool:
+    moved: list[bool] = []
+
+    def _move(doc: dict[str, Any]) -> dict[str, Any] | None:
+        current = _parse_escalation(doc)
+        if current is None or current.state != "pending":
+            return None
+        moved.append(True)
+        return current.model_copy(update={"state": state}).model_dump(by_alias=True, mode="json")
+
+    read_modify_write(_escalation_path(escalation_id), _move)
+    return bool(moved)
+
+
+def settle_escalation(key: str, value: str, state: EscalationState) -> bool:
+    """Move the one pending escalation whose ``legacy[key]`` is *value* to *state*; whether one
+    moved."""
+    return any(
+        _settle(e.id, state)
+        for e in list_escalations(state="pending")
+        if e.legacy.get(key) == value
+    )

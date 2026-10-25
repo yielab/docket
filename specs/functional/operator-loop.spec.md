@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -559,6 +559,55 @@ Every surface below calls `answer_task` (area 7); none re-implements schema vali
    raised `McpToolError` (the SDK's own `isError` convention), naming the policy id or the
    underlying message respectively — never an inline error field.
 
+### 11. Escalations
+
+An escalation is one pause: docket needs a decision from outside the task. One durable record per
+pause is written by the store (`docket-store.spec.md` "Escalation records") at the moment the pause
+is created, and the task lists its id. The record is additive: the fields the task has always
+carried (`approvalToken`, `question`) are still written, equal to what the record projects, and
+every output a surface prints is unchanged.
+
+1. **Fields.** `Escalation` (operator contract module, camelCase on the wire, `extra="forbid"`):
+   `id` (`esc-<12 hex>`), `task`, `pod`, `step`, `role`, `kind`, `causedBy` (the tool call id of an
+   approval, otherwise the step id; empty for `check_changed`), `prompt` (redacted when the
+   record is created, with the same redaction approvals use), `options` (`Option` list), `recommendation`, `requestedSchema`
+   (`null` when the pause asks no structured answer), `askedAt`, `expiresAt`, `onExpiry`
+   (`deny | block`), `policy` (`person | recommendation | deny | fail`), `state`, `resolution`
+   (`{optionId, content, by, channel, at}` or `null`), `seq` and `legacy` (`{"token": ...}` for an
+   approval, `{"questionId": ...}` for a question).
+2. **Kinds, options, expiry.**
+
+   | Kind | Created when | Options | `onExpiry` |
+   | --- | --- | --- | --- |
+   | `approval` | a gated tool call parks or waits for a person | `approve_once`, `approve_task`, `deny` | `deny` |
+   | `consult` | a hop parks on a `consult` question | the question's options, then `decline`; its recommendation | `block` |
+   | `input` | an `input` step minted a question | `decline`; the question's `requestedSchema` | `block` |
+   | `gate` | a pipeline `approval` gate fires before a hop | `approve_once`, `deny` | `deny` |
+   | `check_changed` | a finished task's diff edits what checks it | `approve_once`, `deny` | `deny` |
+
+   `policy` is `person` on every record this version creates; no other value is chosen yet.
+3. **Task link.** `TaskRecord.escalations` lists, oldest first, the id of every escalation opened
+   for the task, and is absent while empty. An escalation whose task is not in the pod's queue (an
+   ad hoc `docket run` tool call) is stored with that task id and listed nowhere.
+4. **Projection.** For `approval`, `gate` and `check_changed` the task's `approvalToken` equals
+   `legacy.token`; for `consult` and `input` the task's `question.id` equals `legacy.questionId`
+   and `question.message` equals `prompt`.
+5. **States.** A record is written `pending`. The expiry sweeps (`approval_sweep_expired` and the
+   timeout of one wait, `sweep_expired_questions`) move it to `expired` when they expire its
+   approval or question. `resolved` and `decided` are written by the resolve step of a later
+   change; until then a `pending` record may outlive its pause, so a reader MUST join it to the
+   task or approval it names (item 6) rather than trust the state alone.
+6. **Inbox.** `build_inbox`'s `needsYou` MUST list the same items, in the same shapes, as before.
+   An approval that names no task is listed as its `ApprovalView` when its approval record is
+   still `pending`, ordered by the `seq` of its `approval` escalation, then any pending approval
+   that has no escalation (one made before escalations were kept, or by the embeddable runtime).
+   The approval record, not the escalation, decides whether it is still pending. A waiting or
+   blocked task is listed through its own status as before, because a blocked task and one parked
+   earlier have no escalation. The scan of every task remains for `failed`, `doneSince`,
+   `running` and `next`.
+7. **No new surface.** No route, tool, verb, event or trace payload gains a field in this version;
+   the record is read through the store only.
+
 ### Profile lines (ADR 0025 D2)
 
 1. When a dispatchable pod's effective profile (`security-gates.spec.md` "Profiles") is
@@ -614,6 +663,12 @@ class ApprovalView(BaseModel): ...     # token/pod/taskId/role/tool/action/polic
 class TaskView(BaseModel): ...         # id/pod/status/a2aState/reason/description/priority/
                                         # createdAt/updatedAt/question/approvalToken/brief
 class InboxView(BaseModel): ...        # needsYou/failed/doneSince/running/next
+
+EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed"]
+class Resolution(BaseModel): ...       # optionId/content/by/channel/at
+class Escalation(BaseModel): ...       # requirement area 11's fields
+def new_escalation_id() -> str: ...    # "esc-<12 hex chars>"
+def is_escalation_id(value: str) -> bool: ...
 
 class CloudEvent(BaseModel): ...       # CloudEvents 1.0 structured-mode envelope
 def make_event(
@@ -839,7 +894,11 @@ Each JSONL line is a JSON object with these fields:
   `validate_requested_schema`, `QuestionSchema`, `new_question_id`, `Question`, `AnswerResult`,
   `QuestionKind`, `Option`, `Recommendation`, `QuestionV11`, `AnswerResultV11`,
   `validate_answer`, `validate_answer_v11`, `ApprovalView`, `TaskView`, `InboxView`,
-  `CloudEvent`, `make_event`, `canonical_args_digest`
+  `CloudEvent`, `make_event`, `canonical_args_digest`, `EscalationKind`, `Resolution`,
+  `Escalation`, `new_escalation_id`, `is_escalation_id`
+- `src/docket/tasks/application/escalations.py`: `open_for_approval`, `open_for_question`,
+  `attach`, `approval_opened`; the pause sites are `governance/gate.py` (through the governance
+  port), `tasks/application/record.py`, `hops/application/steps.py` and `hops/gates/pre_hop.py`
 - `src/docket/operator/inbox.py`: `build_inbox`, `task_view`, `pending_memory`, `MemoryItem`
 - `src/docket/operator/notify.py`: `diff_events`, `render_data`, `render_text`, `flush`,
   `FlushReport`, `NotifyEvent`, `build_test_event`, `read_state`, `resolve_secret`

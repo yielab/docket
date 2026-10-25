@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -294,6 +295,71 @@ class InboxView(BaseModel):
     done_since: list[TaskView] = Field(default_factory=list, alias="doneSince")
     running: list[TaskView] = Field(default_factory=list)
     next: str | None = None
+
+
+EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed"]
+EscalationState = Literal["pending", "resolved", "expired", "decided"]
+EscalationPolicy = Literal["person", "recommendation", "deny", "fail"]
+EscalationExpiry = Literal["deny", "block"]
+
+_ESCALATION_ID = re.compile(r"esc-[0-9a-f]{12}")
+
+
+def new_escalation_id() -> str:
+    """Mint an escalation id in the ``esc-<12 hex chars>`` shape."""
+    return _ids.new_short_id("esc")
+
+
+def is_escalation_id(value: str) -> bool:
+    """Whether *value* is one ``new_escalation_id`` could have minted."""
+    return _ESCALATION_ID.fullmatch(value) is not None
+
+
+class Resolution(BaseModel):
+    """How an escalation was settled: the option chosen, any content, and who answered where."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    option_id: str | None = Field(None, alias="optionId")
+    content: dict[str, Any] | None = None
+    by: str
+    channel: str
+    at: str
+
+
+class Escalation(BaseModel):
+    """One pause: docket needs a decision from outside the task, kept as one durable record."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str
+    task: str
+    pod: str
+    step: str
+    role: str
+    kind: EscalationKind
+    caused_by: str = Field(alias="causedBy")
+    prompt: str
+    options: list[Option] = Field(default_factory=list)
+    recommendation: Recommendation | None = None
+    requested_schema: dict[str, Any] | None = Field(None, alias="requestedSchema")
+    asked_at: str = Field(alias="askedAt")
+    expires_at: str | None = Field(None, alias="expiresAt")
+    on_expiry: EscalationExpiry = Field(alias="onExpiry")
+    policy: EscalationPolicy = "person"
+    state: EscalationState = "pending"
+    resolution: Resolution | None = None
+    seq: int = 0
+    # ``legacy`` names the pause in the older fields the task still carries (``token`` of an
+    # approval, ``questionId`` of a question), so a surface that knows only those keeps working.
+    legacy: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("id")
+    @classmethod
+    def _id_shape(cls, v: str) -> str:
+        if not is_escalation_id(v):
+            raise InvalidInput(f"escalation id must be esc-<12 hex>: {v!r}")
+        return v
 
 
 class CloudEvent(BaseModel):

@@ -24,6 +24,7 @@ from docket.kernel.operator_contract import (
     a2a_state,
 )
 from docket.operator.ports import task_reader as _tasks
+from docket.platform import list_escalations
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
@@ -114,6 +115,20 @@ def _approval_view(record: dict[str, Any]) -> ApprovalView:
     )
 
 
+def _standalone_approvals() -> list[dict[str, Any]]:
+    """The pending approval records in escalation order, then those with no escalation."""
+    # The approval record decides what is pending: an escalation alone cannot, because a grant
+    # does not close it yet. A record with none was made before escalations were kept, or by a
+    # runtime that keeps none.
+    pending = {str(r.get("token", "")): r for r in _approval.list_pending()}
+    ordered = [
+        pending.pop(token)
+        for e in list_escalations(state="pending")
+        if e.kind == "approval" and (token := str(e.legacy.get("token", ""))) in pending
+    ]
+    return [*ordered, *pending.values()]
+
+
 def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     """Every pod's tasks plus every pending approval, sorted into ``needsYou``/``failed``/
     ``doneSince`` (terminal after *since*, or every terminal task when omitted)/``running``.
@@ -143,7 +158,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     # A task that holds a token already shows that approval, whether or not the record
     # itself learned its task (a parked in-turn call may not have).
     held = {t.approval_token for t in needs_you if isinstance(t, TaskView) and t.approval_token}
-    for record in _approval.list_pending():
+    for record in _standalone_approvals():
         context = record.get("context")
         context = context if isinstance(context, dict) else {}
         if context.get("taskId") or record.get("token") in held:

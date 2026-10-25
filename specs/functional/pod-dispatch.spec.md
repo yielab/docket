@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.4.0
+**Version**: 10.5.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -2064,6 +2064,17 @@ hop records. It scores nothing and carries no dollar figure.
    labelled estimate, never billed spend) and one `Next:` line (`docket inbox` when anything failed,
    waits or is blocked, else `docket status`). It exits 1 when the run record ended `failed`.
 
+### An escalation for every park
+
+1. Each of the five ways a task stops for a person MUST open one escalation record
+   (`operator-loop.spec.md` "Escalations") when the pause is created, before the task is written
+   `waiting_approval` or `waiting_input`, and append its id to the task's `escalations`: a parked
+   in-turn tool call (`approval`), a parked `consult` (`consult`), an `input` step (`input`), the
+   pipeline `approval` gate (`gate`) and a change that edits its own check (`check_changed`).
+2. The record changes nothing the pause already did: the same approval record, the same
+   `approvalToken` or `question` on the task, the same `reason`, the same trace events. A task
+   resumes exactly as before; the record is not read to continue it.
+
 ## Interface Contracts
 
 This spec defines behaviour only; the CLI surface that triggers it (`docket task retry <task-id>`,
@@ -2315,6 +2326,8 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/tasks/application/lifecycle.py`: `reclaim_stale_running`, `retry_task`, `cancel_task`,
   `cancel_parked_task`, `task_diff`, `unblock_pod`; `finalize_task`, `_apply_result`,
   `sweep_stale_claims`
+- `src/docket/tasks/application/escalations.py`: the escalation opener (`operator-loop.spec.md`
+  "Escalations"), called from the five park sites
 - `src/docket/tasks/application/actions.py`: `TASK_GRANT_CAP`, `resolve_waiting_approval`,
   `resolve_waiting_approval_detail`
 - `src/docket/tasks/domain/task.py`: `DispatchError`, `TaskRestrictionError`, `TaskRunRefusal`,

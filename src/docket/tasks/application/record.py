@@ -9,11 +9,13 @@ from typing import Any, Literal
 from docket.agent import ports as _rd
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
+from docket.kernel.operator_contract import QuestionV11
 from docket.kernel.ports import process as _process
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.platform import PARK_TOKEN_PREFIX, parked_question
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import conversations as _conv
@@ -520,6 +522,12 @@ def persist_hop_and_trace(
                 reason="run cancellation requested",
             )
         if consult_question is not None:
+            _escalations.open_for_question(
+                QuestionV11.model_validate(consult_question),
+                kind="consult",
+                role=role,
+                caused_by=hop.step_id or role,
+            )
             return UnitOutcome(
                 kind="waiting_input",
                 hops=[hop],
