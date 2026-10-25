@@ -1,8 +1,8 @@
 # Test Framework
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Active
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Overview
 
@@ -65,11 +65,12 @@ Layout on disk today (the target is rules 11-15 of "Lanes and placement"):
 ```text
 tests/
 ├── conftest.py             autouse isolation (home, DOCKET_SERVICE_MANAGER=none, plain Typer errors), duration guard
-├── support/                the one owner of each shared helper and fixture: home, pods, trace, llm, git, http, cli, fakes
+├── support/                the one owner of each shared helper and fixture: home, pods, trace, llm, git, http, cli, fakes, model_server, e2e, e2e_oracles
 ├── fixtures/               recorded data and adapter-scenario fixtures shared by several lanes
 ├── unit/                   mirrors src/docket/: unit/tasks/application/test_queue.py ↔ src/docket/tasks/application/queue.py
 ├── integration/<context>/  one folder per context (plus bootstrap and product): several modules, or a real process or socket
 ├── guards/                 AST and layout invariants, with shrink-only committed baselines
+├── e2e/                    NOT in testpaths; CI job `e2e`; one file per named journey, run as subprocesses
 ├── golden/
 │   ├── cases/readonly/     expected CLI output (*.golden)
 │   ├── fixtures/seed.sh    deterministic ~/.docket state
@@ -93,10 +94,12 @@ rule changes an earlier one, the later rule names it.
 
 Requirements:
 
-1. **Default suite = product lanes.** `testpaths` lists `tests/unit`, `tests/integration` and
-   `tests/guards` only and never collects `tests/agent`. The `agent-lane` CI job runs
-   `uv run pytest tests/agent`, and the `no-sandbox` CI job runs the default suite through
-   `scripts/maint/pytest-without-sandbox.sh -q`, a host where sandbox detection reports `none`.
+1. **Default suite = product lanes.** `testpaths` lists `tests/unit`, `tests/integration`,
+   `tests/guards`, `tests/architecture` and `tests/contracts`, and never collects `tests/agent` or
+   `tests/e2e`. Each runs by path in its own CI job: `agent-lane` runs `uv run pytest tests/agent`
+   and `e2e` runs `uv run pytest tests/e2e -n auto`. The `no-sandbox` CI job runs the default
+   suite through `scripts/maint/pytest-without-sandbox.sh -q`, a host where sandbox detection
+   reports `none`.
 2. **One unit file per module, named for it.** `unit/<pkg>/test_<module>.py` declares
    `SUBJECT = "docket.<pkg>.<module>"` (a top-level module's file sits directly in `unit/`; the
    part of the stem before `__` names the module). The guard checks that `SUBJECT` equals the
@@ -130,8 +133,8 @@ Requirements:
    entry-point test. Two guards keep docs, specs, templates, help examples and the source tree free
    of removed command names and of any `docket ...` invocation that is not live in the Click tree.
 6. **Duration ceilings** are stop conditions: 2 s per test in `unit/` and `guards/`, 10 s in
-   `integration/`. A test that passes but runs past its lane's ceiling is reported as failed by
-   `tests/conftest.py`. `agent/` and the golden suite have no ceiling. No pytest marker is registered.
+   `integration/`, 60 s in `e2e/`. A test that passes but runs past its lane's ceiling is reported
+   as failed by `tests/conftest.py`. `agent/` and the golden suite have no ceiling. No pytest marker is registered.
 7. **Docstrings and comments follow the repository comment policy**: a module docstring is at
    most 12 lines and a function, class or test docstring at most 3 lines, in `src/` and `tests/`
    alike; no card ids, phases, dates or provenance narration anywhere. The comment-lint script is
@@ -192,11 +195,27 @@ Requirements:
     directories holds until the markers are registered. **Convention** until then.
 13. **Four directories exist for a reason other than mirroring a module, and one holds the shared
     fakes.** `tests/support/` is the one source of shared helpers, fixtures and fakes (`home.py`, `pods.py`,
-    `trace.py`, `llm.py`, `git.py`, `http.py`, `cli.py`, `fakes.py`); `tests/fixtures/` holds
-    recorded data only. `tests/contracts/` holds `test_<port>_contract.py`, one suite per
+    `trace.py`, `llm.py`, `git.py`, `http.py`, `cli.py`, `fakes.py`, `model_server.py`, `e2e.py`,
+    `e2e_oracles.py`); `tests/fixtures/` holds recorded data only. `tests/contracts/` holds `test_<port>_contract.py`, one suite per
     port, parametrized over the real adapter and the fake in `tests/support/fakes.py`, so a fake
-    is proven to behave as the real one. `tests/e2e/` holds named whole flows (a software pod to
-    done, the rework cycle, a park and its grant or deny, a resume after restart).
+    is proven to behave as the real one. `tests/e2e/` is real and holds named whole flows, one
+    file `test_<journey>.py` per journey, named in the operator's words (a software pod to done, the
+    rework cycle, a park and its grant or deny, a resume after restart). An end-to-end test runs
+    the product the way a person or the plan of record runs it: it enters through a `docket`
+    subprocess (`World.docket`) or over HTTP to a `docket start` subprocess (`World.service`),
+    works on a real `DOCKET_HOME` and a real git repository, replaces nothing inside docket (the
+    only fake is the model, reached through the real OpenAI-compatible wire), judges by what an
+    operator sees (task state, `task diff`, files, `log verify`, the trace), and runs a named
+    journey to its end (`done`, `failed` with the expected reason, or parked with a token). A test
+    that needs to patch docket is an integration test. An end-to-end test **MUST NOT**
+    `monkeypatch` a `docket.*` name or call docket in-process; its settings reach docket only as
+    environment variables of the subprocess; it imports `docket.*` only in
+    `tests/support/e2e_oracles.py` (read-only domain tables) and in skip conditions; it waits on a
+    condition with `World.wait_for`, never `sleep`; its expected trace skeleton is a list written
+    inline in the test and is never regenerated to hide a change. The oracles are shared in
+    `tests/support/e2e_oracles.py`: the trace skeleton, audit coverage of every gate denial and
+    handler refusal, legal task transitions, an untouched checkout, an untouched sentinel file
+    under the fake home, and a verifying audit chain.
     `tests/architecture/` holds the import-linter contracts and the shrink-only ratchets (import
     contracts, function-local `docket` imports, module size toward the 700-line ceiling, writers
     of a task's `status`, the test-id manifest). `tests/release/` is the agent lane of rule 3 under
@@ -383,8 +402,8 @@ when the contract being tested ends at that external boundary.
   runs it with `DOCKET_SANDBOX_PROBE=none`, which hides Landlock and `sandbox-exec` (Docker is never
   probed unless the operator chose it), after asserting that detection reports `none`. Forcing
   `DOCKET_SANDBOX_BACKEND=none` is not that check: a fixture that deletes the variable falls back to
-  detection. A test that wants no jail calls `record_isolation_off`. The script is a local gate; no CI
-  job runs it.
+  detection. A test that wants no jail calls `record_isolation_off`. The `no-sandbox` CI job runs the
+  script.
 
 ## Golden parity suite
 
@@ -554,6 +573,8 @@ Where the names used above live today.
 - `tests/conftest.py`: the autouse home fixture,
   `register_local_provider`, `record_isolation_off`, `record_isolation_on`, the lane duration guard.
 - `tests/support/fakes.py`: `FakeDriver`; `tests/support/model_server.py`: `FakeModel`, `fake_model`.
+- `tests/support/e2e.py`: `World`, `Result`, `Service`; `tests/support/e2e_oracles.py`: the oracles
+  of rule 13; `tests/e2e/conftest.py`: the `world` fixture.
 - `tests/guards/`: `test_layout.py` (unit and integration `SUBJECT`, large-module baseline
   `layout_baseline.txt`, CLI registry), `test_lane_headers.py` (agent headers, no `subprocess` in
   unit), `test_agent_lane_budget.py` (`agent_lane_baseline.txt`), `test_comment_hygiene.py` (with
