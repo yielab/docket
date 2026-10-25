@@ -48,6 +48,7 @@
   "expiresAt": "<time>",
   "onExpiry": "block",
   "policy": "person",
+  "level": "L3",
   "state": "pending",
   "resolution": null,
   "seq": 1,
