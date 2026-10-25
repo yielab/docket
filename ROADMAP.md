@@ -9,14 +9,14 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-25.** Phases 0–50 are complete. **Phase 51 is active** (D-72,
-[ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)): one escalation record and one
-`resolve` for every pause that waits on someone outside the task. **Phase 52 is planned** (D-73,
+**Last updated: 2026-10-25.** Phases 0–51 are complete; none is active. Phase 51 (D-72,
+[ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)) made every pause that waits on
+someone outside the task one `Escalation` record with one `resolve` verb; its loose ends are on
+`TODO.md` under "Escalations". **Phase 52 is planned** (D-73,
 [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)): the harness adapts to the
 model by data from the provider catalog and pays for context once; with D-74
 ([ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)) the turn owns its processes
-and its time and `fetch` returns text; twelve cards cut by file ownership over four waves, Wave A
-parallel-safe beside Phase 51. Phase 50 (D-71,
+and its time and `fetch` returns text; twelve cards cut by file ownership over four waves. Phase 50 (D-71,
 [ADR 0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)): end-to-end tests that run the
 product the way an operator or Tack does, in `tests/e2e/`, with one fake model and shared oracles. Phase 49 (D-70) made the task one typed record behind one
 store, with the same JSON on disk. A new phase starts from a measured trigger or a maintainer
@@ -83,7 +83,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 48 | Isolation where the machine can jail, a task keeps its pipeline file, contract v5, positioning | D-67, D-68, D-69 | 2026-10-24 |
 | 49 | The task as a typed record behind one store: `TaskRecord` (flat, same JSON), `JsonTaskStore` + `TaskRepository` as the only writers of the queue, `hops` and `interfaces` read attributes, `claimId` and `source` deleted | D-70 | **complete** 2026-10-24 (`4a22a5be`..`423b67a1`); `dict[str, Any]` in `tasks/` and `hops/` 156 to 94, queue writers 19 to 0 outside the store, `src` +40 lines net |
 | 50 | End-to-end tests that run the product: `tests/e2e/` (one file per journey, a `docket` subprocess or `docket start` over HTTP, a real git repo, only the model faked), one fake model in `tests/support/model_server.py`, shared oracles, a CI job; the deterministic smoke moves into the lane | D-71 · [0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md) | **complete** 2026-10-25: 10 cards, 15 journey files and 48 e2e tests (lane about 32 s under `-n auto`, green twice in a row), `init --from` turns isolation on, `stale_claim` trace event, `DOCKET_CLOCK_OFFSET_S`; the tool-contract fixes A1-A5 (read/write state, consult truth, bash rules, verdict tolerance, `verify()`) landed with it |
-| 51 | One escalation: a durable `Escalation` record behind the store for approval, consult, input, gate and check-changed pauses; one `resolve` verb, one event family, one render, a policy table for when nobody is there (`consultMode: decide` first), then the A2A facade and a per-task level | D-72 · [0032](docs/adr/0032-one-escalation-record-and-one-resolve.md) | **active** (opened 2026-10-25; cards P51-1..P51-9) |
+| 51 | One escalation: a durable `Escalation` record behind the store for approval, consult, input, gate and check-changed pauses; one `resolve` verb, one event family, one render, a policy table for when nobody is there (`consultMode: decide` first), then the A2A facade and a per-task level | D-72 · [0032](docs/adr/0032-one-escalation-record-and-one-resolve.md) | **complete** 2026-10-25: cards P51-1..P51-14; the old approval, answer and `waiting_*` shapes are retired (`operator-v2`), with the A2A facade and the per-task level; follow-ups under "Escalations" in `TODO.md` |
 | 52 | The harness adapts to the model by data, and pays for context once: cache-hit and tokens-per-accepted-task figures, a re-read report on recorded traces; tool results normalized and cut head+tail, errors that teach, small results never condensed first; a stable prefix (finalization as a trailing message) and sampling from the catalog; a parse failure refused rather than asked; the Lead's locators read into the Implementer's message; viewer/editor recipes; `ModelProfile` (`hosted`, `local`: surface, descriptions, forced `tool_choice` on close, window-derived budgets); results over the cap kept whole under the pod cache. With D-74: a tool's clock clamped to the turn's and a running tool keeping the claim fresh; background processes with a handle, stopped at turn end, a bare `&` asking; `fetch` converting HTML to text; a `web-research` recipe; a `wait` escalation held until a run needs it | D-73 · [0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) · D-74 · [0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md) | **planned** (2026-10-25; cards P52-1..P52-12, four waves) |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
@@ -294,7 +294,7 @@ today:
 > Engineering follow-ups with triggers live on `TODO.md` §"FOLLOW-UPS WITH TRIGGERS". These entries
 > need a decision, not a trigger.
 
-- **Integrate `plan/phase-46-structure` (Phases 46-47) into `develop` and push.** Until then the
+- **Integrate `plan/phase-46-structure` (Phases 46-51) into `develop` and push.** Until then the
   `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at the Phase 47 close (2026-10-24).
 - **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters (no consumer;
   last changed 2026-09-01) and the adoption benchmark (`docs/ADOPTION-EVIDENCE.md`: fixture data a
@@ -302,6 +302,15 @@ today:
   the benchmark and the README link, delete the adapters until a product of ours uses one.
 - **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends
   hosted-model tokens on `fab-dev`, so it needs a go.
+- **Make `--sandbox on` the default of the live-eval smoke** (`scripts/smoke_workflow.py` and
+  `scripts/maint/live_eval.py` default to `off`). Both default to `off`, while `docket init` turns the
+  jail on where the machine can, so the default smoke runs a configuration users do not; the flag
+  `--sandbox on` exists since P51-12. Asked at
+  the Phase 51 close (2026-10-25).
+- **Adapt Tack's runner to `operator-v2`** (another repository). The approval, answer and
+  `waiting_*` surfaces it calls are replaced by `GET /inbox` escalations and `POST /escalations/<id>`
+  (operator-api 7.0.0, mcp-server 2.0.0, telegram-integration 5.0.0, operator-loop 3.0.x); its
+  fixture capture is re-run against this build. Asked at the Phase 51 close (2026-10-25).
 - **A release.** `VERSION` is `0.2.0-beta.6`; the last tag is `v0.2.0-beta.4`. Cutting it publishes
   the Phase 43-48 changes (API 6, `exec` deleted, one authored YAML form, isolation by detection).
 - **A sibling project's blueprint** (`onboard/tack` in its own repository) still has three canonical-form
