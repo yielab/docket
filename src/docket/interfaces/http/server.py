@@ -29,6 +29,7 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.auth import authorize
 from docket.interfaces.http.exchange import HttpExchange
+from docket.interfaces.http.routes.a2a_push import finished_channels
 from docket.interfaces.http.routes.health import SERVE_API_VERSION
 from docket.interfaces.http.routes.table import ROUTES
 from docket.interfaces.http.routing import find_route
@@ -45,7 +46,9 @@ from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
+from docket.operator import delete_channel
 from docket.operator import flush_notify_channels as flush_notify_channels
+from docket.platform import prune_settled_escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.teams import conversations
@@ -159,9 +162,11 @@ def _run_sweeps(dispatch: bool = False) -> None:
     looking for it. ``audit.log`` is never swept: telemetry is lossy by design, an audit log must
     not be.
 
-    Also prunes terminal run records, resolved approval records and closed conversations past
+    Also prunes terminal run records, resolved approval records, settled escalation records and
+    closed conversations past
     the same ``TRACE_RETENTION_S`` window -- live/pending/active records are never touched
-    regardless of age, matching the trace sweep's own liveness rule.
+    regardless of age, matching the trace sweep's own liveness rule. After the notification
+    flush it removes the A2A push channel of every finished task.
 
     When *dispatch* is set (opt-in, real budget-gated agent turns, never part of the read-only
     monitor), also refreshes the limits each registered provider's ``/models`` publishes (once a
@@ -183,6 +188,8 @@ def _run_sweeps(dispatch: bool = False) -> None:
     with contextlib.suppress(Exception):
         approval.prune_resolved()
     with contextlib.suppress(Exception):
+        prune_settled_escalations()
+    with contextlib.suppress(Exception):
         conversations.prune_closed_durable()
     if dispatch:
         with contextlib.suppress(Exception):
@@ -199,8 +206,15 @@ def _run_sweeps(dispatch: bool = False) -> None:
         except Exception as exc:
             print(f"[serve] sweep: schedule check failed: {exc}")
 
+    # Chosen before the flush so the flush still delivers a finished task's closing event.
+    finished: list[str] = []
+    with contextlib.suppress(Exception):
+        finished = finished_channels()
     with contextlib.suppress(Exception):
         flush_notify_channels(_bootstrap.sink_for)
+    for name in finished:
+        with contextlib.suppress(Exception):
+            delete_channel(name)
 
 
 def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:

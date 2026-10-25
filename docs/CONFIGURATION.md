@@ -68,6 +68,9 @@ noted.
 ├── traces/<pod>/<session>.jsonl        dispatch     observable events per session
 ├── approvals/<id>.json                 gated call   pending/granted/denied approvals
 ├── consult-parked/<q-id>.json         consult      a parked question, until dispatch reads it
+├── escalations/esc-<id>.json           every pause  one record per pending approval, question or gate
+│   ├── _seq.json                       every pause  the counter that orders them (never reset)
+│   └── settled/esc-<id>.json           settling     the same record once resolved, expired or decided
 └── workspaces/
     ├── projects/<pod>-<role>/          init/pod add one private workspace per pod member
     │   ├── .docket-meta.json           the agent's facts and per-pod settings
@@ -597,9 +600,11 @@ built around.
 **Approvals.** A `require_approval` hit, or a high-risk command such as `git push origin main`,
 creates `approvals/<id>.json`.
 
-- **Answering.** Answer it with `docket task approve <task-id>`/`docket task deny <task-id>`,
-  `POST /approvals/<token>` under `docket start`, MCP, or Telegram `/approve`. Every channel is
-  audited.
+- **Answering.** Answer it with `docket task answer <escalation-id> --option
+  approve_once|approve_task|deny` (the id `docket inbox` prints), `POST /escalations/<id>` under
+  `docket start`, MCP, or Telegram `/answer <escalation-id> <option>`. The older forms reach the
+  same result: `docket task approve <task-id>`/`docket task deny <task-id>`,
+  `POST /approvals/<token>` and Telegram `/approve`. Every channel is audited.
 - **Expiry.** Unanswered requests are denied: after `TOOL_APPROVAL_TIMEOUT` (120 s) when a live
   tool call is waiting, after `APPROVAL_TIMEOUT` (900 s) at a pipeline approval gate.
 - **Non-interactive runs.** A pod set to `approvalMode refuse` never waits. It returns `approval_unavailable` instead.
@@ -1149,8 +1154,10 @@ one more stdlib-only transport. Unlike `exporters:` (§3.14), a channel is a glo
 entry, not something a `pod.yaml` names or scopes — every enabled channel watches every pod's
 inbox.
 
-**Answering.** A parked approval: `docket task approve <task-id>` / `docket task deny <task-id>`. A parked
-question: `docket task answer <task-id> [--pod <name>]` (interactive — shows the brief and any prior
+**Answering.** Any pause, by the id `docket inbox` prints: `docket task answer <escalation-id> --option
+<id>` (an approval takes `approve_once|approve_task|deny`). The older verbs still work: a parked
+approval, `docket task approve <task-id>` / `docket task deny <task-id>`; a parked
+question, `docket task answer <task-id> [--pod <name>]` (interactive — shows the brief and any prior
 answers, prompts once per schema property on a TTY, then answers) or non-interactively `docket
 task answer <task-id> [text] [--field name=value]... [--decline]` — a bare `text` fills a
 single-property question, `--field` names each property of a richer one. Both, plus `POST
@@ -1189,7 +1196,8 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `docket-conversations.json` | `conversations[{id,agentId,peerId,topic,status,…}]` | Telegram | Telegram channel | no |
 | `sessions/<key>/session.json` | `messages[]`, `usage{inputTokens,outputTokens,turns}` | every turn | every turn (history, compaction) | no |
 | `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket task trace`, `docket status`, `/traces`; each record also reaches the enabled exporters as it is written | no. `docket task prune` prunes after `TRACE_RETENTION_DAYS`. |
-| `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `docket task approve`/`deny`. |
+| `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `docket task answer <escalation-id> --option ...` (or the older `docket task approve`/`deny`). |
+| `escalations/esc-<id>.json` (+ `settled/`, `_seq.json`) | one `Escalation` (`id,task,pod,kind,prompt,options,state,resolution,seq,…`); a settled record moves to `settled/` | every pause: gated call, consult, `input` step, gate, changed check | `docket inbox`, `GET /escalations`, `docket task answer`, the claim that applies an answer | no. `docket start`'s sweep deletes settled records after `TRACE_RETENTION_DAYS`. |
 | `consult-parked/<q-id>.json` | one operator-v1.1 `QuestionV11` | a pod hop's `consult` | dispatch, once, when it parks the task | no. Dispatch removes it; the task keeps the question. |
 | `audit.log` (+ `.1`) | JSONL `{seq,ts,user,pid,action,detail,prev_hash}` | every mutating command | `docket log`, `docket log verify` | **never.** It breaks the hash chain. |
 

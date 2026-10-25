@@ -14,6 +14,8 @@ from typing import Any
 from docket.governance import audit as _audit
 from docket.interfaces.http.routes.a2a_rpc import INVALID_PARAMS, RpcError
 from docket.operator import ChannelSpec, load_catalog, save_channel
+from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.state import Status
 
 _ON = ["needs_you", "task.completed", "task.failed", "task.rejected"]
 _CREDENTIAL_FIELDS = ("token", "authentication")
@@ -65,3 +67,17 @@ def read(task_id: str) -> dict[str, str] | None:
     if spec is None or "scopeTask" not in spec.config:
         return None
     return {"url": spec.config.get("url", "")}
+
+
+def finished_channels() -> list[str]:
+    """The push channels whose task is terminal or no longer in its pod's queue, which no event
+    will reach again. The sweep removes them after its flush."""
+    finished: list[str] = []
+    for name, spec in load_catalog().entries.items():
+        task_id, pod = spec.config.get("scopeTask"), spec.config.get("scopePod")
+        if not name.startswith("a2a-") or not task_id or not pod:
+            continue
+        task = TaskRepository.for_pod(pod).get(task_id)
+        if task is None or task.status in Status.TERMINAL:
+            finished.append(name)
+    return finished

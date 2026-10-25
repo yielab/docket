@@ -397,7 +397,7 @@ it asks a question before one runs — and what each does to the task:
 | `mechanical` | Implementer's `verifyCmd` by default (or a `command` you set) | Task → **failed**, a `verification_failed` trace event, no advance to the next step. An unset command is never silently skipped — it prints `verification skipped — verifyCmd not set for <id>` and emits its own trace event |
 | `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
 | `approval` | A pipeline `approval` step | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
-| `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <task-id>`; unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
+| `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <escalation-id> --option <id>` (or `<task-id>`); unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
 
 ### Declared variables — interpolated into step instructions
 
@@ -687,8 +687,8 @@ docket start --dispatch
 You can also queue work from Telegram: bind the Lead once with `docket setup notify bind myapp-lead`, run
 `docket start --telegram`, and send `/delegate <task>` in that group. The task lands on the same
 pod queue and the reply is its task id, not the pipeline's output. Plain messages are refused;
-the only verbs are `/approve`, `/deny`, `/status`, `/delegate` and `/answer <task-id> <text>` (for
-a parked question). This bot only ever replies to a message it received — it never messages the
+the only verbs are `/approve`, `/deny`, `/status`, `/delegate` and `/answer <escalation-id> <option or
+text>` (for any pause; the older `/answer <task-id> <text>` still answers a parked question). This bot only ever replies to a message it received — it never messages the
 group first. Pushing a notification into the group instead is a separate, opt-in mechanism
 (`docket setup notify enable telegram --set actors=<chat-id>`, §3.15 in CONFIGURATION.md), scoped to
 the chat ids you explicitly list, never every wired binding.

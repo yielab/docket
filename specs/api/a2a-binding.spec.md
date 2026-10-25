@@ -1,6 +1,6 @@
 # A2A binding (JSON-RPC over HTTP) -- contract spec
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented
 **Last Updated**: 2026-10-25
 
@@ -174,6 +174,14 @@ the CloudEvent of `operator-loop.spec.md` (`Content-Type: application/cloudevent
 A2A `Task`: `data.taskId` and `data.pod` name the task, and the client reads its state with
 `tasks/get`. `SUBMITTED` and `WORKING` do not push. The channel appears in `docket setup notify`.
 
+The channel lives as long as its task is open. The `serve` sweep MUST remove the `a2a-<task id>`
+channel of a task that is `done`, `failed` or `cancelled`, or that the pod's queue no longer
+holds (pruned), after the sweep's notification flush
+has delivered that task's closing event (the channel is chosen before the flush, so an event the
+flush sends is never cut off). A channel of a task that is not terminal, and every channel whose
+name does not begin `a2a-` or whose `config` has no `scopeTask`, is left as it is. A `failed` task
+that is retried needs a new `tasks/pushNotificationConfig/set`.
+
 ## Return
 
 | JSON-RPC code | When |
@@ -206,7 +214,8 @@ A2A `Task`: `data.taskId` and `data.pod` name the task, and the client reads its
 
 - `src/docket/interfaces/http/routes/a2a.py`: `post_a2a`, `get_agent_card`, the method table.
 - `src/docket/interfaces/http/routes/a2a_task.py`: the `Task` object and the escalation message.
-- `src/docket/interfaces/http/routes/a2a_push.py`: the push config as a channel.
+- `src/docket/interfaces/http/routes/a2a_push.py`: the push config as a channel, and `finished_channels`
+  (the channels of terminal tasks, which the sweep removes).
 - `src/docket/interfaces/http/routes/table.py`: the two rows.
 - `src/docket/operator/notify.py`: `scopeTask` filtering of a delivery.
 - `tests/contracts/test_a2a_http.py`, `tests/contracts/a2a/`, `tests/e2e/test_a2a_over_http.py`.

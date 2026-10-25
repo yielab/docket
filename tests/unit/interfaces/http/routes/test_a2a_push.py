@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import pytest
+from tests.support.tasks import put_tasks, task
 
 from docket.interfaces.http.routes import a2a_push
 from docket.interfaces.http.routes.a2a_rpc import RpcError
+from docket.operator import ChannelSpec, save_channel
 
 SUBJECT = "docket.interfaces.http.routes.a2a_push"
 
@@ -40,3 +42,32 @@ class TestChannelFor:
 
         assert refused.value.code == -32602
         assert field in refused.value.message
+
+
+class TestFinishedChannels:
+    def _channel(self, pod: str, task_id: str) -> None:
+        save_channel(a2a_push.channel_for(pod, task_id, {"url": "http://127.0.0.1:9/hook"}))
+
+    def test_only_the_channels_of_terminal_tasks_are_named(self) -> None:
+        open_task = task(status="running")
+        done_task = task(status="done")
+        failed_task = task(status="failed")
+        cancelled_task = task(status="cancelled")
+        put_tasks("demo", open_task, done_task, failed_task, cancelled_task)
+        for record in (open_task, done_task, failed_task, cancelled_task):
+            self._channel("demo", record.id)
+        save_channel(
+            ChannelSpec(
+                kind="channel",
+                name="a2a-not-ours",
+                dialect="webhook",
+                enabled=True,
+                capabilities=["notify"],
+                on=["needs_you"],
+                config={"url": "http://127.0.0.1:9/x"},
+            )
+        )
+
+        assert sorted(a2a_push.finished_channels()) == sorted(
+            f"a2a-{r.id}" for r in (done_task, failed_task, cancelled_task)
+        )

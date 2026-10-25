@@ -9,7 +9,8 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 
 #### 0. **It isn't a chat**
 docket's inbound Telegram bot is inbound-only and understands exactly five verbs: `/approve`,
-`/deny`, `/status`, `/delegate <task>`, and `/answer <task-id> <text>` (for a parked question).
+`/deny`, `/status`, `/delegate <task>`, and `/answer <escalation-id> <option or text>` (for any
+pause; the older `/answer <task-id> <text>` still answers a parked question).
 Plain prose is refused by design, this bot never messages a chat first, and `/delegate`/`/answer`
 answer with a task id or a confirmation, never the pipeline's output. Use `docket task list`/`docket task trace <task-id>`
 to see results. A *push* notification into the chat is a separate,
@@ -348,8 +349,11 @@ exactly this.
 
 ```bash
 docket inbox                              # everything across every pod that needs you, right now
-docket task approve <task-id>                  # grant it -- the exact same hop re-runs, once
-docket task deny <task-id>                     # deny it -- the task fails with approval_denied
+docket task answer <escalation-id> --option approve_once   # grant it -- the exact same hop re-runs, once
+docket task answer <escalation-id> --option deny           # deny it -- the task fails with approval_denied
+# the older verbs reach the same result:
+docket task approve <task-id>                  # grant it
+docket task deny <task-id>                     # deny it
 docket setup notify enable desktop            # this machine; or webhook/ntfy/telegram/email
 ```
 
@@ -367,10 +371,11 @@ though both read as `INPUT_REQUIRED` over the MCP/A2A surfaces.
 **Fix:**
 
 ```bash
-docket task answer <task-id>                     # see the question (and any brief/earlier answers); on a
-                                           # TTY, prompts and answers it in one step
-docket task answer <task-id> "<answer>"                    # non-interactive, single-property question
-docket task answer <task-id> --field name=value ...        # non-interactive, multi-property question
+docket task answer <escalation-id>               # on a TTY, shows the question and answers it in one step
+docket task answer <escalation-id> --option <id>           # non-interactive, a question with options
+docket task answer <escalation-id> "<answer>"              # non-interactive, single-property question
+docket task answer <escalation-id> --field name=value ...  # non-interactive, multi-property question
+# the task id works in place of the escalation id: docket task answer <task-id> ...
 ```
 
 An unanswered question past its own deadline moves the task to `blocked`

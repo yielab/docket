@@ -24,6 +24,7 @@ from typing import Any, cast
 from filelock import FileLock, Timeout
 from pydantic import BaseModel, ValidationError
 
+from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
     Escalation,
@@ -260,11 +261,27 @@ def _replace_bytes(path: Path, content: bytes) -> None:
 
 
 # ── escalations ──────────────────────────────────────────────────────────────
-# One 0600 file per pause beside a counter file; the directory's one lock orders every change.
+# One 0600 file per pause beside a counter file. A pending record lives in ``escalations/``, whose
+# one lock orders every change; once settled it moves to ``escalations/settled/`` so the scan the
+# inbox repeats never opens a record that no longer needs anyone.
 
 
 def _escalation_path(escalation_id: str) -> Path:
     return current_home().escalations_dir / f"{escalation_id}.json"
+
+
+def _settled_dir() -> Path:
+    return current_home().escalations_dir / "settled"
+
+
+def _settled_path(escalation_id: str) -> Path:
+    return _settled_dir() / f"{escalation_id}.json"
+
+
+def _record_path(escalation_id: str) -> Path:
+    """Where the record named *escalation_id* is kept now: settled when that file exists."""
+    settled = _settled_path(escalation_id)
+    return settled if settled.exists() else _escalation_path(escalation_id)
 
 
 def next_escalation_seq() -> int:
@@ -282,23 +299,44 @@ def next_escalation_seq() -> int:
 
 
 def write_escalation(escalation: Escalation) -> Escalation:
-    """Persist *escalation*, numbering it when it has no ``seq`` yet; returns the record as stored."""
+    """Persist *escalation* in the directory its ``state`` names, numbering it when it has no
+    ``seq`` yet; returns the record as stored."""
     stored = (
         escalation
         if escalation.seq
         else escalation.model_copy(update={"seq": next_escalation_seq()})
     )
     mkdir_private(current_home().escalations_dir)
-    write_json(_escalation_path(stored.id), stored.model_dump(by_alias=True, mode="json"))
+    doc = stored.model_dump(by_alias=True, mode="json")
+    if stored.state == "pending":
+        write_json(_escalation_path(stored.id), doc)
+        _drop(_settled_path(stored.id))
+    else:
+        mkdir_private(_settled_dir())
+        write_json(_settled_path(stored.id), doc)
+        _drop(_escalation_path(stored.id))
     return stored
 
 
+def _drop(path: Path) -> None:
+    """Remove the stale copy of a record that now lives in the other directory, with its backup."""
+    if not path.parent.is_dir():
+        return
+    with with_lock(path):
+        path.unlink(missing_ok=True)
+        path.with_suffix(path.suffix + ".bak").unlink(missing_ok=True)
+
+
 def read_escalation(escalation_id: str) -> Escalation | None:
-    """The record named *escalation_id*; ``None`` for a malformed id, an absent file or a file
-    that is not a valid escalation."""
+    """The record named *escalation_id*, pending or settled; ``None`` for a malformed id, an absent
+    file or a file that is not a valid escalation."""
     if not is_escalation_id(escalation_id):
         return None
-    return _parse_escalation(read_json(_escalation_path(escalation_id)))
+    # Settling writes the settled file before it removes the pending one, so reading the pending
+    # file first and the settled one second never misses a record that is moving between them.
+    return _parse_escalation(read_json(_escalation_path(escalation_id))) or _parse_escalation(
+        read_json(_settled_path(escalation_id))
+    )
 
 
 def _parse_escalation(doc: dict[str, Any]) -> Escalation | None:
@@ -308,56 +346,71 @@ def _parse_escalation(doc: dict[str, Any]) -> Escalation | None:
         return None
 
 
+def _read_folder(folder: Path) -> list[Escalation]:
+    if not folder.is_dir():
+        return []
+    records = (_parse_escalation(read_json(path)) for path in sorted(folder.glob("esc-*.json")))
+    return [e for e in records if e is not None]
+
+
 def list_escalations(
     state: EscalationState | None = None, since_seq: int | None = None
 ) -> list[Escalation]:
     """Every valid record ordered by ``seq``; only those in *state* and with ``seq`` greater than
-    *since_seq* when given."""
+    *since_seq* when given. ``pending`` reads only the live directory and any other state only
+    ``settled/``."""
     folder = current_home().escalations_dir
-    if not folder.is_dir():
-        return []
-    found = (read_escalation(path.stem) for path in sorted(folder.glob("esc-*.json")))
+    found = [
+        *(_read_folder(folder) if state in (None, "pending") else []),
+        *(_read_folder(_settled_dir()) if state != "pending" else []),
+    ]
+    # A record caught mid-move is in both folders: the settled copy is the newer one.
+    latest = {e.id: e for e in found}
     return sorted(
         (
             e
-            for e in found
-            if e is not None
-            and (state is None or e.state == state)
-            and (since_seq is None or e.seq > since_seq)
+            for e in latest.values()
+            if (state is None or e.state == state) and (since_seq is None or e.seq > since_seq)
         ),
         key=lambda e: e.seq,
     )
 
 
-def _settle(escalation_id: str, state: EscalationState) -> bool:
-    moved: list[bool] = []
-
-    def _move(doc: dict[str, Any]) -> dict[str, Any] | None:
-        current = _parse_escalation(doc)
+def _settle_pending(
+    escalation_id: str, change: Callable[[Escalation], Escalation | None]
+) -> Escalation | None:
+    """Apply *change* to the record while it is ``pending`` and move the result to ``settled/``;
+    the record as stored, or ``None`` when it was not pending (another caller settled it first)."""
+    path = _escalation_path(escalation_id)
+    moved: list[Escalation] = []
+    with with_lock(path):
+        current = _parse_escalation(_read_json_unlocked(path))
         if current is None or current.state != "pending":
             return None
-        moved.append(True)
-        return current.model_copy(update={"state": state}).model_dump(by_alias=True, mode="json")
+        settled = change(current)
+        if settled is None:
+            return None
+        mkdir_private(_settled_dir())
+        write_json(_settled_path(escalation_id), settled.model_dump(by_alias=True, mode="json"))
+        path.unlink(missing_ok=True)
+        path.with_suffix(path.suffix + ".bak").unlink(missing_ok=True)
+        moved.append(settled)
+    return moved[0]
 
-    read_modify_write(_escalation_path(escalation_id), _move)
-    return bool(moved)
+
+def _settle(escalation_id: str, state: EscalationState) -> bool:
+    return (
+        _settle_pending(escalation_id, lambda e: e.model_copy(update={"state": state})) is not None
+    )
 
 
 def resolve_escalation(escalation_id: str, resolution: Resolution) -> Escalation | None:
     """Move the record *escalation_id* from ``pending`` to ``resolved`` carrying *resolution*; the
     record as stored, or ``None`` when it was not pending (another caller settled it first)."""
-    settled: list[Escalation] = []
-
-    def _move(doc: dict[str, Any]) -> dict[str, Any] | None:
-        current = _parse_escalation(doc)
-        if current is None or current.state != "pending":
-            return None
-        moved = current.model_copy(update={"state": "resolved", "resolution": resolution})
-        settled.append(moved)
-        return moved.model_dump(by_alias=True, mode="json")
-
-    read_modify_write(_escalation_path(escalation_id), _move)
-    return settled[0] if settled else None
+    return _settle_pending(
+        escalation_id,
+        lambda e: e.model_copy(update={"state": "resolved", "resolution": resolution}),
+    )
 
 
 def mark_escalation_applied(escalation_id: str, at: str) -> bool:
@@ -377,7 +430,7 @@ def mark_escalation_applied(escalation_id: str, at: str) -> bool:
             by_alias=True, mode="json"
         )
 
-    read_modify_write(_escalation_path(escalation_id), _stamp)
+    read_modify_write(_record_path(escalation_id), _stamp)
     return bool(stamped)
 
 
@@ -389,3 +442,38 @@ def settle_escalation(key: str, value: str, state: EscalationState) -> bool:
         for e in list_escalations(state="pending")
         if e.legacy.get(key) == value
     )
+
+
+def prune_settled_escalations(
+    retention_s: int | None = None, *, dry_run: bool = False, now: float | None = None
+) -> int:
+    """Delete settled records whose file is older than the retention window (default
+    ``Home.trace_retention_s``); the count removed, or that would be under *dry_run*."""
+    # A settled record is written once, then stamped once when its resolution is applied, so its
+    # mtime is a faithful "settled at". A resolved record not yet applied is live work: the task's
+    # claim still has to read it. The counter lives in the pending directory, so a seq is never reused.
+    folder = _settled_dir()
+    if not folder.is_dir():
+        return 0
+    window = current_home().trace_retention_s if retention_s is None else retention_s
+    cutoff = (now if now is not None else _clock.epoch()) - window
+    removed = 0
+    for path in sorted(folder.glob("esc-*.json")):
+        with with_lock(path):
+            record = _parse_escalation(_read_json_unlocked(path))
+            if record is None:
+                continue
+            if record.state == "resolved" and (
+                record.resolution is None or record.resolution.applied_at is None
+            ):
+                continue
+            try:
+                if path.stat().st_mtime >= cutoff:
+                    continue
+                if not dry_run:
+                    path.unlink()
+                    path.with_suffix(path.suffix + ".bak").unlink(missing_ok=True)
+            except OSError:
+                continue
+            removed += 1
+    return removed

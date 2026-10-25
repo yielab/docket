@@ -104,7 +104,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 2.3.0 | Implemented and live |
 | Pipeline Format | 4.1.0 | Implemented |
 | Pod Blueprints | 2.2.0 | Implemented |
-| Pod Dispatch | 10.7.0 | Implemented |
+| Pod Dispatch | 10.8.0 | Implemented |
 | Role Archetypes | 4.1.0 | Implemented |
 | Security Gates | 1.6.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
@@ -112,15 +112,15 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Telegram Integration | 4.2.0 | Implemented |
 | Trace Store | 3.2.0 | Implemented and live |
 | Workspace Structure | 2.2.0 | Complete |
-| CLI Interface | 4.4.0 | Complete |
+| CLI Interface | 4.5.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 1.11.0 | Implemented |
 | CLI JSON Shapes | 4.2.0 | Complete |
 | docket-meta schema | 5.4.0 | Complete |
-| Docket Store | 2.2.0 | Implemented |
+| Docket Store | 2.3.0 | Implemented |
 | Operator API | 6.5.0 | Implemented (Phase 43, ADR 0027) |
-| A2A Binding | 1.0.0 | Implemented |
+| A2A Binding | 1.1.0 | Implemented |
 | Serve Read API | 4.2.0 | Stable |
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |

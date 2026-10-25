@@ -32,6 +32,8 @@ from docket.hops.application import sweep as _sweep
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
+from docket.operator import build_inbox
+from docket.platform import list_escalations
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import repository as _repository
@@ -208,6 +210,23 @@ class TestPolicyGates:
         assert len(tasks) == 1
         assert tasks[0].status == "waiting_approval"
         assert tasks[0].approval_token == body["approvalToken"]
+
+    def test_require_approval_enqueue_opens_one_approval_escalation(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _seed_lean_pod("myapp")
+        _write_policy("big-spend", "URGENT WIRE", "require_approval")
+        _, body = _post(
+            f"{url}/tasks/myapp", {"description": "URGENT WIRE the vendor today"}, token
+        )
+
+        (opened,) = list_escalations(state="pending")
+        assert (opened.kind, opened.pod, opened.task) == ("approval", "myapp", body["task"])
+        assert opened.legacy == {"token": body["approvalToken"]}
+        inbox = build_inbox(now=_clock.iso())
+        assert [e.id for e in inbox.escalations] == [opened.id]
+        assert [t.id for t in inbox.needs_you] == [body["task"]]
 
 
 # ── the optional `trusted` field, threaded into policy_eval_detail only ───────

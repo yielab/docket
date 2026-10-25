@@ -20,8 +20,9 @@
 > sandbox on when the agent's commands must not reach outside the project.
 >
 > **There is exactly one approval system, and it is answerable from four places** — all
-> audit-logged, tagged with the channel that answered: a CLI channel (`docket task approve`/
-> `docket task deny`), a headless HTTP endpoint (`docket start`'s `POST /approvals/<token>`), MCP, and
+> audit-logged, tagged with the channel that answered: a CLI channel (`docket task answer <escalation-id> --option ...`, or
+> the older `docket task approve`/`docket task deny`), a headless HTTP endpoint (`docket start`'s
+> `POST /escalations/<id>`, or the older `POST /approvals/<token>`), MCP, and
 > Telegram (docket's own bot, wired with `docket setup notify bind` — a decision there lands in the same audit
 > chain as a CLI one, tagged `channel="telegram"`). The headless channels mean CI jobs and
 > automation can vote without a chat account. **Approvals fail closed on timeout** — an in-turn
@@ -119,7 +120,7 @@ The default pod from `docket init` is lean — Lead + Implementer, **no Reviewer
 
 ### During Agent Work
 **Nothing.** The tool-call gate runs on every call; a Reviewer, if the pod has one, reviews
-automatically. Answer any pending approvals (`docket task approve`).
+automatically. Answer any pending approvals (`docket task answer <escalation-id> --option approve_once`, or `docket task approve <task-id>`).
 
 ### Before Committing
 ```bash
@@ -409,18 +410,18 @@ docket status                          # Profile: lights-out, all requirements m
   asks.
 - **Telegram's push is not the inbound bot talking to itself.** `interfaces/telegram/bot.py`'s bot is still
   exactly what "It isn't a chat" above describes: inbound-only, five verbs now (`/approve`,
-  `/deny`, `/status`, `/delegate`, and `/answer <task-id> <text>` for a parked question), and it
+  `/deny`, `/status`, `/delegate`, and `/answer <escalation-id> <option or text>` for any pause), and it
   never sends anything it wasn't asked to. The `telegram` *channel* (`docket setup notify enable
   telegram --set actors=<chat-id>`) is a second, independent mechanism: it can push a
   notification to a chat id you explicitly listed, and only that chat id — never every
   `fleet.json` binding, never triggered from inside the bot's own poll loop.
 - **Answering doesn't require re-running anything by hand.** A parked approval is answered like
-  any other (`docket task approve`/`docket task deny`, HTTP, MCP or Telegram) and re-runs the exact hop it
+  any other (`docket task answer <escalation-id> --option ...`, the older `docket task approve`/`docket task deny`, HTTP, MCP or Telegram) and re-runs the exact hop it
   parked in, carrying a single-use pre-grant so the model's identical next call passes without
   asking again. A parked *question* (`waiting_input`, from a pipeline `input` step or a Lead's
-  own intake brief) is answered with `docket task answer <task-id>` (interactive, prompts once per
-  field) or non-interactively with `docket task answer <task-id> [text] [--field k=v]...
-  [--decline]` — both call the same `answer_task` function HTTP and MCP use, so an answer is
+  own intake brief) is answered with `docket task answer <escalation-id>` (interactive, prompts once per
+  field) or non-interactively with `docket task answer <escalation-id> [text] [--field k=v]...
+  [--option <id>] [--decline]` (a task id works too) — both call the same `answer_task` function HTTP and MCP use, so an answer is
   screened through the same input policy as any other text reaching an agent.
 
 ---
@@ -534,7 +535,6 @@ docket setup sandbox status       # gate always active; isolation mode
 docket setup sandbox classes      # the high-risk action classes, and exactly what's wired vs. not
 docket pod policies      # installed guardrail policies
 docket setup             # catches a broken policy file before a live turn does, and more
-docket task approve            # list pending approvals in docket's own store
 docket log verify       # walk the hash chain -- surfaces an edited/removed line, doesn't prove none happened
 docket setup export list     # every trace destination: on or off, and what it SHARES
 docket setup export preview <name>   # the exact spans it would receive, without sending them

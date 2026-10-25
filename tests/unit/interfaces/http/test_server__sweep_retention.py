@@ -13,20 +13,42 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support.tasks import put_tasks, task
 from tests.support.trace import write_trace as _write_trace
 
 from docket.governance import approval as _ap
 from docket.interfaces.http import server as _server
 from docket.interfaces.http import sweeps as _sweeps
+from docket.interfaces.http.routes import a2a_push
 from docket.kernel import threads as _threads
 from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.operator_contract import Escalation, new_escalation_id
 from docket.observability import trace as _trace
+from docket.operator import load_catalog, save_channel
+from docket.platform import store as _store
 
 SUBJECT = "docket.interfaces.http.server"
+
+
+def _escalation(**fields: object) -> Escalation:
+    base: dict[str, object] = {
+        "id": new_escalation_id(),
+        "task": "task-1",
+        "pod": "demo",
+        "step": "implementer",
+        "role": "implementer",
+        "kind": "approval",
+        "causedBy": "call-1",
+        "prompt": "run rm",
+        "askedAt": "2026-10-25T10:00:00+00:00",
+        "onExpiry": "deny",
+    }
+    return Escalation.model_validate({**base, **fields})
 
 
 @pytest.fixture()
@@ -44,7 +66,44 @@ def swept_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path
         yield d
 
 
+class TestSweepRemovesFinishedPushChannels:
+    def test_the_channel_goes_after_the_flush_that_delivers_the_closing_event(
+        self, swept_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        done = task(status="done")
+        running = task(status="running")
+        put_tasks("demo", done, running)
+        for record in (done, running):
+            save_channel(a2a_push.channel_for("demo", record.id, {"url": "http://127.0.0.1:9/h"}))
+        present_at_flush: list[bool] = []
+        monkeypatch.setattr(
+            _server,
+            "flush_notify_channels",
+            lambda _sink: present_at_flush.append(f"a2a-{done.id}" in load_catalog().entries),
+        )
+
+        _server._run_sweeps()
+
+        assert present_at_flush == [True]
+        names = set(load_catalog().entries)
+        assert f"a2a-{done.id}" not in names and f"a2a-{running.id}" in names
+
+
 class TestSweepRunsRetention:
+    def test_sweep_deletes_an_old_settled_escalation_and_keeps_a_pending_one(
+        self, swept_home: Path
+    ) -> None:
+        old = _store.write_escalation(_escalation(state="expired"))
+        live = _store.write_escalation(_escalation())
+        path = swept_home / "escalations" / "settled" / f"{old.id}.json"
+        stale = path.stat().st_mtime - 90 * 86400
+        os.utime(path, (stale, stale))
+
+        _server._run_sweeps()
+
+        assert _store.read_escalation(old.id) is None
+        assert _store.read_escalation(live.id) is not None
+
     def test_sweep_expires_an_old_terminated_trace(self, swept_home: Path) -> None:
         pdir = swept_home / "traces" / "myshop"
         tf = _write_trace(
