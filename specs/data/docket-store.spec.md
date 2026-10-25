@@ -85,7 +85,7 @@ directory's lock when it settles, so the scan the inbox repeats reads only the l
    them.
 2. `write_escalation(escalation)` MUST give a record whose `seq` is `0` the next `seq`, keep the
    stored `seq` of a record already written, persist it in the directory its `state` names (and
-   remove the pending file of a record it settles), and return the record as stored. An `id`
+   remove its copy in the other directory, so a record is never in both), and return the record as stored. An `id`
    that is not `esc-` plus twelve lower-case hex characters cannot be built (the model refuses
    it), so it never becomes a filename.
 3. `read_escalation(id)` MUST return the record wherever it lives, pending or settled, or `None` for

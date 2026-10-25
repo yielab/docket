@@ -260,3 +260,13 @@ def test_retention_applies_to_an_applied_resolution() -> None:
 
     assert store.prune_settled_escalations() == 1
     assert store.read_escalation(record.id) is None
+
+
+def test_rewriting_a_record_leaves_it_in_one_directory_only() -> None:
+    folder = current_home().escalations_dir
+    record = store.write_escalation(_escalation())
+    settled = store.write_escalation(record.model_copy(update={"state": "expired"}))
+    assert [p.parent.name for p in folder.rglob(f"{record.id}.json")] == ["settled"]
+
+    store.write_escalation(settled.model_copy(update={"state": "pending"}))
+    assert [p.parent for p in folder.rglob(f"{record.id}.json")] == [folder]

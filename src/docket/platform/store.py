@@ -310,16 +310,18 @@ def write_escalation(escalation: Escalation) -> Escalation:
     doc = stored.model_dump(by_alias=True, mode="json")
     if stored.state == "pending":
         write_json(_escalation_path(stored.id), doc)
+        _drop(_settled_path(stored.id))
     else:
         mkdir_private(_settled_dir())
         write_json(_settled_path(stored.id), doc)
-        _drop_pending(stored.id)
+        _drop(_escalation_path(stored.id))
     return stored
 
 
-def _drop_pending(escalation_id: str) -> None:
-    """Remove the pending file of a record that now lives in ``settled/``, with its backup."""
-    path = _escalation_path(escalation_id)
+def _drop(path: Path) -> None:
+    """Remove the stale copy of a record that now lives in the other directory, with its backup."""
+    if not path.parent.is_dir():
+        return
     with with_lock(path):
         path.unlink(missing_ok=True)
         path.with_suffix(path.suffix + ".bak").unlink(missing_ok=True)
