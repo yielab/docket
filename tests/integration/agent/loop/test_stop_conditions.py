@@ -514,7 +514,11 @@ class TestApprovalParked:
         assert len(pending) == 1
         record = load_session(session_key)
         assert [message.role for message in record.messages] == ["user", "assistant", "tool"]
-        assert "REFUSED [approval_parked]" in record.messages[-1].content
+        shown = record.messages[-1].content
+        assert shown.startswith("REFUSED [approval_parked]: ")
+        assert "a person must approve this call; the task resumes once they do" in shown
+        assert pending[0]["token"] not in shown and "apr-" not in shown
+        assert pending[0]["token"] in result.error  # the token reaches dispatch, not the model
 
 
 class TestDurability:

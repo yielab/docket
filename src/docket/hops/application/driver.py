@@ -47,7 +47,7 @@ from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
-from docket.hops.application.builtin_tools import builtin_registry
+from docket.hops.application.builtin_tools import builtin_registry, state_bash_rules
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
@@ -554,6 +554,7 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
+        state_bash_rules(registry, ctx)
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         loop_config = _loop_config(backend, timeout, token_budget)
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")

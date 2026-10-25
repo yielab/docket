@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import urllib.parse
 from collections.abc import Callable
 from typing import Any
@@ -12,6 +13,7 @@ from docket.agent.tools.registry import (
     str_arg,
 )
 from docket.agent.tools.screening import screen_tool_result
+from docket.governance.security import SAFE_BINS
 from docket.kernel.gate import CONSULT_TOOL
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
@@ -234,6 +236,46 @@ _GREP_DESCRIPTION = (
 )
 
 
+_ASKING = (
+    "output redirections to files outside the workspace, `$(`, backticks, `${`, `eval`, `exec`, "
+    "`sed -i`, `find -exec` and high-risk actions (publishing, deploying, pushing to main)"
+)
+_EXTRA_BINS_SHOWN = 20
+
+
+def _bash_description(allow_commands: tuple[str, ...], *, jailed: bool) -> str:
+    """The ``bash`` description, stating the rules ``classify_command`` applies to this turn."""
+    if jailed:
+        rules = f"Runs without approval inside the jail: any program. Needs approval: {_ASKING}."
+    else:
+        shown = list(allow_commands[:_EXTRA_BINS_SHOWN])
+        names = ", ".join(sorted({*SAFE_BINS, *shown} - {"["}))
+        more = "..." if len(allow_commands) > _EXTRA_BINS_SHOWN else ""
+        rules = (
+            f"Runs without approval: {names}{more}. Needs approval: any other program, {_ASKING}."
+        )
+    return (
+        f"Run a shell command in the workspace. {rules} If sandboxing is enabled for this "
+        "agent, an approved command additionally runs inside the strongest exec jail "
+        "(landlock, seatbelt or docker) available on the host; otherwise it runs directly in "
+        "the workspace. Create or change files with `write`/`edit`, not `cat >`, heredocs or "
+        "`sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things."
+    )
+
+
+def state_bash_rules(registry: ToolRegistry, ctx: ToolContext) -> None:
+    """Re-describe the built-in ``bash`` with this turn's pod allowlist and jail; a ``bash`` the
+    caller registered itself is left as made."""
+    tool = registry.get("bash")
+    if tool is None or tool.description != _bash_description((), jailed=False):
+        return
+    registry.register(
+        dataclasses.replace(
+            tool, description=_bash_description(ctx.allow_commands, jailed=ctx.sandbox == "auto")
+        )
+    )
+
+
 def _offered_fetch() -> list[Tool]:
     """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
 
@@ -363,15 +405,7 @@ def builtin_registry() -> ToolRegistry:
     registry.register(
         Tool(
             name="bash",
-            description=(
-                "Run a shell command in the workspace. Commands are classified before they "
-                "run; anything off the allowlist or matching a high-risk action class "
-                "requires human approval. If sandboxing is enabled for this agent, an "
-                "approved command additionally runs inside the strongest exec jail (landlock, "
-                "seatbelt or docker) available on the host; otherwise it runs directly in "
-                "the workspace. Create or change files with `write`/`edit`, not `cat >`, "
-                "heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things."
-            ),
+            description=_bash_description((), jailed=False),
             parameters={
                 "type": "object",
                 "properties": {
