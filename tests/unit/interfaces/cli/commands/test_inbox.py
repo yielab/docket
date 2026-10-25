@@ -102,6 +102,49 @@ class TestHumanView:
             assert token not in out
 
 
+class TestDecidedView:
+    def _decide(self) -> None:
+        question = QuestionV11(
+            id="q-9",
+            task_id="task-d",
+            pod="demo",
+            step="implementer",
+            message="Which store?",
+            requested_schema=_SCHEMA,
+            created_at="2026-09-28T00:00:00Z",
+            kind="decision",
+            options=[
+                Option(id="redis", label="Redis", description="fast"),
+                Option(id="sqlite", label="SQLite", description="simple"),
+            ],
+            recommendation=Recommendation(option_id="sqlite", rationale="fewer services"),
+        )
+        _escalations.decided_consult(question, role="implementer", option_id="sqlite")
+
+    def test_a_decision_the_pod_took_alone_is_printed_under_done(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            self._decide()
+
+            out = _inbox("--peek").output
+
+            assert "Done" in out and "decided consult" in out
+            assert "sqlite" in out and "task-d" in out
+            assert "Nothing needs you." not in out
+
+    def test_json_carries_the_decisions_under_decided(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            self._decide()
+
+            body = json.loads(_inbox("--json", "--peek").stdout)
+
+            (decided,) = body["decided"]
+            assert (decided["kind"], decided["state"], decided["task"]) == (
+                "consult",
+                "decided",
+                "task-d",
+            )
+
+
 class TestJsonView:
     def test_items_carry_state_and_command_and_no_escape_codes(self, tmp_path: Path) -> None:
         with _seed(tmp_path):

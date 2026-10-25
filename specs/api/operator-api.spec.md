@@ -322,7 +322,8 @@ their state, so a poller never misses a record that settled between two reads. `
 narrow the list. `next` is the highest `seq` returned, else `since`; pass it back as `since`. A
 `since` that is not a non-negative integer answers `400`. `resolveUrl` names the route that
 resolves the escalation (below). `GET /inbox` carries the pending ones as
-`escalations` (additive; `needsYou` is unchanged).
+`escalations` (additive; `needsYou` is unchanged) and the pauses the pod settled alone as
+`decided`, newest first and at most twenty, a key that is absent while there are none.
 
 `POST /escalations/<id>` takes `{"optionId"?: string, "content"?: object, "actor"?: string}` and
 calls `resolve` (`operator-loop.spec.md` area 10) with channel `http` and actor `actor` (default

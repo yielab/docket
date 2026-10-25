@@ -108,9 +108,11 @@ class LoopMetrics:
     turn_duration_seconds_sum: float = 0.0
     turn_duration_seconds_count: int = 0
     tasks_started: int = 0
-    # Settled escalations by (kind, outcome, by), and the seconds each waited by kind: from the
-    # `escalation_*` events, whose `by` already tells a pod's decision from a person's.
-    escalations: dict[tuple[str, str, str], int] = field(default_factory=dict)
+    # Settled escalations by (kind, outcome, by, level), and the seconds each waited by kind: from
+    # the `escalation_*` events, whose `by` already tells a pod's decision from a person's and
+    # whose `level` (absent for a pause that names no queued task, counted as "none") says at what
+    # autonomy level it was decided.
+    escalations: dict[tuple[str, str, str, str], int] = field(default_factory=dict)
     escalation_wait_seconds_sum: dict[str, float] = field(default_factory=dict)
     escalation_wait_seconds_count: dict[str, int] = field(default_factory=dict)
 
@@ -118,7 +120,7 @@ class LoopMetrics:
 def _count_escalation(m: LoopMetrics, outcome: str, payload: dict[str, Any], ts: Any) -> None:
     """Count one settled escalation and, when both ends are known, the seconds it waited."""
     kind = str(payload.get("kind", ""))
-    key = (kind, outcome, str(payload.get("by", "")))
+    key = (kind, outcome, str(payload.get("by", "")), str(payload.get("level") or "none"))
     m.escalations[key] = m.escalations.get(key, 0) + 1
     asked, settled = _clock.parse_epoch(payload.get("askedAt")), _clock.parse_epoch(ts)
     if asked is not None and settled is not None and settled >= asked:
@@ -211,12 +213,23 @@ def _escalation_metrics_lines(loop: LoopMetrics) -> list[str]:
         "# TYPE docket_tasks_started_total counter",
         "docket_tasks_started_total " + str(loop.tasks_started),
         "# HELP docket_escalations_total Settled escalations, by kind, outcome"
-        " (resolved, expired or decided) and who settled them (person, timeout or policy);"
+        " (resolved, expired or decided), who settled them (person, timeout or policy) and the"
+        " autonomy level they were decided at (none when no queued task is named);"
         " lifetime-of-storage count, resets on trace expiry",
         "# TYPE docket_escalations_total counter",
     ]
-    for (kind, outcome, by), count in sorted(loop.escalations.items()):
-        lab = 'kind="' + _esc(kind) + '",outcome="' + _esc(outcome) + '",by="' + _esc(by) + '"'
+    for (kind, outcome, by, level), count in sorted(loop.escalations.items()):
+        lab = (
+            'kind="'
+            + _esc(kind)
+            + '",outcome="'
+            + _esc(outcome)
+            + '",by="'
+            + _esc(by)
+            + '",level="'
+            + _esc(level)
+            + '"'
+        )
         lines.append("docket_escalations_total{" + lab + "} " + str(count))
 
     lines += [

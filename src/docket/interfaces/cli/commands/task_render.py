@@ -11,7 +11,7 @@ from rich.markup import escape
 from docket.hops.application import interruptions as _interruptions
 from docket.hops.application import report as _report
 from docket.interfaces.cli.render import ui
-from docket.interfaces.cli.render.escalation import answer_command, options_line
+from docket.interfaces.cli.render.escalation import answer_command, decision_line, options_line
 from docket.kernel.operator_contract import EscalationView
 from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
@@ -130,6 +130,12 @@ def _waiting_on(found: TaskRef) -> list[EscalationView]:
     return [v for v in views if v.state == "pending"]
 
 
+def _decided_for(found: TaskRef) -> list[EscalationView]:
+    """The escalations the pod settled for the task without a person."""
+    views = escalation_views(pod=found.project, task=found.task_id)
+    return [v for v in views if v.state == "decided"]
+
+
 def _decision_lines(view: EscalationView) -> list[str]:
     """What to print under one pending escalation: its options and the commands that answer it."""
     rendered = render_escalation(view, "full")
@@ -155,6 +161,18 @@ def _render_waiting(found: TaskRef) -> None:
         _say(f"  {rendered.title}: {prompt}")
         for line in _decision_lines(view):
             _say(line)
+
+
+def _render_decided(found: TaskRef) -> None:
+    views = _decided_for(found)
+    if not views:
+        return
+    ui.section("Decided without you")
+    for view in views:
+        rendered = render_escalation(view, "full")
+        prompt = (rendered.prompt or "").replace("\n", "\n    ")
+        _say(f"  {rendered.title}: {prompt}")
+        _say(f"    {decision_line(view)}")
 
 
 def _render_show(
@@ -187,6 +205,7 @@ def _render_show(
         _say(f"  diff:   {wt['diff']}")
         _say(f"  merge:  {wt['merge']}")
     _render_waiting(found)
+    _render_decided(found)
     if notes:
         ui.section("Corrections")
         for rec in notes:
@@ -203,6 +222,7 @@ def _show_json(
     notes: list[dict[str, Any]],
 ) -> dict[str, Any]:
     forecast = _interruptions.forecast(found.project, caller_default=_report.caller_default())
+    decided = [v.model_dump(by_alias=True, mode="json") for v in _decided_for(found)]
     return {
         "pod": found.project,
         "task": {**_list_item(found.project, record), "worktree": wt},
@@ -213,6 +233,7 @@ def _show_json(
             {"kind": i.kind, "description": i.description, "detail": i.detail} for i in forecast
         ],
         "escalations": [v.model_dump(by_alias=True, mode="json") for v in _waiting_on(found)],
+        **({"decided": decided} if decided else {}),
     }
 
 

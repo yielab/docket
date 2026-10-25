@@ -38,6 +38,7 @@ EVENT_KINDS: tuple[str, ...] = (
     "task.failed",
     "task.rejected",
     "task.completed",
+    "escalation.decided",
     "channel.test",
 )
 
@@ -405,6 +406,8 @@ class InboxView(BaseModel):
     running: list[TaskView] = Field(default_factory=list)
     next: str | None = None
     escalations: list[EscalationView] = Field(default_factory=list)
+    # The pauses the pod settled without a person, newest first, for a person to see afterwards.
+    decided: list[EscalationView] = Field(default_factory=list, exclude_if=lambda value: not value)
 
 
 class CloudEvent(BaseModel):

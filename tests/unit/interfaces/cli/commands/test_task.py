@@ -464,6 +464,63 @@ class TestShowForecast:
             assert {"pipeline_gate", "mode"} <= kinds
 
 
+class TestShowDecidedWithoutYou:
+    def _decide(self) -> str:
+        question = QuestionV11(
+            id=new_question_id(),
+            task_id="task-d",
+            pod="demo",
+            step="implementer",
+            message="Which store should the cache use?",
+            requested_schema={"type": "object", "properties": {"note": {"type": "string"}}},
+            created_at="2026-10-25T00:00:00+00:00",
+            kind="decision",
+            options=[
+                Option(id="redis", label="Redis", description="fast"),
+                Option(id="sqlite", label="SQLite", description="simple"),
+            ],
+            recommendation=Recommendation(option_id="sqlite", rationale="fewer services"),
+        )
+        put_task("demo", task(id="task-d", status="done"))
+        _escalations.decided_consult(question, role="implementer", option_id="sqlite")
+        return "task-d"
+
+    def test_each_decision_is_printed_with_its_option_and_who_took_it(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            task_id = self._decide()
+
+            result = _runner.invoke(app, ["task", "show", task_id, "--pod", "demo"])
+
+            assert result.exit_code == 0, result.output
+            assert "Decided without you" in result.output
+            assert "consultation" in result.output and "sqlite" in result.output
+            assert "recommendation" in result.output
+            assert "Waiting on you" not in result.output
+
+    def test_json_lists_the_decisions_apart_from_the_waiting_ones(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            task_id = self._decide()
+
+            body = json.loads(
+                _runner.invoke(app, ["task", "show", task_id, "--json", "--pod", "demo"]).output
+            )
+
+            assert body["escalations"] == []
+            (decided,) = body["decided"]
+            assert (decided["state"], decided["resolution"]["optionId"]) == ("decided", "sqlite")
+
+    def test_a_task_that_decided_nothing_adds_no_key(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            record = task(description="x")
+            put_task("demo", record)
+
+            body = json.loads(
+                _runner.invoke(app, ["task", "show", record.id, "--json", "--pod", "demo"]).output
+            )
+
+            assert "decided" not in body
+
+
 class TestShowWaitingOnYou:
     def _park(self) -> str:
         question = QuestionV11(

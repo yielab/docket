@@ -195,6 +195,8 @@ memory approve <id> --pod <pod>"}`; `GET /inbox` does not carry it. Each `escala
 an `EscalationView` (`operator-loop.spec.md` area 11) with the CLI's own `command` added
 (`docket task answer <task>` for a `consult` or `input`, `docket task approve <task-or-token>`
 otherwise).
+`decided` (an array of `EscalationView`, state `decided`) is present only while the pod has settled
+a pause alone, newest first, at most twenty (`operator-loop.spec.md` "Escalations" item 14).
 
 ### `docket init --json`
 
@@ -253,7 +255,8 @@ each of these keys that was set and omits the rest: `externalRef`, `idempotencyK
   "runs":     "array of run records (below)",
   "corrections": "array of corrections-ledger records for this task",
   "interruptions": [{ "kind": "string", "description": "string", "detail": "string" }],
-  "escalations": "array of the task's pending EscalationView (operator-loop.spec.md area 11), [] when none"
+  "escalations": "array of the task's pending EscalationView (operator-loop.spec.md area 11), [] when none",
+  "decided":     "array of the task's EscalationView settled by the pod alone; the key is absent when there is none"
 }
 ```
 

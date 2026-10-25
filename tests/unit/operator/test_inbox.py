@@ -327,6 +327,31 @@ class TestEscalationViews:
 
         assert [e.state for e in _inbox.escalation_views()] == ["expired"]
 
+    def _decide(self, task_id: str, pod: str = "alpha") -> str:
+        build_pod(pod, ("lead", "implementer"), codebase=f"/src/{pod}")
+        question = self._question(task_id, pod)
+        return _escalations.decided_consult(question, role="implementer", option_id="sqlite").id
+
+    def test_a_decision_the_pod_took_alone_is_listed_under_decided_and_not_as_waiting(self) -> None:
+        esc_id = self._decide("task-d")
+
+        view = _inbox.build_inbox(now=_NOW)
+
+        assert [(e.id, e.state, e.policy) for e in view.decided] == [
+            (esc_id, "decided", "recommendation")
+        ]
+        assert view.decided[0].resolution is not None
+        assert view.decided[0].resolution.option_id == "sqlite"
+        assert view.escalations == [] and view.needs_you == []
+
+    def test_decided_is_newest_first_capped_and_absent_from_the_document_while_empty(self) -> None:
+        assert "decided" not in _inbox.build_inbox(now=_NOW).model_dump(by_alias=True)
+        ids = [self._decide(f"task-{n}") for n in range(_inbox.MAX_DECIDED + 3)]
+
+        decided = _inbox.build_inbox(now=_NOW).decided
+
+        assert [e.id for e in decided] == list(reversed(ids))[: _inbox.MAX_DECIDED]
+
     def test_since_pod_and_task_narrow_the_list_in_seq_order(self) -> None:
         self._park_consult("task-a", "alpha")
         self._park_consult("task-b", "beta")
