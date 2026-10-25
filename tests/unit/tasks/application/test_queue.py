@@ -534,6 +534,20 @@ class TestStaleClaimReclaim:
         assert TaskRepository.for_pod("myapp").list()[0].status == "done"
         assert "task.reclaimed" in _audit_actions()
 
+    def test_dead_claimant_reclaim_marks_the_trace_with_a_stale_claim_event(
+        self, pod_home: Path
+    ) -> None:
+        claimed_at = _clock.iso()
+        _seed_lean_pod("myapp")
+        _put_task("myapp", self._running(_GONE_PID, claimed_at))
+
+        _lifecycle.reclaim_stale_running("myapp")
+
+        found = _trace.find_trace("agent:myapp:task-1")
+        assert found is not None
+        [event] = [e for e in _trace.read_trace(found) if e["event_type"] == "stale_claim"]
+        assert event["payload"] == {"task": "task-1", "claimedAt": claimed_at}
+
     def test_live_claimant_inside_the_lease_is_left_alone(self, pod_home: Path) -> None:
         import os
 
