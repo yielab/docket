@@ -16,7 +16,6 @@ from docket.kernel.operator_contract import EscalationView
 from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
 from docket.operator import escalation_views, render_escalation
-from docket.platform.store import read_escalation
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain.refs import TaskRef, short_id
@@ -131,7 +130,7 @@ def _waiting_on(found: TaskRef) -> list[EscalationView]:
     return [v for v in views if v.state == "pending"]
 
 
-def _decision_lines(view: EscalationView, record: TaskRecord) -> list[str]:
+def _decision_lines(view: EscalationView) -> list[str]:
     """What to print under one pending escalation: its options and the commands that answer it."""
     rendered = render_escalation(view, "full")
     if view.kind in ("consult", "input"):
@@ -139,16 +138,13 @@ def _decision_lines(view: EscalationView, record: TaskRecord) -> list[str]:
         return ([f"    options: {listed}"] if listed else []) + [
             f"    answer:  {answer_command(view.task, rendered.options)}"
         ]
-    stored = read_escalation(view.id)
-    ref = (
-        view.task
-        if str(record.status) == "waiting_approval"
-        else (stored.legacy.get("token") if stored else "")
-    )
-    return [f"    approve: docket task approve {ref}", f"    deny:    docket task deny {ref}"]
+    return [
+        f"    approve: docket task answer {view.id} --option approve_once",
+        f"    deny:    docket task answer {view.id} --option deny",
+    ]
 
 
-def _render_waiting(found: TaskRef, record: TaskRecord) -> None:
+def _render_waiting(found: TaskRef) -> None:
     views = _waiting_on(found)
     if not views:
         return
@@ -157,7 +153,7 @@ def _render_waiting(found: TaskRef, record: TaskRecord) -> None:
         rendered = render_escalation(view, "full")
         prompt = (rendered.prompt or "").replace("\n", "\n    ")
         _say(f"  {rendered.title}: {prompt}")
-        for line in _decision_lines(view, record):
+        for line in _decision_lines(view):
             _say(line)
 
 
@@ -190,7 +186,7 @@ def _render_show(
         _say(f"  base:   {wt['baseCommit']}")
         _say(f"  diff:   {wt['diff']}")
         _say(f"  merge:  {wt['merge']}")
-    _render_waiting(found, record)
+    _render_waiting(found)
     if notes:
         ui.section("Corrections")
         for rec in notes:

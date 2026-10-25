@@ -1,6 +1,6 @@
 # MCP Server Contract Specification
 
-**Version**: 1.10.0
+**Version**: 1.11.0
 **Status**: Implemented
 **Last Updated**: 2026-10-25
 
@@ -111,16 +111,16 @@ The server is built on `mcp.server.MCPServer` (`add_tool(fn, name=...)`,
 
 ## Tools
 
-Fourteen tools, grouped by the control-plane surface they expose. Every response shape below is a bare
+Fifteen tools, grouped by the control-plane surface they expose. Every response shape below is a bare
 JSON value (object, per this project's "no envelope wrapper" convention — see
 `cli-interface.spec.md`'s Output Formats section) — there is no generic `{ok, data, error}`
 wrapper on the successful path. A tool that cannot complete (bad input, an unknown id, an invalid
 state transition) raises instead of returning an inline error field; the MCP SDK turns any raised
 exception from a tool call into a `CallToolResult` with `isError: true` carrying the message —
 this is the MCP-native way to signal "this call failed," so a successful response's shape never
-has to reserve a field for an error case that didn't happen. Four tools' *successful* response
-shapes do carry an `"ok": true` field — `dispatch`, `approvals_grant`/`approvals_deny`, and
-`task_answer`/`task_pregrant` — because `dispatch` and the approvals shapes are a deliberate byte-for-byte match with `docket start`'s existing
+has to reserve a field for an error case that didn't happen. Five tools' *successful* response
+shapes do carry an `"ok": true` field — `dispatch`, `approvals_grant`/`approvals_deny`,
+`resolve`, and `task_answer`/`task_pregrant` — because `dispatch` and the approvals shapes are a deliberate byte-for-byte match with `docket start`'s existing
 `POST /dispatch/<project>` and `POST /approvals/<token>` response bodies (see
 `serve-read-api.spec.md`), and the other two follow the same convention; none is a generic
 envelope.
@@ -231,8 +231,10 @@ start`'s `POST /approvals/<token>` with `{"action": "grant"}`.
 the approval before the grant, so a parked pod task gains the task-wide grant of
 `operator-loop.spec.md` requirement 5a (channel `mcp`); a task-wide grant refused because the task already holds
 20 adds a `note` to the output.
-**Gating**: calls `approval_grant(token, channel="mcp")` — the exact function every
-other channel calls, tagged so the audit trail records which surface performed the grant. No
+**Gating**: resolves the approval's escalation (`resolve_approval_token`, channel `mcp`), which
+calls `approval_grant(token, channel="mcp")` — the exact function every other channel calls,
+tagged so the audit trail records which surface performed the grant; an approval with no record
+calls it directly. No
 MCP-side bypass, auto-approve, or alternate transition path of any kind. If *token* gates a
 pod-dispatch task waiting on it (`waiting_approval`), the same `resolve_waiting_approval`
 call the CLI/HTTP/Telegram channels make resumes it: the task returns to `pending` with the exact
@@ -254,23 +256,47 @@ dispatch task stuck `waiting_approval` from an earlier grant that never reached 
 **Purpose**: Deny a pending approval token — the same denial `docket task deny <id>` records / `docket start`'s
 `POST /approvals/<token>` with `{"action": "deny"}`.
 **Arguments**: `token` (string, required).
-**Gating**: calls `approval_deny(token, channel="mcp")`, mirroring
-`approvals_grant`. If *token* gates a pod-dispatch task waiting on it, the same
+**Gating**: resolves the approval's escalation (`resolve_approval_token`, channel `mcp`), which
+calls `approval_deny(token, channel="mcp")`, mirroring `approvals_grant`. If *token* gates a pod-dispatch task waiting on it, the same
 `resolve_waiting_approval` follow-up fails that task immediately
 (`failureKind: "approval_denied"`) — never auto-retried by a later dispatch, even with `--resume`.
 **Output**: `{"ok": true, "token": "apr-...", "state": "denied"}`.
 **Failure modes**: same as `approvals_grant`, including that the `resolve_waiting_approval`
 follow-up still runs before the raise.
 
+### `resolve`
+
+**Purpose**: Settle one escalation: choose one of its options, give content. The one tool that
+answers an approval, a gate, a changed check, a consult and an `input` step alike — identical to
+`POST /escalations/<id>` (`operator-api.spec.md`).
+**Arguments**: `escalation_id` (string, required: the `id` an `escalations` entry or an `inbox`
+`escalations[]` entry carries), `option_id` (string, optional: one of the entry's
+`affordances.options`; `cancel` is an alias of `decline`; omitted only for a question whose options
+are just `decline`), `content` (object, optional: the answer against `requestedSchema`, or
+`{"reason": "<text>"}` for an approval).
+**Gating**: calls `resolve(escalation_id, option_id, content, by="mcp", channel="mcp")`
+(`operator-loop.spec.md` area 10) — the exact function every other surface calls, so the option
+check, the schema check, the `pre_input` screen and the continuation (grant and resume, deny and
+fail, answer and resume) are the same as `approvals_grant`, `approvals_deny` and `task_answer`.
+**Output**: `{"ok": true, "escalation": "esc-...", "state": "resolved"}`, plus `"note"` only when a
+task-wide grant was refused.
+**Failure modes**: raises `McpToolError` for an unknown id, an escalation already settled or
+whose approval or question is no longer waiting (a repeat raises, it never reports success), an
+unknown option, content that fails the schema, or content a `pre_input` policy blocks. A refusal
+never carries an approval token.
+
 ### `task_answer`
 
 **Purpose**: Answer a task's parked `input` question — identical to `docket task answer
-<task-id>` / `docket start`'s `POST /tasks/<task-id>/answer`.
+<task-id>` / `docket start`'s `POST /tasks/<task-id>/answer`. An adapter of `resolve`: it finds the
+task's pending question escalation and resolves it; a question with no record is answered by
+`answer_task` directly.
 **Arguments**: `project` (string, required), `task_id` (string, required), `action` (string,
 required — `"accept"`, `"decline"` or `"cancel"`), `content` (object, optional).
-**Gating**: calls `answer_task(channel="mcp", actor="mcp")` — the exact function
-every other surface calls, so the schema/`pre_input` screen and the resume onto the step's own
-route are byte-for-byte the same as `docket task answer`/the HTTP route.
+**Gating**: calls `resolve_question(..., channel="mcp", actor="mcp")`, which resolves the
+question's escalation (`resolve`) or, with no record, `answer_task` — so the schema/`pre_input`
+screen and the resume onto the step's own route are byte-for-byte the same as `docket task
+answer`/the HTTP route.
 **Output**: `{"ok": true, "task": "<task_id>", "project": "<project>", "action": "accept"}`.
 **Failure modes**: raises naming the policy id if the answer's `content` matched
 a `pre_input` `block` policy; raises naming the underlying reason for an unknown task, a task not
@@ -366,6 +392,8 @@ not as a process exit code — the server process itself only exits when the tra
 - `dispatch` MUST create a run record (source `"mcp"`) and return its id before the dispatch
   pipeline itself has necessarily finished (or even started) running.
 - `approvals_grant`/`approvals_deny` MUST tag the approval's audit entry with `channel="mcp"`.
+- `resolve` MUST call the function every other surface calls (`operator-loop.spec.md` area 10): a
+  second call on the same escalation raises `McpToolError`.
 - No tool function may import or call `docket.interfaces.cli.render.ui`, or otherwise print to stdout.
 - A missing `mcp` SDK MUST produce the actionable hint above (stderr) and exit `1`, not a bare
   `ImportError` traceback.
@@ -413,7 +441,7 @@ concern, not docket's — see Scope above).
 
 ## Implementation
 
-- `src/docket/interfaces/cli/commands/mcp.py`: the fourteen tool functions (`tool_status` ... `tool_task_pregrant`),
+- `src/docket/interfaces/cli/commands/mcp.py`: the fifteen tool functions (`tool_status` ... `tool_task_pregrant`, `tool_resolve`),
   `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
 - `src/docket/interfaces/cli/commands/service.py`: the `docket start` command and its `--mcp` flag handling
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
@@ -424,6 +452,7 @@ concern, not docket's — see Scope above).
 - `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `approval_set_option`,
   `list_pending`
 - `src/docket/hops/application/answers.py`: `answer_task`
+- `src/docket/tasks/application/escalations.py`: `resolve`, `resolve_approval_token`, `resolve_question`
 - `src/docket/hops/application/interruptions.py`: `record_pregrant`
 - `src/docket/operator/inbox.py`, `src/docket/kernel/operator_contract.py`: `build_inbox`, `escalation_views`, `InboxView`
 - `src/docket/tasks/application/runs.py`: `create_run`, `execute`, `get_run`, `list_runs`, `RunSource`

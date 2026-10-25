@@ -12,6 +12,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 from typing import Any
 
+from docket.kernel.errors import Conflict, DocketError, NotFound
 from docket.teams import provisioning as _prov
 
 # Cap on a POST request body this server will read -- above it, `_read_body`
@@ -58,6 +59,17 @@ class HttpExchange(BaseHTTPRequestHandler):
     def _send_json_error(self, msg: str, status: int = 400) -> None:
         body = json.dumps({"ok": False, "error": msg}).encode()
         self._send(body, "application/json", status)
+
+    def _send_refusal(self, exc: DocketError) -> None:
+        """Answer a refused request by the kind of its error: not found, in conflict with the
+        state the request met, or unprocessable."""
+        if isinstance(exc, NotFound):
+            status = 404
+        elif isinstance(exc, Conflict):
+            status = 409
+        else:
+            status = 422
+        self._send_json_error(exc.message, status)
 
     def _read_body(self) -> bytes | None:
         """Read a POST body up to `MAX_POST_BODY_BYTES`, sending `413` and

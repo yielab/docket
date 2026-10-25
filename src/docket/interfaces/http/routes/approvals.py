@@ -1,4 +1,5 @@
-"""``GET /approvals`` and ``POST /approvals/<token>`` -- the approval queue over HTTP."""
+"""``GET /approvals`` and ``POST /approvals/<token>`` -- the approval queue over HTTP. The POST is
+the older form of ``POST /escalations/<id>``: it settles the approval's escalation."""
 
 from __future__ import annotations
 
@@ -6,7 +7,8 @@ import json
 
 from docket.governance import approval
 from docket.interfaces.http.exchange import HttpExchange
-from docket.tasks.application import actions as _actions
+from docket.kernel.errors import DocketError
+from docket.tasks.application.escalations import resolve_approval_token
 
 # The channels the HTTP transport itself may claim on POST /approvals/<token>.
 # This is narrower than governance.approval.APPROVAL_CHANNELS: "cli", "mcp" and
@@ -51,42 +53,25 @@ def post_approval(h: HttpExchange, approval_token: str) -> None:
     if (action != "grant" and option) or option not in ("", "approve_once", "approve_task"):
         h._send_json_error('option must be "approve_once" or "approve_task" (grant only)', 400)
         return
-    decision = "granted" if action == "grant" else "denied"
     reason = req_body.get("reason", "")
     if not isinstance(reason, str):
         reason = ""
-    # Only pass actor when there's a reason to record
-    actor = channel if reason else ""
     try:
-        if action == "grant":
-            if option == "approve_task":
-                approval.approval_set_option(approval_token, option)
-            approval.approval_grant(approval_token, channel=channel, actor=actor, reason=reason)
-        else:
-            approval.approval_deny(approval_token, channel=channel, actor=actor, reason=reason)
-        # If this token gated a dispatch task, genuinely resume
-        # (grant) or kill (deny) it — see tasks/application/actions.py's
-        # resolve_waiting_approval. A no-op for any other approval.
-        _, note = _actions.resolve_waiting_approval_detail(
-            approval_token, decision, channel=channel, actor=actor, reason=reason
+        note = resolve_approval_token(
+            approval_token,
+            "deny" if action == "deny" else option or "approve_once",
+            channel=channel,
+            actor=channel,
+            reason=reason,
         )
-        rec = approval.approval_get(approval_token)
-        payload: dict[str, object] = {
-            "ok": True,
-            "token": approval_token,
-            "state": rec["state"],
-        }
-        if note:
-            payload["note"] = note
-        resp_body = json.dumps(payload).encode()
-        h._send(resp_body, "application/json")
-    except approval.ApprovalNoop as exc:
-        _actions.resolve_waiting_approval(approval_token, decision)
-        h._send_json_error(exc.message, 409)
-    except approval.ApprovalConflict as exc:
-        # The opposite decision already resolved this token (grant-after-deny or
-        # deny-after-grant) -- a real conflict over an existing token, not a missing
-        # one, so 409 naming the winning state rather than 404.
-        h._send_json_error(str(exc), 409)
-    except approval.ApprovalError as exc:
-        h._send_json_error(str(exc), 404)
+    except DocketError as exc:
+        h._send_refusal(exc)
+        return
+    payload: dict[str, object] = {
+        "ok": True,
+        "token": approval_token,
+        "state": approval.approval_get(approval_token)["state"],
+    }
+    if note:
+        payload["note"] = note
+    h._send(json.dumps(payload).encode(), "application/json")

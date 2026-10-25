@@ -1,23 +1,26 @@
-"""Open the escalation record for a pause: the one place a pause becomes a durable record.
+"""Open the escalation record for a pause, and settle it: the two ends of one wait.
 
-Every way a task stops for a person calls an opener here, at the moment the pause is created. The
-record is written by the store and its id is appended to the task; the older fields the task
-carries (``approvalToken``, ``question``) are still written by the lifecycle from the same values
-and equal what ``legacy`` names, so no surface that reads them notices. Opening also writes
-``escalation_asked`` (``kernel/escalation_events.py``), the start of the wait a span measures.
-
-``governance`` sits below this context, so the tool gate reaches ``approval_opened`` through its
-port (``governance.ports``), bound once per entry.
+Every way a task stops for a person calls an opener here, when the pause is created. The record is
+written by the store and its id appended to the task; the fields the task already carried
+(``approvalToken``, ``question``) are still written from the same values and equal what ``legacy``
+names. ``governance`` sits below this context, so the tool gate reaches ``approval_opened``
+through its port. ``resolve`` is the one verb that settles a record; the older verbs reach it
+through ``resolve_approval_token`` and ``resolve_question``.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from docket.governance import approval as _approval
+from docket.governance import policy as _policy
+from docket.governance.audit import audit_log
 from docket.governance.secrets import redact as _redact
 from docket.kernel import clock as _clock
 from docket.kernel import escalation_events as _events
+from docket.kernel.errors import InvalidInput
 from docket.kernel.operator_contract import (
     Escalation,
     EscalationExpiry,
@@ -27,17 +30,42 @@ from docket.kernel.operator_contract import (
     QuestionV11,
     Resolution,
     new_escalation_id,
+    validate_content,
 )
-from docket.platform import write_escalation
+from docket.operator import pause_is_live
+from docket.platform import list_escalations, read_escalation, resolve_escalation, write_escalation
+from docket.tasks.application import actions as _actions
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.resolution import (
+    EscalationInvalid,
+    EscalationNotFound,
+    EscalationNotPending,
+    EscalationRefused,
+    Resolved,
+)
 from docket.tasks.domain.task import TaskRecord
+from docket.tasks.ports import question_answers as _answers
 from docket.teams.settings import load_pod_settings
 
-__all__ = ["approval_opened", "attach", "decided_consult", "open_for_approval", "open_for_question"]
+__all__ = [
+    "approval_opened",
+    "attach",
+    "decided_consult",
+    "open_for_approval",
+    "open_for_question",
+    "resolve",
+    "resolve_approval_token",
+    "resolve_question",
+]
 
 _DECLINE = Option(id="decline", label="Decline", description="Refuse without choosing an option.")
 _APPROVE_ONCE = "approve_once"
+_APPROVE_TASK = "approve_task"
 _DENY = "deny"
+# The elicitation vocabulary has `decline` and `cancel`; docket has one outcome, and `cancel` is
+# its alias.
+_CANCEL = "cancel"
+_APPROVAL_KINDS: frozenset[EscalationKind] = frozenset({"approval", "gate", "check_changed"})
 
 # A pause that nobody answers is denied when a call or a hop awaited it, and blocks the task when
 # a question did (the two expiry sweeps).
@@ -176,3 +204,208 @@ def decided_consult(
     )
     _events.emit(_events.DECIDED, decided, option_id=option_id, session_id=session_id)
     return decided
+
+
+def _screen(project: str, texts: Iterable[Any]) -> None:
+    """Run every string of *texts* through *project*'s ``pre_input`` policy as untrusted input."""
+    for text in texts:
+        if not isinstance(text, str):
+            continue
+        hit = _policy.policy_eval_detail("lead", "pre_input", text, trusted=False, project=project)
+        if hit.action == "block":
+            raise EscalationRefused(hit.policy_id)
+
+
+def _chosen_option(escalation: Escalation, option_id: str | None) -> str | None:
+    """The option *option_id* names, ``cancel`` read as ``decline``; ``None`` for an answer that
+    names none, which only a question offering nothing but ``decline`` can take."""
+    offered = [o.id for o in escalation.options]
+    choice = _DECLINE.id if option_id == _CANCEL else option_id or None
+    if choice is None:
+        if escalation.kind in _APPROVAL_KINDS or any(o != _DECLINE.id for o in offered):
+            raise EscalationInvalid(f"an option is required; choose one of: {', '.join(offered)}")
+        return None
+    if choice not in offered:
+        raise EscalationInvalid(
+            f"option {choice!r} is not offered; choose one of: {', '.join(offered)}"
+        )
+    return choice
+
+
+def _reason_of(content: dict[str, Any] | None) -> str:
+    """The reason an approval's content carries; it carries nothing else."""
+    extra = sorted(set(content or {}) - {"reason"})
+    if extra:
+        raise EscalationInvalid(f"an approval takes only a reason, not {extra}")
+    reason = (content or {}).get("reason", "")
+    if not isinstance(reason, str):
+        raise EscalationInvalid("reason must be a string")
+    return reason
+
+
+def _checked_content(
+    escalation: Escalation, option: str | None, content: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """*content* as *escalation* accepts it: a decline carries none, an approval a reason, a
+    question what its schema allows."""
+    if option == _DECLINE.id:
+        return None
+    if escalation.kind in _APPROVAL_KINDS:
+        _reason_of(content)
+        return dict(content) if content else None
+    try:
+        validate_content(escalation.requested_schema or {}, content)
+    except InvalidInput as exc:
+        raise EscalationInvalid(exc.message) from exc
+    return dict(content) if content else None
+
+
+def _apply_approval(
+    token: str, option: str, *, project: str, channel: str, actor: str, reason: str
+) -> str:
+    """Grant or deny the approval *token* and settle the task it gated, as `docket task approve`
+    and `deny` always did; returns the note a refused task-wide grant produces."""
+    _screen(project, [reason])
+    # An actor is recorded with the decision only when a reason comes with it.
+    acting = actor if reason else ""
+    decision = "denied" if option == _DENY else "granted"
+    try:
+        if option == _DENY:
+            _approval.approval_deny(token, channel=channel, actor=acting, reason=reason)
+        else:
+            if option == _APPROVE_TASK:
+                _approval.approval_set_option(token, option)
+            _approval.approval_grant(token, channel=channel, actor=acting, reason=reason)
+    except _approval.ApprovalNoop as exc:
+        # The pause may have ended while the task kept waiting; free it before saying so.
+        _actions.resolve_waiting_approval(token, decision)
+        raise EscalationNotPending(exc.message, already_so=True) from exc
+    except _approval.ApprovalConflict as exc:
+        raise EscalationNotPending(str(exc)) from exc
+    except _approval.ApprovalError as exc:
+        raise EscalationNotFound(str(exc)) from exc
+    _, note = _actions.resolve_waiting_approval_detail(
+        token, decision, channel=channel, actor=acting, reason=reason
+    )
+    return note
+
+
+def _apply_question(
+    project: str,
+    task_id: str,
+    option: str | None,
+    content: dict[str, Any] | None,
+    *,
+    channel: str,
+    actor: str,
+) -> None:
+    """Answer the question *task_id* is parked on with *option* and *content*."""
+    if option == _DECLINE.id:
+        _answers.answer_question(project, task_id, "decline", None, channel=channel, actor=actor)
+        return
+    body = dict(content or {})
+    if option:
+        body["optionId"] = option
+    _answers.answer_question(project, task_id, "accept", body or None, channel=channel, actor=actor)
+
+
+def resolve(
+    escalation_id: str,
+    option_id: str | None,
+    content: dict[str, Any] | None = None,
+    *,
+    by: str,
+    channel: str,
+) -> Resolved:
+    """Settle the pending *escalation_id* with *option_id* and *content*: check, run the kind's
+    continuation, then record, audit and trace it. Raises the errors of ``tasks.domain.resolution``
+    and leaves the record pending when any check or the continuation refuses."""
+    escalation = read_escalation(escalation_id)
+    if escalation is None:
+        raise EscalationNotFound(f"no escalation {escalation_id!r}")
+    if not pause_is_live(escalation):
+        raise EscalationNotPending(f"escalation {escalation.id} is not pending")
+    option = _chosen_option(escalation, option_id)
+    body = _checked_content(escalation, option, content)
+    note = ""
+    if escalation.kind in _APPROVAL_KINDS:
+        note = _apply_approval(
+            str(escalation.legacy.get("token", "")),
+            option or _APPROVE_ONCE,
+            project=escalation.pod,
+            channel=channel,
+            actor=by,
+            reason=_reason_of(body),
+        )
+    else:
+        _apply_question(escalation.pod, escalation.task, option, body, channel=channel, actor=by)
+    resolution = Resolution(
+        option_id=option, content=body, by=by or "unknown", channel=channel, at=_clock.iso()
+    )
+    settled = resolve_escalation(escalation.id, resolution) or escalation.model_copy(
+        update={"state": "resolved", "resolution": resolution}
+    )
+    audit_log(
+        "escalation.resolve",
+        f"escalation={settled.id} kind={settled.kind} pod={settled.pod} task={settled.task} "
+        f"option={option or '-'} channel={channel} actor={resolution.by}",
+    )
+    _events.emit(_events.RESOLVED, settled, channel=channel, option_id=option or "")
+    return Resolved(settled, note)
+
+
+def _live_record(matches: Callable[[Escalation], bool]) -> Escalation | None:
+    """The newest pending escalation that *matches* and whose pause still waits, else ``None``."""
+    return next(
+        (e for e in reversed(list_escalations(state="pending")) if matches(e) and pause_is_live(e)),
+        None,
+    )
+
+
+def resolve_approval_token(
+    token: str, option_id: str, *, channel: str, actor: str, reason: str = ""
+) -> str:
+    """Resolve the escalation of approval *token*, returning the note a refused task-wide grant
+    produces. An approval with no live record takes the direct path: same follow-up, same messages."""
+    record = _live_record(lambda e: e.kind in _APPROVAL_KINDS and e.legacy.get("token") == token)
+    if record is None:
+        try:
+            project = str(_approval.approval_get(token).get("project", ""))
+        except _approval.ApprovalError as exc:
+            raise EscalationNotFound(str(exc)) from exc
+        return _apply_approval(
+            token, option_id, project=project, channel=channel, actor=actor, reason=reason
+        )
+    # A gate or a changed check offers no task-wide grant; asking for one is a plain grant.
+    if option_id == _APPROVE_TASK and _APPROVE_TASK not in (o.id for o in record.options):
+        option_id = _APPROVE_ONCE
+    reasoned = {"reason": reason} if reason else None
+    return resolve(record.id, option_id, reasoned, by=actor, channel=channel).note
+
+
+def resolve_question(
+    project: str,
+    task_id: str,
+    action: str,
+    content: dict[str, Any] | None,
+    *,
+    channel: str,
+    actor: str,
+) -> None:
+    """The older answer verbs: resolve the escalation of the question *task_id* is parked on.
+    *action* is ``accept``, ``decline`` or ``cancel``; an ``optionId`` in *content* names the
+    option. A question with no live record is answered directly."""
+    record = _live_record(
+        lambda e: (e.pod, e.task) == (project, task_id) and e.kind in ("consult", "input")
+    )
+    if record is None:
+        _answers.answer_question(project, task_id, action, content, channel=channel, actor=actor)
+        return
+    if action in ("decline", _CANCEL):
+        resolve(record.id, _DECLINE.id, None, by=actor, channel=channel)
+        return
+    if action != "accept":
+        raise EscalationInvalid(f"action must be accept, decline or cancel, not {action!r}")
+    body = dict(content or {})
+    option = body.pop("optionId", None)
+    resolve(record.id, option, body, by=actor, channel=channel)

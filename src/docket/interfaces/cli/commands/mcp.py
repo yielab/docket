@@ -14,19 +14,18 @@ from typing import Any
 
 from docket.governance import approval as _approval
 from docket.governance.audit import audit_log
-from docket.hops.application import answers as _answers
 from docket.hops.application import interruptions as _interruptions
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import status as _status
 from docket.interfaces.http.routes import health as _health
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
-from docket.kernel.errors import DispatchError, InvalidInput
+from docket.kernel.errors import DispatchError, DocketError, InvalidInput
 from docket.operator import build_inbox, escalation_page
-from docket.tasks.application import actions as _actions
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.escalations import resolve, resolve_approval_token, resolve_question
 from docket.tasks.application.repository import TaskRepository
 
 # mcp>=2.0.0 (see pyproject.toml's [project.optional-dependencies]) — targets
@@ -52,6 +51,7 @@ _TOOL_NAMES: tuple[str, ...] = (
     "inbox",
     "escalations",
     "cost",
+    "resolve",
     "task_answer",
     "task_pregrant",
 )
@@ -168,57 +168,64 @@ def tool_approvals_list() -> dict[str, Any]:
 
 def tool_approvals_grant(token: str, option: str = "") -> dict[str, Any]:
     """Grant a pending approval token. Identical to `docket task approve`/`docket start`'s
-    `POST /approvals/<token>` — same `governance.approval.approval_grant` call (``channel="mcp"``)
-    and `tasks.application.actions.resolve_waiting_approval` follow-up, resuming any task it gated.
+    `POST /approvals/<token>` -- the same resolve of the approval's escalation
+    (``channel="mcp"``), which grants it and resumes any task it gated.
     *option* ``approve_task`` also grants the same call for the rest of its task."""
     _audit("approvals_grant", f"token={token}")
     if option not in ("", "approve_once", "approve_task"):
         raise McpToolError(f"unknown option {option!r}: use approve_once or approve_task")
     try:
-        if option == "approve_task":
-            _approval.approval_set_option(token, option)
-        _approval.approval_grant(token, channel="mcp")
-    except _approval.ApprovalNoop as exc:
-        _actions.resolve_waiting_approval(token, "granted")
-        raise McpToolError(str(exc)) from exc
-    except _approval.ApprovalError as exc:
-        raise McpToolError(str(exc)) from exc
-    _, note = _actions.resolve_waiting_approval_detail(token, "granted", channel="mcp")
+        note = resolve_approval_token(token, option or "approve_once", channel="mcp", actor="mcp")
+    except DocketError as exc:
+        raise McpToolError(exc.message) from exc
     rec = _approval.approval_get(token)
     return {"ok": True, "token": token, "state": rec["state"], **({"note": note} if note else {})}
 
 
 def tool_approvals_deny(token: str) -> dict[str, Any]:
     """Deny a pending approval token. Identical to `docket task deny`/`docket start`'s
-    `POST /approvals/<token>` — same `governance.approval.approval_deny` call (``channel="mcp"``)
-    and `tasks.application.actions.resolve_waiting_approval` follow-up, failing any task it gated."""
+    `POST /approvals/<token>` -- the same resolve of the approval's escalation
+    (``channel="mcp"``), which denies it and fails any task it gated."""
     _audit("approvals_deny", f"token={token}")
     try:
-        _approval.approval_deny(token, channel="mcp")
-    except _approval.ApprovalNoop as exc:
-        _actions.resolve_waiting_approval(token, "denied")
-        raise McpToolError(str(exc)) from exc
-    except _approval.ApprovalError as exc:
-        raise McpToolError(str(exc)) from exc
-    _actions.resolve_waiting_approval(token, "denied")
+        resolve_approval_token(token, "deny", channel="mcp", actor="mcp")
+    except DocketError as exc:
+        raise McpToolError(exc.message) from exc
     rec = _approval.approval_get(token)
     return {"ok": True, "token": token, "state": rec["state"]}
+
+
+def tool_resolve(
+    escalation_id: str, option_id: str | None = None, content: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Settle one escalation: choose one of its options and give content. Identical to
+    `POST /escalations/<id>` -- the same `resolve` (``channel="mcp"``, ``by="mcp"``) every
+    surface calls."""
+    _audit("resolve", f"escalation={escalation_id}")
+    try:
+        resolved = resolve(escalation_id, option_id, content, by="mcp", channel="mcp")
+    except DocketError as exc:
+        raise McpToolError(exc.message) from exc
+    return {
+        "ok": True,
+        "escalation": resolved.escalation.id,
+        "state": "resolved",
+        **({"note": resolved.note} if resolved.note else {}),
+    }
 
 
 def tool_task_answer(
     project: str, task_id: str, action: str, content: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     """Answer a task's parked ``input`` question. Identical to `docket task answer`
-    / `docket start`'s `POST /tasks/<task_id>/answer` -- same `hops.application.answers.answer_task`
-    call (``channel="mcp"``, ``actor="mcp"``)."""
+    / `docket start`'s `POST /tasks/<task_id>/answer` -- the same resolve of the question's
+    escalation (``channel="mcp"``, ``actor="mcp"``)."""
     _audit("task_answer", f"project={project} task={task_id} action={action}")
     try:
-        result = _answers.answer_task(project, task_id, action, content, channel="mcp", actor="mcp")
-    except _answers.AnswerRejected as exc:
-        raise McpToolError(f"answer blocked by policy '{exc.policy_id}'") from exc
-    except _answers.AnswerError as exc:
-        raise McpToolError(str(exc)) from exc
-    return {"ok": True, "task": task_id, "project": project, "action": result.action}
+        resolve_question(project, task_id, action, content, channel="mcp", actor="mcp")
+    except DocketError as exc:
+        raise McpToolError(exc.message) from exc
+    return {"ok": True, "task": task_id, "project": project, "action": action}
 
 
 def tool_task_pregrant(
@@ -296,6 +303,7 @@ def _build_server() -> Any:
     server.add_tool(tool_approvals_list, name="approvals_list")
     server.add_tool(tool_approvals_grant, name="approvals_grant")
     server.add_tool(tool_approvals_deny, name="approvals_deny")
+    server.add_tool(tool_resolve, name="resolve")
     server.add_tool(tool_task_answer, name="task_answer")
     server.add_tool(tool_task_pregrant, name="task_pregrant")
     server.add_tool(tool_inbox, name="inbox")

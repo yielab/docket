@@ -506,14 +506,16 @@ class TestShowWaitingOnYou:
         with _seed_pod(tmp_path):
             token = _approval.approval_create("demo", "implementer", "bash: rm -rf build")
             put_task("demo", task(id="task-a", status="waiting_approval", approval_token=token))
-            _escalations.open_for_approval(token, kind="approval", task_id="task-a", caused_by="c1")
+            escalation = _escalations.open_for_approval(
+                token, kind="approval", task_id="task-a", caused_by="c1"
+            )
 
             result = _runner.invoke(app, ["task", "show", "task-a", "--pod", "demo"])
 
             assert "Waiting on you" in result.output
             assert "rm -rf build" in result.output
-            assert "docket task approve task-a" in result.output
-            assert "docket task deny task-a" in result.output
+            assert f"docket task answer {escalation.id} --option approve_once" in result.output
+            assert f"docket task answer {escalation.id} --option deny" in result.output
 
     def test_a_task_that_waits_on_nobody_prints_no_section(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):

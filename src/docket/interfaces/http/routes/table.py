@@ -44,6 +44,7 @@ GET_ROUTES: tuple[Route, ...] = (
 )
 
 POST_ROUTES: tuple[Route, ...] = (
+    Route("POST", "/escalations/<id>", escalations.post_escalation, bare=True),
     Route("POST", "/approvals/<token>", approvals.post_approval, bare=True),
     Route("POST", "/tasks/<id>/answer", task_control.post_task_answer),
     Route("POST", "/tasks/<id>/pregrants", task_control.post_task_pregrant),

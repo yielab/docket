@@ -28,7 +28,6 @@ from docket.operator import (
 )
 from docket.operator.render import render_options
 from docket.platform import read_json, write_json
-from docket.platform.store import read_escalation
 from docket.tasks.application.repository import TaskRepository
 
 # The operator's own terminal sees everything the pause carries.
@@ -105,10 +104,7 @@ def _escalation_command(escalation: EscalationView) -> str:
     """The one command that answers *escalation* from a terminal."""
     if escalation.kind in ("consult", "input"):
         return f"docket task answer {escalation.task}"
-    if escalation.task:
-        return f"docket task approve {escalation.task}"
-    stored = read_escalation(escalation.id)
-    return f"docket task approve {stored.legacy.get('token', '') if stored else ''}".rstrip()
+    return f"docket task answer {escalation.id} --option approve_once"
 
 
 def _json_view(view: InboxView, ready: list[TaskView], memory: list[MemoryItem]) -> dict[str, Any]:

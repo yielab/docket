@@ -6,6 +6,7 @@ import json
 import threading
 
 import pytest
+from tests.support.escalations import approval_escalation
 from tests.support.pods import build_pod
 from tests.support.pods import seed_parked_task as _seed_parked_task
 from tests.support.tasks import put_task, task
@@ -18,8 +19,9 @@ from docket.governance import approval as _approval
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import QuestionV11
+from docket.kernel.operator_contract import Escalation, QuestionV11
 from docket.kernel.threads import new_thread
+from docket.platform import read_escalation
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -35,6 +37,16 @@ def _seed_pod(project: str = "demo") -> None:
 
 def _msg(chat_id: str, text: str, update_id: int = 1, user_id: str = "999") -> _tg.InboundMessage:
     return _tg.InboundMessage(chat_id=chat_id, user_id=user_id, text=text, update_id=update_id)
+
+
+def _seed_other_pod_escalation() -> Escalation:
+    """An approval escalation of a pod the chat under test is not bound to."""
+    build_pod("other", ("lead", "implementer"), codebase="/src/other")
+    other_task = _queue.enqueue_task_once("other", "elsewhere", channel="cli")[0]
+    token = _approval.approval_create(
+        "other", "implementer", "ask", context={"taskId": other_task.id}
+    )
+    return _escalations.open_for_approval(token, kind="gate", task_id=other_task.id, caused_by="c1")
 
 
 def _park_consult(project: str = "demo") -> TaskRecord:
@@ -585,6 +597,120 @@ class TestAnswerPicksAnOption:
 
         assert not outcome.ok
         assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
+
+
+class TestAnswerAnEscalation:
+    """`/answer <id> <option|text>` resolves an escalation of any kind and lists the ids it offers."""
+
+    def test_a_task_id_with_text_that_is_no_option_replies_with_the_ids_and_resolves_nothing(
+        self,
+    ) -> None:
+        record = _park_consult("demo")
+        _bind("demo-lead", "-100300")
+        assert record.question is not None
+        escalation = _escalations.open_for_question(
+            record.question, kind="consult", role="implementer", caused_by="c1"
+        )
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {record.id} do the first one"))
+
+        assert not outcome.ok
+        assert "options: iterative, bigbang (recommended iterative)" in outcome.reply
+        assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
+        assert read_escalation(escalation.id) == escalation
+
+    def test_an_escalation_id_with_an_option_resolves_it_as_telegram(self) -> None:
+        record = _park_consult("demo")
+        _bind("demo-lead", "-100300")
+        assert record.question is not None
+        escalation = _escalations.open_for_question(
+            record.question, kind="consult", role="implementer", caused_by="c1"
+        )
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} bigbang"))
+
+        assert outcome.ok, outcome.reply
+        assert escalation.id in outcome.reply
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert (stored.state, stored.resolution.option_id, stored.resolution.channel) == (
+            "resolved",
+            "bigbang",
+            "telegram",
+        )
+        assert TaskRepository.for_pod("demo").list()[0].answers[0].option_id == "bigbang"
+
+    def test_an_escalation_id_with_free_text_on_an_options_question_lists_the_ids(self) -> None:
+        record = _park_consult("demo")
+        _bind("demo-lead", "-100300")
+        assert record.question is not None
+        escalation = _escalations.open_for_question(
+            record.question, kind="consult", role="implementer", caused_by="c1"
+        )
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} hmm"))
+
+        assert not outcome.ok
+        assert "options: iterative, bigbang (recommended iterative)" in outcome.reply
+        assert read_escalation(escalation.id) == escalation
+
+    def test_an_approval_is_answered_by_its_option_id(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+        escalation = approval_escalation("gate")
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} approve_once"))
+
+        assert outcome.ok, outcome.reply
+        assert _approval.approval_get(escalation.legacy["token"])["state"] == "granted"
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.state == "resolved"
+
+    def test_an_approval_answered_with_prose_lists_its_options(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+        escalation = approval_escalation("gate")
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} yes please"))
+
+        assert not outcome.ok
+        assert "options: approve_once, deny" in outcome.reply
+        assert _approval.approval_get(escalation.legacy["token"])["state"] == "pending"
+
+    def test_an_escalation_of_another_pod_is_not_found_in_this_chats_pod(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+        other = _seed_other_pod_escalation()
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {other.id} approve_once"))
+
+        assert not outcome.ok
+        assert "not found" in outcome.reply
+        assert read_escalation(other.id) == other
+
+    def test_a_second_answer_replies_that_it_is_settled(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+        escalation = approval_escalation("gate")
+        _tg.handle_message(_msg("-100300", f"/answer {escalation.id} deny"))
+
+        outcome = _tg.handle_message(_msg("-100300", f"/answer {escalation.id} deny"))
+
+        assert not outcome.ok
+        assert "not pending" in outcome.reply
+        assert escalation.legacy["token"] not in outcome.reply
+
+    def test_approve_settles_the_approvals_escalation_too(self) -> None:
+        _seed_pod("demo")
+        _bind("demo-lead", "-100300")
+        escalation = approval_escalation("gate")
+
+        outcome = _tg.handle_message(_msg("-100300", f"/approve {escalation.legacy['token']}"))
+
+        assert outcome.ok
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.state == "resolved"
+        assert stored.resolution is not None and stored.resolution.channel == "telegram"
 
 
 class TestUnrecognizedInput:

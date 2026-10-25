@@ -14,7 +14,6 @@ from pydantic import ValidationError
 from rich.markup import escape
 
 from docket.governance import approval as _ap
-from docket.hops.application import answers as _answers
 from docket.hops.application import interruptions as _interruptions
 from docket.hops.application import report as _report
 from docket.interfaces.cli.commands import contract as _contract
@@ -22,7 +21,6 @@ from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.commands.task_approval import (
     _actor,
     _answer_content,
-    _approval_actor,
     _option_ids,
     _resume_hint,
 )
@@ -38,18 +36,20 @@ from docket.interfaces.cli.commands.task_render import (
 )
 from docket.interfaces.cli.render import ui
 from docket.kernel import brief as _brief
-from docket.kernel.errors import DispatchError
-from docket.kernel.operator_contract import Question
+from docket.kernel.errors import DispatchError, DocketError
+from docket.kernel.operator_contract import Escalation, Question, is_escalation_id
 from docket.observability import trace as _trace
-from docket.tasks.application import actions as _actions
+from docket.platform import read_escalation
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.tasks.application import worktree_prune as _worktree_prune
+from docket.tasks.application.escalations import resolve_approval_token, resolve_question
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.refs import TaskRef, TaskRefError, short_id
+from docket.tasks.domain.resolution import EscalationNotPending, EscalationRefused
 from docket.tasks.domain.state import Status
 from docket.tasks.domain.task import TaskRecord
 
@@ -405,25 +405,7 @@ def _task_approve(
         _pregrant(pod, ref, for_command, tool)
         return
     token, project, label = _pending_token(pod, ref)
-    actor = _approval_actor(reason)
-    try:
-        if task:
-            _ap.approval_set_option(token, "approve_task")
-        _ap.approval_grant(token, channel="cli", actor=actor, reason=reason)
-    except _ap.ApprovalNoop as noop:
-        ui.warn(noop.message)
-        _actions.resolve_waiting_approval(token, "granted")
-        return
-    except _ap.ApprovalError as err:
-        ui.error(str(err))
-        raise typer.Exit(1) from err
-    _, note = _actions.resolve_waiting_approval_detail(token, "granted", channel="cli", actor=actor)
-    ui.success(f"Approved {label}")
-    if note:
-        ui.warn(note)
-    context = _ap.approval_get(token).get("context")
-    if project and not (isinstance(context, dict) and context.get("kind") == "check_changed"):
-        _resume_hint(project)
+    _decide(token, "approve_task" if task else "approve_once", label, project, reason)
 
 
 @task_app.command("deny")
@@ -436,19 +418,33 @@ def _task_deny(
 
     Example: docket task deny task-04ff --reason "touches production"
     """
-    token, _project, label = _pending_token(pod, ref)
-    actor = _approval_actor(reason)
+    token, project, label = _pending_token(pod, ref)
+    _decide(token, "deny", label, project, reason)
+
+
+def _decide(token: str, option: str, label: str, project: str | None, reason: str) -> None:
+    """Settle the approval *token* with *option* and say how it went: the one place `approve`,
+    `deny` and `answer --option` end. A repeat of the decision already taken is a warning."""
     try:
-        _ap.approval_deny(token, channel="cli", actor=actor, reason=reason)
-    except _ap.ApprovalNoop as noop:
-        ui.warn(noop.message)
-        _actions.resolve_waiting_approval(token, "denied")
-        return
-    except _ap.ApprovalError as err:
-        ui.error(str(err))
+        note = resolve_approval_token(token, option, channel="cli", actor=_actor(), reason=reason)
+    except EscalationNotPending as err:
+        if err.already_so:
+            ui.warn(err.message)
+            return
+        ui.error(err.message)
         raise typer.Exit(1) from err
-    _actions.resolve_waiting_approval(token, "denied", channel="cli", actor=actor, reason=reason)
-    ui.success(f"Denied {label}; the action is blocked")
+    except DocketError as err:
+        ui.error(err.message)
+        raise typer.Exit(1) from err
+    if option == "deny":
+        ui.success(f"Denied {label}; the action is blocked")
+        return
+    ui.success(f"Approved {label}")
+    if note:
+        ui.warn(note)
+    context = _ap.approval_get(token).get("context")
+    if project and not (isinstance(context, dict) and context.get("kind") == "check_changed"):
+        _resume_hint(project)
 
 
 def _question_of(found: TaskRef) -> Question:
@@ -460,23 +456,67 @@ def _question_of(found: TaskRef) -> Question:
     return question
 
 
+_APPROVAL_OPTIONS = ("approve_once", "approve_task", "deny")
+_APPROVAL_KINDS = ("approval", "gate", "check_changed")
+
+
+def _answer_an_approval(
+    token: str, project: str, label: str, option: str | None, others: bool
+) -> None:
+    """`task answer --option <id>` on an approval: only its three options, and no text."""
+    if others or option not in _APPROVAL_OPTIONS:
+        ui.error(
+            f"{label} waits on an approval", f"Pass only --option {'|'.join(_APPROVAL_OPTIONS)}"
+        )
+        raise typer.Exit(1)
+    _decide(token, option, label, project, "")
+
+
+def _named_escalation(ref: str) -> Escalation | None:
+    """The escalation *ref* names when it is an escalation id (the command ends when none is
+    stored); ``None`` for a task reference."""
+    if not is_escalation_id(ref):
+        return None
+    record = read_escalation(ref)
+    if record is None:
+        ui.error(f"No escalation {ref}", "Run docket inbox")
+        raise typer.Exit(1)
+    return record
+
+
 @task_app.command("answer")
 def _task_answer(
-    ref: str = typer.Argument(..., help="Task id, short id or run id"),
+    ref: str = typer.Argument(..., help="Task id, short id, run id or escalation id"),
     text: list[str] = typer.Argument(None, help="Answer for a one-property question"),
-    option: str | None = typer.Option(None, "--option", help="Pick one of the question's options"),
+    option: str | None = typer.Option(None, "--option", help="Pick one of the options"),
     field: list[str] = typer.Option([], "--field", help="Answer one property, name=value"),
     decline: bool = typer.Option(False, "--decline", help="Decline instead of answering"),
     pod: str | None = pod_option(),
 ) -> None:
-    """Answer the question a task is parked on and let it continue.
+    """Answer what a task is waiting on and let it continue.
 
-    On a terminal with no text or option it shows the question and prompts. Off a terminal
-    pass text, --field name=value or --option <id>; a question with options needs --option.
+    A question takes text, --field or --option; on a terminal with none of them it shows the
+    question and prompts. Off a terminal pass text, --field name=value or --option <id>; a
+    question with options needs --option. An approval takes --option approve_once, approve_task
+    or deny. The reference may be the escalation id that `docket inbox` prints.
 
     Example: docket task answer task-04ff --option opt2
     """
+    others = bool(text or field or decline)
+    escalation = _named_escalation(ref)
+    if escalation is not None and escalation.kind in _APPROVAL_KINDS:
+        token = str(escalation.legacy.get("token", ""))
+        _answer_an_approval(token, escalation.pod, escalation.id, option, others)
+        return
+    if escalation is not None:
+        pod, ref = escalation.pod, escalation.task
     found = _resolve(pod, ref)
+    record = _task_record(found)
+    if record.status == Status.waiting_approval and record.approval_token:
+        _answer_an_approval(
+            record.approval_token, found.project, short_id(found.task_id), option, others
+        )
+        return
     question = _question_of(found)
     action = "decline" if decline else "accept"
     content = None if decline else _answer_content(question, text, option, field)
@@ -485,14 +525,14 @@ def _task_answer(
         ui.error("This question has options", f"Pass --option <id>: {', '.join(ids)}")
         raise typer.Exit(1)
     try:
-        _answers.answer_task(
+        resolve_question(
             found.project, found.task_id, action, content, channel="cli", actor=_actor()
         )
-    except _answers.AnswerRejected as exc:
+    except EscalationRefused as exc:
         ui.error(f"Answer blocked by policy '{exc.policy_id}'")
         raise typer.Exit(1) from exc
-    except _answers.AnswerError as exc:
-        ui.error(str(exc))
+    except DocketError as exc:
+        ui.error(exc.message)
         raise typer.Exit(1) from exc
     verb = "Declined" if decline else "Answered"
     ui.success(f"{verb} task {short_id(found.task_id)}")

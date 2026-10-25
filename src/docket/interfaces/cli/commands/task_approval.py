@@ -34,10 +34,6 @@ def _resume_hint(project: str) -> None:
     _contract.next_step(f"docket run --pod {project}")
 
 
-def _approval_actor(reason: str) -> str:
-    return _actor() if reason else ""
-
-
 def _options(question: Question) -> list[Option]:
     return question.options if isinstance(question, QuestionV11) else []
 

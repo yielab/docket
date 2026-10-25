@@ -42,15 +42,38 @@ from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.parts import Answer, ConsultAnswer
+from docket.tasks.domain.resolution import (
+    EscalationInvalid,
+    EscalationNotFound,
+    EscalationNotPending,
+    EscalationRefused,
+)
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
-__all__ = ["AnswerError", "AnswerRejected", "answer_task", "sweep_expired_questions"]
+__all__ = [
+    "AnswerError",
+    "AnswerNotFound",
+    "AnswerRejected",
+    "AnswerStale",
+    "QuestionAnswers",
+    "answer_task",
+    "sweep_expired_questions",
+]
 
 
 class AnswerError(Conflict):
     """*task_id* has no live question to answer: not found, not ``waiting_input``, its parked
     question does not match the pipeline position, or *content* fails schema validation."""
+
+
+class AnswerNotFound(AnswerError):
+    """The task is not in the pod's queue."""
+
+
+class AnswerStale(AnswerError):
+    """The task is in the queue but its question is gone: not ``waiting_input``, no question
+    left, or parked at another step."""
 
 
 class AnswerRejected(Refused):
@@ -107,7 +130,7 @@ def _resolve_route(
 def _load_parked_question(t: _task.TaskRecord, task_id: str) -> Question:
     """The task's persisted ``question`` -- raises ``AnswerError`` when it has none."""
     if t.question is None:
-        raise AnswerError(f"task {task_id!r} has no pending question")
+        raise AnswerStale(f"task {task_id!r} has no pending question")
     return t.question
 
 
@@ -212,7 +235,7 @@ def _locate_parked_step(
     )
     node = runtime_steps[pipeline_index] if pipeline_index < len(runtime_steps) else None
     if node is None or not isinstance(node, _orch.PlannedUnit) or node.step_id != question.step:
-        raise AnswerError(f"task {task_id!r} is not parked at step {question.step!r}")
+        raise AnswerStale(f"task {task_id!r} is not parked at step {question.step!r}")
     return node, pipeline_index, route_counts
 
 
@@ -308,7 +331,7 @@ def answer_task(
 
     def _fn(t: _task.TaskRecord) -> None:
         if t.status != _state.Status.waiting_input:
-            raise AnswerError(f"task {task_id!r} is not waiting_input")
+            raise AnswerStale(f"task {task_id!r} is not waiting_input")
         if isinstance(t.question, QuestionV11) and t.question_is_consultation:
             consulted = _answer_consult(
                 project, t, t.question, result, channel=channel, actor=actor, ts=ts
@@ -333,7 +356,7 @@ def answer_task(
         outcome["question_id"] = question.id
 
     if TaskRepository.for_pod(project).update(task_id, _fn) is None:
-        raise AnswerError(f"task {task_id!r} not found in pod {project!r}")
+        raise AnswerNotFound(f"task {task_id!r} not found in pod {project!r}")
     _record_answer_audit_and_trace(
         project, task_id, outcome, channel=channel, actor=actor, result=result
     )
@@ -350,6 +373,32 @@ def answer_task(
         )
 
     return result
+
+
+class QuestionAnswers:
+    """``tasks.ports.QuestionAnswers`` over ``answer_task``: the continuation ``resolve`` runs for
+    a parked question, its refusals told in the vocabulary of a resolve."""
+
+    def answer_question(
+        self,
+        project: str,
+        task_id: str,
+        action: str,
+        content: dict[str, Any] | None,
+        *,
+        channel: str,
+        actor: str,
+    ) -> None:
+        try:
+            answer_task(project, task_id, action, content, channel=channel, actor=actor)
+        except AnswerRejected as exc:
+            raise EscalationRefused(exc.policy_id) from exc
+        except AnswerNotFound as exc:
+            raise EscalationNotFound(str(exc)) from exc
+        except AnswerStale as exc:
+            raise EscalationNotPending(str(exc)) from exc
+        except AnswerError as exc:
+            raise EscalationInvalid(str(exc)) from exc
 
 
 def _record_answer_audit_and_trace(
