@@ -408,7 +408,7 @@
 
 ### P51-13 — the smoke refuses a world inside a git work tree
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
+**Status:** DONE (merged 2026-10-25, c560caf1) · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
 
 - **Trigger (measured 2026-10-25, corrected):** `live_eval.py --out` and `smoke_workflow.py
   --workdir` accept a path inside a git work tree. The `basic` scenario creates no repository of its
