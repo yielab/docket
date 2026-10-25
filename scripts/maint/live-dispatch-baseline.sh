@@ -10,7 +10,7 @@
 # The description file is the task text; options-json is an object of POST /tasks fields
 # (`maxTokens`, `prepare`, `gate`, `pipeline`, `baseRef`, `externalRef`, `idempotencyKey`).
 # Polling stops on a terminal status (done, failed, cancelled, blocked) or when the task waits
-# on a person (waiting_approval, waiting_input); decide with `docket task approve|deny|answer`
+# on a person (waiting_approval, waiting_input); decide with `docket task answer`
 # and resume with `--wait`. Nothing here approves anything.
 #
 # Env: DOCKET_SERVE_URL (default http://127.0.0.1:7399), DOCKET_TOKEN_FILE (default
@@ -80,5 +80,5 @@ else
 fi
 echo "task $task_id ended polling at status $status; recorded in $out"
 if [ "$status" = "waiting_approval" ] || [ "$status" = "waiting_input" ]; then
-    echo "decide with: $bin task approve|deny|answer $task_id --pod $pod; then rerun with --wait $task_id"
+    echo "decide with: $bin inbox (prints the exact answer line), e.g. $bin task answer $task_id --option approve_once|approve_task|deny --pod $pod; then rerun with --wait $task_id"
 fi
