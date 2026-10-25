@@ -132,3 +132,31 @@ def test_a_missing_key_is_refused_before_any_run(
 
     assert code == 2 and not (tmp_path / "o").exists()
     assert KEY_ENV in capsys.readouterr().err
+
+
+def test_dry_run_passes_the_sandbox_choice_to_every_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = live_eval.main(
+        ["-n", "2", "--out", str(tmp_path / "out"), "--dry-run", "--sandbox", "on"]
+    )
+
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert code == 0 and len(lines) == 2
+    assert all("--sandbox on" in line for line in lines)
+
+
+def test_default_command_has_no_sandbox_flag(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    live_eval.main(["--out", str(tmp_path / "out"), "--dry-run", "-n", "1"])
+
+    assert "--sandbox" not in capsys.readouterr().out
+
+
+def test_sandbox_must_be_on_or_off(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as raised:
+        live_eval.main(["--out", str(tmp_path / "o"), "--sandbox", "maybe"])
+
+    assert raised.value.code == 2
+    assert "--sandbox" in capsys.readouterr().err

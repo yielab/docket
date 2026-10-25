@@ -46,6 +46,7 @@ _BASIC_SCENARIO = "basic"
 _MEMORY_SCENARIO = "memory-maintenance"
 _SCENARIOS = (_BASIC_SCENARIO, _MEMORY_SCENARIO)
 _CONSULT_MODES = ("park", "decide")
+_SANDBOX_CHOICES = ("off", "on")
 _DEFAULT_ENDPOINT = "http://127.0.0.1:8081/v1"
 
 
@@ -1476,6 +1477,7 @@ def _run(
     scenario: str,
     consult_mode: str = "park",
     api_key: str | None = None,
+    sandbox: str = "off",
 ) -> None:
     home, codebase, pod_spec, pipeline = _write_inputs(world, scenario)
     env = os.environ.copy()
@@ -1505,6 +1507,7 @@ def _run(
     else:
         print(f"Real model endpoint: {live.endpoint} (loopback only)")
     print(f"Loaded model: {live.model_id}")
+    print(f"Sandbox: {sandbox}")
     if live.context_tokens is not None:
         print(f"Reported context window: {live.context_tokens:,} tokens")
     _configure_live_model(repo, env, live)
@@ -1516,7 +1519,7 @@ def _run(
         print("[check] realistic checkout fixture committed before worktree provisioning")
 
     run_cli("init", "--from", str(pod_spec))
-    run_cli("setup", "sandbox", "off")
+    run_cli("setup", "sandbox", sandbox)
     if consult_mode != "park":
         run_cli("pod", "set", "consultMode", consult_mode, "--pod", "smoke")
     fleet = _load_json(home / "fleet.json")
@@ -1610,6 +1613,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Consent to sending the run's prompts to the --provider's remote service.",
     )
     parser.add_argument(
+        "--sandbox",
+        choices=_SANDBOX_CHOICES,
+        default="off",
+        help="Run with the jail on or off (default: off, the command allowlist governs). "
+        "on needs a sandbox backend on this machine.",
+    )
+    parser.add_argument(
         "--workdir",
         type=Path,
         help="Preserve the smoke world at this new or empty directory for inspection.",
@@ -1635,6 +1645,20 @@ def _remote_model(args: argparse.Namespace) -> tuple[_LiveModel, str] | str:
     return _LiveModel("", args.model, provider=args.provider, remote=True), key
 
 
+def _sandbox_refusal(repo: Path) -> str | None:
+    """Why ``--sandbox on`` cannot be honoured on this machine, or ``None`` when a backend exists."""
+    with tempfile.TemporaryDirectory(prefix="docket-smoke-probe-") as probe_home:
+        env = {**os.environ, "DOCKET_HOME": probe_home, "NO_COLOR": "1"}
+        try:
+            result = _run_cli(repo, env, "setup", "sandbox", "status", "--json")
+            backend = json.loads(result.stdout).get("backend")
+        except (SmokeFailure, OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+            return f"--sandbox on could not read this machine's sandbox backend: {exc}"
+    if backend == "none":
+        return "--sandbox on needs a sandbox backend and this machine has none: use --sandbox off"
+    return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     if not args.live_model:
@@ -1654,6 +1678,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         remote, api_key = resolved
     repo = Path(__file__).resolve().parents[1]
+    if args.sandbox == "on":
+        refusal = _sandbox_refusal(repo)
+        if refusal is not None:
+            print(f"SMOKE FAIL — {refusal}", file=sys.stderr)
+            return 2
     temp: tempfile.TemporaryDirectory[str] | None = None
     if args.workdir is None:
         temp = tempfile.TemporaryDirectory(prefix="docket-smoke-")
@@ -1667,7 +1696,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         live = remote or _discover_live_model(args.endpoint or _DEFAULT_ENDPOINT, args.model)
-        _run(world, repo, live, scenario, args.consult_mode, api_key)
+        _run(world, repo, live, scenario, args.consult_mode, api_key, sandbox=args.sandbox)
     except (
         SmokeFailure,
         OSError,
