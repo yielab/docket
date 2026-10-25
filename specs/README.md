@@ -100,16 +100,16 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Config Format | 2.0.0 | Implemented |
 | Cost Tracking | 1.12.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 5.0.3 | Complete |
-| Observability Export | 2.1.3 | Implemented and live |
+| Observability Export | 2.2.0 | Implemented and live |
 | Pipeline Format | 4.1.0 | Implemented |
 | Pod Blueprints | 2.1.0 | Implemented |
-| Pod Dispatch | 10.2.0 | Implemented |
+| Pod Dispatch | 10.3.0 | Implemented |
 | Role Archetypes | 4.1.0 | Implemented |
 | Security Gates | 1.4.1 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 4.0.1 | Implemented |
-| Trace Store | 3.0.3 | Implemented and live |
+| Trace Store | 3.1.0 | Implemented and live |
 | Workspace Structure | 2.2.0 | Complete |
 | CLI Interface | 4.2.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |

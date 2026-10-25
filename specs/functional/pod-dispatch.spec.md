@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.2.0
+**Version**: 10.3.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -459,7 +459,7 @@ wired agent's conversation current with the task it is working.
    earlier roles produced, subject to the per-role token budget (see "Bounded hop prompts" below);
    the Reviewer and Tester messages additionally state their required verdict-marker reply
    convention verbatim, and a non-Implementer verdict-gated hop with a task worktree is reminded
-   that its final reply must carry one recognized marker at the start of a line.
+   that its final message must end with the marker as its last line.
 3. An **Implementer** hop with an allocated pod port range (`portRangeStart` set) **MUST** receive
    `DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`, and `DOCKET_SCRATCH_DIR` in its tool subprocesses' real
    environment (layered on top of the parent environment, which is never mutated). Every other hop
@@ -1104,12 +1104,13 @@ mechanically gated step.
 The built-in Reviewer step carries a `verdict` gate; "Generalized gate execution" states the same
 parsing for any verdict-gated step (`parse_verdict`).
 
-1. After a **successful** Reviewer hop, dispatch **MUST** apply `^\s*(APPROVE|REQUEST-CHANGES)\b`
-   case-insensitively at the start of every non-blank output line. Exactly one distinct normalized
-   marker is the verdict wherever that line appears. Repeated identical marker lines collapse to
-   one; a marker embedded later in prose does not count; zero matches or both distinct markers are
-   unparseable. The same generic parser and structural convention apply to the Tester's PASS/FAIL
-   gate.
+1. After a **successful** Reviewer hop, dispatch **MUST** read the verdict with `parse_verdict`
+   (`pipeline-format.spec.md` "Gates") against `^\s*(APPROVE|REQUEST-CHANGES)\b`,
+   case-insensitively: each line is stripped of markdown decoration, the last marker line is the
+   verdict, a marker embedded later in prose does not count, and zero marker lines is
+   unparseable. The Reviewer's instruction **MUST** say that the last line of its final message is
+   exactly `APPROVE` or `REQUEST-CHANGES`, with nothing else on that line and reasons above it.
+   The same generic parser and instruction convention apply to the Tester's PASS/FAIL gate.
 2. An `APPROVE` verdict **MUST** allow the pipeline to advance past the Reviewer normally.
 3. A `REQUEST-CHANGES` verdict **MUST NOT** immediately fail the task. Instead, while the pod's
    rework budget (`maxReworkCycles`, a pod setting, default `1`; `0` disables rework entirely,
@@ -1126,8 +1127,8 @@ parsing for any verdict-gated step (`parse_verdict`).
    transitions to `failed`, a `review_rejected` trace event is emitted naming the number of rework
    cycles consumed, and the reason states the rejection occurred "after N rework cycle(s)"
    (`reviewer rejected after N rework cycle(s): REQUEST-CHANGES`).
-5. Reviewer output with zero recognized marker lines, or with conflicting distinct marker lines,
-   **MUST** be treated as unparseable -- distinct from an explicit `REQUEST-CHANGES` rejection,
+5. Reviewer output with zero recognized marker lines, after the one re-ask of "Generalized gate
+   execution", **MUST** be treated as unparseable -- distinct from an explicit `REQUEST-CHANGES` rejection,
    mirroring the Tester gate's FAIL-vs-unparseable distinction. This **MUST** emit a
    `reviewer_verdict_unparseable` trace event and fail the task immediately (unparseable output is
    never given a rework cycle).
@@ -1140,14 +1141,13 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 ### Tester PASS/FAIL gate
 
-1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** apply
-   `^\s*(PASS|FAIL)\b` case-insensitively at the start of every non-blank output line. Exactly one
-   distinct normalized marker is the verdict; repeated identical marker lines collapse to one, while
-   zero matches or both distinct markers are unparseable. Marker words embedded later in a prose
-   line do not count.
+1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** read the verdict
+   with `parse_verdict` against `^\s*(PASS|FAIL)\b` case-insensitively, under the same rule as the
+   Reviewer's: decoration stripped, the last marker line is the verdict, zero marker lines is
+   unparseable. Marker words embedded later in a prose line do not count.
 2. A `PASS` verdict **MUST** allow the pipeline to advance normally.
-3. A `FAIL` verdict, or unparseable output (empty, no recognized marker line, or conflicting
-   distinct marker lines), **MUST** block pipeline advancement: the task transitions to `failed`
+3. A `FAIL` verdict, or unparseable output (empty or no recognized marker line, after the one
+   re-ask), **MUST** block pipeline advancement: the task transitions to `failed`
    with a distinct reason (`"tester reported FAIL"` vs `tester output unparseable (expected one
    unambiguous recognized verdict marker at the start of a line)`), and a `tester_verdict_failed`
    trace event **MUST** be emitted carrying the parsed verdict (`"fail"` or `"unparseable"`) and the
@@ -1187,6 +1187,14 @@ parsing for any verdict-gated step (`parse_verdict`).
      rework cycle to `rework.to` (any earlier top-level step id) while that gate's own rework-cycle
      count (tracked per gated step id) is below `rework.maxCycles`; anything else (no rework
      configured, the value matches neither list, or no match at all) **MUST** fail the step.
+   - A verdict-gated hop whose successful reply carries no marker **MUST** be asked once more
+     before that failure: dispatch sends exactly one further request on the hop's own session
+     with the message `Your reply had no verdict line. Reply with exactly one line: <v1> or <v2>.`
+     (the gate's allowed values, upper-case unless the gate is case-sensitive, joined by ` or `),
+     emits one `verdict_reasked` trace event, and reads the verdict from the original reply
+     followed by the answer. The re-ask happens at most once per hop attempt, never when the first
+     reply carries a marker, and a failed re-ask request leaves the original reply and its
+     unparseable outcome in place. A reply that still has no marker fails exactly as before.
    - An `ApprovalGate` **MUST** be evaluated **pre-hop** (see "require_approval gate and
      waiting_approval") -- by the time a hop's turn has run, an `ApprovalGate` simply advances.
      Outcome routing (item 5) does not apply to an approval gate.
@@ -2057,7 +2065,8 @@ verification_failed          # a mechanical or external gate did not pass (any r
 tester_verdict_failed        # the Tester's reply was FAIL or unparseable
 rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle
 review_rejected              # a REQUEST-CHANGES after the rework budget was exhausted
-reviewer_verdict_unparseable # the Reviewer's reply had no single unambiguous marker
+verdict_reasked              # a verdict-gated hop's reply had no marker; one more request was sent
+reviewer_verdict_unparseable # the Reviewer's reply had no marker, even after the re-ask
 verdict_rework_started       # another role's verdict gate triggered a rework cycle
 verdict_rejected             # another role's verdict matched but was neither pass nor rework
 verdict_unparseable          # another role's verdict gate found no recognized marker
