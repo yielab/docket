@@ -287,7 +287,7 @@
 
 ### P51-7 — the A2A facade (ADR 0016 §9 trigger fired: Tack is the named client)
 
-**Status:** TODO (needs P51-5; approved 2026-10-25) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec + ADR
+**Status:** DONE (merged 2026-10-25, e2258f5e)· **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec + ADR
 
 - **Trigger:** ADR 0016 deferred the A2A binding "until a named A2A client will call docket".
   Tack calls docket and today builds its decision card from three shapes with a workaround
