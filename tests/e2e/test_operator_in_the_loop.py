@@ -1,8 +1,9 @@
 """An operator who is not at the terminal sees the run park, answers from the inbox, and it resumes.
 
 A non-interactive `docket run` parks a gated call or a question instead of waiting for a person.
-Everything the operator does is a `docket` command: `inbox`, `task approve` (once, for the task,
-or ahead of time with `--for`), `task deny`, `task answer`. Only the model is faked; the
+Everything the operator does is a `docket` command: `inbox`, `task answer` (an option of the
+pause: approve once, for the task, or deny; or a typed answer), `task pregrant` (ahead of time).
+Only the model is faked; the
 repo, the task worktree, the audit log and the park/resume machinery are real.
 """
 

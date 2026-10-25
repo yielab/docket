@@ -2,7 +2,7 @@
 
 Drives real ``dispatch_pod`` claims against a real git repo with a scripted runner that edits
 files in the root the dispatcher hands the implementer hop, then resolves the approval the way
-``docket task approve|deny`` does.
+``docket task answer --option approve_once|deny`` does.
 """
 
 from __future__ import annotations

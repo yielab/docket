@@ -1,9 +1,9 @@
 """``approve_task`` on a parked pod approval: the grant lasts the rest of that task.
 
 Drives the real writers: a parked approval as ``governance/gate.py::_park`` creates it, the task
-flipped to ``waiting_approval`` as ``_apply_result`` does, then ``docket task approve --option`` /
-Telegram ``/approve <token> task`` into ``resolve_waiting_approval``, and ``_compose_hop`` into
-the real ``DOCKET_PREGRANTS`` decoder and the real pre-grant consumer.
+flipped to ``waiting_approval`` as ``_apply_result`` does, then ``docket task answer --option
+approve_task`` / the escalation resolve route into ``resolve_waiting_approval``, and
+``_compose_hop`` into the real ``DOCKET_PREGRANTS`` decoder and the real pre-grant consumer.
 """
 
 from __future__ import annotations

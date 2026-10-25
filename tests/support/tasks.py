@@ -48,5 +48,6 @@ def stored_task(project: str, task_id: str) -> TaskRecord:
 
 
 def pregrant(project: str, task_id: str, *, tool: str = "bash", digest: str = "d") -> str:
-    """Record a single-use pre-grant for *task_id* of *project*, as `task approve --for` did; its token."""
+    """Record a single-use pre-grant for *task_id* of *project*, as `task pregrant` does; its
+    token."""
     return create_pregrant(project, "implementer", tool, digest, task_id=task_id, channel="cli")
