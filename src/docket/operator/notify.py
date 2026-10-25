@@ -375,6 +375,17 @@ def _matches_on(spec: Any, kind: str) -> bool:
     return "needs_you" in on and kind in _NEEDS_YOU_KINDS
 
 
+def _in_scope(spec: Any, item: TaskView | ApprovalView) -> bool:
+    """Whether *spec* hears *item*: a channel scoped to one task (``config.scopeTask`` in
+    ``config.scopePod``) hears only that task's events, any other channel hears everything."""
+    config = getattr(spec, "config", None) or {}
+    task = config.get("scopeTask")
+    if not task:
+        return True
+    task_id = item.task_id if isinstance(item, ApprovalView) else item.id
+    return (item.pod, task_id) == (config.get("scopePod"), task)
+
+
 def _deliver_with_retry(
     deliver: Deliver,
     spec: Any,
@@ -447,7 +458,11 @@ def _flush(
     skipped = 0
 
     for notify_event in events:
-        matching = [spec for spec in channels if _matches_on(spec, notify_event.kind)]
+        matching = [
+            spec
+            for spec in channels
+            if _matches_on(spec, notify_event.kind) and _in_scope(spec, notify_event.item)
+        ]
         for spec in matching:
             try:
                 deliver = sink_for(spec)

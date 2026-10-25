@@ -337,8 +337,10 @@ def _spec(
     on: list[str] | None = None,
     content: str = "minimal",
     secret: str | None = None,
+    config: dict[str, str] | None = None,
 ) -> Any:
     return types.SimpleNamespace(
+        config=config or {},
         name=name,
         dialect=dialect,
         enabled=enabled,
@@ -407,6 +409,30 @@ class TestFlush:
         by_channel = {call[0].name: call[1] for call in deliver.calls}
         assert "CANARY_7f3" not in repr(by_channel["minimal-chan"].data)
         assert by_channel["actions-chan"].data["action"] == "git push origin CANARY_7f3"
+
+    def test_a_channel_scoped_to_a_task_hears_only_that_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mine, other = _task(id="t1"), _task(id="t2")
+        self._patch_inbox(monkeypatch, InboxView(needs_you=[mine, other, _approval()]))
+        deliver = _RecordingDeliver(ok=True)
+        scoped = _spec(name="scoped", config={"scopeTask": "t1", "scopePod": "alpha"})
+        elsewhere = _spec(name="elsewhere", config={"scopeTask": "t1", "scopePod": "beta"})
+        everything = _spec(name="everything")
+
+        _notify.flush(
+            [scoped, elsewhere, everything], lambda _spec: deliver, now="2026-09-28T00:00:00Z"
+        )
+
+        heard = sorted(
+            (c[0].name, c[1].data.get("taskId") or c[1].data.get("token")) for c in deliver.calls
+        )
+        assert heard == [
+            ("everything", "t1"),
+            ("everything", "t2"),
+            ("everything", "tok-1"),
+            ("scoped", "t1"),
+        ]
 
     def test_failed_delivery_is_recorded_and_not_raised(
         self, monkeypatch: pytest.MonkeyPatch
