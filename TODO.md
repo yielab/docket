@@ -229,7 +229,7 @@
 
 ### P51-5 — one verb: `resolve`
 
-**Status:** TODO (needs P51-3, P51-4) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged 2026-10-25, f7a1551e)· **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** three answer vocabularies (`grant/deny`+`approve_once/approve_task`;
   `accept/decline/cancel`+`optionId` in `content`; memory `approve/refuse`), two "resolved once"
