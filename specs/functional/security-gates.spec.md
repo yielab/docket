@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 1.4.1
+**Version**: 1.5.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -655,6 +655,14 @@ rewrite its own gate for the next turn.
    A result that executes, including an allowed handler failure, **MUST** carry no denial kind.
    `as_tool_output()` **MUST** include the denial kind in the model-visible refusal
    (`REFUSED [<kind>]: <reason>`) without raw arguments, approval tokens or private values.
+   - **The reason is the classifier's or policy's.** An `approval_parked`, `approval_timeout` or
+     `approval_denied` refusal **MUST** carry the verdict's own reason, so the model learns what
+     to avoid: `REFUSED [approval_parked]: <reason>; a person must approve this command; the task
+     resumes once they do` (`this call` for a tool other than `bash`), `REFUSED
+     [approval_timeout]: <reason>; approval timed out and was denied` and `REFUSED
+     [approval_denied]: <reason>; approval denied`. The approval token **MUST NOT** appear in any
+     of them; it lives in `ToolResult.approval_token`, the approval record, the inbox and the
+     audit log.
 8. **Scope.** This section governs `dispatch_tool`. Every pod-dispatch hop resolves the default
    driver (`DocketDriver`), whose `run_turn` runs the agent loop, which dispatches every tool call
    through `dispatch_tool`; there is no other execution path for a tool call. A pod-dispatch hop is
@@ -1058,6 +1066,18 @@ material, may be read as saying otherwise.
    `none (<scope>); jailed tool calls have no network`. The JSON surfaces carry `networkEnforced`
    (true only when isolation is on and the mode is `none`). `docket pod show --json` keeps
    `{mode, scope}`.
+15. **The model sees the command rules before it runs anything.** The `bash` tool's description
+    **MUST** state, from the rules the turn's gate actually applies, what runs without approval and
+    what needs it: one sentence of the form `Runs without approval: <names>. Needs approval:
+    <classes>.` The names are `SAFE_BINS` sorted, then the pod's `allowCommands` additions
+    (cut after 20 names with `...`); the classes are every program off that list, output
+    redirections to files outside the workspace, `$(`, backticks, `${`, `eval`, `exec`, `sed -i`,
+    `find -exec` and the high-risk action classes. For a turn whose `ToolContext.sandbox ==
+    "auto"` the allowlist stands down (requirement 1, "Inside the jail"), so the sentence says
+    every program runs without approval inside the jail and lists only the classes that still ask.
+    `DocketDriver.run_turn` renders it once per turn from `ToolContext.allow_commands` and
+    `ToolContext.sandbox`; a registry whose `bash` description is not the built-in default is left
+    as the caller made it. The sentence adds no rule: it states `classify_command`'s.
 
 ### Parked calls and single-use pre-grants (ADR 0016)
 
@@ -1073,7 +1093,9 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    `<digest>` is `canonical_args_digest(tool.name, args)`, a stable SHA-256 digest of the tool's
    canonical-JSON arguments, independent of key order. The result's `decision` **MUST** be
    `"deny"`, `denial_kind` **MUST** be `"approval_parked"`, and `ToolResult.approval_token` carries
-   the record's token.
+   the record's token. The result's `reason` is the verdict's reason followed by `; a person must
+   approve this command; the task resumes once they do` and never contains the token, because
+   `as_tool_output()` shows the reason to the model (In-turn tool-call gate 7).
 3. **The record's own expiry.** When `ToolContext.approval_expires_at` (an ISO UTC string) is set,
    the parked record carries it as `expiresAt`; dispatch sets it for each parking hop from the
    pod's `approvalExpiryHours` (default 24). Otherwise the record's `expiresAt` is
@@ -1354,7 +1376,8 @@ and the handler never runs:
 ```text
 >>> dispatch_tool(ToolCall(id="c1", name="bash", arguments='{"command": "rm -rf /var/data"}'), ctx, registry)
 ToolResult(decision='deny', executed=False, denial_kind='approval_timeout',
-           policy_id='block-destructive', reason='approval timed out and was denied')
+           policy_id='block-destructive',
+           reason='<policy reason>; approval timed out and was denied')
 ```
 
 `high-risk-deploy` catches a production push by argument; the same tool with a feature branch is
