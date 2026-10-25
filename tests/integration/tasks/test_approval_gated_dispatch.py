@@ -15,7 +15,7 @@ waits on, and resolves a real approval rather than sitting with zero production 
     immediately with ``failureKind: "approval_denied"``, never auto-retried even with ``--resume``.
   * TestExpirySweepDenies — ``sweep_escalations`` resolves a stale pending record to
     **denied** (fail-closed, not the old unread ``"expired"``) and fails the waiting task.
-  * TestHttpApprovalEndpoint — ``POST /approvals/<token>`` genuinely resumes/kills the task it
+  * TestHttpEscalationEndpoint — ``POST /escalations/<id>`` genuinely resumes/kills the task it
     gated, same as the CLI channel.
   * TestReworkReGatesAfterResume — the single-use gate override is consumed exactly once: a
     Reviewer rework cycle sending the task back to the same Implementer hop gates again, with a
@@ -486,7 +486,7 @@ class TestExpirySweepDenies:
         assert task.failure_kind == "approval_denied"
 
 
-# ── HTTP POST /approvals/<token> genuinely resumes/kills ─────────────────────────
+# ── HTTP POST /escalations/<id> genuinely resumes/kills ─────────────────────────
 
 _TEST_TOKEN = "test-serve-token-g1-xyz789"
 

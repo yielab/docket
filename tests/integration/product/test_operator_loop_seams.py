@@ -28,7 +28,6 @@ from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
 from docket.governance.approval_pregrant import pending_pregrants
-from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
@@ -38,6 +37,8 @@ from docket.kernel.threads import ContextHTTPServer
 from docket.operator import adapters as _channel_adapters
 from docket.operator import channel as _channel
 from docket.operator import notify as _notify
+from docket.platform import read_escalation
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
@@ -45,7 +46,7 @@ from docket.teams import fleet as _fleet
 SUBJECT = "docket.operator.channel"
 
 
-# ── seam a: POST /approvals/<token> (HTTP) -> pregrant -> a real re-dispatch consumes it ──
+# ── seam a: POST /escalations/<id> (HTTP) -> pregrant -> a real re-dispatch consumes it ──
 
 
 class _ScriptedBackend:
@@ -60,7 +61,7 @@ class _ScriptedBackend:
 
 
 class TestHttpGrantConsumesThePregrant:
-    """The real `POST /approvals/<token>` write route granting a parked approval, threaded
+    """The real `POST /escalations/<id>` write route granting a parked approval, threaded
     into the single-use pre-grant a real re-dispatch then consumes -- proving the HTTP layer
     and the park/pre-grant mechanism actually compose, which no other test drives together."""
 
@@ -96,9 +97,12 @@ class TestHttpGrantConsumesThePregrant:
 
             _queue.enqueue_task_once("demo", "clean the build dir", channel="cli")
             parked = _sweep.dispatch_pod("demo")
-            token = parked[0].approval_token
+            parked_task = TaskRepository.for_pod("demo").list()[0]
+            assert parked_task.status == "waiting_approval"
+            (escalation_id,) = parked_task.escalations
+            token = _approval.approval_of(escalation_id)
             assert token
-            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_approval"
+            assert escalation_id not in parked[0].reason and token not in parked[0].reason
 
             # The real HTTP write route -- not `approval.approval_grant` called directly.
             class _Handler(_DocketHandler):
@@ -110,8 +114,8 @@ class TestHttpGrantConsumesThePregrant:
             thread.start()
             try:
                 req = urllib.request.Request(
-                    f"http://127.0.0.1:{port}/approvals/{token}",
-                    data=json.dumps({"action": "grant"}).encode(),
+                    f"http://127.0.0.1:{port}/escalations/{escalation_id}",
+                    data=json.dumps({"optionId": "approve_once"}).encode(),
                     headers={
                         "Content-Type": "application/json",
                         "Authorization": "Bearer seam-test-token",
@@ -126,14 +130,16 @@ class TestHttpGrantConsumesThePregrant:
                 thread.join(timeout=5)
 
             assert status == 200
-            assert body == {"ok": True, "token": token, "state": "granted"}
+            assert (body["id"], body["state"]) == (escalation_id, "resolved")
+            assert body["resolution"]["optionId"] == "approve_once"
+            assert token not in json.dumps(body)
 
             task = TaskRepository.for_pod("demo").list()[0]
             assert task.status == "pending"
             assert [g.token for g in pending_pregrants(task.id)] == [token]
 
             # A real re-dispatch: the implementer's identical call is re-issued by the model
-            # and this time is admitted via the single-use pre-grant `_handle_post_approvals`
+            # and this time is admitted via the single-use pre-grant the escalation resolve
             # produced, then the hop finishes normally.
             resume_backend = _ScriptedBackend(
                 [
@@ -212,6 +218,9 @@ class TestChannelContentLevelEnforcedAtDelivery:
             actions_srv, actions_url, actions_handler = _capture_server()
             try:
                 token = _approval.approval_create("alpha", "implementer", canary)
+                escalation = _escalations.open_for_approval(
+                    token, kind="approval", task_id="task-seam", caused_by="implement"
+                )
 
                 minimal_spec = _channel.ChannelSpec(
                     kind="channel",
@@ -257,10 +266,12 @@ class TestChannelContentLevelEnforcedAtDelivery:
                 actions_json = actions_handler.requests[0]["json"]
                 assert "action" not in minimal_json["data"]
                 assert actions_json["data"]["action"] == canary
-                # Both still carry the token -- content level narrows what is shared, never
-                # whether the item is identifiable at all.
-                assert minimal_json["data"]["token"] == token
-                assert actions_json["data"]["token"] == token
+                # Both still name the escalation -- content level narrows what is shared, never
+                # whether the item is identifiable at all -- and neither carries the approval
+                # token, the secret half of the record.
+                assert minimal_json["data"]["escalationId"] == escalation.id
+                assert actions_json["data"]["escalationId"] == escalation.id
+                assert token.encode() not in minimal_body and token.encode() not in actions_body
 
                 # The signature really verifies -- a genuine Standard Webhooks round trip,
                 # not just a header's presence.
@@ -335,22 +346,19 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
         message must contain `## Operator answers` with both exact values."""
         with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
             _bind_intake_pipeline("demo")
-            task = _queue.enqueue_task_once("demo", "build the widget", channel="cli")[0]
+            _queue.enqueue_task_once("demo", "build the widget", channel="cli")
             runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
 
             first = _sweep.dispatch_pod("demo", runner=runner)
             assert first[0].status == "waiting_input"
-            question = TaskRepository.for_pod("demo").list()[0].question
+            (escalation_id,) = TaskRepository.for_pod("demo").list()[0].escalations
+            question = read_escalation(escalation_id)
+            assert question is not None and question.kind == "input"
             assert question.requested_schema["properties"]["q1"]["title"] == "Which color?"
             assert question.requested_schema["properties"]["q2"]["title"] == "Which size?"
 
-            _answers.answer_task(
-                "demo",
-                task.id,
-                "accept",
-                {"q1": "blue", "q2": "large"},
-                channel="cli",
-                actor="op",
+            _escalations.resolve(
+                escalation_id, None, {"q1": "blue", "q2": "large"}, by="op", channel="cli"
             )
 
             final = _sweep.dispatch_pod("demo", runner=runner)
@@ -361,6 +369,6 @@ class TestBriefAnswerReachesTheLeadsNextMessage:
             second_lead_message = lead_messages[1]
 
             assert "## Operator answers" in second_lead_message
-            assert "Which color?" in second_lead_message or "add a widget" in question.message
+            assert "Which color?" in second_lead_message or "add a widget" in question.prompt
             assert '"q1": "blue"' in second_lead_message
             assert '"q2": "large"' in second_lead_message

@@ -1,8 +1,8 @@
 """POST /escalations/<id> -- settling an escalation over HTTP (operator-api.spec.md).
 
 A real server on a loopback port over a seeded pod. The oracles are the status code, the body, the
-escalation record and the task, and that the older routes (`POST /approvals/<token>`,
-`POST /tasks/<id>/answer`) settle the same record.
+escalation record and the task, and that the retired routes (`POST /approvals/<token>`, `GET /approvals`,
+`POST /tasks/<id>/answer`) are ordinary unknowns that change nothing.
 """
 
 from __future__ import annotations

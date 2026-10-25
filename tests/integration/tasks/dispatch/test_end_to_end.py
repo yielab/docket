@@ -204,7 +204,7 @@ class TestEndToEnd:
     def test_park_grant_resumes_the_parked_hop_with_a_single_use_pregrant(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The resume path: `docket task approve <t>` then `docket run` re-runs the
+        """The resume path: `docket task answer <t> --option approve_once` then `docket run` re-runs the
         implementer hop (not the lead's already-persisted one) at its own index, and the exact
         same tool call the human approved passes once via a single-use pre-grant."""
         from docket.governance.policy import install_policies
@@ -236,7 +236,7 @@ class TestEndToEnd:
             token = pending_token("demo")
             assert token
 
-            # docket task approve <token>
+            # docket task answer <escalation> --option approve_once
             resolve_token(token, "approve_once", channel="cli", actor="")
             task = TaskRepository.for_pod("demo").list()[0]
             assert task.status == "pending"

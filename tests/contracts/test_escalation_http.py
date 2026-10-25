@@ -1,14 +1,19 @@
-"""``GET /escalations`` and ``GET /inbox`` over the real route, for a consult parked by a real run.
+"""``GET /escalations`` and ``GET /inbox`` over the real route, for a pause parked by a real run.
 
 The product runs for real in a subprocess: the pod, the sweep, the park, the service and its HTTP
-route. Only the model is faked. The escalation's HTTP shape is compared with a recorded fixture
-(``tests/fixtures/operator-v1.1/escalation-consult.json``) once its ids and times are replaced
-by placeholders, so a drift in the route, the contract model or the join fails here.
+route. Only the model is faked. The escalation's HTTP shape and the inbox are compared with
+recorded fixtures (``tests/fixtures/operator-v2/``) once their ids and times are replaced by
+placeholders, so a drift in the route, the contract model or the join fails here. The fixtures
+were recorded from these scenarios with ``OPERATOR_RECORD_DIR`` set; a mismatch is a change to
+look at, not to record.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
+import re
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -21,8 +26,10 @@ from tests.support.model_server import FakeModel, call, say
 
 SUBJECT = "docket.interfaces.http.routes.escalations"
 
-FIXTURE = Path(__file__).parent.parent / "fixtures" / "operator-v1.1" / "escalation-consult.json"
+FIXTURES = Path(__file__).parent.parent / "fixtures" / "operator-v2"
 PIPELINE = "name: ask\nsteps:\n  - implement: implementer\n"
+ASKS_INPUT = "name: asks\nsteps:\n  - plan: lead\n  - ask:\n      input:\n        from: plan\n"
+GATED = "rm -rf build"
 QUESTION = {
     "message": "Which cache should the service use?",
     "kind": "decision",
@@ -32,34 +39,69 @@ QUESTION = {
     ],
     "recommendation": {"optionId": "redis", "rationale": "it is already deployed"},
 }
+_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
 
-def normalized(view: dict[str, Any]) -> dict[str, Any]:
-    """*view* with what differs between two runs (ids, times) replaced by placeholders."""
-    out = json.loads(json.dumps(view))
-    out["affordances"]["resolveUrl"] = out["affordances"]["resolveUrl"].replace(
-        out["id"], "<escalation-id>"
-    )
-    out.update(id="<escalation-id>", task="<task-id>", askedAt="<time>", expiresAt="<time>")
-    return out
+def normalized(value: Any, names: dict[str, str]) -> Any:
+    """*value* with what differs between two runs replaced by placeholders: every string in
+    *names* by its placeholder, every ISO time by ``<time>``."""
+    if isinstance(value, dict):
+        return {k: normalized(v, names) for k, v in value.items()}
+    if isinstance(value, list):
+        return [normalized(v, names) for v in value]
+    if isinstance(value, str):
+        if _TIME.match(value):
+            return "<time>"
+        for real, placeholder in names.items():
+            value = value.replace(real, placeholder)
+    return value
 
 
-def park_a_consult(root: Path, model: FakeModel) -> tuple[World, str]:
-    """A world whose one task is parked on a consult; its task id."""
+def recorded(name: str, actual: Any) -> Any:
+    """The fixture ``operator-v2/<name>.json``; with ``OPERATOR_RECORD_DIR`` set, *actual* is
+    written there and returned, which is how the fixtures are made from a run."""
+    if record := os.environ.get("OPERATOR_RECORD_DIR"):
+        Path(record, f"{name}.json").write_text(
+            json.dumps(actual, indent=2) + "\n", encoding="utf-8"
+        )
+        return actual
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def check(name: str, view: Any, names: dict[str, str]) -> None:
+    """Compare *view*, placeholders in, with the fixture *name*."""
+    actual = normalized(view, names)
+    assert actual == recorded(name, actual), name
+
+
+def park(root: Path, model: FakeModel, pipeline: str) -> tuple[World, str]:
+    """A world whose one task is parked by a real run of *pipeline*; its task id."""
     w = World(root / "world", model)
-    w.make_pod(PIPELINE)
+    w.make_pod(pipeline)
     task_id = w.add_task("Add a cache to the service")
     w.docket("run", "--pipeline", str(w.pipeline), "--timeout", "30")
-    assert w.task(task_id)["task"]["status"] == "waiting_input"
     return w, task_id
 
 
 @pytest.fixture()
 def parked(tmp_path: Path, fake_model: Any) -> Iterator[tuple[Service, str]]:
+    """A service over a task parked on a consult."""
     model: FakeModel = fake_model(
         script={"implementer": [call("consult", "k1", **QUESTION), say("done")]}
     )
-    w, task_id = park_a_consult(tmp_path, model)
+    w, task_id = park(tmp_path, model, PIPELINE)
+    assert w.task(task_id)["task"]["status"] == "waiting_input"
+    with w.service(dispatch=False) as service:
+        yield service, task_id
+
+
+@contextlib.contextmanager
+def serving(
+    root: Path, model: FakeModel, pipeline: str, status: str
+) -> Iterator[tuple[Service, str]]:
+    """A service over a task a real run of *pipeline* parked at *status*."""
+    w, task_id = park(root, model, pipeline)
+    assert w.task(task_id)["task"]["status"] == status
     with w.service(dispatch=False) as service:
         yield service, task_id
 
@@ -72,11 +114,15 @@ def test_the_escalations_route_serves_the_recorded_shape(parked: tuple[Service, 
     assert status == 200
     (view,) = body["escalations"]
     assert view["task"] == task_id
-    assert normalized(view) == json.loads(FIXTURE.read_text(encoding="utf-8"))
+    check(
+        "escalation-consult",
+        view,
+        {view["id"]: "<escalation-id>", task_id: "<task-id>"},
+    )
     assert body["next"] == view["seq"]
 
 
-def test_the_inbox_carries_the_same_escalation_and_leaves_needs_you_as_it_was(
+def test_the_inbox_carries_the_same_escalation_and_names_it_on_the_task_that_needs_you(
     parked: tuple[Service, str],
 ) -> None:
     service, task_id = parked
@@ -88,9 +134,13 @@ def test_the_inbox_carries_the_same_escalation_and_leaves_needs_you_as_it_was(
     assert inbox["escalations"] == escalations["escalations"]
     (waiting,) = inbox["needsYou"]
     assert (waiting["id"], waiting["status"]) == (task_id, "waiting_input")
-    assert [o["id"] for o in waiting["question"]["options"]] == ["redis", "memcached"]
-    assert waiting["question"]["recommendation"]["optionId"] == "redis"
+    (view,) = escalations["escalations"]
+    assert waiting["escalation"] == view["id"]
+    assert [o["id"] for o in view["options"]][:2] == ["redis", "memcached"]
+    assert view["recommendation"]["optionId"] == "redis"
+    assert "question" not in waiting
     assert set(inbox) == {"needsYou", "failed", "doneSince", "running", "next", "escalations"}
+    check("inbox-consult", inbox, {view["id"]: "<escalation-id>", task_id: "<task-id>"})
 
 
 def test_a_cursor_pod_and_task_narrow_the_list(parked: tuple[Service, str]) -> None:
@@ -121,3 +171,43 @@ def test_the_route_needs_the_bearer_token(parked: tuple[Service, str]) -> None:
         urllib.request.urlopen(service.url + "/escalations", timeout=10)
 
     assert refused.value.code == 401
+
+
+def test_a_parked_approval_is_served_with_no_token_anywhere(
+    tmp_path: Path, fake_model: Any
+) -> None:
+    model: FakeModel = fake_model(
+        script={"implementer": [call("bash", "c1", command=GATED), say("done")]}
+    )
+
+    with serving(tmp_path, model, PIPELINE, "waiting_approval") as (service, task_id):
+        _, body = service.get("/escalations")
+        (view,) = body["escalations"]
+        _, inbox = service.get("/inbox")
+
+        assert (view["kind"], view["state"]) == ("approval", "pending")
+        assert GATED in view["prompt"]
+        (waiting,) = inbox["needsYou"]
+        assert waiting["escalation"] == view["id"]
+        assert not re.search(r"apr[-_][0-9A-Za-z-]+", json.dumps([body, inbox]))
+        names = {view["id"]: "<escalation-id>", task_id: "<task-id>"}
+        check("escalation-approval", view, names)
+        check("inbox-approval", inbox, names)
+
+
+def test_a_parked_input_is_served_as_an_escalation_the_task_names(
+    tmp_path: Path, fake_model: Any
+) -> None:
+    model: FakeModel = fake_model(script={"lead": [say("the plan")]})
+
+    with serving(tmp_path, model, ASKS_INPUT, "waiting_input") as (service, task_id):
+        _, body = service.get("/escalations")
+        (view,) = body["escalations"]
+        _, inbox = service.get("/inbox")
+
+        assert (view["kind"], view["state"]) == ("input", "pending")
+        (waiting,) = inbox["needsYou"]
+        assert waiting["escalation"] == view["id"]
+        names = {view["id"]: "<escalation-id>", task_id: "<task-id>"}
+        check("escalation-input", view, names)
+        check("inbox-input", inbox, names)
