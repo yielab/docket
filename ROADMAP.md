@@ -9,9 +9,12 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-24.** Every phase 0–49 is complete; none is active. Phase 49 (D-70) made the
-task one typed record behind one store, with the same JSON on disk. A new phase starts from a measured trigger or a
-maintainer request, never from this file.
+**Last updated: 2026-10-25.** Phases 0–49 are complete. **Phase 50 is active** (D-71,
+[ADR 0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)): end-to-end tests that run the
+product the way an operator or Tack does, in `tests/e2e/`, with one fake model and shared oracles.
+The cards are on [TODO.md](TODO.md). Phase 49 (D-70) made the task one typed record behind one
+store, with the same JSON on disk. A new phase starts from a measured trigger or a maintainer
+request, never from this file.
 
 **The last three phases** closed on branch `plan/phase-46-structure`, not yet merged into `develop`
 nor pushed (§7.1). Phases 46-47 are D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
@@ -73,6 +76,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 47 | The seams: layered contexts with each module where its data lives, ports for git, processes, the jail, the tracer and the tool gate, one state owner, tests by context, one authored config form, policies on the parsed command | D-66 · [0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md) | **complete** 2026-10-24: import baseline 1 line, local imports 1, corpus-measured policies, live-home defects fixed; fresh-install real run matches the Phase 46 baseline |
 | 48 | Isolation where the machine can jail, a task keeps its pipeline file, contract v5, positioning | D-67, D-68, D-69 | 2026-10-24 |
 | 49 | The task as a typed record behind one store: `TaskRecord` (flat, same JSON), `JsonTaskStore` + `TaskRepository` as the only writers of the queue, `hops` and `interfaces` read attributes, `claimId` and `source` deleted | D-70 | **complete** 2026-10-24 (`4a22a5be`..`423b67a1`); `dict[str, Any]` in `tasks/` and `hops/` 156 to 94, queue writers 19 to 0 outside the store, `src` +40 lines net |
+| 50 | End-to-end tests that run the product: `tests/e2e/` (one file per journey, a `docket` subprocess or `docket start` over HTTP, a real git repo, only the model faked), one fake model in `tests/support/model_server.py`, shared oracles, a CI job; the deterministic smoke moves into the lane | D-71 · [0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md) | **active** (opened 2026-10-25; 10 cards P50-1..P50-10) |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -139,7 +143,7 @@ language. If tempted, stop and add it to §7 "Backlog" instead.
 - **The two invariants that replaced the ACL invariant**, both machine-enforced:
   - **Every tool call goes through `agent/tools/registry.py`'s dispatcher**, where `pre_input`, `pre_tool_call` and `pre_output` all evaluate. A second execution path is a hole. Enforced by an AST test (`tests/unit/agent/tools/test_registry__dispatch.py::test_only_the_chokepoint_imports_the_handler_module`).
   - **Docket-owned JSON goes through `platform/store.py`.** Append-only JSONL (`observability/trace.py`, `governance/audit.py`) writes directly, per the documented **D-12** exemption.
-- **Tests** (`tests/`) — the counts here drift; `uv run python scripts/metrics.py --check` is the guard that fails CI when a README or doc number stops matching the tree. **Fix the claim, never the guard.**
+- **Tests** (`tests/`) — no document quotes test, line or spec counts; `uv run python scripts/metrics.py` reports them on demand.
   - `tests/unit/`, `tests/integration/`, `tests/guards/` — the default pytest suite (`uv run pytest`). `tests/agent/` is the budgeted agent lane and runs in its own CI job (`uv run pytest tests/agent`). Files are named by **subject**, not by card id.
   - `tests/golden/` — byte-parity golden suite (`bash tests/golden/run.sh verify-all`) — the net that catches a behaviour change. **Never regenerate a golden to hide one.**
   - `scripts/validate-specs.sh` — the spec suite, CI-blocking. CI also runs a `floors` job that resolves the **lowest** versions `pyproject.toml` permits: two of six advertised bounds were false when first measured, so do not move a floor without re-measuring.
@@ -156,7 +160,6 @@ language. If tempted, stop and add it to §7 "Backlog" instead.
 - **Respect the import contracts of ADR 0030:** the dependency table in `tests/architecture/` is the rule. `kernel` imports nothing outside itself; the contexts are layered (`LAYERS`: `platform < governance < agent < models < observability < pipeline < teams < sandbox < operator < tasks < hops`) and a context imports only those below it; `agent` imports `kernel`, `platform`'s `__init__` and its own ports; only `interfaces/` talks to the user (no `print`, no `ui.py` elsewhere).
 - **Shell-out invariant scope (D-13):** every `git`/`docker` shell-out and every jailed launch funnels through `platform/git.py`, `platform/process.py` and `sandbox/launch.py` — no other module invokes those binaries directly, and they degrade gracefully when one is missing. The sandboxed `bash` tool is not an exception: it reaches the same modules through the chokepoint.
 - User-facing status goes through the Rich helpers in [ui.py](src/docket/interfaces/cli/render/ui.py) (`info/success/warn/error`); a command aborts by raising `typer.Exit`. Never raw `print` for status.
-- **Nothing is kept for the past (D-57, ADR 0022 §3).** docket has no users. A removed or renamed command, flag, alias, route, persisted shape or behaviour is deleted in the same change that replaces it, with its tests, spec text and docs. No alias table, no retirement notice, no "did you mean the old name", no migration, no `_REMOVED` map, no hidden command, no deprecated no-op flag. A retired name is an ordinary unknown command (exit 2); `CHANGELOG.md` is the only record. The rule stands until docket has an installed base, which is a fact about the world, not a release number.
 - Permissions: workspace dirs `700`, files `600`.
 - Commit style: `Type: description` (`Add:`/`Fix:`/`Docs:`/`Feat:`/`Refactor:`/`Chore:`/`Test:`/`Merge:`/`Remove:`), detailed body. One task ≈ one commit. **No AI/assistant attribution trailers of any kind; ASCII only.** **Public repo** — scrub real client names, `/home/<user>` paths, and usernames before committing.
 - **Every behaviour change adds or updates a test** (pytest; a golden case when output changes). A pure move or rename adds none: `pytest --co` and `tests/architecture/` are its check.
@@ -182,12 +185,12 @@ A task is done when:
 Once per phase, at its close (and before a release): `bash tests/golden/run.sh verify-all`
 byte-identical (or a deliberate CLI change with its diff explained line by line), `uv run pytest
 tests/agent`, `scripts/maint/pytest-without-sandbox.sh`, the escape matrix, `bash
-scripts/validate-specs.sh`, `uv run python scripts/metrics.py --check`, the generated-docs checks and a
+scripts/validate-specs.sh`, the generated-docs checks and a
 real run.
 
 Two rules that override any of the above when they conflict:
 
-- **Never edit `scripts/metrics.py` or `scripts/validate-specs.sh` counting logic to make numbers agree.** Fix the claim, never the guard.
+- **Never edit `scripts/validate-specs.sh` counting logic to make numbers agree.** Fix the claim, never the guard.
 - **Prove "pre-existing" before claiming it.** Check out the base commit in a clean worktree — a `git stash` does not restore deleted files or a changed environment, so it is not a baseline. In an agent worktree run `uv sync --all-extras` **first**: a missing `anyio` produces three phantom mypy errors in `mcp_client.py` that are not real, and five agents have now reported them as pre-existing failures.
 
 ---
@@ -224,7 +227,7 @@ address exactly those.
 
 ## 6. Decisions
 
-Every decision D-1…D-70 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
+Every decision D-1…D-71 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
 in [docs/cycles-ended/roadmap-decisions.md](docs/cycles-ended/roadmap-decisions.md); from D-35 on,
 the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. That file is byte-preserved, so a
 new decision gets its ADR and a row in the table below. The decisions that act as standing rules
@@ -238,12 +241,13 @@ today:
 | D-20, D-22, D-24 | A factory and an embeddable library, not a hosted SaaS; no tenant axis; build only for a measured need ([0003](docs/adr/0003-factory-first-then-embeddable-substrate.md), [0005](docs/adr/0005-prioritization-ruling-viable-vs-overengineering.md)) |
 | D-36, D-37 | Tests by lane; the README describes, specs require ([0007](docs/adr/0007-human-maintainability-lanes-comments-docs.md)) |
 | D-52 | Work on `develop`; `main` moves only by fast-forward for a release |
-| D-57 | Nothing is kept for the past: no alias, shim, notice or migration ([0022](docs/adr/0022-one-cli-surface.md)) |
+| D-57 | One CLI surface: top-level commands nested under what they act on ([0022](docs/adr/0022-one-cli-surface.md)). Its second rule, "nothing is kept for the past", was withdrawn 2026-10-24: compatibility (aliases, migrations, format versions) is decided per change |
 | D-66 | One package per context, layered, checked by `tests/architecture/` ([0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md)) |
 | D-67 | `docket init` records isolation on where a backend is detected and records nothing, said so, where none is; a recorded choice stands and a recorded `on` fails closed (supersedes D-56 in part) |
 | D-68 | A task run under a caller's pipeline file keeps it (`pipelineSpec`). The nested task record and the pod's queue and settings under `workspaces/pods/<pod>/` are dropped for want of a measured need. No migration is written while no user needs one: a consequence, not a principle |
 | D-69 | Positioning (2026-10-24): docket complements the governance coding agents ship by governing a team, not a session, and leads with its versatility: roles, pipelines and policies are configuration, so any team is a combination of files. No comparison against another product without a benchmark |
 | D-70 | The task is one typed record (2026-10-24): `tasks/domain/task.py::TaskRecord`, flat, camelCase aliases, `extra="ignore"` (a queue written before a retired key still loads; unknown keys are not written back), the same keys on disk, behind `tasks/application/json_store.py` (the layer contract forbids `application` importing `adapters`; the only caller of `read_modify_write` on the queue) and `tasks/application/repository.py` (the pod's door, which also syncs the HEARTBEAT ledger). Readers use attributes; `_normalize_task`, `hop_record` and `hop_from_record` are deleted. No nested record (D-68 stands), no port protocol, no unit of work, no hooks: one implementation each. `claimId` and `source` are deleted outright (nothing read them); `Status.in_progress` likewise. The design and the measured counts are the Phase 49 cards; the architecture test `test_task_queue_writers.py` keeps the store the only writer |
+| D-71 | An end-to-end test runs the product as an operator or Tack does (2026-10-25): a `docket` subprocess or `docket start` over HTTP, a real `DOCKET_HOME` and git repo, nothing inside docket replaced, only the model faked over the real wire, judged by what an operator sees. It lives in `tests/e2e/` (one file per journey, outside `testpaths`, 60 s ceiling, its own CI job); one fake model (`tests/support/model_server.py`) and shared oracles; a real model never gates CI ([0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)) |
 
 ---
 

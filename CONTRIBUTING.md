@@ -158,12 +158,8 @@ All contributions must include appropriate tests:
   that do not mirror a module — see that section for what holds now and what Phase 46 moves)
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
-For scale, so you know what you're getting into: **6,342 tests** in the default suite
-(`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
-runs separately), **~53,776 lines** of Python in the shipped package, **32 specifications**
-validated in CI, and **10 commands** in the [command reference](docs/commands.md).
-`scripts/metrics.py --check` computes these from the tree on every CI run, so this paragraph
-cannot silently go stale.
+For scale on demand, run `uv run python scripts/metrics.py`; no document quotes those numbers, so a change
+never has to update them.
 
 Run the full aggregator before submitting:
 
@@ -182,7 +178,7 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 ./tests/run-all-tests.sh
 
 # pytest suite only (default lanes: unit, integration, guards)
-uv run pytest   # 6,342-test Python suite
+uv run pytest   # Python suite
 
 # agent lane only (prose, release artifacts, agent hook scripts; own CI job)
 uv run pytest tests/agent
@@ -225,7 +221,6 @@ uv run pytest                # default lanes: unit, integration, guards
 uv run pytest tests/agent    # agent lane (CI job `agent-lane`)
 bash tests/golden/run.sh verify-all   # golden parity
 ./scripts/validate-specs.sh  # spec format validation
-uv run python scripts/metrics.py --check            # this doc's metric-drift guard (see above)
 uv run python scripts/gen_cli_docs.py --check       # docs/commands.md drift (CI job `docs`)
 uv run python scripts/gen_recipe_docs.py --check    # docs/recipes.md drift (CI job `docs`)
 uv run python scripts/render-doc-assets.py --check  # README screenshot/GIF drift guard (run by the agent lane)
@@ -269,7 +264,7 @@ Seven rules, each written down because breaking it cost real work here.
    red, restore it, watch it go green, and put that in the pull request. Guards that verified the
    wrong set have shipped here more than once, and a guard you only ever saw pass proves nothing.
 2. **Never edit a counting script or regenerate a golden to make a claim agree.** `scripts/
-   metrics.py` and `scripts/validate-specs.sh` are the guards, not the claim. Regenerate a golden
+   validate-specs.sh` is the guard, not the claim. Regenerate a golden
    only when a change deliberately alters CLI surface, or when the old string was factually false,
    and explain the diff line by line either way.
 3. **Prove "pre-existing" before claiming it.** Check the base commit out in a clean worktree and
@@ -292,20 +287,6 @@ Seven rules, each written down because breaking it cost real work here.
 6. **Scrub every diff before committing.** Real client names, home-directory paths and usernames do
    not belong in a public repository. Commit subjects follow `Type: description` with a detailed
    body, ASCII only.
-
-7. **Nothing is kept for the past.** docket has no users, so there is nothing from an earlier
-   version to protect. A removed or renamed command, flag, alias, route, persisted shape or
-   behaviour is deleted in the same change that replaces it, together with its tests, its spec
-   text and its documentation. No alias table, no retirement notice, no "did you mean the old
-   name", no migration, no hidden command, no deprecated no-op flag, no `_REMOVED` map. A
-   retired name is an ordinary unknown command (exit 2), and `CHANGELOG.md` is the only record.
-   The compatibility layers this project carried (a removed-command map, an alias table, a
-   `--debug` no-op, `gates enable/disable` stubs, `editRights` on the wire) each had a writer,
-   a reader in `cli/` and no consumer on the live path; they were purged on 2026-10-03 and the
-   rule became a decision on 2026-10-07 (ROADMAP D-57, ADR 0022). It stands until docket has an
-   installed base, which is a fact about the world and not a release number. One thing is not
-   legacy: a current format that happens to be older than another (canonical policy JSON
-   without `kind:`).
 
 ### Comments and docstrings
 

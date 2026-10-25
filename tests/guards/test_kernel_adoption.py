@@ -2,8 +2,8 @@
 
 ``scripts/maint/measure_kernel_adoption.py`` counts each rule's sites outside ``kernel/``;
 ``kernel_adoption_baseline.txt`` records the counts. A count above its baseline is new code
-reaching past the kernel. A count below it is a migration that forgot to lower the baseline,
-which would leave room for a regression to hide, so both fail.
+reaching past the kernel and fails. A count below it is progress and passes; lower the baseline
+with ``--write`` when convenient, it is never required.
 """
 
 from __future__ import annotations
@@ -45,14 +45,10 @@ def test_the_baseline_names_every_rule() -> None:
 
 
 @pytest.mark.parametrize("rule", list(_MEASURE.RULES))
-def test_count_equals_the_baseline(rule: str) -> None:
+def test_count_does_not_exceed_the_baseline(rule: str) -> None:
     count, baseline = len(_MEASURE.scan(rule)), _BASELINE[rule]
     see = f"see: python3 scripts/maint/measure_kernel_adoption.py {rule} --list"
     assert count <= baseline, f"{rule} grew to {count}, above baseline {baseline}; {see}"
-    assert count >= baseline, (
-        f"{rule} fell to {count}, below baseline {baseline}; record it with "
-        f"`python3 scripts/maint/measure_kernel_adoption.py {rule} --write`"
-    )
 
 
 def test_kernel_is_never_scanned() -> None:

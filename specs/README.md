@@ -132,5 +132,4 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 ```bash
 bash scripts/validate-specs.sh                   # required sections, headers, no changelog (CI)
 uv run python scripts/maint/check_spec_index.py  # this index against the spec headers
-uv run python scripts/metrics.py                 # spec count and the other README numbers
 ```

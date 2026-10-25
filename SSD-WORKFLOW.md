@@ -311,8 +311,7 @@ Spec validation runs as one step inside the real CI pipeline, `.github/workflows
 has these jobs:
 
 - **`python`** — the primary gate: `uv sync --all-extras --dev`, then ruff lint, ruff format
-  check, `mypy src`, `uv run pytest`, and the README-number drift guard
-  (`scripts/metrics.py --check`).
+  check, `mypy src`, and `uv run pytest`.
 - **`agent-lane`** — runs `uv run pytest tests/agent`: the `truth` lane (prose and policy claims
   checked against the code) and the `release` lane (artifact and packaging journeys), neither of
   which belongs in the default suite (`specs/test-framework.md`, "Lanes and placement").

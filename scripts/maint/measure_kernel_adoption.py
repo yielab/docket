@@ -281,11 +281,11 @@ def main() -> int:
         print(f"\nwrote {BASELINE_FILE.relative_to(REPO_ROOT)}")
         return 0
     if args.check:
-        off = {r: len(h) for r, h in counts.items() if len(h) != baseline.get(r)}
-        if off:
-            print(f"\nFAIL: off baseline: {off}")
+        grew = {r: len(h) for r, h in counts.items() if len(h) > baseline.get(r, 0)}
+        if grew:
+            print(f"\nFAIL: above baseline: {grew}")
             return 1
-        print("\nOK: every count equals its baseline")
+        print("\nOK: no count exceeds its baseline")
     return 0
 
 

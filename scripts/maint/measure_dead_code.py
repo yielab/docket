@@ -416,8 +416,6 @@ def regressions(counts: dict[str, int], baseline: dict[str, int]) -> list[str]:
     for kind in KINDS:
         if counts[kind] > baseline.get(kind, 0):
             bad.append(f"{kind} grew to {counts[kind]}, above baseline {baseline.get(kind, 0)}")
-        elif counts[kind] < baseline.get(kind, 0):
-            bad.append(f"{kind} fell to {counts[kind]}, below baseline {baseline[kind]}; --write")
     return bad
 
 

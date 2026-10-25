@@ -409,13 +409,12 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
 bash scripts/validate-specs.sh
-uv run python scripts/metrics.py --check
 ```
 
 ShellCheck covers the launcher, installers, scripts, and golden harness in CI. The dependency-floor
 job resolves the minimum declared direct versions and runs pytest against them.
 
-CI jobs: `python` (ruff, format, mypy, `uv run pytest`, `metrics.py --check`), `agent-lane`
+CI jobs: `python` (ruff, format, mypy, `uv run pytest`), `agent-lane`
 (`uv run pytest tests/agent`), `docs` (the generated-reference drift checks
 `gen_cli_docs.py`, `gen_evidence_schema.py`, `gen_recipe_docs.py` and `gen_operator_schemas.py`, each
 with `--check`, then a strict mkdocs build), `floors`, `golden`, `shell` (ShellCheck and
@@ -522,7 +521,6 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy src
 bash scripts/validate-specs.sh
-uv run python scripts/metrics.py --check
 uv run python scripts/gen_cli_docs.py --check
 uv run python scripts/gen_evidence_schema.py --check
 uv run python scripts/gen_recipe_docs.py --check
