@@ -120,7 +120,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | docket-meta schema | 5.5.0 | Complete |
 | Docket Store | 3.1.0 | Implemented |
 | Operator API | 7.0.0 | Implemented (Phase 43, ADR 0027) |
-| A2A Binding | 1.2.0 | Implemented |
+| A2a Binding | 1.2.0 | Implemented |
 | Serve Read API | 5.0.0 | Stable |
 | Adoption Benchmark | 2.2.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
