@@ -289,7 +289,7 @@ today:
   hosted-model tokens on `fab-dev`, so it needs a go.
 - **A release.** `VERSION` is `0.2.0-beta.6`; the last tag is `v0.2.0-beta.4`. Cutting it publishes
   the Phase 43-48 changes (API 6, `exec` deleted, one authored YAML form, isolation by detection).
-- **Fabulada's blueprint** (`onboard/tack` in its own repository) still has three canonical-form
+- **A sibling project's blueprint** (`onboard/tack` in its own repository) still has three canonical-form
   pipelines current docket refuses; the converted versions are in the maintainer's backup. It is
   another repository's branch, so converting it is the maintainer's call.
 

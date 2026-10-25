@@ -1,6 +1,6 @@
 # ADR 0029 (D-65): a prepared checkout, models from the provider, and a check the change cannot define
 
-**Question:** a sibling project (Fabulada, through Tack, 2026-10-19) found four things in one
+**Question:** a sibling project (through Tack, 2026-10-19) found four things in one
 onboarding. A task's worktree has no dependencies, so every check of a Node project fails before
 it looks at the change. The provider catalog is a fixed list, and a model outside it runs with
 no context window, no price and a 4,096-token output cap. A team's check runs files the change
@@ -45,7 +45,7 @@ none.
    agent; the verifier, which reads its configuration from the base commit, is what a merge trusts.
    - Every team has **protected paths**: by default lockfiles, manifests (`package.json`,
      `pyproject.toml`, `Cargo.toml`), the configuration of lint, type and test tools,
-     `.docket/`, `prill.yaml` and CI workflows. `protects:` in the team directory adds to them.
+     `.docket/` and CI workflows. `protects:` in the team directory adds to them.
    - When a task's diff touches a protected path, the task is marked `check_changed`, names the
      paths, and never finishes lights-out: it waits for a person, whatever the pod's profile.
    - The reviewed digest covers the **contents**, at the base commit, of every repository file a
@@ -79,11 +79,11 @@ none.
   (`core/pod_provisioning.py`) runs `git worktree add -b docket/<pod>/<task-id>` from `baseRef`
   and nothing else; `node_modules` appears only in skip lists (`repo_map.py`, `toolbox.py`). A
   gate runs in that worktree, jailed, with the pod's network (`dispatch.py` `_gate_cwd`,
-  `docket_runtime.py` `effective_network`). Measured in a fresh worktree of Fabulada:
+  `docket_runtime.py` `effective_network`). Measured in a fresh worktree of that project:
   `Cannot find package 'eslint'`, `Cannot find module 'vitest/config'`, and `tsc` 7.0.2 from the
   machine against the project's 5.9.3.
 - **The trigger D-63 named.** D-63 (ADR 0027) deferred a "warm workspace" with a trigger, after
-  measuring `npm ci` 6.5 s and a build 15.5 s per worktree (829 MB). Fabulada's first code run
+  measuring `npm ci` 6.5 s and a build 15.5 s per worktree (829 MB). That project's first code run
   through a team is that trigger: without it no check of a Node project can pass.
 - **Fixed catalog.** `templates/providers/01-anthropic.yaml` lists Claude 4.x models with
   `pricesAsOf 2026-06-11`; `/models` is probed only to warn about extra models

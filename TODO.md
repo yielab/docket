@@ -82,7 +82,7 @@ from `main`.
 > dedup is persisted (`operator/notify.py`), the `kind:`-less canonical-document advisory is gone, and
 > `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
 
-**Toolchain read grants (dropped from Phase 48).** Fabulada's gates failed with exit 126 under the
+**Toolchain read grants (dropped from Phase 48).** A sibling project's gates failed with exit 126 under the
 jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was granted by hand with
 `docket setup sandbox read add`. Trigger: a second pod whose first jailed gate fails that way. Next:
 `docket setup` proposes the grants for the toolchains it finds.

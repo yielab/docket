@@ -220,8 +220,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "Known-open gaps carried forward (do not let these get quietly re-claimed)",
-    "bytes": 4275,
-    "sha256": "b1f94c675b30ddacd60331ce88118ff66173ed6878b81411b6b2b376803c5f17"
+    "bytes": 25665,
+    "sha256": "414f99f0daef96152ca6ef1e8d7024dd5f0212eec0067f99d76bc750e303e89e"
   },
   {
     "source": "ROADMAP.md",
@@ -644,8 +644,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)",
-    "bytes": 65803,
-    "sha256": "b0968dc1c9a9000b220322a3f5caedaf240526f31f6b17eaeba96bff7deeecaf"
+    "bytes": 65798,
+    "sha256": "7ab9bb65f6fe753a7f8193326381be815df1145c0b7793745ea25e2cffb059ff"
   },
   {
     "source": "TODO.md",
@@ -716,8 +716,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/)",
-    "bytes": 1346,
-    "sha256": "196fbb1b6eae0b98d0b5b6b116b896d4dd7cdd33d2d883f991af8d29472cd136"
+    "bytes": 1341,
+    "sha256": "e2e67476bcc49b2955047202c688b29a028bdc53d45b0189ec4911de8e221bbe"
   },
   {
     "source": "TODO.md",
@@ -764,8 +764,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "◆ CLOSED — Phase 45: a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19, closed 2026-10-20)",
-    "bytes": 15759,
-    "sha256": "6fa2f7c8e546dff1ca2c91326495c1d89941921c16e74d7e95e00d83c4b8b5c7"
+    "bytes": 15779,
+    "sha256": "901aa7a29ed194c5606991894c76293b1ea1c98c44c5f8d1622898deb364ac2d"
   },
   {
     "source": "TODO.md",
@@ -804,8 +804,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close",
-    "bytes": 33386,
-    "sha256": "40581e4cc2e2841eaaeb7b8fe3baedf27d892ca41ba698bcfb521e7b03a6b0cb"
+    "bytes": 33369,
+    "sha256": "04b01bb42eb3dc0c77664f04ee55f02f582539fad5a62d3507bc1036d7abf746"
   },
   {
     "source": "ROADMAP.md",

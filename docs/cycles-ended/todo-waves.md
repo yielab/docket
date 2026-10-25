@@ -12465,9 +12465,9 @@ one line each, with the replacement) and a "Changed" entry for the tree, the pod
 contract and the role vocabulary; `cli-interface.spec.md` cut to the eleven commands at 2.0.0
 with the removed sections gone (not struck through); `specs/README.md` row updated;
 `scripts/metrics.py --check` re-measured (`commands=11`); the one-line change in
-`objetivosMios/crates/tack-runner/src/harness/docket/probe.rs` (`"harness", "run"` → `"exec"`)
+`crates/tack-runner/src/harness/docket/probe.rs` (`"harness", "run"` → `"exec"`)
 applied in that repo and its harness tests run there; the YieLab landing page
-(`~/Sites/newPortaflio/content/docket-landing.ts`) is updated after the release that ships the
+(`content/docket-landing.ts` in the YieLab site repository) is updated after the release that ships the
 names, recorded as the one follow-up.
 
 **Acceptance:** every gate in the board rules green on `develop`; `docs/commands.md` lists eleven
@@ -13482,13 +13482,13 @@ without routing `pass` (a verdict gate is exempt, it names its own passing value
 
 Carried out of Phase 39 (ADR 0022 "Closed with, and carried"), maintainer-owned or unscheduled:
 - Tack's one string: `"harness", "run"` becomes `"exec"` in
-  `objetivosMios/crates/tack-runner/src/harness/docket.rs`, in `docket/probe.rs` (the argv and two
+  `crates/tack-runner/src/harness/docket.rs`, in `docket/probe.rs` (the argv and two
   doc comments) and in the three argv arrays of `docket/tests.rs`, then that crate's harness
   tests. Refused three times by the session's permission classifier; the maintainer applies it.
 - The live asset re-capture: done 2026-10-09 (`scripts/maint/capture-doc-journey.sh` on the
   local endpoint, two runs; the gate scene continued with `task answer` in the same throwaway
   home; `scripts/render-doc-assets.py` re-transcribed; `docs/assets/README.md` records it).
-- The YieLab landing page (`~/Sites/newPortaflio/content/docket-landing.ts`) after the release
+- The YieLab landing page (`content/docket-landing.ts` in the YieLab site repository) after the release
   that ships the names.
 - The eighteen locators of the live run (`internal-docs/cli-ux-audit-2026-10-07/live-run-after.md`,
   last section; the six worth a card are in ADR 0022 "Live run"): a triage list, not cards.
@@ -14510,7 +14510,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 ## ◆ CLOSED — Phase 45: a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19, closed 2026-10-20)
 
-> **Evidence.** Fabulada's first code run through a team, through Tack, on 2026-10-19:
+> **Evidence.** A sibling project's first code run through a team, through Tack, on 2026-10-19:
 > [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md)
 > "Evidence". It is also the trigger D-63 named for the deferred **warm workspace** (ADR 0027
 > point 10), so P45-1 consumes that follow-up. The per-step token limit needs no card: every run
@@ -14550,7 +14550,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 > **Worker packets** §0: `uv run --extra mcp` for `mypy src` and `scripts/gen_cli_docs.py --check`
 > (worker worktrees lack `click`/`anyio` otherwise; every Wave 116 worker hit it).
 >
-> **Phase acceptance:** Fabulada's code task through Tack prepares its worktree from the lockfile
+> **Phase acceptance:** A sibling project's code task through Tack prepares its worktree from the lockfile
 > (the second task with the same lockfile prepares in seconds), runs eslint, vitest and the
 > project's own `tsc`, and finishes or parks on `check_changed`; `setup provider show` names every
 > limit it uses or says `unknown`; two teams on one codebase keep both approvals.
@@ -14565,7 +14565,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 **Status:** DONE 2026-10-19 (merge 645fce80; Wave 117 gates green) · **Size:** M · **Model:** Sonnet
 
-- **Trigger:** ADR 0029 point 1: in a fresh Fabulada worktree `Cannot find package 'eslint'`,
+- **Trigger:** ADR 0029 point 1: in a fresh worktree of that project `Cannot find package 'eslint'`,
   `Cannot find module 'vitest/config'`, and the machine's `tsc` 7.0.2 against the project's 5.9.3.
 - **Goal:** after the claim checks, `dispatch_pod` prepares the task worktree. The command is the
   task's `prepare`, else the team's `prepare:` in `pod.yaml`, else derived from the lockfile at the
@@ -14633,7 +14633,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 - **Trigger:** ADR 0029 point 3: a gate such as `npx eslint` reads configuration the agent edits;
   `reviewed_repos.py` hashes only the command text.
 - **Goal:** protected paths are the defaults (lockfiles, `package.json`, `pyproject.toml`,
-  `Cargo.toml`, lint/type/test configuration, `.docket/`, `prill.yaml`, CI workflows), the team's
+  `Cargo.toml`, lint/type/test configuration, `.docket/`, CI workflows), the team's
   `protects:` in `pod.yaml` (adds only), and every tracked file a reviewed command names. When a
   pipeline ends `done` and `git diff --name-only <baseCommit>..<branch>` touches one, the task
   parks `waiting_approval` (approval kind `check_changed`, `checkChanged: [paths]`) whatever the
@@ -14678,7 +14678,7 @@ SSE, aggregate statistics (ADR 0027 point 10).
 
 **Status:** DONE — 2026-10-20, a small run without Tack (the maintainer's call), twice. Run 1 (`task-b1e95477`): prepare `npm ci` from the lockfile inside the Landlock jail, 22.4 s, cache miss (829 MB); one park on a read-only `bash` with `$(...)`; implementer done, gate `npx eslint && npx tsc --noEmit && npx vitest run` exit 0; the reviewer was refused before any call (defect: an observed 128,000 cap as the budget reserve, fixed `0a0bff6c`, agent-loop 1.43.0) and `task retry` ended the task `done` with no verdict (defect: a group with a failed child counted finished, fixed `f9a5cec4`, pod-dispatch 6.61.0). Run 2 (`task-b5e39e26`, same text, fixed service): prepare cache hit 0 s, same park and grant, implementer done, reviewer `approve` (Opus, `max_tokens` cut to the budget), tester `pass`, `done` 4m33s after the grant. Also found: Anthropic `/v1/models` needs `anthropic-version` (fixed `3e9c3d9f`). Trigger values recorded in the follow-ups below; recordings in gitignored `internal-docs/baselines/phase-46/before/` (`dispatch-2` is the Phase 46 "before" baseline). Not reproduced: a `check_changed` park (neither run touched a protected path). · **Size:** M · **Model:** integrator, maintainer-approved, paid
 
-- **Goal:** Fabulada's code task through Tack on the merged tree, against the operator's
+- **Goal:** A sibling project's code task through Tack on the merged tree, against the operator's
   `~/.docket`: per step sent/counted/largest request, prepare seconds and cache MB, every
   `failureKind`. Write down, without acting on them, the observed values for the follow-up
   triggers this run can see: a parked turn paid twice, the implementers' sent ratio, hop report
@@ -16071,7 +16071,7 @@ and every row left allowed carries a `limit:` reason that the security spec name
      `comment_lint.py --check` on the files Phase 47 touched.
   3. The real run on `fab-dev` from zero, done by the maintainer: `./install.sh` from this branch, an
      empty `DOCKET_HOME`, providers, sandbox and the pod recreated from the export in
-     `~/docket-reset-backup-20261024/fab-p47/export/` (the previous home, install and Fabulada's
+     the backup's `export/` (the previous home, install and a sibling project's
      `docket/fab-dev/*` branches are kept there), then `scripts/maint/live-dispatch-baseline.sh` and
      `fab-p47/compare.py` against `internal-docs/baselines/phase-46/after/dispatch`: same final status,
      transitions, hops and per-role control-flow events.

@@ -83,7 +83,7 @@ baseUrl: http://127.0.0.1:8081/v1
 auth: {type: none}
 local: true
 models:
-  - {id: /mnt/data/models/qwen.gguf, contextWindow: 16384, maxTokens: 8192}
+  - {id: /models/qwen.gguf, contextWindow: 16384, maxTokens: 8192}
 ```
 
 **Format rules.** `dialect` and `auth.type` are closed enums; an unknown value refuses the load
