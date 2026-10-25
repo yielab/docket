@@ -3,7 +3,7 @@
 The HTTP counterpart of `docket task approve <id> --for` and the MCP `task_pregrant` tool: same
 `hops.application.interruptions.record_pregrant` call (`channel="http"`), so the recorded pre-grant is
 byte-for-byte identical to every other surface. Covers auth, the happy path (the token, and the
-task's own `pregrants` list), and the error mappings (`404`/`400`).
+approval store), and the error mappings (`404`/`400`).
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from tests.support import pods as _support_pods
 from tests.support.http import post as _post
 from tests.support.pods import build_pod
 
+from docket.governance.approval_pregrant import pending_pregrants
 from docket.interfaces.cli.commands import pod as _pod
 from docket.tasks.application import queue as _queue
-from docket.tasks.application.repository import TaskRepository
 
 live_server = _support_http.live_server
 
@@ -49,9 +49,9 @@ class TestHappyPath:
         assert status == 200
         assert body["ok"] is True
         assert body["token"]
-        stored = TaskRepository.for_pod("demo").list()[0]
-        assert stored.pregrants[0].token == body["token"]
-        assert stored.pregrants[0].tool == "bash"
+        (granted,) = pending_pregrants(task.id)
+        assert granted.token == body["token"]
+        assert granted.tool == "bash"
 
     def test_custom_tool_is_honoured(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
@@ -65,8 +65,7 @@ class TestHappyPath:
         )
 
         assert status == 200
-        stored = TaskRepository.for_pod("demo").list()[0]
-        assert stored.pregrants[0].tool == "write"
+        assert pending_pregrants(task.id)[0].tool == "write"
 
 
 class TestErrorMapping:

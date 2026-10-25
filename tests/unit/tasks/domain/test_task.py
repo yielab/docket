@@ -370,10 +370,8 @@ _ALWAYS_PRESENT = {
     "reason",
     "approvalToken",
     "pendingApprovalIndex",
-    "gateOverridePipelineIndex",
     "hops",
     "costUsd",
-    "pregrants",
 }
 
 
@@ -383,7 +381,7 @@ class TestTaskRecord:
         assert set(dumped) == _ALWAYS_PRESENT
         assert dumped["status"] == "pending"
         assert dumped["priority"] == "normal"
-        assert dumped["hops"] == [] and dumped["pregrants"] == []
+        assert dumped["hops"] == []
         assert dumped["startedAt"] is None and dumped["approvalToken"] is None
         assert dumped["id"].startswith("task-") and dumped["created"]
 
@@ -416,7 +414,6 @@ class TestTaskRecord:
             "gate": {"command": "make test"},
             "restrictions": {"network": "none"},
             "usage": {"input": 1, "cached": 0, "cacheWrite": 0, "output": 2, "byModel": {}},
-            "pregrants": [{"token": "t", "tool": "bash", "argsDigest": "d"}],
             "gateApplied": True,
             "pipelineSource": "default",
             "consultations": 2,
@@ -434,9 +431,22 @@ class TestTaskRecord:
 
     def test_a_retired_key_is_ignored_on_read_and_not_written_back(self) -> None:
         record = _task.TaskRecord.model_validate(
-            {"description": "x", "claimId": "c", "source": "operator"}
+            {
+                "description": "x",
+                "claimId": "c",
+                "source": "operator",
+                "pregrants": [{"token": "t", "tool": "bash", "argsDigest": "d"}],
+                "taskGrants": [],
+                "gateOverridePipelineIndex": 1,
+            }
         )
-        assert not {"claimId", "source"} & set(_dump(record))
+        assert not {
+            "claimId",
+            "source",
+            "pregrants",
+            "taskGrants",
+            "gateOverridePipelineIndex",
+        } & set(_dump(record))
 
     def test_a_status_the_queue_never_writes_is_refused(self) -> None:
         with pytest.raises(ValidationError):
@@ -458,21 +468,6 @@ class TestTaskRecord:
             _state.Status.blocked,
         }
         assert _state.SETTLE_TARGETS - open_ends == _state.Status.TERMINAL
-
-    def test_a_pending_task_with_a_pregrant_or_an_override_is_approved_ready(self) -> None:
-        grant = {"token": "t", "tool": "bash", "argsDigest": "d"}
-        plain = _task.TaskRecord(description="x")
-        assert plain.approved_ready is False
-        assert _task.TaskRecord(description="x", pregrants=[grant]).approved_ready is True
-        assert (
-            _task.TaskRecord(description="x", gate_override_pipeline_index=0).approved_ready is True
-        )
-        assert (
-            _task.TaskRecord(
-                description="x", status=_state.Status.running, pregrants=[grant]
-            ).approved_ready
-            is False
-        )
 
     def test_the_worktree_dir_is_empty_unless_the_worktree_exists(self) -> None:
         made = {"dir": "/w", "branch": "b", "baseCommit": "c"}

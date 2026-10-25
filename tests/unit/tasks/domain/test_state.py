@@ -59,7 +59,7 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
     if to in {_state.Status.done, _state.Status.failed, _state.Status.cancelled}:
         assert fields["completed_at"] == _FACTS["now"]
         assert fields["failure_kind"] == "gate_failed"
-        assert "task_grants" in transition.drop
+        assert transition.ends_grants
     if frm is S.waiting_approval and to is not S.waiting_approval:
         assert {"approval_token", "pending_approval_index"} <= set(transition.drop)
     if frm is S.waiting_input and to is not S.waiting_input:
@@ -106,7 +106,13 @@ def test_a_stale_claim_is_evidence_not_a_finished_task() -> None:
     stale = _state.decide("running", S.failed, now="t", failure_kind=_state.FailureKind.stale_claim)
     assert "completed_at" not in stale.fields
     assert "claim_pid" not in stale.drop
-    assert "task_grants" not in stale.drop
+    assert not stale.ends_grants
+
+
+def test_a_terminal_move_ends_task_wide_grants_unless_asked_to_keep_them() -> None:
+    assert _state.decide("running", S.failed, now="t").ends_grants
+    assert not _state.decide("running", S.failed, now="t", keep_grants=True).ends_grants
+    assert not _state.decide("running", S.blocked, reason="r").ends_grants
 
 
 def test_a_terminal_result_without_a_failure_kind_clears_a_stale_marker() -> None:

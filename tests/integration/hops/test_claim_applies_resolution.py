@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 from tests.support import escalations as _support_escalations
-from tests.support.escalations import consult_escalation
+from tests.support.escalations import approval_escalation, consult_escalation, parked_approval
 from tests.support.fakes import FakeDriver
 from tests.support.pods import bind_pipeline, build_pod
 from tests.support.tasks import stored_task
@@ -281,3 +281,57 @@ class TestWhatIsNeverApplied:
         _apply(escalation.task)
 
         assert _operator_hops(escalation.task) == []
+
+
+class TestAGrantedGateIsHandedToTheClaim:
+    def test_resolve_leaves_the_position_unapplied_and_the_claim_hands_it_back_once(self) -> None:
+        escalation = approval_escalation("gate")
+
+        _esc.resolve(escalation.id, "approve_once", None, by="alice", channel="http")
+
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is None
+        first = _apply(escalation.task)
+        second = _apply(escalation.task)
+        assert (first.gate_override_index, second.gate_override_index) == (1, None)
+        stamped = read_escalation(escalation.id)
+        assert stamped is not None and stamped.resolution is not None
+        assert stamped.resolution.applied_at is not None
+
+    def test_the_enqueue_screen_is_handed_back_like_a_gate(self) -> None:
+        escalation = approval_escalation("approval", pipelineIndex=0)
+
+        _esc.resolve(escalation.id, "approve_once", None, by="alice", channel="http")
+
+        assert _apply(escalation.task).gate_override_index == 0
+
+    def test_a_denial_hands_back_nothing_and_is_stamped_when_it_is_resolved(self) -> None:
+        escalation = approval_escalation("gate")
+
+        _esc.resolve(escalation.id, "deny", None, by="alice", channel="http")
+
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is not None
+        assert _apply(escalation.task).gate_override_index is None
+
+    def test_a_parked_call_is_stamped_when_resolved_and_names_no_position(self) -> None:
+        escalation = parked_approval()
+
+        _esc.resolve(escalation.id, "approve_once", None, by="alice", channel="http")
+
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is not None
+        assert _apply(escalation.task).gate_override_index is None
+
+    @pytest.mark.parametrize("state", ["expired", "decided", "pending"])
+    def test_a_gate_that_is_not_resolved_hands_back_nothing(self, state: str) -> None:
+        escalation = approval_escalation("gate")
+        _esc.resolve(escalation.id, "approve_once", None, by="alice", channel="http")
+        stored = read_escalation(escalation.id)
+        assert stored is not None
+        write_escalation(stored.model_copy(update={"state": state}))
+
+        assert _apply(escalation.task).gate_override_index is None

@@ -102,7 +102,7 @@ class TestApproveAndDenySettleTheRecord:
                 "approve_once",
                 "cli",
             )
-            assert _only_task().gate_override_pipeline_index == 1
+            assert _only_task().status == "pending"
 
     def test_deny_resolves_the_escalation_with_the_reason_on_the_task(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):

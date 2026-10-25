@@ -63,8 +63,10 @@ from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.pipeline.domain import gates as _gates
+from docket.platform import list_escalations
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import escalation_sweep as _escalation_sweep
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -309,22 +311,21 @@ class TestGrantResumesAtHop:
         token = TaskRepository.for_pod("myapp").list()[0].approval_token
         return token
 
-    def test_resolve_waiting_approval_flips_to_pending_with_override(self) -> None:
+    def test_a_grant_flips_the_task_to_pending_and_leaves_the_position_for_the_claim(self) -> None:
         token = self._gate_then_grant()
-        _ap.approval_grant(token, channel="cli")
-        updated = _actions.resolve_waiting_approval(token, "granted")
-        assert updated is True
+        _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
 
         task = TaskRepository.for_pod("myapp").list()[0]
         assert task.status == "pending"
         assert task.approval_token is None
         assert task.pending_approval_index is None
-        assert task.gate_override_pipeline_index == 1
+        (gate,) = [e for e in list_escalations() if e.kind == "gate"]
+        assert gate.state == "resolved" and gate.resolution is not None
+        assert gate.resolution.applied_at is None
 
     def test_next_dispatch_continues_from_the_gated_hop(self) -> None:
         token = self._gate_then_grant()
-        _ap.approval_grant(token, channel="cli")
-        _actions.resolve_waiting_approval(token, "granted")
+        _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
 
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -341,7 +342,8 @@ class TestGrantResumesAtHop:
             "tester",
         ]
         assert final.approval_token is None
-        assert final.gate_override_pipeline_index is None
+        (gate,) = [e for e in list_escalations() if e.kind == "gate"]
+        assert gate.resolution is not None and gate.resolution.applied_at is not None
 
     def test_grant_via_cli_approve_resumes_dispatch(
         self, capsys: pytest.CaptureFixture[str]
@@ -353,7 +355,6 @@ class TestGrantResumesAtHop:
 
         task = TaskRepository.for_pod("myapp").list()[0]
         assert task.status == "pending"
-        assert task.gate_override_pipeline_index == 1
 
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -522,7 +523,6 @@ class TestHttpApprovalEndpoint:
 
         task = TaskRepository.for_pod("myapp").list()[0]
         assert task.status == "pending"
-        assert task.gate_override_pipeline_index == 1
 
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -555,8 +555,7 @@ class TestReworkReGatesAfterResume:
         first_token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
         assert first_token
 
-        _ap.approval_grant(first_token, channel="cli")
-        _actions.resolve_waiting_approval(first_token, "granted")
+        _escalations.resolve_approval_token(first_token, "approve_once", channel="cli", actor="")
 
         runner = _OneReworkThenGateAgainRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -574,33 +573,14 @@ class TestReworkReGatesAfterResume:
         assert second_task.pending_approval_index == 1  # same implementer index
 
         # Grant the second gate too and let the task finish.
-        _ap.approval_grant(second_token, channel="cli")
-        _actions.resolve_waiting_approval(second_token, "granted")
+        _escalations.resolve_approval_token(second_token, "approve_once", channel="cli", actor="")
         final_runner = _OneReworkThenGateAgainRunner()
         final_runner._reviewer_calls = 1  # next reviewer call approves
         final_results = _sweep.dispatch_pod("myapp", runner=final_runner)
         assert final_results[0].status == "done"
 
 
-class TestGateOverrideIndexArgument:
-    """``dispatch_task`` takes the claim's ``gate_override_index`` as an argument, not a task key."""
-
-    def test_the_index_skips_that_gate_once_and_the_rework_revisit_gates(self) -> None:
-        _seed_full_pod(gated=True)
-        runner = _OneReworkThenGateAgainRunner()
-
-        result = _executor_c.dispatch_task(
-            "myapp",
-            TaskRecord(id="task-1", description="Ship it"),
-            gate_override_index=1,
-            runner=runner,
-        )
-
-        # The implementer (index 1) ran ungated once; the reviewer sent it back; it gated then.
-        assert runner.calls == ["lead", "implementer", "reviewer"]
-        assert result.status == "waiting_approval"
-        assert result.pending_approval_index == 1
-
+class TestWithoutAGrantTheFirstGateHolds:
     def test_without_an_index_the_first_implementer_hop_gates(self) -> None:
         _seed_full_pod(gated=True)
         runner = _OneReworkThenGateAgainRunner()

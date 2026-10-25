@@ -28,6 +28,7 @@ from docket.governance import policy as _policy
 from docket.hops.application import sweep as _sweep
 from docket.kernel.home import current_home
 from docket.tasks.application import actions as _actions
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
@@ -225,12 +226,10 @@ class TestEnqueuePreInputGate:
         task = _queue.enqueue_task_once("myapp", "URGENT WIRE the vendor today", channel="cli")[0]
         token = task.approval_token
 
-        _ap.approval_grant(token)
-        assert _actions.resolve_waiting_approval(token, "granted") is True
+        _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
 
         resumed = TaskRepository.for_pod("myapp").list()[0]
         assert resumed.status == "pending"
-        assert resumed.gate_override_pipeline_index == 0
 
         runner = _RecordingRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)

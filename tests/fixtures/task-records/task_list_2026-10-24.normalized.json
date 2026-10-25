@@ -48,9 +48,7 @@
       "claimedAt": null,
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "gateOverridePipelineIndex": null,
-      "hops": [],
-      "pregrants": []
+      "hops": []
     },
     {
       "id": "task-e9712ba9-80ea-4881-a573-16fa7687f677",
@@ -115,7 +113,6 @@
       "claimedAt": "2026-10-23T11:51:02.927818+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/demo-implementer/tasks/task-e9712ba9-80ea-4881-a573-16fa7687f677",
         "branch": "docket/demo/task-e9712ba9-80ea-4881-a573-16fa7687f677",
@@ -138,8 +135,7 @@
             "output": 286
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-c34c3f08-da03-4a28-9ee1-7a547a4575ae",
@@ -233,7 +229,6 @@
       "claimedAt": "2026-10-23T11:54:34.506973+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -242,7 +237,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "gateOverridePipelineIndex": null,
       "question": {
         "id": "q-3eb3a185ba67",
         "taskId": "task-c34c3f08-da03-4a28-9ee1-7a547a4575ae",
@@ -408,7 +402,6 @@
       "claimedAt": "2026-10-23T11:56:09.076616+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -436,8 +429,7 @@
             "output": 439
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-6a17d80f-1604-4276-b980-9af67a948c54",
@@ -493,7 +485,6 @@
       "claimedAt": "2026-10-23T12:01:27.046377+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -556,8 +547,7 @@
             "output": 1966
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-43dc2d19-d6fb-4eb5-ba0c-4c60c77dc34f",
@@ -573,9 +563,7 @@
       "costUsd": 0.0,
       "claimedAt": null,
       "approvalToken": null,
-      "pendingApprovalIndex": null,
-      "gateOverridePipelineIndex": null,
-      "pregrants": []
+      "pendingApprovalIndex": null
     },
     {
       "id": "task-fcd1fbbf-1df5-4a4d-a73a-5a4542a6c53e",
@@ -590,8 +578,6 @@
       "reason": "cancelled by operator",
       "costUsd": 0.0,
       "claimedAt": null,
-      "gateOverridePipelineIndex": null,
-      "pregrants": [],
       "approvalToken": null,
       "pendingApprovalIndex": null
     },
@@ -685,7 +671,6 @@
       "claimedAt": "2026-10-23T11:58:48.820337+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "completedAt": null,
       "reason": "implementer hop parked a consultation (question=q-a24f7bb2a7fa)",
       "worktree": {
@@ -696,7 +681,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "gateOverridePipelineIndex": null,
       "question": {
         "id": "q-a24f7bb2a7fa",
         "taskId": "task-609618e9-975e-4a2f-b1f8-b0aef372b46c",
@@ -786,9 +770,7 @@
       "costUsd": 0.0,
       "claimedAt": null,
       "approvalToken": null,
-      "pendingApprovalIndex": null,
-      "gateOverridePipelineIndex": null,
-      "pregrants": []
+      "pendingApprovalIndex": null
     },
     {
       "id": "task-a4e73cbd-4470-42ae-aca6-05796b9ad453",
@@ -838,7 +820,6 @@
       "claimedAt": "2026-10-23T11:56:40.046555+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -860,8 +841,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-f99e5154-1c4f-4d19-ab7b-657fa54d73d0",
@@ -911,7 +891,6 @@
       "claimedAt": "2026-10-23T11:57:04.139801+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -933,8 +912,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-81b147cf-c28f-4c01-9462-4b0aa99f4e8e",
@@ -985,7 +963,6 @@
       "idempotencyKey": "k-1",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1007,8 +984,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-a0b8a67e-eb3f-417c-a643-2514056b35bd",
@@ -1058,7 +1034,6 @@
       "claimedAt": "2026-10-23T11:57:08.956429+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1080,8 +1055,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-23802ae0-842f-4e55-9585-6be7d9b35f8a",
@@ -1118,9 +1092,7 @@
       },
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
-      "failureKind": "base_ref",
-      "gateOverridePipelineIndex": null
+      "failureKind": "base_ref"
     },
     {
       "id": "task-c7a67064-2868-459a-b8bb-9a780aa71a3f",
@@ -1171,7 +1143,6 @@
       "externalRef": "A",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1193,8 +1164,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-e96f583f-1656-4239-8632-a5494b184e13",
@@ -1245,7 +1215,6 @@
       "externalRef": "B",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1267,8 +1236,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-65987869-4eae-4a41-bac8-0d22fbadc0d4",
@@ -1318,7 +1286,6 @@
       "claimedAt": "2026-10-23T11:57:12.540819+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1340,8 +1307,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-0c54772b-74fa-4d6b-840b-6a7d3fc558d6",
@@ -1391,7 +1357,6 @@
       "claimedAt": "2026-10-23T11:57:13.428351+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1413,8 +1378,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-d1887022-951a-4f68-a56b-51c60293f316",
@@ -1464,7 +1428,6 @@
       "claimedAt": "2026-10-23T11:57:14.204470+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1486,8 +1449,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-1353ab96-53ca-4b60-9b12-db8fa1a60351",
@@ -1536,7 +1498,6 @@
       "maxTokens": 1000,
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1559,8 +1520,7 @@
             "output": 10
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-8e5bcced-28c9-4843-a8ac-6a5766405fb3",
@@ -1655,7 +1615,6 @@
       "idempotencyKey": "K:1",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1731,8 +1690,7 @@
             "output": 517
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-d837dadf-f2ed-43d0-bba9-517beb207b72",
@@ -1799,7 +1757,6 @@
       },
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1862,8 +1819,7 @@
             "output": 1730
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-60426c25-7d1a-4737-9b0c-0385e38036e5",
@@ -1919,7 +1875,6 @@
       "claimedAt": "2026-10-23T12:02:18.478952+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -1989,8 +1944,7 @@
             "output": 1417
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-f653f7be-c3ac-4baa-b3b0-5a3bb8234102",
@@ -2046,7 +2000,6 @@
       "claimedAt": "2026-10-23T12:13:28.087470+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -2122,8 +2075,7 @@
             "output": 548
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-6843c2e6-7fec-49c7-bf66-379c0a51f962",
@@ -2222,7 +2174,6 @@
       "externalRef": "A",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -2250,8 +2201,7 @@
             "output": 329
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-b93d64e5-11fd-418c-974d-959cb8316ec4",
@@ -2308,7 +2258,6 @@
       "externalRef": "B",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -2378,8 +2327,7 @@
             "output": 646
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-618160f3-a45a-488d-b21c-aec00e7ab276",
@@ -2435,7 +2383,6 @@
       "claimedAt": "2026-10-23T12:07:49.627785+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -2512,8 +2459,7 @@
             "output": 824
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-2a67e966-6d8b-473f-b97c-b0214f9e0daa",
@@ -2569,7 +2515,6 @@
       "claimedAt": "2026-10-23T12:08:38.547813+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -2632,8 +2577,7 @@
             "output": 587
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-3df927ea-324b-405b-9de5-3cb6019e0830",
@@ -2731,7 +2675,6 @@
       "claimedAt": "2026-10-23T12:09:19.913251+00:00",
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -2759,8 +2702,7 @@
             "output": 134
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-41aaabbc-c64f-48cd-bbd8-efe91c6a077f",
@@ -2812,7 +2754,6 @@
       "maxTokens": 1000,
       "approvalToken": null,
       "pendingApprovalIndex": null,
-      "pregrants": [],
       "worktree": {
         "dir": "",
         "branch": "",
@@ -2835,8 +2776,7 @@
             "output": 0
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-b1e95477-174b-4bbe-bd4e-e44dda4277cb",
@@ -3026,13 +2966,6 @@
       "claimedAt": "2026-10-20T21:27:14.305162+00:00",
       "externalRef": "p45-5-real-run-2026-10-20",
       "maxTokens": 250000,
-      "pregrants": [
-        {
-          "token": "apr-e540193d-fa96-41c4-91d5-f250b0165553",
-          "tool": "bash",
-          "argsDigest": "37f82dfecde5c2b3"
-        }
-      ],
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/fab-dev-implementer/tasks/task-b1e95477-174b-4bbe-bd4e-e44dda4277cb",
         "branch": "docket/fab-dev/task-b1e95477-174b-4bbe-bd4e-e44dda4277cb",
@@ -3077,8 +3010,7 @@
       "approvalToken": null,
       "pendingApprovalIndex": null,
       "completedAt": "2026-10-20T21:27:14.342696+00:00",
-      "reason": "",
-      "gateOverridePipelineIndex": null
+      "reason": ""
     },
     {
       "id": "task-b5e39e26-8021-4e6a-b364-994f7ca90f7b",
@@ -3275,13 +3207,6 @@
       "claimedAt": "2026-10-20T21:47:17.902988+00:00",
       "externalRef": "p45-5-real-run-2-2026-10-20",
       "maxTokens": 250000,
-      "pregrants": [
-        {
-          "token": "apr-819150ac-a07a-464f-99bb-2fbc265e9867",
-          "tool": "bash",
-          "argsDigest": "37f82dfecde5c2b3"
-        }
-      ],
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/fab-dev-implementer/tasks/task-b5e39e26-8021-4e6a-b364-994f7ca90f7b",
         "branch": "docket/fab-dev/task-b5e39e26-8021-4e6a-b364-994f7ca90f7b",
@@ -3324,8 +3249,7 @@
         }
       },
       "approvalToken": null,
-      "pendingApprovalIndex": null,
-      "gateOverridePipelineIndex": null
+      "pendingApprovalIndex": null
     },
     {
       "id": "task-194ab075-421e-451a-84fc-9e85c81ee80f",
@@ -3384,7 +3308,6 @@
       "maxTokens": 250000,
       "approvalToken": "apr-f3c6241e-5e37-4db8-b995-3e7281820ac5",
       "pendingApprovalIndex": 0,
-      "pregrants": [],
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/fab-dev-implementer/tasks/task-194ab075-421e-451a-84fc-9e85c81ee80f",
         "branch": "docket/fab-dev/task-194ab075-421e-451a-84fc-9e85c81ee80f",
@@ -3413,8 +3336,7 @@
             "output": 217
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-1d9a31e9-2e88-494f-bea3-34f24397c8f3",
@@ -3473,7 +3395,6 @@
       "maxTokens": 250000,
       "approvalToken": "apr-b7ce9cfd-fb7c-492f-8466-0c0fb6585e25",
       "pendingApprovalIndex": 0,
-      "pregrants": [],
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/fab-dev-implementer/tasks/task-1d9a31e9-2e88-494f-bea3-34f24397c8f3",
         "branch": "docket/fab-dev/task-1d9a31e9-2e88-494f-bea3-34f24397c8f3",
@@ -3502,8 +3423,7 @@
             "output": 217
           }
         }
-      },
-      "gateOverridePipelineIndex": null
+      }
     },
     {
       "id": "task-34385c8f-3eb7-4eb5-8ad7-66d036cea05a",
@@ -3695,13 +3615,6 @@
       "claimedAt": "2026-10-23T21:55:56.575922+00:00",
       "externalRef": "p46-after-real-run-2026-10-23",
       "maxTokens": 250000,
-      "pregrants": [
-        {
-          "token": "apr-c73cc4da-7dcf-4559-b804-247930db7995",
-          "tool": "bash",
-          "argsDigest": "37f82dfecde5c2b3"
-        }
-      ],
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/fab-dev-implementer/tasks/task-34385c8f-3eb7-4eb5-8ad7-66d036cea05a",
         "branch": "docket/fab-dev/task-34385c8f-3eb7-4eb5-8ad7-66d036cea05a",
@@ -3744,8 +3657,7 @@
         }
       },
       "approvalToken": null,
-      "pendingApprovalIndex": null,
-      "gateOverridePipelineIndex": null
+      "pendingApprovalIndex": null
     }
   ]
 }

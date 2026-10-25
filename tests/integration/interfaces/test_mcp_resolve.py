@@ -50,7 +50,7 @@ class TestToolResolve:
         assert _approval.approval_get(escalation.legacy["token"])["state"] == "granted"
         (line,) = audit_entries("approval.grant")
         assert "channel=mcp" in line["detail"]
-        assert stored_task(PROJECT, escalation.task).gate_override_pipeline_index == 1
+        assert stored_task(PROJECT, escalation.task).status == "pending"
 
     def test_a_second_call_raises_and_changes_nothing(self) -> None:
         escalation = input_escalation()

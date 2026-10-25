@@ -35,6 +35,8 @@ def approval_escalation(kind: EscalationKind = "gate", **context: Any) -> Escala
     ctx: dict[str, Any] = {"taskId": task.id, **context}
     if kind == "check_changed":
         ctx["kind"] = "check_changed"
+    if kind == "gate":
+        ctx["pipelineIndex"] = 1
     token = _ap.approval_create(
         PROJECT, "implementer", "tool call 'bash': rm -rf build", context=ctx
     )

@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.11.0
+**Version**: 2.12.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -103,18 +103,20 @@ mechanics are `pod-dispatch.spec.md` "Parked approvals".
    computed per hop) and MUST be expired by the same fail-closed sweep that expires every
    pending approval, resolving to **denied** past deadline — never a silent indefinite wait,
    and never a second expiry mechanism.
-5. Granting a parked approval MUST NOT set the pre-hop gate's `gateOverridePipelineIndex`
-   single-use override: that field skips a gate at a position no hop ever ran, which does not
-   describe an already-attempted, parked hop. The grant MUST instead reopen the task `pending`
-   with `{token, tool, argsDigest}` appended to the task's `pregrants`; every later hop of the
-   task is given the task's pre-grants, so the model's identical next call passes once without
-   asking again.
+5. Granting a parked approval MUST NOT hand the next claim a gate position to skip: a position
+   is skipped where no hop ever ran, which does not describe an already-attempted, parked hop. The
+   grant MUST instead reopen the task `pending` and leave the granted approval record as the
+   pre-grant `{token, tool, argsDigest}`; nothing is copied onto the task. Every hop of the task
+   is given the task's unspent pre-grants (the granted approval records of that task, whether
+   granted while it was parked or ahead of it), so the model's identical next call passes once
+   without asking again.
 5a. Granting a parked approval with the `approve_task` option (`docket task approve <task>
    --task`, `POST /approvals/<token>` with `option: "approve_task"`, the MCP approval tool's
    option, Telegram `/approve <token> task`; each records the option on the approval before
-   the grant) MUST also record a task-wide grant `{tool, argsDigest, role, token, grantedAt,
-   actor, channel}` in the task's `taskGrants`, where `role` is the parked approval's role,
-   audited as `approval.task_grant`. An identical `(tool, argsDigest, role)` is recorded once.
+   the grant) MUST also make that approval a task-wide grant `{tool, argsDigest, role}`, read
+   from the approval store (the record keeps who granted it and through which channel), where
+   `role` is the parked approval's role, audited as `approval.task_grant`. An identical
+   `(tool, argsDigest, role)` counts once.
    Every later hop of that role MUST be given one freshly minted single-use pre-grant per
    matching entry (`create_pregrant`, bound to the project and that role, task-scoped, expiring
    after the pod's `approvalExpiryHours`), so each use is consumed and audited as any pre-grant;
@@ -122,8 +124,8 @@ mechanics are `pod-dispatch.spec.md` "Parked approvals".
    exists only on the `ask` path (a `deny` or policy block never creates an approval, so is
    never widened). A task holds at most 20: the 21st is approved once only, audited as
    `approval.task_grant_refused`, and the granting command reports that note to the operator.
-   `taskGrants` MUST be dropped when the task reaches a terminal status (done, failed,
-   cancelled, approval denied) and is never read by another task. Under `approvalMode: "wait"`
+   A task's grants MUST end when it reaches a terminal status (done, failed, cancelled,
+   approval denied): the records stop being grants and are never read for another task. Under `approvalMode: "wait"`
    a granted in-turn approval that chose `approve_task` adds one single-use pre-grant for the
    identical call to the rest of that turn.
 6. Non-goal (ADR 0016): resuming the live model-turn session with the granted call's result
@@ -185,8 +187,9 @@ caller's current time and cursor as data and performs no writes and no clock rea
    full, never
    truncated; every continuation line of a multi-line question, held command or label MUST be
    indented to the column of its first line's text, so no line of an item starts at column 0.
-   A `pending` task carrying `pregrants` or a `gateOverridePipelineIndex` MUST appear under
-   `Needs you` as `approved ready` (`state: "approved_ready"`) with the `docket run` command.
+   A `pending` task with an unspent approved call, or an approval at a pipeline position that a
+   person granted and no claim has applied yet, MUST appear under `Needs you` as `approved ready`
+   (`state: "approved_ready"`) with the `docket run` command.
    `--json` MUST emit `InboxView` (`by_alias`, JSON mode) with `state` and `command` added to
    each item, those approved-ready tasks and the memory items of item 11 appended to `needsYou`,
    and no escape codes. Each entry of its `escalations` also carries `command` (`docket task
@@ -512,8 +515,7 @@ running a dispatch.
      tool-call gate computes for a live `bash` call;
    - calls `create_pregrant(project, "implementer", tool, args_digest, task_id=task_id,
      expires_at=<now + this pod's approvalExpiryHours, ISO UTC>, channel=channel, actor=actor)`,
-     then appends `{"token", "tool", "argsDigest"}` to the task's `pregrants` list — the shape a
-     parked grant appends — so the task's next hop is given it, not only a re-run after a park.
+     which is the unspent pre-grant the task's next hop is given, not only a re-run after a park.
 
    `--for` with `--task` MUST be refused (exit 2). Non-goals (ADR 0016): fuzzy command matching;
    a role override for the stored `role` (always `"implementer"`, since matching is by `(tool,
@@ -554,9 +556,9 @@ schema check, the `pre_input` screen or the continuation.
 
    | Kind | Option | What `resolve` does |
    | --- | --- | --- |
-   | `approval`, `gate`, `check_changed` | `approve_once` | `approval_grant` then `resolve_waiting_approval_detail` (`granted`) |
+   | `approval`, `gate`, `check_changed` | `approve_once` | `approval_grant`, then the waiting task moves (`pending`; a changed check ends it `done`) |
    | `approval` | `approve_task` | `approval_set_option(approve_task)`, then as `approve_once` |
-   | `approval`, `gate`, `check_changed` | `deny` | `approval_deny` then `resolve_waiting_approval(denied)` with the reason |
+   | `approval`, `gate`, `check_changed` | `deny` | `approval_deny`, then the waiting task fails with the reason |
    | `consult` | an option id | records the answer (`answers[]`, `question` cleared, task `pending`) with `optionId` in *content* |
    | `consult`, `input` | omitted | records the answer with *content* |
    | `consult`, `input` | `decline` | records a `decline` |
@@ -565,16 +567,17 @@ schema check, the `pre_input` screen or the continuation.
    A `gate` and a `check_changed` offer no `approve_task`. A step that refuses (the approval or
    the task moved first) raises `EscalationNotPending` and leaves the record `pending`; one that
    fails validation raises `EscalationInvalid` or `EscalationRefused` the same way.
-3a. **Receive here, apply at the claim.** For `consult` and `input` (a parked task), `resolve`
-   MUST NOT resolve a pipeline, append a hop, set `consultAnswer`, settle a route or take the
-   pod's task-list lock for anything but the one status change; it writes the record
-   (`state: "resolved"`, `resolution`), audits, traces and returns. The record's `resolution`
-   carries `appliedAt`, unset until the continuation is applied. The claim of the task
-   (`pod-dispatch.spec.md` "An escalation for every park" item 3) applies each `resolved` record
-   whose `appliedAt` is unset exactly once, then stamps it (`mark_escalation_applied`); a record
-   that is `expired`, `decided` or `pending` is never applied. A record of an approval, gate,
-   changed-check or an in-turn wait is stamped when `resolve` writes it, because its follow-up is
-   done by then.
+3a. **Receive here, apply at the claim.** For `consult`, `input` and a granted `approval` or
+   `gate` at a pipeline position (a parked task), `resolve` MUST NOT resolve a pipeline, append a
+   hop, set `consultAnswer`, settle a route, hand a gate position over or take the pod's task-list
+   lock for anything but the one status change; it writes the record (`state: "resolved"`,
+   `resolution`), audits, traces and returns. The record's `resolution` carries `appliedAt`, unset
+   until the continuation is applied. The claim of the task (`pod-dispatch.spec.md` "An escalation
+   for every park" item 3) applies each `resolved` record whose `appliedAt` is unset exactly once,
+   then stamps it (`mark_escalation_applied`); a record that is `expired`, `decided` or `pending`
+   is never applied. A record of a parked call's approval (its grant is read from the approval
+   store by the hop that re-runs), a denial, a changed-check or an in-turn wait is stamped when
+   `resolve` writes it, because nothing is left to apply.
 4. **Record.** After the continuation succeeds, `resolve` MUST write, in one store operation that
    only moves a `pending` record, `resolution` (`{optionId, content, by, channel, at}`; `optionId`
    is `decline` for a decline and absent for an omitted option) and `state: "resolved"`; audit

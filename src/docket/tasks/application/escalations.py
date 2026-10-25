@@ -339,20 +339,27 @@ def _checked_content(
 
 def _apply_approval(
     token: str, option: str, *, project: str, channel: str, actor: str, reason: str
-) -> str:
-    """Grant or deny the approval *token* and settle the task it gated, as `docket task approve`
-    and `deny` always did; returns the note a refused task-wide grant produces."""
+) -> tuple[str, bool]:
+    """Grant or deny the approval *token* and move the task it gated, as `docket task approve`
+    and `deny` always did; returns the note a refused task-wide grant produces and whether a
+    waiting task moved. What a grant lets the next claim do is read there, not applied here."""
     _screen(project, [reason])
     # An actor is recorded with the decision only when a reason comes with it.
     acting = actor if reason else ""
     decision = "denied" if option == _DENY else "granted"
+    note = ""
+    task_wide = False
     try:
         if option == _DENY:
             _approval.approval_deny(token, channel=channel, actor=acting, reason=reason)
         else:
             if option == _APPROVE_TASK:
-                _approval.approval_set_option(token, option)
+                task_wide, note = _actions.check_task_grant(token)
+                if not note:
+                    _approval.approval_set_option(token, option)
             _approval.approval_grant(token, channel=channel, actor=acting, reason=reason)
+            if task_wide:
+                _actions.audit_task_grant(token, channel=channel, actor=acting)
     except _approval.ApprovalNoop as exc:
         # The pause may have ended while the task kept waiting; free it before saying so.
         _actions.resolve_waiting_approval(token, decision)
@@ -361,10 +368,10 @@ def _apply_approval(
         raise EscalationNotPending(str(exc)) from exc
     except _approval.ApprovalError as exc:
         raise EscalationNotFound(str(exc)) from exc
-    _, note = _actions.resolve_waiting_approval_detail(
+    moved = _actions.resolve_waiting_approval(
         token, decision, channel=channel, actor=acting, reason=reason
     )
-    return note
+    return note, moved
 
 
 def _receive_question(
@@ -426,13 +433,23 @@ def resolve(
     note = ""
     applied = True
     if escalation.kind in _APPROVAL_KINDS:
-        note = _apply_approval(
+        chosen = option or _APPROVE_ONCE
+        note, moved = _apply_approval(
             str(escalation.legacy.get("token", "")),
-            option or _APPROVE_ONCE,
+            chosen,
             project=escalation.pod,
             channel=channel,
             actor=by,
             reason=_reason_of(body),
+        )
+        # A granted gate (or enqueue screen) leaves the task `pending` for the claim to continue
+        # from its position; a parked call's grant is read from the approval store by the hop.
+        token = str(escalation.legacy.get("token", ""))
+        applied = not (
+            moved
+            and chosen != _DENY
+            and escalation.kind != "check_changed"
+            and not _actions.is_parked(token)
         )
     elif escalation.legacy.get("token"):
         _wake_waiting_turn(
@@ -489,7 +506,7 @@ def resolve_approval_token(
             raise EscalationNotFound(str(exc)) from exc
         return _apply_approval(
             token, option_id, project=project, channel=channel, actor=actor, reason=reason
-        )
+        )[0]
     # A gate or a changed check offers no task-wide grant; asking for one is a plain grant.
     if option_id == _APPROVE_TASK and _APPROVE_TASK not in (o.id for o in record.options):
         option_id = _APPROVE_ONCE

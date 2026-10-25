@@ -26,6 +26,7 @@ from tests.support.tasks import stored_task, update_task
 from tests.support.trace import audit_entries, trace_events
 
 from docket.governance import approval as _ap
+from docket.governance import approval_pregrant as _pregrants
 from docket.governance import policy as _policy
 from docket.kernel.operator_contract import Escalation
 from docket.platform import list_escalations, read_escalation, settle_escalation
@@ -68,19 +69,23 @@ class Case:
 
 def _granted_once(task: Any, esc: Escalation) -> None:
     assert task.status == "pending"
-    assert [g.token for g in task.pregrants] == [esc.legacy["token"]]
+    assert [g.token for g in _pregrants.pending_pregrants(task.id)] == [esc.legacy["token"]]
     assert _ap.approval_get(esc.legacy["token"])["state"] == "granted"
 
 
 def _granted_for_the_task(task: Any, esc: Escalation) -> None:
     assert task.status == "pending"
-    assert [(g.tool, g.args_digest) for g in task.task_grants] == [("bash", _DIGEST)]
+    assert [(g.tool, g.args_digest) for g in _pregrants.task_grants(task.id)] == [("bash", _DIGEST)]
     assert _ap.approval_get(esc.legacy["token"])["state"] == "granted"
 
 
 def _gate_passed(task: Any, esc: Escalation) -> None:
-    assert (task.status, task.gate_override_pipeline_index) == ("pending", 1)
+    assert task.status == "pending"
     assert _ap.approval_get(esc.legacy["token"])["state"] == "granted"
+    # The position the gate fired at is left for the claim to apply.
+    stored = read_escalation(esc.id)
+    assert stored is not None and stored.resolution is not None
+    assert stored.resolution.applied_at is None
 
 
 def _denied_with_reason(task: Any, esc: Escalation) -> None:
@@ -296,7 +301,7 @@ class TestTheOlderVerbsAreAdapters:
         assert stored is not None and stored.state == "resolved"
         assert stored.resolution is not None and stored.resolution.channel == "cli"
         assert note == ""
-        assert _task(escalation).gate_override_pipeline_index == 1
+        assert _task(escalation).status == "pending"
 
     def test_a_task_wide_choice_on_a_gate_is_a_plain_grant(self) -> None:
         escalation = _approval("gate")

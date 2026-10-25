@@ -12,9 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 __all__ = [
     "Answer",
     "ConsultAnswer",
-    "Grant",
     "Prepared",
-    "TaskGrant",
     "TaskUsage",
     "UsageTotals",
     "Worktree",
@@ -75,23 +73,6 @@ class ConsultAnswer(_Part):
     step: str
     question_id: str = Field(alias="questionId")
     text: str
-
-
-class Grant(_Part):
-    """A single-use approval a human already resolved for one parked call."""
-
-    token: str
-    tool: str
-    args_digest: str = Field(alias="argsDigest")
-
-
-class TaskGrant(Grant):
-    """An ``approve_task`` grant: the same call approved for the rest of the task, for one role."""
-
-    role: str
-    granted_at: str = Field(alias="grantedAt")
-    actor: str
-    channel: str
 
 
 class UsageTotals(_Part):

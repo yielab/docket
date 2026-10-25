@@ -91,9 +91,9 @@ def test_a_dropped_field_is_none_after_and_absent_from_the_dump() -> None:
     record = _loaded(S.running)
     _transitions.apply_to_task(record, S.done, now="t", reason="ok", ran=True)
     assert record.claim_pid is None and record.consult_answer is None
-    assert record.failure_kind is None and record.task_grants == []
+    assert record.failure_kind is None
     dumped = record.model_dump(by_alias=True, mode="json")
-    assert not {"claimPid", "consultAnswer", "failureKind", "taskGrants"} & set(dumped)
+    assert not {"claimPid", "consultAnswer", "failureKind"} & set(dumped)
     assert (dumped["reason"], dumped["completedAt"], dumped["status"]) == ("ok", "t", "done")
 
 

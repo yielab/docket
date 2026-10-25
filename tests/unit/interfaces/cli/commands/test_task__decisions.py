@@ -13,6 +13,7 @@ from tests.support.task_unit_harness import _runner
 from tests.support.task_unit_harness import invoke_task as _task
 from tests.support.tasks import put_task, task
 
+from docket.governance.approval_pregrant import pending_pregrants
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.operator_contract import Option, QuestionV11, Recommendation
@@ -79,7 +80,6 @@ class TestTaskApprove:
             assert _ap.approval_get(token)["state"] == "granted"
             after = TaskRepository.for_pod("demo").list()[0]
             assert after.status == Status.pending
-            assert after.gate_override_pipeline_index == 1
 
     def test_a_task_waiting_on_nothing_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -156,8 +156,7 @@ class TestTaskApprove:
             result = _task("approve", record.id, "--for", "git push origin main")
 
             assert result.exit_code == 0
-            stored = TaskRepository.for_pod("demo").list()[0]
-            assert [g.tool for g in stored.pregrants] == ["bash"]
+            assert [g.tool for g in pending_pregrants(record.id)] == ["bash"]
 
     def test_for_honours_the_tool_flag(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -166,7 +165,7 @@ class TestTaskApprove:
 
             _task("approve", record.id, "--for", "some content", "--tool", "write")
 
-            assert TaskRepository.for_pod("demo").list()[0].pregrants[0].tool == "write"
+            assert pending_pregrants(record.id)[0].tool == "write"
 
     def test_for_on_an_unknown_task_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):

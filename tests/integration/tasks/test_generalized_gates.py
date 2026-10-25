@@ -28,6 +28,7 @@ from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -205,8 +206,7 @@ class TestPipelineApprovalStepGatesGenuinely:
         token = TaskRepository.for_pod("myapp").list()[0].approval_token
         assert token
 
-        _ap.approval_grant(token, channel="cli")
-        assert _actions.resolve_waiting_approval(token, "granted") is True
+        _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
         assert TaskRepository.for_pod("myapp").list()[0].status == "pending"
 
         runner2 = _RoleRunner({})

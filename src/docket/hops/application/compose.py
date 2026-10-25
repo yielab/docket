@@ -16,7 +16,7 @@ from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.tasks.application.actions import mint_task_grant_pregrants
+from docket.tasks.application.actions import mint_task_grant_pregrants, pregrants_for
 from docket.tasks.application.record import (
     UnitContext,
     claimed_worktree_dir,
@@ -491,17 +491,12 @@ def _compose_hop(
         )
     env = _consult_budget_env(ctx, env)
     env = _apply_task_restrictions(ctx, env)
-    pregrants_raw = [
-        *(g.model_dump(by_alias=True) for g in ctx.task.pregrants),
-        *mint_task_grant_pregrants(ctx, role),
-    ]
+    pregrants_raw = [*pregrants_for(ctx.task_id), *mint_task_grant_pregrants(ctx, role)]
     if pregrants_raw:
-        # Every pre-grant this task's human has already resolved (ADR 0016
-        # SS2) -- a human already consumed one carries no live effect
-        # (`consume_pregrant` is single-use and atomic), so passing the whole
-        # list along is a harmless no-op for anything already spent; it only
-        # ever lets an unconsumed exact-match call through without asking
-        # again.
+        # Every call this task's human has already approved and nothing has spent yet (ADR 0016
+        # SS2). `consume_pregrant` is single-use and atomic, so a call another turn spends in
+        # the meantime carries no live effect; the list only ever lets an exact-match call
+        # through without asking again.
         env = dict(env or {})
         env[_rd.DOCKET_PREGRANTS] = _json.dumps(pregrants_raw)
     return message, env

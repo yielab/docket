@@ -1,13 +1,15 @@
 """Apply the answers a claimed task is waiting to hear: what ``resolve`` leaves to the claim.
 
-``tasks.application.escalations.resolve`` receives an answer to a parked question (it records it
-and reopens the task ``pending``) and resolves no pipeline. The claim applies it: before the resume
-position is computed, ``apply_resolutions`` reads the escalations the task lists and, for each
-``consult`` or ``input`` record that is ``resolved`` and not yet stamped, sets the consult note the
-re-run hop reads or persists the synthetic operator hop and follows the step's ``on:`` route. A
-record is stamped (``mark_escalation_applied``) only after its effect is on the task, and each
-effect is idempotent, so a task claimed twice (a crash, a ``stale_claim`` reclaim) is changed once.
-Records that are ``expired``, ``decided`` or still ``pending`` are never applied.
+``tasks.application.escalations.resolve`` receives an answer to a parked question or a granted
+approval at a pipeline position (it records it and reopens the task ``pending``) and resolves no
+pipeline. The claim applies it: before the resume position is computed, ``apply_resolutions``
+reads the escalations the task lists and, for each ``consult``, ``input``, ``approval`` or ``gate``
+record that is ``resolved`` and not yet stamped, sets the consult note the re-run hop reads,
+persists the synthetic operator hop and follows the step's ``on:`` route, or hands back the
+position the granted approval fired at. A record is stamped (``mark_escalation_applied``) only
+after its effect is on the task, and each effect is idempotent, so a task claimed twice (a crash, a
+``stale_claim`` reclaim) is changed once. Records that are ``expired``, ``decided`` or still
+``pending`` are never applied.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from docket.governance import approval as _approval
 from docket.hops.gates import post_hop as _post_hop
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
@@ -37,15 +40,18 @@ __all__ = [
 ]
 
 _DECLINE = "decline"
+_DENY = "deny"
 
 
 @dataclass(frozen=True)
 class Applied:
-    """What applying the answers produced: the hops to resume from and, when an answer's route
-    ends the task, the ``(status, reason)`` it ends with (``done`` or ``failed``)."""
+    """What applying the answers produced: the hops to resume from, when an answer's route ends the
+    task the ``(status, reason)`` it ends with (``done`` or ``failed``), and the pipeline position a
+    granted gate fired at, whose approval check the run skips once."""
 
     hops: list[HopResult]
     ended: tuple[str, str] | None = None
+    gate_override_index: int | None = None
 
 
 def resolve_route(
@@ -103,20 +109,36 @@ def routed_hop(step_id: str, question_id: str, label: str, target: str | None) -
 
 
 def _unapplied(task: TaskRecord) -> list[Escalation]:
-    """The task's ``consult`` and ``input`` escalations that are resolved and not applied yet.
-    An approval, a gate and a wait in the turn are stamped when they are resolved."""
+    """The task's ``consult``, ``input``, ``approval`` and ``gate`` escalations that are resolved and
+    not applied yet. A parked call, a changed check and a wait in the turn are stamped when they
+    are resolved."""
     found: list[Escalation] = []
     for escalation_id in task.escalations:
         escalation = read_escalation(escalation_id)
         if (
             escalation is not None
             and escalation.state == "resolved"
-            and escalation.kind in ("consult", "input")
+            and escalation.kind in ("consult", "input", "approval", "gate")
             and escalation.resolution is not None
             and escalation.resolution.applied_at is None
         ):
             found.append(escalation)
     return found
+
+
+def _gate_position(escalation: Escalation) -> int | None:
+    """The pipeline position the pre-hop gate of *escalation* fired at, from its approval record;
+    ``None`` for a denial (the task already failed) or a record that no longer names one."""
+    resolution = escalation.resolution
+    assert resolution is not None
+    if resolution.option_id == _DENY:
+        return None
+    try:
+        context = _approval.approval_get(str(escalation.legacy.get("token", ""))).get("context")
+    except _approval.ApprovalError:
+        return None
+    index = context.get("pipelineIndex") if isinstance(context, dict) else None
+    return index if isinstance(index, int) else None
 
 
 def _apply_consult(repository: TaskRepository, task: TaskRecord, escalation: Escalation) -> None:
@@ -204,15 +226,18 @@ def apply_resolutions(
     operator hop, and the ending an answer's route gives the task. Raises ``DispatchError`` when
     the answer no longer fits the pipeline."""
     repository = TaskRepository.for_pod(project)
+    override: int | None = None
     for escalation in _unapplied(task):
         ended: tuple[str, str] | None = None
         if escalation.kind == "consult":
             _apply_consult(repository, task, escalation)
+        elif escalation.kind in ("approval", "gate"):
+            override = _gate_position(escalation)
         else:
             hops, ended = _apply_input(
                 repository, task, escalation, hops, runtime_steps, id_to_index
             )
         mark_escalation_applied(escalation.id, _clock.iso())
         if ended is not None:
-            return Applied(hops, ended)
-    return Applied(hops)
+            return Applied(hops, ended, override)
+    return Applied(hops, gate_override_index=override)

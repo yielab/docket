@@ -1,6 +1,6 @@
 # MCP Server Contract Specification
 
-**Version**: 1.11.0
+**Version**: 1.11.1
 **Status**: Implemented
 **Last Updated**: 2026-10-25
 
@@ -310,8 +310,8 @@ start`'s `POST /tasks/<task_id>/pregrants`.
 **Arguments**: `project` (string, required), `task_id` (string, required), `command` (string,
 required — the exact command line to pre-approve), `tool` (string, optional, default `"bash"`).
 **Gating**: calls `record_pregrant(project, task_id, command, tool=tool, channel="mcp",
-actor="mcp")`, which creates the pre-grant exactly as an in-turn park does, then appends the grant
-to the task's own `pregrants` list — the same shape a live park already produces. When the pipeline
+actor="mcp")`, which creates the pre-grant exactly as an in-turn park does and names the task in
+the record, which is what the task's hops read. When the pipeline
 later reaches that exact call (matched by the canonical arguments digest), it passes once without
 asking again.
 **Output**: `{"ok": true, "token": "apr-...", "task": "<task_id>", "project": "<project>"}`.

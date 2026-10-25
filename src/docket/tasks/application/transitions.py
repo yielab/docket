@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from docket.governance import approval_pregrant as _approval_pregrant
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.task import TaskRecord
 
@@ -18,13 +19,17 @@ __all__ = ["apply_to_task"]
 
 def apply_to_task(record: TaskRecord, to: _state.Status, **facts: Any) -> _state.Transition:
     """Move *record* to *to*: ``decide``'s field changes, then the status; ``IllegalTransition``
-    comes before any change. A dropped field returns to its default (``None``, ``[]``, ``""``)."""
+    comes before any change. A dropped field returns to its default (``None``, ``[]``, ``""``). A
+    terminal move also ends the task-wide grants its approvals gave: they cover the task's run,
+    not a later retry of it."""
     transition = _state.decide(record.status, to, **facts)
     for name in transition.drop:
         setattr(record, name, _default(name))
     for name, value in transition.fields.items():
         setattr(record, name, value)
     record.status = transition.to
+    if transition.ends_grants and record.escalations:
+        _approval_pregrant.revoke_task_grants(record.id)
     return transition
 
 

@@ -3,7 +3,8 @@
 ``task_list_2026-10-24.json`` is a scrubbed copy of two pods' queues (every status a task ends in,
 with questions, briefs, gates, restrictions, pre-grants, prepared installs, usage and worktrees);
 ``.normalized.json`` is the same queue with every field a record always writes filled in, minus the
-``claimId`` and ``source`` keys that no longer exist. Each record's dump must equal it, with two
+``claimId``, ``source``, ``pregrants``, ``taskGrants`` and ``gateOverridePipelineIndex`` keys that
+no longer exist (an older queue still loads; those keys are not written back). Each record's dump must equal it, with two
 stated allowances: the hop artifact's retired ``notes`` key (``""`` in every stored hop) is not
 written back, and ``task-q``, a hand-written record, has options and a recommendation without their
 empty ``risks``, ``estimatedTokens`` and ``evidenceRefs``, which the typed question writes out.
@@ -67,7 +68,7 @@ def test_the_queue_covers_the_statuses_and_parts_the_record_must_carry(loaded: l
         if any(getattr(r, part) is not None for r in loaded)
     }
     assert present == {"question", "brief", "gate", "restrictions", "prepared", "usage", "worktree"}
-    assert any(r.pregrants for r in loaded) and any(r.consultations for r in loaded)
+    assert any(r.consultations for r in loaded)
 
 
 def test_a_modify_that_changes_nothing_rewrites_nothing(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.9.0
+**Version**: 10.10.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -90,7 +90,7 @@ This specification does NOT cover:
 2. Every read of a pod's queue (`TaskRepository.list`) **MUST** fill each field enqueue does not write with
    its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`, `costUsd`,
    `claimedAt`, `approvalToken`, `pendingApprovalIndex`,
-   `gateOverridePipelineIndex`, a fresh empty `hops` and `pregrants` list, `created`, `id`); no
+   a fresh empty `hops` list, `created`, `id`); no
    separate migration step exists or is required.
 3. A task's status **MUST** be one of exactly eight values: `pending`, `running`,
    `waiting_approval`, `waiting_input`, `blocked`, `done`, `failed`, `cancelled`. (See "Task
@@ -783,28 +783,29 @@ wired agent's conversation current with the task it is working.
    `now + approvalExpiryHours`, computed fresh per hop); the tool gate stamps this onto the parked
    record's own `expiresAt`, which `sweep_escalations`'s fail-closed deadline logic prefers over
    the generic `APPROVAL_TIMEOUT`. Past that deadline the sweep resolves the record to **denied**,
-   and `resolve_waiting_approval` fails the task exactly as an explicit human deny does
+   and the waiting task fails exactly as an explicit human deny does
    (`failureKind: "approval_denied"`).
 6. **Resume at the same index.** Resume treats a `hop.parked` entry as an attempt, not a decided
    outcome: it neither advances past it nor evaluates it as a rework or route target, and sets the
    resume position to that hop's own index -- re-running the exact step rather than the one after it.
    The step id may then appear more than once in the task's persisted `hops` (the parked attempt,
    then the real one), the same "each attempt is its own audit record" shape a rework cycle's
-   repeated Reviewer hop has. This is not the pre-hop gate's `gateOverridePipelineIndex`: that field
-   skips a gate check at a position no hop was attempted at, and a granted parked approval never
-   sets it.
-7. **Single-use pre-grant on resume.** `resolve_waiting_approval(token, "granted")`, for a record
-   whose context carries `parked: true`, appends `{token, tool, argsDigest}` to the task's own
-   `pregrants` list instead of setting `gateOverridePipelineIndex`, inside the same locked
-   read-modify-write. Dispatch serialises the task's `pregrants` as JSON into `DOCKET_PREGRANTS` on
-   every hop it composes for that task; the tool gate's pre-grant matcher consumes at most one entry
-   per exact `(tool, argsDigest)` match, so the re-run hop's identical call passes once without
-   asking again, and anything else still asks. A grant that chose `approve_task` also appends to
-   the task's `taskGrants` (at most `TASK_GRANT_CAP`, 20; audited `approval.task_grant`, or
-   `approval.task_grant_refused` past the cap), from which dispatch mints one single-use pre-grant
-   per entry for each later hop of the same role (operator-loop.spec.md).
-8. **Denial.** `resolve_waiting_approval(token, "denied")` for a parked record behaves exactly like
-   a pre-hop gate's deny: the task moves straight to `failed`, `failureKind: "approval_denied"`,
+   repeated Reviewer hop has. This is not the pre-hop gate's skipped position: that skips a gate
+   check at a position no hop was attempted at, and a granted parked approval never names one.
+7. **Single-use pre-grant on resume.** The grant of a record whose context carries `parked: true`
+   only reopens the task `pending`; the granted record itself, whose context names the task, the
+   tool and the call's `argsDigest`, is the pre-grant. Dispatch reads the task's unspent pre-grants
+   (granted approval records naming the task, not yet consumed) from the approval store and
+   serialises them as JSON `{token, tool, argsDigest}` into `DOCKET_PREGRANTS` on every hop it
+   composes for that task; the tool gate's pre-grant matcher consumes at most one entry per exact
+   `(tool, argsDigest)` match, so the re-run hop's identical call passes once without asking
+   again, and anything else still asks. A grant that chose `approve_task` is also a task-wide
+   grant (at most `TASK_GRANT_CAP`, 20, per task; audited `approval.task_grant`, or
+   `approval.task_grant_refused` past the cap, in which case the call is approved once only), from
+   which dispatch mints one single-use pre-grant per grant for each later hop of the same role
+   (operator-loop.spec.md). A pre-grant minted that way is marked as such and is never read as a
+   grant of its own. The task keeps none of this: its terminal status ends its grants.
+8. **Denial.** The denial of a parked record behaves exactly like a pre-hop gate's deny: the task moves straight to `failed`, `failureKind: "approval_denied"`,
    never reclaimable by `--resume`.
 9. A re-run hop is a new turn sharing the same durable step history; the granted call's result is
    not injected into the turn that parked.
@@ -821,13 +822,12 @@ wired agent's conversation current with the task it is working.
    and consume matcher computes for a live call. It then calls `create_pregrant(project,
    "implementer", tool, digest, task_id=task_id, expires_at=<now + this pod's approvalExpiryHours>,
    channel=channel, actor=actor)`.
-3. It appends `{"token", "tool", "argsDigest": digest}` to the named task's own `pregrants` list
-   through a locked read-modify-write of the pod's queue -- the identical shape "Parked approvals"
-   item 7 appends on a live grant, so dispatch serialises it into `DOCKET_PREGRANTS` on that task's
-   very first hop, not only a re-run after a park. A command pre-granted this way that never runs,
+3. The record is the pre-grant: it names the task in its context, so dispatch reads it from the
+   approval store like the grant of a parked call ("Parked approvals" item 7) and serialises it
+   into `DOCKET_PREGRANTS` on that task's very first hop, not only a re-run after a park. A command pre-granted this way that never runs,
    or runs with different arguments, is never consumed -- it expires by the same
    `approvalExpiryHours` deadline like any other pre-grant, with no other effect on the task.
-4. This writer produces the same `pregrants` record shape a live grant does; the matcher and
+4. This writer produces the same record shape a live grant leaves; the matcher and
    `create_pregrant` consume it unchanged. See operator-loop.spec.md, "Seeing it coming, and not
    being interrupted twice", for the CLI/HTTP/MCP surface and the forecast this pairs with.
 
@@ -1008,28 +1008,28 @@ wired agent's conversation current with the task it is working.
    `approvals_grant`/`approvals_deny` tools, the `docket run` progress view's in-place prompt, and
    `sweep_escalations`'s fail-closed timeout path -- see `security-gates.spec.md`) **MUST**:
    - **On a grant:** transition the task `waiting_approval` -> `pending`, clear
-     `approvalToken`/`pendingApprovalIndex`, and hand the exact pipeline position the gate fired at
-     to the *next* claim as a **single-use** `gateOverridePipelineIndex` -- "the next dispatch
-     continues from that hop." No agent turn runs as part of resolving the grant itself; a real
-     dispatch invocation is still required to continue the pipeline.
+     `approvalToken`/`pendingApprovalIndex`, and leave the exact pipeline position the gate fired at
+     to the *next* claim (item 5) -- "the next dispatch continues from that hop." No agent turn
+     runs as part of resolving the grant itself; a real dispatch invocation is still required to
+     continue the pipeline.
    - **On a deny:** transition the task `waiting_approval` -> `failed` **immediately** (no agent
      turn needed to fail a task that never ran its gated hop), `failureKind: "approval_denied"`,
      `reason: "approval denied"` (or `approval denied: <reason>` when the decision carried the
      operator's reason, so the inbox's Failed entry and `task show` say why), `completedAt` set,
-     `taskGrants` dropped. Never auto-retried by a later `dispatch_pod` call,
+     the task's grants ended. Never auto-retried by a later `dispatch_pod` call,
      with or without `--resume`.
    - Each resolution traces `approval_resumed` (grant) or `approval_task_denied` (deny) on the
      task's session.
    - Resolving a token not created by a dispatch gate (no `context.taskId` and not parked, or no
      `project`), an unknown token, or a task no longer `waiting_approval` on that exact token
      (already resolved by a concurrent caller) **MUST** be a harmless no-op -- it **MUST NOT** raise.
-5. The gate-override handoff **MUST** be single-use and consumed atomically at claim time: the
-   *next* claim of this task captures `gateOverridePipelineIndex` into the claim it returns
-   (`Claim.gate_override_index`), which the sweep passes to `dispatch_task` as its
-   `gate_override_index` argument, then clears it from the **stored** record in the same locked
-   operation -- so it
-   can never leak into a later, unrelated claim of the same task (e.g. a crash-and-`--resume`, or
-   the task revisiting the same pipeline position on a rework cycle). `dispatch_task` consumes the
+5. The gate-override handoff **MUST** be single-use and applied exactly once at claim time:
+   `dispatch_task` reads the task's escalations (`apply_resolutions`), takes the pipeline position
+   from the approval record of each `approval` or `gate` escalation that is `resolved` and not
+   stamped (`context.pipelineIndex`), and stamps it `appliedAt` -- so it can never leak into a
+   later, unrelated claim of the same task (e.g. a crash-and-`--resume`, or the task revisiting the
+   same pipeline position on a rework cycle), and a record that is `expired`, `decided` or still
+   `pending` is never applied. `dispatch_task` consumes the
    override **in memory** the first time it reaches that exact pipeline position in the run; a later
    hop at the same position within the *same* run (a rework cycle sending the task back to the
    Implementer a second time) **MUST** gate again normally, with a fresh token -- the override never
@@ -1943,13 +1943,13 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    call parked mid-turn under `approvalMode: "park"`, a `run:` step needs approval, or the enqueue
    screen required approval; either way a real approval record exists and the task is waiting on a
    human (or automated headless) decision. Not terminal -- re-enters `pending` only via a granted
-   approval (`resolve_waiting_approval`), never automatically, never via a plain dispatch run,
-   `retry_task`, or `unblock_pod`. The pre-hop gate's grant hands the exact pipeline position back as
-   a single-use override (`gateOverridePipelineIndex`); a parked call's grant instead appends a
-   single-use pre-grant to the task's `pregrants` and resumes the already-attempted hop at its own
-   index (see "Parked approvals"); a grant that chose `approve_task` also appends to the task's
-   `taskGrants`, from which dispatch mints one single-use pre-grant per entry for each later hop
-   (operator-loop.spec.md). A denied (or fail-closed-expired) approval moves the task straight to
+   approval (a resolved approval escalation), never automatically, never via a plain dispatch run,
+   `retry_task`, or `unblock_pod`. The pre-hop gate's grant hands the exact pipeline position back to
+   the next claim as a single-use override (item 5 of "require_approval gate and
+   waiting_approval"); a parked call's grant instead leaves a single-use pre-grant in the approval
+   store and resumes the already-attempted hop at its own index (see "Parked approvals"); a grant
+   that chose `approve_task` is also a task-wide grant, from which dispatch mints one single-use
+   pre-grant per grant for each later hop (operator-loop.spec.md). A denied (or fail-closed-expired) approval moves the task straight to
    `failed` without passing through `pending`. A `check_changed` approval ("A change that edits its
    own check") is the one exception to re-entering `pending`: its grant ends the task `done` and its
    denial `failed`, and it is never skipped by a profile or an `approvalMode`. `docket task cancel`
@@ -2090,16 +2090,18 @@ hop records. It scores nothing and carries no dollar figure.
    pipeline `approval` gate (`gate`) and a change that edits its own check (`check_changed`).
 2. The record changes nothing the pause already did: the same approval record, the same
    `approvalToken` or `question` on the task, the same `reason`, the same trace events.
-3. **Resume reads the record for a question.** A claim reads the task's `escalations` (see
-   "Operator input steps and answers" item 3): a `consult` record in state `resolved` with no
-   `resolution.appliedAt` becomes the task's `consultAnswer` for its step (the note the re-run hop's
-   message ends with), an `input` record becomes the synthetic hop and route, and each is then
-   stamped `appliedAt`. A record already stamped, `expired`, `decided` or still `pending` is
-   skipped, so a resolution is applied once however many times the task is claimed. An approval,
-   gate or changed-check keeps its continuation in `resolve` (the grant, the pre-grant, the gate
-   override and the status change), because the inbox's `approved ready` state and the gate's
-   position are read from the task as soon as a person decides; its record is stamped `appliedAt`
-   when it is resolved.
+3. **Resume reads the record.** A claim reads the task's `escalations` (see "Operator input steps
+   and answers" item 3): a `consult` record in state `resolved` with no `resolution.appliedAt`
+   becomes the task's `consultAnswer` for its step (the note the re-run hop's message ends with),
+   an `input` record becomes the synthetic hop and route, an `approval` or `gate` at a pipeline
+   position becomes the position the run skips the approval at once, and each is then stamped
+   `appliedAt`. A record already stamped, `expired`, `decided` or still `pending` is skipped, so a
+   resolution is applied once however many times the task is claimed. `resolve` does the status
+   change of an approval (the grant reopens the task `pending`, a denial fails it, a changed check
+   ends it) and stamps the record when nothing is left for the claim: a denial, a changed check,
+   a wait in the turn and a parked call, whose grant the hop reads from the approval store (item 7
+   of "Parked approvals"). The inbox's `approved ready` state reads the same two places: an
+   unspent pre-grant of the task, or a resolved approval not yet stamped.
 
 ## Interface Contracts
 
@@ -2316,8 +2318,8 @@ queue.)
 - A paused pod's queue **MUST NOT** yield any claim until the pause is explicitly cleared.
 - A `waiting_approval` or `waiting_input` task **MUST NOT** be claimable by any `dispatch_pod` call,
   with or without `--resume`, until its approval resolves or its question is answered.
-- The gate-override handoff (`gateOverridePipelineIndex`) **MUST** be consumed at most once per
-  grant: captured and cleared from storage atomically at claim time, and consumed in memory the first
+- The gate-override handoff **MUST** be consumed at most once per
+  grant: applied and stamped at claim time (the escalation's `appliedAt`), and consumed in memory the first
   time the resumed run reaches that pipeline position -- a later occurrence of the same position
   within the same run (a rework cycle) **MUST** gate again, not skip silently.
 - `resolve_plan` **MUST** be deterministic: the same `PipelineSpec` + the same roster + the same

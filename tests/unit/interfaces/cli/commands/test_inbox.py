@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from tests.support.pods import seed_lead_implementer_pod as _seed
+from tests.support.tasks import pregrant as _pregrant
 from tests.support.tasks import put_task, put_tasks, task
 from typer.testing import CliRunner
 
@@ -171,7 +172,8 @@ class TestJsonView:
 
     def test_a_granted_task_is_approved_ready_and_points_at_run(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            put_task("demo", task(id="t-ok", gate_override_pipeline_index=2))
+            put_task("demo", task(id="t-ok"))
+            _pregrant("demo", "t-ok")
 
             body = json.loads(_inbox("--json", "--peek").stdout)
 

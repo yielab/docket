@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import datetime as _dt
 import json as _json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from docket.governance import approval as _ap
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import audit as _audit
 from docket.kernel import clock as _clock
+from docket.kernel.operator_contract import Escalation
 from docket.observability import trace as _trace
+from docket.platform import read_escalation
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
-from docket.tasks.domain.parts import Grant, TaskGrant
 from docket.tasks.domain.task import TaskRecord
 from docket.teams.settings import load_pod_settings
 
@@ -21,52 +22,39 @@ if TYPE_CHECKING:
     # Annotation only: the record module opens escalations, which resolve through this one.
     from docket.tasks.application.record import UnitContext
 
-TASK_GRANT_CAP = 20
+TASK_GRANT_CAP = _approval_pregrant.TASK_GRANT_CAP
 
 
 def resolve_waiting_approval(
     token: str, decision: str, *, channel: str = "", actor: str = "", reason: str = ""
 ) -> bool:
-    """:func:`resolve_waiting_approval_detail`'s boolean."""
-    return resolve_waiting_approval_detail(
-        token, decision, channel=channel, actor=actor, reason=reason
-    )[0]
-
-
-def resolve_waiting_approval_detail(
-    token: str, decision: str, *, channel: str = "", actor: str = "", reason: str = ""
-) -> tuple[bool, str]:
-    """React to a just-applied approval decision by mutating the dispatch task it gated, if
-    any -- never mutates the approval record itself, only reacts to a transition
+    """React to a just-applied approval decision by moving the dispatch task it gated, if any --
+    never mutates the approval record itself, only reacts to a transition
     ``governance/approval.py`` already made. See pod-dispatch.spec.md ("require_approval gate and
-    waiting_approval") for the pre-hop gate's grant (-> ``pending`` + gate override) and deny
+    waiting_approval") for the pre-hop gate's grant (-> ``pending``) and deny
     (-> ``failed``, ``failureKind: "approval_denied"``) outcomes.
+
+    Only the status moves here. What a grant lets the next claim do (skip the gate once, pass the
+    parked call once, pass it for the rest of the task) is read at that claim from the approval
+    store and the task's escalations (``hops.application.resolutions``, ``hops.application.compose``).
 
     A **parked** in-turn call (ADR 0016 SS2, ``context["parked"] is True``) carries no
     ``taskId`` -- ``governance/gate.py``'s ``_park`` has no task to name -- so its task is
-    found by matching ``approvalToken`` directly instead; a grant appends
-    ``{token, tool, argsDigest}`` to the task's ``pregrants`` for ``_compose_hop`` to carry
-    into the re-run, and does **not** set ``gateOverridePipelineIndex`` (that field is for
-    skipping a pre-hop gate, not for re-running an already-attempted hop -- the resumed hop
-    re-runs by ``replay_pipeline_position``'s own ``hop.parked`` handling instead). A plain
-    in-turn ``wait``-mode ask also carries no ``taskId`` (its wait blocks the calling thread
-    directly, so there is no task-level state to update here) and is unaffected: not parked
-    and no ``taskId`` still no-ops, exactly as before.
-
-    A parked grant whose record chose ``approve_task`` also appends the exact
-    ``(tool, argsDigest)`` to the task's ``taskGrants`` (at most ``TASK_GRANT_CAP``);
-    ``_compose_hop`` mints a single-use pre-grant from each for every later hop.
+    found by matching ``approvalToken`` directly instead. A plain in-turn ``wait``-mode ask
+    also carries no ``taskId`` (its wait blocks the calling thread directly, so there is no
+    task-level state to update here) and is unaffected: not parked and no ``taskId`` still
+    no-ops, exactly as before.
 
     A deny carries the operator's *reason* into the task's ``reason`` as
     ``approval denied: <reason>`` so the inbox and ``task show`` say why; without one the
     text is ``approval denied``.
 
-    Returns ``(updated, note)``: ``False`` as a harmless no-op for an unrelated/already-resolved
-    token or a mismatched task; *note* is non-empty only when a task-wide grant was refused."""
+    Returns ``False`` as a harmless no-op for an unrelated/already-resolved token or a mismatched
+    task, ``True`` when a waiting task moved."""
     try:
         rec = _ap.approval_get(token)
     except _ap.ApprovalError:
-        return False, ""
+        return False
     context = rec.get("context")
     context = context if isinstance(context, dict) else {}
     parked = bool(context.get("parked"))
@@ -85,15 +73,14 @@ def resolve_waiting_approval_detail(
             source=channel or "unknown",
         )
     if not project or (not task_id and not parked):
-        return False, ""
+        return False
 
     updated = False
-    note = ""
     resolved_task_id = task_id
     now = _clock.iso()
 
     def _resolve(record: TaskRecord) -> bool:
-        nonlocal updated, resolved_task_id, note
+        nonlocal updated, resolved_task_id
         if updated:
             return False
         if task_id:
@@ -104,27 +91,12 @@ def resolve_waiting_approval_detail(
         if record.status != _state.Status.waiting_approval or record.approval_token != token:
             return False
         resolved_task_id = record.id
-        pending_index = record.pending_approval_index
         if decision == "granted" and check_changed:
             _transitions.apply_to_task(
                 record, _state.Status.done, now=now, reason="check_changed approved"
             )
         elif decision == "granted":
             _transitions.apply_to_task(record, _state.Status.pending)
-            if parked:
-                record.pregrants.append(
-                    Grant(
-                        token=token,
-                        tool=str(context.get("tool", "")),
-                        args_digest=str(context.get("argsDigest", "")),
-                    )
-                )
-                if context.get("optionId") == "approve_task":
-                    note = _append_task_grant(
-                        record, token, context, str(rec.get("role", "")), channel, actor
-                    )
-            else:
-                record.gate_override_pipeline_index = pending_index
         else:
             _transitions.apply_to_task(
                 record,
@@ -149,80 +121,131 @@ def resolve_waiting_approval_detail(
             "approval_resumed" if decision == "granted" else "approval_task_denied",
             _json.dumps({"task": resolved_task_id, "token": token}),
         )
-    return updated, note
+    return updated
 
 
-def _append_task_grant(
-    record: TaskRecord,
-    token: str,
-    context: dict[str, Any],
-    role: str,
-    channel: str,
-    actor: str,
-) -> str:
-    """Record the ``approve_task`` grant for *role* on *record* unless it is already there or the
-    task is at ``TASK_GRANT_CAP``; returns a refusal note, ``""`` otherwise."""
-    tool = str(context.get("tool", ""))
-    digest = str(context.get("argsDigest", ""))
-    if not tool or not digest or not role:
-        return ""
-    grants = record.task_grants
-    if any(g.tool == tool and g.args_digest == digest and g.role == role for g in grants):
-        return ""
-    channel = channel if channel in _ap.APPROVAL_CHANNELS else "unknown"
-    if len(grants) >= TASK_GRANT_CAP:
-        _audit.audit_log(
-            "approval.task_grant_refused",
-            f"token={token} tool={tool} cap={TASK_GRANT_CAP} channel={channel}",
-        )
-        return (
-            f"This task already has {TASK_GRANT_CAP} task-wide grants; this call was approved "
-            "once only."
-        )
-    grants.append(
-        TaskGrant(
-            tool=tool,
-            args_digest=digest,
-            role=role,
-            token=token,
-            granted_at=_clock.iso(),
-            actor=actor,
-            channel=channel,
-        )
+def check_task_grant(token: str) -> tuple[bool, str]:
+    """Before a parked approval *token* is granted for the rest of its task: ``(new, note)``.
+    *new* is whether that adds a task-wide grant (``False`` for a call already covered, or one
+    that is no task's); *note* is non-empty, and the grant is made once only, when the task
+    already holds ``TASK_GRANT_CAP`` of them (audited ``approval.task_grant_refused``)."""
+    key = _task_grant_key(token)
+    if key is None:
+        return False, ""
+    task_id, (tool, digest, role) = key
+    held = _approval_pregrant.task_grants(task_id)
+    if any((g.tool, g.args_digest, g.role) == (tool, digest, role) for g in held):
+        return False, ""
+    if len(held) < TASK_GRANT_CAP:
+        return True, ""
+    _audit.audit_log(
+        "approval.task_grant_refused",
+        f"token={token} tool={tool} cap={TASK_GRANT_CAP}",
     )
+    return False, (
+        f"This task already has {TASK_GRANT_CAP} task-wide grants; this call was approved once only."
+    )
+
+
+def audit_task_grant(token: str, *, channel: str, actor: str) -> None:
+    """Audit that parked approval *token* now covers its call for the rest of the task."""
+    channel = channel if channel in _ap.APPROVAL_CHANNELS else "unknown"
+    tool = str((_ap.approval_get(token).get("context") or {}).get("tool", ""))
     _audit.audit_log(
         "approval.task_grant",
         f"token={token} tool={tool} channel={channel} actor={actor or '?'}",
     )
-    return ""
+
+
+def is_parked(token: str) -> bool:
+    """Whether approval *token* is a call the tool gate parked mid-turn (its grant is read by the
+    hop that re-runs), not a gate at a pipeline position."""
+    try:
+        context = _ap.approval_get(token).get("context")
+    except _ap.ApprovalError:
+        return False
+    return isinstance(context, dict) and bool(context.get("parked"))
+
+
+def _task_grant_key(token: str) -> tuple[str, tuple[str, str, str]] | None:
+    """The task and ``(tool, argsDigest, role)`` a parked approval *token* could grant for the rest
+    of its task, else ``None`` (not parked, or naming no task)."""
+    try:
+        rec = _ap.approval_get(token)
+    except _ap.ApprovalError:
+        return None
+    context = rec.get("context")
+    context = context if isinstance(context, dict) else {}
+    task_id = str(context.get("taskId", ""))
+    tool = str(context.get("tool", ""))
+    digest = str(context.get("argsDigest", ""))
+    role = str(rec.get("role", ""))
+    if not (context.get("parked") and task_id and tool and digest and role):
+        return None
+    return task_id, (tool, digest, role)
+
+
+def pregrants_for(task_id: str) -> list[dict[str, str]]:
+    """The ``{token, tool, argsDigest}`` of every call a person approved for *task_id* that is
+    still unspent: the hop passes each at most once, whatever else it asks."""
+    return [
+        {"token": c.token, "tool": c.tool, "argsDigest": c.args_digest}
+        for c in _approval_pregrant.pending_pregrants(task_id)
+    ]
+
+
+def approved_ready(record: TaskRecord) -> bool:
+    """A pending task a person already approved: a call approved ahead is unspent, or the pre-hop
+    gate it stopped at was granted and no claim has applied that yet."""
+    if record.status != _state.Status.pending:
+        return False
+    if _approval_pregrant.pending_pregrants(record.id):
+        return True
+    return any(
+        e.resolution is not None and e.resolution.applied_at is None
+        for e in _resolved_positions(record)
+    )
+
+
+def _resolved_positions(record: TaskRecord) -> list[Escalation]:
+    """The task's approvals at a pipeline position (a gate or the enqueue screen) that a person
+    resolved."""
+    found: list[Escalation] = []
+    for escalation_id in record.escalations:
+        escalation = read_escalation(escalation_id)
+        if (
+            escalation is not None
+            and escalation.kind in ("approval", "gate")
+            and escalation.state == "resolved"
+        ):
+            found.append(escalation)
+    return found
 
 
 def mint_task_grant_pregrants(ctx: UnitContext, role: str) -> list[dict[str, str]]:
     """One fresh single-use pre-grant per task-wide grant made for *role*, bound to this project
     and role: a grant never reaches a hop of another role."""
-    raw = ctx.task.task_grants
-    if not raw:
+    grants = [g for g in _approval_pregrant.task_grants(ctx.task_id) if g.role == role]
+    if not grants:
         return []
     deadline = _clock.now() + _dt.timedelta(
         hours=load_pod_settings(ctx.project).approval_expiry_hours
     )
     minted: list[dict[str, str]] = []
-    for grant in raw[:TASK_GRANT_CAP]:
-        if grant.role != role:
-            continue
-        tool, digest, channel = grant.tool, grant.args_digest, grant.channel
+    for grant in grants:
         try:
             pre = _approval_pregrant.create_pregrant(
                 ctx.project,
                 role,
-                tool,
-                digest,
+                grant.tool,
+                grant.args_digest,
                 task_id=ctx.task_id,
                 expires_at=deadline.isoformat(),
-                channel=channel if channel in _ap.APPROVAL_CHANNELS else "cli",
+                channel=grant.channel if grant.channel in _ap.APPROVAL_CHANNELS else "cli",
                 actor=grant.actor or "approve_task",
+                source=_approval_pregrant.MINTED,
             )
         except _ap.ApprovalError:
             continue
-        minted.append({"token": pre, "tool": tool, "argsDigest": digest})
+        minted.append({"token": pre, "tool": grant.tool, "argsDigest": grant.args_digest})
     return minted

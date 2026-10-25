@@ -204,6 +204,17 @@ def set_state(token: str, new_state: str) -> dict[str, Any]:
     return read_modify_write(path, transition)
 
 
+def _annotate(token: str, **extra: Any) -> dict[str, Any]:
+    """Write *extra* keys on the record *token* under the store lock; the record as stored."""
+    path = _approval_path(token)
+
+    def write(data: dict[str, Any]) -> dict[str, Any]:
+        data.update(extra)
+        return data
+
+    return read_modify_write(path, write)
+
+
 def approval_create(
     project: str,
     role: str,
@@ -306,6 +317,10 @@ def approval_grant(
             raise ApprovalError(f"Reason blocked by policy {hit.policy_id}")
 
     data = set_state(token, "granted")
+    # Who granted it and through what stays on the record: a task-wide grant mints its later
+    # pre-grants from here (``approval_pregrant.task_grants``). Only the winner of the transition
+    # reaches this line.
+    data = _annotate(token, grantedVia=channel, grantedBy=actor)
     project = str(data.get("project", "")) or "operator"
     role = str(data.get("role", "")) or "operator"
 
@@ -362,9 +377,9 @@ def approval_deny(
     audit_log("approval.deny", audit_detail)
 
 
-def list_pending() -> list[dict[str, Any]]:
-    """Return every pending approval record in filename order; records that fail to
-    parse are skipped."""
+def list_records() -> list[dict[str, Any]]:
+    """Return every approval record, whatever its state, in filename order; records that fail
+    to parse are skipped."""
     if not current_home().approvals_dir.is_dir():
         return []
     out: list[dict[str, Any]] = []
@@ -374,9 +389,14 @@ def list_pending() -> list[dict[str, Any]]:
                 data: dict[str, Any] = json.load(f)
         except Exception:
             continue
-        if data.get("state") == "pending":
-            out.append(data)
+        out.append(data)
     return out
+
+
+def list_pending() -> list[dict[str, Any]]:
+    """Return every pending approval record in filename order; records that fail to
+    parse are skipped."""
+    return [data for data in list_records() if data.get("state") == "pending"]
 
 
 def prune_resolved(

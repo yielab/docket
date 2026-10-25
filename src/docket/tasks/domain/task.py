@@ -25,9 +25,7 @@ from docket.tasks.domain.options import TaskGate, TaskRestrictions
 from docket.tasks.domain.parts import (
     Answer,
     ConsultAnswer,
-    Grant,
     Prepared,
-    TaskGrant,
     TaskUsage,
     Worktree,
     is_none,
@@ -200,7 +198,7 @@ class TaskRecord(BaseModel):
     """One task of a pod's queue; its alias dump is the stored record."""
 
     # One rule for absent against null. A key the queue always writes (startedAt, approvalToken,
-    # hops, pregrants, ...) dumps even when unset; every other key is absent until something writes
+    # hops, ...) dumps even when unset; every other key is absent until something writes
     # it and absent again after a drop (exclude_if), never null or []. No global exclude_none or
     # exclude_unset: either would drop a key of the first kind.
     #
@@ -237,9 +235,6 @@ class TaskRecord(BaseModel):
     blocked_reason: str | None = Field(None, alias="blockedReason", exclude_if=is_none)
     approval_token: str | None = Field(None, alias="approvalToken")
     pending_approval_index: int | None = Field(None, alias="pendingApprovalIndex")
-    # Single-use handoff from a grant to the next claim of this task: read and cleared by that
-    # claim, so it never leaks into an unrelated later one.
-    gate_override_pipeline_index: int | None = Field(None, alias="gateOverridePipelineIndex")
     question: QuestionV11 | Question | None = Field(None, exclude_if=is_none)
     consult_answer: ConsultAnswer | None = Field(None, alias="consultAnswer", exclude_if=is_none)
 
@@ -258,10 +253,6 @@ class TaskRecord(BaseModel):
     )
     consultations: int = Field(0, exclude_if=_is_empty)
     answers: list[Answer] = Field(default_factory=list, exclude_if=_is_empty)
-    pregrants: list[Grant] = Field(default_factory=list)
-    task_grants: list[TaskGrant] = Field(
-        default_factory=list, alias="taskGrants", exclude_if=_is_empty
-    )
     # The ids of the escalation records opened for this task, oldest first.
     escalations: list[str] = Field(default_factory=list, exclude_if=_is_empty)
 
@@ -274,13 +265,6 @@ class TaskRecord(BaseModel):
     @property
     def is_terminal(self) -> bool:
         return self.status in Status.TERMINAL
-
-    @property
-    def approved_ready(self) -> bool:
-        """A pending task a human already approved: a pre-grant or a gate override is waiting."""
-        return self.status == Status.pending and (
-            bool(self.pregrants) or self.gate_override_pipeline_index is not None
-        )
 
     @property
     def question_is_consultation(self) -> bool:

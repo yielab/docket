@@ -104,7 +104,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 2.4.0 | Implemented and live |
 | Pipeline Format | 4.2.0 | Implemented |
 | Pod Blueprints | 2.2.0 | Implemented |
-| Pod Dispatch | 10.9.0 | Implemented |
+| Pod Dispatch | 10.10.0 | Implemented |
 | Role Archetypes | 4.1.0 | Implemented |
 | Security Gates | 1.7.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
@@ -115,18 +115,18 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | CLI Interface | 4.6.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
-| MCP Server | 1.11.0 | Implemented |
+| MCP Server | 1.11.1 | Implemented |
 | CLI JSON Shapes | 4.3.0 | Complete |
 | docket-meta schema | 5.5.0 | Complete |
 | Docket Store | 2.3.0 | Implemented |
 | Operator API | 6.6.0 | Implemented (Phase 43, ADR 0027) |
 | A2A Binding | 1.1.0 | Implemented |
-| Serve Read API | 4.3.0 | Stable |
+| Serve Read API | 4.3.1 | Stable |
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.1.0 | Active |
 | Starter Journey | 2.0.1 | Implemented |
-| Operator Loop | 2.11.0 | Implemented |
+| Operator Loop | 2.12.0 | Implemented |
 | User Stories | 2.0.1 | Active |
 
 ## Tools

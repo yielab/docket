@@ -27,6 +27,7 @@ from docket.agent import ports as _rd
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _approval
 from docket.governance import secrets as _secrets
+from docket.governance.approval_pregrant import pending_pregrants
 from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
 from docket.hops.application import sweep as _sweep
@@ -129,8 +130,7 @@ class TestHttpGrantConsumesThePregrant:
 
             task = TaskRepository.for_pod("demo").list()[0]
             assert task.status == "pending"
-            assert len(task.pregrants) == 1
-            assert task.pregrants[0].token == token
+            assert [g.token for g in pending_pregrants(task.id)] == [token]
 
             # A real re-dispatch: the implementer's identical call is re-issued by the model
             # and this time is admitted via the single-use pre-grant `_handle_post_approvals`

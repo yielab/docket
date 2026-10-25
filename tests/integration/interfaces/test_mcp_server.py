@@ -33,6 +33,7 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import mcp as _mcp
 from docket.interfaces.cli.commands import pod as _pod_cli
 from docket.kernel.home import Home, use_home
+from docket.platform import read_escalation
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
@@ -653,6 +654,19 @@ class _GateRunner:
         return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {"output": "x"})
 
 
+def _unapplied_positions(task: Any) -> int:
+    """How many of *task*'s resolved approvals at a pipeline position wait for the claim."""
+    stored = [read_escalation(i) for i in task.escalations]
+    return sum(
+        1
+        for e in stored
+        if e is not None
+        and e.state == "resolved"
+        and e.resolution is not None
+        and e.resolution.applied_at is None
+    )
+
+
 @contextmanager
 def _gate_then_get_token(tmp_path: Path, project: str = "demo") -> Iterator[str]:
     """Seed a lean pod gated on the Implementer, dispatch one task so it stops in
@@ -679,7 +693,7 @@ class TestApprovalsResumeDispatch:
             after = TaskRepository.for_pod("demo").list()[0]
             assert after.status == Status.pending
             assert after.approval_token is None
-            assert after.gate_override_pipeline_index == 1
+            assert _unapplied_positions(after) == 1
 
     def test_deny_fails_the_gated_task_immediately(self, tmp_path: Path) -> None:
         with _gate_then_get_token(tmp_path) as token:
@@ -702,7 +716,6 @@ class TestApprovalsResumeDispatch:
 
             after = TaskRepository.for_pod("demo").list()[0]
             assert after.status == Status.pending
-            assert after.gate_override_pipeline_index == 1
 
     def test_deny_noop_branch_still_resolves_a_stuck_waiting_task(self, tmp_path: Path) -> None:
         with _gate_then_get_token(tmp_path) as token:

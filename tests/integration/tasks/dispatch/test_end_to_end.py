@@ -20,6 +20,7 @@ from tests.support.pods import seed_pod_isolation_off as _seed_pod
 from docket.agent import ports as _rd
 from docket.agent import session as _session
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
+from docket.governance import approval_pregrant as _pregrants
 from docket.hops.application import driver as _dr
 from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _runner
@@ -29,8 +30,10 @@ from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import new_thread
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
+from docket.platform import list_escalations
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import escalation_sweep as _escalation_sweep
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -204,7 +207,6 @@ class TestEndToEnd:
         """The resume path: `docket task approve <t>` then `docket run` re-runs the
         implementer hop (not the lead's already-persisted one) at its own index, and the exact
         same tool call the human approved passes once via a single-use pre-grant."""
-        from docket.governance import approval as _approval_mod
         from docket.governance.policy import install_policies
 
         with (
@@ -235,17 +237,18 @@ class TestEndToEnd:
             assert token
 
             # docket task approve <token>
-            _approval_mod.approval_grant(token, channel="cli")
-            assert _actions.resolve_waiting_approval(token, "granted") is True
+            _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
             task = TaskRepository.for_pod("demo").list()[0]
             assert task.status == "pending"
-            assert len(task.pregrants) == 1
-            assert task.pregrants[0].token == token
-            assert task.pregrants[0].tool == "bash"
-            assert task.pregrants[0].args_digest
-            # The override-index field is for skipping a pre-hop approval *gate*,
-            # never reused to re-run an already-attempted hop.
-            assert task.gate_override_pipeline_index is None
+            (granted,) = _pregrants.pending_pregrants(task.id)
+            assert granted.token == token
+            assert granted.tool == "bash"
+            assert granted.args_digest
+            # A parked call's escalation is stamped when it is resolved: nothing is left for the
+            # claim to apply, and no gate position is handed to it.
+            (parked_escalation,) = [e for e in list_escalations() if e.kind == "approval"]
+            assert parked_escalation.resolution is not None
+            assert parked_escalation.resolution.applied_at is not None
 
             # docket run -- the implementer's identical call is
             # re-issued by the model and this time passes via the pre-grant, then

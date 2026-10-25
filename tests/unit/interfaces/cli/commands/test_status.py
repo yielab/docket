@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from tests.support.pods import seed_lead_implementer_pod as _seed
+from tests.support.tasks import pregrant as _pregrant
 from tests.support.tasks import put_task, put_tasks, task
 from typer.testing import CliRunner
 
@@ -103,7 +104,8 @@ class TestCurrentPod:
 
     def test_approved_ready_counts_a_granted_pending_task(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            put_task("demo", task(gate_override_pipeline_index=1))
+            put_task("demo", task(id="t-ok"))
+            _pregrant("demo", "t-ok")
             assert _json("--pod", "demo")["tasks"]["approvedReady"] == 1
 
     def test_start_is_running_when_the_pid_file_names_a_live_process(self, tmp_path: Path) -> None:

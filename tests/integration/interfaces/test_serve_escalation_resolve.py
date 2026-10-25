@@ -64,7 +64,7 @@ class TestResolveRoute:
             "resolveUrl": f"/escalations/{escalation.id}",
         }
         task = stored_task(PROJECT, escalation.task)
-        assert (task.status, task.gate_override_pipeline_index) == ("pending", 1)
+        assert task.status == "pending"
         assert _ap.approval_get(escalation.legacy["token"])["state"] == "granted"
 
     def test_a_denial_carries_its_reason_to_the_failed_task(
@@ -215,7 +215,7 @@ class TestTheOlderRoutesSettleTheRecord:
         stored = read_escalation(escalation.id)
         assert stored is not None and stored.state == "resolved"
         assert stored.resolution is not None and stored.resolution.channel == "http"
-        assert stored_task(PROJECT, escalation.task).gate_override_pipeline_index == 1
+        assert stored_task(PROJECT, escalation.task).status == "pending"
 
     def test_a_repeat_on_the_token_is_a_conflict(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

@@ -28,6 +28,7 @@ from docket.operator import (
 )
 from docket.operator.render import render_options
 from docket.platform import read_json, write_json
+from docket.tasks.application.actions import approved_ready
 from docket.tasks.application.repository import TaskRepository
 
 # The operator's own terminal sees everything the pause carries.
@@ -59,7 +60,7 @@ def _approved_ready_tasks() -> list[TaskView]:
     out: list[TaskView] = []
     for project in _status.pod_ids():
         for record in TaskRepository.for_pod(project).list():
-            if record.approved_ready:
+            if approved_ready(record):
                 out.append(task_view(project, record.model_dump(by_alias=True, mode="json")))
     return out
 

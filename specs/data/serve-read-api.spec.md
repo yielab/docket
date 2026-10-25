@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 4.3.0
+**Version**: 4.3.1
 **Status**: Stable
 **Last Updated**: 2026-10-25
 
@@ -564,7 +564,7 @@ Success response (`200`) — the answered task's `TaskView` (operator-v1, `by_al
 Requires `Authorization: Bearer <token>`. Records a single-use pre-grant for one exact command on
 one task, ahead of dispatch — the HTTP counterpart of `docket task approve --for` and the MCP
 `task_pregrant` tool. It calls `record_pregrant`, which mints the approval exactly as an in-turn
-park does and appends the grant to the task's own `pregrants` list. When the pipeline later
+park does and names the task in the record, which is what the task's hops read. When the pipeline later
 reaches that exact call (matched by its canonical arguments digest), it passes once without
 asking again (`operator-loop.spec.md`, "Interruption forecast and pre-grants").
 

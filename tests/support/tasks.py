@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from docket.governance.approval_pregrant import create_pregrant
 from docket.tasks.application.json_store import JsonTaskStore
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -44,3 +45,8 @@ def stored_task(project: str, task_id: str) -> TaskRecord:
     record = TaskRepository.for_pod(project).get(task_id)
     assert record is not None
     return record
+
+
+def pregrant(project: str, task_id: str, *, tool: str = "bash", digest: str = "d") -> str:
+    """Record a single-use pre-grant for *task_id* of *project*, as `task approve --for` did; its token."""
+    return create_pregrant(project, "implementer", tool, digest, task_id=task_id, channel="cli")

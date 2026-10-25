@@ -101,7 +101,7 @@ def _resolve(token: str, decision: str) -> None:
         _ap.approval_grant(token, channel="cli")
     else:
         _ap.approval_deny(token, channel="cli", reason="not now")
-    _actions.resolve_waiting_approval_detail(token, decision, channel="cli", reason="not now")
+    _actions.resolve_waiting_approval(token, decision, channel="cli", reason="not now")
 
 
 def _lights_out(monkeypatch: pytest.MonkeyPatch) -> None:

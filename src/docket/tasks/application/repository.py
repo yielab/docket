@@ -36,14 +36,11 @@ _PRIORITY_RANK: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
 
 @dataclass(frozen=True)
 class Claim:
-    """A claimed task. ``gate_override_index`` is the pipeline position a granted approval asked
-    the claim to resume at; the stored record no longer holds it (it is single use). ``refusal`` is
-    ``(failure_kind, reason)`` when the claim cannot run (set by the caller that provisions the
-    task's worktree), else ``None``."""
+    """A claimed task. ``refusal`` is ``(failure_kind, reason)`` when the claim cannot run (set by
+    the caller that provisions the task's worktree), else ``None``."""
 
     record: TaskRecord
     resume_hops: list[HopResult]
-    gate_override_index: int | None
     refusal: tuple[str, str] | None = None
 
 
@@ -117,7 +114,7 @@ class TaskRepository:
 
     def claim_next(self, *, resume: bool, skip: frozenset[str] = frozenset()) -> Claim | None:
         """Claim the next eligible task, highest priority first, in one locked change: it moves
-        to ``running`` and its stored gate override is cleared and handed back in the ``Claim``."""
+        to ``running`` and is handed back in the ``Claim``."""
         # Eligible: ``pending``; a ``failed`` task with a resumable kind only when *resume*; never
         # an id in *skip*.
         claimed: list[Claim] = []
@@ -128,9 +125,7 @@ class TaskRepository:
                 return False
             record = min(candidates, key=lambda r: _PRIORITY_RANK.get(r.priority, 1))
             apply_to_task(record, _state.Status.running, now=_clock.iso(), pid=_os.getpid())
-            override = record.gate_override_pipeline_index
-            record.gate_override_pipeline_index = None
-            claimed.append(Claim(record, list(record.hops), override))
+            claimed.append(Claim(record, list(record.hops)))
             return True
 
         self._change(_fn)
