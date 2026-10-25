@@ -221,7 +221,7 @@ class TestRefusals:
 
 
 class TestAConsultThatWouldWait:
-    def test_the_default_park_mode_refuses_and_names_the_setting(
+    def test_an_explicit_park_refuses_and_names_the_setting(
         self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         _meet_everything(home, monkeypatch, fake_jail)
@@ -232,15 +232,13 @@ class TestAConsultThatWouldWait:
         _refused(res, driver, "consult")
         assert "docket pod set consultMode decide" in (res.reason or "")
 
-    def test_an_unset_mode_is_park(
+    def test_an_unset_mode_follows_the_default_level_and_is_not_refused(
         self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         _meet_everything(home, monkeypatch, fake_jail)
         _fleet.meta_set("demo-lead", "consultMode", "")
 
-        res, driver = _dispatch_one(_GATED)
-
-        _refused(res, driver, "consult")
+        assert "consult" not in [v.requirement for v in _pod_report.project_violations("demo")]
 
     def test_decide_has_no_consult_violation(
         self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail

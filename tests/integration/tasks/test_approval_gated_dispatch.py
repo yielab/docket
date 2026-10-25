@@ -13,7 +13,7 @@ waits on, and resolves a real approval rather than sitting with zero production 
     completed hops, never re-prompting for that same hop.
   * TestDenyFailsTerminally — a deny (direct, and via ``cli/_deny.py``) fails the task
     immediately with ``failureKind: "approval_denied"``, never auto-retried even with ``--resume``.
-  * TestExpirySweepDenies — ``approval_sweep_expired`` resolves a stale pending record to
+  * TestExpirySweepDenies — ``sweep_escalations`` resolves a stale pending record to
     **denied** (fail-closed, not the old unread ``"expired"``) and fails the waiting task.
   * TestHttpApprovalEndpoint — ``POST /approvals/<token>`` genuinely resumes/kills the task it
     gated, same as the CLI channel.
@@ -64,6 +64,7 @@ from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.pipeline.domain import gates as _gates
 from docket.tasks.application import actions as _actions
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -435,7 +436,7 @@ class TestExpirySweepDenies:
         rec["expiresAt"] = rec["created"]
         current_home().approvals_dir.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
-        swept = _ap.approval_sweep_expired()
+        swept = _escalation_sweep.sweep_escalations()
         assert swept == 1
         assert _ap.approval_get(token)["state"] == "denied"
 
@@ -446,7 +447,7 @@ class TestExpirySweepDenies:
         rec["expiresAt"] = rec["created"]
         current_home().approvals_dir.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
-        _ap.approval_sweep_expired()
+        _escalation_sweep.sweep_escalations()
         entries = [
             json.loads(line)
             for line in current_home().audit_log.read_text().splitlines()
@@ -470,7 +471,7 @@ class TestExpirySweepDenies:
         rec["expiresAt"] = rec["created"]
         current_home().approvals_dir.joinpath(f"{token}.json").write_text(json.dumps(rec))
 
-        swept = _ap.approval_sweep_expired()
+        swept = _escalation_sweep.sweep_escalations()
         assert swept == 1
 
         task = TaskRepository.for_pod("myapp").list()[0]

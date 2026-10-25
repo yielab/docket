@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.5.0
+**Version**: 6.6.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-25
 
@@ -73,7 +73,7 @@ over 1 MiB is `413`.
 | `GET /health` (dispatch block) | whether the sweep is on and what is in flight |
 
 The CLI keeps symmetry: `docket task add` takes `--external-ref`, `--idempotency-key`,
-`--base-ref`, `--pipeline`, `--gate` and `--max-tokens`; `docket task cancel|retry|diff` run the
+`--base-ref`, `--pipeline`, `--gate`, `--max-tokens` and `--autonomy`; `docket task cancel|retry|diff` run the
 same functions as their routes; `docket start` takes `--bind`. `prepare`, `restrictions` and
 `trusted` are body fields with no `docket task add` flag.
 
@@ -95,6 +95,7 @@ same functions as their routes; `docket start` takes `--bind`. `prepare`, `restr
 | `maxTokens` | int > 0 | a budget over the task's counted usage (`input - cached + output` summed over hops; a cache read is not counted); each hop runs with a turn token budget of `maxTokens - used so far`; a hop that would start with nothing left, or a turn that stops on that budget, fails the task with `failureKind: "budget"` |
 | `prepare` | string | the install command run in this task's worktree before its first hop; `""` or `none` runs nothing and wins over the pod's `prepare` and the lockfile. Unset means the pod's `prepare` setting, else the command for the worktree's lockfile (`pod-dispatch.spec.md` "Task preparation"). Stored on the task record and shown by `GET /tasks/<pod>/<id>`; an install that fails settles the task before any hop with `failureKind: "prepare"` and the output tail as `reason`. A newline or NUL, or more than 1,000 characters, is `400` |
 | `restrictions` | object | see below. Anything that would widen is `422` |
+| `autonomy` | `L3` / `L4` / `L5` | the level the task's pauses are decided at (`security-gates.spec.md` "Autonomy levels"). It only narrows: the pod's profile is the ceiling, `attended` admits up to `L3` and `lights-out` up to `L5`, and a level above it is `422` with the ceiling named. Unset takes the profile's default (`L3` attended, `L4` lights-out), so `L5` is always asked for. Any other value is `400`. Stored on the task record and shown by `GET /tasks/<pod>/<id>` |
 
 `restrictions`:
 
@@ -308,7 +309,7 @@ is audited as `pod.apply` with `channel=http`; an accepted code is remembered as
   "options": [{"id": "redis", "label": "Redis", "description": "fast", "risks": []}],
   "recommendation": {"optionId": "redis", "rationale": "...", "evidenceRefs": []},
   "requestedSchema": {}, "askedAt": "...", "expiresAt": "...", "onExpiry": "block",
-  "policy": "person", "state": "pending", "resolution": null, "seq": 1,
+  "policy": "person", "level": "L3", "state": "pending", "resolution": null, "seq": 1,
   "affordances": {"options": ["redis", "decline"], "acceptsText": true,
                   "resolveUrl": "/escalations/esc-0123456789ab"}}],
  "next": 1}
@@ -321,7 +322,8 @@ their state, so a poller never misses a record that settled between two reads. `
 narrow the list. `next` is the highest `seq` returned, else `since`; pass it back as `since`. A
 `since` that is not a non-negative integer answers `400`. `resolveUrl` names the route that
 resolves the escalation (below). `GET /inbox` carries the pending ones as
-`escalations` (additive; `needsYou` is unchanged).
+`escalations` (additive; `needsYou` is unchanged) and the pauses the pod settled alone as
+`decided`, newest first and at most twenty, a key that is absent while there are none.
 
 `POST /escalations/<id>` takes `{"optionId"?: string, "content"?: object, "actor"?: string}` and
 calls `resolve` (`operator-loop.spec.md` area 10) with channel `http` and actor `actor` (default
@@ -376,7 +378,11 @@ rule below holds because the pod's task list and the approval records, on disk u
 5. Expiry and its final states are not restated here: an approval past its `expiresAt` resolves
    to denied (`security-gates.spec.md`, "Approval tokens and approval packs"); a question past its
    `expiresAt` moves the task to `blocked` with `blockedReason: "input_expired"`
-   (`operator-loop.spec.md`, `inputExpiryHours`).
+   (`operator-loop.spec.md`, `inputExpiryHours`); both are ended by the one sweep, by each
+   record's `onExpiry`.
+5a. A task at `L5` whose tool call needs approval fails at once with `failureKind: "needs_human"`
+   (`security-gates.spec.md` "Autonomy levels" item 4) and is final until `POST .../retry`, which
+   a caller uses to run it again at `L3`.
 6. A `failed` task with `failureKind: "stale_claim"` is transient under `--dispatch`: the sweep
    resumes it from its last persisted hop on the next tick. A `failed` task with any other
    `failureKind` (except a settled `dispatch_refused`, which the sweep also resumes) is final
@@ -403,12 +409,12 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 |---|---|
 | `200` | a read; an idempotent re-post; cancel/retry/apply/ensure done |
 | `201` | a new task or a new pod |
-| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens` of the wrong shape, a naive `since`, a bad `apply` body |
+| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
 | `404` | no pod (checked before an `apply` body is read), no task, no escalation (`POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting |
 | `413` | a request body over 1 MiB |
-| `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an invalid `brief`; `POST /escalations/<id>` with an unknown option, content that fails the schema or content a policy blocks |
+| `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an `autonomy` above the pod profile's ceiling; an invalid `brief`; `POST /escalations/<id>` with an unknown option, content that fails the schema or content a policy blocks |
 | `500` | `POST /pods` could not provision (the attempt is rolled back); `GET /pods/<p>` for a pod whose stored settings are invalid |
 
 `GET /tasks/<pod>` for a pod with no queue answers `200` with an empty list. Error bodies are

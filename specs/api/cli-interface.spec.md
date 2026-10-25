@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 4.5.0
+**Version**: 4.6.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-25
@@ -307,13 +307,15 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
 **Verbs**:
 - `add "<text>" [--priority high|normal|low] [--brief FILE.json] [--external-ref REF]
   [--idempotency-key KEY] [--base-ref REF] [--pipeline NAME] [--gate COMMAND]
-  [--max-tokens N] [--pod <p>]`: Queue the task on
+  [--max-tokens N] [--autonomy L3|L4|L5] [--pod <p>]`: Queue the task on
   the resolved pod's own list (`~/.docket/workspaces/projects/<project>-lead/TASK_LIST.json`).
   The text is one argument; empty text or text over 500 characters exits 1, an unknown priority
   exits 2. `--brief` loads and validates the file as a `TaskBrief` (operator-v1); an invalid one
   exits 1 and enqueues nothing, a valid one is stored with the task. Prints the one-line
   interruption forecast (`NOTHING_WILL_ASK`, or `May ask you: ...` naming `docket task show`) and
   ends with `Next: docket run`
+  `--autonomy` sets the level the task's pauses are decided at and exits 1 naming the ceiling when it
+  is above the pod profile's (`security-gates.spec.md` "Autonomy levels");
   The six addressing flags are stored on the task verbatim (`operator-api.spec.md` "Arguments");
   `--gate` takes the command string alone and exits 1 when empty. A second `add` whose
   `--idempotency-key` is already in the queue enqueues nothing and prints the existing id with

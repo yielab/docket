@@ -388,38 +388,6 @@ class TestExpiryStillFailCloses:
         assert status == 200
         assert all(r["token"] != apr_token for r in body["pending"])
 
-    def test_sweep_expires_old_pending(self, approvals_dir: Path) -> None:
-        apr_token = _approval.approval_create("projS", "implementer", "x")
-        rec = _approval.approval_get(apr_token)
-        old = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=current_home().approval_timeout + 1)
-        rec["created"] = old.strftime("%Y-%m-%dT%H:%M:%SZ")
-        rec["expiresAt"] = rec["created"]
-        _store.write_json(_approval_path(apr_token), rec)
-
-        swept = _approval.approval_sweep_expired()
-        assert swept == 1
-        # The timeout sweep resolves to "denied" (fail-closed), not the
-        # prior, read-by-nobody "expired" state.
-        assert _approval.approval_get(apr_token)["state"] == "denied"
-
-    def test_sweep_leaves_recent_pending_alone(self, approvals_dir: Path) -> None:
-        apr_token = _approval.approval_create("projR", "implementer", "x")
-        swept = _approval.approval_sweep_expired()
-        assert swept == 0
-        assert _approval.approval_get(apr_token)["state"] == "pending"
-
-    def test_a_records_own_expires_at_wins_over_the_default_timeout(
-        self, approvals_dir: Path
-    ) -> None:
-        """A parked call may carry a short ``expiresAt`` well inside APPROVAL_TIMEOUT;
-        the sweep must honour that record's own deadline, not fall back to the default."""
-        apr_token = _approval.approval_create(
-            "projP", "implementer", "x", expires_at="2000-01-01T00:00:00Z"
-        )
-        swept = _approval.approval_sweep_expired()
-        assert swept == 1
-        assert _approval.approval_get(apr_token)["state"] == "denied"
-
 
 class TestPruneResolved:
     def _age_by(self, path: Path, seconds: float) -> None:

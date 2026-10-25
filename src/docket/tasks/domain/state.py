@@ -36,6 +36,7 @@ class FailureKind(StrEnum):
     dispatch_refused = "dispatch_refused"
     approval_denied = "approval_denied"
     check_changed = "check_changed"
+    needs_human = "needs_human"
 
 
 # A ``failed`` task ``--resume`` may reclaim: a swept crash, or a settled deterministic refusal.

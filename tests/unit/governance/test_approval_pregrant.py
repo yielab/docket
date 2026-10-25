@@ -66,34 +66,3 @@ class TestPreGrants:
         )
         assert _approval_pregrant.consume_pregrant(token) is False
         assert "consumedAt" not in _approval.approval_get(token)
-
-    def test_sweep_prunes_an_unconsumed_pregrant_past_its_expiry(self, approvals_dir: Path) -> None:
-        token = _approval_pregrant.create_pregrant(
-            "proj",
-            "implementer",
-            "bash",
-            "deadbeef",
-            channel="cli",
-            expires_at="2000-01-01T00:00:00Z",
-        )
-        swept = _approval.approval_sweep_expired()
-        assert swept == 1
-        assert _approval.approval_get(token)["state"] == "denied"
-        assert _approval_pregrant.consume_pregrant(token) is False
-
-    def test_sweep_leaves_an_unexpired_pregrant_alone(self, approvals_dir: Path) -> None:
-        token = _approval_pregrant.create_pregrant(
-            "proj", "implementer", "bash", "deadbeef", channel="cli"
-        )
-        swept = _approval.approval_sweep_expired()
-        assert swept == 0
-        assert _approval.approval_get(token)["state"] == "granted"
-
-    def test_sweep_leaves_an_already_consumed_pregrant_alone(self, approvals_dir: Path) -> None:
-        token = _approval_pregrant.create_pregrant(
-            "proj", "implementer", "bash", "deadbeef", channel="cli"
-        )
-        assert _approval_pregrant.consume_pregrant(token) is True
-        swept = _approval.approval_sweep_expired()
-        assert swept == 0
-        assert _approval.approval_get(token)["state"] == "granted"

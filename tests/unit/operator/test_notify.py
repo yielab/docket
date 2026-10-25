@@ -17,10 +17,12 @@ from docket.kernel.brief import TaskBrief
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
     ApprovalView,
+    EscalationAffordances,
     EscalationView,
     InboxView,
     Question,
     QuestionV11,
+    Resolution,
     TaskView,
 )
 from docket.operator import notify as _notify
@@ -150,6 +152,89 @@ class TestDiffEventsPure:
             snapshot_late, inbox, now="2026-09-28T00:09:00Z"
         )
         assert "approval.expiring" not in [e.kind for e in events_again]
+
+
+def _decided(*, id: str = "esc-0123456789ab", level: str = "L5") -> EscalationView:
+    return EscalationView(
+        id=id,
+        task="t1",
+        pod="alpha",
+        step="implement",
+        role="implementer",
+        kind="approval",
+        caused_by="c1",
+        prompt="git push origin main",
+        asked_at="2026-09-28T00:00:00Z",
+        on_expiry="deny",
+        policy="deny",
+        level=level,  # type: ignore[arg-type]
+        state="decided",
+        resolution=Resolution(option_id="deny", by="policy", channel="policy", at="2026-09-28Z"),
+        affordances=EscalationAffordances(options=[], accepts_text=False, resolve_url=f"/{id}"),
+    )
+
+
+class TestDecidedEvents:
+    def test_a_decision_the_pod_took_alone_emits_escalation_decided_once(self) -> None:
+        inbox = InboxView(decided=[_decided()])
+
+        events, snapshot = _notify.diff_events({}, inbox, now="2026-09-28T00:00:00Z")
+        again, _ = _notify.diff_events(snapshot, inbox, now="2026-09-28T00:01:00Z")
+
+        assert [(e.kind, e.pod, e.subject) for e in events] == [
+            ("escalation.decided", "alpha", "escalation:esc-0123456789ab")
+        ]
+        assert again == []
+
+    @pytest.mark.parametrize("level", ["minimal", "actions", "conversation"])
+    def test_the_data_names_the_task_the_option_and_the_level_at_every_content_level(
+        self, level: str
+    ) -> None:
+        (event,), _ = _notify.diff_events(
+            {}, InboxView(decided=[_decided()]), now="2026-09-28T00:00:00Z"
+        )
+
+        data = _notify.render_data(event.item, level)
+
+        assert data == {
+            "pod": "alpha",
+            "taskId": "t1",
+            "escalationId": "esc-0123456789ab",
+            "kind": "approval",
+            "optionId": "deny",
+            "level": "L5",
+        }
+
+    def test_the_text_says_what_was_decided_and_at_which_level(self) -> None:
+        (event,), _ = _notify.diff_events(
+            {}, InboxView(decided=[_decided()]), now="2026-09-28T00:00:00Z"
+        )
+        cloud = _notify.make_event(
+            event.kind,
+            event.pod,
+            event.subject,
+            _notify.render_data(event.item, "minimal"),
+            time="t0",
+            version="v1",
+        )
+
+        title, body = _notify.render_text(cloud)
+
+        assert title == "docket: escalation.decided (alpha)"
+        assert body == "task t1 -- approval decided deny at L5"
+
+    def test_needs_you_does_not_hear_it_but_naming_the_kind_does(self) -> None:
+        listens = types.SimpleNamespace(on=["escalation.decided"])
+        needs_you = types.SimpleNamespace(on=["needs_you"])
+
+        assert _notify._matches_on(listens, "escalation.decided") is True
+        assert _notify._matches_on(needs_you, "escalation.decided") is False
+
+    def test_a_channel_scoped_to_another_task_does_not_hear_it(self) -> None:
+        scoped = types.SimpleNamespace(config={"scopeTask": "t9", "scopePod": "alpha"})
+
+        assert _notify._in_scope(scoped, _decided()) is False
+        assert _notify._in_scope(types.SimpleNamespace(config={}), _decided()) is True
 
 
 class TestRenderDataContentLevels:

@@ -192,9 +192,17 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
             policy_id=verdict.policy_id,
             approval_token=pregrant_token or "",
         )
+    summary = (f"tool call {tool.name!r}: {verdict.reason}; call={rendered}")[:1000]
     if route == "refuse":
         # No approval record, no wait: the pod's posture says nobody will answer. Reported
         # distinctly from a timeout or an explicit denial ("nobody was asked").
+        _ports.approval_refused(
+            project=ctx.project,
+            role=ctx.role,
+            task_id=ctx.task_id,
+            caused_by=call.call_id,
+            prompt=summary,
+        )
         return GateDecision(
             "deny",
             verdict.reason,
@@ -203,7 +211,6 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
             error=verdict.reason,
         )
 
-    summary = (f"tool call {tool.name!r}: {verdict.reason}; call={rendered}")[:1000]
     rationale, blocked = _approval.screen_rationale(ctx.rationale, ctx.project)
     if route == "park":
         token = _park(call, ctx, summary, digest, rationale, blocked)

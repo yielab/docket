@@ -77,7 +77,7 @@ class NotifyEvent:
     subject: str
     version: str
     time: str
-    item: TaskView | ApprovalView
+    item: TaskView | ApprovalView | EscalationView
 
 
 @dataclass(frozen=True)
@@ -119,18 +119,22 @@ SinkFactory = Callable[[Any], "Deliver | None"]
 # ── pure: item identity, diffing, rendering ──────────────────────────────────
 
 
-def _item_key(item: TaskView | ApprovalView) -> str:
+def _item_key(item: TaskView | ApprovalView | EscalationView) -> str:
     if isinstance(item, ApprovalView):
         return f"approval:{item.token}"
+    if isinstance(item, EscalationView):
+        return f"escalation:{item.id}"
     return f"task:{item.pod}:{item.id}"
 
 
-def _item_version(item: TaskView | ApprovalView) -> str:
+def _item_version(item: TaskView | ApprovalView | EscalationView) -> str:
     """The status plus the question id or token -- so a task re-asking a new question, or an
     approval resolving, is always seen as a changed version even when the status string
     itself repeats (e.g. two different questions both leave a task `waiting_input`)."""
     if isinstance(item, ApprovalView):
         return f"{item.state}:{item.token}"
+    if isinstance(item, EscalationView):
+        return item.state
     extra = ""
     if item.question is not None:
         extra = item.question.id
@@ -197,7 +201,7 @@ def diff_events(
 
     events: list[NotifyEvent] = []
 
-    def _consider(item: TaskView | ApprovalView, kind: str) -> None:
+    def _consider(item: TaskView | ApprovalView | EscalationView, kind: str) -> None:
         key = _item_key(item)
         version = _item_version(item)
         if versions.get(key) != version:
@@ -214,6 +218,8 @@ def diff_events(
         _consider(failed_item, _failed_kind(failed_item))
     for done_item in inbox.done_since:
         _consider(done_item, "task.completed")
+    for decided_item in inbox.decided:
+        _consider(decided_item, "escalation.decided")
 
     for expiring_event in _expiring_events(inbox, expiring, now):
         events.append(expiring_event)
@@ -224,11 +230,24 @@ def diff_events(
 
 
 def render_data(
-    item: TaskView | ApprovalView, level: str, escalation: EscalationView | None = None
+    item: TaskView | ApprovalView | EscalationView,
+    level: str,
+    escalation: EscalationView | None = None,
 ) -> dict[str, Any]:
     """The event payload for *item* at content *level* (`minimal < actions < conversation`):
     `actions` adds an approval's `action`, `conversation` a task's `question`/`brief`; a task's
-    option ids are at every level, from its pending *escalation* when it has one."""
+    option ids are at every level, from its pending *escalation* when it has one. A decision the
+    pod took alone carries only ids and the level, at every level."""
+    if isinstance(item, EscalationView):
+        decision: dict[str, Any] = {"pod": item.pod}
+        if item.task:
+            decision["taskId"] = item.task
+        decision.update({"escalationId": item.id, "kind": item.kind})
+        if item.resolution is not None and item.resolution.option_id:
+            decision["optionId"] = item.resolution.option_id
+        if item.level:
+            decision["level"] = item.level
+        return decision
     if isinstance(item, ApprovalView):
         data: dict[str, Any] = {"pod": item.pod, "role": item.role, "token": item.token}
         if item.task_id:
@@ -298,6 +317,12 @@ def render_text(event: CloudEvent) -> tuple[str, str]:
     task_id = event.data.get("taskId")
     if task_id:
         parts.append(f"task {task_id}")
+    if kind == "escalation.decided" and event.data.get("optionId"):
+        level = event.data.get("level")
+        parts.append(
+            f"{event.data.get('kind', 'pause')} decided {event.data['optionId']}"
+            + (f" at {level}" if level else "")
+        )
     token = event.data.get("token")
     if token:
         parts.append(f"token {token}")
@@ -325,7 +350,9 @@ def render_text(event: CloudEvent) -> tuple[str, str]:
     return title, body
 
 
-def _escalation_of(item: TaskView | ApprovalView, inbox: InboxView) -> EscalationView | None:
+def _escalation_of(
+    item: TaskView | ApprovalView | EscalationView, inbox: InboxView
+) -> EscalationView | None:
     """The pending question escalation of a task *item* in *inbox*, if it has one."""
     if not isinstance(item, TaskView):
         return None
@@ -375,14 +402,19 @@ def _matches_on(spec: Any, kind: str) -> bool:
     return "needs_you" in on and kind in _NEEDS_YOU_KINDS
 
 
-def _in_scope(spec: Any, item: TaskView | ApprovalView) -> bool:
+def _in_scope(spec: Any, item: TaskView | ApprovalView | EscalationView) -> bool:
     """Whether *spec* hears *item*: a channel scoped to one task (``config.scopeTask`` in
     ``config.scopePod``) hears only that task's events, any other channel hears everything."""
     config = getattr(spec, "config", None) or {}
     task = config.get("scopeTask")
     if not task:
         return True
-    task_id = item.task_id if isinstance(item, ApprovalView) else item.id
+    if isinstance(item, ApprovalView):
+        task_id = item.task_id
+    elif isinstance(item, EscalationView):
+        task_id = item.task
+    else:
+        task_id = item.id
     return (item.pod, task_id) == (config.get("scopePod"), task)
 
 

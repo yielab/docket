@@ -117,7 +117,10 @@ def test_a_parked_then_answered_task_is_counted_with_its_wait(metrics_url: str) 
 
     answered = _scrape(metrics_url)
     assert (
-        _sample(answered, 'docket_escalations_total{kind="input",outcome="resolved",by="person"}')
+        _sample(
+            answered,
+            'docket_escalations_total{kind="input",outcome="resolved",by="person",level="L3"}',
+        )
         == 1
     )
     assert _sample(answered, 'docket_escalation_wait_seconds_count{kind="input"}') == 1
@@ -131,7 +134,10 @@ def test_a_pod_decided_consult_is_counted_apart_from_a_human_one(metrics_url: st
     lines = _scrape(metrics_url)
 
     assert (
-        _sample(lines, 'docket_escalations_total{kind="consult",outcome="decided",by="policy"}')
+        _sample(
+            lines,
+            'docket_escalations_total{kind="consult",outcome="decided",by="policy",level="none"}',
+        )
         == 1
     )
     assert not any('by="person"' in ln for ln in lines)
@@ -177,13 +183,33 @@ class TestFold:
 
         def total(kind: str, outcome: str, by: str) -> float:
             return _sample(
-                lines, f'docket_escalations_total{{kind="{kind}",outcome="{outcome}",by="{by}"}}'
+                lines,
+                f'docket_escalations_total{{kind="{kind}",outcome="{outcome}",by="{by}",level="none"}}',
             )
 
         assert total("consult", "resolved", "person") == 2
         assert total("consult", "expired", "timeout") == 1
         assert total("consult", "decided", "policy") == 1
         assert total("approval", "resolved", "person") == 1
+
+    def test_the_level_of_the_pause_is_a_label_and_a_missing_one_reads_none(self) -> None:
+        _traced("escalation_decided", 0, by="policy", policy="deny", kind="approval", level="L5")
+        _traced("escalation_decided", 0, by="policy", policy="deny", kind="approval", level="L5")
+        _traced("escalation_resolved", 5, by="person", level="L3")
+        _traced("escalation_resolved", 5, by="person")
+
+        lines = metrics.render_metrics().splitlines()
+
+        def total(kind: str, outcome: str, by: str, level: str) -> float:
+            return _sample(
+                lines,
+                "docket_escalations_total{"
+                f'kind="{kind}",outcome="{outcome}",by="{by}",level="{level}"' + "}",
+            )
+
+        assert total("approval", "decided", "policy", "L5") == 2
+        assert total("consult", "resolved", "person", "L3") == 1
+        assert total("consult", "resolved", "person", "none") == 1
 
     def test_the_wait_sums_every_settled_escalation_of_a_kind(self) -> None:
         _traced("escalation_resolved", 60, by="person")
@@ -202,7 +228,8 @@ class TestFold:
 
         assert (
             _sample(
-                lines, 'docket_escalations_total{kind="consult",outcome="resolved",by="person"}'
+                lines,
+                'docket_escalations_total{kind="consult",outcome="resolved",by="person",level="none"}',
             )
             == 1
         )

@@ -5,8 +5,7 @@ question's own schema (``operator_contract.validate_answer``), screens every str
 same ``pre_input`` evaluator ``interfaces/telegram/bot.py``'s ``/delegate`` uses, appends the answer to the
 task's durable ``answers[]``, and resumes the pipeline at the step's own ``on:`` route -- mirroring
 exactly what a live routed hop does inside ``hops.application.executor._run_pipeline``, since answering happens
-outside any live dispatch call. ``sweep_expired_questions`` is the fail-closed-but-never-fails
-counterpart: an unanswered question past its deadline blocks the task, it never fails it.
+outside any live dispatch call.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
-from docket.governance import escalation_expiry as _escalation_expiry
 from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.application import executor as _executor
@@ -48,8 +46,6 @@ from docket.tasks.domain.resolution import (
     EscalationNotPending,
     EscalationRefused,
 )
-from docket.teams import fleet as _fleet
-from docket.teams import pod as _pod
 
 __all__ = [
     "AnswerError",
@@ -59,7 +55,6 @@ __all__ = [
     "QuestionAnswers",
     "answer_task",
     "record_answer",
-    "sweep_expired_questions",
 ]
 
 
@@ -83,13 +78,6 @@ class AnswerRejected(Refused):
     def __init__(self, policy_id: str) -> None:
         self.policy_id = policy_id
         super().__init__(f"answer blocked by policy {policy_id!r}")
-
-
-def _all_projects() -> list[str]:
-    """Every project with at least one registered pod member -- the same enumeration
-    ``operator.inbox`` uses, copied rather than imported to avoid a cycle risk."""
-    all_ids = [a.id for a in _fleet.list_agents()]
-    return sorted({p for aid in all_ids if (p := _pod.pod_of(aid))})
 
 
 def _load_parked_question(t: _task.TaskRecord, task_id: str) -> Question:
@@ -478,46 +466,3 @@ def _record_answer_audit_and_trace(
             }
         ),
     )
-
-
-def sweep_expired_questions(now: str | None = None) -> int:
-    """Expire every ``waiting_input`` task past its question's ``expiresAt``: fails closed but
-    never fails -- moves it to ``blocked``/``"input_expired"``, never ``failed``.
-    ``retry_task``/``unblock_pod`` reopen it; returns the number of tasks expired."""
-    now_dt = _clock.parse_iso(now or _clock.iso())
-    if now_dt is None:
-        return 0
-    count = 0
-    for project in _all_projects():
-        expired: list[tuple[str, str]] = []
-
-        def _expire(t: _task.TaskRecord, _expired: list[tuple[str, str]] = expired) -> bool:
-            question = t.question
-            if t.status != _state.Status.waiting_input or question is None:
-                return False
-            if not question.expires_at:
-                return False
-            exp_dt = _clock.parse_iso(question.expires_at)
-            if exp_dt is None or exp_dt > now_dt:
-                return False
-            _transitions.apply_to_task(
-                t,
-                _state.Status.blocked,
-                reason=f"question {question.id!r} expired unanswered",
-                blocked_reason="input_expired",
-            )
-            _expired.append((t.id, question.id))
-            return True
-
-        TaskRepository.for_pod(project).update_each(_expire)
-        for task_id, question_id in expired:
-            count += 1
-            _escalation_expiry.expire("questionId", question_id)
-            _trace.trace_event(
-                project,
-                f"agent:{project}:{task_id}",
-                "lead",
-                "input_expired",
-                _json.dumps({"task": task_id, "questionId": question_id}),
-            )
-    return count

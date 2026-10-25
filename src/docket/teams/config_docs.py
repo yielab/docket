@@ -19,6 +19,7 @@ from docket.kernel.errors import CanonicalFormRefused, DocumentError, InvalidInp
 from docket.models import catalog as _provider
 from docket.observability import exporter as _exporter
 from docket.pipeline.domain import spec as _pipeline
+from docket.teams import autonomy as _autonomy
 from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import model_selection as _models_policy
@@ -35,6 +36,7 @@ KINDS: tuple[str, ...] = (
     "exporter",
     "channel",
     "mcp-server",
+    "autonomy",
 )
 
 _LOCATION_KIND: dict[str, str] = {
@@ -344,6 +346,13 @@ def _validate_channel(path: Path) -> None:
         raise ConfigDocError(path, str(exc)) from exc
 
 
+def _validate_autonomy(path: Path) -> None:
+    try:
+        _autonomy.load_autonomy_document(path)
+    except _autonomy.AutonomyError as exc:
+        raise ConfigDocError(path, str(exc)) from exc
+
+
 def _validate_mcp_server(path: Path) -> None:
     try:
         _mcp_servers.load_mcp_server_document(path)
@@ -424,6 +433,8 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             _validate_channel(p)
         elif effective_kind == "mcp-server":
             _validate_mcp_server(p)
+        elif effective_kind == "autonomy":
+            _validate_autonomy(p)
     except ConfigDocError as exc:
         raise _refine_with_model(p, effective_kind, {"kind": effective_kind, **doc}, exc) from exc
 

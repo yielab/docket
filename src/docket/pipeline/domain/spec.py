@@ -418,6 +418,20 @@ _TESTER_PATTERN = r"^\s*(PASS|FAIL)\b"
 _DEFAULT_MAX_REWORK_CYCLES = 1
 
 
+def input_refusal(spec: PipelineSpec, level: str) -> str | None:
+    """Why a task at *level*, which cannot be made to wait for a person, may not run *spec*: it
+    names every ``input`` step (a ``parallel`` child cannot carry one) and the two ways out.
+    ``None`` when the pipeline asks nobody. Whether the level can wait is the caller's to know."""
+    steps = [f"'{step.id}'" for step in spec.steps if step.input is not None]
+    if not steps:
+        return None
+    which = ", ".join(steps)
+    return (
+        f"the pipeline asks a person at its input step {which}, and a task at {level} has nobody "
+        "to ask; lower the task's autonomy to L3, or take the input step out"
+    )
+
+
 def default_pipeline() -> PipelineSpec:
     """The built-in zero-migration pipeline, equivalent to ``hops/application/steps.py``'s
     ``PIPELINE_ORDER``: lead -> implementer -> reviewer -> tester. See

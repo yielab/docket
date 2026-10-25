@@ -30,6 +30,7 @@ from docket.tasks.domain import state as _state
 from docket.tasks.domain.parts import Prepared, Worktree
 from docket.tasks.domain.refs import LEAD_STEP_ID, TaskRef, TaskRefError
 from docket.tasks.domain.task import TaskRecord, TaskRestrictionError, TaskResult
+from docket.teams import autonomy as _autonomy
 from docket.teams import fleet as _fleet
 from docket.teams import isolation_posture as _isolation_posture
 from docket.teams import models as _models
@@ -117,6 +118,11 @@ def enqueue_task_once(
     if not path.parent.is_dir():
         raise DispatchError(f"no pod for '{project}' (run from its directory: docket init)")
     parsed_options = validate_task_options(**options)
+    if parsed_options.autonomy is not None:
+        try:
+            _autonomy.check_level(project, parsed_options.autonomy)
+        except _autonomy.LevelAboveCeiling as exc:
+            raise TaskRestrictionError(str(exc)) from exc
     key = parsed_options.idempotency_key
     repo = TaskRepository.for_pod(project)
     if key is not None:

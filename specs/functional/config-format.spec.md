@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Implemented
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -17,7 +17,7 @@ kind of file in a directory in one pass.
 This specification covers:
 
 - The envelope: every configuration document starts with `kind:` (one of `role`, `pipeline`,
-  `policy`, `pod`, `provider`, `exporter`, `channel`, `mcp-server`) and `name:`;
+  `policy`, `pod`, `provider`, `exporter`, `channel`, `mcp-server`, `autonomy`) and `name:`;
   `load_document(path)` reads the file, resolves its kind, and dispatches to the existing
   parser for that kind
 - One authored form per kind (`role`, `pipeline`, `policy`, `pod`): the short form. A file with a
@@ -30,11 +30,12 @@ This specification covers:
   and its `<file>:<line> <field>: <message> (valid: ...; did you mean "...")` rendering
 - `docket pod validate [dir|file]`: validates every document under a directory (or one file),
   printing one line per file, invalid files first, exit 1 when any file is invalid
-- The eight parsers this dispatches to unchanged: `from_wire` (with the role file loader) for
+- The nine parsers this dispatches to unchanged: `from_wire` (with the role file loader) for
   `role`, `load_pipeline` for `pipeline`, `validate_policy` for `policy`, the pod manifest key
   set for `pod`, `load_provider_document` for `provider`, `load_exporter_document` for
   `exporter`, `load_channel_document` for `channel` and `load_mcp_server_document` for
-  `mcp-server`. `provider` has no published schema (canonical form only); `exporter`,
+  `mcp-server`, `load_autonomy_document` for `autonomy`. `provider` and `autonomy` have no published
+  schema (canonical form only); `exporter`,
   `channel` and `mcp-server` each have a published schema generated directly from their own
   canonical model, since none has a separate short form to refine against
 - The published `docs/contracts/config-v1/{role,pipeline,policy,pod,exporter,channel,mcp-server}.
@@ -63,7 +64,14 @@ This specification does NOT cover:
 ### The envelope
 
 1. `KINDS` **MUST** be the closed tuple `("role", "pipeline", "policy", "pod", "provider",
-   "exporter", "channel", "mcp-server")`, in that order. An `mcp-server` document is `name`,
+   "exporter", "channel", "mcp-server", "autonomy")`, in that order. An `autonomy` document is
+   `name`, an optional `description` and `rows`: a mapping from each escalation kind (`approval`,
+   `consult`, `input`, `gate`, `check_changed`) to a mapping from each level (`L3`, `L4`, `L5`) to
+   `{policy, onExpiry}`, where `policy` is `person`, `recommendation`, `deny` or `fail` and
+   `onExpiry` is `deny` or `block`. Every kind and every level **MUST** be present (fifteen cells)
+   and any other key is an unknown-key error. The built-in document is
+   `templates/autonomy/default.yaml`; it is the table of operator-loop.spec.md "Escalations"
+   item 12 and the only one the runtime reads. An `mcp-server` document is `name`,
    `command`, `args`, `env`, `timeout`, `access` (`read`|`write`, the server's declared kind;
    the key is not `kind` because `kind:` is the envelope) and `tools`; any other key (an
    `isolate:` key, for instance) is an unknown-key error, because every stdio server starts in
@@ -108,9 +116,11 @@ This specification does NOT cover:
    - `mcp-server` -> `load_mcp_server_document(path)`; a raised `McpServerDocError` is mapped
      the same way. Its canonical model (`McpServerDocument`) doubles as its schema-generation
      model, the same shape as `exporter`.
+   - `autonomy` -> `load_autonomy_document(path)`; a raised `AutonomyError` is mapped the same
+     way. It has no short-form model and no published schema.
 2. A parser's own exception or non-empty error string **MUST** be surfaced as a
    `ConfigDocError` naming the file and the parser's own message; this spec does not change what
-   any of the eight parsers accepts or rejects.
+   any of the nine parsers accepts or rejects.
 3. Applying a directory (its `pod.yaml` manifest and each role file), `docket pod update
    <file>`, `docket pod validate`, `docket pod plan --pipeline` and the pipeline file a `docket
    run` is given **MUST** all read the stand-alone file through `load_document` (through
@@ -228,7 +238,8 @@ This specification does NOT cover:
 
 ```text
 KINDS: tuple[str, ...]
-    # ("role", "pipeline", "policy", "pod", "provider", "exporter", "channel", "mcp-server")
+    # ("role", "pipeline", "policy", "pod", "provider", "exporter", "channel", "mcp-server",
+    #  "autonomy")
 
 Document                             # frozen dataclass
     kind: str
@@ -298,14 +309,14 @@ Output below is the piped (plain) form.
 
 ```bash
 $ docket pod validate policies/broken.yaml
-x policies/broken.yaml:1 kind: unknown kind 'banana' (valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server)
+x policies/broken.yaml:1 kind: unknown kind 'banana' (valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server, autonomy)
 ```
 
 ### A directory with one good role and one invalid file
 
 ```bash
 $ docket pod validate .docket
-x .docket/roles/bad.yaml:1 kind: unknown kind 'banana' (valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server)
+x .docket/roles/bad.yaml:1 kind: unknown kind 'banana' (valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server, autonomy)
 ok .docket/roles/good.yaml (role security-vetter)
   roles 2 · policies 0 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0
 ```
@@ -348,6 +359,7 @@ ok .docket/roles/custom.yaml (role custom)
 - `src/docket/models/catalog.py`: `load_provider_document`, `ProviderError`
 - `src/docket/observability/exporter.py`: `load_exporter_document`, `ExporterSpec`, `ExporterError`
 - `src/docket/operator/channel.py`: `load_channel_document`, `ChannelSpec`, `ChannelError`
+- `src/docket/teams/autonomy.py`: `load_autonomy_document`, `AutonomyDocument`, `AutonomyError`
 - `src/docket/agent/tools/mcp_tools.py`: `load_mcp_server_document`, `McpServerDocument`,
   `McpServerDocError`
 - `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod validate`, `pod update`, `pod plan --pipeline`

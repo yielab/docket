@@ -223,6 +223,8 @@ class TaskRecord(BaseModel):
     max_tokens: int | None = Field(None, alias="maxTokens", exclude_if=is_none)
     prepare: str | None = Field(None, exclude_if=is_none)
     restrictions: TaskRestrictions | None = Field(None, exclude_if=is_none)
+    # The level its pauses are decided at, as asked at enqueue; unset takes the profile's default.
+    autonomy: str | None = Field(None, exclude_if=is_none)
 
     # The lifecycle: where the task stands.
     status: Status = Status.pending

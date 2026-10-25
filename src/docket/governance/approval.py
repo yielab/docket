@@ -5,10 +5,10 @@ later resolver (e.g. ``tasks/application/actions.py``) find what a token gated. 
 best-effort behind ``_emit_trace``/``_redact`` so tests can stub them; grant/deny also
 audit-log the calling channel, restricted to the closed ``APPROVAL_CHANNELS`` set so a caller
 (e.g. ``interfaces/http/server.py``) cannot inject an arbitrary string into the record. The expiry sweep
-resolves a stale pending record to **denied** (fail-closed, not ``"expired"``) and notifies
+(``tasks/application/escalation_sweep.py``) resolves a stale pending record to **denied** (fail-closed, not ``"expired"``) and notifies
 ``tasks/application/actions.py`` so a waiting task is not left stranded. ``wait_for_approval`` blocks the
 calling thread instead for ``agent/tools/registry.py``'s in-turn gate, sharing the same fail-closed
-resolution via ``_resolve_timeout_as_denied``.
+resolution via ``expire_approval``.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from docket.platform import read_modify_write, with_lock, write_json
 
 # The closed set of channels a grant/deny may be tagged with in the audit log
 # (see the module docstring). ``timeout`` is the fail-closed expiry path
-# (``_resolve_timeout_as_denied``), never a human-driven caller. Callers that
+# (``expire_approval``), never a human-driven caller. Callers that
 # accept a channel from outside the process (``interfaces/http/routes/approvals.py``'s
 # ``POST /approvals/<token>``) MUST validate against this set rather than
 # passing an arbitrary string through to ``approval_grant``/``approval_deny``.
@@ -390,7 +390,7 @@ def prune_resolved(
     count removed (or, under *dry_run*, that would be)."""
     # A state transition is a record's only write after creation, so mtime is a
     # faithful "resolved at" proxy without a schema change. A pending record is never
-    # touched regardless of age -- see approval_sweep_expired for that separate,
+    # touched regardless of age -- see the expiry sweep for that separate,
     # timeout-driven path. Each candidate is deleted under its own file lock so a
     # concurrent grant/deny can never race the removal.
     if not current_home().approvals_dir.is_dir():
@@ -424,8 +424,8 @@ def prune_resolved(
     return removed
 
 
-def _resolve_timeout_as_denied(token: str) -> bool:
-    """Fail-closed timeout resolution shared by the sweep and the in-turn waiter. Returns ``True``
+def expire_approval(token: str) -> bool:
+    """Fail-closed timeout resolution shared by the expiry sweep and the in-turn waiter. Returns ``True``
     only for the transition winner, which writes the audit entry and notifies ``tasks/application/actions.py``;
     a grant, deny, expiry, or deletion winning first is a harmless ``False``, not an overwrite."""
     try:
@@ -457,7 +457,7 @@ def _expiry_deadline(data: dict[str, Any]) -> float | None:
 
 def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
     """Fail-closed: deny an unconsumed pre-grant once past its own ``expiresAt``.
-    Unlike ``_resolve_timeout_as_denied`` this skips ``set_state``: a pre-grant is
+    Unlike ``expire_approval`` this skips ``set_state``: a pre-grant is
     *born* ``granted``, so this prunes an unused offer, not a grant/deny race."""
     path = _approval_path(token)
     expired = False
@@ -479,44 +479,53 @@ def _expire_unconsumed_pregrant(token: str, project: str, role: str) -> bool:
     return expired
 
 
-def approval_sweep_expired() -> int:
-    """Expire pending approvals past their deadline (their ``expiresAt``) via ``_resolve_timeout_as_denied``, and separately prune
-    unconsumed pre-grants past theirs -- both resolved to **denied** (fail-closed)."""
+def pending_past_deadline(now: float | None = None) -> list[str]:
+    """The tokens of every pending approval past its own ``expiresAt`` at *now* (epoch seconds,
+    default the clock)."""
     if not current_home().approvals_dir.is_dir():
-        return 0
-    now = _clock.epoch()
-    swept = 0
-    for path in current_home().approvals_dir.glob("*.json"):
+        return []
+    moment = _clock.epoch() if now is None else now
+    expired: list[str] = []
+    for path in sorted(current_home().approvals_dir.glob("*.json")):
         try:
             with path.open(encoding="utf-8") as f:
                 data: dict[str, Any] = json.load(f)
         except Exception:
             continue
+        deadline = _expiry_deadline(data)
+        if data.get("state") == "pending" and deadline is not None and moment > deadline:
+            expired.append(str(data.get("token", "")))
+    return [token for token in expired if token]
 
+
+def prune_unconsumed_pregrants(now: float | None = None) -> int:
+    """Deny every unconsumed pre-grant past its own ``expiresAt`` at *now* (fail closed); how many."""
+    if not current_home().approvals_dir.is_dir():
+        return 0
+    moment = _clock.epoch() if now is None else now
+    pruned = 0
+    for path in sorted(current_home().approvals_dir.glob("*.json")):
+        try:
+            with path.open(encoding="utf-8") as f:
+                data: dict[str, Any] = json.load(f)
+        except Exception:
+            continue
         token = str(data.get("token", ""))
-        if not token:
-            continue
-        state = data.get("state")
-
-        if state == "pending":
-            deadline = _expiry_deadline(data)
-            if deadline is not None and now > deadline and _resolve_timeout_as_denied(token):
-                swept += 1
-            continue
-
         if (
-            state == "granted"
-            and not data.get("consumedAt")
-            and str((data.get("context") or {}).get("kind", "")) == "pregrant"
+            not token
+            or data.get("state") != "granted"
+            or data.get("consumedAt")
+            or str((data.get("context") or {}).get("kind", "")) != "pregrant"
         ):
-            expires_at = data.get("expiresAt")
-            deadline = _clock.parse_epoch(str(expires_at)) if expires_at else None
-            if deadline is not None and now > deadline:
-                project = str(data.get("project", "")) or "operator"
-                role = str(data.get("role", "")) or "operator"
-                if _expire_unconsumed_pregrant(token, project, role):
-                    swept += 1
-    return swept
+            continue
+        deadline = _expiry_deadline(data)
+        if deadline is None or moment <= deadline:
+            continue
+        project = str(data.get("project", "")) or "operator"
+        role = str(data.get("role", "")) or "operator"
+        if _expire_unconsumed_pregrant(token, project, role):
+            pruned += 1
+    return pruned
 
 
 @dataclass(frozen=True)
@@ -555,7 +564,7 @@ def wait_for_approval(
     busy-spins) until it resolves or *timeout* seconds elapse (default
     ``Home.tool_approval_timeout``, deliberately much shorter than the async
     ``APPROVAL_TIMEOUT`` — see kernel/home.py for why). A timeout resolves the record to
-    **denied** via the same ``_resolve_timeout_as_denied`` helper the expiry sweep uses —
+    **denied** via the same ``expire_approval`` helper the expiry sweep uses —
     never left dangling in ``pending``.
 
     ``sleep``/``clock`` are injectable two ways, both exercised by the suite: pass them
@@ -593,7 +602,7 @@ def wait_for_approval(
                     raise
             return ApprovalWaitResult("denied", token, cancelled=True)
         if do_clock() >= deadline:
-            if _resolve_timeout_as_denied(token):
+            if expire_approval(token):
                 return ApprovalWaitResult("denied", token, timed_out=True)
             # A concurrent decision won after this polling read. Observe the
             # persisted winner rather than returning a stale timeout denial.

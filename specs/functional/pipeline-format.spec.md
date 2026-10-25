@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 4.1.0
+**Version**: 4.2.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
 operator-input steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
@@ -452,6 +452,15 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    plan only describes the step, it never asks.
 4. Execution — parking the task in `waiting_input` and resuming from an operator's answer — is
    `pod-dispatch.spec.md`, "Operator input steps and answers" and "Task status vocabulary".
+5. **An `input` step needs a person, so it needs level `L3`.** A pipeline asks a person by design, and
+   a task whose autonomy level (`security-gates.spec.md` "Autonomy levels") does not let a person
+   be asked has nobody to answer. The rule is exact: a task is refused when its effective level's
+   `input` row in the autonomy table is not `person` (`L4` and `L5` in the built-in table) and the
+   pipeline it runs holds at least one `input` step (a `parallel` child cannot carry one). The check is `input_refusal(spec, level)`, run when the task is claimed, with the same
+   validation that resolves its variables: the task fails before any hop with `failureKind:
+   "pipeline"` and a `reason` naming the step ids, the level and the two ways out (lower the
+   task's `autonomy` to `L3`, or take the step out). The pipeline file itself stays valid:
+   `docket pod validate` and `docket pod plan --pipeline` have no task and do not apply the rule.
 
 ## Interface Contracts
 

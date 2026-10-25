@@ -14,7 +14,7 @@ from docket.governance import approval as _approval
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import status as _status
 from docket.interfaces.cli.render import ui
-from docket.interfaces.cli.render.escalation import answer_command, options_line
+from docket.interfaces.cli.render.escalation import answer_command, decision_line, options_line
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import ApprovalView, EscalationView, InboxView, TaskView
@@ -200,6 +200,15 @@ def _render_item(
         _say(f"    next: {command}")
 
 
+def _render_decided(view: EscalationView) -> None:
+    """One decision the pod took alone, with the task it belongs to."""
+    rendered = render_escalation(view, _LEVEL)
+    _say(f"  decided {view.kind} {view.id}  pod={view.pod}  task={view.task or '-'}")
+    if rendered.prompt:
+        _say(_block("    ", rendered.prompt))
+    _say(f"    {decision_line(view)}")
+
+
 def cmd_inbox(
     json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
     since: str | None = typer.Option(
@@ -232,14 +241,17 @@ def cmd_inbox(
         ("Done", [(i, False) for i in view.done_since]),
         ("Running", [(i, False) for i in view.running]),
     ]
-    if not memory and not any(items for _, items in sections):
+    if not memory and not view.decided and not any(items for _, items in sections):
         ui.dim("Nothing needs you.")
         return
     for title, items in sections:
-        if items or (memory and title == "Needs you"):
+        decided = view.decided if title == "Done" else []
+        if items or decided or (memory and title == "Needs you"):
             ui.section(title)
             for item, is_ready in items:
                 _render_item(item, ready=is_ready, escalations=view.escalations)
+            for decision in decided:
+                _render_decided(decision)
             if title == "Needs you":
                 for entry in memory:
                     _render_memory(entry)

@@ -24,7 +24,6 @@ from tests.support.pods import GATED_IMPLEMENTER_PIPELINE_YAML, build_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import approval as _ap
-from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
@@ -32,6 +31,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
@@ -266,7 +266,7 @@ class TestExpiryStates:
 
         with _server():
             pass
-        assert _ap.approval_sweep_expired() == 1
+        assert _escalation_sweep.sweep_escalations() == 1
         with _server() as url:
             _, denied = _call("GET", f"{url}/tasks/demo/{gated.id}")
         assert denied["status"] == "failed"
@@ -274,7 +274,7 @@ class TestExpiryStates:
 
         asked = _park_on_consult(monkeypatch, tmp_path)
         assert asked
-        assert _answers.sweep_expired_questions(now="2999-01-01T00:00:00+00:00") == 1
+        assert _escalation_sweep.sweep_escalations(now="2999-01-01T00:00:00+00:00") == 1
         with _server() as url:
             _, blocked = _call("GET", f"{url}/tasks/demo/{asked}")
         assert blocked["status"] == "blocked"

@@ -24,6 +24,7 @@ _TASK_OPTION_FIELDS: tuple[tuple[str, str], ...] = (
     ("max_tokens", "maxTokens"),
     ("prepare", "prepare"),
     ("restrictions", "restrictions"),
+    ("autonomy", "autonomy"),
 )
 
 

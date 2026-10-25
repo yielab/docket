@@ -2,7 +2,7 @@
 
 observability/trace.py's expire_old_traces() is tested in isolation by
 test_trace_retention.py. This file pins the *wiring* -- that _run_sweeps calls
-sweep_all then approval_sweep_expired, keeps going if one raises, and runs
+sweep_all then sweep_escalations, keeps going if one raises, and runs
 once at startup -- and the retention *effect* that ordering exists to protect:
 expire_old_traces only ever deletes an already-terminated trace, so a
 stale-but-open trace must first receive sweep_all's synthetic session_end
@@ -21,7 +21,6 @@ import pytest
 from tests.support.tasks import put_tasks, task
 from tests.support.trace import write_trace as _write_trace
 
-from docket.governance import approval as _ap
 from docket.interfaces.http import server as _server
 from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.routes import a2a_push
@@ -31,6 +30,7 @@ from docket.kernel.operator_contract import Escalation, new_escalation_id
 from docket.observability import trace as _trace
 from docket.operator import load_catalog, save_channel
 from docket.platform import store as _store
+from docket.tasks.application import escalation_sweep as _escalation_sweep
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -192,7 +192,9 @@ class TestSweepWiring:
     def test_run_sweeps_invokes_both(self, monkeypatch: pytest.MonkeyPatch) -> None:
         called: list[str] = []
         monkeypatch.setattr(_trace, "sweep_all", lambda: called.append("trace"))
-        monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: called.append("appr") or 0)
+        monkeypatch.setattr(
+            _escalation_sweep, "sweep_escalations", lambda: called.append("appr") or 0
+        )
         _server._run_sweeps()
         assert called == ["trace", "appr"]
 
@@ -202,7 +204,7 @@ class TestSweepWiring:
 
         ok: list[str] = []
         monkeypatch.setattr(_trace, "sweep_all", _boom)
-        monkeypatch.setattr(_ap, "approval_sweep_expired", lambda: ok.append("appr") or 0)
+        monkeypatch.setattr(_escalation_sweep, "sweep_escalations", lambda: ok.append("appr") or 0)
         _server._run_sweeps()
         assert ok == ["appr"]
 

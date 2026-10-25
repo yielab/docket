@@ -15,6 +15,7 @@ from docket.kernel.ports import jail as _jail
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import record as _record
+from docket.teams import autonomy as _autonomy
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod_settings as _pod_settings
@@ -136,9 +137,10 @@ def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
 
 
 def _consult_mode(project: str) -> str:
-    """The pod's ``consultMode``; unreadable settings count as ``park``, which the profile refuses."""
+    """What a consult does at the pod's default level (``consultMode`` when set, else the
+    autonomy table); unreadable settings count as ``park``, which the profile refuses."""
     try:
-        return _pod_settings.PodSettings.load_for(project).consult_mode
+        return _autonomy.consult_mode_for(project, _autonomy.default_level(project))
     except _pod_settings.PodSettingsError:
         return "park"
 

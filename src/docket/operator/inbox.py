@@ -35,6 +35,7 @@ from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
 
 __all__ = [
+    "MAX_DECIDED",
     "MemoryItem",
     "build_inbox",
     "escalation_page",
@@ -47,6 +48,10 @@ __all__ = [
 ]
 
 _NEEDS_YOU_STATUSES = frozenset({"blocked"})
+
+
+# How many decisions the pod took alone the inbox shows, newest first.
+MAX_DECIDED = 20
 
 
 def _all_projects() -> list[str]:
@@ -245,8 +250,8 @@ def question_escalation(
 
 def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     """Every pod's tasks plus every pending approval, sorted into ``needsYou``/``failed``/
-    ``doneSince`` (terminal after *since*)/``running``, ``next`` the latest timestamp seen and
-    ``escalations`` the pauses still waiting."""
+    ``doneSince`` (terminal after *since*)/``running``, ``next`` the latest timestamp seen,
+    ``escalations`` the pauses still waiting and ``decided`` the ones the pod settled alone."""
     needs_you: list[TaskView | ApprovalView] = []
     failed: list[TaskView] = []
     done_since: list[TaskView] = []
@@ -290,6 +295,9 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     escalations = [
         v for v in (_escalation_view(e, live) for e in pending_escalations) if v.state == "pending"
     ]
+    decided = [_escalation_view(e, live) for e in reversed(list_escalations(state="decided"))][
+        :MAX_DECIDED
+    ]
     return InboxView(
         needs_you=needs_you,
         failed=failed,
@@ -297,6 +305,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
         running=running,
         next=latest,
         escalations=escalations,
+        decided=decided,
     )
 
 

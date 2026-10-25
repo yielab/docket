@@ -239,6 +239,23 @@
           "title": "Policy",
           "type": "string"
         },
+        "level": {
+          "anyOf": [
+            {
+              "enum": [
+                "L3",
+                "L4",
+                "L5"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
         "state": {
           "default": "pending",
           "enum": [
@@ -791,6 +808,13 @@
         "$ref": "#/$defs/EscalationView"
       },
       "title": "Escalations",
+      "type": "array"
+    },
+    "decided": {
+      "items": {
+        "$ref": "#/$defs/EscalationView"
+      },
+      "title": "Decided",
       "type": "array"
     }
   },

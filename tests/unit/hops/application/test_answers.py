@@ -10,7 +10,6 @@ import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
 from tests.support.pods import seed_parked_task as _seed_parked_task
-from tests.support.tasks import task as _make_task
 
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
@@ -20,7 +19,6 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Question
 from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 
@@ -221,61 +219,3 @@ def _stored_question(expires_at: str | None = None) -> Question:
         created_at="2020-01-01T00:00:00+00:00",
         expires_at=expires_at,
     )
-
-
-class TestSweepExpiredQuestions:
-    def _seed_task(self, project: str, task_id: str, **fields: Any) -> None:
-        TaskRepository.for_pod(project).add(_make_task(id=task_id, **fields))
-
-    def test_an_expired_question_blocks_the_task_never_fails_it(self) -> None:
-        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        self._seed_task(
-            "demo",
-            "t1",
-            status="waiting_input",
-            question=_stored_question(expires_at="2020-01-01T00:00:00+00:00"),
-        )
-
-        count = _answers.sweep_expired_questions(now="2026-01-01T00:00:00+00:00")
-
-        assert count == 1
-        task = TaskRepository.for_pod("demo").list()[0]
-        assert task.status == "blocked"
-        assert task.blocked_reason == "input_expired"
-        assert task.question is None
-        # Never terminal -- retry_task's own `blocked` -> `pending` flip reopens it, same as
-        # any other blocked task (ADR 0016 SS4: an unanswered question never fails a task).
-        assert _lifecycle.retry_task("demo", "t1") is True
-        assert TaskRepository.for_pod("demo").list()[0].status == "pending"
-
-    def test_a_question_not_yet_expired_is_left_alone(self) -> None:
-        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        self._seed_task(
-            "demo",
-            "t1",
-            status="waiting_input",
-            question=_stored_question(expires_at="2030-01-01T00:00:00+00:00"),
-        )
-
-        count = _answers.sweep_expired_questions(now="2026-01-01T00:00:00+00:00")
-
-        assert count == 0
-        assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
-
-    def test_a_question_with_no_expiry_is_never_swept(self) -> None:
-        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        self._seed_task("demo", "t1", status="waiting_input", question=_stored_question())
-
-        count = _answers.sweep_expired_questions(now="2099-01-01T00:00:00+00:00")
-
-        assert count == 0
-        assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
-
-    def test_only_waiting_input_tasks_are_considered(self) -> None:
-        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-        self._seed_task("demo", "t1", status="pending")
-        self._seed_task("demo", "t2", status="done")
-
-        count = _answers.sweep_expired_questions(now="2026-01-01T00:00:00+00:00")
-
-        assert count == 0

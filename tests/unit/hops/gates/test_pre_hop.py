@@ -22,11 +22,16 @@ from tests.support.pods import unit_context as _unit_context
 
 from docket.agent import ports as _rd
 from docket.agent.ports import TokenUsage
+from docket.governance import approval as _ap
 from docket.hops.application import runner as _runner
+from docket.hops.application import steps as _steps
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.pipeline.domain import gates as _gates
+from docket.pipeline.domain import plan as _orch
+from docket.platform import list_escalations
 from docket.tasks.application import record as _record
 from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
 
 pod_home = _support_pods.pod_home_bare
 
@@ -121,6 +126,66 @@ class TestExecuteUnitDirectly:
                 check_approval=True,
                 index_for_context=0,
             )
+
+
+class TestAnAskByLevel:
+    """What a pipeline `approval` gate and a `run:` step that needs approval do at each level
+    (security-gates.spec.md "Autonomy levels" item 4)."""
+
+    def _gate(self) -> _orch.PlannedUnit:
+        return _planned_unit("myapp-implementer", gate=_gates.ApprovalGate(message="ship it?"))
+
+    def _ctx(self, level: str) -> _record.UnitContext:
+        _support_pods.seed_lean_pod()
+        _fleet.set_profile("lights-out")
+        ctx = _unit_context()
+        ctx.task.autonomy = level  # type: ignore[assignment]
+        return ctx
+
+    def test_l5_fails_the_gated_step_needs_human_and_asks_nobody(self, pod_home: Path) -> None:
+        ctx = self._ctx("L5")
+
+        outcome = _pre_hop._gate_pre_hop_approval(
+            ctx, "implementer", self._gate(), check_approval=True, index_for_context=0
+        )
+
+        assert outcome is not None
+        assert (outcome.kind, outcome.failure_kind) == ("failed", "needs_human")
+        assert outcome.approval_token == "" and _ap.list_pending() == []
+        (decided,) = list_escalations(state="decided")
+        assert (decided.policy, decided.level, decided.step) == ("deny", None, "implementer")
+
+    def test_l4_still_waits_for_the_person(self, pod_home: Path) -> None:
+        ctx = self._ctx("L4")
+
+        outcome = _pre_hop._gate_pre_hop_approval(
+            ctx, "implementer", self._gate(), check_approval=True, index_for_context=0
+        )
+
+        assert outcome is not None and outcome.kind == "waiting_approval"
+        assert list_escalations(state="decided") == []
+
+    def test_l5_refuses_a_run_step_that_needs_approval_and_fails_it_needs_human(
+        self, pod_home: Path
+    ) -> None:
+        ctx = self._ctx("L5")
+        node = _orch.PlannedUnit(
+            step_id="ship",
+            role=None,
+            agent=None,
+            archetype=None,
+            member_id=None,
+            gate=None,
+            retries=None,
+            timeout=None,
+            run="git push origin main",
+        )
+
+        outcome = _steps._run_command_step(ctx, node, [], 0)
+
+        assert (outcome.kind, outcome.failure_kind) == ("failed", "needs_human")
+        assert _ap.list_pending() == []
+        assert [e.policy for e in list_escalations(state="decided")] == ["deny"]
 
 
 class TestTaskRestrictionHelpers:

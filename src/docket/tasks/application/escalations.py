@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import Any, cast
 
 from docket.governance import approval as _approval
 from docket.governance import policy as _policy
@@ -27,6 +27,7 @@ from docket.kernel.operator_contract import (
     Escalation,
     EscalationExpiry,
     EscalationKind,
+    EscalationLevel,
     Option,
     Question,
     QuestionV11,
@@ -47,11 +48,14 @@ from docket.tasks.domain.resolution import (
 )
 from docket.tasks.domain.task import TaskRecord
 from docket.tasks.ports import question_answers as _answers
+from docket.teams import autonomy as _autonomy
 from docket.teams.settings import load_pod_settings
 
 __all__ = [
     "approval_opened",
+    "approval_refused",
     "attach",
+    "decided_approval",
     "decided_consult",
     "open_for_approval",
     "open_for_question",
@@ -70,15 +74,24 @@ _DENY = "deny"
 _CANCEL = "cancel"
 _APPROVAL_KINDS: frozenset[EscalationKind] = frozenset({"approval", "gate", "check_changed"})
 
-# A pause that nobody answers is denied when a call or a hop awaited it, and blocks the task when
-# a question did (the two expiry sweeps).
-_EXPIRY: dict[EscalationKind, EscalationExpiry] = {
-    "approval": "deny",
-    "gate": "deny",
-    "check_changed": "deny",
-    "consult": "block",
-    "input": "block",
-}
+# The table's row for a kind: a pipeline `approval` gate is asked like a tool call.
+_ROW: dict[EscalationKind, EscalationKind] = {"gate": "approval"}
+
+
+def _level_of(pod: str, task_id: str) -> EscalationLevel | None:
+    """The autonomy level a pause of *task_id* is decided at, or ``None`` when the pod's queue does
+    not hold that task (an ad hoc run, a question outside a pod)."""
+    if not task_id:
+        return None
+    task = TaskRepository.for_pod(pod).get(task_id)
+    if task is None:
+        return None
+    return cast(EscalationLevel, _autonomy.effective_level(pod, task.autonomy))
+
+
+def _expiry(kind: EscalationKind, level: EscalationLevel | None) -> EscalationExpiry:
+    """What the table says becomes of an unanswered *kind* at *level* (``L3`` when none is known)."""
+    return cast(EscalationExpiry, _autonomy.policy_for(_ROW.get(kind, kind), level or "L3")[1])
 
 
 def attach(task: TaskRecord, escalation: Escalation) -> bool:
@@ -89,14 +102,27 @@ def attach(task: TaskRecord, escalation: Escalation) -> bool:
     return True
 
 
-def _store(escalation: Escalation) -> Escalation:
+def _persist(escalation: Escalation) -> Escalation:
     """Write *escalation* and list it on its task when the pod's queue holds that task."""
     stored = write_escalation(escalation)
     if stored.task:
         repository = TaskRepository.for_pod(stored.pod)
         if repository.get(stored.task) is not None:
             repository.update(stored.task, lambda record: attach(record, stored))
+    return stored
+
+
+def _store(escalation: Escalation) -> Escalation:
+    """Persist *escalation*, which a person is asked to settle, and trace that it was asked."""
+    stored = _persist(escalation)
     _events.emit(_events.ASKED, stored)
+    return stored
+
+
+def _store_decided(escalation: Escalation, *, option_id: str, session_id: str = "") -> Escalation:
+    """Persist *escalation*, which the pod settled itself, and trace the decision."""
+    stored = _persist(escalation)
+    _events.emit(_events.DECIDED, stored, option_id=option_id, session_id=session_id)
     return stored
 
 
@@ -118,11 +144,13 @@ def open_for_approval(
     """Open the escalation of the approval record *token* (``approval``, ``gate`` or
     ``check_changed``). The prompt, role, pod and deadline are the record's own."""
     record = _approval.approval_get(token)
+    pod = str(record.get("project", ""))
+    level = _level_of(pod, task_id)
     return _store(
         Escalation(
             id=new_escalation_id(),
             task=task_id,
-            pod=str(record.get("project", "")),
+            pod=pod,
             step=step,
             role=str(record.get("role", "")),
             kind=kind,
@@ -131,7 +159,8 @@ def open_for_approval(
             options=_approval_options(kind),
             asked_at=_clock.iso(),
             expires_at=record.get("expiresAt"),
-            on_expiry=_EXPIRY[kind],
+            on_expiry=_expiry(kind, level),
+            level=level,
             legacy={"token": token},
         )
     )
@@ -164,6 +193,7 @@ def open_for_question(
     v11 = question if isinstance(question, QuestionV11) else None
     legacy: dict[str, Any] = {"questionId": question.id}
     expires_at = _question_expiry(question)
+    level = _level_of(question.pod, question.task_id)
     if token:
         legacy["token"] = token
         expires_at = _approval.approval_get(token).get("expiresAt")
@@ -182,7 +212,8 @@ def open_for_question(
             requested_schema=dict(question.requested_schema),
             asked_at=_clock.iso(),
             expires_at=expires_at,
-            on_expiry="deny" if token else _EXPIRY[kind],
+            on_expiry="deny" if token else _expiry(kind, level),
+            level=level,
             legacy=legacy,
         )
     )
@@ -191,9 +222,9 @@ def open_for_question(
 def decided_consult(
     question: QuestionV11, *, role: str, option_id: str, session_id: str = ""
 ) -> Escalation:
-    """Trace that the pod applied the model's recommendation and return the escalation describing
-    it. The pause never parks, so nothing is stored or listed on the task: only
-    ``escalation_decided`` is written, under a fresh id."""
+    """Store, as ``decided`` and listed on its task, the pause where the pod applied the model's
+    recommendation, trace ``escalation_decided`` and return the record. The pause never parks."""
+    level = _level_of(question.pod, question.task_id)
     decided = Escalation(
         id=new_escalation_id(),
         task=question.task_id,
@@ -206,14 +237,50 @@ def decided_consult(
         options=list(question.options),
         recommendation=question.recommendation,
         asked_at=question.created_at,
-        on_expiry=_EXPIRY["consult"],
+        on_expiry=_expiry("consult", level),
         policy="recommendation",
+        level=level,
         state="decided",
         resolution=Resolution(option_id=option_id, by="policy", channel="policy", at=_clock.iso()),
         legacy={"questionId": question.id},
     )
-    _events.emit(_events.DECIDED, decided, option_id=option_id, session_id=session_id)
-    return decided
+    return _store_decided(decided, option_id=option_id, session_id=session_id)
+
+
+def decided_approval(
+    *, pod: str, role: str, task_id: str, caused_by: str, prompt: str, step: str = ""
+) -> Escalation:
+    """Store, as ``decided`` and listed on its task, the approval the level denied because nobody
+    is asked, trace ``escalation_decided`` and return the record. No approval record exists."""
+    level = _level_of(pod, task_id)
+    at = _clock.iso()
+    denied = Escalation(
+        id=new_escalation_id(),
+        task=task_id,
+        pod=pod,
+        step=step,
+        role=role,
+        kind="approval",
+        caused_by=caused_by,
+        prompt=_redact(prompt),
+        options=_approval_options("approval"),
+        asked_at=at,
+        on_expiry=_expiry("approval", level),
+        policy="deny",
+        level=level,
+        state="decided",
+        resolution=Resolution(option_id=_DENY, by="policy", channel="policy", at=at),
+    )
+    return _store_decided(denied, option_id=_DENY)
+
+
+def approval_refused(*, project: str, role: str, task_id: str, caused_by: str, prompt: str) -> None:
+    """The tool gate refused a call for want of anyone to ask: store the decision when the autonomy
+    table made it (an explicit ``approvalMode: refuse`` of the pod is not the table's)."""
+    level = _level_of(project, task_id)
+    if level is None or not _autonomy.table_denies_approval(project, level):
+        return
+    decided_approval(pod=project, role=role, task_id=task_id, caused_by=caused_by, prompt=prompt)
 
 
 def _screen(project: str, texts: Iterable[Any]) -> None:

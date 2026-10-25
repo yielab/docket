@@ -39,6 +39,7 @@ def test_every_field_round_trips_verbatim() -> None:
         gate={"command": "make test", "timeoutS": 30, "map": {"3": "needs_human"}},
         max_tokens=100,
         restrictions={"deniedTools": ["fetch", "write"], "network": "none", "policies": []},
+        autonomy="L5",
     ).model_dump(by_alias=True, exclude_none=True)
     assert record == {
         "externalRef": "A-1",
@@ -48,6 +49,7 @@ def test_every_field_round_trips_verbatim() -> None:
         "gate": {"command": "make test", "timeoutS": 30, "map": {"3": "needs_human"}},
         "maxTokens": 100,
         "restrictions": {"deniedTools": ["fetch", "write"], "network": "none", "policies": []},
+        "autonomy": "L5",
     }
 
 
@@ -74,6 +76,9 @@ def test_a_gate_keeps_only_the_keys_it_was_given() -> None:
         {"max_tokens": 0},
         {"max_tokens": True},
         {"max_tokens": 1.5},
+        {"autonomy": "L9"},
+        {"autonomy": "l4"},
+        {"autonomy": 4},
         {"restrictions": []},
         {"restrictions": {"bogus": 1}},
         {"restrictions": {"deniedTools": "fetch"}},

@@ -298,6 +298,9 @@ class TestViews:
 
 
 class TestMakeEvent:
+    def test_a_decision_the_pod_took_alone_is_a_channel_event_kind(self) -> None:
+        assert "escalation.decided" in EVENT_KINDS
+
     def test_kind_not_in_event_kinds_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown event kind"):
             make_event("task.exploded", "alpha", "t-1", {}, time="t0", version="v1")
