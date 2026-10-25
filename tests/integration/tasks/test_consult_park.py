@@ -180,7 +180,9 @@ class TestPark:
         assert data["question"]
         assert [o["id"] for o in data["options"]] == ["redis", "sqlite"]
         assert data["recommendation"] == {"optionId": "sqlite"}
-        assert "options" not in _notify.render_data(item, "minimal")
+        minimal = _notify.render_data(item, "minimal")
+        assert minimal["options"] == [{"id": "redis"}, {"id": "sqlite"}]
+        assert "question" not in minimal
 
     def test_a_consult_token_with_no_question_fails_the_task_with_a_named_reason(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -17,6 +17,7 @@ from docket.kernel.brief import TaskBrief
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
     ApprovalView,
+    EscalationView,
     InboxView,
     Question,
     QuestionV11,
@@ -203,6 +204,30 @@ def _consult_question(label: str = "Iterative") -> QuestionV11:
     )
 
 
+def _escalation_view() -> EscalationView:
+    question = _consult_question()
+    return EscalationView.model_validate(
+        {
+            "id": "esc-0123456789ab",
+            "task": "t1",
+            "pod": "alpha",
+            "step": "implementer",
+            "role": "implementer",
+            "kind": "consult",
+            "causedBy": "c1",
+            "prompt": question.message,
+            "options": [
+                *(o.model_dump(by_alias=True) for o in question.options),
+                {"id": "decline", "label": "Decline", "description": "no"},
+            ],
+            "recommendation": question.recommendation.model_dump(by_alias=True),
+            "askedAt": "2026-10-05T00:00:00Z",
+            "onExpiry": "block",
+            "affordances": {"resolveUrl": "/escalations/esc-0123456789ab"},
+        }
+    )
+
+
 class TestRenderOptions:
     def test_conversation_carries_options_and_recommendation_id_only(self) -> None:
         data = _notify.render_data(_task(question=_consult_question()), "conversation")
@@ -215,11 +240,25 @@ class TestRenderOptions:
         assert "SECRETDESC" not in repr(data)
 
     @pytest.mark.parametrize("level", ["minimal", "actions"])
-    def test_lower_levels_carry_neither(self, level: str) -> None:
+    def test_lower_levels_carry_the_option_ids_and_nothing_else(self, level: str) -> None:
         data = _notify.render_data(_task(question=_consult_question()), level)
-        assert "options" not in data
-        assert "recommendation" not in data
+        assert data["options"] == [{"id": "iterative"}, {"id": "bigbang"}]
+        assert data["recommendation"] == {"optionId": "iterative"}
         assert "Iterative" not in repr(data)
+        assert "question" not in data
+        assert "SECRETWHY" not in repr(data)
+
+    def test_the_options_of_a_pending_escalation_are_the_ones_rendered(self) -> None:
+        view = _escalation_view()
+        data = _notify.render_data(_task(question=_consult_question()), "conversation", view)
+        assert data["options"] == [
+            {"id": "iterative", "label": "Iterative"},
+            {"id": "bigbang", "label": "Big bang"},
+        ]
+        assert "decline" not in repr(data)
+        assert _notify.render_data(_task(question=_consult_question()), "minimal", view)[
+            "options"
+        ] == [{"id": "iterative"}, {"id": "bigbang"}]
 
     def test_a_plain_question_adds_no_options(self) -> None:
         data = _notify.render_data(_task(question=_question()), "conversation")
@@ -249,7 +288,7 @@ class TestRenderOptions:
         assert "bigbang - Big bang" in body
         assert "reply: /answer t1 <id>" in body
 
-    def test_minimal_text_has_no_option_lines(self) -> None:
+    def test_minimal_text_names_the_ids_to_reply_with_but_no_label(self) -> None:
         data = _notify.render_data(_task(question=_consult_question()), "minimal")
         event = _notify.make_event(
             "task.input_required",
@@ -260,8 +299,10 @@ class TestRenderOptions:
             version="v",
         )
         _title, body = _notify.render_text(event)
-        assert "iterative" not in body
-        assert "/answer" not in body
+        assert "iterative (recommended)" in body
+        assert "bigbang" in body
+        assert "Iterative" not in body and "Big bang" not in body
+        assert "reply: /answer t1 <id>" in body
 
 
 class TestRenderTextAndTestEvent:

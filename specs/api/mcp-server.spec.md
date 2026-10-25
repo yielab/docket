@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.7
+**Version**: 1.10.0
 **Status**: Implemented
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -45,8 +45,8 @@ turn is a separate feature that lives in the turn path (`DocketDriver.run_turn`;
 Every tool call MUST go through the same paths a CLI invocation (or, where one exists, a
 `docket start` HTTP call) would:
 
-1. **Audited.** Every tool call — including the seven read-only ones (`status`, `pods`, `queue`
-   without `retry_task_id`, `runs`, `approvals_list`, `inbox`, `cost`), which have no other audited
+1. **Audited.** Every tool call — including the eight read-only ones (`status`, `pods`, `queue`
+   without `retry_task_id`, `runs`, `approvals_list`, `inbox`, `escalations`, `cost`), which have no other audited
    surface anywhere in this project — writes an audit-log entry (action
    `mcp.<tool>`) that participates in the same `seq`/`prev_hash` tamper-evidence chain as every
    other audit entry (see `audit.spec.md`). This entry is written unconditionally, before the
@@ -111,7 +111,7 @@ The server is built on `mcp.server.MCPServer` (`add_tool(fn, name=...)`,
 
 ## Tools
 
-Thirteen tools, grouped by the control-plane surface they expose. Every response shape below is a bare
+Fourteen tools, grouped by the control-plane surface they expose. Every response shape below is a bare
 JSON value (object, per this project's "no envelope wrapper" convention — see
 `cli-interface.spec.md`'s Output Formats section) — there is no generic `{ok, data, error}`
 wrapper on the successful path. A tool that cannot complete (bad input, an unknown id, an invalid
@@ -302,6 +302,17 @@ completed after it. Omitted, `doneSince` lists every terminal task.
 --json` for the same state.
 **Failure modes**: none beyond the SDK's own argument-shape validation.
 
+`InboxView` also carries `escalations` (the pending `EscalationView`s, additive).
+
+### `escalations`
+
+**Purpose**: The escalation records after a cursor, each joined with the pause it names —
+identical to `GET /escalations`.
+**Arguments**: `since` (integer, optional) — only records with a greater `seq`; omitted, all.
+**Output**: `{"escalations": [EscalationView...], "next": <seq>}` (`operator-api.spec.md`).
+**Failure modes**: none beyond the SDK's own argument-shape validation. Audited as
+`mcp.escalations`.
+
 ### `cost`
 
 **Purpose**: **Recorded** USD spend — one agent or the whole fleet.
@@ -402,7 +413,7 @@ concern, not docket's — see Scope above).
 
 ## Implementation
 
-- `src/docket/interfaces/cli/commands/mcp.py`: the thirteen tool functions (`tool_status` ... `tool_task_pregrant`),
+- `src/docket/interfaces/cli/commands/mcp.py`: the fourteen tool functions (`tool_status` ... `tool_task_pregrant`),
   `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
 - `src/docket/interfaces/cli/commands/service.py`: the `docket start` command and its `--mcp` flag handling
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
@@ -414,7 +425,7 @@ concern, not docket's — see Scope above).
   `list_pending`
 - `src/docket/hops/application/answers.py`: `answer_task`
 - `src/docket/hops/application/interruptions.py`: `record_pregrant`
-- `src/docket/operator/inbox.py`, `src/docket/kernel/operator_contract.py`: `build_inbox`, `InboxView`
+- `src/docket/operator/inbox.py`, `src/docket/kernel/operator_contract.py`: `build_inbox`, `escalation_views`, `InboxView`
 - `src/docket/tasks/application/runs.py`: `create_run`, `execute`, `get_run`, `list_runs`, `RunSource`
 - `src/docket/interfaces/http/routes/health.py`: `build_status`, `SERVE_API_VERSION`
 - `pyproject.toml`: the `mcp` extra

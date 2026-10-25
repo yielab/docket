@@ -11,8 +11,12 @@ from rich.markup import escape
 from docket.hops.application import interruptions as _interruptions
 from docket.hops.application import report as _report
 from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.render.escalation import answer_command, options_line
+from docket.kernel.operator_contract import EscalationView
 from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
+from docket.operator import escalation_views, render_escalation
+from docket.platform.store import read_escalation
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import runs as _runs
 from docket.tasks.domain.refs import TaskRef, short_id
@@ -121,6 +125,42 @@ def _render_forecast(project: str) -> None:
                 ui.dim(escape(f"    - {i.description}"))
 
 
+def _waiting_on(found: TaskRef) -> list[EscalationView]:
+    """The escalations the task is waiting on a person for."""
+    views = escalation_views(pod=found.project, task=found.task_id)
+    return [v for v in views if v.state == "pending"]
+
+
+def _decision_lines(view: EscalationView, record: TaskRecord) -> list[str]:
+    """What to print under one pending escalation: its options and the commands that answer it."""
+    rendered = render_escalation(view, "full")
+    if view.kind in ("consult", "input"):
+        listed = options_line(rendered.options)
+        return ([f"    options: {listed}"] if listed else []) + [
+            f"    answer:  {answer_command(view.task, rendered.options)}"
+        ]
+    stored = read_escalation(view.id)
+    ref = (
+        view.task
+        if str(record.status) == "waiting_approval"
+        else (stored.legacy.get("token") if stored else "")
+    )
+    return [f"    approve: docket task approve {ref}", f"    deny:    docket task deny {ref}"]
+
+
+def _render_waiting(found: TaskRef, record: TaskRecord) -> None:
+    views = _waiting_on(found)
+    if not views:
+        return
+    ui.section("Waiting on you")
+    for view in views:
+        rendered = render_escalation(view, "full")
+        prompt = (rendered.prompt or "").replace("\n", "\n    ")
+        _say(f"  {rendered.title}: {prompt}")
+        for line in _decision_lines(view, record):
+            _say(line)
+
+
 def _render_show(
     found: TaskRef,
     record: TaskRecord,
@@ -150,6 +190,7 @@ def _render_show(
         _say(f"  base:   {wt['baseCommit']}")
         _say(f"  diff:   {wt['diff']}")
         _say(f"  merge:  {wt['merge']}")
+    _render_waiting(found, record)
     if notes:
         ui.section("Corrections")
         for rec in notes:
@@ -175,6 +216,7 @@ def _show_json(
         "interruptions": [
             {"kind": i.kind, "description": i.description, "detail": i.detail} for i in forecast
         ],
+        "escalations": [v.model_dump(by_alias=True, mode="json") for v in _waiting_on(found)],
     }
 
 

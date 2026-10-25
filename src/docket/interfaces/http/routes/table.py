@@ -10,6 +10,7 @@ from __future__ import annotations
 from docket.interfaces.http.routes import (
     approvals,
     dispatch,
+    escalations,
     health,
     inbox,
     metrics,
@@ -30,6 +31,7 @@ GET_ROUTES: tuple[Route, ...] = (
     Route("GET", "/health", health.get_health, auth=False),
     Route("GET", "/approvals", approvals.get_approvals),
     Route("GET", "/inbox", inbox.get_inbox),
+    Route("GET", "/escalations", escalations.get_escalations),
     Route("GET", "/runs", runs.get_runs),
     Route("GET", "/runs/<id>", runs.get_run),
     Route("GET", "/tasks/<pod>/<id>/diff", tasks.get_task_diff, overlap=True),

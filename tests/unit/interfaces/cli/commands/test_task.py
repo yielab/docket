@@ -16,9 +16,12 @@ from tests.support.task_unit_harness import (
 )
 from tests.support.tasks import put_task, put_tasks, task
 
+from docket.governance import approval as _approval
 from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.cli.app import app
 from docket.kernel.home import current_home
+from docket.kernel.operator_contract import Option, QuestionV11, Recommendation, new_question_id
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.parts import Worktree
@@ -459,6 +462,81 @@ class TestShowForecast:
 
             kinds = {i["kind"] for i in json.loads(result.output)["interruptions"]}
             assert {"pipeline_gate", "mode"} <= kinds
+
+
+class TestShowWaitingOnYou:
+    def _park(self) -> str:
+        question = QuestionV11(
+            id=new_question_id(),
+            task_id="task-q",
+            pod="demo",
+            step="implementer",
+            message="Which store should the cache use?",
+            requested_schema={"type": "object", "properties": {"note": {"type": "string"}}},
+            created_at="2026-10-25T00:00:00+00:00",
+            kind="decision",
+            options=[
+                Option(id="redis", label="Redis", description="fast"),
+                Option(id="sqlite", label="SQLite", description="simple"),
+            ],
+            recommendation=Recommendation(option_id="sqlite", rationale="fewer services"),
+        )
+        put_task("demo", task(id="task-q", status="waiting_input", question=question))
+        _escalations.open_for_question(question, kind="consult", role="implementer", caused_by="c1")
+        return "task-q"
+
+    def test_a_parked_question_prints_its_prompt_option_ids_and_the_answer_command(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            task_id = self._park()
+
+            result = _runner.invoke(app, ["task", "show", task_id, "--pod", "demo"])
+
+            assert result.exit_code == 0, result.output
+            assert "Waiting on you" in result.output
+            assert "Which store should the cache use?" in result.output
+            assert (
+                "redis (Redis)" in result.output
+                and "sqlite (SQLite) (recommended)" in result.output
+            )
+            assert "docket task answer task-q --option sqlite" in result.output
+
+    def test_a_held_approval_prints_the_action_and_both_decisions(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            token = _approval.approval_create("demo", "implementer", "bash: rm -rf build")
+            put_task("demo", task(id="task-a", status="waiting_approval", approval_token=token))
+            _escalations.open_for_approval(token, kind="approval", task_id="task-a", caused_by="c1")
+
+            result = _runner.invoke(app, ["task", "show", "task-a", "--pod", "demo"])
+
+            assert "Waiting on you" in result.output
+            assert "rm -rf build" in result.output
+            assert "docket task approve task-a" in result.output
+            assert "docket task deny task-a" in result.output
+
+    def test_a_task_that_waits_on_nobody_prints_no_section(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            put_task("demo", task(id="task-n", description="plain"))
+
+            result = _runner.invoke(app, ["task", "show", "task-n", "--pod", "demo"])
+
+            assert "Waiting on you" not in result.output
+
+    def test_json_lists_the_pending_escalations(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            task_id = self._park()
+
+            body = json.loads(
+                _runner.invoke(app, ["task", "show", task_id, "--json", "--pod", "demo"]).output
+            )
+
+            assert [e["kind"] for e in body["escalations"]] == ["consult"]
+            assert body["escalations"][0]["affordances"]["options"] == [
+                "redis",
+                "sqlite",
+                "decline",
+            ]
 
 
 class TestTaskPrune:

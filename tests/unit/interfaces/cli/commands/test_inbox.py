@@ -18,6 +18,7 @@ from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Option, QuestionV11, Recommendation
 from docket.platform import store as _store
+from docket.tasks.application import escalations as _escalations
 
 SUBJECT = "docket.interfaces.cli.commands.inbox"
 
@@ -114,7 +115,14 @@ class TestJsonView:
 
             assert "\x1b" not in result.stdout
             body = json.loads(result.stdout)
-            assert set(body) == {"needsYou", "failed", "doneSince", "running", "next"}
+            assert set(body) == {
+                "needsYou",
+                "failed",
+                "doneSince",
+                "running",
+                "next",
+                "escalations",
+            }
             assert body["doneSince"][0]["state"] == "done"
             assert body["failed"][0]["command"] == "docket task retry t-failed"
 
@@ -166,3 +174,51 @@ class TestCursor:
 
             assert body["doneSince"] == []
             assert not current_home().inbox_cursor_file.exists()
+
+
+class TestEscalations:
+    def _park(self, **question: Any) -> QuestionV11:
+        queued = _question(
+            "task-q",
+            "q-esc",
+            "Where is README.md?",
+            Option(id="opt1", label="Root", description="At the root."),
+            Option(id="opt2", label="Search", description="Search."),
+        )
+        queued.recommendation = Recommendation(option_id="opt2", rationale="safer")
+        put_task("demo", task(id="task-q", status="waiting_input", question=queued))
+        _escalations.open_for_question(queued, kind="consult", role="lead", caused_by="c1")
+        return queued
+
+    def test_the_answer_line_names_the_recommended_option(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            self._park()
+
+            out = _inbox("--peek").output
+
+            assert "Q: Where is README.md?" in out
+            assert "opt1 (Root)" in out and "opt2 (Search) (recommended)" in out
+            assert "answer: docket task answer task-q --option opt2" in out
+            assert "decline" not in out
+
+    def test_the_json_carries_the_view_and_the_surfaces_own_command(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            self._park()
+
+            body = json.loads(_inbox("--json", "--peek").stdout)
+
+            (escalation,) = body["escalations"]
+            assert escalation["kind"] == "consult" and escalation["state"] == "pending"
+            assert escalation["affordances"]["options"] == ["opt1", "opt2", "decline"]
+            assert escalation["command"] == "docket task answer task-q"
+            assert "command" not in escalation["affordances"]
+            assert body["needsYou"][0]["command"] == "docket task answer task-q"
+
+    def test_a_pending_approval_escalation_points_at_approve(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            token = _approval.approval_create("demo", "implementer", "bash: rm -rf build")
+            _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
+
+            body = json.loads(_inbox("--json", "--peek").stdout)
+
+            assert body["escalations"][0]["command"] == f"docket task approve {token}"
