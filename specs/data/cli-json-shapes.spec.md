@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.0.1
+**Version**: 4.1.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -325,7 +325,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
 `settings` has one entry per pod setting: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
 `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
-`maxConsultationsPerTask`, `network`, `profile`, `readOnly`, `prepare` and `protects`.
+`maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare` and `protects`.
 
 An unset `approvalMode` resolves per caller: `wait` on a terminal, `park` without one. A stored
 value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an error to stderr

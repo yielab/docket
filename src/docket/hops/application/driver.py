@@ -266,6 +266,18 @@ def _max_consultations(agent_id: str, raw: str | None) -> int:
     return DEFAULT_MAX_CONSULTATIONS
 
 
+def _consult_mode(agent_id: str) -> str:
+    """The agent's pod setting ``consultMode``; an agent outside a pod, or an unreadable settings
+    store, parks -- the mode that waits for a person rather than deciding for one."""
+    project = _pod.pod_of(agent_id)
+    if project is None:
+        return "park"
+    try:
+        return _pod_settings.PodSettings.load_for(project).consult_mode
+    except _pod_settings.PodSettingsError:
+        return "park"
+
+
 def _turn_token_budget(raw: str | None) -> int:
     """*raw* as a positive measured-token ceiling, else the configured loop default -- a
     malformed value never raises here."""
@@ -527,6 +539,7 @@ class DocketDriver:
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
+            trace_session_key=trace_session_key or "",
             roots=ctx_roots,
             timeout=timeout,
             env=tool_env,
@@ -546,6 +559,7 @@ class DocketDriver:
             max_consultations=max_consultations,
             # A pod dispatch hop (it names its task): a consult parks the task.
             consult_park=bool(trace_task_id),
+            consult_mode=_consult_mode(agent_id),
             task_id=trace_task_id or "",
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
@@ -564,7 +578,7 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
-        describe_consult(registry, ctx.max_consultations, ctx.consult_park)
+        describe_consult(registry, ctx.max_consultations, ctx.consult_park, ctx.consult_decides)
         state_bash_rules(registry, ctx)
         if verdict_gate is not None:
             registry.register(verdict_tool(*verdict_gate))

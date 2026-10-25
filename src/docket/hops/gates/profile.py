@@ -41,6 +41,7 @@ class Facts:
     network_scope: str
     ungated_implementers: tuple[str, ...]
     injected_secrets: tuple[str, ...]
+    consult_mode: str
 
 
 def lights_out_violations(facts: Facts) -> list[Violation]:
@@ -78,6 +79,14 @@ def lights_out_violations(facts: Facts) -> list[Violation]:
                 "secrets",
                 f"the pod injects {name}, which is named in the secret store",
                 f"remove {name} from the pod's MCP server env, or from the secret store",
+            )
+        )
+    if facts.consult_mode != "decide":
+        out.append(
+            Violation(
+                "consult",
+                "a consultation would wait for a person",
+                "docket pod set consultMode decide",
             )
         )
     return out
@@ -126,6 +135,14 @@ def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
     return names
 
 
+def _consult_mode(project: str) -> str:
+    """The pod's ``consultMode``; unreadable settings count as ``park``, which the profile refuses."""
+    try:
+        return _pod_settings.PodSettings.load_for(project).consult_mode
+    except _pod_settings.PodSettingsError:
+        return "park"
+
+
 def gather_facts(project: str, nodes: tuple[Any, ...]) -> Facts:
     """Read the live state. *nodes* are the planned steps a dispatch is about to run (or, from
     ``hops.application.report``, the pod's own planned pipeline)."""
@@ -143,6 +160,7 @@ def gather_facts(project: str, nodes: tuple[Any, ...]) -> Facts:
         network_scope=scope,
         ungated_implementers=ungated,
         injected_secrets=tuple(sorted(_injected_names(project, nodes) & stored)),
+        consult_mode=_consult_mode(project),
     )
 
 
@@ -154,7 +172,8 @@ def project_violations(project: str, nodes: tuple[Any, ...]) -> list[Violation]:
 
 
 def fleet_violations() -> list[Violation]:
-    """The requirements the fleet record alone decides (isolation, network), with no pod in view."""
+    """The requirements the fleet record alone decides (isolation, network), with no pod in view;
+    the per-pod ones are met by construction here and show under each pod."""
     mode, scope = _pod_settings.effective_network(None)
     facts = Facts(
         isolation_on=_fleet.get_isolation_enabled(),
@@ -163,6 +182,7 @@ def fleet_violations() -> list[Violation]:
         network_scope=scope,
         ungated_implementers=(),
         injected_secrets=(),
+        consult_mode="decide",
     )
     return lights_out_violations(facts)
 

@@ -54,6 +54,9 @@ class ToolContext:
 
     agent_id: str = ""
     session_key: str = ""
+    # The session a dispatch hop's trace events are filed under (the task's); "" files under
+    # `session_key`. A consult's `question_asked` follows it so the task's trace shows the question.
+    trace_session_key: str = ""
     roots: tuple[Path, ...] = ()
     timeout: int = 120
     env: dict[str, str] = field(default_factory=dict)
@@ -82,8 +85,15 @@ class ToolContext:
     consult_count: int = 0
     # Pod dispatch sets it: a consult parks the task (``waiting_input``) rather than waiting.
     consult_park: bool = False
+    # "decide": a parking consult answers with the model's own recommendation instead of waiting.
+    consult_mode: str = "park"
     # The task this turn serves (a pod task id); stamps a consult's question.
     task_id: str = ""
+
+    @property
+    def consult_decides(self) -> bool:
+        """Whether a consult here is answered by the model's own recommendation, not parked."""
+        return self.consult_park and self.consult_mode == "decide"
 
 
 @dataclass

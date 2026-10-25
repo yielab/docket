@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -587,7 +587,7 @@ directory.
 The settable keys of `docket pod set` / `unset` are: `budgetUsd`, `maxReworkCycles`,
 `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`,
 `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`,
-`requireVerify`, `maxConsultationsPerTask`, `network`, `profile`, `readOnly`, `prepare`,
+`requireVerify`, `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`,
 `protects`. The recorded keys, written only by `docket pod update`, are `configSource`,
 `configDigest` and `exporters`.
 

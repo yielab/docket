@@ -115,10 +115,15 @@ def _consult_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     return ToolOutcome(outcome.ok, outcome.content, outcome.error)
 
 
-def consult_description(remaining: int, parks: bool) -> str:
-    """What the model reads about `consult`: asking ends the turn in dispatch (*parks*), and
-    *remaining* is what the handler will still accept on this task."""
-    if parks:
+def consult_description(remaining: int, parks: bool, decides: bool = False) -> str:
+    """What the model reads about `consult`: asking ends the turn in dispatch (*parks*) unless the
+    pod *decides* for it, and *remaining* is what the handler will still accept on this task."""
+    if parks and decides:
+        effect = (
+            "Asking returns at once with your recommendation applied; prefer deciding in your "
+            "reply without the tool."
+        )
+    elif parks:
         effect = (
             "Asking ENDS your turn: the task waits for a person and the answer arrives "
             "in your next message."
@@ -144,12 +149,14 @@ def consult_description(remaining: int, parks: bool) -> str:
     )
 
 
-def describe_consult(registry: ToolRegistry, remaining: int, parks: bool) -> None:
+def describe_consult(
+    registry: ToolRegistry, remaining: int, parks: bool, decides: bool = False
+) -> None:
     """Re-register `consult` in *registry* with this hop's real budget and effect."""
     tool = registry.get(CONSULT_TOOL)
     if tool is not None:
         registry.register(
-            dataclasses.replace(tool, description=consult_description(remaining, parks))
+            dataclasses.replace(tool, description=consult_description(remaining, parks, decides))
         )
 
 

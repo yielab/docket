@@ -69,6 +69,13 @@ def _meet_everything(root: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: Fak
     fake_jail.sandbox_availability = lambda *a, **k: _USABLE
     _fleet.set_network_mode("none")
     _fleet.set_profile("lights-out")
+    _set_consult_mode("decide")
+
+
+def _set_consult_mode(value: str) -> None:
+    _fleet.meta_set(
+        "demo-lead", "consultMode", _pod_settings.PodSettings.coerce("consultMode", value)
+    )
 
 
 def _dispatch_one(spec_text: str) -> tuple[_task.TaskResult, FakeDriver]:
@@ -211,6 +218,49 @@ class TestRefusals:
         )
 
         assert sorted(r.task_id for r in results) == sorted([first, second])
+
+
+class TestAConsultThatWouldWait:
+    def test_the_default_park_mode_refuses_and_names_the_setting(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
+        _set_consult_mode("park")
+
+        res, driver = _dispatch_one(_GATED)
+
+        _refused(res, driver, "consult")
+        assert "docket pod set consultMode decide" in (res.reason or "")
+
+    def test_an_unset_mode_is_park(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
+        _fleet.meta_set("demo-lead", "consultMode", "")
+
+        res, driver = _dispatch_one(_GATED)
+
+        _refused(res, driver, "consult")
+
+    def test_decide_has_no_consult_violation(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        _meet_everything(home, monkeypatch, fake_jail)
+
+        assert "consult" not in [v.requirement for v in _pod_report.project_violations("demo")]
+
+    def test_setup_fix_prints_the_violation_and_its_fix(
+        self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
+    ) -> None:
+        from docket.interfaces.cli.app import app
+
+        _meet_everything(home, monkeypatch, fake_jail)
+        _set_consult_mode("park")
+
+        out = CliRunner().invoke(app, ["setup", "--fix"]).stdout
+
+        assert "consult: a consultation would wait for a person" in out
+        assert "docket pod set consultMode decide" in out
 
 
 class TestPositive:

@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -431,7 +431,8 @@ failure as a failed `DeliveryResult` without raising.
 5. This area owns four trace event types, each written to the task's session:
    - `input_requested` — an `input` step parked the task; payload `{task, step, questionId}`.
    - `question_asked` — a `consult` call posed a question; payload `{questionId, kind, mode,
-     question}` (the full `QuestionV11`).
+     question}` (the full `QuestionV11`). When the pod decided it alone (Consult item 7) `mode` is
+     `decided` and the payload adds `decidedOptionId`.
    - `input_answered` — `answer_task` succeeded; payload `{task, step, questionId, action}`.
    - `input_expired` — the expiry sweep blocked the task; payload `{task, questionId}`.
 
@@ -709,7 +710,24 @@ Reviewer) lets a model put a clarification or decision to its operator.
    that the model should decide and state its assumption instead of asking when the repository
    lets it recommend one option, that at least two options and a marked recommendation are
    required, and how many consultations remain on the task. Each hop renders that number from
-   the hop's own cap (item 5), so it never exceeds what the handler will accept.
+   the hop's own cap (item 5), so it never exceeds what the handler will accept. The sentence
+   about the effect is derived from what the handler will do, never fixed: it is the parking
+   sentence above when the hop parks, the immediate `no answer; decide yourself` sentence when it
+   cannot park, and, when the pod decides (item 7), that asking returns at once with the model's
+   own recommendation applied and that it should prefer deciding in its reply without the tool.
+7. **Decide (`consultMode`).** The pod setting `consultMode` (`park`, the default, or `decide`;
+   `docket pod set consultMode decide`) reaches the turn as `ToolContext.consult_mode`, read by the
+   driver from the agent's pod settings (an unreadable store is `park`). In pod dispatch (item 5)
+   with `decide`, a valid consult whose budget allows it does not park: it traces `question_asked`
+   with `mode` `decided` and `decidedOptionId` (the recommendation's option), audits
+   `consult.decided` (`project`, `task`, `role`, `questionId`, `optionId`; never the message or the
+   options), and returns the ordinary tool result `no operator on duty; your recommendation stands:
+   option <id> (<label>). Continue.`, so the turn continues. The call spends budget like any
+   consult and the task never becomes `waiting_input`, so the inbox lists nothing for it. The
+   recommendation is always present (item 1); a call that fails validation is still the item 1
+   error. `decide` changes nothing outside pod dispatch (items 3 and 4); inside it, it applies
+   whatever the approval mode. The `lights-out` profile requires `decide` (security-gates.spec.md
+   "Profiles").
 
 ## Examples
 
@@ -860,7 +878,7 @@ Each JSONL line is a JSON object with these fields:
   `ConsultParked`, `ConsultUnavailable`, `DEFAULT_MAX_CONSULTATIONS`
 - `src/docket/tasks/application/corrections.py`: `record`, `read`, `utc_cursor`
 - `src/docket/agent/tools/registry.py`: `ToolContext` (`approval_mode`, `max_consultations`,
-  `consult_park`, `pregrants`); `src/docket/governance/gate.py`: the park path (`_park`,
+  `consult_park`, `consult_mode`, `pregrants`); `src/docket/governance/gate.py`: the park path (`_park`,
   `context.taskId`), the pre-grant matcher, the `approve_task` in-turn pre-grant
 - `src/docket/teams/settings.py`: `pod_approval_mode`
 - `src/docket/hops/application/steps.py`: `effective_pipeline`, `_run_input_step`
