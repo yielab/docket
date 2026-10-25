@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Active
 **Last Updated**: 2026-10-25
 
@@ -266,6 +266,11 @@ Its final output **MUST** name each verified stage and end in one unambiguous `S
 failure prints `SMOKE FAIL` to stderr and exits 1, and a refused invocation exits 2. `--workdir
 <path>` preserves the otherwise-temporary world for inspection and must name a new or empty
 directory.
+A `--workdir` that lies inside a git work tree (its nearest existing ancestor answers `git
+rev-parse --is-inside-work-tree` with `true`) **MUST** exit 2 with one `SMOKE FAIL` line that names
+the path and the enclosing top level, before the first run or any request, because docket would
+prepare and branch that enclosing repository. `live_eval.py` refuses an `--out` the same way with a
+`live_eval:` line before its first run. The default temporary world is not checked.
 
 The `basic` scenario's artifact contract is byte-exact: `smoke-artifact.txt` **MUST** contain
 exactly the 16 UTF-8 bytes `docket smoke ok` followed by one LF. Its delegated task text **MUST**

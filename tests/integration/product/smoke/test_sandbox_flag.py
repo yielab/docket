@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.git import init_repo
 from tests.support.smoke_script import _SMOKE_PATH, _smoke
 
 SUBJECT = "docket.__main__"
@@ -166,3 +167,69 @@ def test_smoke_script_help_names_the_flag() -> None:
     )
 
     assert result.returncode == 0 and "--sandbox" in result.stdout
+
+
+def _forbid_any_run(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Make a model request, a docket run or a sandbox probe fail the test; the list stays empty."""
+    reached: list[str] = []
+
+    def reach(*_args: Any, **_kwargs: Any) -> None:
+        reached.append("model, run or probe")
+        raise AssertionError("a refused invocation went on")
+
+    for name in ("_discover_live_model", "_run", "_run_cli"):
+        monkeypatch.setattr(_smoke, name, reach)
+    return reached
+
+
+def test_a_workdir_inside_a_git_work_tree_exits_2_before_any_request(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    enclosing = tmp_path / "enclosing"
+    init_repo(enclosing)
+    world = enclosing / "deep" / "world"
+    reached = _forbid_any_run(monkeypatch)
+
+    code = _run_main(monkeypatch, "--live-model", "--sandbox", "on", "--workdir", str(world))
+
+    err = capsys.readouterr().err
+    assert code == 2 and reached == [] and not world.exists()
+    assert len(err.strip().splitlines()) == 1
+    assert err.startswith(f"SMOKE FAIL \u2014 {world.resolve()} is inside a git work tree (")
+    assert f"({enclosing.resolve()})" in err and "outside any repository" in err
+
+
+def test_a_workdir_that_is_a_repository_itself_is_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    world = tmp_path / "world"
+    world.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(world)], check=True)
+    reached = _forbid_any_run(monkeypatch)
+
+    code = _run_main(monkeypatch, "--live-model", "--workdir", str(world))
+
+    assert code == 2 and reached == []
+    assert "is inside a git work tree" in capsys.readouterr().err
+
+
+def test_a_workdir_outside_any_repository_is_not_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(_smoke, "_discover_live_model", lambda *_a, **_k: _local_model())
+    monkeypatch.setattr(_smoke, "_run", lambda *args, **_kwargs: seen.update(world=args[0]))
+
+    code = _run_main(monkeypatch, "--live-model", "--workdir", str(tmp_path / "plain" / "w"))
+
+    assert code == 0 and seen["world"] == (tmp_path / "plain" / "w").resolve()
+
+
+def test_the_default_temporary_world_is_not_checked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(_smoke, "_enclosing_work_tree", lambda _path: pytest.fail("checked"))
+    monkeypatch.setattr(_smoke, "_discover_live_model", lambda *_a, **_k: _local_model())
+    monkeypatch.setattr(_smoke, "_run", lambda *_a, **_k: None)
+
+    assert _run_main(monkeypatch, "--live-model") == 0

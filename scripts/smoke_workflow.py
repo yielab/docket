@@ -1645,6 +1645,38 @@ def _remote_model(args: argparse.Namespace) -> tuple[_LiveModel, str] | str:
     return _LiveModel("", args.model, provider=args.provider, remote=True), key
 
 
+def _enclosing_work_tree(path: Path) -> Path | None:
+    """The git work tree *path* lies in, or ``None`` when it lies in none (or git is absent)."""
+    ancestor = path
+    while not ancestor.exists() and ancestor != ancestor.parent:
+        ancestor = ancestor.parent
+    try:
+        result = subprocess.run(
+            ("git", "-C", str(ancestor), "rev-parse", "--is-inside-work-tree", "--show-toplevel"),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    inside, _, toplevel = result.stdout.partition("\n")
+    if result.returncode != 0 or inside.strip() != "true":
+        return None
+    return Path(toplevel.strip())
+
+
+def work_tree_refusal(path: Path) -> str | None:
+    """Why a world at *path* is refused, or ``None``: docket would prepare and branch an enclosing repository."""
+    toplevel = _enclosing_work_tree(path)
+    if toplevel is None:
+        return None
+    return (
+        f"{path} is inside a git work tree ({toplevel}); docket would prepare and branch that "
+        "repository. Use a directory outside any repository, for example under the system "
+        "temp directory."
+    )
+
+
 def _sandbox_refusal(repo: Path) -> str | None:
     """Why ``--sandbox on`` cannot be honoured on this machine, or ``None`` when a backend exists."""
     with tempfile.TemporaryDirectory(prefix="docket-smoke-probe-") as probe_home:
@@ -1668,6 +1700,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.workdir is not None:
+        in_repository = work_tree_refusal(args.workdir.expanduser().resolve())
+        if in_repository is not None:
+            print(f"SMOKE FAIL — {in_repository}", file=sys.stderr)
+            return 2
     scenario = args.scenario or _MEMORY_SCENARIO
     api_key: str | None = None
     remote: _LiveModel | None = None

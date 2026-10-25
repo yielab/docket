@@ -36,6 +36,7 @@ SMOKE = REPO / "scripts" / "smoke_workflow.py"
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "scripts"))
 import live_credentials  # noqa: E402
+import smoke_workflow  # noqa: E402
 from tests.support.e2e_oracles import skeleton_of  # noqa: E402
 
 Skeleton = tuple[tuple[str, ...], ...]
@@ -386,6 +387,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         for index in range(1, args.runs + 1):
             print(shlex.join(smoke_command(args, args.out / f"run-{index:02d}" / "world")))
         return 0
+    in_repository = smoke_workflow.work_tree_refusal(args.out.expanduser().resolve())
+    if in_repository is not None:
+        print(f"live_eval: {in_repository}", file=sys.stderr)
+        return 2
     if args.out.exists() and any(args.out.iterdir()):
         print(f"live_eval: --out must be new or empty: {args.out}", file=sys.stderr)
         return 2
