@@ -105,7 +105,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pod Blueprints | 2.1.0 | Implemented |
 | Pod Dispatch | 10.2.0 | Implemented |
 | Role Archetypes | 4.1.0 | Implemented |
-| Security Gates | 1.4.1 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 1.5.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 4.0.1 | Implemented |

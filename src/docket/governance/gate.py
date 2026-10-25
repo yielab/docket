@@ -206,7 +206,7 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
     rationale, blocked = _approval.screen_rationale(ctx.rationale, ctx.project)
     if route == "park":
         token = _park(call, ctx, summary, digest, rationale, blocked)
-        reason = f"parked for approval (token={token})"
+        reason = _rules.parked_reason(verdict.reason, tool.name)
         return GateDecision(
             "deny",
             reason,
@@ -224,7 +224,7 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
         rationale=rationale,
         rationale_blocked=blocked,
     )
-    return _wait(token, ctx, tool.name, digest, verdict.policy_id)
+    return _wait(token, ctx, tool.name, digest, verdict)
 
 
 def _park(
@@ -271,7 +271,7 @@ def consume_matching_pregrant(ctx: GateContext, tool_name: str, digest: str) -> 
 
 
 def _wait(
-    token: str, ctx: GateContext, tool_name: str, digest: str, policy_id: str
+    token: str, ctx: GateContext, tool_name: str, digest: str, verdict: ToolVerdict
 ) -> GateDecision:
     """Block on *token* (the ``wait`` posture, the in-turn gate) and report how it ended."""
     kwargs: dict[str, Any] = {}
@@ -286,7 +286,9 @@ def _wait(
         cancelled=bool(outcome.cancelled),
         timed_out=bool(outcome.timed_out),
         cancel_requested=ctx.cancellation_check is not None and ctx.cancellation_check(),
+        asked_because=verdict.reason,
     )
+    policy_id = verdict.policy_id
     if kind is not None:
         return GateDecision("deny", reason, policy_id=policy_id, denial_kind=kind, error=reason)
     # Granted: the call is now allowed, and falls through to execute.

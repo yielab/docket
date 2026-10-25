@@ -95,7 +95,8 @@ def test_an_ask_in_park_mode_records_the_call_and_stops(monkeypatch: pytest.Monk
     decision = _gate.govern(CALL, _Ctx(approval_mode="park", task_id="t-1"))
 
     assert (decision.decision, decision.denial_kind) == ("deny", "approval_parked")
-    assert decision.approval_token and decision.approval_token in decision.reason
+    assert decision.approval_token and decision.approval_token not in decision.reason
+    assert decision.reason.startswith("because; a person must approve this call")
     record = _approval.approval_get(decision.approval_token)
     assert record["context"]["taskId"] == "t-1"
     assert record["context"]["argsDigest"] == canonical_args_digest("write", ARGS)

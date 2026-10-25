@@ -83,8 +83,8 @@ def test_ask_route(mode: str, pregranted: bool, expected: str) -> None:
     ("granted", "cancelled", "timed_out", "cancel_requested", "kind", "reason"),
     [
         (True, False, False, False, None, ""),
-        (False, False, False, False, "approval_denied", "approval denied"),
-        (False, False, True, False, "approval_timeout", "approval timed out and was denied"),
+        (False, False, False, False, "approval_denied", "why; approval denied"),
+        (False, False, True, False, "approval_timeout", "why; approval timed out and was denied"),
         (False, True, False, False, "run_cancelled", _r.CANCELLED_REASON),
         # a cancellation requested while waiting beats a grant that arrived with it
         (True, False, False, True, "run_cancelled", _r.CANCELLED_REASON),
@@ -102,5 +102,9 @@ def test_settle_wait(
     reason: str,
 ) -> None:
     assert _r.settle_wait(
-        granted=granted, cancelled=cancelled, timed_out=timed_out, cancel_requested=cancel_requested
+        granted=granted,
+        cancelled=cancelled,
+        timed_out=timed_out,
+        cancel_requested=cancel_requested,
+        asked_because="why",
     ) == (kind, reason)

@@ -9,6 +9,8 @@ repo, the task worktree, the audit log and the park/resume machinery are real.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -69,6 +71,30 @@ def _audit_actions(w: World, prefix: str) -> list[str]:
     return [str(r["action"]) for r in oracles.audit_rows(w) if str(r["action"]).startswith(prefix)]
 
 
+def _the_model_saw_the_rules_and_the_reason_but_no_token(model: FakeModel, token: str) -> None:
+    """Everything the Implementer was sent states the bash rules, explains the park, hides the token."""
+    sent = model.by_role("implementer")
+    wire = json.dumps([r.body for r in sent])
+    assert token not in wire and not re.search(r"apr[-_][0-9A-Za-z-]+", wire)
+    bash = next(
+        t["function"]["description"]
+        for t in sent[-1].body["tools"]
+        if t["function"]["name"] == "bash"
+    )
+    assert "Runs without approval: " in bash and "Needs approval: " in bash
+    refusals = [
+        m["content"]
+        for r in sent
+        for m in r.messages
+        if m.get("role") == "tool" and str(m.get("content")).startswith("REFUSED [approval_parked]")
+    ]
+    assert refusals and all(
+        "not on the curated allowlist" in text
+        and text.endswith("a person must approve this command; the task resumes once they do")
+        for text in refusals
+    )
+
+
 def test_a_parked_approval_shows_in_the_inbox_and_a_task_grant_covers_the_rest(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
@@ -120,6 +146,7 @@ def test_a_parked_approval_shows_in_the_inbox_and_a_task_grant_covers_the_rest(
         *DONE,
     ]
     assert len(model.by_role("implementer")) == 5
+    _the_model_saw_the_rules_and_the_reason_but_no_token(model, token)
     assert not (_worktree(w, task_id) / "build").exists()
     assert _needs_you(w) == []
     assert "Needs you" not in w.docket("inbox", "--peek").out
