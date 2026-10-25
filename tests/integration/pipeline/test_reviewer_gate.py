@@ -100,8 +100,10 @@ class TestParseReviewerVerdict:
             _orch.parse_verdict(self._reviewer_gate(), "APPROVE\nEvidence.\napprove") == "approve"
         )
 
-    def test_conflicting_marker_lines_are_unparseable(self) -> None:
-        assert _orch.parse_verdict(self._reviewer_gate(), "APPROVE\nREQUEST-CHANGES") is None
+    def test_conflicting_marker_lines_resolve_to_the_last_one(self) -> None:
+        gate = self._reviewer_gate()
+        assert _orch.parse_verdict(gate, "APPROVE\nREQUEST-CHANGES") == "request-changes"
+        assert _orch.parse_verdict(gate, "REQUEST-CHANGES\nAPPROVE") == "approve"
 
     def test_marker_word_embedded_in_prose_does_not_count(self) -> None:
         assert _orch.parse_verdict(self._reviewer_gate(), "I APPROVE this implementation") is None
@@ -169,16 +171,16 @@ class TestReviewerGateBasic:
         assert reviewer.artifact.verdict == "approve"
         assert tester.artifact.verdict == "pass"
 
-    def test_conflicting_reviewer_markers_fail_as_unparseable(self, tmp_path: Path) -> None:
+    def test_conflicting_reviewer_markers_resolve_to_the_last_line(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task = TaskRecord(id="t1d", description="work")
         res = _executor.dispatch_task(
-            "myapp", task, runner=self._runner("APPROVE\nREQUEST-CHANGES")
+            "myapp", task, runner=self._runner("REQUEST-CHANGES\nfixed it\n**APPROVE**")
         )
 
-        assert res.status == "failed"
-        assert "unparseable" in res.reason
-        assert "first line" not in res.reason
+        assert res.status == "done"
+        reviewer = next(hop for hop in res.hops if hop.role == "reviewer")
+        assert reviewer.artifact.verdict == "approve"
 
     def test_unparseable_reviewer_output_fails(self, tmp_path: Path) -> None:
         _seed_full_pod()

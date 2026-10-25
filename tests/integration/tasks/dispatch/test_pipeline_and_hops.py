@@ -180,10 +180,7 @@ class TestPipeline:
             assert len(downstream) == 2
             for _agent_id, message, env in downstream:
                 assert f"Working directory: {worktree}" in message
-                assert (
-                    "one distinct recognized verdict marker at the start of a complete line"
-                    in message
-                )
+                assert "must still end with the verdict marker as its LAST line" in message
                 assert env == {_rd.PIPELINE_WORKTREE_ENV: str(worktree)}
 
     def test_default_approval_mode_leaves_every_hop_env_unchanged(self, tmp_path: Path) -> None:

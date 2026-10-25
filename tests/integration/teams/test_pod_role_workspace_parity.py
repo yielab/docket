@@ -60,10 +60,9 @@ def _legacy_member_soul(
             "- You review the diff the task message delivers for correctness, security, and "
             "requirement fit; read a file only for context the diff does not show.\n"
             "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
-            "- **Marker convention:** start exactly one output line with `APPROVE` or "
-            "`REQUEST-CHANGES` (case-insensitive) — dispatch scans all complete lines "
-            "and requires one unambiguous marker. Reasons may appear before or after "
-            "that marker line. No marker or both distinct markers is unparseable and "
+            "- **Marker convention:** the LAST line of your FINAL message must be exactly "
+            "`APPROVE` or `REQUEST-CHANGES`, with nothing else on that line. Reasons go "
+            "above it. A final message with no marker line is asked for once more, then "
             "blocks the pipeline the same as a rejection.\n"
             "- A `REQUEST-CHANGES` verdict sends the task back to the Implementer "
             "for a bounded rework cycle (once, by default) before it becomes a "
@@ -76,10 +75,10 @@ def _legacy_member_soul(
             "- You run the test suite and reproduction steps and report a binary "
             "**PASS/FAIL** with evidence.\n"
             "- Observe behaviour only — do not read or critique the implementation.\n"
-            "- **Marker convention:** start exactly one output line with `PASS` or `FAIL` "
-            "(case-insensitive) — dispatch scans all complete lines and requires one "
-            "unambiguous marker. Evidence may appear before or after that marker line. "
-            "No marker or both distinct markers blocks the pipeline the same as a FAIL.\n"
+            "- **Marker convention:** the LAST line of your FINAL message must be exactly "
+            "`PASS` or `FAIL`, with nothing else on that line. Evidence goes above it. "
+            "A final message with no marker line is asked for once more, then blocks the "
+            "pipeline the same as a FAIL.\n"
         )
     return head + body
 

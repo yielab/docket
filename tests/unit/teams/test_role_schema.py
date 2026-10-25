@@ -48,8 +48,10 @@ class TestResolveHopInstruction:
     def test_verdict_gate_generates_marker_instruction(self) -> None:
         arch = _archetype(GateContract(kind="verdict", regexes=("APPROVE", "REQUEST-CHANGES")))
         instruction = resolve_hop_instruction(arch)
-        assert "APPROVE or REQUEST-CHANGES" in instruction
-        assert "one output line" in instruction
+        assert instruction == (
+            "The LAST line of your FINAL message must be exactly `APPROVE` or "
+            "`REQUEST-CHANGES`, with nothing else on that line. Reasons go above it."
+        )
 
     def test_mechanical_gate_generates_an_instruction(self) -> None:
         arch = _archetype(GateContract(kind="mechanical"))
