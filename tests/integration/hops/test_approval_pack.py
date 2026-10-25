@@ -113,7 +113,7 @@ def _registry(ran: list[str]) -> ToolRegistry:
 
 
 def _park(text: str) -> dict[str, Any]:
-    """Run one parked turn whose message says *text*; return the approval_requested payload."""
+    """Run one parked turn whose message says *text*; return the approval record, which holds the pack."""
     backend = _Backend([_call_turn(text, "c1"), _done()])
     driver = DocketDriver(
         backend_factory=lambda model: backend, registry_factory=lambda: _registry([])
@@ -121,17 +121,8 @@ def _park(text: str) -> dict[str, Any]:
     driver.run_turn(
         AGENT, f"agent:{AGENT}:default", "go", 30, {DOCKET_APPROVAL_MODE: "park"}, trace_project="p"
     )
-    events = [
-        json.loads(line)
-        for f in (current_home().traces_dir / "p").glob("*-approval*.jsonl")
-        for line in f.read_text(encoding="utf-8").splitlines()
-    ]
-    [requested] = [e for e in events if e["event_type"] == "approval_requested"]
-    payload: dict[str, Any] = requested["payload"]
     [record] = [json.loads(p.read_text()) for p in current_home().approvals_dir.glob("*.json")]
-    assert record["rationale"] == payload["rationale"]
-    assert record["options"] == payload["options"]
-    return payload
+    return record
 
 
 class TestRationale:

@@ -23,7 +23,6 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain.short_form import normalize_pipeline
 from docket.pipeline.domain.spec import load_pipeline
 from docket.tasks.application import actions as _actions_c
-from docket.tasks.application import lifecycle as _lifecycle_c
 from docket.tasks.application import queue as _queue_c
 from docket.tasks.application import record as _record
 from docket.teams import roles as _archetypes
@@ -88,11 +87,6 @@ class TestExecution:
         )
         monkeypatch.setattr(
             _queue_c, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()
-        )
-        monkeypatch.setattr(
-            _lifecycle_c,
-            "load_pod_settings",
-            lambda project: type("S", (), {"allow_commands": []})(),
         )
         monkeypatch.setattr(
             _compose_c, "load_pod_settings", lambda project: type("S", (), {"allow_commands": []})()

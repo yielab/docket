@@ -18,7 +18,6 @@ from docket.hops.gates import post_hop as _post_hop_c
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.observability import trace as _trace
 from docket.tasks.application import actions as _actions_c
-from docket.tasks.application import lifecycle as _lifecycle_c
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain.parts import Worktree
 from docket.tasks.domain.task import TaskRecord
@@ -40,9 +39,6 @@ def worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         _actions_c, "load_pod_settings", lambda project: SimpleNamespace(prepare="")
     )
     monkeypatch.setattr(_queue, "load_pod_settings", lambda project: SimpleNamespace(prepare=""))
-    monkeypatch.setattr(
-        _lifecycle_c, "load_pod_settings", lambda project: SimpleNamespace(prepare="")
-    )
     monkeypatch.setattr(
         _compose_c, "load_pod_settings", lambda project: SimpleNamespace(prepare="")
     )

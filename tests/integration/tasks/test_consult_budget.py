@@ -63,7 +63,9 @@ def test_a_parked_consult_spends_one() -> None:
 def test_a_consult_the_pod_decides_alone_spends_one_too() -> None:
     task = _queue.enqueue_task_once(PROJECT, "pick a store", channel="cli")[0]
 
-    _esc.decided_consult(_question(task.id, "q-decided0001"), role="implementer", option_id="sqlite")
+    _esc.decided_consult(
+        _question(task.id, "q-decided0001"), role="implementer", option_id="sqlite"
+    )
 
     assert stored_task(PROJECT, task.id).consultations == 1
 

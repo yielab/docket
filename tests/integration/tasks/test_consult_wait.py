@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.approvals import answer_question
 from tests.support.home import record_isolation_off
 from tests.support.llm import final as _final
 from tests.support.pods import build_pod
@@ -151,9 +152,8 @@ class TestAnsweredInPlace:
 
         task = _task(task_id)
         assert not worker.is_alive() and task.status == "done"
-        assert task.question is None and task.answers == []
         (answer,) = _tool_results(backend)
-        assert f"Operator answered your consultation {waiting.legacy['questionId']}:" in answer
+        assert f"Operator answered your consultation {waiting.id}:" in answer
         assert "option redis (Redis)" in answer and "hot path" in answer
         stored = read_escalation(waiting.id)
         assert stored is not None and stored.state == "resolved"
@@ -173,23 +173,21 @@ class TestAnsweredInPlace:
         (answer,) = _tool_results(backend)
         assert answer.endswith("declined. Decide yourself.")
 
-    def test_an_answer_by_task_goes_through_the_same_record(
+    def test_an_answer_by_the_task_goes_through_the_same_record(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         backend = _Backend([_final("plan"), _consult_call(), _final("built with sqlite")])
         worker, task_id = _begin(tmp_path, monkeypatch, backend)
         _the_waiting_consult()
 
-        _esc.resolve_question(
-            "demo", task_id, "accept", {"optionId": "sqlite"}, channel="http", actor="alice"
-        )
+        answer_question("demo", task_id, "accept", {"optionId": "sqlite"})
         worker.join(30)
 
         (answer,) = _tool_results(backend)
         assert "option sqlite (SQLite)" in answer
         assert _task(task_id).status == "done"
 
-    def test_the_approval_token_of_the_wait_names_the_question_options_not_a_grant(
+    def test_the_wait_offers_the_question_options_not_a_grant(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         backend = _Backend([_final("plan"), _consult_call(), _final("built")])
@@ -197,9 +195,7 @@ class TestAnsweredInPlace:
         waiting = _the_waiting_consult()
 
         with pytest.raises(_esc.EscalationInvalid, match="redis, sqlite, decline"):
-            _esc.resolve_approval_token(
-                str(waiting.legacy["token"]), "approve_once", channel="cli", actor=""
-            )
+            _esc.resolve(waiting.id, "approve_once", None, by="alice", channel="cli")
         _esc.resolve(waiting.id, "redis", None, by="alice", channel="cli")
         worker.join(30)
 

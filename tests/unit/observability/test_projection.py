@@ -277,6 +277,26 @@ class TestEscalationSpans:
             carried = span.attributes.get("docket.escalation.prompt")
             assert carried == ("CANARY-which-store" if "prompts" in classes else None), level
 
+    def test_what_an_approval_asks_is_a_command_line_exported_where_tool_arguments_are(
+        self,
+    ) -> None:
+        records = [
+            _esc_record(
+                "escalation_asked",
+                "2026-10-25T10:00:00Z",
+                kind="approval",
+                prompt="CANARY-rm-rf-build",
+            ),
+            _esc_record("escalation_resolved", "2026-10-25T10:01:00Z", by="person"),
+        ]
+        for level in ("minimal", "actions", "conversation", "full"):
+            classes = privacy.LEVELS[level]
+            policy = observability_spans.ExportPolicy(classes=classes, label=level)
+            (span,) = _escalation_spans(_run(records, policy))
+            carried = span.attributes.get("docket.approval.action")
+            assert carried == ("CANARY-rm-rf-build" if "toolArguments" in classes else None), level
+            assert "docket.escalation.prompt" not in span.attributes
+
     def test_the_default_events_admit_the_whole_family(self) -> None:
         family = {
             "escalation_asked",
@@ -305,33 +325,3 @@ class TestEscalationSpans:
         (span,) = _escalation_spans(spans)
         assert not any("option" in key.lower() for key in span.attributes)
 
-
-class TestQuestionAskedDecision:
-    def test_a_decided_consult_exports_the_option_it_applied(self) -> None:
-        state = observability_spans.ProjectionState()
-        projection.project(
-            {
-                "ts": "2026-10-25T10:00:00Z",
-                "project": "demo",
-                "session_id": "agent:demo:t-1",
-                "agent_role": "implementer",
-                "event_type": "question_asked",
-                "payload": {
-                    "questionId": "q-1",
-                    "kind": "decision",
-                    "mode": "decided",
-                    "decidedOptionId": "sqlite",
-                    "question": {"message": "Which store?"},
-                },
-            },
-            state,
-        )
-
-        (root,) = projection.flush_open(state)
-        (event,) = root.events
-        assert event.attributes == {
-            "docket.questionId": "q-1",
-            "docket.kind": "decision",
-            "docket.mode": "decided",
-            "docket.decidedOptionId": "sqlite",
-        }

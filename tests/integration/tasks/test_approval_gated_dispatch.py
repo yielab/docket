@@ -41,6 +41,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.approvals import escalation_of, pending_token, resolve_token
 from tests.support.pods import GATED_IMPLEMENTER_PIPELINE_YAML
 from tests.support.pods import write_meta as _write_meta
 from tests.support.trace import trace_events as _trace_events
@@ -66,7 +67,6 @@ from docket.pipeline.domain import gates as _gates
 from docket.platform import list_escalations
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import escalation_sweep as _escalation_sweep
-from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -220,8 +220,8 @@ class TestGateFiresPreHop:
         task = TaskRepository.for_pod("myapp").list()[0]
         assert task.status == "waiting_approval"
         assert task.claim_pid is None
-        assert task.approval_token
-        assert task.approval_token.startswith("apr-")
+        assert len(task.escalations) == 1
+        assert pending_token("myapp").startswith("apr-")
         # Lean pod pipeline is [lead, implementer] -> implementer is index 1.
         assert task.pending_approval_index == 1
         # Only the lead hop is on record; the implementer hop never ran.
@@ -233,7 +233,8 @@ class TestGateFiresPreHop:
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
 
         stored = TaskRepository.for_pod("myapp").list()[0]
-        token = stored.approval_token
+        token = pending_token("myapp")
+        assert stored.escalations
         pending = _ap.list_pending()
         assert any(p["token"] == token for p in pending)
         rec = _ap.approval_get(token)
@@ -308,16 +309,15 @@ class TestGrantResumesAtHop:
         _seed_full_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = TaskRepository.for_pod("myapp").list()[0].approval_token
+        token = pending_token("myapp")
         return token
 
     def test_a_grant_flips_the_task_to_pending_and_leaves_the_position_for_the_claim(self) -> None:
         token = self._gate_then_grant()
-        _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
+        resolve_token(token, "approve_once", channel="cli", actor="")
 
         task = TaskRepository.for_pod("myapp").list()[0]
         assert task.status == "pending"
-        assert task.approval_token is None
         assert task.pending_approval_index is None
         (gate,) = [e for e in list_escalations() if e.kind == "gate"]
         assert gate.state == "resolved" and gate.resolution is not None
@@ -325,7 +325,7 @@ class TestGrantResumesAtHop:
 
     def test_next_dispatch_continues_from_the_gated_hop(self) -> None:
         token = self._gate_then_grant()
-        _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
+        resolve_token(token, "approve_once", channel="cli", actor="")
 
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -341,7 +341,6 @@ class TestGrantResumesAtHop:
             "reviewer",
             "tester",
         ]
-        assert final.approval_token is None
         (gate,) = [e for e in list_escalations() if e.kind == "gate"]
         assert gate.resolution is not None and gate.resolution.applied_at is not None
 
@@ -349,7 +348,11 @@ class TestGrantResumesAtHop:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = self._gate_then_grant()
-        rc = CliRunner().invoke(app, ["task", "approve", token]).exit_code
+        rc = (
+            CliRunner()
+            .invoke(app, ["task", "answer", escalation_of(token), "--option", "approve_once"])
+            .exit_code
+        )
         assert rc == 0
         capsys.readouterr()
 
@@ -378,7 +381,7 @@ class TestDenyFailsTerminally:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        return str(TaskRepository.for_pod("myapp").list()[0].approval_token)
+        return str(pending_token("myapp"))
 
     def test_resolve_waiting_approval_fails_task_immediately(self) -> None:
         token = self._gate()
@@ -390,7 +393,6 @@ class TestDenyFailsTerminally:
         assert task.status == "failed"
         assert task.failure_kind == "approval_denied"
         assert task.reason == "approval denied"
-        assert task.approval_token is None
         assert task.pending_approval_index is None
         assert task.completed_at
 
@@ -409,7 +411,11 @@ class TestDenyFailsTerminally:
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         token = self._gate()
-        rc = CliRunner().invoke(app, ["task", "deny", token]).exit_code
+        rc = (
+            CliRunner()
+            .invoke(app, ["task", "answer", escalation_of(token), "--option", "deny"])
+            .exit_code
+        )
         assert rc == 0
         capsys.readouterr()
 
@@ -465,7 +471,7 @@ class TestExpirySweepDenies:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
+        token = str(pending_token("myapp"))
 
         rec = _ap.approval_get(token)
         rec["created"] = "2000-01-01T00:00:00Z"
@@ -510,16 +516,21 @@ def _post(url: str, body: dict[str, Any], token: str) -> tuple[int, dict[str, An
         return exc.code, json.loads(exc.read())
 
 
-class TestHttpApprovalEndpoint:
+class TestHttpEscalationEndpoint:
     def test_post_grant_resumes_the_dispatch_task(self, live_server: str) -> None:
         _seed_full_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
+        token = str(pending_token("myapp"))
 
-        status, body = _post(f"{live_server}/approvals/{token}", {"action": "grant"}, _TEST_TOKEN)
+        status, body = _post(
+            f"{live_server}/escalations/{escalation_of(token)}",
+            {"optionId": "approve_once"},
+            _TEST_TOKEN,
+        )
         assert status == 200
-        assert body["state"] == "granted"
+        assert body["state"] == "resolved"
+        assert _ap.approval_get(token)["state"] == "granted"
 
         task = TaskRepository.for_pod("myapp").list()[0]
         assert task.status == "pending"
@@ -533,11 +544,16 @@ class TestHttpApprovalEndpoint:
         _seed_lean_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
+        token = str(pending_token("myapp"))
 
-        status, body = _post(f"{live_server}/approvals/{token}", {"action": "deny"}, _TEST_TOKEN)
+        status, body = _post(
+            f"{live_server}/escalations/{escalation_of(token)}",
+            {"optionId": "deny"},
+            _TEST_TOKEN,
+        )
         assert status == 200
-        assert body["state"] == "denied"
+        assert body["state"] == "resolved"
+        assert _ap.approval_get(token)["state"] == "denied"
 
         task = TaskRepository.for_pod("myapp").list()[0]
         assert task.status == "failed"
@@ -552,10 +568,10 @@ class TestReworkReGatesAfterResume:
         _seed_full_pod(gated=True)
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         _sweep.dispatch_pod("myapp", runner=_RecordingRunner())
-        first_token = str(TaskRepository.for_pod("myapp").list()[0].approval_token)
+        first_token = str(pending_token("myapp"))
         assert first_token
 
-        _escalations.resolve_approval_token(first_token, "approve_once", channel="cli", actor="")
+        resolve_token(first_token, "approve_once", channel="cli", actor="")
 
         runner = _OneReworkThenGateAgainRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
@@ -567,13 +583,13 @@ class TestReworkReGatesAfterResume:
         assert runner.calls == ["implementer", "reviewer"]
 
         second_task = TaskRepository.for_pod("myapp").list()[0]
-        second_token = second_task.approval_token
+        second_token = pending_token("myapp")
         assert second_token
         assert second_token != first_token
         assert second_task.pending_approval_index == 1  # same implementer index
 
         # Grant the second gate too and let the task finish.
-        _escalations.resolve_approval_token(second_token, "approve_once", channel="cli", actor="")
+        resolve_token(second_token, "approve_once", channel="cli", actor="")
         final_runner = _OneReworkThenGateAgainRunner()
         final_runner._reviewer_calls = 1  # next reviewer call approves
         final_results = _sweep.dispatch_pod("myapp", runner=final_runner)

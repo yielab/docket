@@ -1,6 +1,6 @@
-"""The derived operator inbox (``operator/inbox.py``) -- pure assembly over pod tasks and pending
-approvals, no writes. Pins the four-section split, the A2A mapping on every item, the
-approval-to-task linking rule, the `since` cursor semantics, and paused-pod inclusion.
+"""The derived operator inbox (``operator/inbox.py``) -- assembly over pod tasks and pending
+escalations, no writes. Pins the four-section split, the A2A mapping on every item, the
+escalation-to-task linking rule, the `since` cursor semantics, and paused-pod inclusion.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from tests.support.tasks import update_task
 from docket.governance import approval as _approval
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import (
-    ApprovalView,
+    EscalationView,
     Option,
     Recommendation,
     TaskView,
@@ -50,7 +50,6 @@ class TestBuildInboxSections:
             "alpha",
             "task-wa",
             status="waiting_approval",
-            approval_token="apr-linked",
             created="2026-09-28T01:00:00+00:00",
         )
         _seed_task(
@@ -83,52 +82,41 @@ class TestBuildInboxSections:
             created="2026-09-28T01:00:00+00:00",
         )
 
-        _approval.approval_create("alpha", "lead", "deploy alpha", context={"taskId": "task-wa"})
-        _approval.approval_create(
+        linked = _approval.approval_create(
+            "alpha", "lead", "deploy alpha", context={"taskId": "task-wa"}
+        )
+        _escalations.open_for_approval(linked, kind="gate", task_id="task-wa", caused_by="lead")
+        loose = _approval.approval_create(
             "beta", "implementer", "bash: rm -rf /tmp/x", context={"tool": "bash", "callId": "c1"}
         )
+        _escalations.open_for_approval(loose, kind="approval", task_id="", caused_by="c1")
 
     def test_sections_split_exactly_as_expected(self) -> None:
         self._seed()
         view = _inbox.build_inbox(now=_NOW)
 
-        needs_you_ids = {
-            item.id if isinstance(item, TaskView) else item.token for item in view.needs_you
-        }
-        assert needs_you_ids == {"task-wa", "task-blocked", "task-waiting-input", _only_token()}
+        needs_you_ids = {item.id for item in view.needs_you}
+        assert needs_you_ids == {"task-wa", "task-blocked", "task-waiting-input", _only_loose()}
         assert [t.id for t in view.failed] == ["task-failed"]
         assert [t.id for t in view.done_since] == ["task-done"]
         assert [t.id for t in view.running] == ["task-running"]
 
-    def test_linked_approval_does_not_duplicate_its_task(self) -> None:
+    def test_an_escalation_a_task_waits_on_does_not_duplicate_its_task(self) -> None:
         self._seed()
         view = _inbox.build_inbox(now=_NOW)
 
-        approval_items = [item for item in view.needs_you if isinstance(item, ApprovalView)]
-        assert len(approval_items) == 1
-        assert approval_items[0].pod == "beta"
-        assert approval_items[0].task_id is None
+        loose = [item for item in view.needs_you if isinstance(item, EscalationView)]
+        assert [(e.pod, e.task) for e in loose] == [("beta", "")]
+        (waiting,) = [t for t in view.needs_you if isinstance(t, TaskView) and t.id == "task-wa"]
+        assert waiting.escalation in {e.id for e in view.escalations}
 
-    def test_approval_a_task_holds_by_token_is_folded_even_without_task_id(self) -> None:
-        """A parked approval whose record never learned its task is still the task's: the
-        task carries the token as `approvalToken`, so one item, not two."""
-        build_pod("gamma", ("lead", "implementer"), codebase="/src/gamma")
-        token = _approval.approval_create(
-            "gamma", "implementer", "bash: git push", context={"tool": "bash", "parked": True}
-        )
-        _seed_task(
-            "gamma",
-            "task-parked",
-            status="waiting_approval",
-            approval_token=token,
-            created="2026-09-28T01:00:00+00:00",
-        )
-
+    def test_a_task_names_the_escalation_it_waits_on_and_the_others_name_none(self) -> None:
+        self._seed()
         view = _inbox.build_inbox(now=_NOW)
 
-        tokens = [item.token for item in view.needs_you if isinstance(item, ApprovalView)]
-        assert token not in tokens
-        assert [t.id for t in view.needs_you if isinstance(t, TaskView)] == ["task-parked"]
+        by_id = {t.id: t.escalation for t in view.needs_you if isinstance(t, TaskView)}
+        assert by_id["task-wa"] and by_id["task-wa"].startswith("esc-")
+        assert by_id["task-blocked"] is None and by_id["task-waiting-input"] is None
 
     def test_every_item_carries_its_a2a_state(self) -> None:
         self._seed()
@@ -149,16 +137,14 @@ class TestBuildInboxSections:
         assert second.done_since == []
 
 
-def _only_token() -> str:
-    """The one standalone (unlinked) approval's token, read straight from disk so the test
-    above does not hardcode a minted id."""
-    pending = _approval.list_pending()
-    (rec,) = [r for r in pending if r.get("context", {}).get("tool") == "bash"]
-    return str(rec["token"])
+def _only_loose() -> str:
+    """The id of the one escalation no task waits on."""
+    (pending,) = [e for e in _inbox.escalation_views() if e.task == ""]
+    return pending.id
 
 
 class TestNextTimestamp:
-    def test_next_is_the_maximum_task_timestamp_with_no_approvals(self) -> None:
+    def test_next_is_the_maximum_task_timestamp_with_no_escalations(self) -> None:
         build_pod("solo", ("lead", "implementer"), codebase="/src/solo")
         _seed_task(
             "solo",
@@ -192,7 +178,7 @@ class TestPausedPodsAreIncluded:
 
 
 class TestEmptyInbox:
-    def test_no_pods_no_approvals_yields_empty_sections_and_no_next(self) -> None:
+    def test_no_pods_no_escalations_yields_empty_sections_and_no_next(self) -> None:
         view = _inbox.build_inbox(now=_NOW)
         assert view.needs_you == []
         assert view.failed == []
@@ -241,7 +227,7 @@ class TestPendingMemory:
 
 
 class TestEscalationViews:
-    """A stored escalation reads as pending only while the approval or question it names is."""
+    """A stored escalation reads as pending only while the task it belongs to still waits."""
 
     def _question(self, task_id: str, pod: str = "alpha") -> _QuestionV11:
         return _QuestionV11(
@@ -263,7 +249,7 @@ class TestEscalationViews:
     def _park_consult(self, task_id: str = "task-q", pod: str = "alpha") -> str:
         build_pod(pod, ("lead", "implementer"), codebase=f"/src/{pod}")
         question = self._question(task_id, pod)
-        _seed_task(pod, task_id, status="waiting_input", question=question)
+        _seed_task(pod, task_id, status="waiting_input")
         escalation = _escalations.open_for_question(
             question, kind="consult", role="implementer", caused_by="c1"
         )
@@ -304,17 +290,19 @@ class TestEscalationViews:
         assert view.affordances.accepts_text is False
         assert _inbox.build_inbox(now=_NOW).escalations == []
 
-    def test_an_approval_is_pending_until_its_record_is_decided(self) -> None:
+    def test_an_approval_is_pending_until_it_is_resolved(self) -> None:
         build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
         token = _approval.approval_create("alpha", "implementer", "bash: rm -rf build")
-        _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
+        escalation = _escalations.open_for_approval(
+            token, kind="approval", task_id="", caused_by="c1"
+        )
 
         assert [e.state for e in _inbox.escalation_views()] == ["pending"]
         assert [e.affordances.options for e in _inbox.build_inbox(now=_NOW).escalations] == [
             ["approve_once", "approve_task", "deny"]
         ]
 
-        _approval.approval_grant(token, channel="cli")
+        _escalations.resolve(escalation.id, "approve_once", None, by="a", channel="cli")
 
         assert [e.state for e in _inbox.escalation_views()] == ["resolved"]
         assert _inbox.build_inbox(now=_NOW).escalations == []
@@ -322,8 +310,10 @@ class TestEscalationViews:
     def test_a_settled_state_is_kept(self) -> None:
         build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
         token = _approval.approval_create("alpha", "implementer", "bash: rm -rf build")
-        _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
-        _store.settle_escalation("token", token, "expired")
+        escalation = _escalations.open_for_approval(
+            token, kind="approval", task_id="", caused_by="c1"
+        )
+        _store.settle_escalation(escalation.id, "expired")
 
         assert [e.state for e in _inbox.escalation_views()] == ["expired"]
 

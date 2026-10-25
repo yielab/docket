@@ -81,7 +81,6 @@ def _escalation(**fields: object) -> Escalation:
         "prompt": "run rm",
         "askedAt": "2026-10-25T10:00:00+00:00",
         "onExpiry": "deny",
-        "legacy": {"token": "apr-1"},
     }
     return Escalation.model_validate({**base, **fields})
 
@@ -138,13 +137,13 @@ def test_read_escalation_refuses_a_path_shaped_id_and_an_absent_record() -> None
         store.write_escalation(_escalation(id="esc-../../x"))
 
 
-def test_settle_escalation_moves_only_the_pending_record_naming_the_value() -> None:
-    mine = store.write_escalation(_escalation(legacy={"token": "apr-a"}))
-    other = store.write_escalation(_escalation(legacy={"token": "apr-b"}))
+def test_settle_escalation_moves_only_the_pending_record_it_names() -> None:
+    mine = store.write_escalation(_escalation())
+    other = store.write_escalation(_escalation())
 
-    assert store.settle_escalation("token", "apr-a", "expired") is True
-    assert store.settle_escalation("token", "apr-a", "expired") is False
-    assert store.settle_escalation("token", "apr-missing", "expired") is False
+    assert store.settle_escalation(mine.id, "expired") is True
+    assert store.settle_escalation(mine.id, "expired") is False
+    assert store.settle_escalation(new_escalation_id(), "expired") is False
     assert store.read_escalation(mine.id).state == "expired"  # type: ignore[union-attr]
     assert store.read_escalation(other.id).state == "pending"  # type: ignore[union-attr]
 
@@ -208,10 +207,10 @@ def test_the_pending_scan_opens_no_settled_file(monkeypatch: pytest.MonkeyPatch)
 
 def test_a_settled_record_leaves_the_pending_directory_and_keeps_its_seq() -> None:
     folder = current_home().escalations_dir
-    mine = store.write_escalation(_escalation(legacy={"token": "apr-a"}))
-    resolved = store.write_escalation(_escalation(legacy={"token": "apr-b"}))
+    mine = store.write_escalation(_escalation())
+    resolved = store.write_escalation(_escalation())
 
-    assert store.settle_escalation("token", "apr-a", "expired") is True
+    assert store.settle_escalation(mine.id, "expired") is True
     resolution = Resolution(
         option_id="grant", by="alice", channel="http", at="2026-10-25T10:00:00Z"
     )

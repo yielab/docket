@@ -33,6 +33,9 @@ def get_escalations(h: HttpExchange, _arg: str) -> None:
 def post_escalation(h: HttpExchange, escalation_id: str) -> None:
     """`POST /escalations/<id>`; body `{"optionId"?, "content"?, "actor"?}`. The channel is always
     `"http"`; `actor` is a label only."""
+    if not escalation_id:
+        h._send_json_error("Missing escalation id", 400)
+        return
     body = h._read_json_object()
     if body is None:
         return

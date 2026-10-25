@@ -69,7 +69,7 @@ class TestCacheControlHeader:
         self, live_server: tuple[str, str]
     ) -> None:
         url, _token = live_server
-        _status, _body, headers = _get(f"{url}/approvals")
+        _status, _body, headers = _get(f"{url}/escalations")
         assert headers.get("Cache-Control") == "no-store"
 
     def test_a_404_is_marked_no_store(self, live_server: tuple[str, str]) -> None:
@@ -86,7 +86,7 @@ class TestCacheControlHeader:
 
 
 class TestBarePostPaths:
-    @pytest.mark.parametrize("path", ["/approvals", "/tasks", "/dispatch"])
+    @pytest.mark.parametrize("path", ["/escalations", "/tasks", "/dispatch"])
     def test_unauthenticated_bare_path_is_401_not_404(
         self, live_server: tuple[str, str], path: str
     ) -> None:
@@ -95,13 +95,13 @@ class TestBarePostPaths:
         assert status == 401
         assert body["ok"] is False
 
-    def test_authenticated_bare_approvals_names_the_missing_token(
+    def test_authenticated_bare_escalations_names_the_missing_id(
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        status, body = _post(f"{url}/approvals", token=token)
+        status, body = _post(f"{url}/escalations", token=token)
         assert status == 400
-        assert "approval token" in body["error"].lower()
+        assert "escalation id" in body["error"].lower()
 
     def test_authenticated_bare_tasks_names_the_missing_project(
         self, live_server: tuple[str, str]

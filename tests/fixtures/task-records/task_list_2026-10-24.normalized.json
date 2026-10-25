@@ -5,48 +5,12 @@
       "status": "waiting_input",
       "description": "ship it",
       "created": "2026-10-19T00:00:00+00:00",
-      "question": {
-        "id": "q-1",
-        "taskId": "task-q",
-        "pod": "demo",
-        "step": "implementer",
-        "message": "Which store?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "answer": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-19T00:00:00+00:00",
-        "expiresAt": null,
-        "kind": "decision",
-        "options": [
-          {
-            "id": "redis",
-            "label": "Redis",
-            "description": "fast"
-          },
-          {
-            "id": "sqlite",
-            "label": "SQLite",
-            "description": "simple"
-          }
-        ],
-        "recommendation": {
-          "optionId": "sqlite",
-          "rationale": "no new service"
-        }
-      },
       "priority": "normal",
       "startedAt": null,
       "completedAt": null,
       "reason": "",
       "costUsd": 0.0,
       "claimedAt": null,
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "hops": []
     },
@@ -111,7 +75,6 @@
       "reason": "",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:51:02.927818+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/demo-implementer/tasks/task-e9712ba9-80ea-4881-a573-16fa7687f677",
@@ -227,7 +190,6 @@
       "reason": "implementer hop parked a consultation (question=q-3eb3a185ba67)",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:54:34.506973+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -237,53 +199,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-3eb3a185ba67",
-        "taskId": "task-c34c3f08-da03-4a28-9ee1-7a547a4575ae",
-        "pod": "demo",
-        "step": "implementer",
-        "message": "The task is the single word \"plain\" and the working directory `/src/demo` does not exist yet. What should be implemented?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T11:54:19Z",
-        "expiresAt": "2026-10-26T11:54:34.510603+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "plain_html",
-            "label": "Create a plain HTML starter project",
-            "description": "Scaffold a minimal plain HTML/CSS/JS project (index.html, style.css, main.js) in /src/demo \u2014 no frameworks, just bare files.",
-            "risks": [],
-            "estimatedTokens": 300
-          },
-          {
-            "id": "plain_text",
-            "label": "Create a plain text README / notes file",
-            "description": "Create a simple README.md or notes.txt explaining the demo project in plain text.",
-            "risks": [],
-            "estimatedTokens": 100
-          },
-          {
-            "id": "clarify_more",
-            "label": "Ask the user for more details",
-            "description": "The task is too ambiguous to act on; request a clearer description before writing any files.",
-            "risks": [],
-            "estimatedTokens": 50
-          }
-        ],
-        "recommendation": {
-          "optionId": "clarify_more",
-          "rationale": "The single word 'plain' provides no actionable specification, the directory does not exist, and there is no prior memory or context to infer intent. Acting without clarification risks creating the wrong thing entirely.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 16975,
@@ -400,7 +315,6 @@
       "reason": "",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:56:09.076616+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -483,7 +397,6 @@
       "reason": "lead hop parked a consultation (question=q-a5f08f41308a)",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:01:27.046377+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -493,46 +406,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-a5f08f41308a",
-        "taskId": "task-6a17d80f-1604-4276-b980-9af67a948c54",
-        "pod": "demo",
-        "step": "lead",
-        "message": "The task message only contains the word \"long\" with no context. I cannot decompose work without understanding what needs to be done. Please clarify what \"long\" refers to and provide the actual task requirements.",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T12:01:21Z",
-        "expiresAt": "2026-10-26T12:01:27.056975+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "task_context",
-            "label": "Provide full task context",
-            "description": "Explain what 'long' means and what work needs to be done",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "existing_task",
-            "label": "Reference existing documentation",
-            "description": "Point me to task documents or files that describe the work",
-            "risks": [],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "task_context",
-          "rationale": "Without understanding what 'long' refers to, I cannot create a meaningful decomposition plan. The task input is incomplete and requires human clarification before proceeding.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 28257,
@@ -562,7 +435,6 @@
       "reason": "",
       "costUsd": 0.0,
       "claimedAt": null,
-      "approvalToken": null,
       "pendingApprovalIndex": null
     },
     {
@@ -578,7 +450,6 @@
       "reason": "cancelled by operator",
       "costUsd": 0.0,
       "claimedAt": null,
-      "approvalToken": null,
       "pendingApprovalIndex": null
     },
     {
@@ -669,7 +540,6 @@
       ],
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:58:48.820337+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "completedAt": null,
       "reason": "implementer hop parked a consultation (question=q-a24f7bb2a7fa)",
@@ -681,59 +551,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-a24f7bb2a7fa",
-        "taskId": "task-609618e9-975e-4a2f-b1f8-b0aef372b46c",
-        "pod": "demo",
-        "step": "implementer",
-        "message": "The working directory `/src/demo` does not exist and cannot be created \u2014 the filesystem returns **Permission denied** on `/src`, so this is a host-level provisioning problem, not something the implementer can fix by writing files. How should we proceed?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T11:58:38Z",
-        "expiresAt": "2026-10-26T11:58:48.830508+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "reprovision",
-            "label": "Reprovision the workspace",
-            "description": "Ask an operator/admin to create /src/demo on the host (e.g. `mkdir -p /src/demo` with appropriate permissions) and then re-run this task.",
-            "risks": [
-              "Requires host-level access outside the agent sandbox"
-            ],
-            "estimatedTokens": null
-          },
-          {
-            "id": "different_path",
-            "label": "Use a different working directory",
-            "description": "Redirect the project to a path the agent can write to (e.g. ~/demo or /tmp/demo) and re-run the task with that path.",
-            "risks": [
-              "Project config must be updated to reflect the new path"
-            ],
-            "estimatedTokens": null
-          },
-          {
-            "id": "document_only",
-            "label": "Document the issue and stop",
-            "description": "Record the root cause (missing directory, host permission denied on /src) and surface it for manual remediation.",
-            "risks": [
-              "Nothing is fixed automatically"
-            ],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "reprovision",
-          "rationale": "The root cause is that the host directory /src/demo was never created or was deleted, and the agent sandbox has no write permission on /src. The cleanest fix is to have an operator run `mkdir -p /src/demo && chown <agent-user> /src/demo` on the host, then re-run the task.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 24561,
@@ -769,7 +586,6 @@
       "reason": "",
       "costUsd": 0.0,
       "claimedAt": null,
-      "approvalToken": null,
       "pendingApprovalIndex": null
     },
     {
@@ -818,7 +634,6 @@
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:56:40.046555+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -889,7 +704,6 @@
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:04.139801+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -961,7 +775,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:07.605619+00:00",
       "idempotencyKey": "k-1",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1032,7 +845,6 @@
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:08.956429+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1090,7 +902,6 @@
         "network": "none",
         "policies": []
       },
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "failureKind": "base_ref"
     },
@@ -1141,7 +952,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:09.948409+00:00",
       "externalRef": "A",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1213,7 +1023,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:11.657817+00:00",
       "externalRef": "B",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1284,7 +1093,6 @@
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:12.540819+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1355,7 +1163,6 @@
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:13.428351+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1426,7 +1233,6 @@
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:14.204470+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1496,7 +1302,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:14.207812+00:00",
       "maxTokens": 1000,
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1613,7 +1418,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:59:18.434656+00:00",
       "idempotencyKey": "K:1",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1623,53 +1427,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-d53478c5ea97",
-        "taskId": "task-8e5bcced-28c9-4843-a8ac-6a5766405fb3",
-        "pod": "demo",
-        "step": "implementer",
-        "message": "The task message is just \"x\" and the working directory `/src/demo` does not exist yet. I cannot implement anything without more information. Could you clarify:\n\n1. **What is the actual task?** (e.g., create a new project, add a feature, fix a bug)\n2. **What should go in `/src/demo`?** (e.g., a specific language/framework, scaffold, files)\n3. **Any requirements or acceptance criteria?**",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T11:59:18Z",
-        "expiresAt": "2026-10-26T11:59:18.439391+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "wait",
-            "label": "Wait for a real task",
-            "description": "Do nothing until a proper task description is provided.",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "scaffold",
-            "label": "Create a minimal scaffold",
-            "description": "Create /src/demo with a basic project scaffold (e.g., a README and placeholder files) as a starting point.",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "clarify",
-            "label": "I'll provide the task now",
-            "description": "The operator will supply the actual task description in their reply.",
-            "risks": [],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "wait",
-          "rationale": "Without a clear task description, any implementation would be guesswork. It's safer to wait for a proper task rather than create files that may need to be deleted or reworked.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 9370,
@@ -1755,7 +1512,6 @@
         "expectedRiskyActions": [],
         "answers": []
       },
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1765,46 +1521,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-8f7013599044",
-        "taskId": "task-d837dadf-f2ed-43d0-bba9-517beb207b72",
-        "pod": "demo",
-        "step": "lead",
-        "message": "I cannot access the repository to identify the flaky test. I need the following information to create a concrete plan:\n\n1. **Which test is flaky?** (file name and test function/class name)\n2. **What is the failure symptom?** (error message, assertion failure, timeout, race condition, etc.)\n3. **What is the technology stack?** (Python pytest, JavaScript Jest, other?)\n4. **Is there a known root cause, or should the Implementer investigate?**",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T12:11:34Z",
-        "expiresAt": "2026-10-26T12:11:35.914269+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "provide-details",
-            "label": "Provide specific test details",
-            "description": "Tell me the test file, test name, failure mode, and tech stack so I can create a detailed plan",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "implementer-investigates",
-            "label": "Implementer discovers the flaky test",
-            "description": "Send the Implementer to find recent test failures in CI/logs, identify the flaky test, and fix it",
-            "risks": [],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "provide-details",
-          "rationale": "Specific details allow me to create a focused, efficient plan for the Implementer. Vague investigation risks wasting effort and unclear deliverables.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 18806,
@@ -1873,7 +1589,6 @@
       "reason": "lead hop parked a consultation (question=q-523144e191ef)",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:02:18.478952+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -1883,53 +1598,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-523144e191ef",
-        "taskId": "task-60426c25-7d1a-4737-9b0c-0385e38036e5",
-        "pod": "demo",
-        "step": "lead",
-        "message": "The task says \"fix it\" but I cannot access or diagnose the problem. What needs to be fixed?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T12:02:18Z",
-        "expiresAt": "2026-10-26T12:02:18.483777+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "error",
-            "label": "Provide error message",
-            "description": "Share the error output or symptom",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "context",
-            "label": "Provide build/test context",
-            "description": "Share git log, build logs, or test failures",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "scope",
-            "label": "Specify the affected file/component",
-            "description": "Point to what is broken",
-            "risks": [],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "error",
-          "rationale": "An error message or concrete symptom is the fastest way to diagnose what needs fixing and create a plan for the Implementer.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 15218,
@@ -1998,7 +1666,6 @@
       "reason": "lead hop parked a consultation (question=q-21af02c3e1ba)",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:13:28.087470+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -2008,59 +1675,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-21af02c3e1ba",
-        "taskId": "task-f653f7be-c3ac-4baa-b3b0-5a3bb8234102",
-        "pod": "demo",
-        "step": "lead",
-        "message": "The task message says \"plain\" but this is unclear. The working directory `/src/demo` does not exist. What is the actual task I should decompose for the Implementer?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T12:13:26Z",
-        "expiresAt": "2026-10-26T12:13:28.092821+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "clarify-plain",
-            "label": "Clarify what 'plain' means",
-            "description": "Please explain what the 'plain' task is asking for \u2014 is this a code feature, a refactoring, documentation, setup, or something else?",
-            "risks": [
-              "Cannot proceed without understanding the goal"
-            ],
-            "estimatedTokens": null
-          },
-          {
-            "id": "setup-repo",
-            "label": "Set up the demo repository",
-            "description": "Initialize the /src/demo repository structure and files from scratch based on a default template",
-            "risks": [
-              "May create incorrect initial structure if requirements aren't clear"
-            ],
-            "estimatedTokens": null
-          },
-          {
-            "id": "check-git",
-            "label": "Check if repo exists elsewhere",
-            "description": "Verify if the repository is already set up in a different location or needs to be cloned",
-            "risks": [
-              "Requires knowledge of where the repo actually lives"
-            ],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "clarify-plain",
-          "rationale": "The task 'plain' is too vague to decompose into concrete work. I need the human to explain the actual requirement before I can create a meaningful plan for the Implementer.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 4769,
@@ -2172,7 +1786,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:05:56.410463+00:00",
       "externalRef": "A",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -2256,7 +1869,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:06:50.361176+00:00",
       "externalRef": "B",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -2266,53 +1878,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-011e8ec0eded",
-        "taskId": "task-b93d64e5-11fd-418c-974d-959cb8316ec4",
-        "pod": "demo",
-        "step": "lead",
-        "message": "The task message is just \"b\" with working directory `/src/demo`. This is ambiguous. What does \"b\" refer to?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T12:06:50Z",
-        "expiresAt": "2026-10-26T12:06:50.372408+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "option-identifier",
-            "label": "A specific identifier or issue number",
-            "description": "For example, a GitHub issue #b, a branch name, a ticket number, or similar identifier that I should resolve",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "option-objective",
-            "label": "A high-level objective or keyword",
-            "description": "For example, 'build', 'test', 'bugfix', or a domain concept in the demo project that I should understand and act on",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "option-mistake",
-            "label": "An accidental/incomplete message",
-            "description": "The full task details were not transmitted; please provide the complete task description",
-            "risks": [],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "option-mistake",
-          "rationale": "A single letter 'b' is too vague to decompose into concrete work. I need the full task description, acceptance criteria, or context to create a meaningful plan for the Implementer.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 8567,
@@ -2381,7 +1946,6 @@
       "reason": "lead hop parked a consultation (question=q-3089162bfa16)",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:07:49.627785+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -2391,60 +1955,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-3089162bfa16",
-        "taskId": "task-618160f3-a45a-488d-b21c-aec00e7ab276",
-        "pod": "demo",
-        "step": "lead",
-        "message": "The task instruction is simply \"go\" with working directory /src/demo. This is ambiguous. What should the Implementer do?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T12:07:44Z",
-        "expiresAt": "2026-10-26T12:07:49.638592+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "build-run",
-            "label": "Build and run a Go project",
-            "description": "Run 'go build' and then execute the resulting binary or 'go run' to build and run in one step",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "init-go",
-            "label": "Initialize a new Go project",
-            "description": "Create a new Go module and project structure (go mod init, create main.go, etc.)",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "test-go",
-            "label": "Run Go tests",
-            "description": "Execute 'go test' to run all tests in the project",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "other",
-            "label": "Other Go operation",
-            "description": "Something else entirely - please clarify in the answer",
-            "risks": [],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "build-run",
-          "rationale": "Most common interpretation of 'go' in a development context is to build and run the project. Without additional context, this is the safest assumption.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 11673,
@@ -2513,7 +2023,6 @@
       "reason": "lead hop parked a consultation (question=q-a8c8cd8e2aec)",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:08:38.547813+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -2523,46 +2032,6 @@
       },
       "pipelineSource": "default",
       "gateApplied": false,
-      "question": {
-        "id": "q-a8c8cd8e2aec",
-        "taskId": "task-2a67e966-6d8b-473f-b97c-b0214f9e0daa",
-        "pod": "demo",
-        "step": "lead",
-        "message": "The task message says \"go\" but provides no context about what this means. Is this:\n\n1. A Go language project that needs to be built/tested?\n2. A command to start/initialize something?\n3. An acronym or shorthand for a specific deliverable?\n4. A reference to existing documentation or issue tracker?\n\nAlso, the working directory `/src/demo` doesn't appear to exist or be accessible. Can you confirm the correct repository path and what the actual objective is?",
-        "requestedSchema": {
-          "type": "object",
-          "properties": {
-            "note": {
-              "type": "string"
-            }
-          },
-          "required": []
-        },
-        "createdAt": "2026-10-23T12:08:38Z",
-        "expiresAt": "2026-10-26T12:08:38.553261+00:00",
-        "kind": "clarification",
-        "options": [
-          {
-            "id": "clarify-task",
-            "label": "Provide full task description",
-            "description": "Explain what 'go' means and provide the complete requirements or context",
-            "risks": [],
-            "estimatedTokens": null
-          },
-          {
-            "id": "check-path",
-            "label": "Verify repository path",
-            "description": "Confirm the correct working directory and repository structure",
-            "risks": [],
-            "estimatedTokens": null
-          }
-        ],
-        "recommendation": {
-          "optionId": "clarify-task",
-          "rationale": "Both the task meaning and the repository path need clarification before any decomposition can happen. A full description will unblock the entire pod.",
-          "evidenceRefs": []
-        }
-      },
       "consultations": 1,
       "usage": {
         "input": 8497,
@@ -2673,7 +2142,6 @@
       "reason": "",
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:09:19.913251+00:00",
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -2752,7 +2220,6 @@
       "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:09:20.388801+00:00",
       "maxTokens": 1000,
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "worktree": {
         "dir": "",
@@ -3007,7 +2474,6 @@
           }
         }
       },
-      "approvalToken": null,
       "pendingApprovalIndex": null,
       "completedAt": "2026-10-20T21:27:14.342696+00:00",
       "reason": ""
@@ -3248,7 +2714,6 @@
           }
         }
       },
-      "approvalToken": null,
       "pendingApprovalIndex": null
     },
     {
@@ -3306,7 +2771,6 @@
       "claimedAt": "2026-10-23T21:51:53.348131+00:00",
       "externalRef": "p46-after-real-run-2026-10-23",
       "maxTokens": 250000,
-      "approvalToken": "apr-f3c6241e-5e37-4db8-b995-3e7281820ac5",
       "pendingApprovalIndex": 0,
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/fab-dev-implementer/tasks/task-194ab075-421e-451a-84fc-9e85c81ee80f",
@@ -3393,7 +2857,6 @@
       "claimedAt": "2026-10-23T21:51:57.410784+00:00",
       "externalRef": "p46-after-real-run-2026-10-23",
       "maxTokens": 250000,
-      "approvalToken": "apr-b7ce9cfd-fb7c-492f-8466-0c0fb6585e25",
       "pendingApprovalIndex": 0,
       "worktree": {
         "dir": "/home/user/.docket/workspaces/projects/fab-dev-implementer/tasks/task-1d9a31e9-2e88-494f-bea3-34f24397c8f3",
@@ -3656,7 +3119,6 @@
           }
         }
       },
-      "approvalToken": null,
       "pendingApprovalIndex": null
     }
   ]

@@ -29,7 +29,10 @@ from docket.platform import (
 )
 from docket.tasks.application import escalations as _esc
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.answers import answers_of, consult_note
+from docket.tasks.application.record import persist_hop
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.task import HopResult
 
 SUBJECT = "docket.hops.application.resolutions"
 
@@ -98,8 +101,8 @@ class TestResolveOnlyReceives:
         _answer(escalation)
 
         task = stored_task(PROJECT, escalation.task)
-        assert task.status == "pending" and task.question is None
-        assert [a.action for a in task.answers] == ["accept"]
+        assert task.status == "pending"
+        assert [a.action for a in answers_of(task)] == ["accept"]
         assert task.hops == hops_before
         stored = read_escalation(escalation.id)
         assert stored is not None and stored.resolution is not None
@@ -111,11 +114,14 @@ class TestResolveOnlyReceives:
         _esc.resolve(escalation.id, "redis", {"note": "hot path"}, by="alice", channel="http")
 
         task = stored_task(PROJECT, escalation.task)
-        assert (task.status, task.consult_answer) == ("pending", None)
-        assert [(a.option_id, a.action) for a in task.answers] == [("redis", "accept")]
+        assert task.status == "pending"
+        assert [(a.option_id, a.action) for a in answers_of(task)] == [("redis", "accept")]
+        # The answer is read from the record by the re-run hop; nothing is applied to the task.
         stored = read_escalation(escalation.id)
         assert stored is not None and stored.resolution is not None
         assert stored.resolution.applied_at is None
+        assert _apply(escalation.task).hops == task.hops
+        assert "option redis (Redis) hot path" in consult_note(task, escalation.step)
 
     def test_no_update_of_the_pipeline_or_the_hops_and_no_pipeline_is_resolved(
         self, monkeypatch: pytest.MonkeyPatch
@@ -184,7 +190,7 @@ class TestTheClaimApplies:
 
         implementer = next(c for c in driver.calls if c[0].endswith("implementer"))
         assert (
-            "Operator answered your consultation q-1: option redis (Redis) hot path"
+            f"Operator answered your consultation {escalation.id}: option redis (Redis) hot path"
             in implementer[2]
         )
         stored = read_escalation(escalation.id)
@@ -248,16 +254,28 @@ class TestAppliedOnce:
         assert again.ended is not None and again.ended[0] == "done"
         assert len(_operator_hops(escalation.task)) == 1
 
-    def test_a_consult_note_is_set_once(self) -> None:
+    def test_a_consult_note_is_read_until_a_hop_of_its_step_is_persisted_and_then_not_again(
+        self,
+    ) -> None:
+        escalation = consult_escalation()
+        _esc.resolve(escalation.id, "redis", None, by="alice", channel="http")
+        task = stored_task(PROJECT, escalation.task)
+        assert consult_note(task, escalation.step) == consult_note(task, escalation.step) != ""
+
+        persist_hop(PROJECT, task.id, HopResult(role="implementer", ok=True, step_id="implementer"))
+
+        assert consult_note(stored_task(PROJECT, task.id), escalation.step) == ""
+        stored = read_escalation(escalation.id)
+        assert stored is not None and stored.resolution is not None
+        assert stored.resolution.applied_at is not None
+
+    def test_a_note_for_another_step_is_not_delivered_by_a_hop_of_this_one(self) -> None:
         escalation = consult_escalation()
         _esc.resolve(escalation.id, "redis", None, by="alice", channel="http")
 
-        _apply(escalation.task)
-        first = stored_task(PROJECT, escalation.task).consult_answer
-        _apply(escalation.task)
+        persist_hop(PROJECT, escalation.task, HopResult(role="lead", ok=True, step_id="lead"))
 
-        assert first is not None and first.question_id == "q-1"
-        assert stored_task(PROJECT, escalation.task).consult_answer == first
+        assert consult_note(stored_task(PROJECT, escalation.task), escalation.step) != ""
 
 
 class TestWhatIsNeverApplied:
@@ -276,7 +294,7 @@ class TestWhatIsNeverApplied:
 
     def test_an_expired_question_is_not_applied_after_the_sweep(self) -> None:
         escalation = _park_on_input()
-        settle_escalation("questionId", escalation.legacy["questionId"], "expired")
+        settle_escalation(escalation.id, "expired")
 
         _apply(escalation.task)
 

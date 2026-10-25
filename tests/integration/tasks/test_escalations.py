@@ -42,10 +42,11 @@ from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.operator_contract import Escalation
+from docket.kernel.operator_contract import Escalation, TaskView
 from docket.operator import inbox as _inbox
 from docket.platform import store as _store
 from docket.tasks.application import escalation_sweep as _escalation_sweep
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -169,7 +170,7 @@ class TestApproval:
         assert escalation.on_expiry == "deny"
         assert [o.id for o in escalation.options] == ["approve_once", "approve_task", "deny"]
         assert escalation.state == "pending"
-        assert escalation.legacy == {"token": result.approval_token}
+        assert _ap.approval_of(escalation.id) == result.approval_token
         assert "rm -rf build" in escalation.prompt
         assert escalation.expires_at == _ap.approval_get(result.approval_token)["expiresAt"]
         assert _the_task().escalations == [escalation.id]
@@ -396,7 +397,6 @@ class TestConsult:
         )
 
         assert task.status == "waiting_input"
-        assert task.question is not None
         escalation = _only_escalation()
         assert escalation.kind == "consult"
         assert escalation.task == task.id
@@ -405,9 +405,9 @@ class TestConsult:
         assert [o.id for o in escalation.options] == ["redis", "sqlite", "decline"]
         assert escalation.recommendation is not None
         assert escalation.recommendation.option_id == "sqlite"
-        assert escalation.legacy == {"questionId": task.question.id}
-        assert escalation.prompt == task.question.message
-        assert escalation.requested_schema == task.question.requested_schema
+        assert _ap.approval_of(escalation.id) == ""
+        assert escalation.prompt
+        assert "note" in (escalation.requested_schema or {}).get("properties", {})
         assert escalation.expires_at is not None
         assert task.escalations == [escalation.id]
         _asked_matches(escalation)
@@ -420,6 +420,8 @@ class TestConsult:
         )
         view = _inbox.build_inbox(now=_clock.iso())
         assert [v.id for v in view.needs_you if getattr(v, "pod", "") == "demo"] == [task.id]
+        (listed,) = [v for v in view.needs_you if isinstance(v, TaskView)]
+        assert listed.escalation == _only_escalation().id
 
         later = "2999-01-01T00:00:00+00:00"
         assert _escalation_sweep.sweep_escalations(later) == 1
@@ -434,7 +436,6 @@ class TestConsult:
             "timeout",
         )
         assert expired["askedAt"] == escalation.asked_at
-        assert len(_events("input_expired")) == 1
         assert _escalation_sweep.sweep_escalations(later) == 0
         assert len(_events("escalation_expired")) == 1
 
@@ -446,20 +447,21 @@ class TestInput:
         task = _run_with_model(tmp_path, monkeypatch, [_final("plan")], _ASK_YAML)
 
         assert task.status == "waiting_input"
-        assert task.question is not None
         escalation = _only_escalation()
         assert escalation.kind == "input"
         assert (escalation.task, escalation.step) == (task.id, "ask")
         assert escalation.caused_by == "ask"
         assert escalation.on_expiry == "block"
         assert [o.id for o in escalation.options] == ["decline"]
-        assert escalation.requested_schema == task.question.requested_schema
-        assert escalation.legacy == {"questionId": task.question.id}
-        assert escalation.expires_at == task.question.expires_at
+        assert escalation.requested_schema == {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        }
+        assert escalation.expires_at is not None
         assert task.escalations == [escalation.id]
         asked = _asked_matches(escalation)
-        assert asked["expiresAt"] == task.question.expires_at
-        assert len(_events("input_requested")) == 1
+        assert asked["expiresAt"] == escalation.expires_at
 
 
 def _init_repo(path: Path) -> None:
@@ -518,7 +520,7 @@ class TestPipelineGate:
             )
             assert escalation.on_expiry == "deny"
             assert [o.id for o in escalation.options] == ["approve_once", "deny"]
-            assert escalation.legacy == {"token": task.approval_token}
+            assert _ap.approval_of(escalation.id).startswith("apr-")
             assert task.escalations == [escalation.id]
             _asked_matches(escalation)
             assert len(_events("approval_required")) == 1
@@ -539,7 +541,7 @@ class TestCheckChanged:
             assert (escalation.task, escalation.role) == (task.id, "lead")
             assert escalation.on_expiry == "deny"
             assert "package.json" in escalation.prompt
-            assert escalation.legacy == {"token": task.approval_token}
+            assert _ap.approval_of(escalation.id).startswith("apr-")
             assert task.escalations == [escalation.id]
             _asked_matches(escalation)
 
@@ -549,7 +551,7 @@ class TestCheckChanged:
         with _seed_git_pod(tmp_path, _PLAIN_YAML):
             _queue.enqueue_task_once("demo", "bump", channel="cli")
             _sweep.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=1)
-            token = str(_the_task().approval_token)
+            token = _ap.approval_of(_only_escalation().id)
 
             with use_home(dataclasses.replace(current_home(), approval_timeout=-1)):
                 data = _ap.approval_get(token)
@@ -583,24 +585,21 @@ class TestInbox:
         call = ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
         return dispatch_tool(call, ctx, builtin_registry()).approval_token
 
-    def test_a_standalone_approval_is_listed_while_its_record_is_pending(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_standalone_approval_is_listed_until_it_is_resolved(self, tmp_path: Path) -> None:
         token = self._park_standalone(tmp_path)
-        assert _only_escalation().legacy == {"token": token}
+        escalation = _only_escalation()
+        assert _ap.approval_of(escalation.id) == token
 
         view = _inbox.build_inbox(now=_clock.iso())
-        assert [getattr(v, "token", "") for v in view.needs_you] == [token]
+        assert [v.id for v in view.needs_you] == [escalation.id]
 
-        _ap.approval_grant(token, channel="cli")
+        _escalations.resolve(escalation.id, "approve_once", None, by="a", channel="cli")
 
-        assert _only_escalation().state == "pending"
+        assert _only_escalation().state == "resolved"
         assert _inbox.build_inbox(now=_clock.iso()).needs_you == []
 
-    def test_a_pending_approval_with_no_escalation_is_still_listed(self) -> None:
-        token = _ap.approval_create("demo", "lead", "ship it")
+    def test_a_pending_approval_that_backs_no_escalation_is_not_listed(self) -> None:
+        _ap.approval_create("demo", "lead", "ship it")
 
-        view = _inbox.build_inbox(now=_clock.iso())
-
-        assert [getattr(v, "token", "") for v in view.needs_you] == [token]
+        assert _inbox.build_inbox(now=_clock.iso()).needs_you == []
         assert _store.list_escalations() == []

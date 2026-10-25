@@ -237,7 +237,6 @@ class TestEffectivePipelineBlueprint:
 
         assert len(results) == 1
         assert results[0].status == "waiting_approval"
-        assert results[0].approval_token
 
 
 class TestBoundPipeline:

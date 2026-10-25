@@ -181,16 +181,11 @@ class TestTaskObject:
         assert message["parts"] == [{"kind": "text", "text": "budget"}]
 
     def test_a_reason_left_over_from_an_earlier_pause_is_not_a_status_message(self) -> None:
-        resumed = _task("pending", "SUBMITTED", reason="parked a consultation (question=q-1)")
+        resumed = _task(
+            "pending", "SUBMITTED", reason="parked a consultation (escalation=esc-0123456789ab)"
+        )
 
         assert "message" not in a2a_task.task_object(resumed, None)["status"]
-
-    def test_the_approval_token_never_reaches_the_object(self) -> None:
-        parked = _task("waiting_approval", approval_token="apr-secret")
-
-        assert "apr-secret" not in json.dumps(
-            a2a_task.task_object(parked, None, external_ref="B-7")
-        )
 
     def test_an_external_ref_travels_in_the_docket_metadata(self) -> None:
         task = a2a_task.task_object(_task("pending", "SUBMITTED"), None, external_ref="B-7")

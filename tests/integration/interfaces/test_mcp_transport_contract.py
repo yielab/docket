@@ -14,12 +14,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.escalations import approval_escalation
 from tests.support.pods import seed_pod as _seed_pod
 from tests.support.trace import audit_entries as _audit_actions
 
-from docket.governance import approval as _approval
 from docket.interfaces.cli.commands import mcp as _mcp
 from docket.kernel.home import Home, use_home
+from docket.platform import read_escalation
 from docket.tasks.application.repository import TaskRepository
 
 SUBJECT = "docket.interfaces.cli.commands.mcp"
@@ -146,7 +147,25 @@ class TestRealTransportRoundTrip:
             assert result.is_error is True
             assert len(_audit_actions("mcp.runs")) == 1
 
-    def test_unknown_approval_token_is_audited_then_surfaces_as_iserror(
+    def test_unknown_escalation_is_audited_then_surfaces_as_iserror(self, tmp_path: Path) -> None:
+        pytest.importorskip("mcp")
+        import asyncio
+
+        with use_home(Home(tmp_path / ".docket")):
+            (tmp_path / ".docket").mkdir(exist_ok=True)
+            server = _mcp._build_server()
+
+            result = asyncio.run(
+                _call(server, "resolve", {"escalation_id": "esc-000000000000", "option_id": "deny"})
+            )
+            assert result.is_error is True
+            text = "".join(getattr(block, "text", "") for block in result.content)
+            assert "no escalation" in text
+            # Audited even though nothing was resolved.
+            assert len(_audit_actions("mcp.resolve")) == 1
+            assert len(_audit_actions("escalation.resolve")) == 0
+
+    def test_the_retired_approval_and_answer_tools_are_ordinary_unknowns(
         self, tmp_path: Path
     ) -> None:
         pytest.importorskip("mcp")
@@ -156,13 +175,11 @@ class TestRealTransportRoundTrip:
             (tmp_path / ".docket").mkdir(exist_ok=True)
             server = _mcp._build_server()
 
-            result = asyncio.run(_call(server, "approvals_grant", {"token": "apr-does-not-exist"}))
-            assert result.is_error is True
-            text = "".join(getattr(block, "text", "") for block in result.content)
-            assert "not found" in text
-            # Audited even though the underlying grant never happened.
-            assert len(_audit_actions("mcp.approvals_grant")) == 1
-            assert len(_audit_actions("approval.grant")) == 0
+            for name in ("approvals_list", "approvals_grant", "approvals_deny", "task_answer"):
+                assert name not in _mcp._TOOL_NAMES
+                result = asyncio.run(_call(server, name, {}))
+                assert result.is_error is True
+                assert _audit_actions(f"mcp.{name}") == []
 
 
 # ── 4. no MCP-side bypass, proven end-to-end through the real transport ────
@@ -191,24 +208,35 @@ class TestNoBypassThroughRealTransport:
             tasks = TaskRepository.for_pod("demo").list()
             assert [t.description for t in tasks] == ["ship the migration"]
 
-    def test_approvals_grant_through_the_real_sdk_calls_the_same_core_function(
+    def test_resolve_through_the_real_sdk_calls_the_same_core_function(
         self, tmp_path: Path
     ) -> None:
         pytest.importorskip("mcp")
         import asyncio
 
-        with use_home(Home(tmp_path / ".docket")):
-            (tmp_path / ".docket").mkdir(exist_ok=True)
-            token = _approval.approval_create("demo", "implementer", "deploy prod")
+        with _seed_pod(tmp_path, project="demo"):
+            escalation = approval_escalation("gate")
             server = _mcp._build_server()
 
-            result = asyncio.run(_call(server, "approvals_grant", {"token": token}))
+            result = asyncio.run(
+                _call(
+                    server,
+                    "resolve",
+                    {"escalation_id": escalation.id, "option_id": "approve_once"},
+                )
+            )
             assert result.is_error is False
-            assert result.structured_content == {"ok": True, "token": token, "state": "granted"}
-            # The exact governance.approval state transition happened — not a parallel one.
-            assert _approval.approval_get(token)["state"] == "granted"
-            entry = _audit_actions("approval.grant")[-1]
-            assert entry["detail"] == f"token={token} project=demo channel=mcp"
+            assert result.structured_content == {
+                "ok": True,
+                "escalation": escalation.id,
+                "state": "resolved",
+            }
+            # The exact escalation transition happened -- not a parallel one.
+            stored = read_escalation(escalation.id)
+            assert stored is not None and stored.state == "resolved"
+            entry = _audit_actions("escalation.resolve")[-1]
+            assert f"escalation={escalation.id}" in entry["detail"]
+            assert "channel=mcp" in entry["detail"]
 
 
 # ── stdio discipline sanity: no tool import ever pulls in docket.interfaces.cli.render.ui ────────

@@ -21,17 +21,19 @@ from tests.support.escalations import (
     input_escalation,
     parked_approval,
 )
-from tests.support.pods import seed_parked_task
-from tests.support.tasks import stored_task, update_task
+from tests.support.tasks import stored_task
 from tests.support.trace import audit_entries, trace_events
 
 from docket.governance import approval as _ap
 from docket.governance import approval_pregrant as _pregrants
 from docket.governance import policy as _policy
+from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Escalation
-from docket.platform import list_escalations, read_escalation, settle_escalation
+from docket.platform import read_escalation
+from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import escalations as _esc
-from docket.tasks.application import queue as _queue
+from docket.tasks.application import lifecycle as _lifecycle
+from docket.tasks.application.answers import answers_of, consult_note
 from docket.tasks.domain.resolution import (
     EscalationInvalid,
     EscalationNotFound,
@@ -69,19 +71,19 @@ class Case:
 
 def _granted_once(task: Any, esc: Escalation) -> None:
     assert task.status == "pending"
-    assert [g.token for g in _pregrants.pending_pregrants(task.id)] == [esc.legacy["token"]]
-    assert _ap.approval_get(esc.legacy["token"])["state"] == "granted"
+    assert [g.token for g in _pregrants.pending_pregrants(task.id)] == [_ap.approval_of(esc.id)]
+    assert _ap.approval_get(_ap.approval_of(esc.id))["state"] == "granted"
 
 
 def _granted_for_the_task(task: Any, esc: Escalation) -> None:
     assert task.status == "pending"
     assert [(g.tool, g.args_digest) for g in _pregrants.task_grants(task.id)] == [("bash", _DIGEST)]
-    assert _ap.approval_get(esc.legacy["token"])["state"] == "granted"
+    assert _ap.approval_get(_ap.approval_of(esc.id))["state"] == "granted"
 
 
 def _gate_passed(task: Any, esc: Escalation) -> None:
     assert task.status == "pending"
-    assert _ap.approval_get(esc.legacy["token"])["state"] == "granted"
+    assert _ap.approval_get(_ap.approval_of(esc.id))["state"] == "granted"
     # The position the gate fired at is left for the claim to apply.
     stored = read_escalation(esc.id)
     assert stored is not None and stored.resolution is not None
@@ -91,7 +93,7 @@ def _gate_passed(task: Any, esc: Escalation) -> None:
 def _denied_with_reason(task: Any, esc: Escalation) -> None:
     assert task.status == "failed"
     assert (task.failure_kind, task.reason) == ("approval_denied", "approval denied: not today")
-    assert _ap.approval_get(esc.legacy["token"])["state"] == "denied"
+    assert _ap.approval_get(_ap.approval_of(esc.id))["state"] == "denied"
 
 
 def _changed_check_accepted(task: Any, esc: Escalation) -> None:
@@ -103,26 +105,26 @@ def _changed_check_denied(task: Any, esc: Escalation) -> None:
 
 
 def _consult_chose_redis(task: Any, esc: Escalation) -> None:
-    assert (task.status, task.question) == ("pending", None)
-    assert [(a.question_id, a.action, a.option_id) for a in task.answers] == [
-        ("q-1", "accept", "redis")
+    assert task.status == "pending"
+    assert [(a.question_id, a.action, a.option_id) for a in answers_of(task)] == [
+        (esc.id, "accept", "redis")
     ]
-    # The note the re-run hop reads is set by the claim of the task, not by the answer.
-    assert task.consult_answer is None
+    # The re-run hop reads the answer from the record; nothing is copied onto the task.
+    assert "option redis (Redis)" in consult_note(task, esc.step)
 
 
 def _consult_declined(task: Any, esc: Escalation) -> None:
-    assert (task.status, task.question) == ("pending", None)
-    assert [(a.action, a.option_id) for a in task.answers] == [("decline", None)]
+    assert task.status == "pending"
+    assert [(a.action, a.option_id) for a in answers_of(task)] == [("decline", None)]
 
 
 def _input_answered(task: Any, esc: Escalation) -> None:
     assert task.status == "pending"
-    assert [(a.action, a.content) for a in task.answers] == [("accept", {"answer": "ship it"})]
+    assert [(a.action, a.content) for a in answers_of(task)] == [("accept", {"answer": "ship it"})]
 
 
 def _input_declined(task: Any, esc: Escalation) -> None:
-    assert [a.action for a in task.answers] == ["decline"]
+    assert [a.action for a in answers_of(task)] == ["decline"]
 
 
 CASES = {
@@ -173,13 +175,14 @@ class TestResolveEveryKind:
     def test_the_audit_and_the_event_name_the_choice_and_never_the_text(self, name: str) -> None:
         case = CASES[name]
         escalation = case.seed()
+        token = _ap.approval_of(escalation.id)
 
         _esc.resolve(escalation.id, case.option, case.content, by="alice", channel="http")
 
         (line,) = audit_entries("escalation.resolve")
         for needle in (escalation.id, escalation.kind, "channel=http", "actor=alice"):
             assert needle in line["detail"]
-        for secret in ("ship it", "not today", "hot path", str(escalation.legacy.get("token"))):
+        for secret in ("ship it", "not today", "hot path", token or "apr-none"):
             assert secret not in line["detail"]
         (event,) = [
             e["payload"] for e in trace_events(PROJECT) if e["event_type"] == "escalation_resolved"
@@ -197,6 +200,7 @@ class TestResolveEveryKind:
     def test_a_second_resolve_is_refused_and_changes_nothing(self, name: str) -> None:
         case = CASES[name]
         escalation = case.seed()
+        token = _ap.approval_of(escalation.id)
         _esc.resolve(escalation.id, case.option, case.content, by="alice", channel="http")
         settled = read_escalation(escalation.id)
 
@@ -204,7 +208,7 @@ class TestResolveEveryKind:
             _esc.resolve(escalation.id, case.option, case.content, by="bob", channel="mcp")
 
         assert read_escalation(escalation.id) == settled
-        assert str(escalation.legacy.get("token")) not in str(caught.value)
+        assert (token or "apr-none") not in str(caught.value)
         assert len(audit_entries("escalation.resolve")) == 1
 
 
@@ -277,11 +281,11 @@ class TestResolveRefuses:
         with pytest.raises(EscalationRefused):
             _esc.resolve(escalation.id, "deny", {"reason": "x"}, by="a", channel="cli")
 
-        assert _ap.approval_get(escalation.legacy["token"])["state"] == "pending"
+        assert _ap.approval_get(_ap.approval_of(escalation.id))["state"] == "pending"
 
     def test_a_pause_that_ended_without_the_record_is_not_pending(self) -> None:
         escalation = _approval("gate")
-        _ap.approval_grant(escalation.legacy["token"], channel="cli")
+        _ap.approval_grant(_ap.approval_of(escalation.id), channel="cli")
 
         with pytest.raises(EscalationNotPending):
             _esc.resolve(escalation.id, "approve_once", None, by="a", channel="cli")
@@ -289,119 +293,71 @@ class TestResolveRefuses:
         assert read_escalation(escalation.id) == escalation
 
 
-class TestTheOlderVerbsAreAdapters:
-    def test_an_approval_token_with_a_record_resolves_the_record(self) -> None:
+class TestARepeat:
+    def test_the_same_decision_says_it_already_ended_that_way_and_the_opposite_does_not(
+        self,
+    ) -> None:
         escalation = _approval("gate")
-
-        note = _esc.resolve_approval_token(
-            escalation.legacy["token"], "approve_once", channel="cli", actor="alice", reason=""
-        )
-
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.state == "resolved"
-        assert stored.resolution is not None and stored.resolution.channel == "cli"
-        assert note == ""
-        assert _task(escalation).status == "pending"
-
-    def test_a_task_wide_choice_on_a_gate_is_a_plain_grant(self) -> None:
-        escalation = _approval("gate")
-
-        _esc.resolve_approval_token(
-            escalation.legacy["token"], "approve_task", channel="cli", actor="", reason=""
-        )
-
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.resolution is not None
-        assert stored.resolution.option_id == "approve_once"
-
-    def test_an_approval_with_no_record_keeps_the_direct_path(self) -> None:
-        task = _queue.enqueue_task_once(PROJECT, "older", channel="cli")[0]
-        token = _ap.approval_create(PROJECT, "implementer", "ask", context={"taskId": task.id})
-        update_task(
-            PROJECT,
-            task.id,
-            status="waiting_approval",
-            approval_token=token,
-            pending_approval_index=0,
-        )
-
-        _esc.resolve_approval_token(token, "approve_once", channel="mcp", actor="", reason="")
-
-        assert stored_task(PROJECT, task.id).status == "pending"
-        assert _ap.approval_get(token)["state"] == "granted"
-        assert list_escalations() == []
-        assert audit_entries("escalation.resolve") == []
-
-    def test_a_repeat_on_a_direct_path_says_it_already_ended_that_way(self) -> None:
-        task = _queue.enqueue_task_once(PROJECT, "older", channel="cli")[0]
-        token = _ap.approval_create(PROJECT, "implementer", "ask", context={"taskId": task.id})
-        _esc.resolve_approval_token(token, "approve_once", channel="cli", actor="", reason="")
+        _esc.resolve(escalation.id, "approve_once", None, by="a", channel="cli")
 
         with pytest.raises(EscalationNotPending) as same:
-            _esc.resolve_approval_token(token, "approve_once", channel="cli", actor="", reason="")
+            _esc.resolve(escalation.id, "approve_once", None, by="a", channel="cli")
         with pytest.raises(EscalationNotPending) as opposite:
-            _esc.resolve_approval_token(token, "deny", channel="cli", actor="", reason="")
+            _esc.resolve(escalation.id, "deny", None, by="a", channel="cli")
 
         assert same.value.already_so is True
         assert opposite.value.already_so is False
-        assert "Already granted" in str(same.value)
+        assert len(audit_entries("escalation.resolve")) == 1
 
-    def test_an_unknown_token_is_not_found(self) -> None:
-        with pytest.raises(EscalationNotFound):
-            _esc.resolve_approval_token("apr-0", "approve_once", channel="cli", actor="", reason="")
-
-    def test_a_question_with_a_record_resolves_the_record(self) -> None:
+    def test_a_question_whose_task_was_cancelled_is_not_pending(self) -> None:
         escalation = _consult()
-
-        _esc.resolve_question(
-            PROJECT,
-            escalation.task,
-            "accept",
-            {"optionId": "redis", "note": "hot path"},
-            channel="http",
-            actor="alice",
-        )
-
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.state == "resolved"
-        assert stored.resolution is not None
-        assert stored.resolution.option_id == "redis"
-        assert stored.resolution.content == {"note": "hot path"}
-        _consult_chose_redis(_task(escalation), escalation)
-
-    def test_a_decline_resolves_the_record_as_decline(self) -> None:
-        escalation = _input()
-
-        _esc.resolve_question(
-            PROJECT, escalation.task, "decline", None, channel="cli", actor="alice"
-        )
-
-        stored = read_escalation(escalation.id)
-        assert stored is not None and stored.resolution is not None
-        assert stored.resolution.option_id == "decline"
-
-    def test_a_question_with_no_record_is_answered_directly(self) -> None:
-        parked = seed_parked_task(PROJECT)
-        for record in list_escalations():
-            settle_escalation("questionId", record.legacy["questionId"], "expired")
-
-        _esc.resolve_question(
-            PROJECT, parked.id, "accept", {"answer": "ship it"}, channel="cli", actor="alice"
-        )
-
-        assert stored_task(PROJECT, parked.id).status == "pending"
-        assert audit_entries("escalation.resolve") == []
-
-    def test_a_task_that_is_not_waiting_is_not_pending(self) -> None:
-        task = _queue.enqueue_task_once(PROJECT, "plain", channel="cli")[0]
+        _lifecycle.cancel_parked_task(PROJECT, escalation.task, channel="cli")
 
         with pytest.raises(EscalationNotPending):
-            _esc.resolve_question(
-                PROJECT, task.id, "accept", {"answer": "x"}, channel="cli", actor="a"
-            )
+            _esc.resolve(escalation.id, "redis", None, by="a", channel="cli")
 
-    def test_an_unknown_task_is_not_found(self) -> None:
+        assert _task(escalation).status == "cancelled"
+
+    def test_an_approval_left_with_no_record_is_not_found(self) -> None:
+        escalation = _approval("gate")
+        for path in (current_home().approvals_dir).glob("*.json"):
+            path.unlink()
+
         with pytest.raises(EscalationNotFound):
-            _esc.resolve_question(
-                PROJECT, "no-such-task", "accept", {"answer": "x"}, channel="cli", actor="a"
-            )
+            _esc.resolve(escalation.id, "approve_once", None, by="a", channel="cli")
+
+
+class TestAnAnswerToAParkedQuestion:
+    def test_it_audits_the_answer_without_its_content(self) -> None:
+        escalation = _input()
+
+        _esc.resolve(escalation.id, None, {"answer": "ship it"}, by="alice", channel="http")
+
+        (line,) = audit_entries("task.answer")
+        assert f"task={escalation.task}" in line["detail"] and "actor=alice" in line["detail"]
+        assert "ship it" not in line["detail"]
+
+    def test_it_keeps_the_kind_and_age_of_the_question_for_the_prompts_that_render_it(self) -> None:
+        escalation = _consult()
+
+        _esc.resolve(escalation.id, "redis", None, by="alice", channel="http")
+
+        (answer,) = answers_of(_task(escalation))
+        assert (answer.kind, answer.created_at) == ("decision", escalation.asked_at)
+        assert (answer.question_id, answer.message) == (escalation.id, escalation.prompt)
+
+    def test_a_decline_screens_nothing_and_records_a_correction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        escalation = _input()
+        screened: list[object] = []
+        monkeypatch.setattr(
+            _policy,
+            "policy_eval_detail",
+            lambda *a, **k: screened.append(a) or _policy.PolicyHit(action="allow", policy_id=""),
+        )
+
+        _esc.resolve(escalation.id, "decline", None, by="alice", channel="cli")
+
+        assert screened == []
+        assert [c["kind"] for c in _corrections.read(PROJECT)] == ["declined_answer"]

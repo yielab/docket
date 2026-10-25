@@ -368,7 +368,6 @@ _ALWAYS_PRESENT = {
     "completedAt",
     "claimedAt",
     "reason",
-    "approvalToken",
     "pendingApprovalIndex",
     "hops",
     "costUsd",
@@ -382,7 +381,7 @@ class TestTaskRecord:
         assert dumped["status"] == "pending"
         assert dumped["priority"] == "normal"
         assert dumped["hops"] == []
-        assert dumped["startedAt"] is None and dumped["approvalToken"] is None
+        assert dumped["startedAt"] is None and dumped["pendingApprovalIndex"] is None
         assert dumped["id"].startswith("task-") and dumped["created"]
 
     def test_an_option_is_absent_until_set_and_absent_again_when_dropped(self) -> None:
@@ -438,6 +437,10 @@ class TestTaskRecord:
                 "pregrants": [{"token": "t", "tool": "bash", "argsDigest": "d"}],
                 "taskGrants": [],
                 "gateOverridePipelineIndex": 1,
+                "approvalToken": "apr-1",
+                "question": {"id": "q-1"},
+                "consultAnswer": {"text": "go"},
+                "answers": [],
             }
         )
         assert not {
@@ -446,6 +449,10 @@ class TestTaskRecord:
             "pregrants",
             "taskGrants",
             "gateOverridePipelineIndex",
+            "approvalToken",
+            "question",
+            "consultAnswer",
+            "answers",
         } & set(_dump(record))
 
     def test_a_status_the_queue_never_writes_is_refused(self) -> None:
@@ -477,26 +484,3 @@ class TestTaskRecord:
         assert _task.TaskRecord(description="x", worktree=pruned).worktree_dir == ""
         fallback = {"dir": "", "branch": "", "baseCommit": "", "fallbackReason": "no repo"}
         assert _task.TaskRecord(description="x", worktree=fallback).worktree_dir == ""
-
-    def test_only_an_agent_question_is_a_consultation(self) -> None:
-        base = {
-            "id": "q-1",
-            "taskId": "t",
-            "pod": "p",
-            "step": "s",
-            "message": "m",
-            "requestedSchema": {
-                "type": "object",
-                "properties": {"a": {"type": "string"}},
-                "required": [],
-            },
-            "createdAt": "2026-10-24T00:00:00+00:00",
-        }
-        for kind, expected in (("clarification", True), ("decision", True), ("approval", False)):
-            record = _task.TaskRecord.model_validate(
-                {"description": "x", "question": {**base, "kind": kind}}
-            )
-            assert record.question_is_consultation is expected
-        old = _task.TaskRecord.model_validate({"description": "x", "question": base})
-        assert old.question_is_consultation is False
-        assert _task.TaskRecord(description="x").question_is_consultation is False

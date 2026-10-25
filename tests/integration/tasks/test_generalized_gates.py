@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.approvals import pending_token, resolve_token
 from tests.support.fakes import FakeGit
 from tests.support.pods import write_meta as _write_meta
 from tests.support.trace import trace_events as _trace_events
@@ -28,7 +29,6 @@ from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import actions as _actions
-from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -189,10 +189,11 @@ class TestPipelineApprovalStepGatesGenuinely:
         results = _sweep.dispatch_pod("myapp", runner=runner, spec=self._spec())
         assert len(results) == 1
         assert results[0].status == "waiting_approval"
-        assert results[0].approval_token
+        token = pending_token("myapp")
+        assert token
         assert [c[0].rsplit("-", 1)[-1] for c in runner.calls] == ["lead"]
 
-        rec = _ap.approval_get(results[0].approval_token)
+        rec = _ap.approval_get(token)
         assert rec["project"] == "myapp"
         assert rec["role"] == "implementer"
 
@@ -203,10 +204,10 @@ class TestPipelineApprovalStepGatesGenuinely:
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         spec = self._spec()
         _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
-        token = TaskRepository.for_pod("myapp").list()[0].approval_token
+        token = pending_token("myapp")
         assert token
 
-        _escalations.resolve_approval_token(token, "approve_once", channel="cli", actor="")
+        resolve_token(token, "approve_once")
         assert TaskRepository.for_pod("myapp").list()[0].status == "pending"
 
         runner2 = _RoleRunner({})
@@ -221,7 +222,7 @@ class TestPipelineApprovalStepGatesGenuinely:
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
         spec = self._spec()
         _sweep.dispatch_pod("myapp", runner=_RoleRunner({}), spec=spec)
-        token = TaskRepository.for_pod("myapp").list()[0].approval_token
+        token = pending_token("myapp")
 
         _ap.approval_deny(token, channel="cli")
         assert _actions.resolve_waiting_approval(token, "denied") is True

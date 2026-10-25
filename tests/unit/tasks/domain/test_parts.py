@@ -54,7 +54,6 @@ class TestRoundTrip:
                 {"command": "npm ci", "source": "lockfile", "lockHash": "h", "cacheHit": False},
             ),
             (_parts.Answer, _ANSWER),
-            (_parts.ConsultAnswer, {"step": "s", "questionId": "q-1", "text": "go"}),
             (
                 _parts.TaskUsage,
                 {

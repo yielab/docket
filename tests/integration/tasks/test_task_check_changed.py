@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.approvals import pending_token
 from tests.support.git import git as _git
 from tests.support.pods import build_pod
 
@@ -124,7 +125,7 @@ def test_a_lights_out_task_that_edits_package_json_parks_naming_it(
         assert (res.status, task.status) == ("waiting_approval", "waiting_approval")
         assert task.check_changed == ["package.json"]
         assert "package.json" in str(task.reason)
-        record = _ap.approval_get(str(task.approval_token))
+        record = _ap.approval_get(pending_token("demo", task.id))
         assert record["context"]["kind"] == "check_changed"
         assert record["context"]["paths"] == ["package.json"]
 
@@ -141,12 +142,12 @@ def test_a_grant_ends_the_parked_task_done_and_a_deny_fails_it_check_changed(
         _sweep.dispatch_pod("demo", runner=_Editor({"package.json": "{}\n"}), max_tasks=2)
 
         first, second = TaskRepository.for_pod("demo").list()
-        tokens = [str(first.approval_token), str(second.approval_token)]
+        tokens = [pending_token("demo", first.id), pending_token("demo", second.id)]
         _resolve(tokens[0], "granted")
         _resolve(tokens[1], "denied")
         granted, denied = TaskRepository.for_pod("demo").list()
         assert granted.status == "done" and granted.failure_kind is None
-        assert granted.check_changed == ["package.json"] and granted.approval_token is None
+        assert granted.check_changed == ["package.json"]
         assert (denied.status, denied.failure_kind) == ("failed", "check_changed")
         assert denied.reason == "approval denied: not now"
         entries = _audit.read_audit()

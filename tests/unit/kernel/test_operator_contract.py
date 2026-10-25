@@ -18,7 +18,6 @@ from docket.kernel.operator_contract import (
     A2AState,
     AnswerResult,
     AnswerResultV11,
-    ApprovalView,
     CloudEvent,
     EscalationAffordances,
     EscalationView,
@@ -239,47 +238,45 @@ class TestValidateAnswer:
         assert validate_answer(q, result) is result
 
 
-# ── ApprovalView / TaskView / InboxView ─────────────────────────────────────────
+# ── TaskView / InboxView ─────────────────────────────────────────
 
 
 class TestViews:
-    def test_approval_view_defaults_to_input_required(self) -> None:
-        view = ApprovalView(
-            token="apr-1",
-            pod="alpha",
-            role="implementer",
-            state="pending",
-            created_at="2026-09-28T00:00:00Z",
-        )
-        assert view.a2a_state == "INPUT_REQUIRED"
-        assert view.model_dump(by_alias=True)["a2aState"] == "INPUT_REQUIRED"
-
-    def test_task_view_holds_a_nested_question_and_brief(self) -> None:
+    def test_task_view_names_the_escalation_it_waits_on_and_holds_a_brief(self) -> None:
         view = TaskView(
             id="t-1",
             pod="alpha",
             status="waiting_input",
             a2a_state=a2a_state("waiting_input"),
-            question=_question(),
+            escalation="esc-0123456789ab",
             brief=TaskBrief(objective="ship it"),
         )
-        assert view.question is not None
-        assert view.question.pod == "alpha"
+        assert view.model_dump(by_alias=True)["escalation"] == "esc-0123456789ab"
         assert view.brief is not None
         assert view.brief.objective == "ship it"
 
-    def test_inbox_view_needs_you_accepts_task_or_approval(self) -> None:
+    def test_inbox_view_needs_you_accepts_a_task_or_an_escalation(self) -> None:
         task = TaskView(id="t-1", pod="alpha", status="pending", a2a_state="SUBMITTED")
-        approval = ApprovalView(
-            token="apr-1",
-            pod="alpha",
-            role="implementer",
-            state="pending",
-            created_at="2026-09-28T00:00:00Z",
+        escalation = EscalationView.model_validate(
+            {
+                "id": "esc-0123456789ab",
+                "task": "",
+                "pod": "alpha",
+                "step": "",
+                "role": "implementer",
+                "kind": "approval",
+                "causedBy": "c1",
+                "prompt": "rm -rf build",
+                "askedAt": "2026-09-28T00:00:00Z",
+                "onExpiry": "deny",
+                "affordances": {"resolveUrl": "/escalations/esc-0123456789ab"},
+            }
         )
-        inbox = InboxView(needs_you=[task, approval], next="2026-09-28T00:00:01Z")
+        inbox = InboxView(needs_you=[task, escalation], next="2026-09-28T00:00:01Z")
         assert len(inbox.needs_you) == 2
-        assert inbox.model_dump(by_alias=True)["needsYou"][0]["id"] == "t-1"
+        dumped = inbox.model_dump(by_alias=True)["needsYou"]
+        assert (dumped[0]["id"], dumped[1]["id"]) == ("t-1", "esc-0123456789ab")
+        assert isinstance(inbox.needs_you[1], EscalationView)
 
     def test_unknown_field_rejected_on_every_view(self) -> None:
         with pytest.raises(ValidationError):

@@ -151,7 +151,7 @@ class TestAnAskByLevel:
 
         assert outcome is not None
         assert (outcome.kind, outcome.failure_kind) == ("failed", "needs_human")
-        assert outcome.approval_token == "" and _ap.list_pending() == []
+        assert _ap.list_pending() == []
         (decided,) = list_escalations(state="decided")
         assert (decided.policy, decided.level, decided.step) == ("deny", None, "implementer")
 

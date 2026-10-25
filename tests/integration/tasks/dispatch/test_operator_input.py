@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.approvals import answer_question
 from tests.support.dispatch_harness import (
     _ScriptedBackend,
 )
@@ -18,7 +19,6 @@ from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
 from docket.agent import ports as _rd
 from docket.governance import secrets as _secrets
-from docket.hops.application import answers as _answers
 from docket.hops.application import driver as _dr
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
@@ -28,7 +28,9 @@ from docket.kernel import brief as _brief
 from docket.kernel import operator_contract as _oc
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
+from docket.platform import list_escalations
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.answers import answers_of
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 
@@ -158,19 +160,20 @@ class TestOperatorInputStepsPark:
             # Only the Lead's real hop is persisted -- the park itself leaves no hop, the same
             # posture as the pre-hop require_approval gate's `waiting_approval`.
             assert [h.role for h in task.hops] == ["lead"]
-            question = task.question
-            assert question.step == "ask"
-            assert question.requested_schema["properties"] == {"answer": {"type": "string"}}
-            assert question.requested_schema["required"] == ["answer"]
+            (question,) = list_escalations(state="pending")
+            assert (question.kind, question.step) == ("input", "ask")
+            assert question.id in task.escalations
+            assert (question.requested_schema or {})["properties"] == {"answer": {"type": "string"}}
+            assert (question.requested_schema or {})["required"] == ["answer"]
 
             trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
             events = [
                 json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
             ]
-            requested = [e for e in events if e["event_type"] == "input_requested"]
-            assert len(requested) == 1
-            assert requested[0]["payload"]["step"] == "ask"
-            assert requested[0]["payload"]["questionId"] == question.id
+            asked = [e for e in events if e["event_type"] == "escalation_asked"]
+            assert len(asked) == 1
+            assert asked[0]["payload"]["step"] == "ask"
+            assert asked[0]["payload"]["escalation"] == question.id
 
     def test_a_waiting_input_task_is_never_reclaimed_by_a_plain_dispatch(
         self, tmp_path: Path
@@ -196,52 +199,53 @@ class TestAnswerTaskResumesDispatch:
             _sweep.dispatch_pod("demo", runner=FakeDriver())
             assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
-            result = _answers.answer_task(
-                "demo", task.id, "accept", {"answer": "go ahead"}, channel="cli", actor="op"
-            )
-            assert result.action == "accept"
+            answer_question("demo", task.id, "accept", {"answer": "go ahead"})
 
             parked = TaskRepository.for_pod("demo").list()[0]
             assert parked.status == "pending"
-            assert parked.answers[0].content == {"answer": "go ahead"}
-            assert [h.role for h in parked.hops] == ["lead", "operator"]
-            assert parked.hops[-1].next_step is None  # no `on:` route -- ordinary advance
+            assert answers_of(parked)[0].content == {"answer": "go ahead"}
+            # Receiving the answer adds no hop: the claim applies it.
+            assert [h.role for h in parked.hops] == ["lead"]
 
             # The crash/resume boundary: a fresh `dispatch_pod` call (as `serve --dispatch`'s
-            # next sweep would make) claims the re-opened task and must continue past `ask`
-            # straight to `implementer`, never re-asking.
+            # next sweep would make) claims the re-opened task, applies the answer and must
+            # continue past `ask` straight to `implementer`, never re-asking.
             final_results = _sweep.dispatch_pod("demo", runner=FakeDriver())
             assert final_results[0].status == "done"
             final = TaskRepository.for_pod("demo").list()[0]
             assert [h.role for h in final.hops] == ["lead", "operator", "implementer"]
+            assert final.hops[1].next_step is None  # no `on:` route -- ordinary advance
 
     def test_a_declined_answer_routes_backward_and_a_second_decline_exhausts_its_cap(
         self, tmp_path: Path
     ) -> None:
         """`max: 1` -- proves `route_counts` is rebuilt from the persisted hop's `nextStep`
-        on resume: the second decline, a brand new `answer_task` call, must still see it."""
+        on resume: the second decline, a brand new answer, must still see it."""
         with _seed_pod(tmp_path):
             _bind_pipeline("demo", _ASK_DECLINE_CAP_PIPELINE_YAML)
             task = _queue.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
             _sweep.dispatch_pod("demo", runner=FakeDriver())
             assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
 
-            _answers.answer_task("demo", task.id, "decline", None, channel="cli", actor="op")
+            answer_question("demo", task.id, "decline")
             after_first = TaskRepository.for_pod("demo").list()[0]
             assert after_first.status == "pending"
-            assert after_first.hops[-1].next_step == "lead"
+            assert [h.role for h in after_first.hops] == ["lead"]
 
-            # Resume: replays back to `lead`, re-runs it (a fresh hop), reaches `ask` again and
-            # parks with a brand new question -- `route_counts` for ("ask", "declined") is now 1,
-            # rebuilt purely from the first operator hop's own persisted `nextStep`.
+            # Resume: the claim applies the decline (an operator hop routed back to `lead`),
+            # replays to `lead`, re-runs it (a fresh hop), reaches `ask` again and parks with a
+            # brand new question -- `route_counts` for ("ask", "declined") is now 1, rebuilt
+            # purely from the first operator hop's own persisted `nextStep`.
             _sweep.dispatch_pod("demo", runner=FakeDriver())
             reparked = TaskRepository.for_pod("demo").list()[0]
             assert reparked.status == "waiting_input"
             assert [h.role for h in reparked.hops] == ["lead", "operator", "lead"]
+            assert reparked.hops[1].next_step == "lead"
 
-            # A second decline exhausts the `max: 1` budget -- `answer_task` settles the task
-            # `failed` right here (no live dispatch context exists to do it for it).
-            _answers.answer_task("demo", task.id, "decline", None, channel="cli", actor="op")
+            # A second decline exhausts the `max: 1` budget: the next claim applies it and
+            # settles the task `failed` before any hop runs.
+            answer_question("demo", task.id, "decline")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
             final = TaskRepository.for_pod("demo").list()[0]
             assert final.status == "failed"
             assert final.hops[-1].next_step is None
@@ -344,20 +348,14 @@ class TestIntakeRecipeTaskBrief:
 
             first = _sweep.dispatch_pod("demo", runner=runner)
             assert first[0].status == "waiting_input"
-            question = TaskRepository.for_pod("demo").list()[0].question
-            assert question.requested_schema["properties"]["q1"]["title"] == "Which color?"
-            assert question.requested_schema["properties"]["q2"]["title"] == "Which size?"
-            assert question.requested_schema["required"] == ["q1", "q2"]
-            assert question.message == "The Lead needs answers before starting: add a widget"
+            (question,) = list_escalations(state="pending")
+            schema = question.requested_schema or {}
+            assert schema["properties"]["q1"]["title"] == "Which color?"
+            assert schema["properties"]["q2"]["title"] == "Which size?"
+            assert schema["required"] == ["q1", "q2"]
+            assert question.prompt == "The Lead needs answers before starting: add a widget"
 
-            _answers.answer_task(
-                "demo",
-                task.id,
-                "accept",
-                {"q1": "blue", "q2": "large"},
-                channel="cli",
-                actor="op",
-            )
+            answer_question("demo", task.id, "accept", {"q1": "blue", "q2": "large"})
 
             final = _sweep.dispatch_pod("demo", runner=runner)
             assert final[0].status == "done"

@@ -45,18 +45,6 @@ class TestApprovalTrace:
             events.extend(_trace.read_trace(tf))
         return events
 
-    def test_create_emits_approval_requested(self, home: Path) -> None:
-        token = _ap.approval_create("myshop", "programmer", "rm -rf /tmp/x")
-        events = self._events_for(home, "myshop")
-        reqs = [e for e in events if e["event_type"] == "approval_requested"]
-        assert len(reqs) == 1
-        payload = reqs[0]["payload"]
-        assert isinstance(payload, dict)
-        assert payload["token"] == token
-        assert "action" in payload
-        assert reqs[0]["agent_role"] == "programmer"
-        assert reqs[0]["project"] == "myshop"
-
     def test_grant_emits_approval_granted(self, home: Path) -> None:
         token = _ap.approval_create("myshop", "programmer", "ship it")
         _ap.approval_grant(token)
@@ -73,17 +61,12 @@ class TestApprovalTrace:
         assert len(denies) == 1
         assert denies[0]["payload"] == {"token": token}
 
-    def test_action_is_redacted_in_record_and_trace(self, home: Path) -> None:
+    def test_action_is_redacted_in_the_record(self, home: Path) -> None:
         action = "deploy with ANTHROPIC_API_KEY=sk-ant-abcdefghijklmnopqrstuvwxyz123456"
         token = _ap.approval_create("myshop", "programmer", action)
         rec = _ap.approval_get(token)
         assert "sk-ant-abcdefghijklmnopqrstuvwxyz123456" not in rec["action"]
         assert "[REDACTED]" in rec["action"]
-        events = self._events_for(home, "myshop")
-        req = next(e for e in events if e["event_type"] == "approval_requested")
-        payload = req["payload"]
-        assert isinstance(payload, dict)
-        assert "sk-ant-abcdefghijklmnopqrstuvwxyz123456" not in str(payload["action"])
 
     def test_trace_failure_never_breaks_approval(
         self, home: Path, monkeypatch: pytest.MonkeyPatch, real_tracer_except: Callable[..., None]

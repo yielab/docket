@@ -82,6 +82,23 @@ def _canary_records() -> list[dict[str, Any]]:
                 payload_key, _attr_name, _cls = content
                 payload[payload_key] = f"CANARY-{event_type}-{payload_key}"
         records.append({**base, "payload": payload})
+    # What an approval asks is a command line (toolArguments); what a question asks is a prompt.
+    records.append(
+        {
+            "ts": ts,
+            "project": "p",
+            "session_id": "s-approval-asked",
+            "agent_role": "lead",
+            "task_id": "t1",
+            "event_type": "escalation_asked",
+            "payload": {
+                "escalation": "esc-approval",
+                "kind": "approval",
+                "task": "t1",
+                "prompt": "CANARY-approval-action",
+            },
+        }
+    )
     return records
 
 
@@ -125,7 +142,7 @@ def _llm_call_canary_payload() -> dict[str, Any]:
 
 # canary attribute -> the one class that must be granted for it to appear.
 _CANARY_CLASSES: dict[str, str] = {
-    "CANARY-approval_requested-action": "toolArguments",
+    "CANARY-approval-action": "toolArguments",
     "CANARY-error-error": "errors",
     "CANARY-escalation_asked-prompt": "prompts",
     "CANARY-tool_call-arguments": "toolArguments",

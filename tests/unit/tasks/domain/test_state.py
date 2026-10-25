@@ -22,9 +22,7 @@ _FACTS = {
     "failure_kind": "gate_failed",
     "blocked_reason": "resources",
     "pid": 42,
-    "approval_token": "tok",
     "pending_index": 2,
-    "question": {"id": "q-1"},
 }
 
 
@@ -50,10 +48,8 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
     else:
         assert fields["reason"] == "why"
         assert "claim_pid" in transition.drop
-    if to is S.waiting_input:
-        assert fields["question"] == {"id": "q-1"}
     if to is S.waiting_approval:
-        assert (fields["approval_token"], fields["pending_approval_index"]) == ("tok", 2)
+        assert fields["pending_approval_index"] == 2
     if to is S.blocked:
         assert fields["blocked_reason"] == "resources"
     if to in {_state.Status.done, _state.Status.failed, _state.Status.cancelled}:
@@ -61,9 +57,7 @@ def test_an_allowed_pair_succeeds_and_sets_its_fields(pair: tuple[S, S]) -> None
         assert fields["failure_kind"] == "gate_failed"
         assert transition.ends_grants
     if frm is S.waiting_approval and to is not S.waiting_approval:
-        assert {"approval_token", "pending_approval_index"} <= set(transition.drop)
-    if frm is S.waiting_input and to is not S.waiting_input:
-        assert "question" in transition.drop
+        assert "pending_approval_index" in transition.drop
 
 
 @pytest.mark.parametrize("pair", [p for p in _PAIRS if p not in _state.ALLOWED], ids=_id)

@@ -21,7 +21,6 @@ from tests.support import pods as _support_pods
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
 from tests.support.tasks import update_task
 
-from docket.kernel.operator_contract import Question
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.domain import task as _task
@@ -109,18 +108,7 @@ class TestCancelTask:
 
     def test_a_parked_task_is_cancelled_through_the_parked_path(self, pod_home: Path) -> None:
         """A task waiting for input ends cancelled and names where it was parked."""
-        task_id = self._seed(
-            "waiting_input",
-            question=Question(
-                id="q-1",
-                task_id="t",
-                pod="myapp",
-                step="s",
-                message="which?",
-                requested_schema={"type": "object", "properties": {"a": {"type": "string"}}},
-                created_at="2026-10-24T00:00:00+00:00",
-            ),
-        )
+        task_id = self._seed("waiting_input")
 
         outcome = _lifecycle.cancel_task("myapp", task_id, channel="cli")
 

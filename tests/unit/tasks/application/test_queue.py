@@ -189,7 +189,7 @@ class TestPolicyGates:
         # Nothing was persisted -- a block is rejected before queueing.
         assert TaskRepository.for_pod("myapp").list() == []
 
-    def test_require_approval_verdict_surfaces_status_and_token(
+    def test_require_approval_verdict_surfaces_status_and_escalation(
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
@@ -203,13 +203,13 @@ class TestPolicyGates:
         assert status == 201
         assert body["ok"] is True
         assert body["status"] == "waiting_approval"
-        assert body["approvalToken"]
-        assert body["approvalToken"].startswith("apr-")
+        assert body["escalation"].startswith("esc-")
+        assert "approvalToken" not in body
 
         tasks = TaskRepository.for_pod("myapp").list()
         assert len(tasks) == 1
         assert tasks[0].status == "waiting_approval"
-        assert tasks[0].approval_token == body["approvalToken"]
+        assert tasks[0].escalations == [body["escalation"]]
 
     def test_require_approval_enqueue_opens_one_approval_escalation(
         self, live_server: tuple[str, str]
@@ -223,7 +223,7 @@ class TestPolicyGates:
 
         (opened,) = list_escalations(state="pending")
         assert (opened.kind, opened.pod, opened.task) == ("approval", "myapp", body["task"])
-        assert opened.legacy == {"token": body["approvalToken"]}
+        assert opened.id == body["escalation"]
         inbox = build_inbox(now=_clock.iso())
         assert [e.id for e in inbox.escalations] == [opened.id]
         assert [t.id for t in inbox.needs_you] == [body["task"]]
