@@ -10,6 +10,15 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-10-25 (D-73 recorded, ADR 0033, Phase 52 planned) — the harness adapts to the model by
+  data, and pays for context once.** A code audit of the live path against a harness-engineering
+  survey found what docket already has (rules that survive compaction by construction, non-periodic
+  atomic compaction, lazy skills, typed handoffs, measured tokens with cache reads outside the
+  budget) and what it lacks: no sampling or profile per model, reasoning dropped, `tool_choice`
+  always `auto`, head-only truncation, no lossless normalization, no retrievable full output, a
+  finalization that rewrites the system prompt, a parse failure that asks a person, a Lead whose
+  reads are lost in prose. Eight cards cut by file ownership over two waves; keepalive, a bash
+  grammar, in-turn sub-agents and placeholder scrubbing refused; five items deferred with triggers.
 - **2026-10-12 (D-59 answered, D-60 recorded, ADR 0024, Phase 41 planned) — one execution
   envelope.** After Waves 98–99 the maintainer asked for the sandbox and command-permission
   architecture to be rethought against Claude Code, Codex CLI and OpenHands: one jail for

@@ -11,7 +11,10 @@ phase records, wave narratives and this file's older sections are archived verba
 
 **Last updated: 2026-10-25.** Phases 0–50 are complete. **Phase 51 is active** (D-72,
 [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)): one escalation record and one
-`resolve` for every pause that waits on someone outside the task. Phase 50 (D-71,
+`resolve` for every pause that waits on someone outside the task. **Phase 52 is planned** (D-73,
+[ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)): the harness adapts to the
+model by data from the provider catalog and pays for context once; eight cards cut by file
+ownership, Wave A parallel-safe beside Phase 51. Phase 50 (D-71,
 [ADR 0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)): end-to-end tests that run the
 product the way an operator or Tack does, in `tests/e2e/`, with one fake model and shared oracles. Phase 49 (D-70) made the task one typed record behind one
 store, with the same JSON on disk. A new phase starts from a measured trigger or a maintainer
@@ -79,6 +82,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 49 | The task as a typed record behind one store: `TaskRecord` (flat, same JSON), `JsonTaskStore` + `TaskRepository` as the only writers of the queue, `hops` and `interfaces` read attributes, `claimId` and `source` deleted | D-70 | **complete** 2026-10-24 (`4a22a5be`..`423b67a1`); `dict[str, Any]` in `tasks/` and `hops/` 156 to 94, queue writers 19 to 0 outside the store, `src` +40 lines net |
 | 50 | End-to-end tests that run the product: `tests/e2e/` (one file per journey, a `docket` subprocess or `docket start` over HTTP, a real git repo, only the model faked), one fake model in `tests/support/model_server.py`, shared oracles, a CI job; the deterministic smoke moves into the lane | D-71 · [0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md) | **complete** 2026-10-25: 10 cards, 15 journey files and 48 e2e tests (lane about 32 s under `-n auto`, green twice in a row), `init --from` turns isolation on, `stale_claim` trace event, `DOCKET_CLOCK_OFFSET_S`; the tool-contract fixes A1-A5 (read/write state, consult truth, bash rules, verdict tolerance, `verify()`) landed with it |
 | 51 | One escalation: a durable `Escalation` record behind the store for approval, consult, input, gate and check-changed pauses; one `resolve` verb, one event family, one render, a policy table for when nobody is there (`consultMode: decide` first), then the A2A facade and a per-task level | D-72 · [0032](docs/adr/0032-one-escalation-record-and-one-resolve.md) | **active** (opened 2026-10-25; cards P51-1..P51-9) |
+| 52 | The harness adapts to the model by data, and pays for context once: cache-hit and tokens-per-accepted-task figures, a re-read report on recorded traces; tool results normalized and cut head+tail, errors that teach, small results never condensed first; a stable prefix (finalization as a trailing message) and sampling from the catalog; a parse failure refused rather than asked; the Lead's locators read into the Implementer's message; viewer/editor recipes; `ModelProfile` (`hosted`, `local`: surface, descriptions, forced `tool_choice` on close, window-derived budgets); results over the cap kept whole under the pod cache | D-73 · [0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) | **planned** (2026-10-25; cards P52-1..P52-8, two waves) |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
@@ -229,7 +233,7 @@ address exactly those.
 
 ## 6. Decisions
 
-Every decision D-1…D-72 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
+Every decision D-1…D-73 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
 in [docs/cycles-ended/roadmap-decisions.md](docs/cycles-ended/roadmap-decisions.md); from D-35 on,
 the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. That file is byte-preserved, so a
 new decision gets its ADR and a row in the table below. The decisions that act as standing rules
@@ -251,6 +255,7 @@ today:
 | D-70 | The task is one typed record (2026-10-24): `tasks/domain/task.py::TaskRecord`, flat, camelCase aliases, `extra="ignore"` (a queue written before a retired key still loads; unknown keys are not written back), the same keys on disk, behind `tasks/application/json_store.py` (the layer contract forbids `application` importing `adapters`; the only caller of `read_modify_write` on the queue) and `tasks/application/repository.py` (the pod's door, which also syncs the HEARTBEAT ledger). Readers use attributes; `_normalize_task`, `hop_record` and `hop_from_record` are deleted. No nested record (D-68 stands), no port protocol, no unit of work, no hooks: one implementation each. `claimId` and `source` are deleted outright (nothing read them); `Status.in_progress` likewise. The design and the measured counts are the Phase 49 cards; the architecture test `test_task_queue_writers.py` keeps the store the only writer |
 | D-71 | An end-to-end test runs the product as an operator or Tack does (2026-10-25): a `docket` subprocess or `docket start` over HTTP, a real `DOCKET_HOME` and git repo, nothing inside docket replaced, only the model faked over the real wire, judged by what an operator sees. It lives in `tests/e2e/` (one file per journey, outside `testpaths`, 60 s ceiling, its own CI job); one fake model (`tests/support/model_server.py`) and shared oracles; a real model never gates CI ([0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)) |
 | D-72 | A pause that waits on someone outside the task is one `Escalation` record behind `platform/store.py`, resolved by one `resolve` verb, applied by dispatch on claim, with a policy table for when nobody is there; the name is `Escalation` (2026-10-25). The maintainer approved the A2A facade and the per-task level too (2026-10-25: `autonomy: L3|L4|L5` on `POST /tasks`, narrowing only, the pod profile as the ceiling; the table as a `kind: autonomy` document) ([0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)) |
+| D-73 | The harness adapts to the model by data (2026-10-25): a `ModelProfile` on the provider catalog row, two built-ins (`hosted` = today, `local` for `local: true`), no heuristic by model name, the profile recorded on the trace. Context is paid for once: the turn's prefix stays byte-identical except at condensation batch boundaries, results are normalized losslessly and cut head+tail, a result over the cap is kept whole under the pod cache and named to the model. The model's error returns to the model (a parse failure is a refusal with a hint, not an approval). The Lead is the viewer: locators in the brief, read by docket into the Implementer's message. Refused: keepalive pings, a bash grammar of our own, sub-agents inside a turn, placeholder scrubbing of timestamps, quoting a survey's savings. Deferred with triggers: kept reasoning, lifecycle condensation, bounded model escalation, a lazy MCP catalog, a native Anthropic dialect ([0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)) |
 
 ---
 
