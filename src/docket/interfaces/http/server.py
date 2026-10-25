@@ -46,6 +46,7 @@ from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
 from docket.operator import flush_notify_channels as flush_notify_channels
+from docket.platform import prune_settled_escalations
 from docket.tasks.application import queue as _queue
 from docket.tasks.application import runs as _runs
 from docket.teams import conversations
@@ -159,7 +160,8 @@ def _run_sweeps(dispatch: bool = False) -> None:
     looking for it. ``audit.log`` is never swept: telemetry is lossy by design, an audit log must
     not be.
 
-    Also prunes terminal run records, resolved approval records and closed conversations past
+    Also prunes terminal run records, resolved approval records, settled escalation records and
+    closed conversations past
     the same ``TRACE_RETENTION_S`` window -- live/pending/active records are never touched
     regardless of age, matching the trace sweep's own liveness rule.
 
@@ -182,6 +184,8 @@ def _run_sweeps(dispatch: bool = False) -> None:
         _runs.prune_terminal()
     with contextlib.suppress(Exception):
         approval.prune_resolved()
+    with contextlib.suppress(Exception):
+        prune_settled_escalations()
     with contextlib.suppress(Exception):
         conversations.prune_closed_durable()
     if dispatch:

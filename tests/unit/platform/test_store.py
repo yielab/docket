@@ -181,3 +181,82 @@ def test_mark_escalation_applied_leaves_any_other_state_alone(state: str) -> Non
 
 def test_mark_escalation_applied_ignores_an_absent_record() -> None:
     assert store.mark_escalation_applied("esc-0123456789ab", "2026-10-25T10:05:00Z") is False
+
+
+def _settled(**fields: object) -> Escalation:
+    return _escalation(state="expired", **fields)
+
+
+def test_the_pending_scan_opens_no_settled_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    live = store.write_escalation(_escalation())
+    done = [store.write_escalation(_settled()) for _ in range(5)]
+    assert len(list((current_home().escalations_dir / "settled").glob("esc-*.json"))) == 5
+    opened: list[Path] = []
+    real_read = Path.read_bytes
+
+    def _spy(self: Path) -> bytes:
+        opened.append(self)
+        return real_read(self)
+
+    monkeypatch.setattr(Path, "read_bytes", _spy)
+
+    assert [e.id for e in store.list_escalations(state="pending")] == [live.id]
+    assert not [p for p in opened if p.parent.name == "settled"]
+    assert [e.id for e in store.list_escalations()] == [live.id, *[e.id for e in done]]
+    assert store.read_escalation(done[0].id) == done[0]
+
+
+def test_a_settled_record_leaves_the_pending_directory_and_keeps_its_seq() -> None:
+    folder = current_home().escalations_dir
+    mine = store.write_escalation(_escalation(legacy={"token": "apr-a"}))
+    resolved = store.write_escalation(_escalation(legacy={"token": "apr-b"}))
+
+    assert store.settle_escalation("token", "apr-a", "expired") is True
+    resolution = Resolution(
+        option_id="grant", by="alice", channel="http", at="2026-10-25T10:00:00Z"
+    )
+    stored = store.resolve_escalation(resolved.id, resolution)
+
+    assert stored is not None and stored.state == "resolved"
+    assert not (folder / f"{mine.id}.json").exists()
+    assert not (folder / f"{resolved.id}.json").exists()
+    settled = store.read_escalation(mine.id)
+    assert settled is not None and (settled.state, settled.seq) == ("expired", mine.seq)
+    assert store.resolve_escalation(resolved.id, resolution) is None
+    assert store.mark_escalation_applied(resolved.id, "2026-10-25T10:05:00Z") is True
+    path = folder / "settled" / f"{resolved.id}.json"
+    assert oct(os.stat(path).st_mode & 0o777) == "0o600"
+    assert oct(os.stat(path.parent).st_mode & 0o777) == "0o700"
+
+
+def _age(escalation_id: str, days: int) -> None:
+    path = current_home().escalations_dir / "settled" / f"{escalation_id}.json"
+    old = path.stat().st_mtime - days * 86400
+    os.utime(path, (old, old))
+
+
+def test_retention_deletes_old_settled_records_and_keeps_live_work() -> None:
+    old = store.write_escalation(_settled())
+    recent = store.write_escalation(_settled())
+    unapplied = store.write_escalation(_resolved())
+    live = store.write_escalation(_escalation())
+    for record in (old, unapplied):
+        _age(record.id, 90)
+
+    assert store.prune_settled_escalations(dry_run=True) == 1
+    assert store.read_escalation(old.id) is not None
+    assert store.prune_settled_escalations() == 1
+
+    assert store.read_escalation(old.id) is None
+    kept = {recent.id, unapplied.id, live.id}
+    assert {e.id for e in store.list_escalations()} == kept
+    assert store.write_escalation(_escalation()).seq == live.seq + 1
+
+
+def test_retention_applies_to_an_applied_resolution() -> None:
+    record = store.write_escalation(_resolved())
+    assert store.mark_escalation_applied(record.id, "2026-10-25T10:05:00Z") is True
+    _age(record.id, 90)
+
+    assert store.prune_settled_escalations() == 1
+    assert store.read_escalation(record.id) is None

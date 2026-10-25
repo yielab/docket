@@ -118,7 +118,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | MCP Server | 1.11.0 | Implemented |
 | CLI JSON Shapes | 4.2.0 | Complete |
 | docket-meta schema | 5.4.0 | Complete |
-| Docket Store | 2.2.0 | Implemented |
+| Docket Store | 2.3.0 | Implemented |
 | Operator API | 6.5.0 | Implemented (Phase 43, ADR 0027) |
 | A2A Binding | 1.0.0 | Implemented |
 | Serve Read API | 4.2.0 | Stable |
