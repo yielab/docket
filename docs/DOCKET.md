@@ -215,6 +215,12 @@ stores, all under `~/.docket/`:
   record per channel thread docket is tracking (agent, peer, topic, status, a resume pointer),
   seeded on `docket setup notify bind` and cleaned up on `docket pod delete`. Dispatch and `docket start` keep `last_message`/
   `task_ref` current automatically as a task moves, tracked by the notification system.
+- **Escalations** (`platform/store.py`, `~/.docket/escalations/`) — one 0600 record per pause (an
+  approval, a consult, an `input` question, a gate, a changed check). A pending one lives in
+  `escalations/`; once settled (resolved, expired or decided) it moves to `escalations/settled/`, so
+  `docket inbox` and Tack's poll scan only the live pauses. The `docket start` sweep deletes settled records
+  after `TRACE_RETENTION_DAYS`, the knob that bounds traces; a resolved record whose answer the task
+  has not applied yet is kept. `_seq.json` numbers them and is never reset.
 - **The audit log** (`governance/audit.py`, `~/.docket/audit.log`, 0600) — one JSON line per
   mutating operation; secret values are never logged. Every line carries a monotonic `seq` and a
   `prev_hash` (the SHA-256 of the previous line's canonical JSON), so `docket log verify` can
@@ -767,8 +773,11 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   resolved, not fixed: `approvalMode: wait` blocks the call as before (the default for an
   interactive TTY dispatch); `park` — the resolved default for `docket start --dispatch`'s sweep and a
   non-interactive `docket run` — records the exact call and ends the turn instead of blocking it,
-  so one stuck hop can no longer stall an entire sweep. `docket task approve`/`docket task deny` (CLI, HTTP
-  `POST /approvals/<token>`, MCP, or Telegram) resolve either trigger identically. A grant on a
+  so one stuck hop can no longer stall an entire sweep. `docket task answer <escalation-id> --option
+  approve_once|approve_task|deny` (the id `docket inbox` prints) resolves either trigger; so do HTTP
+  `POST /escalations/<id>`, MCP and Telegram `/answer <escalation-id> <option>`, and the older
+  `docket task approve`/`docket task deny` (HTTP `POST /approvals/<token>`, Telegram `/approve
+  <token>`) reach the same result. A grant on a
   pre-hop gate hands the position back to the *next* claim as a single-use gate override; a grant
   on a parked call instead re-runs that *same* hop, carrying a single-use pre-grant matched by a
   stable argument digest so the model's identical next call passes once without asking again. A
@@ -778,7 +787,8 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
 - **`waiting_input`** is for a question, not a permission: a pipeline `input` step
   (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
   brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket task answer
-  <task-id>`, `POST /tasks/<id>/answer` and the MCP `task_answer` tool
+  <escalation-id> --option <id>` (or `<task-id>`), `POST /escalations/<id>`, and the older
+  `POST /tasks/<id>/answer` and the MCP `task_answer` tool
   all resolve it through one `hops.application.answers.answer_task` function, which routes the step's own
   `on:` outcome (`answered`/`declined`) and reopens the task `pending`. An unanswered question
   past its own deadline moves the task to `blocked` (`blockedReason: "input_expired"`), never
@@ -812,8 +822,8 @@ An agent that needs a human decision has two ways to ask. A gated tool call beco
 whose pack carries the model's own preceding sentence as a `rationale` (screened, truncated to 500
 characters, and a claim by the model rather than a fact) and three options: `approve_once`,
 `approve_task` (the identical call for the rest of the task: within the turn, and in a pod for every
-later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket task approve
-<task-id> --task`, Telegram `/approve <token> task`, the HTTP POST's `option` or the
+later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket task answer
+<escalation-id> --option approve_task` (or the older `docket task approve <task-id> --task`), Telegram `/approve <token> task`, the HTTP POST's `option` or the
 MCP `approvals_grant` `option`. `docket task approve|deny <task-id> --reason TEXT`, the HTTP approval POST's
 `reason` record why, with an `actor`, in the audit entry.
 The `consult` built-in (kind `read`) asks a typed question with options and an optional
@@ -823,7 +833,7 @@ role with the answer in its message, bounded per task by `maxConsultationsPerTas
 the audit log records `consult.decided`. The parked
 question is persisted (0600, `consult-parked/`) until dispatch stores it on the task, so any process
 can answer it. A channel at the `conversation` level lists the options and the recommended id, and
-Telegram `/answer <task> <option id>` picks one.
+`docket task answer <escalation-id> --option <id>` or Telegram `/answer <escalation-id> <option id>` (the older `/answer <task> <option id>` works too) picks one.
 
 `docket task show <task-id> [--json]` (also `GET /tasks/<p>/<id>/evidence`) includes the
 evidence-v1 document: per-hop measured token usage (null when the endpoint reports zero)
