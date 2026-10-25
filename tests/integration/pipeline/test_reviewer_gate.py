@@ -13,6 +13,7 @@ specs/functional/pod-dispatch.spec.md Requirements 3-4.
 from __future__ import annotations
 
 import dataclasses
+import json
 from pathlib import Path
 from typing import Any
 
@@ -256,6 +257,7 @@ class _ReaskRunner:
     def __init__(self, replies: dict[str, list[_rd.TurnResult]]) -> None:
         self.replies = {role: list(items) for role, items in replies.items()}
         self.calls: list[tuple[str, str, str]] = []
+        self.envs: dict[str, dict[str, str] | None] = {}
 
     def __call__(
         self,
@@ -267,6 +269,7 @@ class _ReaskRunner:
     ) -> _rd.TurnResult:
         role = _role_of(member_id)
         self.calls.append((role, session_id, message))
+        self.envs[role] = env
         queue = self.replies.get(role)
         if queue:
             return queue.pop(0)
@@ -277,6 +280,27 @@ class _ReaskRunner:
 
 def _ok(output: str) -> _rd.TurnResult:
     return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
+
+
+class TestVerdictToolOffer:
+    """The values a verdict-gated hop may record travel to the driver in its environment."""
+
+    def test_only_verdict_gated_hops_carry_the_values(self, tmp_path: Path) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner({"reviewer": [_ok("APPROVE")]})
+        _executor.dispatch_task("myapp", TaskRecord(id="v1", description="work"), runner=runner)
+
+        def values(role: str) -> dict[str, Any] | None:
+            raw = (runner.envs.get(role) or {}).get(_rd.DOCKET_VERDICT_VALUES)
+            return json.loads(raw) if raw else None
+
+        assert values("reviewer") == {
+            "values": ["APPROVE", "REQUEST-CHANGES"],
+            "caseSensitive": False,
+        }
+        assert values("tester") == {"values": ["PASS", "FAIL"], "caseSensitive": False}
+        assert values("lead") is None
+        assert values("implementer") is None
 
 
 class TestVerdictReask:

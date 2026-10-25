@@ -7,6 +7,7 @@ from typing import Any
 
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
+from docket.hops.application.verdict_tool import encode_values
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
 from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
@@ -445,6 +446,11 @@ def _compose_hop(
     if ctx.approval_timeout is not None:
         env = dict(env or {})
         env[_rd.DOCKET_APPROVAL_TIMEOUT] = str(ctx.approval_timeout)
+    if isinstance(node.gate, _gates.VerdictGate):
+        env = dict(env or {})
+        env[_rd.DOCKET_VERDICT_VALUES] = encode_values(
+            _orch.verdict_values(node.gate), node.gate.case_sensitive
+        )
     env = _consult_budget_env(ctx, env)
     env = _apply_task_restrictions(ctx, env)
     pregrants_raw = [

@@ -2,8 +2,8 @@
 
 ``ToolStep`` sends every call through ``dispatch_tool`` (the single chokepoint), persists the
 assistant message and all its tool results as one atomic unit, and ends the turn on a
-cancelled batch, an unanswerable or parked approval, the consecutive-denial ceiling, or a
-no-progress streak.
+cancelled batch, an unanswerable or parked approval, the consecutive-denial ceiling, a
+no-progress streak, or a successful call of an ``ends_turn`` tool.
 """
 
 from __future__ import annotations
@@ -114,6 +114,7 @@ class ToolStep:
         approval_unavailable: ToolResult | None = None
         approval_parked: ToolResult | None = None
         round_entries: list[tuple[str, str, bool, str]] = []
+        closing_output: str | None = None
         self.state.ctx.rationale = assistant_msg.content or ""
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
@@ -129,6 +130,8 @@ class ToolStep:
             if result.denial_kind != "run_cancelled":
                 self.state.tool_calls_executed += 1
             tool_output = result.as_tool_output()
+            if result.ok and result.executed and self._ends_turn(call.name):
+                closing_output = result.content
             _trace_tool_result(
                 self.state.project,
                 self.state.trace_key,
@@ -202,7 +205,14 @@ class ToolStep:
                 ),
                 failure_kind="invalid_output",
             )
+        if closing_output is not None:
+            text = "\n".join(part for part in (assistant_msg.content, closing_output) if part)
+            return self.state.done(ok=True, stop_reason="final_message", output=text)
         return self.stop_if_no_progress(round_entries)
+
+    def _ends_turn(self, tool_name: str) -> bool:
+        tool = self.state.registry.get(tool_name)
+        return tool is not None and tool.ends_turn
 
     def stop_if_no_progress(
         self, round_entries: list[tuple[str, str, bool, str]]

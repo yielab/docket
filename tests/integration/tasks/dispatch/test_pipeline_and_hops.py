@@ -181,7 +181,9 @@ class TestPipeline:
             for _agent_id, message, env in downstream:
                 assert f"Working directory: {worktree}" in message
                 assert "must still end with the verdict marker as its LAST line" in message
-                assert env == {_rd.PIPELINE_WORKTREE_ENV: str(worktree)}
+                assert env is not None
+                assert env[_rd.PIPELINE_WORKTREE_ENV] == str(worktree)
+                assert set(env) == {_rd.PIPELINE_WORKTREE_ENV, _rd.DOCKET_VERDICT_VALUES}
 
     def test_default_approval_mode_leaves_every_hop_env_unchanged(self, tmp_path: Path) -> None:
         """Pin: with no `approvalMode` configured, DOCKET_APPROVAL_MODE never reaches a hop's

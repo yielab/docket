@@ -35,6 +35,7 @@ from docket.agent.ports import (
     DOCKET_TASK_NETWORK,
     DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
+    DOCKET_VERDICT_VALUES,
     PIPELINE_WORKTREE_ENV,
     ChatBackend,
     DriverCapabilities,
@@ -48,6 +49,7 @@ from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.application.builtin_tools import builtin_registry
+from docket.hops.application.verdict_tool import parse_values, verdict_tool
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
@@ -504,6 +506,7 @@ class DocketDriver:
             agent_id, tool_env.pop(DOCKET_MAX_CONSULTATIONS, None)
         )
         token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
+        verdict_gate = parse_values(tool_env.pop(DOCKET_VERDICT_VALUES, None))
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
         # trace events under the identical coordinate `agent/loop.py`'s own
@@ -554,6 +557,8 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
+        if verdict_gate is not None:
+            registry.register(verdict_tool(*verdict_gate))
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         loop_config = _loop_config(backend, timeout, token_budget)
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
