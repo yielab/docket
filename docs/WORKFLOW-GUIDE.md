@@ -687,8 +687,8 @@ docket start --dispatch
 You can also queue work from Telegram: bind the Lead once with `docket setup notify bind myapp-lead`, run
 `docket start --telegram`, and send `/delegate <task>` in that group. The task lands on the same
 pod queue and the reply is its task id, not the pipeline's output. Plain messages are refused;
-the only verbs are `/approve`, `/deny`, `/status`, `/delegate` and `/answer <escalation-id> <option or
-text>` (for any pause; the older `/answer <task-id> <text>` still answers a parked question). This bot only ever replies to a message it received — it never messages the
+the only verbs are `/status`, `/delegate` and `/answer <escalation-id> <option or
+text>` (for any pause, an approval included; the older `/answer <task-id> <text>` still answers a parked question). This bot only ever replies to a message it received — it never messages the
 group first. Pushing a notification into the group instead is a separate, opt-in mechanism
 (`docket setup notify enable telegram --set actors=<chat-id>`, §3.15 in CONFIGURATION.md), scoped to
 the chat ids you explicitly list, never every wired binding.

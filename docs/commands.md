@@ -123,25 +123,13 @@ A dirty worktree or unmerged branch is kept unless --force.
 
 Example: docket task prune --dry-run
 
-### task approve
+### task pregrant
 
-**Usage:** `docket task approve`
+**Usage:** `docket task pregrant`
 
-Approve what a task is waiting on, or pre-grant one command before it asks.
+Approve one exact command for a task before it asks; the approval is single-use.
 
-Resolves the task's pending approval and grants it; with --task the same call is also
-allowed for the rest of the task. --for records a single-use pre-grant for one exact
-command instead.
-
-Example: docket task approve task-04ff --reason "reviewed the diff"
-
-### task deny
-
-**Usage:** `docket task deny`
-
-Deny what a task is waiting on; the task fails and nothing runs.
-
-Example: docket task deny task-04ff --reason "touches production"
+Example: docket task pregrant task-04ff "git push origin main"
 
 ### task answer
 
@@ -152,9 +140,9 @@ Answer what a task is waiting on and let it continue.
 A question takes text, --field or --option; on a terminal with none of them it shows the
 question and prompts. Off a terminal pass text, --field name=value or --option <id>; a
 question with options needs --option. An approval takes --option approve_once, approve_task
-or deny. The reference may be the escalation id that `docket inbox` prints.
+or deny, and --reason. The reference may be the escalation id that `docket inbox` prints.
 
-Example: docket task answer task-04ff --option opt2
+Example: docket task answer esc-1a2b3c4d5e6f --option approve_once
 
 ### task retry
 
@@ -910,8 +898,8 @@ docket -V
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 0 | Success (includes `task answer` re-resolving an escalation to the outcome it already has) |
+| 1 | Error (generic; also used by `task answer` on an unknown escalation, one that is no longer pending, or one being flipped to the opposite outcome, and `docket init`'s missing-dependency check) |
 | 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, or an unrecognized flag or command (an unknown command word names the live commands it could mean) |
 
 No command emits any other exit code today.
@@ -928,7 +916,7 @@ No command emits any other exit code today.
 | `POLICIES_DIR` | Root of installed/edited policy JSON (`docket pod policies`, `docket setup sandbox`) | `$DOCKET_HOME/policies` |
 | `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket pod policies --plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
 | `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `agent.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
-| `APPROVALS_DIR` | Where `docket task approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
+| `APPROVALS_DIR` | Where the approval records behind `docket task answer` live | `$DOCKET_HOME/approvals` |
 | `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/corrections` |
 | `SCHEDULE_FILE` | The persisted pod schedules (`docket pod set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |

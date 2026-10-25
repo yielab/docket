@@ -261,12 +261,12 @@ non-interactive `docket run`, that `ask` **parks** — it records the exact call
 next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that
 needs you, across every pod, shows up in one place (`docket inbox`), and a notification channel you
 enable (`docket setup notify enable desktop`, `ntfy` or `telegram`; the default `console` sends
-nothing, and `docket setup` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket task approve`/
-`docket task deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
+nothing, and `docket setup` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket task answer <escalation-id> --option approve_once`/
+`--option deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
 single-use pre-grant so the model's identical next call passes without asking twice. A pipeline
 can also pause a task to ask a genuine *question* rather than a permission — an `input` step, or
 the Lead's own typed intake brief when it decides it's missing something — which is `docket task answer
-<task-id>`'s job, not `docket task approve`'s. See
+<task-id>`'s job, with `--option` for an approval. See
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s "operator loop" section for the full mechanism.
 
 ---
@@ -417,7 +417,7 @@ docket start --dispatch                  # autonomous: drive every pod's queue
 docket inbox [--json] [--since <iso>] [--peek]           # everything across every pod that needs you
 docket task answer <task-id> [--pod <project>]                  # see + answer one task's parked question
 docket task answer <task-id> [text]                   # answer, non-interactively
-docket task approve <task-id> --for "<command>"         # pre-approve one exact call
+docket task pregrant <task-id> "<command>"             # pre-approve one exact call
 docket setup notify list                                # who gets notified, and how much they see
 docket setup notify flush                               # push pending notifications now
 

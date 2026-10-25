@@ -155,8 +155,8 @@ docket -V
 _EXIT_CODES = """\
 | Code | Meaning |
 |------|---------|
-| 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 0 | Success (includes `task answer` re-resolving an escalation to the outcome it already has) |
+| 1 | Error (generic; also used by `task answer` on an unknown escalation, one that is no longer pending, or one being flipped to the opposite outcome, and `docket init`'s missing-dependency check) |
 | 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, or an unrecognized flag or command (an unknown command word names the live commands it could mean) |
 
 No command emits any other exit code today.
@@ -336,7 +336,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("APPROVALS_DIR",),
-        "Where `docket task approve`/`deny`'s approval-token store lives",
+        "Where the approval records behind `docket task answer` live",
         "`$DOCKET_HOME/approvals`",
     ),
     (

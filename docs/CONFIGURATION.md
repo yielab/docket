@@ -602,9 +602,8 @@ creates `approvals/<id>.json`.
 
 - **Answering.** Answer it with `docket task answer <escalation-id> --option
   approve_once|approve_task|deny` (the id `docket inbox` prints), `POST /escalations/<id>` under
-  `docket start`, MCP, or Telegram `/answer <escalation-id> <option>`. The older forms reach the
-  same result: `docket task approve <task-id>`/`docket task deny <task-id>`,
-  `POST /approvals/<token>` and Telegram `/approve`. Every channel is audited.
+  `docket start`, the MCP `resolve` tool, or Telegram `/answer <escalation-id> <option>`; a task id
+  works in place of the escalation id on the CLI. Every channel is audited.
 - **Expiry.** Unanswered requests are denied: after `TOOL_APPROVAL_TIMEOUT` (120 s) when a live
   tool call is waiting, after `APPROVAL_TIMEOUT` (900 s) at a pipeline approval gate.
 - **Non-interactive runs.** A pod set to `approvalMode refuse` never waits. It returns `approval_unavailable` instead.
@@ -1155,14 +1154,14 @@ entry, not something a `pod.yaml` names or scopes — every enabled channel watc
 inbox.
 
 **Answering.** Any pause, by the id `docket inbox` prints: `docket task answer <escalation-id> --option
-<id>` (an approval takes `approve_once|approve_task|deny`). The older verbs still work: a parked
-approval, `docket task approve <task-id>` / `docket task deny <task-id>`; a parked
+<id>` (an approval takes `approve_once|approve_task|deny`). A task id works in place of the
+escalation id: a parked approval, `docket task answer <task-id> --option approve_once`; a parked
 question, `docket task answer <task-id> [--pod <name>]` (interactive — shows the brief and any prior
 answers, prompts once per schema property on a TTY, then answers) or non-interactively `docket
 task answer <task-id> [text] [--field name=value]... [--decline]` — a bare `text` fills a
 single-property question, `--field` names each property of a richer one. Both, plus `POST
-/tasks/<id>/answer` and the MCP `task_answer` tool, resolve through the same
-`hops.application.answers.answer_task` function, so an answer is screened by the same input policy hook
+/escalations/<id>`, the MCP `resolve` tool and Telegram `/answer`, resolve through the same
+`resolve` function, so an answer is screened by the same input policy hook
 regardless of which surface sent it.
 
 ## 4. File reference
@@ -1196,9 +1195,9 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `docket-conversations.json` | `conversations[{id,agentId,peerId,topic,status,…}]` | Telegram | Telegram channel | no |
 | `sessions/<key>/session.json` | `messages[]`, `usage{inputTokens,outputTokens,turns}` | every turn | every turn (history, compaction) | no |
 | `traces/<pod>/<session>.jsonl` | one event per line `{ts,session_id,agent_role,event_type,payload}` | every turn | `docket task trace`, `docket status`, `/traces`; each record also reaches the enabled exporters as it is written | no. `docket task prune` prunes after `TRACE_RETENTION_DAYS`. |
-| `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `docket task answer <escalation-id> --option ...` (or the older `docket task approve`/`deny`). |
+| `approvals/<id>.json` | `{token,project,role,action,state,created,context}` | gated calls | the approval wait | no. Answer with `docket task answer <escalation-id> --option ...`. |
 | `escalations/esc-<id>.json` (+ `settled/`, `_seq.json`) | one `Escalation` (`id,task,pod,kind,prompt,options,state,resolution,seq,…`); a settled record moves to `settled/` | every pause: gated call, consult, `input` step, gate, changed check | `docket inbox`, `GET /escalations`, `docket task answer`, the claim that applies an answer | no. `docket start`'s sweep deletes settled records after `TRACE_RETENTION_DAYS`. |
-| `consult-parked/<q-id>.json` | one operator-v1.1 `QuestionV11` | a pod hop's `consult` | dispatch, once, when it parks the task | no. Dispatch removes it; the task keeps the question. |
+| `consult-parked/<q-id>.json` | one operator-v1.1 `QuestionV11` | a pod hop's `consult` | dispatch, once, when it parks the task | no. Dispatch removes it; the task's escalation keeps the question. |
 | `audit.log` (+ `.1`) | JSONL `{seq,ts,user,pid,action,detail,prev_hash}` | every mutating command | `docket log`, `docket log verify` | **never.** It breaks the hash chain. |
 
 **Built-in provider documents** ship in the wheel at `templates/providers/NN-<name>.yaml`
