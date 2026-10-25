@@ -40,6 +40,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "deniedTools": "denied_tools",
     "requireVerify": "require_verify",
     "maxConsultationsPerTask": "max_consultations_per_task",
+    "consultMode": "consult_mode",
     "network": "network",
     "profile": "profile",
     "readOnly": "read_only",
@@ -152,6 +153,9 @@ class PodSettings(BaseModel):
     require_verify: bool = Field(False, alias="requireVerify")
     # How many `consult` questions one task's turn may ask (tasks/application/consult.py); 0 disables.
     max_consultations_per_task: int = Field(3, alias="maxConsultationsPerTask", ge=0)
+    # What a dispatch hop's `consult` does: 'park' waits for a person; 'decide' applies the model's
+    # own recommendation in the turn (tasks/application/consult.py). `lights-out` requires 'decide'.
+    consult_mode: Literal["park", "decide"] = Field("park", alias="consultMode")
 
     # 'open' (the default: follow the global mode, itself 'none' unless granted) or 'none': cut this pod's jailed tool calls
     # off the network. It only ever narrows -- see ``effective_network``.
@@ -208,6 +212,7 @@ class PodSettings(BaseModel):
         "deniedTools",
         "requireVerify",
         "maxConsultationsPerTask",
+        "consultMode",
         "network",
         "profile",
         "readOnly",
@@ -397,6 +402,15 @@ class PodSettings(BaseModel):
         name = str(value).strip().lower()
         if name not in ("attended", "lights-out"):
             raise InvalidInput("must be 'attended' or 'lights-out'")
+        return name
+
+    @field_validator("consult_mode", mode="before")
+    @classmethod
+    def _parse_consult_mode(cls, value: Any) -> str:
+        """``park`` or ``decide``."""
+        name = str(value).strip().lower()
+        if name not in ("park", "decide"):
+            raise InvalidInput("must be 'park' or 'decide'")
         return name
 
     @field_validator("exporters", mode="before")

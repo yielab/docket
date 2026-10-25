@@ -177,6 +177,75 @@ class TestRefuse:
         assert result.denial_kind == "approval_unavailable"
 
 
+class TestDecide:
+    def _decide(self, **over: Any) -> tuple[ToolResult, list[dict[str, Any]]]:
+        seen, off = _events()
+        try:
+            result = _call(
+                _args(),
+                _ctx(consult_park=True, consult_mode="decide", task_id="t-1", **over),
+            )
+        finally:
+            off()
+        return result, seen
+
+    def test_the_recommendation_is_the_tool_result_and_the_turn_continues(self) -> None:
+        result, _ = self._decide()
+
+        assert result.ok
+        assert result.content == (
+            "no operator on duty; your recommendation stands: option sqlite (SQLite). Continue."
+        )
+
+    def test_the_trace_marks_the_question_decided_with_the_option(self) -> None:
+        _, seen = self._decide()
+
+        (event,) = seen
+        assert event["payload"]["mode"] == "decided"
+        assert event["payload"]["decidedOptionId"] == "sqlite"
+        assert event["payload"]["question"]["kind"] == "decision"
+
+    def test_the_event_is_filed_under_the_task_session_when_the_context_names_one(self) -> None:
+        _, seen = self._decide(trace_session_key="task:t-1")
+
+        assert [e["session_id"] for e in seen] == ["task:t-1"]
+
+    def test_the_audit_row_names_ids_and_never_the_question(self) -> None:
+        from docket.governance import audit as _audit
+
+        self._decide(project="demo")
+
+        (row,) = [e for e in _audit.read_audit() if e["action"] == "consult.decided"]
+        assert row["detail"].split()[:3] == ["project=demo", "task=t-1", "role=lead"]
+        assert "optionId=sqlite" in row["detail"] and "questionId=q" in row["detail"]
+        assert "Which store" not in row["detail"] and "Redis" not in row["detail"]
+
+    def test_nothing_is_parked(self) -> None:
+        result, _ = self._decide()
+
+        assert result.approval_token == "" or result.approval_token is None
+
+    def test_a_decided_consult_spends_budget(self) -> None:
+        ctx = _ctx(consult_park=True, consult_mode="decide", max_consultations=1)
+
+        assert _call(_args(), ctx, "c1").ok
+        second = _call(_args(), ctx, "c2")
+
+        assert not second.ok and "budget exhausted" in second.as_tool_output()
+
+    def test_an_invalid_call_is_still_the_ordinary_error(self) -> None:
+        ctx = _ctx(consult_park=True, consult_mode="decide")
+
+        result = _call(_args(options=_args()["options"][:1]), ctx)
+
+        assert not result.ok and "options" in result.as_tool_output()
+
+    def test_outside_pod_dispatch_the_mode_changes_nothing(self) -> None:
+        result = _call(_args(), _ctx(consult_mode="decide"))
+
+        assert result.ok and result.content == "no answer; decide yourself"
+
+
 class TestCap:
     def test_the_call_past_the_cap_is_refused_as_budget_exhausted(self) -> None:
         ctx = _ctx()

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.4.0
+**Version**: 10.5.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -593,7 +593,7 @@ wired agent's conversation current with the task it is working.
 1. Every pod setting (`PodSettings.KEYS`: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
    `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
    `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
-   `maxConsultationsPerTask`, `network`, `profile`, `readOnly`, `prepare`, `protects`) **MUST** be
+   `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`, `protects`) **MUST** be
    read through one typed, validated model (`PodSettings.load_for`), not independent ad hoc
    parsers. A missing or blank stored key resolves to that field's declared default (e.g. `0.0`,
    `1`, `None`, `None` for `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`); a

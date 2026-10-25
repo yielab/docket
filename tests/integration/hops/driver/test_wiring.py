@@ -628,6 +628,23 @@ class TestConsultBudgetReachesTheTurn:
         assert _docket_runtime._max_consultations("shop-lead", "0") == 0
 
 
+class TestConsultModeReachesTheTurn:
+    def test_a_non_pod_agent_parks(self) -> None:
+        assert _docket_runtime._consult_mode("solo-x") == "park"
+
+    def test_a_pod_member_reads_the_pods_setting(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from docket.teams import pod as _pod
+        from docket.teams.pod_settings import PodSettings
+
+        monkeypatch.setattr(_pod, "pod_of", lambda agent_id: "shop")
+        monkeypatch.setattr(
+            PodSettings,
+            "load_for",
+            classmethod(lambda cls, project: PodSettings(consultMode="decide")),
+        )
+        assert _docket_runtime._consult_mode("shop-lead") == "decide"
+
+
 class TestApprovalWaitWiring:
     """What a turn by an agent outside any pod hands its tool context."""
 

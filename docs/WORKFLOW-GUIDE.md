@@ -586,11 +586,11 @@ reviewed and validated before it landed."
 
 ### Pod dispatch settings — `docket pod show`
 
-A pod's dispatch behavior is nineteen typed keys on the Lead's meta, read/written through one
+A pod's dispatch behavior is twenty typed keys on the Lead's meta, read/written through one
 generic command instead of hand-editing files: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
 `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
-`maxConsultationsPerTask`, `network`, `profile`, `readOnly`, `prepare`. A repository's `.docket/pod.yaml` can carry the same keys under
+`maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`. A repository's `.docket/pod.yaml` can carry the same keys under
 `settings:`, applied by `docket init` or `docket pod update`.
 
 ```bash

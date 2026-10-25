@@ -85,9 +85,9 @@ class TestBashDescriptionPrefersTheFileTools:
 class TestConsultDescriptionTellsTheTruth:
     """The consult schema matches its handler and the description says what asking does."""
 
-    def _description(self, remaining: int, parks: bool) -> str:
+    def _description(self, remaining: int, parks: bool, decides: bool = False) -> str:
         registry = builtin_registry()
-        builtin_tools.describe_consult(registry, remaining=remaining, parks=parks)
+        builtin_tools.describe_consult(registry, remaining=remaining, parks=parks, decides=decides)
         tool = registry.get("consult")
         assert tool is not None
         return tool.description
@@ -125,6 +125,28 @@ class TestConsultDescriptionTellsTheTruth:
 
         assert "ENDS your turn" not in text
         assert "no answer; decide yourself" in text
+
+    def test_a_pod_that_decides_says_the_recommendation_applies_at_once(self) -> None:
+        text = self._description(remaining=2, parks=True, decides=True)
+
+        assert "ENDS your turn" not in text
+        assert "no answer; decide yourself" not in text
+        assert "returns at once with your recommendation applied" in text
+        assert "prefer deciding in your reply without the tool" in text
+        assert "2 consultations left" in text
+
+    def test_deciding_only_applies_where_the_hop_would_park(self) -> None:
+        text = self._description(remaining=3, parks=False, decides=True)
+
+        assert "no answer; decide yourself" in text
+        assert "recommendation applied" not in text
+
+    def test_the_three_effects_are_distinct(self) -> None:
+        parks = self._description(remaining=3, parks=True)
+        waits = self._description(remaining=3, parks=False)
+        decides = self._description(remaining=3, parks=True, decides=True)
+
+        assert len({parks, waits, decides}) == 3
 
 
 class TestBashStatesItsRules:

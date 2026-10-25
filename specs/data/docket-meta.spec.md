@@ -1,9 +1,9 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 5.3.0
+**Version**: 5.4.0
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -111,6 +111,7 @@ listed. Each write is audited (`pod.config`).
 | `deniedTools` | comma-joined string | none | Built-in tool names every role of the pod additionally denies; unknown names are refused |
 | `requireVerify` | boolean | `false` | When true, an Implementer hop with no `verifyCmd` fails the task instead of skipping the gate |
 | `maxConsultationsPerTask` | integer | `3` | At least 0. How many `consult` questions one task's turn may ask; `0` disables |
+| `consultMode` | string | `park` | `park` or `decide`. `decide` answers a `consult` in the turn with the model's own recommendation and never waits for a person; the `lights-out` profile requires it |
 | `network` | string | `open` | `open` or `none`. `none` cuts the pod's jailed tool calls off the network; it only narrows the machine setting |
 | `readOnly` | string | `""` | `""` (every machine read-only grant), `none`, or comma-joined absolute paths that must already be machine grants; it only narrows |
 | `prepare` | string | `""` | The install command a task's fresh worktree runs before its first hop; `none` turns preparation off, `""` leaves the choice to the worktree's lockfile. One line, at most 1000 characters |

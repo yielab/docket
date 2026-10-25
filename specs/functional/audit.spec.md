@@ -1,10 +1,10 @@
 # Audit Log Specification
 
-**Version**: 3.0.2
+**Version**: 3.1.0
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -80,7 +80,10 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      an automatically recorded entry lands in), `pod.memory.reset`, `pod.memory.error`, and `repo.allow` (a repository's
      review code was accepted).
    - **Tasks and runs.** `task.enqueue`, `task.retry`, `task.cancel`, `task.reclaimed` (a stale
-     running claim was failed), `task.answer` (never the answer content), `run.dispatch` (an HTTP
+     running claim was failed), `task.answer` (never the answer content), `consult.decided` (a
+     pod with `consultMode decide` answered a `consult` with the model's own recommendation;
+     `detail` names project, task, role, question id and option id, never the message),
+     `run.dispatch` (an HTTP
      dispatch, `channel=http`), `run.resume` (`docket run --resume` cleared an auto-pause), and
      `runs.cancel` (`detail` names the run id, project, the state immediately before
      cancellation as `was=`, and the process groups killed as `killed=`; written only when a run
