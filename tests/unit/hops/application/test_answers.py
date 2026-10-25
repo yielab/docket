@@ -20,7 +20,6 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Question
 from docket.pipeline.domain import spec as _pipeline
-from docket.tasks.application import escalation as _escalation
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -189,10 +188,9 @@ class TestAnswerTaskAudit:
         assert "ship it" not in audit_entry["detail"]
 
 
-class TestAnsweredQuestionsAreCounted:
-    """Defect 10: ``answer_task`` clears the task's ``question``, so the answer record is the only
-    place left to read the question's kind and age. ``docket_decision_latency_seconds_count`` and
-    ``docket_questions_total`` read it from there."""
+class TestAnAnswerKeepsTheQuestionItCleared:
+    """``answer_task`` clears the task's ``question``, so the answer record is the only place left
+    to read the question's kind and age."""
 
     def test_an_answer_keeps_the_kind_and_age_of_the_question_it_cleared(self) -> None:
         parked = _seed_parked_task()
@@ -209,17 +207,6 @@ class TestAnsweredQuestionsAreCounted:
             "clarification",
             created,
         )
-
-    def test_an_answered_question_is_counted_with_its_latency(self) -> None:
-        parked = _seed_parked_task()
-        _answers.answer_task(
-            "demo", parked.id, "accept", {"answer": "ship it"}, channel="cli", actor="op"
-        )
-
-        metrics = _escalation.count_escalation_metrics()
-
-        assert metrics.decision_latency_seconds_count == 1
-        assert metrics.questions_total[("clarification", "accept")] == 1
 
 
 def _stored_question(expires_at: str | None = None) -> Question:

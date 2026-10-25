@@ -9,11 +9,11 @@ from docket.governance import audit as _audit
 from docket.hops.application import usage as _usage
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
+from docket.kernel import escalation_events as _escalation_events
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.operator import build_inbox
 from docket.platform import read_json
-from docket.tasks.application import escalation as _escalation
 from docket.teams import fleet
 
 
@@ -59,6 +59,13 @@ def _esc(s: Any) -> str:
 # *reads* trace JSONL and the audit log to compute counters, it never writes
 # through them and never routes a metric back into either.
 
+# The three events that settle an escalation, mapped to the `outcome` label.
+_ESCALATION_OUTCOMES: dict[str, str] = {
+    _escalation_events.RESOLVED: "resolved",
+    _escalation_events.EXPIRED: "expired",
+    _escalation_events.DECIDED: "decided",
+}
+
 # governance/gate.py's `audit_tool_decision` embeds the raw pre_tool_call
 # policy hit as a fixed `policy_id='...' policy_action='...'` pair right
 # after the agent/role/project prefix, specifically so this can be parsed
@@ -100,6 +107,25 @@ class LoopMetrics:
     approvals: dict[tuple[str, str], int] = field(default_factory=dict)
     turn_duration_seconds_sum: float = 0.0
     turn_duration_seconds_count: int = 0
+    tasks_started: int = 0
+    # Settled escalations by (kind, outcome, by), and the seconds each waited by kind: from the
+    # `escalation_*` events, whose `by` already tells a pod's decision from a person's.
+    escalations: dict[tuple[str, str, str], int] = field(default_factory=dict)
+    escalation_wait_seconds_sum: dict[str, float] = field(default_factory=dict)
+    escalation_wait_seconds_count: dict[str, int] = field(default_factory=dict)
+
+
+def _count_escalation(m: LoopMetrics, outcome: str, payload: dict[str, Any], ts: Any) -> None:
+    """Count one settled escalation and, when both ends are known, the seconds it waited."""
+    kind = str(payload.get("kind", ""))
+    key = (kind, outcome, str(payload.get("by", "")))
+    m.escalations[key] = m.escalations.get(key, 0) + 1
+    asked, settled = _clock.parse_epoch(payload.get("askedAt")), _clock.parse_epoch(ts)
+    if asked is not None and settled is not None and settled >= asked:
+        m.escalation_wait_seconds_sum[kind] = m.escalation_wait_seconds_sum.get(kind, 0.0) + (
+            settled - asked
+        )
+        m.escalation_wait_seconds_count[kind] = m.escalation_wait_seconds_count.get(kind, 0) + 1
 
 
 def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
@@ -127,8 +153,13 @@ def _collect_trace_loop_metrics(m: LoopMetrics) -> None:
                 if policy_id and hook and action:
                     key = (policy_id, hook, action)
                     m.policy_hits[key] = m.policy_hits.get(key, 0) + 1
+            elif etype in _ESCALATION_OUTCOMES:
+                _count_escalation(m, _ESCALATION_OUTCOMES[str(etype)], payload, rec.get("ts"))
             elif etype == "session_start":
                 start_ts = rec.get("ts")
+                # A resumed task writes a second session_start; it is not a new claim.
+                if payload.get("source") == "dispatch" and not payload.get("resumed"):
+                    m.tasks_started += 1
             elif etype == "session_end":
                 end_ts = rec.get("ts")
         if start_ts and end_ts:
@@ -171,37 +202,38 @@ def _loop_metrics() -> LoopMetrics:
     return m
 
 
-def _escalation_metrics_lines() -> list[str]:
-    """Render escalation metrics (task claims, questions, latency) as Prometheus lines."""
-
-    esc = _escalation.count_escalation_metrics()
+def _escalation_metrics_lines(loop: LoopMetrics) -> list[str]:
+    """Render task claims and the escalation counters as Prometheus lines."""
 
     lines: list[str] = [
         "# HELP docket_tasks_started_total Number of dispatch task claims (session_start"
         " trace events); lifetime-of-storage count, resets on trace expiry",
         "# TYPE docket_tasks_started_total counter",
-        "docket_tasks_started_total " + str(esc.tasks_started_total),
-        "# HELP docket_questions_total Questions asked to operators, by kind and outcome;"
-        " lifetime-of-storage count, resets on task deletion",
-        "# TYPE docket_questions_total counter",
+        "docket_tasks_started_total " + str(loop.tasks_started),
+        "# HELP docket_escalations_total Settled escalations, by kind, outcome"
+        " (resolved, expired or decided) and who settled them (person, timeout or policy);"
+        " lifetime-of-storage count, resets on trace expiry",
+        "# TYPE docket_escalations_total counter",
     ]
-    for (kind, outcome), count in sorted(esc.questions_total.items()):
-        lines.append(
-            'docket_questions_total{kind="'
-            + _esc(kind)
-            + '",outcome="'
-            + _esc(outcome)
-            + '"} '
-            + str(count)
-        )
+    for (kind, outcome, by), count in sorted(loop.escalations.items()):
+        lab = 'kind="' + _esc(kind) + '",outcome="' + _esc(outcome) + '",by="' + _esc(by) + '"'
+        lines.append("docket_escalations_total{" + lab + "} " + str(count))
 
     lines += [
-        "# HELP docket_decision_latency_seconds Seconds from question createdAt to"
-        " answeredAt, answered questions only; lifetime-of-storage count",
-        "# TYPE docket_decision_latency_seconds summary",
-        "docket_decision_latency_seconds_sum " + str(esc.decision_latency_seconds_sum),
-        "docket_decision_latency_seconds_count " + str(esc.decision_latency_seconds_count),
+        "# HELP docket_escalation_wait_seconds Seconds from an escalation being asked to its"
+        " settlement, by kind; lifetime-of-storage count",
+        "# TYPE docket_escalation_wait_seconds summary",
     ]
+    for kind in sorted(loop.escalation_wait_seconds_count):
+        lab = '{kind="' + _esc(kind) + '"} '
+        lines.append(
+            "docket_escalation_wait_seconds_sum" + lab + str(loop.escalation_wait_seconds_sum[kind])
+        )
+        lines.append(
+            "docket_escalation_wait_seconds_count"
+            + lab
+            + str(loop.escalation_wait_seconds_count[kind])
+        )
     return lines
 
 
@@ -328,7 +360,7 @@ def render_metrics() -> str:
         "docket_turn_duration_seconds_count " + str(loop.turn_duration_seconds_count),
     ]
 
-    lines += _escalation_metrics_lines()
+    lines += _escalation_metrics_lines(loop)
 
     return "\n".join(lines)
 

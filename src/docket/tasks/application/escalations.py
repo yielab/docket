@@ -3,7 +3,8 @@
 Every way a task stops for a person calls an opener here, at the moment the pause is created. The
 record is written by the store and its id is appended to the task; the older fields the task
 carries (``approvalToken``, ``question``) are still written by the lifecycle from the same values
-and equal what ``legacy`` names, so no surface that reads them notices.
+and equal what ``legacy`` names, so no surface that reads them notices. Opening also writes
+``escalation_asked`` (``kernel/escalation_events.py``), the start of the wait a span measures.
 
 ``governance`` sits below this context, so the tool gate reaches ``approval_opened`` through its
 port (``governance.ports``), bound once per entry.
@@ -16,6 +17,7 @@ import datetime as _dt
 from docket.governance import approval as _approval
 from docket.governance.secrets import redact as _redact
 from docket.kernel import clock as _clock
+from docket.kernel import escalation_events as _events
 from docket.kernel.operator_contract import (
     Escalation,
     EscalationExpiry,
@@ -23,6 +25,7 @@ from docket.kernel.operator_contract import (
     Option,
     Question,
     QuestionV11,
+    Resolution,
     new_escalation_id,
 )
 from docket.platform import write_escalation
@@ -30,7 +33,7 @@ from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
 from docket.teams.settings import load_pod_settings
 
-__all__ = ["approval_opened", "attach", "open_for_approval", "open_for_question"]
+__all__ = ["approval_opened", "attach", "decided_consult", "open_for_approval", "open_for_question"]
 
 _DECLINE = Option(id="decline", label="Decline", description="Refuse without choosing an option.")
 _APPROVE_ONCE = "approve_once"
@@ -62,6 +65,7 @@ def _store(escalation: Escalation) -> Escalation:
         repository = TaskRepository.for_pod(stored.pod)
         if repository.get(stored.task) is not None:
             repository.update(stored.task, lambda record: attach(record, stored))
+    _events.emit(_events.ASKED, stored)
     return stored
 
 
@@ -144,3 +148,31 @@ def open_for_question(
             legacy={"questionId": question.id},
         )
     )
+
+
+def decided_consult(
+    question: QuestionV11, *, role: str, option_id: str, session_id: str = ""
+) -> Escalation:
+    """Trace that the pod applied the model's recommendation and return the escalation describing
+    it. The pause never parks, so nothing is stored or listed on the task: only
+    ``escalation_decided`` is written, under a fresh id."""
+    decided = Escalation(
+        id=new_escalation_id(),
+        task=question.task_id,
+        pod=question.pod,
+        step=question.step,
+        role=role,
+        kind="consult",
+        caused_by=question.step,
+        prompt=_redact(question.message),
+        options=list(question.options),
+        recommendation=question.recommendation,
+        asked_at=question.created_at,
+        on_expiry=_EXPIRY["consult"],
+        policy="recommendation",
+        state="decided",
+        resolution=Resolution(option_id=option_id, by="policy", channel="policy", at=_clock.iso()),
+        legacy={"questionId": question.id},
+    )
+    _events.emit(_events.DECIDED, decided, option_id=option_id, session_id=session_id)
+    return decided

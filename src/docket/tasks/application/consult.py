@@ -5,7 +5,7 @@ The call is validated through ``QuestionV11`` (operator-v1.1) and then, by appro
 the event and raise ``ConsultUnavailable``, which ``agent/tools/registry.py`` renders as the
 ``approval_unavailable`` stop. In pod dispatch (``ctx.consult_park``) the pod setting
 ``consultMode`` picks the rest: ``decide`` applies the model's own recommendation in the turn
-(traced, audited); otherwise a non-refuse consult raises ``ConsultParked`` and the task parks
+(traced as ``question_asked`` and ``escalation_decided``, audited); otherwise a non-refuse consult raises ``ConsultParked`` and the task parks
 ``waiting_input`` until ``hops.application.answers`` re-enters the same role.
 Tool-visible failures are ordinary error results, never exceptions, so the model can adapt.
 """
@@ -23,6 +23,7 @@ from docket.kernel.gate import HandlerParked, HandlerUnavailable
 from docket.kernel.operator_contract import AnswerResultV11, QuestionV11, new_question_id
 from docket.observability import trace as _trace
 from docket.platform import PARK_TOKEN_PREFIX, is_question_id, write_parked
+from docket.tasks.application import escalations as _escalations
 
 if TYPE_CHECKING:
     from docket.agent.tools.registry import ToolContext
@@ -140,6 +141,12 @@ def _decide(question: QuestionV11, ctx: ToolContext) -> ConsultOutcome:
     option_id = recommendation.option_id
     label = next((o.label for o in question.options if o.id == option_id), option_id)
     _trace_question(question, ctx, decided_option_id=option_id)
+    _escalations.decided_consult(
+        question,
+        role=ctx.role,
+        option_id=option_id,
+        session_id=ctx.trace_session_key or ctx.session_key,
+    )
     _audit.audit_log(
         DECIDED_AUDIT,
         f"project={ctx.project} task={ctx.task_id} role={ctx.role} "

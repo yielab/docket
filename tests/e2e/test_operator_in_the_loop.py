@@ -54,6 +54,16 @@ def _status(w: World, task_id: str) -> str:
     return str(w.task(task_id)["task"]["status"])
 
 
+def _escalations(w: World, task_id: str) -> list[tuple[str, str, str]]:
+    """The task's ``escalation_*`` events as ``(event, kind, by)``, in trace order. The trace
+    skeleton keeps the older events; this is the same pauses told with the one payload."""
+    return [
+        (e["event_type"], e["payload"]["kind"], e["payload"].get("by", ""))
+        for e in oracles.trace_events(w, w.pod, task_id)
+        if e["event_type"].startswith("escalation_")
+    ]
+
+
 def _needs_you(w: World) -> list[dict[str, Any]]:
     return list(w.docket("inbox", "--peek", "--json").json()["needsYou"])
 
@@ -145,6 +155,7 @@ def test_a_parked_approval_shows_in_the_inbox_and_a_task_grant_covers_the_rest(
         ("approval_resumed", "lead", ""),
         *DONE,
     ]
+    assert _escalations(w, task_id) == [("escalation_asked", "approval", "")]
     assert len(model.by_role("implementer")) == 5
     _the_model_saw_the_rules_and_the_reason_but_no_token(model, token)
     assert not (_worktree(w, task_id) / "build").exists()
@@ -241,6 +252,7 @@ def test_a_question_from_the_model_waits_for_an_answer(
         ("input_answered", "lead", "implement"),
         *DONE,
     ]
+    assert _escalations(w, task_id) == [("escalation_asked", "consult", "")]
     first, resumed = model.by_role("implementer")
     assert "ENDS your turn" in _consult_description(first)
     assert "3 consultations left" in _consult_description(first)
@@ -309,6 +321,10 @@ def test_an_unanswered_question_expires_to_blocked(
     assert blocked["reason"] == f"question {asked['question']['id']!r} expired unanswered"
     assert blocked["question"] is None
     assert ("input_expired", "lead", "") in oracles.trace_skeleton(w, w.pod, task_id)
+    assert _escalations(w, task_id) == [
+        ("escalation_asked", "consult", ""),
+        ("escalation_expired", "consult", "timeout"),
+    ]
     assert len(model.by_role("implementer")) == 1
 
     w.docket("task", "retry", task_id, "--pod", w.pod)

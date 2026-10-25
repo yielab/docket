@@ -15,8 +15,9 @@ from docket.agent.ports import ToolCall
 from docket.agent.tools.registry import ToolContext, ToolResult, dispatch_tool
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
+from docket.kernel.operator_contract import is_escalation_id
 from docket.observability import trace as _trace
-from docket.platform import parked_question
+from docket.platform import list_escalations, parked_question
 from docket.tasks.application import consult as _consult
 from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _arch
@@ -219,6 +220,46 @@ class TestDecide:
         assert row["detail"].split()[:3] == ["project=demo", "task=t-1", "role=lead"]
         assert "optionId=sqlite" in row["detail"] and "questionId=q" in row["detail"]
         assert "Which store" not in row["detail"] and "Redis" not in row["detail"]
+
+    def test_the_decision_is_one_escalation_decided_beside_the_question(self) -> None:
+        decided: list[dict[str, Any]] = []
+        off = _trace.add_subscriber(
+            lambda r: decided.append(r) if r.get("event_type") == "escalation_decided" else None
+        )
+        try:
+            _, asked = self._decide(trace_session_key="task:t-1")
+        finally:
+            off()
+
+        (event,) = decided
+        payload = event["payload"]
+        assert is_escalation_id(payload["escalation"])
+        assert (payload["kind"], payload["policy"], payload["by"]) == (
+            "consult",
+            "recommendation",
+            "policy",
+        )
+        assert (payload["optionId"], payload["task"]) == ("sqlite", "t-1")
+        assert payload["askedAt"] == asked[0]["payload"]["question"]["createdAt"]
+        assert (event["session_id"], event["task_id"]) == ("task:t-1", "t-1")
+        assert "Which store" not in json.dumps(payload)
+
+    def test_no_record_is_stored_for_a_pause_nobody_waited_on(self) -> None:
+        self._decide()
+
+        assert list_escalations() == []
+
+    def test_a_consult_that_parks_decides_nothing(self) -> None:
+        decided: list[dict[str, Any]] = []
+        off = _trace.add_subscriber(
+            lambda r: decided.append(r) if r.get("event_type") == "escalation_decided" else None
+        )
+        try:
+            _call(_args(), _ctx(consult_park=True, consult_mode="park", task_id="t-1"))
+        finally:
+            off()
+
+        assert decided == []
 
     def test_nothing_is_parked(self) -> None:
         result, _ = self._decide()

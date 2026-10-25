@@ -127,6 +127,7 @@ def _llm_call_canary_payload() -> dict[str, Any]:
 _CANARY_CLASSES: dict[str, str] = {
     "CANARY-approval_requested-action": "toolArguments",
     "CANARY-error-error": "errors",
+    "CANARY-escalation_asked-prompt": "prompts",
     "CANARY-tool_call-arguments": "toolArguments",
     "CANARY-tool_result-text": "toolResults",
     "CANARY-llm_call-system": "instructions",

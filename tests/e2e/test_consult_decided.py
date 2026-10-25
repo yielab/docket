@@ -82,6 +82,17 @@ def test_a_deciding_pod_applies_the_recommendation_and_finishes_without_a_person
         if e["event_type"] == "question_asked"
     ]
     assert [(p["mode"], p["decidedOptionId"]) for p in asked] == [("decided", "redis")]
+    (decision,) = [
+        e["payload"]
+        for e in oracles.trace_events(w, w.pod, task_id)
+        if e["event_type"] == "escalation_decided"
+    ]
+    assert (decision["kind"], decision["by"], decision["optionId"]) == (
+        "consult",
+        "policy",
+        "redis",
+    )
+    assert (decision["policy"], decision["task"]) == ("recommendation", task_id)
     decided = [r for r in oracles.audit_rows(w) if r["action"] == "consult.decided"]
     assert len(decided) == 1
     assert f"task={task_id}" in decided[0]["detail"] and "optionId=redis" in decided[0]["detail"]

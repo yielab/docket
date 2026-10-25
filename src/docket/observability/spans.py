@@ -45,6 +45,9 @@ class _OpenSpan:
 class ProjectionState:
     stacks: dict[str, list[_OpenSpan]] = field(default_factory=dict)
     last_ts: dict[str, str] = field(default_factory=dict)
+    # An escalation's wait outlives the session and the turn that asked it, so its open span is
+    # held by escalation id, with the session whose last timestamp closes it on a forced flush.
+    escalations: dict[str, tuple[str, _OpenSpan]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -89,7 +92,29 @@ ATTRIBUTE_CLASSES: dict[str, str] = {
     "gen_ai.output.messages": "completions",
     "gen_ai.system_instructions": "instructions",
     "docket.session.input": "prompts",
+    "docket.escalation.prompt": "prompts",
     "docket.session.output": "completions",
+}
+
+# The `escalation_*` family shares one payload (kernel/escalation_events.py): each payload key
+# below becomes the `docket.escalation.<name>` attribute. The options and recommendation ids are
+# not here, so they never leave the host.
+ESCALATION_EVENTS: tuple[str, ...] = (
+    "escalation_asked",
+    "escalation_delivered",
+    "escalation_resolved",
+    "escalation_expired",
+    "escalation_decided",
+)
+ESCALATION_ATTRIBUTES: dict[str, str] = {
+    "escalation": "id",
+    "kind": "kind",
+    "policy": "policy",
+    "task": "task",
+    "step": "step",
+    "by": "by",
+    "channel": "channel",
+    "level": "level",
 }
 
 # Per generic event type, the payload keys forwarded as `docket.<key>` structural
@@ -149,8 +174,9 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
     "run_cancelled": ("run", "source"),
     "step_skipped": ("step",),
     "input_requested": ("task", "step", "questionId"),
-    "question_asked": ("questionId", "kind", "mode"),
+    "question_asked": ("questionId", "kind", "mode", "decidedOptionId"),
     "input_answered": ("task", "step", "questionId", "action"),
+    **dict.fromkeys(ESCALATION_EVENTS, tuple(ESCALATION_ATTRIBUTES)),
     "process_started": ("pgid", "tool"),
     "process_exited": ("pgid", "tool", "exitCode", "signal"),
     "error": ("run", "source"),
@@ -166,6 +192,7 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
 _GENERIC_CONTENT_ATTRS: dict[str, tuple[str, str, str]] = {
     "approval_requested": ("action", "docket.approval.action", "toolArguments"),
     "error": ("error", "docket.error.message", "errors"),
+    "escalation_asked": ("prompt", "docket.escalation.prompt", "prompts"),
 }
 
 
