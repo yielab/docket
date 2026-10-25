@@ -15,7 +15,7 @@ from typing import Any
 
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import World
-from tests.support.model_server import FakeModel, call, say, write_file
+from tests.support.model_server import FakeModel, Request, call, say, write_file
 
 PIPELINE = """name: operator-loop
 steps:
@@ -54,6 +54,11 @@ def _status(w: World, task_id: str) -> str:
 
 def _needs_you(w: World) -> list[dict[str, Any]]:
     return list(w.docket("inbox", "--peek", "--json").json()["needsYou"])
+
+
+def _consult_description(request: Request) -> str:
+    tools = {t["function"]["name"]: t["function"] for t in request.body["tools"]}
+    return str(tools["consult"]["description"])
 
 
 def _worktree(w: World, task_id: str) -> Path:
@@ -210,6 +215,9 @@ def test_a_question_from_the_model_waits_for_an_answer(
         *DONE,
     ]
     first, resumed = model.by_role("implementer")
+    assert "ENDS your turn" in _consult_description(first)
+    assert "3 consultations left" in _consult_description(first)
+    assert "2 consultations left" in _consult_description(resumed)
     assert "Operator answered" not in first.last_user_text
     assert (
         f"Operator answered your consultation {asked['question']['id']}" in resumed.last_user_text

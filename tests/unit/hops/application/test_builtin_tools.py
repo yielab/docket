@@ -80,3 +80,48 @@ class TestBashDescriptionPrefersTheFileTools:
         assert tool is not None
         assert "`write`/`edit`" in tool.description
         assert "heredocs" in tool.description
+
+
+class TestConsultDescriptionTellsTheTruth:
+    """The consult schema matches its handler and the description says what asking does."""
+
+    def _description(self, remaining: int, parks: bool) -> str:
+        registry = builtin_registry()
+        builtin_tools.describe_consult(registry, remaining=remaining, parks=parks)
+        tool = registry.get("consult")
+        assert tool is not None
+        return tool.description
+
+    def test_schema_requires_the_recommendation_the_handler_requires(self) -> None:
+        specs = {s.name: s for s in builtin_registry().specs()}
+
+        assert specs["consult"].parameters["required"] == [
+            "kind",
+            "message",
+            "options",
+            "recommendation",
+        ]
+
+    def test_the_default_description_says_asking_ends_the_turn(self) -> None:
+        tool = builtin_registry().get("consult")
+
+        assert tool is not None
+        assert "ENDS your turn" in tool.description
+        assert "decide" in tool.description
+        assert "no answer" not in tool.description
+
+    def test_a_dispatch_hop_states_the_consultations_left(self) -> None:
+        text = self._description(remaining=2, parks=True)
+
+        assert "ENDS your turn" in text
+        assert "2 consultations left" in text
+
+    def test_one_left_is_singular_and_none_left_says_so(self) -> None:
+        assert "1 consultation left" in self._description(remaining=1, parks=True)
+        assert "no consultations left" in self._description(remaining=0, parks=True)
+
+    def test_outside_dispatch_the_call_returns_no_answer_at_once(self) -> None:
+        text = self._description(remaining=3, parks=False)
+
+        assert "ENDS your turn" not in text
+        assert "no answer; decide yourself" in text

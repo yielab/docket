@@ -95,7 +95,7 @@ class TestValidation:
         finally:
             off()
         assert not result.ok and "recommendation" in result.as_tool_output()
-        assert result.denial_kind is None
+        assert result.denial_kind == "invalid_call"
         assert seen == []
 
     def test_fewer_than_two_options_is_an_error_result(self) -> None:
