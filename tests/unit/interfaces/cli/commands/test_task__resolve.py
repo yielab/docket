@@ -59,6 +59,30 @@ def _held_question() -> Escalation:
     )
 
 
+def _waiting_consult() -> Escalation:
+    """A consult a running turn blocks on: the approval record it waits for and the escalation
+    carrying its token; the task stays `running` with no parked question."""
+    record = task(status=Status.running)
+    put_task("demo", record)
+    token = _ap.approval_create("demo", "implementer", "Which store?", context={"kind": "consult"})
+    question = QuestionV11.model_validate(
+        {
+            "id": "q-cli-2",
+            "taskId": record.id,
+            "pod": "demo",
+            "step": "implementer",
+            "message": "Which store?",
+            "requestedSchema": {"type": "object", "properties": {"note": {"type": "string"}}},
+            "createdAt": "2026-10-25T00:00:00+00:00",
+            "kind": "decision",
+            "options": [Option(id="redis", label="Redis", description="fast").model_dump()],
+        }
+    )
+    return _escalations.open_for_question(
+        question, kind="consult", role="implementer", caused_by="c1", token=token
+    )
+
+
 def _only_task() -> Any:
     return TaskRepository.for_pod("demo").list()[0]
 
@@ -197,3 +221,42 @@ class TestAnswerSettlesAnEscalation:
             result = _task("answer", "esc-000000000000", "--option", "deny")
 
             assert result.exit_code == 1
+
+
+class TestAnswerAConsultWaitingInTheTurn:
+    def test_it_is_answered_by_its_escalation_id(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            escalation = _waiting_consult()
+
+            result = _task("answer", escalation.id, "--option", "redis")
+
+            assert result.exit_code == 0, result.output
+            stored = read_escalation(escalation.id)
+            assert stored is not None and stored.state == "resolved"
+            assert stored.resolution is not None
+            assert (stored.resolution.option_id, stored.resolution.channel) == ("redis", "cli")
+            assert _ap.approval_get(str(escalation.legacy["token"]))["state"] == "granted"
+
+    def test_it_is_answered_by_its_task_and_can_be_declined(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            escalation = _waiting_consult()
+
+            result = _task("answer", escalation.task, "--decline")
+
+            assert result.exit_code == 0, result.output
+            stored = read_escalation(escalation.id)
+            assert stored is not None and stored.resolution is not None
+            assert stored.resolution.option_id == "decline"
+            assert _ap.approval_get(str(escalation.legacy["token"]))["state"] == "denied"
+
+    def test_a_running_task_with_no_consult_still_has_no_pending_question(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            record = task(status=Status.running)
+            put_task("demo", record)
+
+            result = _task("answer", record.id, "--option", "redis")
+
+            assert result.exit_code == 1
+            assert "no pending question" in result.output + result.stderr

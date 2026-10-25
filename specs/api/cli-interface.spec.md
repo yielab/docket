@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 4.4.0
+**Version**: 4.5.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-25
@@ -385,6 +385,9 @@ The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.
   parked on a question, a `waiting_approval` task, or an `esc-` escalation id. On a question it
   answers it (text, `--field`, `--option`, `--decline`); on a TTY with no text, field or option it
   prompts, off a TTY it exits 1 naming `--option`; a `--field` that is not `name=value` exits 2.
+  A consult that a running turn waits on in place (the task is `running`, not parked) is answered
+  the same way, by its `esc-` id or by its task, through `resolve`: the record becomes `resolved`
+  and the turn reads the answer.
   On an approval, gate or changed check, `--option approve_once|approve_task|deny` settles it;
   a repeat on an escalation already settled that way is a warning,
   exit 0. `approve` and `deny` are the older forms of the same two options and call the same

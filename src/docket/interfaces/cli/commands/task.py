@@ -37,9 +37,10 @@ from docket.interfaces.cli.commands.task_render import (
 from docket.interfaces.cli.render import ui
 from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError, DocketError
-from docket.kernel.operator_contract import Escalation, Question, is_escalation_id
+from docket.kernel.operator_contract import Escalation, Question, QuestionV11, is_escalation_id
 from docket.observability import trace as _trace
-from docket.platform import read_escalation
+from docket.operator import pause_is_live
+from docket.platform import list_escalations, read_escalation
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import lifecycle as _lifecycle
@@ -447,13 +448,41 @@ def _decide(token: str, option: str, label: str, project: str | None, reason: st
         _resume_hint(project)
 
 
+def _waiting_consult(found: TaskRef) -> QuestionV11 | None:
+    """The consult a running turn of *found* blocks on, as the question it asks, else ``None``.
+    The task carries no parked question then; the pending escalation is the only record of it."""
+    for record in reversed(list_escalations(state="pending")):
+        if (
+            (record.pod, record.task) == (found.project, found.task_id)
+            and record.kind == "consult"
+            and record.legacy.get("token")
+            and pause_is_live(record)
+        ):
+            return QuestionV11(
+                id=str(record.legacy.get("questionId", "")),
+                task_id=record.task,
+                pod=record.pod,
+                step=record.step,
+                message=record.prompt,
+                requested_schema=record.requested_schema or {"type": "object", "properties": {}},
+                created_at=record.asked_at,
+                kind="decision",
+                options=[o for o in record.options if o.id != "decline"],
+                recommendation=record.recommendation,
+            )
+    return None
+
+
 def _question_of(found: TaskRef) -> Question:
     record = _task_record(found)
     question = record.question
-    if record.status != Status.waiting_input or question is None:
+    if record.status == Status.waiting_input and question is not None:
+        return question
+    waiting = _waiting_consult(found)
+    if waiting is None:
         ui.error(f"Task {short_id(found.task_id)} has no pending question", "Run docket inbox")
         raise typer.Exit(1)
-    return question
+    return waiting
 
 
 _APPROVAL_OPTIONS = ("approve_once", "approve_task", "deny")

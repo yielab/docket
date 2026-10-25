@@ -112,7 +112,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Telegram Integration | 4.2.0 | Implemented |
 | Trace Store | 3.2.0 | Implemented and live |
 | Workspace Structure | 2.2.0 | Complete |
-| CLI Interface | 4.4.0 | Complete |
+| CLI Interface | 4.5.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 1.11.0 | Implemented |
