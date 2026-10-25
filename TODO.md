@@ -59,7 +59,7 @@
 
 ### P51-1 — a consult the pod decides alone (`consultMode: decide`)
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged 2026-10-25, 939f2af4) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger (measured 2026-10-25):** after Phase A, `basic` live eval 0/3: the Lead consults
   "Where should the Implementer create smoke-artifact.txt?" with the right recommendation and the
@@ -107,7 +107,7 @@
 
 ### P51-2 — the escalation record behind the store
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** refactor + spec
+**Status:** DONE (merged 2026-10-25, 87a59c90) · **Size:** L · **Model:** Sonnet · **Kind:** refactor + spec
 
 - **Trigger (measured):** the task carries seven fields that all mean "what the outside told this
   task" (`tasks/domain/task.py:236-260`: `approvalToken`, `question`, `consultAnswer`, `answers`,
