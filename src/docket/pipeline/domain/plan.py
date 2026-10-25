@@ -326,6 +326,24 @@ def _normalize_line(line: str, flags: int) -> str:
     return text
 
 
+_PLAIN_ALTERNATION = re.compile(r"\(([A-Za-z0-9_-]+(?:\|[A-Za-z0-9_-]+)*)\)")
+
+
+def verdict_values(gate: _gates.VerdictGate) -> tuple[str, ...]:
+    """The values *gate* accepts, upper-case unless the gate is case-sensitive: the plain
+    alternatives of its pattern's group, then any pass or rework value the pattern does not name."""
+    found: list[str] = []
+    group = _PLAIN_ALTERNATION.search(gate.pattern)
+    if group:
+        found.extend(group.group(1).split("|"))
+    for value in (*gate.pass_values, *(gate.rework.when if gate.rework else ())):
+        if normalize_values([value], gate.case_sensitive).isdisjoint(
+            normalize_values(found, gate.case_sensitive)
+        ):
+            found.append(value)
+    return tuple(found if gate.case_sensitive else (v.upper() for v in found))
+
+
 def parse_verdict(gate: _gates.VerdictGate, output: str) -> str | None:
     """The verdict in *output*, or ``None`` when no line carries one: the gate's pattern applied
     at the start of each decoration-stripped line, the last match winning, never a substring
