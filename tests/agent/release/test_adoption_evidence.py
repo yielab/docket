@@ -458,8 +458,8 @@ def test_public_report_links_raw_evidence_and_states_only_measured_truth() -> No
         "does not import a `docket` module",
         "latency is set, not measured",
         "docket run --pod demo --dry-run",
-        "docket task approve",
-        "docket task deny",
+        "docket task answer --option approve_once",
+        "`--option deny`",
         "docket task show",
         "",
     ]
