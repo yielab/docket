@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.0.0
+**Version**: 5.1.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-25
@@ -353,8 +353,10 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   (the unmerged branch stays) and audits it (`pod.worktrees.prune`). `--traces` also deletes
   TERMINATED trace files of the pod past `TRACE_RETENTION_DAYS` (an OPEN trace is never deleted)
   and terminal run records of the pod past the same window (another pod's records are never
-  touched; only the `docket start` sweep prunes run records fleet-wide); `--days N` overrides
-  the window and without `--traces` exits 2. `--dry-run` changes nothing. Ends with
+  touched; only the `docket start` sweep prunes run records fleet-wide) and the settled
+  escalation records past the same window (`prune_settled_escalations`: the store keeps them in
+  one directory, so this part is not limited to the pod, and a resolved record not yet applied is
+  kept); `--days N` overrides the window and without `--traces` exits 2. `--dry-run` changes nothing. Ends with
   `Next: docket task list`
 **Output**: Every bracketed identifier and every task description or failure reason is printed
 literally, never interpreted as terminal markup

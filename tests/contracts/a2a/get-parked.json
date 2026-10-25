@@ -83,7 +83,8 @@
                   "optionId": "redis",
                   "rationale": "it is already deployed",
                   "evidenceRefs": []
-                }
+                },
+                "level": "L3"
               }
             }
           ],

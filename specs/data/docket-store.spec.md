@@ -1,6 +1,6 @@
 # Docket JSON Store Specification
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Implemented
 **Last updated**: 2026-10-25
 
@@ -110,7 +110,7 @@ directory's lock when it settles, so the scan the inbox repeats reads only the l
    `dry_run`, that would be). A `resolved` record whose `appliedAt` is unset is kept whatever its
    age, because the task's claim has not applied it yet. A pending record is never touched, and the
    counter file is never deleted, so a `seq` is never handed out twice. The `serve` sweep that
-   expires traces MUST call it.
+   expires traces MUST call it, and so MUST `docket task prune --traces`.
 
 ## Validation
 

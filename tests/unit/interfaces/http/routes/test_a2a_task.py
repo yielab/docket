@@ -128,6 +128,16 @@ class TestEscalationMessage:
         assert data["data"]["onExpiry"] == "block"
         assert data["data"]["recommendation"]["optionId"] == "redis"
 
+    def test_it_carries_the_level_the_pause_was_decided_at(self) -> None:
+        data = a2a_task.escalation_message(_view(level="L4"))["parts"][1]["data"]
+
+        assert data["level"] == "L4"
+
+    def test_a_pause_that_names_no_queued_task_has_no_level_key(self) -> None:
+        data = a2a_task.escalation_message(_view())["parts"][1]["data"]
+
+        assert "level" not in data
+
     def test_its_options_and_recommendation_are_the_operator_v11_models(self) -> None:
         data = a2a_task.escalation_message(_view())["parts"][1]["data"]
 

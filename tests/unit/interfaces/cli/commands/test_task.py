@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,7 +21,15 @@ from docket.governance import approval as _approval
 from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.cli.app import app
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import Option, QuestionV11, Recommendation, new_question_id
+from docket.kernel.operator_contract import (
+    Escalation,
+    Option,
+    QuestionV11,
+    Recommendation,
+    new_escalation_id,
+    new_question_id,
+)
+from docket.platform import read_escalation, write_escalation
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application.repository import TaskRepository
@@ -36,6 +45,23 @@ steps:
   - implementer: implementer
     approval: true
 """
+
+
+def _settled_escalation() -> Escalation:
+    """An escalation the pod decided alone: stored settled, with no live work behind it."""
+    return Escalation(
+        id=new_escalation_id(),
+        task="task-x",
+        pod="demo",
+        step="lead",
+        role="lead",
+        kind="consult",
+        caused_by="lead",
+        prompt="Which store?",
+        asked_at="2026-10-01T00:00:00Z",
+        on_expiry="block",
+        state="expired",
+    )
 
 
 @contextmanager
@@ -615,3 +641,24 @@ class TestTaskPrune:
             assert result.exit_code == 0, result.output
             assert "trace file" in result.output
             assert "run record" in result.output
+
+    def test_traces_also_prunes_the_settled_escalations(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            old = write_escalation(_settled_escalation())
+            settled_file = current_home().escalations_dir / "settled" / f"{old.id}.json"
+            os.utime(settled_file, (0, 0))
+
+            dry = _runner.invoke(
+                app, ["task", "prune", "--traces", "--days", "0", "--dry-run", "--pod", "demo"]
+            )
+            assert dry.exit_code == 0, dry.output
+            assert "Would remove 1 settled escalation record(s)" in dry.output
+            assert settled_file.exists()
+
+            result = _runner.invoke(
+                app, ["task", "prune", "--traces", "--days", "0", "--pod", "demo"]
+            )
+            assert result.exit_code == 0, result.output
+            assert "Removed 1 settled escalation record(s)" in result.output
+            assert not settled_file.exists()
+            assert read_escalation(old.id) is None

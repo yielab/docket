@@ -1,6 +1,6 @@
 # A2A binding (JSON-RPC over HTTP) -- contract spec
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Implemented
 **Last Updated**: 2026-10-25
 
@@ -145,6 +145,7 @@ escalation `prompt`. The `data` part is the MCP elicitation request and the exte
 | `options`, `recommendation` | as in the operator-v1.1 question |
 | `escalationId`, `escalationKind` | the record's id and its kind (`approval`, `consult`, `input`, `gate`, `check_changed`) |
 | `expiresAt`, `onExpiry`, `policy` | as in the escalation view |
+| `level` | the autonomy level (`L3`, `L4` or `L5`) the pause was decided at, as in the escalation view; the key is absent for a pause that names no queued task |
 
 The data part is built from the `EscalationView` of the pending escalation and carries nothing
 the view does not: no approval token, no resolve URL.
