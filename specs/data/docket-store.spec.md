@@ -1,6 +1,6 @@
 # Docket JSON Store Specification
 
-**Version**: 2.3.0
+**Version**: 3.0.0
 **Status**: Implemented
 **Last updated**: 2026-10-25
 
@@ -100,8 +100,8 @@ directory's lock when it settles, so the scan the inbox repeats reads only the l
    state `resolved` whose `appliedAt` is unset, under the record's lock, and return whether it did;
    a record of any other state, one already stamped and an absent one are left as they are
    (`False`), so two callers racing to apply one resolution see exactly one `True`.
-6. `settle_escalation(key, value, state)` MUST move the one pending record whose `legacy[key]`
-   equals `value` to `state` under the record's lock and return whether one was moved. A record
+6. `settle_escalation(id, state)` MUST move the pending record *id* to `state` under the record's
+   lock and return whether it was moved. A record
    that is no longer `pending` is left as it is. A record settled by `settle_escalation` or by
    `resolve_escalation` leaves `escalations/` for `escalations/settled/`, keeping its `seq`.
 7. `prune_settled_escalations(retention_s=None, dry_run=False, now=None)` MUST delete the files under
