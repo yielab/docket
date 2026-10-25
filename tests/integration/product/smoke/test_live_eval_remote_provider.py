@@ -8,6 +8,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+from tests.support.git import init_repo
 from tests.support.smoke_script import (
     CANARY_KEY,
     REMOTE_KEY_ENV,
@@ -160,3 +161,56 @@ def test_sandbox_must_be_on_or_off(tmp_path: Path, capsys: pytest.CaptureFixture
 
     assert raised.value.code == 2
     assert "--sandbox" in capsys.readouterr().err
+
+
+def _forbid_any_run(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Make a run of the smoke fail the test; the list stays empty."""
+    started: list[int] = []
+
+    def start(*_args: object, **_kwargs: object) -> None:
+        started.append(1)
+        raise AssertionError("a refused invocation started a run")
+
+    monkeypatch.setattr(live_eval, "run_once", start)
+    return started
+
+
+def test_out_inside_a_git_work_tree_is_refused_before_the_first_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    enclosing = tmp_path / "enclosing"
+    init_repo(enclosing)
+    out = enclosing / "evals" / "out"
+    started = _forbid_any_run(monkeypatch)
+
+    code = live_eval.main(["-n", "2", "--out", str(out)])
+
+    err = capsys.readouterr().err
+    assert code == 2 and started == [] and not out.exists()
+    assert len(err.strip().splitlines()) == 1
+    assert err.startswith(f"live_eval: {out.resolve()} is inside a git work tree (")
+    assert f"({enclosing.resolve()})" in err and "outside any repository" in err
+
+
+def test_out_outside_any_repository_is_not_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = tmp_path / "fake_smoke.py"
+    fake.write_text("import sys\nsys.exit(1)\n", encoding="utf-8")
+    monkeypatch.setattr(live_eval, "SMOKE", fake)
+    out = tmp_path / "plain" / "out"
+
+    code = live_eval.main(["--out", str(out)])
+
+    assert code == 1 and (out / "summary.json").is_file()
+
+
+def test_dry_run_stays_a_printout_even_inside_a_work_tree(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    enclosing = tmp_path / "enclosing"
+    init_repo(enclosing)
+
+    code = live_eval.main(["--out", str(enclosing / "out"), "--dry-run", "-n", "1"])
+
+    assert code == 0 and "--live-model" in capsys.readouterr().out
