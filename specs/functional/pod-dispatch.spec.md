@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.3.0
+**Version**: 10.4.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1195,6 +1195,17 @@ parsing for any verdict-gated step (`parse_verdict`).
      followed by the answer. The re-ask happens at most once per hop attempt, never when the first
      reply carries a marker, and a failed re-ask request leaves the original reply and its
      unparseable outcome in place. A reply that still has no marker fails exactly as before.
+   - A verdict-gated hop **MUST** be offered a `verdict` tool (`kind="read"`) whose single required
+     `value` parameter is a string with a JSON-schema `enum` of the gate's allowed values (upper-case
+     unless the gate is case-sensitive) and whose description is "Record your verdict and finish.
+     Call this once, as your last action.". A call with a value in the enum (matched ignoring case
+     unless the gate is case-sensitive) **MUST** succeed and end the turn (`agent-loop.spec.md`
+     "A tool that ends the turn"): the hop's output is the assistant text of that message followed
+     by a final line holding exactly the recorded value, so `parse_verdict` reads it like any
+     other reply and the verdict, gate, rework and routing handling are unchanged. A value outside
+     the enum **MUST** fail the call with the allowed values named and **MUST NOT** end the turn.
+     The text marker remains accepted: a hop that never calls `verdict` is parsed, and re-asked,
+     exactly as above. A hop with no verdict gate **MUST NOT** be offered the tool.
    - An `ApprovalGate` **MUST** be evaluated **pre-hop** (see "require_approval gate and
      waiting_approval") -- by the time a hop's turn has run, an `ApprovalGate` simply advances.
      Outcome routing (item 5) does not apply to an approval gate.

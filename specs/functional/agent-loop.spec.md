@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 3.0.2
+**Version**: 3.1.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -642,6 +642,16 @@ This specification does NOT cover:
     written back: `session.json` and the compaction candidates are built from the stored messages,
     and the newest `HISTORY_KEEP_FULL_RESULTS` tool results of the request stay whole, with older
     ones while they fit `HISTORY_FULL_RESULTS_CHARS`.
+
+### A tool that ends the turn
+
+85. A `Tool` **MAY** be declared `ends_turn`. After a batch in which such a tool's call executed and
+    succeeded, the loop **MUST**, once the round's messages are persisted, stop with
+    `stop_reason="final_message"` and `ok=True` without a further backend call. The turn's
+    `output` **MUST** be the batch's assistant text (when it has any) followed by a newline and the
+    successful result text of the last such call. A call that failed or was refused does not end
+    the turn. Every call still passes `dispatch_tool`; the approval and denial stops of the same
+    round take precedence.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 

@@ -94,7 +94,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.0 | Complete |
-| Agent Loop | 3.0.2 | Implemented and live |
+| Agent Loop | 3.1.0 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
 | Audit | 3.0.2 | Implemented |
 | Config Format | 2.0.0 | Implemented |
@@ -103,7 +103,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 2.2.0 | Implemented and live |
 | Pipeline Format | 4.1.0 | Implemented |
 | Pod Blueprints | 2.1.0 | Implemented |
-| Pod Dispatch | 10.3.0 | Implemented |
+| Pod Dispatch | 10.4.0 | Implemented |
 | Role Archetypes | 4.1.0 | Implemented |
 | Security Gates | 1.4.1 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
