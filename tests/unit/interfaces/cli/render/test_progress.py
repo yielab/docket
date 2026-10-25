@@ -19,14 +19,17 @@ from tests.support.tasks import put_task, task
 from docket.governance import approval as _ap
 from docket.interfaces.cli.render import progress as _progress
 from docket.kernel import clock as _clock
+from docket.kernel import escalation_events as _events
 from docket.kernel.home import current_home, use_home
 from docket.kernel.operator_contract import (
+    Escalation,
     Option,
     Question,
     QuestionV11,
     Recommendation,
     new_question_id,
 )
+from docket.operator import escalation_view
 from docket.platform import read_escalation
 from docket.tasks.application import escalations as _escalations
 
@@ -125,24 +128,39 @@ class TestRenderEvent:
     def test_any_other_tool_call_returns_none(self, payload: dict[str, Any]) -> None:
         assert _progress.render_event(_record("tool_call", payload)) is None
 
-    def test_approval_required_names_the_token_and_the_approve_command(self) -> None:
-        line = _progress.render_event(
-            _record("approval_required", {"token": "apr-1", "role": "lead"}, role="lead")
+    def test_an_asked_approval_names_the_escalation_and_the_command_that_answers_it(self) -> None:
+        record = _record(
+            "escalation_asked",
+            {"escalation": "esc-1", "kind": "gate", "prompt": "hop lead needs approval"},
+            role="lead",
         )
-        assert line == "⏸ lead hop needs approval · token apr-1 · docket task approve apr-1"
+        assert _progress.render_event(record) == (
+            "⏸ lead needs approval: hop lead needs approval · esc-1 · "
+            "docket task answer esc-1 --option approve_once"
+        )
 
-    def test_approval_requested_counts_down_from_the_configured_timeout(self) -> None:
-        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=120)):
-            record = _record(
-                "approval_requested",
-                {"token": "apr-2", "action": "bash('rm -rf x')"},
-            )
-            now = _clock.parse_epoch(record["ts"]) + 20  # 20s have elapsed since the event
-            line = _progress.render_event(record, now=now)
-            assert line == (
-                "⏸ implementer wants: bash('rm -rf x') · token apr-2 · denies in 100s · "
-                "docket task approve apr-2"
-            )
+    def test_an_asked_approval_counts_down_to_its_deadline(self) -> None:
+        record = _record(
+            "escalation_asked",
+            {
+                "escalation": "esc-2",
+                "kind": "approval",
+                "prompt": "bash('rm -rf x')",
+                "expiresAt": "2026-09-28T00:02:00Z",
+            },
+        )
+        now = _clock.parse_epoch(record["ts"]) + 20  # 20s have elapsed since the event
+        line = _progress.render_event(record, now=now)
+        assert line == (
+            "⏸ implementer wants: bash('rm -rf x') · esc-2 · denies in 100s · "
+            "docket task answer esc-2 --option approve_once"
+        )
+
+    def test_a_question_is_not_rendered_here_and_the_retired_events_are_not_at_all(self) -> None:
+        asked = {"escalation": "esc-3", "kind": "consult", "prompt": "Which store?"}
+        assert _progress.render_event(_record("escalation_asked", asked)) is None
+        for retired in ("approval_required", "approval_requested", "question_asked"):
+            assert _progress.render_event(_record(retired, {"token": "t", "action": "x"})) is None
 
     def test_an_unrenderable_event_type_returns_none(self) -> None:
         assert _progress.render_event(_record("llm_call", {})) is None
@@ -171,17 +189,23 @@ class TestParseAnswer:
 # ── handle_approval_prompt ────────────────────────────────────────────────────
 
 
+def _open_approval(action: str = "bash: git push origin main") -> tuple[str, str]:
+    """The approval record of a call in a turn and the escalation opened on it."""
+    token = _ap.approval_create("demo", "implementer", action)
+    opened = _escalations.open_for_approval(
+        token, kind="approval", task_id="in-turn", caused_by="c1"
+    )
+    return token, opened.id
+
+
 class TestHandleApprovalPrompt:
-    def test_a_prompt_answer_settles_the_escalation_record_too(self, tmp_path: Path) -> None:
+    def test_a_grant_settles_the_record_and_the_approval_it_backs(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-            opened = _escalations.open_for_approval(
-                token, kind="approval", task_id="in-turn", caused_by="c1"
-            )
+            token, record_id = _open_approval()
 
-            outcome = _progress.handle_approval_prompt(token, "a")
+            outcome = _progress.handle_approval_prompt(record_id, "a")
 
-            stored = read_escalation(opened.id)
+            stored = read_escalation(record_id)
             assert outcome.action == "granted"
             assert stored is not None and stored.state == "resolved"
             assert stored.resolution is not None
@@ -189,78 +213,61 @@ class TestHandleApprovalPrompt:
                 "approve_once",
                 "cli",
             )
+            assert _ap.approval_get(token)["state"] == "granted"
 
-    def test_a_denial_settles_the_record_with_deny(self, tmp_path: Path) -> None:
+    def test_a_denial_settles_the_record_and_the_approval_with_deny(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-            opened = _escalations.open_for_approval(
-                token, kind="approval", task_id="in-turn", caused_by="c1"
-            )
+            token, record_id = _open_approval()
 
-            outcome = _progress.handle_approval_prompt(token, "d")
+            outcome = _progress.handle_approval_prompt(record_id, "d")
 
-            stored = read_escalation(opened.id)
+            stored = read_escalation(record_id)
             assert outcome.action == "denied"
             assert stored is not None and stored.resolution is not None
             assert stored.resolution.option_id == "deny"
-
-    def test_a_grants_through_the_same_pair_docket_approve_uses(self, tmp_path: Path) -> None:
-        with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-
-            outcome = _progress.handle_approval_prompt(token, "a")
-
-            assert outcome.action == "granted"
-            assert _ap.approval_get(token)["state"] == "granted"
-
-    def test_d_denies_through_the_same_pair_docket_deny_uses(self, tmp_path: Path) -> None:
-        with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-
-            outcome = _progress.handle_approval_prompt(token, "d")
-
-            assert outcome.action == "denied"
             assert _ap.approval_get(token)["state"] == "denied"
 
     def test_an_empty_answer_keeps_waiting_and_touches_nothing(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+            token, record_id = _open_approval()
 
-            outcome = _progress.handle_approval_prompt(token, "")
+            outcome = _progress.handle_approval_prompt(record_id, "")
 
+            stored = read_escalation(record_id)
             assert outcome.action == "waiting"
+            assert stored is not None and stored.state == "pending"
             assert _ap.approval_get(token)["state"] == "pending"
 
-    def test_a_token_already_resolved_elsewhere_is_reported_not_raised(
+    def test_an_escalation_already_resolved_elsewhere_is_reported_not_raised(
         self, tmp_path: Path
     ) -> None:
         with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-            _ap.approval_grant(token, channel="mcp")
+            _, record_id = _open_approval()
+            _escalations.resolve(record_id, "approve_once", None, by="", channel="mcp")
 
-            outcome = _progress.handle_approval_prompt(token, "a")
+            outcome = _progress.handle_approval_prompt(record_id, "a")
 
             assert outcome.action == "noop"
-            assert outcome.message
+            assert outcome.message == "  (already resolved elsewhere)"
 
     @pytest.mark.parametrize(("first", "second"), [("d", "a"), ("a", "d")])
     def test_the_opposite_decision_having_won_is_reported_not_raised(
         self, tmp_path: Path, first: str, second: str
     ) -> None:
         with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-            _progress.handle_approval_prompt(token, first)
+            token, record_id = _open_approval()
+            _progress.handle_approval_prompt(record_id, first)
             state = _ap.approval_get(token)["state"]
 
-            outcome = _progress.handle_approval_prompt(token, second)
+            outcome = _progress.handle_approval_prompt(record_id, second)
 
             assert outcome.action == "noop"
-            assert state in (outcome.message or "")
+            assert record_id in (outcome.message or "")
             assert _ap.approval_get(token)["state"] == state
 
-    def test_a_token_with_no_record_is_reported_not_raised(self, tmp_path: Path) -> None:
+    def test_an_escalation_with_no_record_is_reported_not_raised(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            outcome = _progress.handle_approval_prompt("no-such-token", "a")
+            outcome = _progress.handle_approval_prompt("no-such-escalation", "a")
 
             assert outcome.action == "noop"
             assert outcome.message
@@ -297,7 +304,7 @@ class TestDispatchWithProgress:
             from docket.observability import trace as _trace
 
             with use_home(dataclasses.replace(current_home(), tool_approval_poll_interval_s=0.02)):
-                granted_token: dict[str, str] = {}
+                opened: dict[str, str] = {}
 
                 def fake_execute(run_id: str, fn: Any) -> list[Any]:
                     _trace.trace_event(
@@ -306,7 +313,10 @@ class TestDispatchWithProgress:
                     hop = json.dumps({"hop": "implementer", "agent": "demo-implementer"})
                     _trace.trace_event("demo", _TASK_SESSION, "implementer", "tool_call", hop)
                     token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
-                    granted_token["token"] = token
+                    opened["token"] = token
+                    opened["id"] = _escalations.open_for_approval(
+                        token, kind="approval", task_id=_TASK_ID, caused_by="c1"
+                    ).id
                     _ap.wait_for_approval(token, timeout=1.5, poll_interval=0.02)
                     end = json.dumps({"status": "done"})
                     _trace.trace_event("demo", _TASK_SESSION, "lead", "session_end", end)
@@ -320,7 +330,10 @@ class TestDispatchWithProgress:
                 )
 
                 assert result == []
-                assert _ap.approval_get(granted_token["token"])["state"] == "granted"
+                assert _ap.approval_get(opened["token"])["state"] == "granted"
+                stored = read_escalation(opened["id"])
+                assert stored is not None and stored.resolution is not None
+                assert stored.resolution.option_id == "approve_once"
                 task_line = lines.index(f"▶ {_TASK_SHORT} …")
                 hop_line = lines.index("  ▶ implementer …")
                 approval_line = next(
@@ -389,9 +402,7 @@ class TestParkedQuestion:
             def fake_execute(run_id: str, fn: Any) -> list[Any]:
                 _trace.trace_event("demo", _TASK_SESSION, "lead", "session_start", json.dumps({}))
                 question = _consult_question()
-                put_task("demo", task(id=_TASK_ID, status="waiting_input", question=question))
-                ask = json.dumps({"questionId": question.id, "kind": "decision", "mode": "park"})
-                _trace.trace_event("demo", _TASK_SESSION, "implementer", "question_asked", ask)
+                put_task("demo", task(id=_TASK_ID, status="waiting_input"))
                 _escalations.open_for_question(
                     question, kind="consult", role="implementer", caused_by="c1"
                 )
@@ -412,7 +423,6 @@ class TestParkedQuestion:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _home(tmp_path):
-            from docket.observability import trace as _trace
 
             def fake_execute(run_id: str, fn: Any) -> list[Any]:
                 question = Question(
@@ -424,10 +434,8 @@ class TestParkedQuestion:
                     requested_schema={"type": "object", "properties": {"note": {"type": "string"}}},
                     created_at="2026-10-25T00:00:00+00:00",
                 )
-                put_task("demo", task(id=_TASK_ID, status="waiting_input", question=question))
+                put_task("demo", task(id=_TASK_ID, status="waiting_input"))
                 _escalations.open_for_question(question, kind="input", role="", caused_by="ask")
-                payload = json.dumps({"task": _TASK_ID, "step": "ask", "questionId": question.id})
-                _trace.trace_event("demo", _TASK_SESSION, "lead", "input_requested", payload)
                 return []
 
             lines = self._run(monkeypatch, fake_execute)
@@ -444,7 +452,7 @@ class TestParkedQuestion:
             from docket.observability import trace as _trace
 
             old = _consult_question("task-old")
-            put_task("demo", task(id="task-old", status="waiting_input", question=old))
+            put_task("demo", task(id="task-old", status="waiting_input"))
             _escalations.open_for_question(old, kind="consult", role="implementer", caused_by="c1")
 
             def fake_execute(run_id: str, fn: Any) -> list[Any]:
@@ -457,11 +465,11 @@ class TestParkedQuestion:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _home(tmp_path):
-            from docket.observability import trace as _trace
 
             def fake_execute(run_id: str, fn: Any) -> list[Any]:
-                decided = json.dumps({"questionId": "q-x", "kind": "decision", "mode": "decided"})
-                _trace.trace_event("demo", _TASK_SESSION, "implementer", "question_asked", decided)
+                _escalations.decided_consult(
+                    _consult_question(), role="implementer", option_id="sqlite"
+                )
                 return []
 
             assert [line for line in self._run(monkeypatch, fake_execute) if "asks" in line] == []
@@ -487,33 +495,33 @@ def _waiting_consult(token_options: list[Option] | None = None) -> tuple[str, st
 
 
 class TestConsultPrompt:
-    def test_the_requested_approval_of_a_consult_lists_its_options(self, tmp_path: Path) -> None:
+    def test_a_consult_waiting_in_the_turn_lists_its_options(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            token, _, question = _waiting_consult()
-            event = _record(
-                "approval_requested",
-                {"token": token, "action": question.message},
-                role="implementer",
-            )
+            _, record_id, _ = _waiting_consult()
+            stored = read_escalation(record_id)
+            assert stored is not None
 
-            options = _progress.consult_options(event)
+            lines = _progress.consult_lines(escalation_view(stored))
 
-            assert options == [("redis", "Redis"), ("sqlite", "SQLite")]
-            assert _progress.consult_lines(event, options or []) == [
+            assert lines == [
                 "⏸ implementer asks: Which store should the cache use? · options redis, sqlite",
                 "  [1] redis (Redis)  [2] sqlite (SQLite)  [d]ecline  [Enter] keep waiting",
             ]
 
-    def test_an_ordinary_approval_is_not_a_consult(self, tmp_path: Path) -> None:
+    def test_only_an_approval_event_renders_as_an_approval(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            token = _ap.approval_create("demo", "implementer", "bash: git push origin main")
+            _, consult_id, _ = _waiting_consult()
+            _, approval_id = _open_approval()
+            consult = read_escalation(consult_id)
+            approval = read_escalation(approval_id)
+            assert consult is not None and approval is not None
 
-            event = _record("approval_requested", {"token": token, "action": "x"})
+            def asked(escalation: Escalation) -> dict[str, Any]:
+                return _record("escalation_asked", _events.payload(_events.ASKED, escalation))
 
-            assert _progress.consult_options(event) is None
-            assert (
-                _progress.consult_options(_record("tool_call", {"hop": "a", "agent": "b"})) is None
-            )
+            assert _progress.render_event(asked(consult)) is None
+            line = _progress.render_event(asked(approval))
+            assert line is not None and f"docket task answer {approval_id} --option" in line
 
     @pytest.mark.parametrize(
         ("answer", "option"), [("1", "redis"), ("2", "sqlite"), ("d", "decline")]
@@ -524,7 +532,7 @@ class TestConsultPrompt:
         with _home(tmp_path):
             token, record_id, _ = _waiting_consult()
 
-            outcome = _progress.handle_question_prompt(token, ["redis", "sqlite"], answer)
+            outcome = _progress.handle_question_prompt(record_id, ["redis", "sqlite"], answer)
 
             stored = read_escalation(record_id)
             assert outcome.action == ("denied" if option == "decline" else "granted")
@@ -536,9 +544,9 @@ class TestConsultPrompt:
 
     def test_a_number_out_of_range_keeps_waiting_and_says_why(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            token, record_id, _ = _waiting_consult()
+            _, record_id, _ = _waiting_consult()
 
-            outcome = _progress.handle_question_prompt(token, ["redis", "sqlite"], "3")
+            outcome = _progress.handle_question_prompt(record_id, ["redis", "sqlite"], "3")
 
             assert outcome.action == "waiting" and "1-2" in (outcome.message or "")
             stored = read_escalation(record_id)
@@ -546,10 +554,10 @@ class TestConsultPrompt:
 
     def test_an_answer_that_lost_the_race_is_reported_not_raised(self, tmp_path: Path) -> None:
         with _home(tmp_path):
-            token, _, _ = _waiting_consult()
-            _progress.handle_question_prompt(token, ["redis", "sqlite"], "1")
+            _, record_id, _ = _waiting_consult()
+            _progress.handle_question_prompt(record_id, ["redis", "sqlite"], "1")
 
-            outcome = _progress.handle_question_prompt(token, ["redis", "sqlite"], "2")
+            outcome = _progress.handle_question_prompt(record_id, ["redis", "sqlite"], "2")
 
             assert outcome.action == "noop" and outcome.message
 
