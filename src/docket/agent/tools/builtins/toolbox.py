@@ -120,6 +120,10 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
             f"\n\n[lines {start + 1}-{shown_end} of {len(lines)}; "
             f"call read with offset={shown_end + 1} for more]"
         )
+    if not text:
+        body = "[empty file]"
+    elif not text.endswith("\n"):
+        body += f"\n[{len(lines)} lines; no newline at end of file]"
     return text_outcome(body)
 
 
@@ -139,12 +143,21 @@ def write_file(roots: tuple[Path, ...], path: str, content: str) -> ToolOutcome:
         target = resolve_within(roots, path)
     except PathEscapeError as ex:
         return ToolOutcome(False, error=str(ex), refusal="path_escape")
+    existed = target.exists()
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
     except OSError as ex:
         return ToolOutcome(False, error=f"cannot write {path}: {ex}")
-    return ToolOutcome(True, content=f"wrote {len(content)} characters to {target}")
+    return ToolOutcome(
+        True,
+        content=(
+            f"wrote {_display_path(roots, target)}: {len(content.encode('utf-8'))} bytes, "
+            f"{len(content.splitlines())} lines, "
+            f"ends with newline: {'yes' if content.endswith(chr(10)) else 'no'} "
+            f"({'overwritten' if existed else 'created'})"
+        ),
+    )
 
 
 def edit_file(
@@ -449,7 +462,10 @@ def run_bash(
                 )
                 return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
 
-        body = _truncate((out or "").strip())
+        raw = out or ""
+        body = _truncate(raw.strip())
+        if body and not raw.endswith("\n"):
+            body += "\n[output had no trailing newline]"
         exit_payload["exitCode"] = proc.returncode
         if proc.returncode != 0:
             message = f"command exited {proc.returncode}"

@@ -220,7 +220,8 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
 _READ_DESCRIPTION = (
     "Read a text file as numbered lines, 400 at a time. Paths are relative to the workspace. "
     "For a larger file pass offset (1-indexed line) and limit, or follow the footer's offset "
-    "to continue. Copy text from the window without the numbers when editing."
+    "to continue. Copy text from the window without the numbers when editing. The footer says "
+    "when the file has no trailing newline."
 )
 _GLOB_DESCRIPTION = (
     "List files matching a glob pattern, as paths relative to the workspace, sorted. Vendored and "
@@ -274,7 +275,10 @@ def builtin_registry() -> ToolRegistry:
     registry.register(
         Tool(
             name="write",
-            description="Create or overwrite a text file with the given content.",
+            description=(
+                "Create or overwrite a text file with the given content. The reply states bytes, "
+                "lines and whether the file ends with a newline."
+            ),
             parameters={
                 "type": "object",
                 "properties": {

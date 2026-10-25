@@ -102,7 +102,7 @@ def test_a_release_step_with_its_own_approval_pauses_and_resumes_at_that_step(
     assert "write" in implementer[0].tools
     assert "Lead prepared the plan." in implementer[0].last_user_text
     wrote = implementer[1].tool_result("call-1")
-    assert wrote is not None and "wrote 6 characters" in wrote
+    assert wrote is not None and "wrote app.txt: 6 bytes" in wrote
     assert "Implemented the artifact." in reviewer[0].last_user_text
     assert "APPROVE" in tester[0].last_user_text
     assert "Release checklist completed." in tester[1].last_user_text

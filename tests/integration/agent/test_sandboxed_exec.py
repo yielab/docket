@@ -219,7 +219,7 @@ class TestSandboxOffIsUnchanged:
         assert ToolContext().sandbox == "off"
 
     def test_off_mode_matches_the_pre_p19_9_exact_output(self, workspace: Path) -> None:
-        out = toolbox.run_bash((workspace,), "printf %s hi", env={"X": "1"})
+        out = toolbox.run_bash((workspace,), "echo hi", env={"X": "1"})
         assert out.ok and out.content == "hi"  # no marker, no suffix — byte for byte
 
     def test_off_mode_never_reports_a_sandbox_tag_even_when_both_backends_are_real(
@@ -310,7 +310,7 @@ class TestChokepointWiring:
 
     def test_default_context_through_the_chokepoint_reports_nothing(self, workspace: Path) -> None:
         ctx = ToolContext(roots=(workspace,))  # sandbox defaults to "off"
-        res = dispatch_tool(self._call('{"command": "printf hi"}'), ctx, builtin_registry())
+        res = dispatch_tool(self._call('{"command": "echo hi"}'), ctx, builtin_registry())
         assert res.content == "hi"
 
     def test_file_tool_containment_is_unaffected_by_ctx_sandbox(self, workspace: Path) -> None:

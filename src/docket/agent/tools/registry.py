@@ -139,6 +139,18 @@ class Tool:
         required = self.parameters.get("required")
         return tuple(str(r) for r in required) if isinstance(required, list) else ()
 
+    def mistyped_strings(self, args: dict[str, Any]) -> tuple[str, ...]:
+        """Required arguments the schema declares as strings that arrived as another JSON type."""
+        properties = self.parameters.get("properties")
+        declared = properties if isinstance(properties, dict) else {}
+        return tuple(
+            name
+            for name in self.required_args
+            if isinstance(declared.get(name), dict)
+            and declared[name].get("type") == "string"
+            and not isinstance(args[name], str)
+        )
+
     def spec(self) -> ToolSpec:
         """The advertisement sent to the model."""
         return ToolSpec(name=self.name, description=self.description, parameters=self.parameters)
@@ -225,6 +237,14 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         result.decision = "deny"
         result.denial_kind = "invalid_call"
         result.reason = f"missing required argument(s): {', '.join(missing)}"
+        result.error = result.reason
+        return result
+
+    mistyped = tool.mistyped_strings(args)
+    if mistyped:
+        result.decision = "deny"
+        result.denial_kind = "invalid_call"
+        result.reason = f"argument(s) must be text: {', '.join(mistyped)}"
         result.error = result.reason
         return result
 
