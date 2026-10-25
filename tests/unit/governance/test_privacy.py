@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from docket.governance import privacy
+from docket.observability import spans as _spans
 
 SUBJECT = "docket.governance.privacy"
 
@@ -66,3 +67,12 @@ class TestDescribe:
     def test_describe_names_at_least_one_attribute_per_class(self) -> None:
         rows = privacy.describe(frozenset(privacy.CONTENT_CLASSES))
         assert all(attrs for _cls, _granted, attrs in rows)
+
+    def test_describe_lists_every_attribute_the_export_allowlist_gates(self) -> None:
+        listed = {
+            (cls, attr)
+            for cls, _granted, attrs in privacy.describe(frozenset(privacy.CONTENT_CLASSES))
+            for attr in attrs
+        }
+        gated = set(_spans.ATTRIBUTE_CLASSES.items())
+        assert {(cls, attr) for attr, cls in gated} - listed == set()
