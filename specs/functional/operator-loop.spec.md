@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 3.0.0
+**Version**: 3.0.1
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -430,9 +430,9 @@ failure as a failed `DeliveryResult` without raising.
    resolved `consult` and `input` escalation the task lists as the entries a hop's prompt renders
    (question id, step, message, action, content, channel, actor, `answeredAt`, the question's
    `kind` and `createdAt`, and `optionId` when given). `resolve` MUST refuse a question that is not
-   `pending`, whose task is not `waiting_input` on this record, whose answer does not satisfy
-   `requestedSchema` (`validate_answer`, or `validate_answer_v11` semantics for a question with
-   options: `accept` needs an `optionId` naming an option) or whose strings a `block` verdict of
+   `pending`, whose task is not `waiting_input` on this record, whose option is not one the record
+   offers (a question with options needs one), whose content does not satisfy `requestedSchema`
+   (`validate_content`) or whose strings a `block` verdict of
    the Lead's `pre_input` policy matches (as untrusted input; `EscalationRefused` naming the
    policy, nothing written).
 2. Answering an `input` step MUST resolve that step's own `on:` route with the outcome label
@@ -546,7 +546,7 @@ continuation, and no surface has a verb of its own for one kind of pause.
      offers no option besides `decline` (an `input` step, a consult without options): that is
      an `accept` carrying *content*. `decline` carries no content;
    - *content* does not satisfy `requestedSchema` (a missing required property, a wrong type, a
-     value outside an `enum`, as `validate_answer` states): `EscalationInvalid` naming the
+     value outside an `enum`, as `validate_content` states): `EscalationInvalid` naming the
      property. An approval, gate or changed-check carries no schema; its *content* may hold only
      `reason` (a string), which is what `--reason` and the body's `reason` become;
    - a string in *content* matches a `block` verdict of the pod's `pre_input` policy:
@@ -953,6 +953,8 @@ are unchanged. The `consult` tool produces `QuestionV11`, and an escalation of k
 - `validate_answer_v11(question, answer)`: when `action` is `accept` and the question has options,
   `optionId` is required and MUST name an option; `decline`/`cancel` need none. It then applies
   `validate_answer` to `content`.
+- `validate_answer_v11` is part of the module's API and its tests; `resolve` does its own option
+  and content checks and does not call it.
 - `scripts/gen_operator_schemas.py` also renders `question.schema.json` and `answer.schema.json`
   (with `Option` and `Recommendation` as `$defs`) there, `$id`
   `https://docket.dev/schemas/operator-v1.1/<name>.schema.json`; `--check` covers both directories.
@@ -1004,7 +1006,7 @@ Reviewer) lets a model put a clarification or decision to its operator.
    lists the `consult` escalation opened for the consult's `QuestionV11` (`taskId` = the task id,
    `step` = the hop's step id; the escalation id is the id the operator answers), so the inbox
    lists it under `needsYou` and `docket task answer`, HTTP, MCP and Telegram answers reach it
-   through `resolve`. The answer is validated as a v1.1 answer (accept needs an option id the
+   through `resolve`. The answer is validated by `resolve` (accept needs an option id the
    record offers; a refused answer leaves the task `waiting_input` and the record `pending`) and
    becomes the record's `resolution`, and the task is reopened `pending`. No copy is kept on the
    task: the parked hop replays at its own index and its next message ends with `Operator
