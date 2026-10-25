@@ -319,6 +319,45 @@ class TestEnqueueAddressableOptions:
         assert TaskRepository.for_pod("myapp").list() == []
 
 
+class TestEnqueueAutonomy:
+    """``autonomy`` only narrows: the pod profile is the ceiling (security-gates.spec.md)."""
+
+    def test_an_attended_pod_admits_l3_and_refuses_l5_as_a_restriction(
+        self, pod_home: Path
+    ) -> None:
+        _seed_lean_pod()
+
+        narrowed = _queue.enqueue_task_once("myapp", "x", channel="cli", autonomy="L3")[0]
+        with pytest.raises(_task.TaskRestrictionError, match=r"L5.*ceiling L3"):
+            _queue.enqueue_task_once("myapp", "y", channel="cli", autonomy="L5")
+
+        assert narrowed.autonomy == "L3"
+        assert [t.description for t in TaskRepository.for_pod("myapp").list()] == ["x"]
+
+    def test_a_lights_out_pod_admits_l5_and_a_task_with_none_stores_none(
+        self, pod_home: Path
+    ) -> None:
+        from docket.teams import fleet as _fleet
+
+        _seed_lean_pod()
+        _fleet.set_profile("lights-out")
+
+        asked = _queue.enqueue_task_once("myapp", "x", channel="http", autonomy="L5")[0]
+        unasked = _queue.enqueue_task_once("myapp", "y", channel="http")[0]
+
+        assert (asked.autonomy, unasked.autonomy) == ("L5", None)
+
+    def test_a_value_that_is_no_level_is_a_shape_error_not_a_restriction(
+        self, pod_home: Path
+    ) -> None:
+        _seed_lean_pod()
+
+        with pytest.raises(_task.DispatchError) as shape:
+            _queue.enqueue_task_once("myapp", "x", channel="cli", autonomy="L9")
+
+        assert not isinstance(shape.value, _task.TaskRestrictionError)
+
+
 class TestBaseRefRefusedAtClaim:
     """A task whose ``baseRef`` cannot be honoured fails at claim: no hop, ``failureKind``
     ``base_ref``, and the loop moves on to the next task."""

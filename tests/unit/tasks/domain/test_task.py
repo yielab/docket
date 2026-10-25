@@ -394,6 +394,10 @@ class TestTaskRecord:
         record.base_ref = None
         assert "baseRef" not in _dump(record)
 
+    def test_autonomy_is_stored_under_its_key_and_absent_when_unset(self) -> None:
+        assert _dump(_task.TaskRecord(description="x", autonomy="L4"))["autonomy"] == "L4"
+        assert "autonomy" not in _dump(_task.TaskRecord(description="x"))
+
     def test_a_transition_drop_leaves_no_key_behind(self) -> None:
         record = _task.TaskRecord(
             description="x", failure_kind="gate_failed", check_changed=["a"], claim_pid=4

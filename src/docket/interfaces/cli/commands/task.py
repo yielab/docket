@@ -141,6 +141,12 @@ def cmd_add(
     max_tokens: int | None = typer.Option(
         None, "--max-tokens", help="Token budget across the task's hops"
     ),
+    autonomy: str | None = typer.Option(
+        None,
+        "--autonomy",
+        metavar="L3|L4|L5",
+        help="Level its pauses are decided at; only narrows the pod profile's ceiling",
+    ),
     pod: str | None = pod_option(),
 ) -> None:
     """Queue a task for the pod; `docket run` works the queue.
@@ -168,6 +174,7 @@ def cmd_add(
             pipeline=pipeline,
             gate={"command": gate} if gate is not None else None,
             max_tokens=max_tokens,
+            autonomy=autonomy,
         )
     except DispatchError as ex:
         ui.error(str(ex))

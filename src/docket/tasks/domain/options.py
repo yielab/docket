@@ -1,14 +1,14 @@
 """The addressable-task fields of an enqueue: shape and narrowing checks, no resolution.
 
-``baseRef``, ``pipeline`` and ``prepare`` are resolved at claim, ``gate``, ``maxTokens`` and
-``restrictions`` at hop time; this module only refuses what can never be valid or would widen a
+``baseRef``, ``pipeline`` and ``prepare`` are resolved at claim, ``gate``, ``maxTokens``,
+``restrictions`` and ``autonomy`` at hop time; this module only refuses what can never be valid or would widen a
 pod's limits."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError
 
@@ -73,6 +73,7 @@ class TaskOptions(BaseModel):
     max_tokens: StrictInt | None = Field(None, alias="maxTokens", gt=0)
     prepare: StrictStr | None = None
     restrictions: TaskRestrictions | None = None
+    autonomy: Literal["L3", "L4", "L5"] | None = None
 
 
 def _describe(exc: ValidationError) -> str:
@@ -120,6 +121,7 @@ def validate_task_options(
     max_tokens: Any = None,
     prepare: Any = None,
     restrictions: Any = None,
+    autonomy: Any = None,
 ) -> TaskOptions:
     """Validate the raw values (``None`` is unset) against *rules*; raises TaskOptionsError, or its
     subclass TaskRestrictionError for a restriction that would widen."""
@@ -132,6 +134,7 @@ def validate_task_options(
         "maxTokens": max_tokens,
         "prepare": prepare,
         "restrictions": restrictions,
+        "autonomy": autonomy,
     }
     try:
         options = TaskOptions.model_validate({k: v for k, v in raw.items() if v is not None})
