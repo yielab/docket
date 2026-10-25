@@ -261,7 +261,7 @@
 
 ### P51-6 — dispatch applies the resolution; `wait` prompts questions in place
 
-**Status:** TODO (needs P51-5) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** PARTIAL (merged 2026-10-25, 1453d372): consult and input resolutions are applied at claim and a consult is answered in place; approvals, gates and check_changed still apply their follow-up inside `resolve` (deferring them breaks `approved_ready`, which reads pregrants and gateOverridePipelineIndex); left: move them, then `task answer` for an in-turn consult and the per-task consult budget under wait· **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** `answer_task` takes the pod task-list lock and resolves the full pipeline to
   answer (`answers.py` docstring on the deadlock); consults park even under `wait` with a TTY
