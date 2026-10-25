@@ -85,7 +85,7 @@ from docket.kernel import clock as _clock
 from docket.kernel import operator_contract as _oc
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
-from docket.operator import build_inbox
+from docket.operator import build_inbox, ids_line, question_escalation, render_escalation
 from docket.platform import read_json, write_json
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import queue as _queue
@@ -127,6 +127,7 @@ _ANSWER_PREFIX_RE = re.compile(r"^/answer(?:@\w+)?\b")
 _WIRE_RE = re.compile(r"^/wire(?:@\w+)?\s+\S+\s*$", re.IGNORECASE)
 
 _ANSWER_USAGE = "Usage: /answer <task-id> <answer text>"
+_PROMPT_MAX = 500
 
 _UNRECOGNIZED_REPLY = (
     "Unrecognized command. Use:\n"
@@ -259,6 +260,23 @@ def _handle_decision(
     return TelegramActionResult(True, reply, True, action)
 
 
+def _question_lines(item: _oc.TaskView, escalations: list[_oc.EscalationView]) -> list[str]:
+    """What a chat needs to answer a parked question: the question, the option ids and the reply
+    to send. The operator asked from their own bound chat, so the prompt is shown (the
+    ``conversation`` level) and the ids are never withheld."""
+    escalation = question_escalation(escalations, item.pod, item.id)
+    if escalation is None:
+        return []
+    rendered = render_escalation(escalation, "conversation")
+    lines = [f"    Q: {(rendered.prompt or '')[:_PROMPT_MAX]}"]
+    if rendered.options:
+        lines.append(f"    options: {ids_line(rendered.options)}")
+        lines.append(f"    reply: /answer {item.id} <option>")
+    else:
+        lines.append(f"    reply: /answer {item.id} <your answer>")
+    return lines
+
+
 def _handle_status(agent_id: str) -> TelegramActionResult:
     """Render the derived inbox (:func:`docket.operator.inbox.build_inbox`) scoped to *agent_id*'s
     project -- see :func:`_approval_scope`. Needs-you items first. Read-only; never mutates
@@ -281,6 +299,7 @@ def _handle_status(agent_id: str) -> TelegramActionResult:
         else:
             label = (item.description or item.reason or "")[:120]
             lines.append(f"  task {item.id}  status={item.status}  {label}")
+            lines.extend(_question_lines(item, view.escalations))
     if failed:
         lines.append("Failed:")
         for t in failed:

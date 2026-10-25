@@ -103,6 +103,189 @@
       "title": "ApprovalView",
       "type": "object"
     },
+    "EscalationAffordances": {
+      "additionalProperties": false,
+      "description": "What a client may do with a pending escalation, without naming any surface's command.",
+      "properties": {
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "acceptsText": {
+          "default": false,
+          "title": "Acceptstext",
+          "type": "boolean"
+        },
+        "resolveUrl": {
+          "title": "Resolveurl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resolveUrl"
+      ],
+      "title": "EscalationAffordances",
+      "type": "object"
+    },
+    "EscalationView": {
+      "additionalProperties": false,
+      "description": "An escalation as a surface reads it: the record without ``legacy``, its ``state`` joined\nwith the pause it names, and what can be done with it.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "task": {
+          "title": "Task",
+          "type": "string"
+        },
+        "pod": {
+          "title": "Pod",
+          "type": "string"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "approval",
+            "consult",
+            "input",
+            "gate",
+            "check_changed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "causedBy": {
+          "title": "Causedby",
+          "type": "string"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Recommendation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "requestedSchema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requestedschema"
+        },
+        "askedAt": {
+          "title": "Askedat",
+          "type": "string"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiresat"
+        },
+        "onExpiry": {
+          "enum": [
+            "deny",
+            "block"
+          ],
+          "title": "Onexpiry",
+          "type": "string"
+        },
+        "policy": {
+          "default": "person",
+          "enum": [
+            "person",
+            "recommendation",
+            "deny",
+            "fail"
+          ],
+          "title": "Policy",
+          "type": "string"
+        },
+        "state": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "resolved",
+            "expired",
+            "decided"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Resolution"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "seq": {
+          "default": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "affordances": {
+          "$ref": "#/$defs/EscalationAffordances"
+        }
+      },
+      "required": [
+        "id",
+        "task",
+        "pod",
+        "step",
+        "role",
+        "kind",
+        "causedBy",
+        "prompt",
+        "askedAt",
+        "onExpiry",
+        "affordances"
+      ],
+      "title": "EscalationView",
+      "type": "object"
+    },
     "Option": {
       "additionalProperties": false,
       "description": "One choice a v1.1 question offers.",
@@ -316,6 +499,56 @@
         "rationale"
       ],
       "title": "Recommendation",
+      "type": "object"
+    },
+    "Resolution": {
+      "additionalProperties": false,
+      "description": "How an escalation was settled: the option chosen, any content, and who answered where.",
+      "properties": {
+        "optionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Optionid"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "by": {
+          "title": "By",
+          "type": "string"
+        },
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "at": {
+          "title": "At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "by",
+        "channel",
+        "at"
+      ],
+      "title": "Resolution",
       "type": "object"
     },
     "TaskBrief": {
@@ -540,6 +773,13 @@
       ],
       "default": null,
       "title": "Next"
+    },
+    "escalations": {
+      "items": {
+        "$ref": "#/$defs/EscalationView"
+      },
+      "title": "Escalations",
+      "type": "array"
     }
   },
   "type": "object"

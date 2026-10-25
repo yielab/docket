@@ -14,11 +14,20 @@ from typing import Any
 
 import pytest
 from tests.support.home import home as _home
+from tests.support.tasks import put_task, task
 
 from docket.governance import approval as _ap
 from docket.interfaces.cli.render import progress as _progress
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home, use_home
+from docket.kernel.operator_contract import (
+    Option,
+    Question,
+    QuestionV11,
+    Recommendation,
+    new_question_id,
+)
+from docket.tasks.application import escalations as _escalations
 
 SUBJECT = "docket.interfaces.cli.render.progress"
 
@@ -305,3 +314,117 @@ class TestDispatchWithProgress:
 
             assert result == []
             assert lines == ["▶ lead …", "■ lead finished — status=done"]
+
+
+def _consult_question(task_id: str = _TASK_ID) -> QuestionV11:
+    return QuestionV11(
+        id=new_question_id(),
+        task_id=task_id,
+        pod="demo",
+        step="implementer",
+        message="Which store should the cache use?",
+        requested_schema={"type": "object", "properties": {"note": {"type": "string"}}},
+        created_at="2026-10-25T00:00:00+00:00",
+        kind="decision",
+        options=[
+            Option(id="redis", label="Redis", description="fast"),
+            Option(id="sqlite", label="SQLite", description="simple"),
+        ],
+        recommendation=Recommendation(option_id="sqlite", rationale="fewer services"),
+    )
+
+
+class TestParkedQuestion:
+    def _run(self, monkeypatch: pytest.MonkeyPatch, execute: Any) -> list[str]:
+        monkeypatch.setattr(_progress._runs, "execute", execute)
+        lines: list[str] = []
+        _progress.dispatch_with_progress(
+            "run-q", lambda: [], prompt=False, stdin=io.StringIO(""), println=lines.append
+        )
+        return lines
+
+    def test_the_question_is_a_line_with_its_options_and_the_command_that_answers_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _home(tmp_path):
+            from docket.observability import trace as _trace
+
+            def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                _trace.trace_event("demo", _TASK_SESSION, "lead", "session_start", json.dumps({}))
+                question = _consult_question()
+                put_task("demo", task(id=_TASK_ID, status="waiting_input", question=question))
+                ask = json.dumps({"questionId": question.id, "kind": "decision", "mode": "park"})
+                _trace.trace_event("demo", _TASK_SESSION, "implementer", "question_asked", ask)
+                _escalations.open_for_question(
+                    question, kind="consult", role="implementer", caused_by="c1"
+                )
+                end = json.dumps({"status": "waiting_input"})
+                _trace.trace_event("demo", _TASK_SESSION, "lead", "session_end", end)
+                return []
+
+            lines = self._run(monkeypatch, fake_execute)
+
+            (asked,) = [line for line in lines if line.startswith("⏸")]
+            assert asked == (
+                "⏸ implementer asks: consultation: Which store should the cache use? · "
+                f"options redis, sqlite (recommended sqlite) · docket task answer {_TASK_ID} "
+                "--option sqlite"
+            )
+
+    def test_an_input_step_prints_the_same_line_without_an_option(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _home(tmp_path):
+            from docket.observability import trace as _trace
+
+            def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                question = Question(
+                    id=new_question_id(),
+                    task_id=_TASK_ID,
+                    pod="demo",
+                    step="ask",
+                    message="Name the branch.",
+                    requested_schema={"type": "object", "properties": {"note": {"type": "string"}}},
+                    created_at="2026-10-25T00:00:00+00:00",
+                )
+                put_task("demo", task(id=_TASK_ID, status="waiting_input", question=question))
+                _escalations.open_for_question(question, kind="input", role="", caused_by="ask")
+                payload = json.dumps({"task": _TASK_ID, "step": "ask", "questionId": question.id})
+                _trace.trace_event("demo", _TASK_SESSION, "lead", "input_requested", payload)
+                return []
+
+            lines = self._run(monkeypatch, fake_execute)
+
+            (asked,) = [line for line in lines if line.startswith("⏸")]
+            assert asked == (
+                f"⏸ ask asks: input requested: Name the branch. · docket task answer {_TASK_ID}"
+            )
+
+    def test_a_question_parked_before_the_run_is_not_announced_again(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _home(tmp_path):
+            from docket.observability import trace as _trace
+
+            old = _consult_question("task-old")
+            put_task("demo", task(id="task-old", status="waiting_input", question=old))
+            _escalations.open_for_question(old, kind="consult", role="implementer", caused_by="c1")
+
+            def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                _trace.trace_event("demo", _TASK_SESSION, "lead", "session_start", json.dumps({}))
+                return []
+
+            assert [line for line in self._run(monkeypatch, fake_execute) if "asks" in line] == []
+
+    def test_a_consult_the_pod_decided_alone_prints_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _home(tmp_path):
+            from docket.observability import trace as _trace
+
+            def fake_execute(run_id: str, fn: Any) -> list[Any]:
+                decided = json.dumps({"questionId": "q-x", "kind": "decision", "mode": "decided"})
+                _trace.trace_event("demo", _TASK_SESSION, "implementer", "question_asked", decided)
+                return []
+
+            assert [line for line in self._run(monkeypatch, fake_execute) if "asks" in line] == []

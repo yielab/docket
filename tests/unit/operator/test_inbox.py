@@ -9,12 +9,21 @@ from typing import Any
 
 from tests.support.pods import build_pod
 from tests.support.tasks import task as _make_task
+from tests.support.tasks import update_task
 
 from docket.governance import approval as _approval
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import ApprovalView, TaskView
+from docket.kernel.operator_contract import (
+    ApprovalView,
+    Option,
+    Recommendation,
+    TaskView,
+    new_question_id,
+)
+from docket.kernel.operator_contract import QuestionV11 as _QuestionV11
 from docket.operator import inbox as _inbox
 from docket.platform import store as _store
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod_mod
@@ -229,3 +238,115 @@ class TestPendingMemory:
 
         assert _inbox.pending_memory() == []
         assert _inbox.build_inbox(now=_NOW).needs_you == []
+
+
+class TestEscalationViews:
+    """A stored escalation reads as pending only while the approval or question it names is."""
+
+    def _question(self, task_id: str, pod: str = "alpha") -> _QuestionV11:
+        return _QuestionV11(
+            id=new_question_id(),
+            task_id=task_id,
+            pod=pod,
+            step="implementer",
+            message="Which store?",
+            requested_schema={"type": "object", "properties": {"note": {"type": "string"}}},
+            created_at="2026-10-25T00:00:00+00:00",
+            kind="decision",
+            options=[
+                Option(id="redis", label="Redis", description="fast"),
+                Option(id="sqlite", label="SQLite", description="simple"),
+            ],
+            recommendation=Recommendation(option_id="sqlite", rationale="fewer services"),
+        )
+
+    def _park_consult(self, task_id: str = "task-q", pod: str = "alpha") -> str:
+        build_pod(pod, ("lead", "implementer"), codebase=f"/src/{pod}")
+        question = self._question(task_id, pod)
+        _seed_task(pod, task_id, status="waiting_input", question=question)
+        escalation = _escalations.open_for_question(
+            question, kind="consult", role="implementer", caused_by="c1"
+        )
+        return escalation.id
+
+    def test_a_parked_consult_is_pending_with_its_affordances(self) -> None:
+        esc_id = self._park_consult()
+
+        (view,) = _inbox.escalation_views()
+
+        assert (view.id, view.kind, view.state, view.task) == (
+            esc_id,
+            "consult",
+            "pending",
+            "task-q",
+        )
+        assert view.affordances.options == ["redis", "sqlite", "decline"]
+        assert view.affordances.accepts_text is True
+        assert view.affordances.resolve_url == f"/escalations/{esc_id}"
+        assert "legacy" not in view.model_dump(by_alias=True)
+
+    def test_the_inbox_lists_the_pending_ones_and_leaves_needs_you_alone(self) -> None:
+        self._park_consult()
+
+        view = _inbox.build_inbox(now=_NOW)
+
+        assert [e.kind for e in view.escalations] == ["consult"]
+        assert [t.id for t in view.needs_you if isinstance(t, TaskView)] == ["task-q"]
+
+    def test_a_question_whose_task_moved_on_reads_resolved(self) -> None:
+        self._park_consult()
+        update_task("alpha", "task-q", status="pending")
+
+        (view,) = _inbox.escalation_views()
+
+        assert view.state == "resolved"
+        assert view.affordances.options == []
+        assert view.affordances.accepts_text is False
+        assert _inbox.build_inbox(now=_NOW).escalations == []
+
+    def test_an_approval_is_pending_until_its_record_is_decided(self) -> None:
+        build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
+        token = _approval.approval_create("alpha", "implementer", "bash: rm -rf build")
+        _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
+
+        assert [e.state for e in _inbox.escalation_views()] == ["pending"]
+        assert [e.affordances.options for e in _inbox.build_inbox(now=_NOW).escalations] == [
+            ["approve_once", "approve_task", "deny"]
+        ]
+
+        _approval.approval_grant(token, channel="cli")
+
+        assert [e.state for e in _inbox.escalation_views()] == ["resolved"]
+        assert _inbox.build_inbox(now=_NOW).escalations == []
+
+    def test_a_settled_state_is_kept(self) -> None:
+        build_pod("alpha", ("lead", "implementer"), codebase="/src/alpha")
+        token = _approval.approval_create("alpha", "implementer", "bash: rm -rf build")
+        _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
+        _store.settle_escalation("token", token, "expired")
+
+        assert [e.state for e in _inbox.escalation_views()] == ["expired"]
+
+    def test_since_pod_and_task_narrow_the_list_in_seq_order(self) -> None:
+        self._park_consult("task-a", "alpha")
+        self._park_consult("task-b", "beta")
+
+        everything = _inbox.escalation_views()
+        assert [e.seq for e in everything] == sorted(e.seq for e in everything)
+        assert [e.task for e in everything] == ["task-a", "task-b"]
+        assert [e.task for e in _inbox.escalation_views(since_seq=everything[0].seq)] == ["task-b"]
+        assert [e.task for e in _inbox.escalation_views(pod="alpha")] == ["task-a"]
+        assert [e.task for e in _inbox.escalation_views(task="task-b")] == ["task-b"]
+        assert _inbox.escalation_views(pod="alpha", task="task-b") == []
+
+    def test_the_page_carries_the_cursor_to_pass_back(self) -> None:
+        assert _inbox.escalation_page().next == 0
+        self._park_consult("task-a", "alpha")
+        self._park_consult("task-b", "beta")
+
+        page = _inbox.escalation_page()
+
+        assert [e.task for e in page.escalations] == ["task-a", "task-b"]
+        assert page.next == page.escalations[-1].seq
+        assert _inbox.escalation_page(since_seq=page.next).escalations == []
+        assert _inbox.escalation_page(since_seq=page.next).next == page.next

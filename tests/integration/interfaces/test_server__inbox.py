@@ -81,7 +81,14 @@ class TestInboxEndpoint:
         status, body = _get_json(f"{inbox_live_server}/inbox", token=_INBOX_TEST_TOKEN)
 
         assert status == 200
-        assert set(body.keys()) == {"needsYou", "failed", "doneSince", "running", "next"}
+        assert set(body.keys()) == {
+            "needsYou",
+            "failed",
+            "doneSince",
+            "running",
+            "next",
+            "escalations",
+        }
 
     def test_matches_docket_inbox_json_for_the_same_state(self, inbox_live_server: str) -> None:
 

@@ -285,18 +285,6 @@ class TaskView(BaseModel):
     brief: TaskBrief | None = None
 
 
-class InboxView(BaseModel):
-    """The derived operator inbox: everything that needs a human, plus recent context."""
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    needs_you: list[TaskView | ApprovalView] = Field(default_factory=list, alias="needsYou")
-    failed: list[TaskView] = Field(default_factory=list)
-    done_since: list[TaskView] = Field(default_factory=list, alias="doneSince")
-    running: list[TaskView] = Field(default_factory=list)
-    next: str | None = None
-
-
 EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed"]
 EscalationState = Literal["pending", "resolved", "expired", "decided"]
 EscalationPolicy = Literal["person", "recommendation", "deny", "fail"]
@@ -327,8 +315,8 @@ class Resolution(BaseModel):
     at: str
 
 
-class Escalation(BaseModel):
-    """One pause: docket needs a decision from outside the task, kept as one durable record."""
+class _EscalationFields(BaseModel):
+    """What an escalation is, shared by the stored record and the view a surface reads."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -350,9 +338,6 @@ class Escalation(BaseModel):
     state: EscalationState = "pending"
     resolution: Resolution | None = None
     seq: int = 0
-    # ``legacy`` names the pause in the older fields the task still carries (``token`` of an
-    # approval, ``questionId`` of a question), so a surface that knows only those keeps working.
-    legacy: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("id")
     @classmethod
@@ -360,6 +345,53 @@ class Escalation(BaseModel):
         if not is_escalation_id(v):
             raise InvalidInput(f"escalation id must be esc-<12 hex>: {v!r}")
         return v
+
+
+class Escalation(_EscalationFields):
+    """One pause: docket needs a decision from outside the task, kept as one durable record."""
+
+    # ``legacy`` names the pause in the older fields the task still carries (``token`` of an
+    # approval, ``questionId`` of a question), so a surface that knows only those keeps working.
+    legacy: dict[str, Any] = Field(default_factory=dict)
+
+
+class EscalationAffordances(BaseModel):
+    """What a client may do with a pending escalation, without naming any surface's command."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    options: list[str] = Field(default_factory=list)
+    accepts_text: bool = Field(False, alias="acceptsText")
+    resolve_url: str = Field(alias="resolveUrl")
+
+
+class EscalationView(_EscalationFields):
+    """An escalation as a surface reads it: the record without ``legacy``, its ``state`` joined
+    with the pause it names, and what can be done with it."""
+
+    affordances: EscalationAffordances
+
+
+class EscalationPage(BaseModel):
+    """The escalations after a cursor; ``next`` is the ``seq`` to pass back as the next cursor."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    escalations: list[EscalationView] = Field(default_factory=list)
+    next: int = 0
+
+
+class InboxView(BaseModel):
+    """The derived operator inbox: everything that needs a human, plus recent context."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    needs_you: list[TaskView | ApprovalView] = Field(default_factory=list, alias="needsYou")
+    failed: list[TaskView] = Field(default_factory=list)
+    done_since: list[TaskView] = Field(default_factory=list, alias="doneSince")
+    running: list[TaskView] = Field(default_factory=list)
+    next: str | None = None
+    escalations: list[EscalationView] = Field(default_factory=list)
 
 
 class CloudEvent(BaseModel):

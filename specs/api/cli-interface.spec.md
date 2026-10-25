@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -290,7 +290,9 @@ cursor (`~/.docket/inbox-cursor.json`) so a repeat call's `Done` only shows newl
 `--peek` reads without advancing it; `--since <iso>` overrides the stored cursor for this one
 call without touching it. Each item prints the exact `docket task approve|deny|answer <id>` (or
 `retry`, `run`) command and the full held command or question, never truncated. `--json` emits
-the `GET /inbox` shape with `state` and `command` added to every item.
+the `GET /inbox` shape with `state` and `command` added to every item (and to each
+`escalations` entry). A `needs_answer` task prints the question's options and
+`docket task answer <id> --option <id>`.
 **Output**: A human-readable summary by section, or (with `--json`) the bare `InboxView`
 **Return**: 0 always — an empty inbox is not an error; 2 on an unknown flag
 
@@ -323,7 +325,9 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   runs that worked the task, its corrections, and the interruption forecast (what could pause
   it: matching `require_approval` policies, pipeline approval and `input` steps,
   the resolved `approvalMode`, the always-on high-risk classes, notifying
-  channels). A task with a recorded, unpruned worktree also prints its path, branch, base commit
+  channels). A task that waits on a person also prints a `Waiting on you` section: for each
+  pending escalation its title, prompt, option ids and the command that answers it
+  (`operator-loop.spec.md` area 11). A task with a recorded, unpruned worktree also prints its path, branch, base commit
   and the exact diff and merge commands (`git -C <path> diff <base>`, or, when the task record
   holds the git dirs docket recorded, `GIT_DIR=<gitDir> GIT_COMMON_DIR=<commonDir> GIT_WORK_TREE=<path> git diff <base>` (naming the common dir too, because the worktree's own `commondir` file is agent-writable), so
   the hint never reads the `.git` file the agent could rewrite); a task that ran in place prints no

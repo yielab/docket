@@ -1,11 +1,11 @@
 # Telegram Integration Specification
 
-**Version**: 4.0.1
+**Version**: 4.1.0
 **Status**: Implemented. `docket setup notify enable telegram --chat <id>` connects the channel in
 one operation, `bind`/`unbind` handle the per-pod exception, and `docket start --telegram`
 long-polls the Bot API and routes five verbs through docket's own approval, answer and dispatch
 operations; every grant or deny through it is audited with `channel=telegram`.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -160,7 +160,10 @@ blocked policy verdict never default to granting or denying anything.
    member is scoped to its own agent id, which holds no pod items) — never another agent's tasks
    or pending approvals. The reply lists needs-you items (waiting/blocked tasks and pending
    approvals not already carried by a task) first, then failed tasks, and says nothing needs the
-   operator when both are empty; it stays plain text.
+   operator when both are empty; it stays plain text. Under a `waiting_input` task with a pending
+   `consult` or `input` escalation it prints the question, `options: <ids> (recommended <id>)`
+   and `reply: /answer <task> <option>`, rendered by `render_escalation` at the `conversation`
+   level (the operator asked in their own chat; option ids are never withheld).
 4. **MUST** refuse `/delegate` when the bound agent is not a pod Lead (`enqueue_task_once` requires a
    pod task queue, which only a Lead has).
 5. **MUST** reply with a usage message (not a silent drop, not a guess) on a recognized verb with

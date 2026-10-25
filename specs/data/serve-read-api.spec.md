@@ -2,7 +2,7 @@
 
 **Version**: 4.2.0
 **Status**: Stable
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -302,8 +302,10 @@ timestamp; omitted, `doneSince` lists every terminal task. The body is `InboxVie
 
 `needsYou` mixes `TaskView` (a `waiting_*`/`blocked` task) and `ApprovalView` (a pending approval
 not already carried by a task's `approvalToken`) items; a client distinguishes them by the
-presence of `token` vs. `id`. Identical shape to `docket inbox --json` and `docket start --mcp`'s
-`inbox` tool for the same state — one assembly function, three surfaces.
+presence of `token` vs. `id`. The body also carries `escalations`: the `EscalationView` of every
+pause still waiting (`operator-loop.spec.md` area 11), by `seq`, `[]` when none; it is additive and
+the keys above are unchanged. The same `InboxView` as `docket start --mcp`'s `inbox` tool for the
+same state, and the one `docket inbox --json` starts from — one assembly function, three surfaces.
 
 ### GET /tasks/&lt;project&gt;/&lt;id&gt;/evidence
 
