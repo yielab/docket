@@ -65,9 +65,8 @@ class TestBuildInboxSections:
             created="2026-09-28T01:00:00+00:00",
             completed_at="2026-09-28T02:00:00+00:00",
         )
-        # No live path produces `waiting_input` yet (operator-loop.spec.md requirement area 7,
-        # owned by a later card) -- written by hand so the inbox's classification is
-        # future-proof to it today.
+        # A consultation or an `input` step parks a task `waiting_input` on the live path; it is
+        # written by hand here so this test needs no run.
         _seed_task(
             "beta",
             "task-waiting-input",
