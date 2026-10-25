@@ -107,12 +107,14 @@ def audit_gaps(
 ) -> list[str]:
     """Where the pod's ``tool.*`` audit rows and the trace's denied calls disagree.
 
-    An allowed call leaves no row; *refused* counts the handler refusals provoked."""
+    An allowed call leaves no row. *refused* counts the audit rows without a trace denial: handler
+    refusals, and gated calls that a grant later admitted. A parked consultation has no row."""
     denied = [
         e["payload"]["tool"]
         for e in events
         if e.get("event_type") == "tool_result"
         and e["payload"].get("decision") not in (None, "allow")
+        and e["payload"].get("policyId") != "consult"
     ]
     audited = [
         str(r["detail"]).split("tool=", 1)[1].split()[0]

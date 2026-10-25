@@ -39,12 +39,6 @@ steps:
 """
 
 
-def jailed_pod(world: World, pipeline: str) -> None:
-    """Provision the pod through ``docket init``, the command that records isolation on."""
-    world.docket("init", world.pod, "--blueprint", "agentic-product")
-    world.pipeline.write_text(pipeline, encoding="utf-8")
-
-
 def test_a_jailed_team_edits_the_repo_and_its_check_runs_in_the_jail(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
@@ -69,7 +63,7 @@ def test_a_jailed_team_edits_the_repo_and_its_check_runs_in_the_jail(
         }
     )
     w = world(model)
-    jailed_pod(w, CHECKED)
+    w.make_pod(CHECKED, isolation="on")
     head_before = w.head()
     task_id = w.add_task("Make app.txt say fixed")
 
@@ -117,7 +111,7 @@ def test_the_jail_keeps_the_turn_out_of_home_and_off_the_network(
 
     model = fake_model(script={"lead": [say("Plan: probe.")], "implementer": [probe, report]})
     w = world(model)
-    jailed_pod(w, UNCHECKED)
+    w.make_pod(UNCHECKED, isolation="on")
     task_id = w.add_task("Look around")
 
     w.docket("run", "--pipeline", str(w.pipeline), "--timeout", "30")

@@ -181,13 +181,13 @@ class World:
         spec_file = self.root / "pod.json"
         spec_file.write_text(json.dumps(spec, indent=2), encoding="utf-8")
         self.pipeline.write_text(pipeline_yaml, encoding="utf-8")
-        self.docket("init", "--from", str(spec_file))
         if isolation == "off":
+            self.docket("init", "--from", str(spec_file))
             self.docket("setup", "sandbox", "off")
         else:
-            fleet = json.loads((self.home / "fleet.json").read_text(encoding="utf-8"))
-            mode = fleet.get("security", {}).get("isolationMode")
-            assert mode == "on", f"init did not record isolation on: {mode!r}"
+            self.docket("init", pod, "--blueprint", "agentic-product")
+            status = self.docket("setup", "sandbox", "status", "--json").json()
+            assert status["isolationEnabled"] is True, f"init did not turn isolation on: {status}"
 
     def add_task(self, text: str, *flags: str) -> str:
         """Queue a task and return its id."""
@@ -210,6 +210,7 @@ class World:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         token_file = self.root / "service.token"
+        token_file.unlink(missing_ok=True)
         command = [sys.executable, "-m", "docket", "start", "--port", str(port)]
         command += ["--interval", str(interval), "--token-file", str(token_file)]
         if dispatch:
