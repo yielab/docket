@@ -39,6 +39,18 @@ steps:
 """
 
 
+def test_init_from_a_spec_file_turns_isolation_on_where_a_backend_is_detected(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    w = world(fake_model(script={}))
+    w.make_pod(UNCHECKED, isolation="on")
+
+    sandbox = w.docket("setup", "sandbox", "status", "--json").json()
+    assert sandbox["isolationEnabled"] is True and sandbox["backend"] == BACKEND
+    isolate = [r["detail"] for r in oracles.audit_rows(w) if r["action"] == "gates.isolate"]
+    assert isolate == [f"on (detected {BACKEND})"]
+
+
 def test_a_jailed_team_edits_the_repo_and_its_check_runs_in_the_jail(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:

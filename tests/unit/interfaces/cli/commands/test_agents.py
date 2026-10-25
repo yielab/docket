@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -131,6 +132,24 @@ class TestInitTurnsIsolationOnWhereTheMachineCanJail:
             assert _fleet.get_isolation_state() == "on"
             assert "Sandbox   on (landlock" in tail
             assert any(e.get("action") == "gates.isolate" for e in read_audit())
+
+    def test_the_declarative_form_turns_it_on_the_same_way(
+        self,
+        tmp_path: Path,
+        bind_launcher: Callable[..., Launcher],
+    ) -> None:
+        code = tmp_path / "code"
+        code.mkdir()
+        spec = tmp_path / "pod.json"
+        spec.write_text(
+            json.dumps({"id": "demo", "blueprint": "agentic-product", "codebase": str(code)})
+        )
+        with use_home(Home(tmp_path / "home")):
+            bind_launcher(landlock=True, seatbelt=False)
+            assert _agents.run_init(_agents.InitRequest(from_file=str(spec))) == 0
+            assert _fleet.get_isolation_state() == "on"
+            details = [e["detail"] for e in read_audit() if e.get("action") == "gates.isolate"]
+            assert details == ["on (detected landlock)"]
 
     def test_no_backend_leaves_it_off_and_says_so(
         self,

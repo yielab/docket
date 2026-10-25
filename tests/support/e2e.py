@@ -181,11 +181,10 @@ class World:
         spec_file = self.root / "pod.json"
         spec_file.write_text(json.dumps(spec, indent=2), encoding="utf-8")
         self.pipeline.write_text(pipeline_yaml, encoding="utf-8")
+        self.docket("init", "--from", str(spec_file))
         if isolation == "off":
-            self.docket("init", "--from", str(spec_file))
             self.docket("setup", "sandbox", "off")
         else:
-            self.docket("init", pod, "--blueprint", "agentic-product")
             status = self.docket("setup", "sandbox", "status", "--json").json()
             assert status["isolationEnabled"] is True, f"init did not turn isolation on: {status}"
 

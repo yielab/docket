@@ -550,6 +550,8 @@ def _cmd_add_declarative(from_file: str) -> int:
         ui.warn(f"Skipped {len(skipped)} existing agent(s): {', '.join(skipped)}")
     if not created and not skipped:
         ui.warn("No agents provisioned.")
+    if created:
+        _setup_sandbox.turn_on_where_detected()
     if had_refused:
         return 2
     return 1 if had_invalid_id else 0
