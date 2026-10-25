@@ -37,6 +37,13 @@ class ApprovalEscalations(Protocol):
         (``""`` when the call serves no queued task)."""
         ...
 
+    def approval_refused(
+        self, *, project: str, role: str, task_id: str, caused_by: str, prompt: str
+    ) -> None:
+        """Record that call *caused_by* of task *task_id* needed approval and was refused because
+        nobody is asked; the adapter writes a decision only when the autonomy level made it."""
+        ...
+
 
 approval_escalations_port: Binding[ApprovalEscalations] = Binding("approval_escalations")
 
@@ -53,3 +60,15 @@ def approval_opened(token: str, *, task_id: str, caused_by: str) -> None:
     except PortNotBound:
         return
     adapter.approval_opened(token, task_id=task_id, caused_by=caused_by)
+
+
+def approval_refused(*, project: str, role: str, task_id: str, caused_by: str, prompt: str) -> None:
+    """Tell the bound adapter a tool call was refused for want of anyone to ask; a no-op where none
+    is bound."""
+    try:
+        adapter = approval_escalations_port.current()
+    except PortNotBound:
+        return
+    adapter.approval_refused(
+        project=project, role=role, task_id=task_id, caused_by=caused_by, prompt=prompt
+    )

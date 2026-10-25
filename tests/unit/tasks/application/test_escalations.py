@@ -79,10 +79,11 @@ class TestDecidedConsult:
         assert decided.resolution is not None
         assert (decided.resolution.option_id, decided.resolution.by) == ("sqlite", "policy")
 
-    def test_nothing_is_stored_and_one_event_is_written(self) -> None:
+    def test_the_decision_is_stored_decided_never_pending_and_one_event_is_written(self) -> None:
         decided = self._decide()
 
-        assert list_escalations() == []
+        assert list_escalations(state="pending") == []
+        assert [e.id for e in list_escalations(state="decided")] == [decided.id]
         (event,) = [e for e in trace_events("demo") if e["event_type"] == "escalation_decided"]
         assert event["payload"]["escalation"] == decided.id
 

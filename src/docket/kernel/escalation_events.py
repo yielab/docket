@@ -63,6 +63,8 @@ def payload(
         "policy": escalation.policy,
         "askedAt": escalation.asked_at,
     }
+    if escalation.level:
+        body["level"] = escalation.level
     resolution = escalation.resolution
     if event_type == ASKED:
         body["causedBy"] = escalation.caused_by

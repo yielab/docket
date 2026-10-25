@@ -271,10 +271,12 @@ class TestDecide:
         assert (event["session_id"], event["task_id"]) == ("task:t-1", "t-1")
         assert "Which store" not in json.dumps(payload)
 
-    def test_no_record_is_stored_for_a_pause_nobody_waited_on(self) -> None:
+    def test_the_pause_nobody_waited_on_is_stored_decided_and_never_pending(self) -> None:
         self._decide()
 
-        assert list_escalations() == []
+        assert list_escalations(state="pending") == []
+        (stored,) = list_escalations(state="decided")
+        assert (stored.kind, stored.policy) == ("consult", "recommendation")
 
     def test_a_consult_that_parks_decides_nothing(self) -> None:
         decided: list[dict[str, Any]] = []

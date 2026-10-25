@@ -295,6 +295,7 @@ EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed"
 EscalationState = Literal["pending", "resolved", "expired", "decided"]
 EscalationPolicy = Literal["person", "recommendation", "deny", "fail"]
 EscalationExpiry = Literal["deny", "block"]
+EscalationLevel = Literal["L3", "L4", "L5"]
 
 _ESCALATION_ID = re.compile(r"esc-[0-9a-f]{12}")
 
@@ -344,6 +345,9 @@ class _EscalationFields(BaseModel):
     expires_at: str | None = Field(None, alias="expiresAt")
     on_expiry: EscalationExpiry = Field(alias="onExpiry")
     policy: EscalationPolicy = "person"
+    # The autonomy level of the record's task when the pause was created; absent for a pause that
+    # names no queued task.
+    level: EscalationLevel | None = Field(None, exclude_if=lambda value: value is None)
     state: EscalationState = "pending"
     resolution: Resolution | None = None
     seq: int = 0

@@ -196,6 +196,141 @@ class TestApproval:
         assert traced["session_id"] == "demo-approval"
 
 
+class TestLevel:
+    """A pause evaluates the autonomy table when it is created and records ``level`` and
+    ``policy`` (operator-loop.spec.md "Escalations" item 12)."""
+
+    def _ctx(self, tmp_path: Path, task_id: str, mode: str) -> ToolContext:
+        workspace = tmp_path / "ws"
+        workspace.mkdir(exist_ok=True)
+        ctx = ToolContext(
+            agent_id="demo-implementer",
+            role="implementer",
+            project="demo",
+            roots=(workspace,),
+            task_id=task_id,
+        )
+        ctx.approval_mode = mode  # type: ignore[assignment]
+        return ctx
+
+    def _call(self) -> ToolCall:
+        return ToolCall(id="c1", name="bash", arguments=json.dumps({"command": "rm -rf build"}))
+
+    def _pod(self, tmp_path: Path) -> None:
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
+        install_policies()
+
+    def test_a_pause_records_the_level_its_policy_and_its_expiry(self, tmp_path: Path) -> None:
+        self._pod(tmp_path)
+        _fleet.set_profile("lights-out")
+        task = _queue.enqueue_task_once("demo", "tidy", channel="cli", autonomy="L4")[0]
+
+        dispatch_tool(self._call(), self._ctx(tmp_path, task.id, "park"), builtin_registry())
+
+        escalation = _only_escalation()
+        assert (escalation.level, escalation.policy, escalation.on_expiry) == (
+            "L4",
+            "person",
+            "deny",
+        )
+        assert _asked_matches(escalation)["level"] == "L4"
+
+    def test_a_task_with_no_level_records_the_profile_default(self, tmp_path: Path) -> None:
+        self._pod(tmp_path)
+        task = _queue.enqueue_task_once("demo", "tidy", channel="cli")[0]
+
+        dispatch_tool(self._call(), self._ctx(tmp_path, task.id, "park"), builtin_registry())
+
+        assert _only_escalation().level == "L3"
+
+    def test_a_pause_that_names_no_queued_task_has_no_level(self, tmp_path: Path) -> None:
+        install_policies()
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            dispatch_tool(self._call(), self._ctx(tmp_path, "", "wait"), builtin_registry())
+
+        assert _only_escalation().level is None
+        assert "level" not in _asked_matches(_only_escalation())
+
+    def test_l5_denies_a_tool_ask_and_stores_the_decision_on_the_task(self, tmp_path: Path) -> None:
+        self._pod(tmp_path)
+        _fleet.set_profile("lights-out")
+        task = _queue.enqueue_task_once("demo", "tidy", channel="cli", autonomy="L5")[0]
+
+        result = dispatch_tool(
+            self._call(), self._ctx(tmp_path, task.id, "refuse"), builtin_registry()
+        )
+
+        assert result.denial_kind == "approval_unavailable"
+        escalation = _only_escalation()
+        assert (escalation.kind, escalation.state, escalation.policy, escalation.level) == (
+            "approval",
+            "decided",
+            "deny",
+            "L5",
+        )
+        assert escalation.resolution is not None
+        assert (escalation.resolution.option_id, escalation.resolution.by) == ("deny", "policy")
+        assert "rm -rf build" in escalation.prompt
+        assert _the_task().escalations == [escalation.id]
+        assert _events("escalation_asked") == []
+        (decided,) = _events("escalation_decided")
+        assert (decided["escalation"], decided["policy"], decided["level"]) == (
+            escalation.id,
+            "deny",
+            "L5",
+        )
+        assert (decided["by"], decided["optionId"]) == ("policy", "deny")
+
+    def test_an_explicit_refuse_setting_is_not_a_decision_of_the_table(
+        self, tmp_path: Path
+    ) -> None:
+        self._pod(tmp_path)
+        _fleet.set_profile("lights-out")
+        _fleet.meta_set(_pod.pod.member_id("demo", "lead"), "approvalMode", "refuse")
+        task = _queue.enqueue_task_once("demo", "tidy", channel="cli", autonomy="L5")[0]
+
+        result = dispatch_tool(
+            self._call(), self._ctx(tmp_path, task.id, "refuse"), builtin_registry()
+        )
+
+        assert result.denial_kind == "approval_unavailable"
+        assert _store.list_escalations() == []
+
+    def test_a_consult_the_pod_decides_is_stored_on_its_task_with_its_level(
+        self, tmp_path: Path
+    ) -> None:
+        self._pod(tmp_path)
+        _fleet.set_profile("lights-out")
+        task = _queue.enqueue_task_once("demo", "tidy", channel="cli")[0]
+        ctx = self._ctx(tmp_path, task.id, "park")
+        ctx.consult_park, ctx.consult_mode = True, "decide"
+
+        result = dispatch_tool(
+            ToolCall(id="k1", name="consult", arguments=json.dumps(_CONSULT)),
+            ctx,
+            builtin_registry(),
+        )
+
+        assert result.ok
+        escalation = _only_escalation()
+        assert (escalation.state, escalation.policy, escalation.level) == (
+            "decided",
+            "recommendation",
+            "L4",
+        )
+        assert _the_task().escalations == [escalation.id]
+        (decided,) = _events("escalation_decided")
+        assert (decided["level"], decided["optionId"], decided["by"]) == ("L4", "sqlite", "policy")
+
+    def test_l3_and_l4_leave_a_refuse_posture_without_a_record(self, tmp_path: Path) -> None:
+        self._pod(tmp_path)
+        task = _queue.enqueue_task_once("demo", "tidy", channel="cli")[0]
+
+        dispatch_tool(self._call(), self._ctx(tmp_path, task.id, "refuse"), builtin_registry())
+
+        assert _store.list_escalations() == []
+
+
 class _Backend:
     def __init__(self, responses: list[ChatResponse]) -> None:
         self._responses = list(responses)
