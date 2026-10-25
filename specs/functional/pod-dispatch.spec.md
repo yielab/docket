@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.7.0
+**Version**: 10.8.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -83,7 +83,9 @@ This specification does NOT cover:
    says where the task came from.
    Enqueue screens the description through `pre_input` once: a `block` raises `DispatchError` and
    stores nothing; a `require_approval` stores the task `waiting_approval` with an `approvalToken`,
-   `pendingApprovalIndex: 0` and an `approval_required` trace event (`security-gates.spec.md`).
+   `pendingApprovalIndex: 0` and an `approval_required` trace event (`security-gates.spec.md`),
+   and opens the `approval` escalation of that token once the task is stored (a lost idempotency
+   race opens none), so the inbox lists the pause once (`operator-loop.spec.md` area 11).
    Enqueueing into a project with no pod raises `DispatchError`.
 2. Every read of a pod's queue (`TaskRepository.list`) **MUST** fill each field enqueue does not write with
    its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`, `costUsd`,
