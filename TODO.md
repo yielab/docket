@@ -406,6 +406,29 @@
   command line stays byte-identical; `live_eval.py --dry-run` prints the flag.
 - **Contention:** `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py` and their tests.
 
+### P51-13 — the smoke with the jail on grants the toolchain its fixture needs
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
+
+- **Trigger (measured 2026-10-25):** `live_eval.py --sandbox on` fails in the prepare step before
+  any model call: `prepare failed: uv sync --frozen (exit 126): uv: Permission denied`. The smoke
+  fixture has a `uv.lock`, so docket infers `uv sync --frozen`; inside the jail only the default
+  read roots run, and `uv` resolves to a path outside them (a symlink into a package manager under
+  `/home`). An operator grants such a toolchain with `docket setup sandbox read add PATH`; the
+  smoke's throwaway home has no grants.
+- **Goal:** with `--sandbox on`, after `setup sandbox on`, the smoke grants read of the resolved
+  directory of each tool its fixture's prepare step needs (`uv` today), by calling
+  `docket setup sandbox read add <dir>` on its throwaway home only. Never the operator's home.
+- **Non-goals:** any change under `src/`; changing what the jail grants by default; granting
+  anything when `--sandbox off`.
+- **Acceptance:** tests (style of `tests/integration/product/smoke/test_sandbox_flag.py`) for the
+  exact `setup sandbox read add` commands and their order, none when `off`, and a tool that is not
+  found being a one-line `SMOKE FAIL` before any request. One manual verification by the worker:
+  a single run of `uv run python scripts/smoke_workflow.py --live-model --scenario basic
+  --consult-mode decide --sandbox on --workdir <new dir in the scratch>` against the local model
+  (loopback, free; never a remote provider) gets past the prepare step.
+- **Contention:** `scripts/smoke_workflow.py` and its tests. Not P51-9's files.
+
 ### P51-9 — retire the old shapes
 
 **Status:** TODO (needs P51-8; no external trigger: Tack adapts to docket, decided by the maintainer 2026-10-25) · **Size:** M · **Model:** Sonnet · **Kind:** deletion + spec
