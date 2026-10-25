@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.3.1
+**Version**: 2.4.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -665,9 +665,11 @@ Reviewer) lets a model put a clarification or decision to its operator.
    each `id`, `label`, `description`, optional `risks` and `estimatedTokens`) and
    `recommendation` (`optionId`, `rationale`, optional `evidenceRefs`). The call builds a
    `QuestionV11` (minted `q-` id, `createdAt`, `taskId` = the dispatch task id, else the session
-   key, `pod` = the turn's project, `step` = the role). A missing recommendation, fewer than two
+   key, `pod` = the turn's project, `step` = the role). The tool's JSON schema lists
+   `recommendation` as required, so the chokepoint refuses a call without one as an `invalid_call`
+   (`missing required argument(s): recommendation`) before the handler runs. Fewer than two
    options, an unknown kind or a recommendation naming no option is an ordinary error tool
-   result (`invalid consultation: <problem>`), never an exception and never a question event.
+   result (`invalid consultation: <problem>`). Neither is an exception or a question event.
 2. **Budget.** The pod setting `maxConsultationsPerTask` (integer `>= 0`, default 3; 0 disables)
    reaches the turn as `ToolContext.max_consultations`: the driver takes the internal
    `DOCKET_MAX_CONSULTATIONS` key from the hop's environment, else reads the agent's pod setting.
@@ -701,6 +703,13 @@ Reviewer) lets a model put a clarification or decision to its operator.
    once it is non-zero dispatch passes `DOCKET_MAX_CONSULTATIONS` = the setting minus that count
    (never below 0) as the hop's cap, so a fourth consult after three parked ones returns the
    budget-exhausted error. Intake `input` steps are unchanged.
+6. **The description tells the truth.** The `consult` description the model reads **MUST** say
+   that asking ends the turn (in pod dispatch the task waits for a person and the answer arrives
+   in the role's next message; outside it the call returns `no answer; decide yourself` at once),
+   that the model should decide and state its assumption instead of asking when the repository
+   lets it recommend one option, that at least two options and a marked recommendation are
+   required, and how many consultations remain on the task. Each hop renders that number from
+   the hop's own cap (item 5), so it never exceeds what the handler will accept.
 
 ## Examples
 
