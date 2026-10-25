@@ -25,7 +25,12 @@ from filelock import FileLock, Timeout
 from pydantic import BaseModel, ValidationError
 
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import Escalation, EscalationState, is_escalation_id
+from docket.kernel.operator_contract import (
+    Escalation,
+    EscalationState,
+    Resolution,
+    is_escalation_id,
+)
 
 _LOCK_TIMEOUT = 10  # seconds
 
@@ -336,6 +341,23 @@ def _settle(escalation_id: str, state: EscalationState) -> bool:
 
     read_modify_write(_escalation_path(escalation_id), _move)
     return bool(moved)
+
+
+def resolve_escalation(escalation_id: str, resolution: Resolution) -> Escalation | None:
+    """Move the record *escalation_id* from ``pending`` to ``resolved`` carrying *resolution*; the
+    record as stored, or ``None`` when it was not pending (another caller settled it first)."""
+    settled: list[Escalation] = []
+
+    def _move(doc: dict[str, Any]) -> dict[str, Any] | None:
+        current = _parse_escalation(doc)
+        if current is None or current.state != "pending":
+            return None
+        moved = current.model_copy(update={"state": "resolved", "resolution": resolution})
+        settled.append(moved)
+        return moved.model_dump(by_alias=True, mode="json")
+
+    read_modify_write(_escalation_path(escalation_id), _move)
+    return settled[0] if settled else None
 
 
 def settle_escalation(key: str, value: str, state: EscalationState) -> bool:

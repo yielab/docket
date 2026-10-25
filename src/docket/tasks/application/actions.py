@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json as _json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from docket.governance import approval as _ap
 from docket.governance import approval_pregrant as _approval_pregrant
@@ -11,12 +11,15 @@ from docket.kernel import clock as _clock
 from docket.observability import trace as _trace
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import transitions as _transitions
-from docket.tasks.application.record import UnitContext
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.parts import Grant, TaskGrant
 from docket.tasks.domain.task import TaskRecord
 from docket.teams.settings import load_pod_settings
+
+if TYPE_CHECKING:
+    # Annotation only: the record module opens escalations, which resolve through this one.
+    from docket.tasks.application.record import UnitContext
 
 TASK_GRANT_CAP = 20
 

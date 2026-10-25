@@ -155,7 +155,10 @@ def test_a_parked_approval_shows_in_the_inbox_and_a_task_grant_covers_the_rest(
         ("approval_resumed", "lead", ""),
         *DONE,
     ]
-    assert _escalations(w, task_id) == [("escalation_asked", "approval", "")]
+    assert _escalations(w, task_id) == [
+        ("escalation_asked", "approval", ""),
+        ("escalation_resolved", "approval", "person"),
+    ]
     assert len(model.by_role("implementer")) == 5
     _the_model_saw_the_rules_and_the_reason_but_no_token(model, token)
     assert not (_worktree(w, task_id) / "build").exists()
@@ -252,7 +255,10 @@ def test_a_question_from_the_model_waits_for_an_answer(
         ("input_answered", "lead", "implement"),
         *DONE,
     ]
-    assert _escalations(w, task_id) == [("escalation_asked", "consult", "")]
+    assert _escalations(w, task_id) == [
+        ("escalation_asked", "consult", ""),
+        ("escalation_resolved", "consult", "person"),
+    ]
     first, resumed = model.by_role("implementer")
     assert "ENDS your turn" in _consult_description(first)
     assert "3 consultations left" in _consult_description(first)

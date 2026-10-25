@@ -9,14 +9,15 @@ from typing import Any
 import pytest
 from tests.support.pods import parked_task_in_pod as _seed_parked_task
 from tests.support.pods import seed_pod_isolation_off as _seed_pod
-from tests.support.task_unit_harness import (
-    _runner,
-)
+from tests.support.task_unit_harness import _runner
+from tests.support.task_unit_harness import invoke_task as _task
 from tests.support.tasks import put_task, task
 
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.kernel.operator_contract import Option, QuestionV11, Recommendation
+from docket.platform import list_escalations, settle_escalation
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
 from docket.tasks.domain.task import TaskRecord
@@ -41,11 +42,14 @@ def _give_options(project: str, task_id: str) -> None:
             }
         )
 
-    TaskRepository.for_pod(project).update(task_id, _fn)
-
-
-def _task(*args: str) -> Any:
-    return _runner.invoke(app, ["task", *args])
+    updated = TaskRepository.for_pod(project).update(task_id, _fn)
+    assert updated is not None and updated.question is not None
+    # The input step's escalation described the old question; a consult opens its own.
+    for stale in list_escalations(state="pending"):
+        settle_escalation("questionId", stale.legacy["questionId"], "expired")
+    _escalations.open_for_question(
+        updated.question, kind="consult", role="implementer", caused_by="implementer"
+    )
 
 
 def _park_on_approval(project: str, kind: str = "") -> tuple[TaskRecord, str]:

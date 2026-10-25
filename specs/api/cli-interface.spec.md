@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 4.3.0
+**Version**: 4.4.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-25
@@ -381,8 +381,14 @@ The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.
   (`record_pregrant`) and conflicts with `--task` (exit 2)
 - `deny` denies the same approval; the task fails with `approval_denied` and, when `--reason`
   was given, `reason: approval denied: <reason>` (what the inbox's Failed entry shows)
-- `answer` answers the parked question (`answer_task`); on a TTY with no text, field or option
-  it prompts, off a TTY it exits 1 naming `--option`; a `--field` that is not `name=value` exits 2
+- `answer` resolves an escalation (`resolve`, `operator-loop.spec.md` area 10): *ref* is a task
+  parked on a question, a `waiting_approval` task, or an `esc-` escalation id. On a question it
+  answers it (text, `--field`, `--option`, `--decline`); on a TTY with no text, field or option it
+  prompts, off a TTY it exits 1 naming `--option`; a `--field` that is not `name=value` exits 2.
+  On an approval, gate or changed check, `--option approve_once|approve_task|deny` settles it;
+  a repeat on an escalation already settled that way is a warning,
+  exit 0. `approve` and `deny` are the older forms of the same two options and call the same
+  function
 - `retry` puts a `failed` or `blocked` task back to `pending`, keeping the hops it finished, and
   audits `task.retry`; a task in any other status exits 1
 - `cancel` requests cancellation of the task's live run (one `runs.cancel` audit entry; every

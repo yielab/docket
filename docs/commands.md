@@ -147,10 +147,12 @@ Example: docket task deny task-04ff --reason "touches production"
 
 **Usage:** `docket task answer`
 
-Answer the question a task is parked on and let it continue.
+Answer what a task is waiting on and let it continue.
 
-On a terminal with no text or option it shows the question and prompts. Off a terminal
-pass text, --field name=value or --option <id>; a question with options needs --option.
+A question takes text, --field or --option; on a terminal with none of them it shows the
+question and prompts. Off a terminal pass text, --field name=value or --option <id>; a
+question with options needs --option. An approval takes --option approve_once, approve_task
+or deny. The reference may be the escalation id that `docket inbox` prints.
 
 Example: docket task answer task-04ff --option opt2
 

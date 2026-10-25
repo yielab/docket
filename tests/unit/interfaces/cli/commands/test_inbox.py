@@ -214,11 +214,15 @@ class TestEscalations:
             assert "command" not in escalation["affordances"]
             assert body["needsYou"][0]["command"] == "docket task answer task-q"
 
-    def test_a_pending_approval_escalation_points_at_approve(self, tmp_path: Path) -> None:
+    def test_a_pending_approval_escalation_points_at_answer_by_its_id(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
             token = _approval.approval_create("demo", "implementer", "bash: rm -rf build")
-            _escalations.open_for_approval(token, kind="approval", task_id="", caused_by="c1")
+            escalation = _escalations.open_for_approval(
+                token, kind="approval", task_id="", caused_by="c1"
+            )
 
             body = json.loads(_inbox("--json", "--peek").stdout)
 
-            assert body["escalations"][0]["command"] == f"docket task approve {token}"
+            assert body["escalations"][0]["command"] == (
+                f"docket task answer {escalation.id} --option approve_once"
+            )

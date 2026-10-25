@@ -210,19 +210,17 @@ _TYPE_CHECKERS: dict[str, Any] = {
 }
 
 
-def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
-    """Validate an answer's ``content`` against the question's ``requestedSchema``;
-    ``decline``/``cancel`` ignore *content*. Raises ``ValueError`` naming the property."""
-    if result.action != "accept":
-        return result
-    schema = question.requested_schema
+def validate_content(schema: dict[str, Any], content: dict[str, Any] | None) -> None:
+    """Check *content* against the properties of a ``requestedSchema``: every required one is
+    present, and each given one has its declared type and lies in its ``enum``. Raises
+    ``InvalidInput`` naming the property."""
     properties: dict[str, Any] = schema.get("properties", {})
     required: list[str] = schema.get("required", [])
-    content = result.content or {}
+    given = content or {}
     for name in required:
-        if name not in content:
+        if name not in given:
             raise InvalidInput(f"missing required property: {name!r}")
-    for name, value in content.items():
+    for name, value in given.items():
         prop = properties.get(name)
         if prop is None:
             continue
@@ -233,6 +231,14 @@ def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
         enum = prop.get("enum")
         if enum is not None and value not in enum:
             raise InvalidInput(f"property {name!r} is not one of {enum!r}")
+
+
+def validate_answer(question: Question, result: AnswerResult) -> AnswerResult:
+    """Validate an answer's ``content`` against the question's ``requestedSchema``;
+    ``decline``/``cancel`` ignore *content*. Raises ``ValueError`` naming the property."""
+    if result.action != "accept":
+        return result
+    validate_content(question.requested_schema, result.content)
     return result
 
 

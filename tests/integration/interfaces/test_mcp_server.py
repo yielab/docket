@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.escalations import approval_escalation
 from tests.support.fakes import FakeDriver
 from tests.support.pods import seed_pod as _seed_pod
 from tests.support.tasks import put_task, put_tasks, task
@@ -625,6 +626,7 @@ class TestEveryToolCallIsAudited:
             _mcp.tool_task_pregrant("demo", parked.id, "git push origin main")
             _mcp.tool_inbox()
             _mcp.tool_escalations()
+            _mcp.tool_resolve(approval_escalation("gate").id, "approve_once")
             _mcp.tool_cost()
             _wait_for_terminal_run(dispatch_result["run"])
 

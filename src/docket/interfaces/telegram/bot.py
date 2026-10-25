@@ -5,9 +5,9 @@ bot -- long-polling the Bot API
 (``interfaces/telegram/client.py``, wire format only) and routing every message
 through docket's own, already-existing approval store and pod-delegation
 APIs. Nothing here reimplements approval logic: :func:`_handle_decision`
-calls ``governance.approval.approval_grant``/``approval_deny`` exactly the way
-``interfaces/cli/commands/task.py``'s approve and deny do, including the
-``tasks.application.actions.resolve_waiting_approval`` follow-up.
+calls ``tasks.application.escalations.resolve_approval_token`` exactly the way
+``interfaces/cli/commands/task.py``'s approve and deny do, which grants or denies the
+approval and runs the ``resolve_waiting_approval`` follow-up.
 
 ## Security model -- read this before touching authorization
 
@@ -40,9 +40,9 @@ The inert ``/wire <code>`` setup handshake only confirms a binding that the
 CLI already created; anything else is an "unrecognized command" reply, not a
 guess at what the sender meant.
 
-``/answer <task-id> <text>`` resolves a task's parked ``input`` question
-through the same ``hops.application.answers.answer_task`` every other surface (CLI, HTTP,
-MCP) calls -- see :func:`_handle_answer`. It is the one verb whose *outbound*
+``/answer <id> <option|text>`` settles an escalation (a parked question, or an approval by its
+option id) through the same ``tasks.application.escalations.resolve`` every other surface (CLI,
+HTTP, MCP) calls -- see :func:`_handle_answer`. It is the one verb whose *outbound*
 counterpart also exists: an operator who enables the ``telegram`` channel
 document (``kind: channel``, dialect ``telegram``) gets a *push* to every
 chat id it lists in ``actors`` when a task needs input, through
@@ -78,18 +78,25 @@ from docket.governance import approval as _approval
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
-from docket.hops.application import answers as _answers
 from docket.interfaces.telegram import client as _client
 from docket.interfaces.telegram.client import GetUpdatesResult
 from docket.kernel import clock as _clock
 from docket.kernel import operator_contract as _oc
-from docket.kernel.errors import DispatchError
+from docket.kernel.errors import DispatchError, DocketError
 from docket.kernel.home import current_home
-from docket.operator import build_inbox, ids_line, question_escalation, render_escalation
-from docket.platform import read_json, write_json
-from docket.tasks.application import actions as _actions
+from docket.operator import (
+    build_inbox,
+    escalation_view,
+    escalation_views,
+    ids_line,
+    question_escalation,
+    render_escalation,
+)
+from docket.platform import read_escalation, read_json, write_json
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.escalations import resolve, resolve_approval_token, resolve_question
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain.resolution import EscalationRefused
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 
@@ -126,7 +133,7 @@ _ANSWER_RE = re.compile(r"^/answer(?:@\w+)?\s+(\S+)\s+(.+)$", re.DOTALL)
 _ANSWER_PREFIX_RE = re.compile(r"^/answer(?:@\w+)?\b")
 _WIRE_RE = re.compile(r"^/wire(?:@\w+)?\s+\S+\s*$", re.IGNORECASE)
 
-_ANSWER_USAGE = "Usage: /answer <task-id> <answer text>"
+_ANSWER_USAGE = "Usage: /answer <id> <option or answer text>"
 _PROMPT_MAX = 500
 
 _UNRECOGNIZED_REPLY = (
@@ -135,7 +142,7 @@ _UNRECOGNIZED_REPLY = (
     "  /deny <token>\n"
     "  /status\n"
     "  /delegate <task description>\n"
-    "  /answer <task-id> <answer text>"
+    "  /answer <id> <option or answer text>"
 )
 
 
@@ -227,9 +234,9 @@ def _decision_pod_refusal(agent_id: str, token: str, action: str) -> TelegramAct
 def _handle_decision(
     agent_id: str, token: str, *, grant: bool, task_wide: bool = False
 ) -> TelegramActionResult:
-    """Grant or deny *token*, mirroring ``interfaces/cli/commands/task.py``'s approve and deny,
-    including the ``resolve_waiting_approval`` follow-up so a dispatch task
-    blocked on this token actually resumes or fails, not just its record."""
+    """Grant or deny *token* as ``interfaces/cli/commands/task.py``'s approve and deny do: the
+    approval's escalation is resolved, so a dispatch task blocked on this token actually resumes
+    or fails, not just its record."""
     action = "approve" if grant else "deny"
     if not token:
         return TelegramActionResult(False, f"Usage: /{action} <token>", True, action)
@@ -238,23 +245,12 @@ def _handle_decision(
     if refusal is not None:
         return refusal
 
-    channel = "telegram"
+    option = ("approve_task" if task_wide else "approve_once") if grant else "deny"
     try:
-        if grant:
-            if task_wide:
-                _approval.approval_set_option(token, "approve_task")
-            _approval.approval_grant(token, channel=channel)
-        else:
-            _approval.approval_deny(token, channel=channel)
-    except _approval.ApprovalNoop as exc:
-        _actions.resolve_waiting_approval(token, "granted" if grant else "denied")
+        note = resolve_approval_token(token, option, channel="telegram", actor="telegram")
+    except DocketError as exc:
         return TelegramActionResult(False, exc.message, True, action)
-    except _approval.ApprovalError as exc:
-        return TelegramActionResult(False, str(exc), True, action)
 
-    _, note = _actions.resolve_waiting_approval_detail(
-        token, "granted" if grant else "denied", channel=channel
-    )
     verb = "granted" if grant else "denied"
     reply = f"Approval {verb}: {token}" + (f"\n{note}" if note else "")
     return TelegramActionResult(True, reply, True, action)
@@ -354,14 +350,80 @@ def _handle_delegate(agent_id: str, text: str) -> TelegramActionResult:
     return TelegramActionResult(True, f"Queued for pod '{project}': [{task.id}]", True, "delegate")
 
 
-def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResult:
-    """Accept *text* as the answer to *task_id*'s parked question, mirroring
-    ``docket task answer``'s bare-text path (``interfaces/cli/commands/task.py::_task_answer``): a
-    single-property schema fills from the whole message, a multi-property one is refused
-    with the CLI guidance instead of guessing which field the text belongs
-    to. The pod is the bound agent's own project (:func:`_lead_project`) --
-    ``hops.application.answers.answer_task`` itself refuses a *task_id* that belongs to another pod, the
-    same way it does for any other channel."""
+def _options_reply(view: _oc.EscalationView) -> str:
+    """The ids a reply may name, as `/status` prints them."""
+    rendered = render_escalation(view, "conversation")
+    return f"options: {ids_line(rendered.options)}"
+
+
+def _text_content(properties: dict[str, Any], text: str, ref: str) -> dict[str, Any] | str:
+    """The content *text* makes for a one-property schema, else the reply that refuses it: a single
+    chat message cannot be split across fields."""
+    if len(properties) != 1:
+        return (
+            "This question has more than one field -- answer it with "
+            f"'docket task answer {ref} --field name=value ...'."
+        )
+    (prop_name,) = properties
+    return {prop_name: text}
+
+
+def _settle(
+    project: str, task_id: str, escalation_id: str | None, option: str | None, content: Any
+) -> TelegramActionResult:
+    """Resolve what the chat answered and say how it went; an escalation id wins over the task."""
+    try:
+        if escalation_id is not None:
+            resolved = resolve(escalation_id, option, content, by="telegram", channel="telegram")
+            reply = f"Resolved {escalation_id}." + (f"\n{resolved.note}" if resolved.note else "")
+        else:
+            resolve_question(
+                project, task_id, "accept", content, channel="telegram", actor="telegram"
+            )
+            reply = f"Answered task {task_id}."
+    except EscalationRefused as exc:
+        audit_log(
+            "telegram.answer_blocked",
+            f"project={project!r} task={task_id!r} policy={exc.policy_id!r}",
+        )
+        return TelegramActionResult(
+            False, f"Answer blocked by policy {exc.policy_id!r}.", True, "answer"
+        )
+    except DocketError as exc:
+        return TelegramActionResult(False, exc.message, True, "answer")
+    return TelegramActionResult(True, reply, True, "answer")
+
+
+def _answer_escalation(agent_id: str, escalation_id: str, text: str) -> TelegramActionResult:
+    """`/answer esc-... <option|text>`: an option id resolves it; anything else resolves a question
+    with no options (text filling its one property) and otherwise lists the ids."""
+    bound = _pod.pod_of(agent_id) or agent_id
+    record = read_escalation(escalation_id)
+    if record is None or record.pod != bound:
+        return TelegramActionResult(
+            False, f"Escalation {escalation_id!r} not found in pod {bound!r}.", True, "answer"
+        )
+    view = escalation_view(record)
+    # A settled escalation takes the same path, so that `resolve` says why it is refused.
+    if view.state != "pending" or text in view.affordances.options:
+        return _settle(record.pod, record.task, record.id, text, None)
+    offers_options = any(o != "decline" for o in view.affordances.options)
+    if offers_options or record.kind in ("approval", "gate", "check_changed"):
+        return TelegramActionResult(False, _options_reply(view), True, "answer")
+    content = _text_content(
+        (record.requested_schema or {}).get("properties", {}), text, record.task
+    )
+    if isinstance(content, str):
+        return TelegramActionResult(False, content, True, "answer")
+    return _settle(record.pod, record.task, record.id, None, content)
+
+
+def _handle_answer(agent_id: str, ref: str, text: str) -> TelegramActionResult:
+    """Accept *text* as the answer to the escalation or parked question *ref* names: an option id
+    picks it, a one-property schema fills from the message, text for a question with options
+    replies with their ids, and a multi-property schema is refused with the CLI guidance."""
+    if _oc.is_escalation_id(ref):
+        return _answer_escalation(agent_id, ref, text)
     project = _lead_project(agent_id)
     if project is None:
         return TelegramActionResult(
@@ -371,50 +433,31 @@ def _handle_answer(agent_id: str, task_id: str, text: str) -> TelegramActionResu
             "answer",
         )
 
-    task = next((t for t in TaskRepository.for_pod(project).list() if t.id == task_id), None)
+    task = next((t for t in TaskRepository.for_pod(project).list() if t.id == ref), None)
     if task is None:
         return TelegramActionResult(
-            False, f"Task {task_id!r} not found in pod {project!r}.", True, "answer"
+            False, f"Task {ref!r} not found in pod {project!r}.", True, "answer"
         )
     question = task.question
     if question is None:
-        return TelegramActionResult(
-            False, f"Task {task_id!r} has no pending question.", True, "answer"
-        )
+        return TelegramActionResult(False, f"Task {ref!r} has no pending question.", True, "answer")
     option_ids = (
         {o.id for o in question.options} if isinstance(question, _oc.QuestionV11) else set()
     )
-    properties = question.requested_schema.get("properties", {})
     if text in option_ids:
-        content: dict[str, Any] = {"optionId": text}
-    elif len(properties) != 1:
-        return TelegramActionResult(
-            False,
-            "This question has more than one field -- answer it with "
-            f"'docket task answer {task_id} --field name=value ...'.",
-            True,
-            "answer",
+        return _settle(project, ref, None, None, {"optionId": text})
+    if option_ids:
+        asked = question_escalation(escalation_views(pod=project, task=ref), project, ref)
+        listing = (
+            _options_reply(asked)
+            if asked is not None
+            else "options: " + ", ".join(sorted(option_ids))
         )
-    else:
-        (prop_name,) = properties
-        content = {prop_name: text}
-
-    try:
-        _answers.answer_task(
-            project, task_id, "accept", content, channel="telegram", actor="telegram"
-        )
-    except _answers.AnswerRejected as exc:
-        audit_log(
-            "telegram.answer_blocked",
-            f"project={project!r} task={task_id!r} policy={exc.policy_id!r}",
-        )
-        return TelegramActionResult(
-            False, f"Answer blocked by policy {exc.policy_id!r}.", True, "answer"
-        )
-    except _answers.AnswerError as exc:
-        return TelegramActionResult(False, str(exc), True, "answer")
-
-    return TelegramActionResult(True, f"Answered task {task_id}.", True, "answer")
+        return TelegramActionResult(False, listing, True, "answer")
+    content = _text_content(question.requested_schema.get("properties", {}), text, ref)
+    if isinstance(content, str):
+        return TelegramActionResult(False, content, True, "answer")
+    return _settle(project, ref, None, None, content)
 
 
 def handle_message(

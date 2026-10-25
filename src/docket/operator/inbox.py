@@ -38,7 +38,9 @@ __all__ = [
     "MemoryItem",
     "build_inbox",
     "escalation_page",
+    "escalation_view",
     "escalation_views",
+    "pause_is_live",
     "pending_memory",
     "question_escalation",
     "task_view",
@@ -154,11 +156,16 @@ def _waiting_question_ids(tasks: Iterable[dict[str, Any]]) -> set[str]:
     return found
 
 
+def _pause_key(escalation: Escalation) -> str:
+    """What names the approval or question *escalation* waits on."""
+    return str(escalation.legacy.get("token") or escalation.legacy.get("questionId") or "")
+
+
 def _escalation_view(escalation: Escalation, live: set[str]) -> EscalationView:
     """*escalation* as a view. A stored ``pending`` stays so only while the approval or question
     it names is *live*; a grant or an answer does not close the record itself yet."""
     state = escalation.state
-    key = str(escalation.legacy.get("token") or escalation.legacy.get("questionId") or "")
+    key = _pause_key(escalation)
     if state == "pending" and key not in live:
         state = "resolved"
     pending = state == "pending"
@@ -170,6 +177,27 @@ def _escalation_view(escalation: Escalation, live: set[str]) -> EscalationView:
         resolve_url=f"/escalations/{escalation.id}",
     )
     return EscalationView.model_validate(fields)
+
+
+def pause_is_live(escalation: Escalation) -> bool:
+    """Whether the approval or question *escalation* names still waits for a person: the same
+    join the views make, for one record. A record that is not stored ``pending`` never does."""
+    if escalation.state != "pending":
+        return False
+    if escalation.kind in ("consult", "input"):
+        waiting = _waiting_question_ids(_tasks.read_tasks(escalation.pod))
+        return str(escalation.legacy.get("questionId", "")) in waiting
+    try:
+        record = _approval.approval_get(str(escalation.legacy.get("token", "")))
+    except _approval.ApprovalError:
+        return False
+    return record.get("state") == "pending"
+
+
+def escalation_view(escalation: Escalation) -> EscalationView:
+    """*escalation* as a surface reads it, its ``state`` joined with the pause it names."""
+    live = {_pause_key(escalation)} if pause_is_live(escalation) else set()
+    return _escalation_view(escalation, live)
 
 
 def escalation_views(

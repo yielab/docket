@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 
-from docket.hops.application import answers as _answers
 from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.http.exchange import HttpExchange
+from docket.kernel.errors import DocketError
 from docket.operator import task_view
 from docket.tasks.application import lifecycle as _lifecycle
+from docket.tasks.application.escalations import resolve_question
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 
@@ -57,8 +58,8 @@ def post_task_retry(h: HttpExchange, rest: str) -> None:
 
 
 def post_task_answer(h: HttpExchange, task_id: str) -> None:
-    """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket task answer`.
-    Body: `{"pod", "action", "content"?, "actor"?}`; `actor` is a label only, and the
+    """`POST /tasks/<id>/answer` -- the HTTP counterpart of `docket task answer`; it settles the
+    task's question escalation like `POST /escalations/<id>`. Body: `{"pod", "action", "content"?, "actor"?}`; `actor` is a label only, and the
     channel is always `"http"`."""
     if not task_id:
         h._send_json_error("Missing task id", 400)
@@ -85,18 +86,9 @@ def post_task_answer(h: HttpExchange, task_id: str) -> None:
     actor = actor_raw if isinstance(actor_raw, str) and actor_raw else "http"
 
     try:
-        _answers.answer_task(project, task_id, action, content, channel="http", actor=actor)
-    except _answers.AnswerRejected as exc:
-        h._send_json_error(f"blocked by policy '{exc.policy_id}'", 422)
-        return
-    except _answers.AnswerError as exc:
-        msg = str(exc)
-        if "not found in pod" in msg:
-            h._send_json_error(msg, 404)
-        elif "is not waiting_input" in msg or "is not parked at step" in msg:
-            h._send_json_error(msg, 409)
-        else:
-            h._send_json_error(msg, 422)
+        resolve_question(project, task_id, action, content, channel="http", actor=actor)
+    except DocketError as exc:
+        h._send_refusal(exc)
         return
 
     task = next((t for t in TaskRepository.for_pod(project).list() if t.id == task_id), None)
