@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.10.0
+**Version**: 2.11.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -435,7 +435,7 @@ failure as a failed `DeliveryResult` without raising.
    `consultAnswer` for the same step instead (see "Consult" item 5). Mechanics: `pod-dispatch.spec.md` "Operator input steps
    and answers".
 3. An unanswered `waiting_input` task past its question's `expiresAt` MUST be moved by
-   `sweep_expired_questions`, run on every periodic sweep of `docket start`, to `blocked` with
+   `sweep_escalations`, run on every periodic sweep of `docket start`, to `blocked` with
    `blockedReason: "input_expired"` — never `failed`; `docket task retry` reopens it. A question
    parked without its own `expiresAt` (a consultation) carries now plus the pod's
    `inputExpiryHours`.
@@ -686,7 +686,9 @@ every output a surface prints is unchanged.
    approval, otherwise the step id; empty for `check_changed`), `prompt` (redacted when the
    record is created, with the same redaction approvals use), `options` (`Option` list), `recommendation`, `requestedSchema`
    (`null` when the pause asks no structured answer), `askedAt`, `expiresAt`, `onExpiry`
-   (`deny | block`), `policy` (`person | recommendation | deny | fail`), `state`, `resolution`
+   (`deny | block`), `policy` (`person | recommendation | deny | fail`), `level` (`L3 | L4 | L5`,
+   the autonomy level of the record's task when the pause was created, item 12; absent for a
+   pause that names no queued task), `state`, `resolution`
    (`{optionId, content, by, channel, at, appliedAt?}` or `null`; `appliedAt` is when the
    continuation was applied, absent while it has not been), `seq` and `legacy` (`{"token": ...}` for an
    approval, `{"questionId": ...}` for a question).
@@ -700,17 +702,20 @@ every output a surface prints is unchanged.
    | `gate` | a pipeline `approval` gate fires before a hop | `approve_once`, `deny` | `deny` |
    | `check_changed` | a finished task's diff edits what checks it | `approve_once`, `deny` | `deny` |
 
-   `policy` is `person` on every record this version creates; no other value is chosen yet.
+   `policy` and `onExpiry` are not fixed per kind: they are the autonomy table's row for the
+   kind at the task's level (item 12), so the `onExpiry` column above is the L3 value, which is
+   also what a pause with no queued task gets.
 3. **Task link.** `TaskRecord.escalations` lists, oldest first, the id of every escalation opened
    for the task, and is absent while empty. An escalation whose task is not in the pod's queue (an
    ad hoc `docket run` tool call) is stored with that task id and listed nowhere.
 4. **Projection.** For `approval`, `gate` and `check_changed` the task's `approvalToken` equals
    `legacy.token`; for `consult` and `input` the task's `question.id` equals `legacy.questionId`
    and `question.message` equals `prompt`.
-5. **States.** A record is written `pending`. The expiry sweeps (`approval_sweep_expired` and the
-   timeout of one wait, `sweep_expired_questions`) move it to `expired` when they expire its
-   approval or question. `resolved` is written by `resolve` (area 10 item 4) and `decided` is
-   the state of a record written for a pod-decided consult (which stores none today). A `pending`
+5. **States.** A record is written `pending`. The one expiry sweep (`sweep_escalations`, item 13)
+   and the timeout of one in-turn wait move it to `expired`. `resolved` is written by `resolve`
+   (area 10 item 4) and `decided` is the state of a record the pod settled itself (a consult
+   answered by its recommendation, an approval denied by the level): it is written `decided`
+   with a `resolution` whose `by` is `policy`, never `pending`, and is listed on its task. A `pending`
    record may still outlive its pause (an in-turn `wait` approval settled in place, an approval
    granted by a path with no record), so a reader MUST join it to the task or approval it names
    (item 7) rather than trust the state alone.
@@ -776,15 +781,59 @@ every output a surface prints is unchanged.
    | `escalation_expired` | an expiry sweep settled it (item 5) | `by: "timeout"` |
    | `escalation_decided` | the pod settled it without a person | `by: "policy"`, `optionId` |
 
+   Every payload also carries `level` (item 1) when the record has one.
+
    `escalation_asked` is written by the store's opener after the record and the task link exist.
-   `escalation_expired` is written by the two expiry sweeps only when they moved a still-`pending`
+   `escalation_expired` is written by the expiry sweep only when it moved a still-`pending`
    record. `escalation_decided` is written where a pod-decided consult applies its recommendation
-   (Consult item 7), with `policy` `recommendation` and a fresh escalation id: that pause never
-   parks, so no record is stored for it in this version. `escalation_resolved` is written by
+   (Consult item 7, `policy` `recommendation`) and where the level denies an approval (item 12,
+   `policy` `deny`, `optionId` `deny`): the record is stored `decided` and listed on the task in
+   the same call, so the pause is visible after the fact. `escalation_resolved` is written by
    `resolve` (area 10 item 4); `escalation_delivered` has a builder and a projection and no
    writer yet. The older events of area 7 item 5 and `approval_*` are still written as before.
    `prompt` is in the trace for every record and reaches an exporter only at a privacy level that
    grants `prompts` (`observability-export.spec.md` requirement 114).
+
+12. **Autonomy levels (ADR 0032, `security-gates.spec.md` "Autonomy levels").** A level is a policy
+    over escalations. When a pause is created `teams/autonomy.py::policy_for(kind, level)` returns
+    its `(policy, onExpiry)` from the `kind: autonomy` document (`templates/autonomy/default.yaml`,
+    `config-format.spec.md`), and both are recorded on the record beside `level`:
+
+    | Kind | L3 | L4 | L5 |
+    | --- | --- | --- | --- |
+    | `approval` (a tool `ask`, a pipeline `approval` step) | `person`, `onExpiry` `deny` | `person`, `deny` | `deny`: no record waits |
+    | `consult` | `person`, `block` | `recommendation`, `block` | `recommendation`, `block` |
+    | `input` | `person`, `block` | `fail`, `block` | `fail`, `block` |
+    | `gate` | `person`, `deny` | `fail`, `deny` | `fail`, `deny` |
+    | `check_changed` | `person`, `deny` | `person`, `deny` | `person`, `deny` |
+
+    `person` is what every pause did before levels existed. `recommendation` applies the model's own
+    recommendation in the turn (Consult item 7). `deny` ends the call with the
+    `approval_unavailable` denial, fails the task `needs_human` and writes a `decided` record, so
+    nothing waits and a person is told. `fail` refuses what would ask a person: an `input` step is
+    refused when the task is claimed (`pipeline-format.spec.md` "Operator input steps" item 5) and
+    an external gate's `needs_human` or `error` outcome is not routed (it fails the task
+    `gate_needs_human` or `gate_error`). A `check_changed` pause is `person` at every level: a check
+    the change itself defines cannot be satisfied by a machine. The pod settings stay and win where
+    set: `consultMode` is the alias of the `consult` row (`decide` is `recommendation`, `park` is
+    `person`) and `approvalMode` of the `approval` row (`refuse` is `deny`; `wait` and `park` are
+    `person`).
+13. **One expiry sweep.** `sweep_escalations()` (`tasks/application/escalation_sweep.py`) replaces
+    the two sweeps that used to expire pending approvals and unanswered questions separately. For each
+    `pending` record past its `expiresAt` it applies the record's own `onExpiry`: `deny` denies the
+    approval it names (the task fails `approval_denied` through the follow-up the denial always
+    ran) and `block` blocks the task `input_expired`. Then it settles what has no record (an
+    approval or a question made before records were kept) the same way, and prunes unconsumed
+    pre-grants past their deadline. It returns how many pauses it ended, runs on the periodic sweep
+    of `docket start` and writes `escalation_expired` once per record it moved.
+14. **Humans are informed.** `escalation.decided` is a channel event kind (`EVENT_KINDS`; a channel
+    subscribes with `on: [escalation.decided]`, it is not part of `needs_you`). `diff_events`
+    emits one per `decided` record on the inbox's `decided` list the first time it sees it, with
+    the `pod`, `taskId`, the escalation `id`, `kind`, `optionId` and `level`. `build_inbox` lists
+    the most recent `decided` records (at most twenty, newest first) as `InboxView.decided`,
+    omitted from the document while empty; `docket inbox` prints them under `Done` and `docket
+    task show` prints a `Decided without you` section with each decision and its option.
+    `docket_escalations_total` carries `level` (`serve-read-api.spec.md`).
 
 ### Profile lines (ADR 0025 D2)
 
@@ -974,7 +1023,10 @@ Reviewer) lets a model put a clarification or decision to its operator.
    consult and the task never becomes `waiting_input`, so the inbox lists nothing for it. The
    recommendation is always present (item 1); a call that fails validation is still the item 1
    error. `decide` changes nothing outside pod dispatch (items 3 and 4); inside it, it applies
-   whatever the approval mode. The `lights-out` profile requires `decide` (security-gates.spec.md
+   whatever the approval mode. `consultMode` is the alias of the `consult` row of the autonomy
+   table (Escalations item 12): an unset `consultMode` takes the row at the task's level (`decide`
+   at L4 and L5, `park` at L3) and a set one wins. The `lights-out` profile requires that a
+   consultation at the pod's default level not wait for a person (security-gates.spec.md
    "Profiles").
 
 ## Examples
@@ -1111,6 +1163,8 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/kernel/escalation_events.py`: the five event names, `payload`, `emit`
 - `src/docket/governance/escalation_expiry.py`: `expire` (settle the pending record and write
   `escalation_expired`)
+- `src/docket/teams/autonomy.py`: `policy_for`, `effective_level`, `check_level`, `consult_mode_for`,
+  `approval_policy_for`; `src/docket/tasks/application/escalation_sweep.py`: `sweep_escalations`
 - `src/docket/tasks/application/escalations.py`: `open_for_approval`, `open_for_question`,
   `attach`, `approval_opened`, `decided_consult`, `resolve`, `resolve_approval_token`,
   `resolve_question`, `Resolved` and the four `Escalation*` errors (area 10);
@@ -1133,7 +1187,7 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/templates/channels/01-console.yaml` … `07-telegram.yaml`: the seven built-in
   channel documents
 - `src/docket/hops/application/answers.py`: `record_answer`, `answer_task`, `AnswerError`,
-  `AnswerRejected`, `sweep_expired_questions`
+  `AnswerRejected`
 - `src/docket/hops/application/resolutions.py`: `apply_resolutions`, the claim-time application of
   a resolved `consult` or `input` escalation
 - `src/docket/hops/application/interruptions.py`: `forecast`, `Interruption`, `ASK_KINDS`,
@@ -1154,7 +1208,7 @@ Each JSONL line is a JSON object with these fields:
 - `src/docket/tasks/application/record.py`: consult park conversion
 - `src/docket/hops/gates/pre_hop.py`: `_park_if_check_changed`
 - `src/docket/governance/approval.py`: `create_pregrant`, `consume_pregrant`, `approval_set_option`,
-  `approval_sweep_expired`, the `deny_reason` correction
+  `expire_approval`, `prune_unconsumed_pregrants`, the `deny_reason` correction
 - `src/docket/hops/gates/profile.py`: `project_violations`, `gather_facts`, `lights_out_violations`,
   `lights_out_report`, `as_json`
 - `src/docket/interfaces/telegram/bot.py`: `/status` rendering from `build_inbox` and `render_escalation`
@@ -1178,5 +1232,5 @@ Each JSONL line is a JSON object with these fields:
   `POST /tasks/<id>/pregrants`
 - `src/docket/interfaces/http/routes/task_create.py`: `POST /tasks/<project>` `brief`
 - `src/docket/interfaces/http/server.py`: the periodic sweep
-  (`sweep_expired_questions`, `flush`), the startup warning
+  (`sweep_escalations`, `flush`), the startup warning
 - `scripts/gen_operator_schemas.py`, `scripts/gen_config_schemas.py`: the generated schemas

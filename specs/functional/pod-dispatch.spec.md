@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.7.0
+**Version**: 10.8.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -112,16 +112,17 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
 #### Addressable task (ADR 0027)
 
 1. `enqueue_task_once` **MUST** accept `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
-   `gate`, `max_tokens`, `prepare` and `restrictions` as keyword arguments, validate them through
+   `gate`, `max_tokens`, `prepare`, `restrictions` and `autonomy` as keyword arguments, validate them through
    `validate_task_options` (shape and narrowing only) before anything is persisted, and store each
    one that is set on the task record verbatim under its camelCase key: `externalRef`,
-   `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens`, `prepare`, `restrictions`. A
-   field left unset is absent from the record. `baseRef`, `pipeline`, `gate` and `prepare` are
+   `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens`, `prepare`, `restrictions`,
+   `autonomy`. A field left unset is absent from the record. `baseRef`, `pipeline`, `gate` and `prepare` are
    acted on at claim, `gate`, `maxTokens` and `restrictions` at hop time; enqueue acts on none of
    them.
 2. A wrongly shaped field (a non-string `externalRef`, an empty string, a blank `pipeline`, a
    `maxTokens` that is not a positive integer, a `gate` without a `command`, an invalid
-   `prepare` command) raises `DispatchError`. A `restrictions` entry that would widen --
+   `prepare` command, an `autonomy` outside `L3`/`L4`/`L5`) raises `DispatchError`. An `autonomy`
+   above the pod profile's ceiling raises `TaskRestrictionError` (`422`). A `restrictions` entry that would widen --
    `network` other than `"none"`, a `deniedTools` name outside `BUILTIN_TOOL_KINDS`, a policy
    whose action is not `block` or that does not validate -- raises `TaskRestrictionError`, a
    `DispatchError` subclass, so a caller can tell `422` from `400`. Nothing is persisted and no
@@ -778,7 +779,7 @@ wired agent's conversation current with the task it is working.
    for the person at that terminal (operator-loop.spec.md "Consult" item 3).
 5. **Expiry.** Under a resolved `"park"`, dispatch also sets `DOCKET_APPROVAL_EXPIRES_AT` (ISO UTC,
    `now + approvalExpiryHours`, computed fresh per hop); the tool gate stamps this onto the parked
-   record's own `expiresAt`, which `approval_sweep_expired`'s fail-closed deadline logic prefers over
+   record's own `expiresAt`, which `sweep_escalations`'s fail-closed deadline logic prefers over
    the generic `APPROVAL_TIMEOUT`. Past that deadline the sweep resolves the record to **denied**,
    and `resolve_waiting_approval` fails the task exactly as an explicit human deny does
    (`failureKind: "approval_denied"`).
@@ -886,8 +887,7 @@ wired agent's conversation current with the task it is working.
    near 4,000 characters with the context compiler's truncation marker (never silently cut). `A:`
    renders an `accept`'s single `answer` property value directly (other accepted content as sorted
    JSON), else `(declined)`/`(cancelled)`/`(no answer)`.
-8. **Expiry.** `sweep_expired_questions`, run on every `docket start` sweep (like
-   `approval_sweep_expired`), moves a `waiting_input` task whose question's `expiresAt` has passed to
+8. **Expiry.** `sweep_escalations`, run on every `docket start` sweep,, moves a `waiting_input` task whose question's `expiresAt` has passed to
    `blocked`/`blockedReason: "input_expired"` and traces `input_expired` -- never `failed`. No hop
    was persisted for the parked attempt, so `retry_task`/`unblock_pod` reopening it to `pending`
    sends the next claim straight back to the same `input` step, which mints a new `Question`.
@@ -1004,7 +1004,7 @@ wired agent's conversation current with the task it is working.
 4. Resolving the gate's approval (`resolve_waiting_approval`, called by `docket task approve` and
    `docket task deny`, `POST /approvals/<token>`, the Telegram `/approve`/`/deny` verbs, the MCP
    `approvals_grant`/`approvals_deny` tools, the `docket run` progress view's in-place prompt, and
-   `approval_sweep_expired`'s fail-closed timeout path -- see `security-gates.spec.md`) **MUST**:
+   `sweep_escalations`'s fail-closed timeout path -- see `security-gates.spec.md`) **MUST**:
    - **On a grant:** transition the task `waiting_approval` -> `pending`, clear
      `approvalToken`/`pendingApprovalIndex`, and hand the exact pipeline position the gate fired at
      to the *next* claim as a **single-use** `gateOverridePipelineIndex` -- "the next dispatch
@@ -1964,7 +1964,9 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    posture `waiting_approval` has.
 9. Failure kinds. A `failed` task's `failureKind` **MUST** be one of: `stale_claim`,
    `dispatch_refused`, `base_ref`, `pipeline`, `prepare`, `budget`, `rejected`, `gate_failed`,
-   `gate_needs_human`, `gate_error`, `approval_denied`, `check_changed`, or absent for an ordinary
+   `gate_needs_human`, `gate_error`, `approval_denied`, `check_changed`, `needs_human` (a tool
+   call needed approval at autonomy level `L5`, security-gates.spec.md "Autonomy levels" item 4),
+   or absent for an ordinary
    graded hop or gate failure (a hop's own `TurnResult.failure_kind`, see "Retries", is not copied
    onto the task). A new terminal result replaces any earlier `failureKind`.
 10. Transitions. A task's `status` **MUST** change only through `tasks.domain.state.decide`, applied by
@@ -2390,7 +2392,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/teams/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`,
   `value_and_source`), `PodSettingsError`, `pod_of`, `members_of`, `member_id`, `session_key`,
   `resolve_member_cwd`, `bound_pipeline_path`, `effective_network`, `effective_read_only`
-- `src/docket/hops/application/answers.py`: `answer_task`, `sweep_expired_questions`, `AnswerError`,
+- `src/docket/hops/application/answers.py`: `answer_task`, `AnswerError`,
   `AnswerRejected`
 - `src/docket/hops/application/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
 - `src/docket/kernel/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
@@ -2412,7 +2414,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/tasks/application/runs.py`: `execute`, `create_run`, `cancel_run`, `current_run_id`,
   `add_hop_pid`, `remove_hop_pid`, `prune_terminal`
 - `src/docket/governance/approval.py`: `approval_create`, `approval_grant`, `approval_deny`,
-  `approval_sweep_expired`, `create_pregrant`, `prune_resolved`
+  `expire_approval`, `prune_unconsumed_pregrants`, `create_pregrant`, `prune_resolved`
 - `src/docket/pipeline/application/schedule.py`: `set_schedule`, `unset_schedule`, `find_schedule_problems`,
   `describe_spec_error`, `load_schedules`, `load_last_run`, `is_schedule_due`
 - `src/docket/agent/loop.py`: `run_agent_turn` (`trace_task_id`),

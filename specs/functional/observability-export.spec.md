@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Implemented and live. Trace records project into vendor-neutral spans and are sent,
 off the turn's thread, to every enabled `kind: exporter` destination over the one `otlp-http`
 dialect; what a destination receives beyond structure is set by its own privacy level.
@@ -432,7 +432,8 @@ wait: its duration is the time between the ask and the settlement.
      `docket.escalation.id`, `.kind`, `.policy`, `.task`, `.step` and `.outcome` (`resolved`,
      `expired` or `decided`, set when it closes), plus `.by` (`person`, `policy` or `timeout`) and
      `.channel` and `.level` whenever the payload that closes it, or the one that opened it,
-     carries them. No payload carries `level` yet.
+     carries them. Every `escalation_*` payload of a record that has a level carries `level`
+     (`L3`, `L4` or `L5`, operator-loop.spec.md "Escalations" item 12).
 114. The escalation's `prompt` payload key **MUST** be exposed as `docket.escalation.prompt`, class
      `prompts`, gated by requirement 69; at `minimal`, `actions` and any `share` list without
      `prompts` the attribute **MUST** be absent. The ids and labels of the options and the

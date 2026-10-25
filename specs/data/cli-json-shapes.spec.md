@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-10-25
 
@@ -239,8 +239,8 @@ place, not yet claimed, or pruned). Queue order.
 `GET /tasks/<pod>` and `GET /tasks/<pod>/<id>` return the queue record. A task enqueued with
 the addressing flags of `task add` (`cli-interface.spec.md`) or a `POST /tasks/<pod>` body carries
 each of these keys that was set and omits the rest: `externalRef`, `idempotencyKey`, `baseRef`,
-`pipeline`, `gate` (`{command, timeoutS?, map?}`), `maxTokens`, `prepare` and `restrictions`
-(`{deniedTools?, network?, policies?}`). Their types and rules are defined by `operator-api.spec.md`
+`pipeline`, `gate` (`{command, timeoutS?, map?}`), `maxTokens`, `prepare`, `restrictions`
+(`{deniedTools?, network?, policies?}`) and `autonomy` (`L3`, `L4` or `L5`). Their types and rules are defined by `operator-api.spec.md`
 ("Arguments").
 
 ### `docket task show <ref> --json`

@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -157,7 +157,7 @@ and chain (audit.spec.md).
    token.
 3. A gate with no approver **MUST** fail closed. An in-turn wait resolves to denied at its timeout
    (In-turn tool-call gate 5). A **pending** record in the store **MUST** resolve to **denied**
-   once past its own `expiresAt` through `approval_sweep_expired`, which runs only while
+   once past its own `expiresAt` through `sweep_escalations`, which runs only while
    `docket start` is up. When that record gates a dispatch task, the resolution **MUST** also fail
    the waiting task terminally (`failureKind: "approval_denied"`).
 4. Every grant and denial through docket's store **MUST** be recorded in the audit log
@@ -329,7 +329,7 @@ where it applies to commands docket itself launches.
    returned message **MUST** name the matched class and point at `docket setup sandbox classes`.
    Refusing outright is the only honest posture here: the command runs synchronously inside a
    dispatch hop with no interactive approver reachable, the same fail-closed rule
-   `TOOL_APPROVAL_TIMEOUT` and `approval_sweep_expired` apply when nobody answers. A `run:` step
+   `TOOL_APPROVAL_TIMEOUT` and `sweep_escalations` apply when nobody answers. A `run:` step
    is also classified with `classify_command` (with the pod's `allowCommands`) before it runs; a
    non-`allow` verdict gates it like an approval step (pod-dispatch.spec.md).
 3. The `pre_output` guardrail scan (Policy engine 3) **MUST** also classify each hop's real output
@@ -635,7 +635,7 @@ rewrite its own gate for the next turn.
      after a grant.
    - The wait **MUST** poll, not busy-spin (`TOOL_APPROVAL_POLL_INTERVAL_S`, default 2 s).
    - A timeout **MUST** resolve the record to **denied** through the same fail-closed resolution
-     `approval_sweep_expired` uses, never leaving it `pending`.
+     `sweep_escalations` uses, never leaving it `pending`.
    - Granted: the call proceeds to the handler. Denied (explicitly, or by timeout): the handler
      **MUST NOT** run.
 6. Every non-`allow` gate decision, and every `warn` or `redact` policy hit, **MUST** be audited
@@ -1108,7 +1108,7 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
 3. **The record's own expiry.** When `ToolContext.approval_expires_at` (an ISO UTC string) is set,
    the parked record carries it as `expiresAt`; dispatch sets it for each parking hop from the
    pod's `approvalExpiryHours` (default 24). Otherwise the record's `expiresAt` is
-   `created + APPROVAL_TIMEOUT` (Approval tokens 3). `approval_sweep_expired` resolves a pending
+   `created + APPROVAL_TIMEOUT` (Approval tokens 3). `sweep_escalations` resolves a pending
    record past its own `expiresAt` through the one fail-closed path; a parked call's timeout is
    not a second terminal path.
 4. **Single-use pre-grants.** `create_pregrant(project, role, tool, args_digest, *, task_id=None,
@@ -1127,7 +1127,7 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    This applies **regardless of `approval_mode`**: a pre-grant answers a question already asked,
    so it wins even under `"refuse"`. A call whose canonical arguments match no pre-grant, or whose
    only match was consumed or is past its expiry, falls through to the ordinary mode handling.
-6. **Unconsumed pre-grants expire too.** `approval_sweep_expired` also prunes a `granted`,
+6. **Unconsumed pre-grants expire too.** `sweep_escalations` also prunes a `granted`,
    unconsumed `context.kind == "pregrant"` record once past its own `expiresAt`: denied
    (fail-closed), audited `approval.deny` with `channel=timeout`. The record was born `granted`
    (its birth state, not a contested decision), so it is resolved directly rather than through the
@@ -1211,9 +1211,10 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    - `secrets`: no variable docket injects for the pod (the Implementer's port and scratch
      variables, and the `env` of each MCP server in the pod's effective set) is named in the
      secret store;
-   - `consult`: the pod's `consultMode` is `decide`, so a consultation is answered in the turn
-     with the model's own recommendation and never waits for a person (operator-loop.spec.md
-     "Consult" item 7). The fix is `docket pod set consultMode decide`.
+   - `consult`: a consultation at the pod's default level (`L4`, "Autonomy levels" below) is
+     answered in the turn with the model's own recommendation and never waits for a person
+     (operator-loop.spec.md "Consult" item 7). It holds unless the pod sets `consultMode park`
+     explicitly, which wins over the table; the fix is `docket pod set consultMode decide`.
    There is no HTTP MCP server check: MCP servers are stdio only and run in the jail.
 4. **Refuse, do not degrade.** `dispatch_task` evaluates the profile once, after the pipeline is
    planned and before any hop runs. A violation audits `profile.refused` (pod, task and the
@@ -1224,6 +1225,46 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    each `lights-out` pod's violations from the same `gather_facts` + `lights_out_violations`
    call; recording `docket setup profile lights-out` lists the fleet-level gaps. With every
    effective profile `attended` they print nothing extra.
+
+### Autonomy levels (ADR 0032)
+
+A level says what happens to a pause when nobody is there. It is a policy over escalations, not a
+second gate: the chokepoint, the command classifier and the `block` policies do not change with
+it (`deny` is `deny` at every level), and the jail and the network are the profile's. Merge
+authority stays with the orchestrator; docket never merges or certifies its own work.
+
+1. **Levels and ceiling.** A task carries `autonomy` (`L3`, `L4` or `L5`), set at enqueue
+   (`operator-api.spec.md` "Arguments", `docket task add --autonomy`). It only narrows: the pod's
+   effective profile is the ceiling, `attended` admits up to `L3` and `lights-out` up to `L5`. A
+   task with no level takes the profile's default, `L3` under `attended` and `L4` under
+   `lights-out`; `L5` is never a default, the caller asks for it. A level above the ceiling is
+   refused at enqueue (HTTP 422). The level used for a pause is the task's (or the default) clamped
+   to the ceiling the pod has when the pause is created, so a profile that tightened later still
+   holds.
+2. **The table.** The `kind: autonomy` document (`config-format.spec.md`; the built-in
+   `templates/autonomy/default.yaml`) maps each escalation kind at each level to a `policy`
+   (`person`, `recommendation`, `deny`, `fail`) and an `onExpiry` (`deny`, `block`);
+   `teams/autonomy.py::policy_for(kind, level)` returns that pair. The values are in
+   operator-loop.spec.md "Escalations" item 12; in short, `L3` is a person validating everything,
+   `L4` a person only for a tool `ask` (denied at its deadline), and `L5` nobody waiting.
+3. **Evaluated at creation, recorded.** The pause evaluates the table once, when it is created,
+   and the record keeps `level` and `policy`; nothing re-reads the table later.
+4. **`approval` at `L5` is `deny`.** A tool call whose verdict is `ask` is refused with the
+   `approval_unavailable` denial at once (nobody is asked, no approval record waits). The turn
+   ends and the task fails with `failureKind: "needs_human"`, `reason` naming the denied call. A
+   `decided` escalation (operator-loop.spec.md "Escalations" item 5) records it and
+   `escalation_decided` tells the channels. A pipeline `approval` step at `L5` fails the same way
+   before its hop runs. At `L3` and `L4` the ask waits or parks as the approval mode says
+   (item 5), at `L4` ending at the record's `onExpiry` `deny`.
+5. **Pod settings win.** `consultMode` is the alias of the `consult` row and `approvalMode` of the
+   `approval` row: where the pod sets one explicitly it wins over the table (a set `approvalMode:
+   refuse` is `deny`; a set `wait` or `park` is `person` at any level), and where it is unset the
+   row at the task's level applies. The failure kind `needs_human` is written only when the table
+   decided; an explicit `approvalMode: refuse` fails as it always did.
+6. **Informed at `L5`.** Every pause a level settles alone is stored `decided`, listed on its task
+   and traced `escalation_decided` with its `level`; the inbox lists it under `Done`, `docket task
+   show` prints it with the option, a channel may subscribe to `escalation.decided`, and
+   `docket_escalations_total` carries `level`.
 
 ### Task restrictions (ADR 0027)
 
@@ -1325,7 +1366,7 @@ docket pod validate [PATH]          # schema-check a policy file, or a directory
 A pod whose pipeline gives the `implementer` step an `approval` gate parks the task before that hop:
 `docket run` reports it `waiting_approval` with its token, `docket inbox` shows the exact approve
 line, `docket task approve <id>` grants it and the next `docket run` finishes the task. An
-unanswered token fails closed: under `docket start`, `approval_sweep_expired` resolves it to
+unanswered token fails closed: under `docket start`, `sweep_escalations` resolves it to
 `denied` once past its `expiresAt`, and the task fails terminally (`failureKind:
 "approval_denied"`) without anyone calling `docket task deny`.
 
@@ -1632,7 +1673,7 @@ $ git clone https://anywhere.example/repo.git
   `disable_workspace_isolation`
 - `src/docket/governance/approval.py`: `approval_create`, `approval_get`, `approval_grant`,
   `approval_deny`, `approval_set_option`, `approval_options`, `wait_for_approval`,
-  `approval_sweep_expired`, `create_pregrant`, `consume_pregrant`, `screen_rationale`,
+  `expire_approval`, `prune_unconsumed_pregrants`, `create_pregrant`, `consume_pregrant`, `screen_rationale`,
   `APPROVAL_CHANNELS`, `APPROVAL_TOKEN_RE`, `APPROVAL_RATIONALE_MAX_CHARS`, `ApprovalError`,
   `ApprovalNoop`, `ApprovalConflict`
 - `src/docket/governance/policy.py`: `policy_files`, `policy_eval`, `policy_eval_detail`, `policy_test`,

@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Stable
 **Last Updated**: 2026-10-25
 
@@ -135,7 +135,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_approvals_total{channel,outcome}` | counter | Resolved approvals from the audit log's `approval.grant`/`approval.deny` entries, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`\|`tack`, or `unknown` for an entry that names none) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path, never a human channel, and only ever pairs with `outcome="denied"`. `channel="tack"` is a decision made from Tack's board. Subject to the rotation caveat below. |
 | `docket_turn_duration_seconds` | summary (`_sum`/`_count`, no quantiles) | Session wall-clock (`session_start` → `session_end`), fleet-wide, one sample per trace file that has both. `_sum`/`_count` gives the mean; no percentiles are invented. |
 | `docket_tasks_started_total` | counter | Dispatch task claims, counted from dispatch-sourced `session_start` trace events; a resumed task's second `session_start` (`"resumed": true`) is not counted. Trace-derived. |
-| `docket_escalations_total{kind,outcome,by}` | counter | Settled escalations (`operator-loop.spec.md` "Escalations"), one per `escalation_resolved`, `escalation_expired` or `escalation_decided` trace event: `kind` is the escalation's kind (`approval`\|`consult`\|`input`\|`gate`\|`check_changed`), `outcome` the event (`resolved`\|`expired`\|`decided`), `by` who settled it (`person`\|`timeout`\|`policy`, so a pod's own decision never counts as a human one). Trace-derived; an escalation still pending is not counted. |
+| `docket_escalations_total{kind,outcome,by,level}` | counter | Settled escalations (`operator-loop.spec.md` "Escalations"), one per `escalation_resolved`, `escalation_expired` or `escalation_decided` trace event: `kind` is the escalation's kind (`approval`\|`consult`\|`input`\|`gate`\|`check_changed`), `outcome` the event (`resolved`\|`expired`\|`decided`), `by` who settled it (`person`\|`timeout`\|`policy`, so a pod's own decision never counts as a human one), `level` the autonomy level the pause was decided at (`L3`\|`L4`\|`L5`, `none` for a pause that names no queued task). Trace-derived; an escalation still pending is not counted. |
 | `docket_escalation_wait_seconds{kind}` | summary (`_sum`/`_count`, no quantiles) | Seconds from an escalation's `askedAt` to the record of its settlement, for every settled escalation, by `kind`; a negative interval is skipped. Trace-derived. |
 
 Additional metrics may be added in minor versions. Every metric is computed fresh, on every
@@ -463,7 +463,7 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 ```
 
 Request body (the addressable-task fields `externalRef`, `idempotencyKey`, `baseRef`,
-`pipeline`, `gate`, `maxTokens`, `prepare` and `restrictions` are specified by
+`pipeline`, `gate`, `maxTokens`, `prepare`, `restrictions` and `autonomy` are specified by
 `operator-api.spec.md`):
 
 | Field | Type | Required | Notes |
