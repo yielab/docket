@@ -107,6 +107,7 @@ def test_a_run_killed_mid_hop_resumes_at_that_hop_without_repeating_earlier_ones
         ("hop_finished", "implementer", "ok"),
         ("verification", "implementer", "passed"),
         hop,
+        ("stale_claim", "lead", ""),
         hop,
         ("hop_finished", "reviewer", "approve"),
         ("hop_started", "tester", "test"),
