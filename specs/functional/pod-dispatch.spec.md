@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.1.1
+**Version**: 10.2.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -217,8 +217,10 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    `verifyTimeoutS` (each falling back to `DEFAULT_TIMEOUT` when unset). Under `--resume`,
    `dispatch_pod` **MUST** reclaim a stale `running` task immediately, with no wait for
    `CLAIM_STALE_TIMEOUT` (`reclaim_stale_running`): it is settled to `failed`/`stale_claim`, its
-   `hops[]` kept, claimed again and continued from its last persisted hop, and a `task.reclaimed`
-   audit entry records the task id and which condition fired. A `running` task whose claimant is
+   `hops[]` kept, claimed again and continued from its last persisted hop, a `task.reclaimed`
+   audit entry records the task id and which condition fired, and the same `stale_claim` trace
+   event as requirement 3 (payload: the task and its `claimedAt`) marks the task's trace, so a
+   restarted hop is distinguishable from an ordinary retry. A `running` task whose claimant is
    alive and whose claim is inside the lease **MUST NOT** be reclaimed. Without `--resume` nothing
    is reclaimed this way (requirement 4); the `CLAIM_STALE_TIMEOUT` sweep of requirement 3 still
    runs.
