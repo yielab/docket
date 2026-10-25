@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 10.10.0
+**Version**: 11.0.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -82,14 +82,15 @@ This specification does NOT cover:
    carries no claim token: a stale claim is read from `claimPid` with `claimedAt`, and `channel`
    says where the task came from.
    Enqueue screens the description through `pre_input` once: a `block` raises `DispatchError` and
-   stores nothing; a `require_approval` stores the task `waiting_approval` with an `approvalToken`,
-   `pendingApprovalIndex: 0` and an `approval_required` trace event (`security-gates.spec.md`),
-   and opens the `approval` escalation of that token once the task is stored (a lost idempotency
-   race opens none), so the inbox lists the pause once (`operator-loop.spec.md` area 11).
+   stores nothing; a `require_approval` stores the task `waiting_approval` with
+   `pendingApprovalIndex: 0`, opens the `approval` escalation of the approval it creates once the
+   task is stored (a lost idempotency race opens none) and traces `approval_required` naming that
+   escalation (`security-gates.spec.md`), so the inbox lists the pause once
+   (`operator-loop.spec.md` area 11).
    Enqueueing into a project with no pod raises `DispatchError`.
 2. Every read of a pod's queue (`TaskRepository.list`) **MUST** fill each field enqueue does not write with
    its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`, `costUsd`,
-   `claimedAt`, `approvalToken`, `pendingApprovalIndex`,
+   `claimedAt`, `pendingApprovalIndex`,
    a fresh empty `hops` list, `created`, `id`); no
    separate migration step exists or is required.
 3. A task's status **MUST** be one of exactly eight values: `pending`, `running`,
@@ -635,7 +636,7 @@ wired agent's conversation current with the task it is working.
    see "Parked approvals" below for what it resolves to. `approvalExpiryHours` (int `>= 1`, default
    `24`) and `inputExpiryHours` (int `>= 1`, default `72`) are two further keys on the same model,
    likewise writable through `docket pod set`/`unset`; `inputExpiryHours` is the default deadline of
-   every parked question: when a task settles `waiting_input`, dispatch stamps `expiresAt` (now plus
+   every parked question: when a question's escalation is opened, `expiresAt` is stamped (now plus
    the hours) on a question that has none. An `input` step's own `expiresHours` wins and is never
    overwritten. Expiry blocks the task `input_expired` (operator-loop.spec.md area 7), never
    `failed`.
@@ -767,7 +768,9 @@ wired agent's conversation current with the task it is working.
    call (tool name plus a canonical-JSON argument digest) and the task position, creates an approval
    record with `context.parked = true`, and ends the turn on `stop_reason="approval_parked"` -- the
    agent loop's `error` string carries the token in the same `key=value` shape
-   `approval_unavailable_error` uses (`approval_parked_error`).
+   `approval_unavailable_error` uses (`approval_parked_error`). The persisted hop's `error`, the
+   task's `reason` and the trace withhold that `approval_token=` pair: they name the pause by its
+   escalation, never by the token behind it.
 4. **From denial to a durable park.** Dispatch parses that token back out of the hop's
    `TurnResult.error`, failing closed -- an unparseable token falls through to an ordinary `failed`
    outcome, never a silent forever-wait. When found, the hop is persisted with `parked: true` (a
@@ -835,11 +838,11 @@ wired agent's conversation current with the task it is working.
 
 1. When the pipeline reaches a planned unit whose `input` is set (see pipeline-format.spec.md,
    "Operator input steps"), dispatch **MUST** run no agent turn: it mints a `Question`
-   (MCP-elicitation-shaped) from the step's `from:` source, traces `input_requested`, and returns a
-   `waiting_input` outcome with reason `awaiting operator answer for step '<id>' (question=<id>)`.
-   No hop is persisted for this attempt -- the same posture the pre-hop `require_approval` gate's
-   `waiting_approval` has. The task's `question` field carries the minted `Question`, dumped by
-   alias. When the `from` step's latest hop holds a gate that did not pass, the question's message
+   (MCP-elicitation-shaped) from the step's `from:` source, opens the `input` escalation that
+   carries it, and returns a `waiting_input` outcome with reason `awaiting operator answer for
+   step '<id>' (escalation=<id>)`. No hop is persisted for this attempt -- the same posture the
+   pre-hop `require_approval` gate's `waiting_approval` has. The task lists the escalation and
+   keeps no copy of the question. When the `from` step's latest hop holds a gate that did not pass, the question's message
    **MUST** append that gate's report (its screened reasons, else its redacted output tail) under
    `The gate on step '<from>' reported:`, so the operator decides on what the verifier saw.
 2. **The question's schema.** A generic `input` step (no Lead intake brief attached) asks a single
@@ -849,28 +852,28 @@ wired agent's conversation current with the task it is working.
 3. **Resolution.** An answer is received in two steps. `resolve` (operator-loop.spec.md area 10)
    validates *content* against the question's schema (`validate_answer`), screens every string
    value in *content* through `pre_input` as untrusted Lead input -- a `block` action writes
-   nothing -- appends the answer to the task's `answers[]`, clears the `question` and reopens the
-   task `pending`; it resolves no pipeline and takes the pod's task-list lock only for that one
-   status change. The next **claim** applies the answer: before the task's resume position is
+   nothing -- records the answer as the escalation's `resolution` and reopens the task `pending`;
+   it resolves no pipeline and takes the pod's task-list lock only for that one status change. The next **claim** applies the answer: before the task's resume position is
    computed, dispatch reads the escalations the task lists (`escalations`) and, for each `input`
    record in state `resolved` whose `resolution.appliedAt` is unset, resolves the step's own `on:`
    route (`answered` for `accept`, `declined` for `decline`/`cancel`) the way a live hop's route
    is resolved, minus the tracing. The parked position is located by the record's own `step`
    against the pipeline the claimed task runs with (requirement 1 of "Pipeline order and
-   participation"); a position that no longer names that step fails the task `dispatch_refused`.
+   participation"); a position that no longer names that step fails the task `dispatch_refused`
+   (an answer is accepted by `resolve` without that check, so this is where a stale one is
+   refused).
    Only then is `appliedAt` stamped, so a crash between the two leaves the record to be applied
    again and the application is idempotent (item 4). A record in state `expired` or `decided` is
-   never applied. An answer for a task with no escalation record (made before records were kept)
-   takes `answer_task`, which receives and applies in the one call as it always did. Every string
+   never applied. Every string
    value screened is caller-supplied answer content, never the question text itself.
 4. **The synthetic hop.** An applied answer persists one `HopResult(role="operator",
    member_id="operator", step_id=<the input step's id>, ok=True, output="answered:
-   <questionId>", next_step=<the resolved route target, or None for an ordinary advance>)`. Its
+   <escalation id>", next_step=<the resolved route target, or None for an ordinary advance>)`. Its
    `artifact.verdict` is set to the outcome label (`"answered"`/`"declined"`) -- not a real verdict
    marker, but the same field resume's route-count rebuild keys a backward or self route by; a plain
    `HandoffArtifact.from_output` fallback would leave `verdict` `None` there and mis-key every
    reconstructed route as `"fail"`. The claim persists it inside the pod's task-list lock and only
-   when the task's hops hold no operator hop for that step and question already, so a task claimed
+   when the task's hops hold no operator hop for that step and escalation already, so a task claimed
    twice (a crash, a `stale_claim` reclaim) gains one hop, not two.
 5. **Terminal routes settle at the claim.** A route resolving to `"fail"` (or an `on:` target that
    names no known step id, or a backward route whose cap is exhausted) settles the task `failed`;
@@ -878,19 +881,19 @@ wired agent's conversation current with the task it is working.
    persists the synthetic hop and returns that result without running a hop (`session_start` and
    `session_end` are traced around it, `completedAt` is set by the ordinary finalisation). Until
    that claim the task is `pending`. Any other target (or no `on:` entry for the label at all)
-   leaves the task running its pipeline from the synthetic hop's `next_step`. Through
-   `answer_task` (no escalation record) the terminal routes still settle inside the call.
+   leaves the task running its pipeline from the synthetic hop's `next_step`.
 6. **Resume.** Resume treats the synthetic `operator` hop like any other routed hop: `hop.next_step`
    (when it names a known step id) becomes the resume position, bumping the route count keyed by
    `(step_id, hop.artifact.verdict)` when the target is backward or self. A cap exhausted by that
    rebuild settles the task `failed` at the claim that would have routed backward again.
 7. **The Lead's next hop.** The Lead's hop message appends `\n\n## Operator answers\n` followed by
-   one `Q: <message>\nA: <rendered content>` block per entry in `answers[]`, oldest first, capped
+   one `Q: <message>\nA: <rendered content>` block per resolved `consult` or `input` escalation
+   the task lists (`answers_of`), oldest first, capped
    near 4,000 characters with the context compiler's truncation marker (never silently cut). `A:`
    renders an `accept`'s single `answer` property value directly (other accepted content as sorted
    JSON), else `(declined)`/`(cancelled)`/`(no answer)`.
 8. **Expiry.** `sweep_escalations`, run on every `docket start` sweep,, moves a `waiting_input` task whose question's `expiresAt` has passed to
-   `blocked`/`blockedReason: "input_expired"` and traces `input_expired` -- never `failed`. No hop
+   `blocked`/`blockedReason: "input_expired"` and writes `escalation_expired` -- never `failed`. No hop
    was persisted for the parked attempt, so `retry_task`/`unblock_pod` reopening it to `pending`
    sends the next claim straight back to the same `input` step, which mints a new `Question`.
 
@@ -994,21 +997,22 @@ wired agent's conversation current with the task it is working.
      never check it.
 2. A fired gate **MUST**: create a real, persisted approval record via `approval_create` (project,
    role, a human-readable action string, and a `context` of `{"taskId", "pipelineIndex"}` so the
-   record can be traced back to the exact task and hop it gated); emit an `approval_required` trace
-   event on the task's own session; and transition the task to `waiting_approval` (reason `approval
-   required before <role> hop (token=<token>)`) **without** running the gated hop's agent turn. The
-   task's `approvalToken` and `pendingApprovalIndex` (the pipeline position the gate fired at)
-   **MUST** be persisted.
+   record can be traced back to the exact task and hop it gated); open the `gate` escalation that
+   record backs; emit an `approval_required` trace event on the task's own session naming the
+   escalation; and transition the task to `waiting_approval` (reason `approval required before
+   <role> hop (escalation=<id>)`) **without** running the gated hop's agent turn. The task lists
+   the escalation and its `pendingApprovalIndex` (the pipeline position the gate fired at)
+   **MUST** be persisted; the task holds no token.
 3. A `waiting_approval` task **MUST NOT** be claimable by any dispatch run, with or without
    `--resume` -- only `pending` and a `RESUMABLE_FAILURE_KINDS`-tagged `failed` task are eligible. It
    re-enters `pending` only through a resolved approval (below), never automatically, and never via
    `retry_task` or `unblock_pod` (those accept only `blocked`/`failed`).
-4. Resolving the gate's approval (`resolve_waiting_approval`, called by `docket task approve` and
-   `docket task deny`, `POST /approvals/<token>`, the Telegram `/approve`/`/deny` verbs, the MCP
-   `approvals_grant`/`approvals_deny` tools, the `docket run` progress view's in-place prompt, and
-   `sweep_escalations`'s fail-closed timeout path -- see `security-gates.spec.md`) **MUST**:
+4. Resolving the gate's escalation (`resolve_waiting_approval`, called by `resolve` for every
+   surface -- `docket task answer`, `POST /escalations/<id>`, the MCP `resolve` tool, Telegram
+   `/answer`, the `docket run` progress view's in-place prompt -- and by `sweep_escalations`'s
+   fail-closed timeout path -- see `security-gates.spec.md`) **MUST**:
    - **On a grant:** transition the task `waiting_approval` -> `pending`, clear
-     `approvalToken`/`pendingApprovalIndex`, and leave the exact pipeline position the gate fired at
+     `pendingApprovalIndex`, and leave the exact pipeline position the gate fired at
      to the *next* claim (item 5) -- "the next dispatch continues from that hop." No agent turn
      runs as part of resolving the grant itself; a real dispatch invocation is still required to
      continue the pipeline.
@@ -1020,9 +1024,10 @@ wired agent's conversation current with the task it is working.
      with or without `--resume`.
    - Each resolution traces `approval_resumed` (grant) or `approval_task_denied` (deny) on the
      task's session.
-   - Resolving a token not created by a dispatch gate (no `context.taskId` and not parked, or no
-     `project`), an unknown token, or a task no longer `waiting_approval` on that exact token
-     (already resolved by a concurrent caller) **MUST** be a harmless no-op -- it **MUST NOT** raise.
+   - Resolving an approval not created by a dispatch gate (no `context.taskId` and no escalation
+     naming a task, or no `project`), an unknown approval, or a task no longer `waiting_approval`
+     on that exact escalation (already resolved by a concurrent caller) **MUST** be a harmless
+     no-op -- it **MUST NOT** raise.
 5. The gate-override handoff **MUST** be single-use and applied exactly once at claim time:
    `dispatch_task` reads the task's escalations (`apply_resolutions`), takes the pipeline position
    from the approval record of each `approval` or `gate` escalation that is `resolved` and not
@@ -1043,8 +1048,8 @@ wired agent's conversation current with the task it is working.
    `DocketDriver.run_turn` builds the tool context a hop's turn runs under; its `project` field
    **MUST** resolve to the caller-supplied `trace_project` (the pod, passed by dispatch) when one is
    given, else the agent's own pod, else the agent id. This is the project `approval_create`,
-   `approval_grant` and `approval_deny` file their `approval_requested`/`approval_granted`/
-   `approval_denied` events against, so an in-turn gate's approval trace lands beside everything
+   `approval_grant` and `approval_deny` file their `approval_granted`/`approval_denied` events
+   against, so an in-turn gate's approval trace lands beside everything
    else that hop did.
 
 ### Registry retention (runs, approvals, conversations)
@@ -1411,8 +1416,9 @@ parsing for any verdict-gated step (`parse_verdict`).
    `failureKind: "stale_claim"`, audited `task.reclaimed`), ending with
    `Next: docket task retry <id>`. A task parked in `waiting_input` or `waiting_approval` **MUST** be
    cancelled through `cancel_parked_task`: it ends `cancelled` (reason `cancelled by operator`) with
-   no hop run, its question, approval token, pending index and task grants are cleared, a pending
-   approval record is denied on the calling channel (so neither leaves anything in the inbox), the
+   no hop run, its pending index cleared and its task grants ended, the approval record behind each
+   of its pending escalations denied on the calling channel (so nothing it waited on stays in the
+   inbox), the
    Lead's ledger is re-synced and one `task.cancel` audit entry names the prior state and channel.
    Stopping a live run of a task that was not parked also writes one `task.cancel` entry. With no
    live run, no stale claim and no parked state it **MUST** exit 1 and change nothing. `cancel_run`
@@ -1798,17 +1804,18 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
 3. A changed path that is protected **MUST** park the task `waiting_approval` instead of `done`,
    whatever the pod's `profile` (`lights-out` included) and `approvalMode`: dispatch creates an
    approval through `approval_create` with context `{"kind": "check_changed", "taskId", "paths"}`,
-   sets `task["checkChanged"]` to all the sorted protected paths, `approvalToken`, a `reason` of
-   `the change edits what checks it: <paths> (token=<token>)` (the text lists at most 20 paths, then
-   `and <n> more`), and traces `approval_required` with `kind: "check_changed"`.
-   `pendingApprovalIndex` is `null`. No hop runs and no token is spent after the pipeline's last hop.
-4. `resolve_waiting_approval_detail` for a `check_changed` approval: a **grant** ends the task `done`
-   (reason `check_changed approved`, `completedAt` set, `approvalToken` cleared,
-   `checkChanged` kept as the record of what was granted) and never `pending` or a gate override; a
-   **deny**, or an approval that expired, ends it `failed` with `failureKind: "check_changed"` and
-   `reason` `approval denied[: <reason>]`, `checkChanged` kept. Either outcome re-syncs the ledger.
-   `docket task approve|deny`, `POST /approvals/<token>`, MCP and Telegram all resolve it, and each
-   decision writes the audit entry with its channel that every approval writes.
+   sets `task["checkChanged"]` to all the sorted protected paths, opens the `check_changed`
+   escalation the approval backs, gives the task a `reason` of
+   `the change edits what checks it: <paths> (escalation=<id>)` (the text lists at most 20 paths,
+   then `and <n> more`), and traces `approval_required` with `kind: "check_changed"`.
+   `pendingApprovalIndex` is `null`. No hop runs after the pipeline's last hop.
+4. `resolve_waiting_approval` for a `check_changed` approval: a **grant** ends the task `done`
+   (reason `check_changed approved`, `completedAt` set, `checkChanged` kept as the record of what
+   was granted) and never `pending` or a gate override; a **deny**, or an approval that expired,
+   ends it `failed` with `failureKind: "check_changed"` and `reason` `approval denied[: <reason>]`,
+   `checkChanged` kept. Either outcome re-syncs the ledger. `docket task answer`, `POST
+   /escalations/<id>`, MCP `resolve` and Telegram `/answer` all resolve it, and each decision
+   writes the audit entry with its channel that every approval writes.
 5. `check_changed` is not in `RESUMABLE_FAILURE_KINDS`. A `failed` task retried runs the pipeline
    again and is checked again; settling a result that carries no protected paths clears a stale
    `checkChanged` from the task.
@@ -1959,9 +1966,10 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    cancelled-hop evidence, records `completedAt`, and cannot be reclaimed or overwritten by a late
    successful response.
 8. `waiting_input` -- an `input` step parked the task, or a hop parked a `consult` question
-   (operator-loop.spec.md), waiting on an operator's answer to a minted `Question`. Not terminal --
-   re-enters `pending` only via `answer_task` (or moves straight to `failed`/`done` there, or to
-   `blocked` on expiry -- see "Operator input steps and answers"), never automatically, never via a
+   (operator-loop.spec.md), waiting on an operator's answer to the escalation that carries the
+   minted `Question`. Not terminal -- re-enters `pending` only via a resolution of that escalation
+   (`resolve`; the claim that follows may then settle it `failed`/`done` by the step's route, and
+   expiry moves it to `blocked` -- see "Operator input steps and answers"), never automatically, never via a
    plain dispatch run, `retry_task`, or `unblock_pod`. Never claimable by any dispatch run, the same
    posture `waiting_approval` has.
 9. Failure kinds. A `failed` task's `failureKind` **MUST** be one of: `stale_claim`,
@@ -2088,11 +2096,14 @@ hop records. It scores nothing and carries no dollar figure.
    `waiting_approval` or `waiting_input`, and append its id to the task's `escalations`: a parked
    in-turn tool call (`approval`), a parked `consult` (`consult`), an `input` step (`input`), the
    pipeline `approval` gate (`gate`) and a change that edits its own check (`check_changed`).
-2. The record changes nothing the pause already did: the same approval record, the same
-   `approvalToken` or `question` on the task, the same `reason`, the same trace events.
+2. The record is the pause. The task holds no approval token, question or answer, only the
+   escalations it lists and a `reason` naming the escalation; an approval, gate or changed-check
+   escalation is backed by an approval record that names it back, and a `consult` waiting in the
+   turn has one beside it.
 3. **Resume reads the record.** A claim reads the task's `escalations` (see "Operator input steps
    and answers" item 3): a `consult` record in state `resolved` with no `resolution.appliedAt`
-   becomes the task's `consultAnswer` for its step (the note the re-run hop's message ends with),
+   is read by the re-run hop of its step (the note its message ends with, `consult_note`) and
+   stamped once a hop of that step is persisted,
    an `input` record becomes the synthetic hop and route, an `approval` or `gate` at a pipeline
    position becomes the position the run skips the approval at once, and each is then stamped
    `appliedAt`. A record already stamped, `expired`, `decided` or still `pending` is skipped, so a
@@ -2145,7 +2156,7 @@ stale_claim                  # the crash sweep failed a running task whose claim
 dispatch_refused             # a DispatchError on the claimed-task path settled the task as failed;
                              #   also a claim-time refusal (base_ref, pipeline, prepare), payload `reason`
 paused_refused               # a claim attempt was refused because the pod's Lead is paused
-approval_required            # a require_approval gate or a parked call fired (task -> waiting_approval)
+approval_required            # a require_approval gate or a parked call fired (task -> waiting_approval); names the escalation
 approval_resumed             # a granted approval moved the task on (pending, or done for check_changed)
 approval_task_denied         # a denied approval failed the task terminally
 session_end                  # once, at the end of dispatch_task, carrying the final status
@@ -2153,9 +2164,11 @@ run_cancellation_observed    # once when execution first observes the persisted 
 run_cancelled                # once when execution has fully stopped and terminalizes the run
 step_skipped                 # a `when` predicate was false; the step advanced with no hop
 command_step                 # a `run` step executed (or was refused), carrying its exit code
-input_requested              # an `input` step parked the task, waiting on an operator question
-input_answered               # answer_task resumed a parked `input` step
-input_expired                # an unanswered question passed its deadline (task -> blocked)
+escalation_asked             # a pause was opened (operator-loop.spec.md area 11 item 11); with
+escalation_delivered         #   escalation_resolved, escalation_expired and escalation_decided
+escalation_resolved          #   these five describe every park of a task
+escalation_expired
+escalation_decided
 prepare                      # a claimed task's worktree was prepared (command, source, cacheHit, seconds, exit)
 ```
 
@@ -2243,11 +2256,11 @@ The pod's pipeline declares `gate: {type: approval}` on its implementer step.
 ```text
 $ docket run
 -> Running 1 pending task(s) through: lead → implementer
-!   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
+!   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (escalation=esc-...)
 ok 0 done · 0 failed · 1 waiting · 1.8k tokens (~$0.00 est.)
 -> Next: docket inbox
 
-$ docket task approve task-9a1b2c3d
+$ docket task answer task-9a1b2c3d --option approve_once
 ok Approved task-9a1b2c3d-4e5f
 -> Next: docket run --pod myapp
 
@@ -2258,14 +2271,14 @@ ok 1 done · 0 failed · 5.2k tokens (~$0.00 est.)
 -> Next: docket status
 ```
 
-(The Lead hop that completed before the gate fired is not re-invoked; `docket task approve` moves the
+(The Lead hop that completed before the gate fired is not re-invoked; `docket task answer` moves the
 task back to `pending`, and the *next* `docket run` continues from the Implementer -- the exact hop
 the gate stopped it on.)
 
 ### The same gate, denied instead
 
 ```text
-$ docket task deny task-9a1b2c3d --reason "touches production"
+$ docket task answer task-9a1b2c3d --option deny --reason "touches production"
 ok Denied task-9a1b2c3d-4e5f; the action is blocked
 ```
 
@@ -2292,10 +2305,10 @@ queue.)
   and `usage` **MUST** be persisted back.
 - A `blocked` task **MUST** stay `blocked` in storage -- it is never rewritten to `pending` by
   `dispatch_pod` itself.
-- A gate firing **MUST** persist the task's `approvalToken` and `pendingApprovalIndex` before
-  `dispatch_pod` returns, and **MUST** create the approval record before the task is persisted as
-  `waiting_approval` (never the reverse -- a persisted `waiting_approval` task **MUST NOT** exist
-  without a corresponding approval record for its `approvalToken`).
+- A gate firing **MUST** persist the task's `pendingApprovalIndex` and the id of its escalation
+  before `dispatch_pod` returns, and **MUST** create the approval record and its escalation before
+  the task is persisted as `waiting_approval` (never the reverse -- a persisted `waiting_approval`
+  task **MUST NOT** exist without a corresponding approval record and escalation).
 - After a claim, and after every hop-completion persist and retry-attempt claim refresh, the pod
   Lead's `HEARTBEAT.md` dispatch ledger **MUST** be re-synced from `TASK_LIST.json`'s `running`
   tasks (see "Mechanical HEARTBEAT ledger"); after a task leaves `running`, that same sync **MUST**
@@ -2396,8 +2409,8 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/teams/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`,
   `value_and_source`), `PodSettingsError`, `pod_of`, `members_of`, `member_id`, `session_key`,
   `resolve_member_cwd`, `bound_pipeline_path`, `effective_network`, `effective_read_only`
-- `src/docket/hops/application/answers.py`: `answer_task`, `AnswerError`,
-  `AnswerRejected`
+- `src/docket/tasks/application/answers.py`: `answers_of`, `consult_note`;
+  `src/docket/hops/application/resolutions.py`: `apply_resolutions`
 - `src/docket/hops/application/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
 - `src/docket/kernel/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
   `from_output`), `parse_brief`, `render_brief`, `cap_diff`
@@ -2447,10 +2460,10 @@ The dispatch state machine, by module (public names first, then private ones for
   `_abandon_sweeps`)
 - `src/docket/interfaces/http/sweeps.py`: `check_schedules`, `SWEEP_ABANDON_WAIT_S`
 - `src/docket/interfaces/http/routes/dispatch.py`: `POST /dispatch/<project>`
-- `src/docket/interfaces/http/routes/approvals.py`: `POST /approvals/<token>`
+- `src/docket/interfaces/http/routes/escalations.py`: `POST /escalations/<id>`
 - `src/docket/interfaces/http/routes/tasks.py`: `GET /tasks/<pod>/<id>/evidence`
 - `src/docket/interfaces/cli/commands/run.py`: `docket run`
-- `src/docket/interfaces/cli/commands/task.py`: `docket task add|retry|cancel|approve|deny|prune|show`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task add|retry|cancel|answer|pregrant|prune|show`
 - `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset` (pipeline and schedule paths, budget re-queue)
 - `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod plan|validate`
 - `src/docket/interfaces/cli/render/progress.py`: the `docket run` progress view's in-place approval prompt

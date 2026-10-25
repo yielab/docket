@@ -720,8 +720,8 @@ Tester:      ✓ Behavior-only validation
   step for a question rather than a permission (`waiting_input`), one derived inbox
   (`docket inbox`) every surface renders from, `kind: channel` notifications delivered as
   CloudEvents (`docket setup notify`, seven dialects, only `console` on by
-  default, and it sends nothing, so `docket setup` warns until a delivering one is on), and answer surfaces (`docket task answer`, HTTP, MCP) that all
-  resolve through one `answer_task` function
+  default, and it sends nothing, so `docket setup` warns until a delivering one is on), and answer surfaces (`docket task answer`, HTTP, MCP, Telegram) that all
+  resolve through one `resolve` function
 
 ### Documentation ✅
 
@@ -775,9 +775,8 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   non-interactive `docket run` — records the exact call and ends the turn instead of blocking it,
   so one stuck hop can no longer stall an entire sweep. `docket task answer <escalation-id> --option
   approve_once|approve_task|deny` (the id `docket inbox` prints) resolves either trigger; so do HTTP
-  `POST /escalations/<id>`, MCP and Telegram `/answer <escalation-id> <option>`, and the older
-  `docket task approve`/`docket task deny` (HTTP `POST /approvals/<token>`, Telegram `/approve
-  <token>`) reach the same result. A grant on a
+  `POST /escalations/<id>`, the MCP `resolve` tool and Telegram `/answer <escalation-id> <option>`
+  reach the same result. A grant on a
   pre-hop gate hands the position back to the *next* claim as a single-use gate override; a grant
   on a parked call instead re-runs that *same* hop, carrying a single-use pre-grant matched by a
   stable argument digest so the model's identical next call passes once without asking again. A
@@ -787,10 +786,10 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
 - **`waiting_input`** is for a question, not a permission: a pipeline `input` step
   (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
   brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket task answer
-  <escalation-id> --option <id>` (or `<task-id>`), `POST /escalations/<id>`, and the older
-  `POST /tasks/<id>/answer` and the MCP `task_answer` tool
-  all resolve it through one `hops.application.answers.answer_task` function, which routes the step's own
-  `on:` outcome (`answered`/`declined`) and reopens the task `pending`. An unanswered question
+  <escalation-id> --option <id>` (or `<task-id>`), `POST /escalations/<id>`, the MCP `resolve`
+  tool and Telegram `/answer`
+  all resolve it through one `resolve` function, which records the answer and reopens the task
+  `pending`; the next claim routes the step's own `on:` outcome (`answered`/`declined`). An unanswered question
   past its own deadline moves the task to `blocked` (`blockedReason: "input_expired"`), never
   `failed`.
 
@@ -800,7 +799,7 @@ Nothing above pushes anything on its own. `docket inbox` (also `GET /inbox`, the
 tool, and Telegram's `/status`, each scoped to the caller's own pod) is read-only, computed live
 from the task list and the approval store rather than stored anywhere: every provisioned pod is
 enumerated and each task sorted into `needsYou` (any `waiting_*` status, plus `blocked`),
-`failed`, `doneSince` or `running`, with a pending approval added to `needsYou` unless its task
+`failed`, `doneSince` or `running`, with a pending escalation added to `needsYou` unless its task
 already carries it. A separate `kind: channel` document (`docket setup notify`) is what turns a
 transition in that inbox into an actual push: seven dialects ship (`console`, `desktop`,
 `webhook`, `command`, `ntfy`, `email`, `telegram`), only `console` enabled by default (and it sends nothing: `docket setup` warns until a
@@ -823,11 +822,11 @@ whose pack carries the model's own preceding sentence as a `rationale` (screened
 characters, and a claim by the model rather than a fact) and three options: `approve_once`,
 `approve_task` (the identical call for the rest of the task: within the turn, and in a pod for every
 later hop of the role that asked, at most 20 per task) and `deny`. Choose it with `docket task answer
-<escalation-id> --option approve_task` (or the older `docket task approve <task-id> --task`), Telegram `/approve <token> task`, the HTTP POST's `option` or the
-MCP `approvals_grant` `option`. `docket task approve|deny <task-id> --reason TEXT`, the HTTP approval POST's
-`reason` record why, with an `actor`, in the audit entry.
+<escalation-id> --option approve_task`, Telegram `/answer <escalation-id> approve_task`, the HTTP
+POST's `optionId` or the MCP `resolve` `option_id`. `docket task answer <task-id> --option deny --reason TEXT`, the HTTP POST's
+`content.reason` record why, with an `actor`, in the audit entry.
 The `consult` built-in (kind `read`) asks a typed question with options and an optional
-recommendation. In a pod hop it parks the task `waiting_input` and `answer_task` re-runs the same
+recommendation. In a pod hop it parks the task `waiting_input` and, once answered, the next claim re-runs the same
 role with the answer in its message, bounded per task by `maxConsultationsPerTask`. A pod set to
 `consultMode decide` does not park: the call returns the model's own recommendation at once and
 the audit log records `consult.decided`. The parked

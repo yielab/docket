@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 2.4.0
+**Version**: 3.0.0
 **Status**: Implemented and live. Trace records project into vendor-neutral spans and are sent,
 off the turn's thread, to every enabled `kind: exporter` destination over the one `otlp-http`
 dialect; what a destination receives beyond structure is set by its own privacy level.
@@ -102,8 +102,7 @@ This specification does NOT cover:
     still open for that session, named for the record's `event_type`, carrying one
     `docket.<key>` attribute for each of that event type's *declared* structural payload keys
     present with a scalar (`str`/`int`/`bool`) value (requirement 70). An undeclared key
-    **MUST NOT** be forwarded, and an event type's own content key (`approval_requested`'s
-    `action`, `error`'s `error`) **MUST** instead be gated through the allowlist, never forwarded
+    **MUST NOT** be forwarded, and an event type's own content key (`error`'s `error`) **MUST** instead be gated through the allowlist, never forwarded
     unconditionally.
 12. A `session_end` record **MUST** close the root span and every span still open for that
     session, each with `status: "unset"`, and **MUST** remove that session's state so nothing
@@ -372,9 +371,10 @@ This specification does NOT cover:
 70. A generic event (requirement 11) **MUST** forward only the payload keys declared as
     structure for its event type; an event type with no declared keys **MUST** forward no keys
     at all.
-71. `approval_requested`'s `action` payload key **MUST** be exposed as the
+71. The `prompt` payload key of an `escalation_asked` record whose `kind` is `approval`, `gate` or
+    `check_changed` (the command line waiting for a person) **MUST** be exposed as the
     `docket.approval.action` attribute, class `toolArguments`, gated by requirement 69, and
-    **MUST NOT** also be forwarded as a structural `docket.action` attribute.
+    **MUST NOT** also be forwarded as `docket.escalation.prompt` (requirement 114).
 72. `error`'s `error` payload key **MUST** be exposed as the `docket.error.message` attribute,
     class `errors`, gated by requirement 69, and **MUST NOT** also be forwarded as a structural
     `docket.error` attribute.
@@ -434,8 +434,8 @@ wait: its duration is the time between the ask and the settlement.
      `.channel` and `.level` whenever the payload that closes it, or the one that opened it,
      carries them. Every `escalation_*` payload of a record that has a level carries `level`
      (`L3`, `L4` or `L5`, operator-loop.spec.md "Escalations" item 12).
-114. The escalation's `prompt` payload key **MUST** be exposed as `docket.escalation.prompt`, class
-     `prompts`, gated by requirement 69; at `minimal`, `actions` and any `share` list without
+114. The `prompt` payload key of a `consult` or `input` escalation **MUST** be exposed as
+     `docket.escalation.prompt`, class `prompts`, gated by requirement 69; at `minimal`, `actions` and any `share` list without
      `prompts` the attribute **MUST** be absent. The ids and labels of the options and the
      recommendation are not exported.
 115. `DEFAULT_EVENTS` **MUST** include the five `escalation_*` event types.

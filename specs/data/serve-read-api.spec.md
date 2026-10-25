@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 4.3.1
+**Version**: 5.0.0
 **Status**: Stable
 **Last Updated**: 2026-10-25
 
@@ -17,18 +17,19 @@ detail or changes state. All mutation flows through the CLI or these token-guard
 This specification covers:
 
 - The three unauthenticated read endpoints (`/status.json`, `/metrics`, `/health`)
-- The authenticated reads `GET /approvals`, `GET /runs`, `GET /runs/<id>`, `GET /inbox`,
+- The authenticated reads `GET /runs`, `GET /runs/<id>`, `GET /inbox`,
   `GET /tasks/<project>`, `GET /tasks/<project>/<id>/evidence` and `GET /traces/<project>`
 - The run lifecycle behind `GET /runs` and `POST /dispatch/<project>`
-- The write routes `POST /dispatch/<project>`, `POST /tasks/<project>`, `POST /tasks/<id>/answer`,
-  `POST /tasks/<id>/pregrants`, `POST /pods` and `POST /approvals/<token>`
+- The write routes `POST /dispatch/<project>`, `POST /tasks/<project>`,
+  `POST /tasks/<id>/pregrants` and `POST /pods`
 - The JSON schema for each response, the Prometheus metric names and semantics, the versioning
   policy (what is a breaking change) and the auth requirement per endpoint
 
 The addressable-task fields of `POST /tasks/<project>`, the `GET /tasks/<project>` filters and
 `tokenBudget`, `GET /tasks/<project>/<id>`, `GET /tasks/<project>/<id>/diff`,
 `POST /tasks/<project>/<id>/cancel|retry`, `GET /pods`, `GET /pods/<p>`,
-`GET /pods/<p>/corrections` and `POST /pods/<p>/apply` are specified by
+`GET /pods/<p>/corrections`, `POST /pods/<p>/apply`, `GET /escalations` and
+`POST /escalations/<id>` (the one route that settles a pause) are specified by
 `operator-api.spec.md`.
 
 **API version:** `6` (`SERVE_API_VERSION`, reported as `apiVersion` by `/status.json` and
@@ -57,7 +58,6 @@ Authenticated read endpoints:
 
 | Endpoint | Content-Type | Auth required |
 |---|---|---|
-| `GET /approvals` | `application/json` | Yes |
 | `GET /runs` | `application/json` | Yes |
 | `GET /runs/<id>` | `application/json` | Yes |
 | `GET /inbox` | `application/json` | Yes |
@@ -68,7 +68,7 @@ Authenticated read endpoints:
 Every response carries `Cache-Control: no-store`; consumers must not cache. An unknown `GET`
 path is `404` (`text/plain`); an unknown `POST` path is `404 {"ok": false, "error": "not found"}`.
 Errors from the JSON routes carry `{"ok": false, "error": <message>}`. A bare route prefix
-(`GET /tasks`, `GET /traces`, `POST /tasks`, `POST /dispatch`, `POST /approvals`, with or without
+(`GET /tasks`, `GET /traces`, `POST /tasks`, `POST /dispatch`, with or without
 a trailing `/`) checks auth first (`401`) and then answers `400` naming the missing segment. A `POST` body larger than 1 MiB is refused with `413`
 without being read; an absent body reads as `{}`. Every socket read is bounded by a 30-second
 timeout.
@@ -132,7 +132,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_inbox_items{section}` | gauge | Items in the derived operator inbox (`GET /inbox`), by section (`needsYou`\|`failed`\|`doneSince`\|`running`). Computed fresh on every scrape with no `since`, so `doneSince` here is every terminal task, not scoped to any consumer's cursor. |
 | `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`), from `tool_result` trace events. Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. |
 | `docket_policy_hits_total{policy_id,hook,action}` | counter | Guardrail policy hits, by policy id, hook (`pre_input`\|`pre_tool_call`\|`pre_output`) and the policy's own action (`warn`\|`redact`\|`require_approval`\|`block`). The `pre_input`/`pre_output` slice comes from `guardrail_check` trace events; the `pre_tool_call` slice comes from the audit log's `tool.deny`/`tool.ask`/`tool.warn`/`tool.redact` entries that name a policy, and is subject to the rotation caveat below. |
-| `docket_approvals_total{channel,outcome}` | counter | Resolved approvals from the audit log's `approval.grant`/`approval.deny` entries, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`\|`tack`, or `unknown` for an entry that names none) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path, never a human channel, and only ever pairs with `outcome="denied"`. `channel="tack"` is a decision made from Tack's board. Subject to the rotation caveat below. |
+| `docket_approvals_total{channel,outcome}` | counter | Resolved approvals from the audit log's `approval.grant`/`approval.deny` entries, by channel (`cli`\|`http`\|`mcp`\|`telegram`\|`timeout`\|`tack`, or `unknown` for an entry that names none) and outcome (`granted`\|`denied`). `channel="timeout"` is the fail-closed expiry path, never a human channel, and only ever pairs with `outcome="denied"`. `channel="tack"` stays in the closed set, but no route sets it: the HTTP route tags every resolution `http`. Subject to the rotation caveat below. |
 | `docket_turn_duration_seconds` | summary (`_sum`/`_count`, no quantiles) | Session wall-clock (`session_start` → `session_end`), fleet-wide, one sample per trace file that has both. `_sum`/`_count` gives the mean; no percentiles are invented. |
 | `docket_tasks_started_total` | counter | Dispatch task claims, counted from dispatch-sourced `session_start` trace events; a resumed task's second `session_start` (`"resumed": true`) is not counted. Trace-derived. |
 | `docket_escalations_total{kind,outcome,by,level}` | counter | Settled escalations (`operator-loop.spec.md` "Escalations"), one per `escalation_resolved`, `escalation_expired` or `escalation_decided` trace event: `kind` is the escalation's kind (`approval`\|`consult`\|`input`\|`gate`\|`check_changed`), `outcome` the event (`resolved`\|`expired`\|`decided`), `by` who settled it (`person`\|`timeout`\|`policy`, so a pod's own decision never counts as a human one), `level` the autonomy level the pause was decided at (`L3`\|`L4`\|`L5`, `none` for a pause that names no queued task). Trace-derived; an escalation still pending is not counted. |
@@ -185,22 +185,6 @@ Liveness check. Always returns HTTP 200 while the process is alive.
 With dispatch on, a `POST /tasks/<pod>` that creates a task that is not gated on approval starts
 that pod's sweep at once instead of waiting for the next refresh; it is a no-op while a sweep of
 that pod is in flight.
-
-### GET /approvals
-
-Requires `Authorization: Bearer <token>`. Returns every pending approval record, in record
-filename order; a record that fails to parse is skipped.
-
-```json
-{
-  "pending": [
-    {"token": "apr-3f2a...", "project": "myapp", "role": "lead", "action": "...",
-     "state": "pending", "created": "...", "context": {"taskId": "task-91a2..."}}
-  ]
-}
-```
-
-Each element is the approval record as stored under `approvals/` in `DOCKET_HOME`.
 
 ### GET /runs
 
@@ -284,14 +268,15 @@ Requires `Authorization: Bearer <token>`. Returns the derived operator inbox —
 every provisioned pod that needs a human, plus recent context — built by `build_inbox`. An
 optional `?since=<iso>` query parameter restricts `doneSince` to tasks that completed after that
 timestamp; omitted, `doneSince` lists every terminal task. The body is `InboxView` exactly,
-`by_alias`; an item's `question` includes the operator-v1.1 fields (`kind`, `options`,
-`recommendation`) when the task parked a consultation:
+`by_alias`:
 
 ```json
 {
   "needsYou": [
-    {"id": "task-1", "pod": "demo", "status": "blocked", "a2aState": "INPUT_REQUIRED", "...": "..."},
-    {"token": "apr-2", "pod": "demo", "role": "lead", "a2aState": "INPUT_REQUIRED", "...": "..."}
+    {"id": "task-1", "pod": "demo", "status": "waiting_input", "a2aState": "INPUT_REQUIRED",
+     "escalation": "esc-0123456789ab", "...": "..."},
+    {"id": "esc-ba9876543210", "pod": "demo", "kind": "approval", "state": "pending",
+     "affordances": {"options": ["approve_once", "approve_task", "deny"], "...": "..."}, "...": "..."}
   ],
   "failed":    [ {"id": "task-3", "pod": "demo", "status": "failed", "a2aState": "FAILED"} ],
   "doneSince": [ {"id": "task-4", "pod": "demo", "status": "done", "a2aState": "COMPLETED"} ],
@@ -300,11 +285,11 @@ timestamp; omitted, `doneSince` lists every terminal task. The body is `InboxVie
 }
 ```
 
-`needsYou` mixes `TaskView` (a `waiting_*`/`blocked` task) and `ApprovalView` (a pending approval
-not already carried by a task's `approvalToken`) items; a client distinguishes them by the
-presence of `token` vs. `id`. The body also carries `escalations`: the `EscalationView` of every
-pause still waiting (`operator-loop.spec.md` area 11), by `seq`, `[]` when none; it is additive and
-the keys above are unchanged. The same `InboxView` as `docket start --mcp`'s `inbox` tool for the
+`needsYou` mixes `TaskView` (a `waiting_*`/`blocked` task, with the `escalation` it waits on) and
+`EscalationView` (a pending escalation no waiting task carries) items; a client distinguishes them
+by the `kind` and `affordances` an `EscalationView` has and a `TaskView` lacks. The body also carries `escalations`: the `EscalationView` of every
+pause still waiting (`operator-loop.spec.md` area 11), by `seq`, `[]` when none, and `decided`
+while the pod has settled a pause alone. The same `InboxView` as `docket start --mcp`'s `inbox` tool for the
 same state, and the one `docket inbox --json` starts from — one assembly function, three surfaces.
 
 ### GET /tasks/&lt;project&gt;/&lt;id&gt;/evidence
@@ -471,7 +456,7 @@ Request body (the addressable-task fields `externalRef`, `idempotencyKey`, `base
 | `description` | string | Yes | `400` if absent, empty or not a string. |
 | `priority` | `"high"\|"normal"\|"low"` | No | Defaults to `"normal"`; an unrecognized value falls back to `"normal"` — the same normalization the CLI/MCP callers get. |
 | `trusted` | boolean | No | Overrides the `pre_input` policy check's trust flag for this one enqueue. Omitted, it keeps the CLI/MCP default (trusted, because the task's `source` is `operator`). It does **not** change the persisted task's `source` field or introduce a new trust/source vocabulary — the only thing it touches is which `pre_input` policies are eligible to fire (whether the `prompt-injection` policy id is skipped). |
-| `brief` | object | No | A `TaskBrief` document (operator-v1, `operator-loop.spec.md`), the HTTP counterpart of `docket task add --brief`. A non-object value is `400`; an invalid one is `422` before anything is enqueued. A valid one is appended to the task description as a `## Pre-brief` section and persisted on the task's `brief` field. |
+| `brief` | object | No | A `TaskBrief` document (operator-v2, `operator-loop.spec.md`), the HTTP counterpart of `docket task add --brief`. A non-object value is `400`; an invalid one is `422` before anything is enqueued. A valid one is appended to the task description as a `## Pre-brief` section and persisted on the task's `brief` field. |
 
 Success response: a new task answers `201` with `"created": true`; a repeated `idempotencyKey`
 that matches a queued task answers `200` with `"created": false` and that task:
@@ -493,8 +478,8 @@ that matches a queued task answers `200` with `"created": false` and that task:
   persisted in any of these cases.
 - A `pre_input` policy matching with a `require_approval` verdict is **not** an error: the task is
   created (visible on `GET /tasks/<project>`, `docket task list`, etc.) but gated, so the response
-  is `201` reporting the real state and the approval token instead of one that implies the task
-  is queued to run:
+  is `201` reporting the real state and the escalation to resolve instead of one that implies the
+  task is queued to run:
 
   ```json
   {
@@ -503,66 +488,18 @@ that matches a queued task answers `200` with `"created": false` and that task:
     "task": "task-91a2...",
     "project": "myapp",
     "status": "waiting_approval",
-    "approvalToken": "apr-3f2a1c9e-..."
+    "escalation": "esc-0123456789ab"
   }
   ```
 
-  `approvalToken` resolves through the same `POST /approvals/<token>` endpoint documented below —
-  granting it resumes the task, denying it fails the task terminally, exactly like any other
-  approval-gated task.
-
-### POST /tasks/&lt;id&gt;/answer
-
-Requires `Authorization: Bearer <token>`. Resolves one task's parked `input` question — the HTTP
-counterpart of `docket task answer` and the MCP `task_answer` tool. It calls the same
-`answer_task` those two callers use, so the schema/`pre_input` screen and the resume onto the
-step's own route are identical; this route adds no new semantics (`operator-loop.spec.md`,
-"Answer surfaces").
-
-```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"pod": "myapp", "action": "accept", "content": {"answer": "ship it"}}' \
-  http://127.0.0.1:7331/tasks/task-91a2.../answer
-```
-
-Request body:
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `pod` | string | Yes | The project the task belongs to (task ids are not globally unique across pods). `400` if absent, empty, or fails `validate_project_id`. |
-| `action` | string | Yes | `"accept"`, `"decline"` or `"cancel"` (the MCP elicitation result vocabulary). `400` if absent or empty; an unrecognized value is `422` from `answer_task`'s own validation. |
-| `content` | object | No | Required properties for `"accept"` (validated against the parked question's `requestedSchema`); ignored for `"decline"`/`"cancel"`. `400` if present but not an object. |
-| `actor` | string | No | A label only — the Bearer token remains the sole authority over who may answer. Defaults to `"http"`. The channel recorded on the answer and its audit entry is always `"http"`, regardless of `actor`. |
-
-Success response (`200`) — the answered task's `TaskView` (operator-v1, `by_alias`, `mode="json"`):
-
-```json
-{
-  "id": "task-91a2...",
-  "pod": "myapp",
-  "status": "pending",
-  "a2aState": "SUBMITTED",
-  "description": "needs a decision",
-  "priority": "normal",
-  "createdAt": "...",
-  "updatedAt": "..."
-}
-```
-
-- A missing task id, a malformed JSON body, a body that is valid JSON but not an object, a
-  missing/empty `pod` or `action`, or a non-object `content` is rejected with `400` before
-  `answer_task` is called.
-- An answer whose `content` matches a `pre_input` `block` policy is `422`, naming the policy id
-  in the error message — nothing is written.
-- An answer naming an unknown task (`"not found in pod"`) is `404`; one naming a task not
-  currently `waiting_input`, or parked at a different step than the answer targets
-  (`"is not waiting_input"` / `"is not parked at step"`), is `409`; any other answer error — a
-  schema-validation failure, relayed unchanged — is `422`.
+  `escalation` resolves through `POST /escalations/<id>` (`operator-api.spec.md`) — granting it
+  resumes the task, denying it fails the task terminally, exactly like any other approval-gated
+  task.
 
 ### POST /tasks/&lt;id&gt;/pregrants
 
 Requires `Authorization: Bearer <token>`. Records a single-use pre-grant for one exact command on
-one task, ahead of dispatch — the HTTP counterpart of `docket task approve --for` and the MCP
+one task, ahead of dispatch — the HTTP counterpart of `docket task pregrant` and the MCP
 `task_pregrant` tool. It calls `record_pregrant`, which mints the approval exactly as an in-turn
 park does and names the task in the record, which is what the task's hops read. When the pipeline later
 reaches that exact call (matched by its canonical arguments digest), it passes once without
@@ -657,33 +594,6 @@ Success response (`201`) — the created pod roster:
 - This route adds no field `docket init` does not already have a corresponding capability for —
   see the request-body table above for which CLI capability each field reuses.
 
-### POST /approvals/&lt;token&gt;
-
-Requires `Authorization: Bearer <token>`. Resolves one approval — the HTTP counterpart of
-`docket task approve`/`deny`. If the token gates a pod task, the task is resumed (grant) or
-failed (deny) in the same request.
-
-Request body:
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `action` | `"grant"\|"deny"` | Yes | Anything else is `400`. |
-| `channel` | `"http"\|"tack"` | No | Defaults to `"http"`. Tagged onto the `approval.grant`/`approval.deny` audit entry. |
-| `option` | `"approve_once"\|"approve_task"` | No | Grant only. |
-| `reason` | string | No | Recorded with the decision; a non-string is ignored. |
-
-Success response (`200`): `{"ok": true, "token": <token>, "state": <resulting state>}`, plus a
-`note` when the grant was recorded but its task-wide grant was refused.
-
-`channel` is validated against `http`\|`tack` — the subset of `APPROVAL_CHANNELS` the HTTP
-transport itself may claim — rather than the full closed vocabulary: `cli`, `mcp` and `telegram`
-are audit-logged only by their own surfaces (the CLI, an MCP tool call, the Telegram channel), and
-`timeout` is the fail-closed expiry path, never a caller-supplied value. An HTTP Bearer holder
-asking for any of those, or any other unrecognized value, is rejected with `400` before the
-approval's state changes, so a caller cannot forge which surface a decision came through in the
-hash-chained audit log. `tack` distinguishes a decision made from Tack's board from one made
-through any other surface.
-
 ## Validation
 
 - `apiVersion` MUST be a string equal to `SERVE_API_VERSION`.
@@ -693,11 +603,11 @@ through any other surface.
 - `/metrics` MUST conform to Prometheus text format 0.0.4: each metric family appears once, its
   `# HELP` then `# TYPE` line before its first sample, and all of its samples together, with
   every agent's `docket_agent_turns_total` sample under that one header.
-- `/approvals`, `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer
-  token with `401`, before touching the approval records or the run registry.
+- `/runs` and `/runs/<id>` MUST reject a request with no (or an invalid) Bearer
+  token with `401`, before touching the run registry.
 - `/inbox` MUST reject a request with no (or an invalid) Bearer token with `401` before building
   the inbox, and MUST return the byte-identical shape `docket inbox --json` prints for the same
-  pod/approval state (`operator-loop.spec.md` requirement area 5).
+  pod/escalation state (`operator-loop.spec.md` requirement area 5).
 - `GET /tasks/<project>`, `GET /tasks/<project>/<id>/evidence`, `GET /traces/<project>`,
   `POST /tasks/<project>` and `POST /dispatch/<project>` MUST reject a request with no (or an
   invalid) Bearer token with `401`, and MUST reject an empty project segment or one that fails
@@ -729,25 +639,8 @@ through any other surface.
   before touching the pod's queue; MUST reject an absent/empty `description` and a malformed or
   non-object body with `400` before enqueueing; MUST return `404` (not `500`) for a project with
   no pod; MUST return `400` naming the policy id for a `block` `pre_input` verdict; and MUST return
-  `201` with `status: "waiting_approval"` plus a non-empty `approvalToken` for a
+  `201` with `status: "waiting_approval"` plus a non-empty `escalation` for a
   `require_approval` verdict, never a response implying the task is queued to run.
-- `POST /approvals/<token>` MUST return `401` before touching the record for a missing/invalid
-  Bearer token; `400` for a missing token, a malformed body or an `action` other than
-  `grant`/`deny`; `200` with the resulting `state` on a successful transition; `404` for a token
-  that does not exist; and `409` for a token that already resolved — whether to the *same* action
-  or the *opposite* one (deny-after-grant or grant-after-deny) — naming the winning state in the
-  error message either way, never the missing-token `404` (`security-gates.spec.md`'s
-  approval-resolution section).
-- `POST /approvals/<token>`'s optional `channel` field MUST be one of `http | tack` — the subset of
-  `APPROVAL_CHANNELS` the HTTP transport may claim; `cli`, `mcp`, `telegram` and `timeout` belong
-  to other surfaces or to the fail-closed expiry path and MUST be rejected the same as any other
-  unrecognized value, with `400` and no change to the approval's state or the audit log. Omitted,
-  it MUST default to `"http"`.
-- `POST /approvals/<token>`'s optional `option` field MUST be `approve_once` or `approve_task`, and
-  only with `"action": "grant"`; any other value, or an option on a deny, MUST be rejected with
-  `400` and no change. `approve_task` is recorded with `approval_set_option` before the grant, so a
-  parked pod task gains the task-wide grant of operator-loop 5a (channel `http`); a refused grant
-  past the task's cap of 20 adds a `note` to the `200` body.
 - `POST /pods` MUST reject a request with no (or an invalid) Bearer token with `401` before touching
   any project state; MUST reject a malformed/non-object body, a missing/empty `name`, a `pod`
   value other than `"full"`, a non-numeric `budget`, or a wrongly typed `blueprint`, `location`,
@@ -820,7 +713,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/interfaces/http/routes/traces.py`: the `/traces` cursor and hold-back
 - `src/docket/kernel/threads.py`: `ContextHTTPServer`, `new_thread`, `start_thread`, `submit`
 - `src/docket/operator/inbox.py`: `build_inbox`, `task_view`
-- `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskView`, `ApprovalView`, `TaskBrief`
+- `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskView`, `EscalationView`, `TaskBrief`
 - `src/docket/tasks/application/runs.py`: `create_run`, `list_runs`, `get_run`, `execute`, `cancel_run`, the
   run record and its `cancellation` lifecycle
 - `src/docket/tasks/application/queue.py`: `enqueue_task_once`
@@ -828,13 +721,10 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/tasks/domain/task.py`: `TaskRecord`, the task record's fields and their dump
 - `src/docket/hops/application/steps.py`: `effective_pipeline`
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
-- `src/docket/tasks/application/actions.py`: `resolve_waiting_approval_detail`, `TASK_GRANT_CAP`
 - `src/docket/tasks/application/evidence.py`: `task_evidence`
 - `src/docket/observability/trace.py`: `export_lines`, `trace_event`, `expire_old_traces`, `sweep_all`
 - `src/docket/governance/audit.py`: `read_audit`, rotation at `AUDIT_LOG_MAX_BYTES`
-- `src/docket/governance/approval.py`: `APPROVAL_CHANNELS`, `list_pending`, `approval_grant`,
-  `approval_deny`, `approval_set_option`
-- `src/docket/hops/application/answers.py`: `answer_task`
+- `src/docket/governance/approval.py`: `APPROVAL_CHANNELS`
 - `src/docket/hops/application/interruptions.py`: `record_pregrant`
 - `src/docket/pipeline/domain/spec.py`: `resolve_variables`
 - `src/docket/teams/provisioning.py`: `validate_project_id`

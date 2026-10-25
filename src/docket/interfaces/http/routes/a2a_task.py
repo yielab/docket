@@ -62,6 +62,8 @@ def escalation_data(view: EscalationView) -> dict[str, Any]:
     }
     if view.recommendation is not None:
         data["recommendation"] = view.recommendation.model_dump(by_alias=True, mode="json")
+    if view.level is not None:
+        data["level"] = view.level
     return data
 
 

@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
@@ -80,20 +80,23 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      an automatically recorded entry lands in), `pod.memory.reset`, `pod.memory.error`, and `repo.allow` (a repository's
      review code was accepted).
    - **Tasks and runs.** `task.enqueue`, `task.retry`, `task.cancel`, `task.reclaimed` (a stale
-     running claim was failed), `task.answer` (never the answer content), `consult.decided` (a
+     running claim was failed), `task.answer` (never the answer content), `escalation.resolve` (a person settled
+     an escalation; `detail` names the escalation, kind, pod, task, option, channel and actor,
+     never the content or the reason), `consult.decided` (a
      pod with `consultMode decide` answered a `consult` with the model's own recommendation;
-     `detail` names project, task, role, question id and option id, never the message),
+     `detail` names project, task, role, escalation id and option id, never the message),
      `run.dispatch` (an HTTP
      dispatch, `channel=http`), `run.resume` (`docket run --resume` cleared an auto-pause), and
      `runs.cancel` (`detail` names the run id, project, the state immediately before
      cancellation as `was=`, and the process groups killed as `killed=`; written only when a run
      was actually cancelled).
    - **MCP server.** `mcp.<tool>` for every `docket start --mcp` tool call (`status`, `pods`,
-     `queue`, `delegate`, `dispatch`, `runs`, `approvals_list`, `approvals_grant`,
-     `approvals_deny`, `inbox`, `cost`, `task_answer`, `task_pregrant`), written unconditionally
+     `queue`, `delegate`, `dispatch`, `runs`, `inbox`, `escalations`, `cost`, `resolve`,
+     `task_pregrant`), written unconditionally
      before the operation runs, including the read-only tools. A mutating tool additionally
-     triggers whatever domain entry the called function writes (an `approvals_grant` call writes
-     `mcp.approvals_grant` and `approval.grant channel=mcp`): two entries for one call is
+     triggers whatever domain entry the called function writes (a `resolve` call that grants an
+     approval writes `mcp.resolve`, `approval.grant channel=mcp` and `escalation.resolve
+     channel=mcp`): two entries for one call is
      intentional, the first is the uniform "an MCP call happened" record. Distinct from the
      `mcp_client.*` entries, which record what happened when docket *connected* to a server
      (see `specs/api/mcp-server.spec.md`).
@@ -396,7 +399,7 @@ x Tamper check FAILED at line 1 of 6: chain claims continuation from seq=214, bu
   `exporter.*` entries. `src/docket/interfaces/cli/commands/run.py`: `run.resume`.
 - `src/docket/operator/channel.py`, `src/docket/observability/exporter.py`, `src/docket/models/catalog.py`,
   `src/docket/teams/identity.py`, `src/docket/teams/workspace/skills.py`, `src/docket/governance/plugins.py`,
-  `src/docket/hops/application/answers.py`, `src/docket/governance/review.py`: the remaining entries of
+  `src/docket/tasks/application/escalations.py`, `src/docket/governance/review.py`: the remaining entries of
   Requirement 1.
 - `src/docket/hops/application/driver.py`: `isolation.refused`, `network.refused`.
 - `src/docket/observability/trace.py`: `trace_event` and its `"written"` / `"rejected"` / `"suppressed"`

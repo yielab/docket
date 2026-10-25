@@ -1,8 +1,8 @@
 # Security Gates Specification
 
-**Version**: 1.7.0
+**Version**: 2.0.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
-classifier plus `pre_tool_call` policies); approvals live in one store answered over CLI, HTTP,
+classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
 **Last Updated**: 2026-10-25
@@ -20,7 +20,7 @@ This specification covers:
 
 - The tool-call gate: the argument-aware command classifier, `pre_tool_call` policies, and what an
   `ask` verdict does (wait, park, or refuse)
-- The approval store and its channels (CLI, HTTP, MCP, Telegram), the grant/deny race, expiry,
+- The approval store and the channels that settle it (CLI, HTTP, MCP, Telegram), the grant/deny race, expiry,
   single-use pre-grants and approval packs
 - The high-risk action classes (`money-movement`, `prod-deploy`, `secret-access`) and every place
   they apply
@@ -135,12 +135,14 @@ and chain (audit.spec.md).
      resolve inside `roots` or name `/dev/null` still asks, for every binary when jailed). Every
      host-side caller (dispatch's `run:` steps, `docket pod check`) leaves `jailed` false. Policies
      apply in both modes.
-2. Approvals in docket's store **MUST** be answerable over a headless channel: the CLI
-   (`docket task approve`, `docket task deny`), HTTP (`POST /approvals/<token>` under
-   `docket start`), MCP (the `approvals_grant` and `approvals_deny` tools) and Telegram (a bound
-   chat's `/approve` or `/deny`, answered by `docket start --telegram`'s poll loop with no
-   interactive session). The `docket run` progress view's own prompt is a further CLI caller.
-   Every caller makes the same grant or deny and then calls `resolve_waiting_approval`, so a
+2. Approvals in docket's store **MUST** be answerable over a headless channel, by the id of the
+   escalation each approval backs and through `resolve` alone: the CLI (`docket task answer
+   <esc-id> --option approve_once|approve_task|deny`), HTTP (`POST /escalations/<id>` under
+   `docket start`), MCP (the `resolve` tool) and Telegram (a bound chat's `/answer <esc-id>
+   <option>`, answered by `docket start --telegram`'s poll loop with no interactive session). The
+   `docket run` progress view's own prompt is a further CLI caller. No channel addresses an
+   approval by its token. Every caller makes the same grant or deny and then calls
+   `resolve_waiting_approval`, so a
    decision **MUST** genuinely resume or fail the dispatch task it gated, not merely flip the
    record (pod-dispatch.spec.md). One approval implementation, several callers.
    A pending record **MUST** make its one terminal transition (`granted` or fail-closed `denied`)
@@ -148,13 +150,13 @@ and chain (audit.spec.md).
    have exactly one winner. Only that winner emits the matching trace and audit event; a
    duplicate decision emits neither.
    The loser's error **MUST** say why it lost: an unknown or malformed token is `ApprovalError`
-   (HTTP `404`); repeating the decision that already won (already granted, already denied,
-   expired) is `ApprovalNoop` (HTTP `409`); the opposite decision on a resolved record
-   (deny-after-grant, grant-after-deny) is `ApprovalConflict`, an `ApprovalError` subclass (so
-   every `except ApprovalError` still catches it) carrying the winning state, whose message names
-   that state (HTTP `409`, not the missing-token `404`). Every channel's caller reports which
-   decision won from these exceptions, never a generic failure indistinguishable from an unknown
-   token.
+   (`resolve` reports it as `EscalationNotFound`, HTTP `404`); repeating the decision that already
+   won (already granted, already denied, expired) is `ApprovalNoop` (`EscalationNotPending`, HTTP
+   `409`); the opposite decision on a resolved record (deny-after-grant, grant-after-deny) is
+   `ApprovalConflict`, an `ApprovalError` subclass (so every `except ApprovalError` still catches
+   it) carrying the winning state, whose message names that state (HTTP `409`, not the
+   missing-token `404`). Every channel's caller reports which decision won from these exceptions,
+   never a generic failure indistinguishable from an unknown pause.
 3. A gate with no approver **MUST** fail closed. An in-turn wait resolves to denied at its timeout
    (In-turn tool-call gate 5). A **pending** record in the store **MUST** resolve to **denied**
    once past its own `expiresAt` through `sweep_escalations`, which runs only while
@@ -162,11 +164,11 @@ and chain (audit.spec.md).
    the waiting task terminally (`failureKind: "approval_denied"`).
 4. Every grant and denial through docket's store **MUST** be recorded in the audit log
    (`approval.grant`, `approval.deny`), tagged with the channel it came through: `cli`, `http`,
-   `mcp`, `telegram`, `tack` (an HTTP caller's own tag), `timeout` (the expiry sweep, or an
-   in-turn wait that timed out), or `cancellation` (an in-turn wait that observed run
-   cancellation). The HTTP route accepts only `http` and `tack` from its caller, so it cannot claim
-   another surface's channel or the fail-closed `timeout`; `create_pregrant` accepts only the
-   closed `APPROVAL_CHANNELS` set (`cli`, `http`, `mcp`, `telegram`, `timeout`, `tack`).
+   `mcp`, `telegram`, `timeout` (the expiry sweep, or an in-turn wait that timed out), or
+   `cancellation` (an in-turn wait that observed run cancellation). `POST /escalations/<id>` tags
+   every resolution `http`, so it cannot claim another surface's channel or the fail-closed
+   `timeout`; `create_pregrant` accepts only the closed `APPROVAL_CHANNELS` set (`cli`, `http`,
+   `mcp`, `telegram`, `timeout`, `tack`).
 5. An in-turn tool approval's stored `action` **MUST** include the redacted rendered tool call in
    addition to the classifier or policy reason. Every approval channel reads this same record, so
    an operator **MUST** be able to tell, for example, project test execution from a shell call
@@ -661,8 +663,7 @@ rewrite its own gate for the next turn.
      resumes once they do` (`this call` for a tool other than `bash`), `REFUSED
      [approval_timeout]: <reason>; approval timed out and was denied` and `REFUSED
      [approval_denied]: <reason>; approval denied`. The approval token **MUST NOT** appear in any
-     of them; it lives in `ToolResult.approval_token`, the approval record, the inbox and the
-     audit log.
+     of them; it lives in `ToolResult.approval_token`, the approval record and the audit log.
 8. **Scope.** This section governs `dispatch_tool`. Every pod-dispatch hop resolves the default
    driver (`DocketDriver`), whose `run_turn` runs the agent loop, which dispatches every tool call
    through `dispatch_tool`; there is no other execution path for a tool call. A pod-dispatch hop is
@@ -1146,26 +1147,24 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    name, so the HTTP route, Telegram, MCP and the CLI are covered without each validating on its
    own: a malformed token is `ApprovalError("Approval not found: <token>")`, never a path.
 2. **Approval packs (ADR 0018).** An approval made for a gated tool call (wait and park modes)
-   carries a pack on its record and on the `approval_requested` trace event, as additive fields:
-   `rationale` and `options`.
+   carries a pack on its record, as additive fields: `rationale` and `options`.
    - `rationale` is the assistant text of the message that made the call (`ToolContext.rationale`,
      set by the agent loop per tool-call batch). It is screened with
      `policy_eval_detail("lead", "pre_input", text, trusted=False, project=ctx.project)`,
      redacted, and cut to 500
-     characters. A `block` hit makes it `""` and adds `rationaleBlocked: true` to the trace
-     payload. The key is always present for a gated call, `""` when there is no text. Approvals
+     characters. A `block` hit makes it `""` and adds `rationaleBlocked: true` to the record. The key is always present for a gated call, `""` when there is no text. Approvals
      created outside a tool call carry neither key.
    - `options` is exactly three operator-v1.1 `Option`s, in order: `approve_once`,
      `approve_task`, `deny`.
-   - `approve_task`: a grant that chose `approve_task` (`docket task approve --task`, HTTP or MCP
-     `option: "approve_task"`, Telegram) records the option on the pending record before the grant.
+   - `approve_task`: a grant that chose `approve_task` (`docket task answer <esc-id> --option
+     approve_task`, HTTP `optionId` or the MCP `option_id` `"approve_task"`, Telegram `/answer`) records the option on the pending record before the grant.
      When the waiting call sees a granted record with that option, it creates a pre-grant for that
      exact call (`create_pregrant`, channel `cli`, the tool and canonical argument digest) and adds
      it to `ToolContext.pregrants`, so one identical later call in the same turn context runs
      without a new approval. It is single-use.
 3. **Every approval records its own deadline.** `approval_create` always stores `expiresAt`: the
    caller's value, else `created + APPROVAL_TIMEOUT` (ISO 8601 UTC). The record, the
-   `GET /approvals` view and the inbox item therefore carry the deadline the sweep enforces.
+   escalation's `expiresAt` and the inbox item therefore carry the deadline the sweep enforces.
 
 ### Credentials in task processes (ADR 0020)
 
@@ -1330,16 +1329,20 @@ docket setup profile [CHOICE]          # show, or record lights-out|attended (au
 ```bash
 # docket's approval store is the only approval system. Producers: the pod's require_approval gate
 # and the pre_input enqueue gate (a dispatch task waiting_approval), and the in-turn tool-call
-# gate (wait or park). See pod-dispatch.spec.md for the task side.
-docket inbox                        # what is waiting for you, with the exact approve line
-docket task approve <id>            # grant the approval a task holds; resumes the task it gated
-docket task approve <id> --task     # also allow this exact call for the rest of the task
-docket task deny <id>               # deny it; fails the task it gated, terminally
-GET  /approvals                     # docket start: list pending approvals (bearer auth)
-POST /approvals/<token>             # docket start: {"action": "grant"|"deny", "option"?,
-                                    #   "reason"?, "channel"?: "http"|"tack"} (bearer auth)
-# MCP (docket start --mcp): approvals_list, approvals_grant(token, option), approvals_deny(token)
-# Telegram (docket start --telegram): /approve and /deny in a chat bound with
+# gate (wait or park). Each opens an escalation; see pod-dispatch.spec.md for the task side.
+docket inbox                        # what is waiting for you, with the exact answer line
+docket task answer <esc-id|task> --option approve_once
+                                    # grant the approval a task holds; resumes the task it gated
+docket task answer <esc-id|task> --option approve_task
+                                    # also allow this exact call for the rest of the task
+docket task answer <esc-id|task> --option deny [--reason <why>]
+                                    # deny it; fails the task it gated, terminally
+GET  /escalations                   # docket start: list the pauses, approvals included (bearer auth)
+POST /escalations/<id>              # docket start: {"optionId"?, "content"?, "actor"?} where an
+                                    #   approval takes optionId approve_once|approve_task|deny and
+                                    #   content {"reason"}; the channel is always "http" (bearer auth)
+# MCP (docket start --mcp): escalations(since), resolve(escalation_id, option_id, content)
+# Telegram (docket start --telegram): /answer <esc-id> <option> in a chat bound with
 #   docket setup notify enable telegram or docket setup notify bind; channel "telegram".
 #   See telegram-integration.spec.md.
 ```
@@ -1364,11 +1367,11 @@ docket pod validate [PATH]          # schema-check a policy file, or a directory
 ### A dispatch gate, granted and denied
 
 A pod whose pipeline gives the `implementer` step an `approval` gate parks the task before that hop:
-`docket run` reports it `waiting_approval` with its token, `docket inbox` shows the exact approve
-line, `docket task approve <id>` grants it and the next `docket run` finishes the task. An
-unanswered token fails closed: under `docket start`, `sweep_escalations` resolves it to
-`denied` once past its `expiresAt`, and the task fails terminally (`failureKind:
-"approval_denied"`) without anyone calling `docket task deny`.
+`docket run` reports it `waiting_approval` with its escalation id, `docket inbox` shows the exact
+approve line, `docket task answer <id> --option approve_once` grants it and the next `docket run`
+finishes the task. An unanswered approval fails closed: under `docket start`,
+`sweep_escalations` resolves it to `denied` once past its `expiresAt`, and the task fails
+terminally (`failureKind: "approval_denied"`) without anyone answering `--option deny`.
 
 ### The enqueue-time gate
 
@@ -1377,7 +1380,7 @@ ever claimable; the same resolution path, fed from a second source:
 
 ```bash
 docket task add "URGENT WIRE the vendor before EOD"   # queued as waiting_approval
-docket task approve task-9a1b                          # the task becomes pending
+docket task answer task-9a1b --option approve_once    # the task becomes pending
 docket run                                             # runs it
 ```
 
@@ -1729,17 +1732,16 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/kernel/operator_contract.py`: `canonical_args_digest`
 - `src/docket/teams/roles.py`: `registry_for_role`
 - `src/docket/agent/loop.py`: the `approval_parked` stop, `approval_parked_error`
-- `src/docket/interfaces/telegram/bot.py`: the `/approve` and `/deny` handlers
-- `src/docket/interfaces/http/routes/approvals.py`: `GET /approvals`, `POST /approvals/<token>`
-  and its channel set
+- `src/docket/interfaces/telegram/bot.py`: the `/answer` handler
+- `src/docket/interfaces/http/routes/escalations.py`: `GET /escalations`, `POST /escalations/<id>`
 - `src/docket/interfaces/http/routes/task_create.py`: `POST /tasks` (`trusted`)
 - `src/docket/interfaces/http/server.py`: the expiry sweep
 - `src/docket/interfaces/http/routes/metrics.py`: `/metrics` (`docket_policy_hits_total`)
 - `src/docket/interfaces/cli/commands/setup_sandbox.py`: `docket setup sandbox` and its verbs, `docket setup profile`,
   the `gates.*` audit entries
 - `src/docket/interfaces/cli/commands/setup_check.py`: `docket setup`'s security report and `securityGates`
-- `src/docket/interfaces/cli/commands/task.py`: `docket task approve`, `docket task deny`
-- `src/docket/interfaces/cli/commands/mcp.py`: `approvals_list`, `approvals_grant`, `approvals_deny`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task answer`, `docket task pregrant`
+- `src/docket/interfaces/cli/commands/mcp.py`: `resolve`, `escalations`
 - `src/docket/interfaces/cli/render/progress.py`: the `docket run` approval prompt
 - `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod check`, `docket pod policies`,
   `docket pod validate`, `docket pod update`

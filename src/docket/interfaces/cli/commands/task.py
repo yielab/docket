@@ -39,7 +39,7 @@ from docket.kernel.errors import DispatchError, DocketError
 from docket.kernel.operator_contract import EscalationView, is_escalation_id
 from docket.observability import trace as _trace
 from docket.operator import escalation_view, escalation_views
-from docket.platform import read_escalation
+from docket.platform import prune_settled_escalations, read_escalation
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import evidence as _evidence
 from docket.tasks.application import lifecycle as _lifecycle
@@ -315,6 +315,8 @@ def _prune_records(project: str, days: int | None, dry_run: bool) -> None:
     ui.info(f"{verb} {report.expired_count} trace file(s) past {report.retention_s // 86400} days.")
     removed = _runs.prune_terminal(retention_s=retention_s, dry_run=dry_run, project=project)
     ui.info(f"{'Would remove' if dry_run else 'Removed'} {removed} terminal run record(s).")
+    settled = prune_settled_escalations(retention_s=retention_s, dry_run=dry_run)
+    ui.info(f"{'Would remove' if dry_run else 'Removed'} {settled} settled escalation record(s).")
 
 
 @task_app.command("prune")

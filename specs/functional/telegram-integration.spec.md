@@ -1,18 +1,18 @@
 # Telegram Integration Specification
 
-**Version**: 4.2.0
+**Version**: 5.0.0
 **Status**: Implemented. `docket setup notify enable telegram --chat <id>` connects the channel in
 one operation, `bind`/`unbind` handle the per-pod exception, and `docket start --telegram`
-long-polls the Bot API and routes five verbs through docket's own approval, answer and dispatch
-operations; every grant or deny through it is audited with `channel=telegram`.
+long-polls the Bot API and routes three verbs through docket's own answer and dispatch
+operations; every resolution through it is audited with `channel=telegram`.
 **Last Updated**: 2026-10-25
 
 ## Purpose
 
 This specification defines two things: (1) how docket records which Telegram peer/group maps to
 which agent (`docket setup notify enable telegram`, `bind` and `unbind`), and (2) how docket's own
-bot (`docket start --telegram`) turns an inbound message on a bound chat into an approve, deny,
-status, delegate or answer action against docket's real state and approval mechanism.
+bot (`docket start --telegram`) turns an inbound message on a bound chat into a status, delegate or answer action against
+docket's real state and escalation mechanism.
 
 ## Scope
 
@@ -23,7 +23,7 @@ This specification covers:
 - The binding's storage in `fleet.json` and its role as the channel's **entire authorization
   boundary** (see Security below)
 - The bot's wire protocol: `getUpdates` long-poll, `sendMessage` reply
-- The command grammar and routing to docket's existing approval, answer and dispatch operations
+- The command grammar and routing to docket's existing answer and dispatch operations
 - `docket start --telegram`'s poll loop and its degrade-gracefully behavior when unconfigured
 
 This specification does NOT cover:
@@ -41,15 +41,15 @@ This specification does NOT cover:
 A Telegram message is untrusted input from the open internet, and a bot token is effectively a
 public endpoint. Two independent checks stand between an inbound message and anything happening:
 
-1. **Sender authorization.** Only a chat id with an existing `fleet.json` binding may approve,
-   deny, check status, delegate or answer anything. **The binding recorded by `docket setup notify
+1. **Sender authorization.** Only a chat id with an existing `fleet.json` binding may check
+   status, delegate or answer anything. **The binding recorded by `docket setup notify
    bind` (or `enable telegram`) is the entire authorization boundary** — there is no second
    allowlist and no per-user check beyond it. The binding is read fresh on every message. An
    unbound chat's message is refused (`"This chat is not wired to a docket agent."`) and the
    attempt is audited (`telegram.unauthorized`, carrying the chat id and update id, never the
-   message body) — never silently dropped, never granted. `/approve` and `/deny` act only on a token
-   whose approval belongs to the bound agent's own pod (a pod member's pod, else the agent id
-   itself): a token of any other pod is refused, left pending, and audited as
+   message body) — never silently dropped, never granted. `/answer` acts only on an escalation that belongs to the
+   bound agent's own pod (a pod member's pod, else the agent id itself): an escalation of any
+   other pod is refused as not found in the bound pod, left pending, and audited as
    `telegram.cross_pod_refused`, and the reply does not name the other pod.
 2. **Content screening.** Text that is about to become agent input (a `/delegate` task
    description) is run through the `pre_input` policy hook as untrusted text (`trusted=False`,
@@ -57,10 +57,10 @@ public endpoint. Two independent checks stand between an inbound message and any
    untrusted-external-text reasoning the MCP client applies to a remote server's tool
    descriptions. `block`/`require_approval` refuse outright (there is no per-message
    human-approval channel for a chat message the way there is for a tool call); `warn`/`redact`
-   proceed with an audit trail. An `/answer` is screened by `answer_task` itself (see
-   "Answering a parked question").
+   proceed with an audit trail. An `/answer` is screened by `resolve` itself (see
+   "Answering an escalation").
 
-Fail closed always: an unknown sender, an unparseable command, a missing/ambiguous token, or a
+Fail closed always: an unknown sender, an unparseable command, a missing/ambiguous id, or a
 blocked policy verdict never default to granting or denying anything.
 
 ## Requirements
@@ -136,41 +136,34 @@ blocked policy verdict never default to granting or denying anything.
 
 ### Command grammar
 
-1. **MUST** recognize five operational verbs: `/approve <token> [task]`, `/deny <token>`,
-   `/status`, `/delegate <task description>` and `/answer <id> <option|text>`, plus the inert
-   `/wire <code>` setup handshake. Each verb **MUST** also be accepted with a bot-name suffix
-   (`/status@my_bot`); a verb followed directly by other characters (`/delegatefoo`) is not that
-   verb and is unrecognized. `/wire` never creates or changes a binding inside the bot; after the CLI
-   has bound the group, the normal poller acknowledges the retained setup message with a plain
-   confirmation. No inline keyboards, no Markdown/HTML rich replies — a plain text reply is the
-   entire UI surface.
-1a. `/approve <token> task` **MUST** behave as `/approve <token>` and also choose the
-   `approve_task` option (recorded on the approval before the grant), so a parked pod approval
-   covers the same exact call for the rest of its task (operator-loop requirement 5a). Any other
-   trailing word is unparseable. The chat authorisation is unchanged and the bot stays
-   inbound-only.
-2. **MUST** route `/approve`/`/deny` through `resolve_approval_token` (`channel="telegram"`,
-   `operator-loop.spec.md` area 10 item 6) — the same call `docket task approve`/`docket task
-   deny` make: it resolves the approval's escalation, which runs `approval_grant`/`approval_deny`
-   followed by `resolve_waiting_approval_detail`, and the bot replies with any note it returns. A
-   repeated decision on an already-decided token is a benign no-op (the dispatch follow-up still
-   runs and the reply is the approval store's own message). The bot never reimplements approval
-   state transitions.
+1. **MUST** recognize three operational verbs: `/status`, `/delegate <task description>` and
+   `/answer <id> <option|text>`, plus the inert `/wire <code>` setup handshake. Each verb **MUST**
+   also be accepted with a bot-name suffix (`/status@my_bot`); a verb followed directly by other
+   characters (`/delegatefoo`) is not that verb and is unrecognized. `/wire` never creates or
+   changes a binding inside the bot; after the CLI has bound the group, the normal poller
+   acknowledges the retained setup message with a plain confirmation. No inline keyboards, no
+   Markdown/HTML rich replies — a plain text reply is the entire UI surface.
+2. **MUST** have no verb that grants or denies an approval by its token: an approval is an
+   escalation, and `/answer <esc-id> approve_once|approve_task|deny` settles it through `resolve`
+   like any other (see "Answering an escalation"). `approve_task` covers the same exact call for
+   the rest of its task (operator-loop requirement 5a). The bot never reimplements approval state
+   transitions, and an approval is never addressed by its token.
 3. **MUST** render `/status` from the derived operator inbox (`build_inbox`, `operator-loop.spec.md`
    requirement area 5), scoped to the bound agent's own project (a pod Lead's own pod; any other
    member is scoped to its own agent id, which holds no pod items) — never another agent's tasks
-   or pending approvals. The reply lists needs-you items (waiting/blocked tasks and pending
-   approvals not already carried by a task) first, then failed tasks, and says nothing needs the
-   operator when both are empty; it stays plain text. Under a `waiting_input` task with a pending
-   `consult` or `input` escalation it prints the question, `options: <ids> (recommended <id>)`
-   and `reply: /answer <task> <option>` (or `<your answer>` when it offers no options), rendered by `render_escalation` at the `conversation`
-   level (the operator asked in their own chat; option ids are never withheld).
+   or pending escalations. The reply lists needs-you items (waiting/blocked tasks and pending
+   escalations not already carried by a task) first, then failed tasks, and says nothing needs the
+   operator when both are empty; it stays plain text. Under a task that waits on a pending
+   escalation, and for a pending escalation of its own, it prints the prompt, `options: <ids>
+   (recommended <id>)` and `reply: /answer <esc-id> <option>` (or `<your answer>` when it offers
+   no options), rendered by `render_escalation` at the `conversation` level (the operator asked
+   in their own chat; option ids are never withheld).
 4. **MUST** refuse `/delegate` when the bound agent is not a pod Lead (`enqueue_task_once` requires a
    pod task queue, which only a Lead has).
 5. **MUST** reply with a usage message (not a silent drop, not a guess) on a recognized verb with
-   a missing/malformed argument (e.g. `/approve` with no token).
+   a missing/malformed argument (e.g. `/answer` with no answer text).
 6. **MUST** treat any other text as unrecognized — a reply listing the verbs, never an implicit
-   delegate or an implicit approval of the most-recent pending token.
+   delegate or an implicit approval of the most-recent pending escalation.
 7. **MUST** be inbound-only: the bot replies to a message it received and never sends anything on
    its own initiative — the poll loop's reply is the bot's only `send_message` call site, and the
    approval store holds no reference to the bot. The operator-configured outbound push is a
@@ -185,15 +178,15 @@ blocked policy verdict never default to granting or denying anything.
 1. **MUST** resolve `/answer <id> <option|text>` through `resolve` (`channel="telegram"`,
    `by="telegram"`, `operator-loop.spec.md` area 10) — the identical function `docket task answer`,
    `POST /escalations/<id>` and the MCP `resolve` tool call. *id* is an escalation id (`esc-...`),
-   or the id of a task parked on a question (its pending escalation). The bot never reimplements
-   answer/resume semantics.
+   or the id of a task parked on one (its newest pending escalation, whatever its kind). The bot
+   never reimplements answer/resume semantics.
 2. **MUST** resolve *project* the same way `/delegate` does: the bound agent's own pod. A task id
-   belonging to another pod is refused (the task is not found in the bound pod), the same
+   or an escalation id belonging to another pod is refused (not found in the bound pod), the same
    fail-closed behavior every other channel gets.
 3. **MUST** reply with a usage message on `/answer` with a missing task id or missing answer text,
    per Command grammar 5.
-4. **MUST** refuse `/answer` when the bound agent is not a pod Lead, when the named task has no
-   pending question, or when the question's schema does not have exactly one property and the
+4. **MUST** refuse `/answer` with a task id when the bound agent is not a pod Lead, when the named
+   task has no pending escalation, and refuse any `/answer` when the question's schema does not have exactly one property and the
    text is not an option id — a single chat message cannot be split across fields; the reply
    names `docket task answer <task-id> --field name=value ...` as the multi-field path, mirroring
    `docket task answer`'s own bare-text restriction.
@@ -217,7 +210,7 @@ blocked policy verdict never default to granting or denying anything.
 - Any unprompted message from the bot itself (the operator-configured channel push in
   `operator-loop.spec.md` is the one deliberate exception, gated by an explicit `actors` list a
   human must set)
-- Conversational chat: prose that is not one of the five operational verbs or the inert `/wire`
+- Conversational chat: prose that is not one of the three operational verbs or the inert `/wire`
   setup handshake is refused, never routed to the bound agent as a turn
 - Inline keyboards or any rich UI beyond a plain-text reply
 - Discord/Slack/other chat platforms
@@ -252,13 +245,11 @@ docket start --telegram
 ### Bot command grammar
 
 ```text
-/approve <token> [task]    Grant a pending approval (channel="telegram" audit entry);
-                           with `task`, cover the same call for the rest of its task
-/deny <token>              Deny a pending approval (channel="telegram" audit entry)
 /status                    List needs-you items and failed tasks for the bound agent's pod
 /delegate <task text>      Queue a task for the bound agent's pod (Lead bindings only)
-/answer <id> <option|text> Resolve an escalation: an option id, or the answer text of a question
-                           with no options (Lead bindings only)
+/answer <id> <option|text> Resolve an escalation: an option id (approve_once, approve_task or
+                           deny for an approval), or the answer text of a question with no
+                           options (a task id needs a Lead binding)
 /wire <setup code>         Confirm an already-completed guided wire (no state change)
 ```
 
@@ -300,14 +291,15 @@ docket start  port=7331  refresh=30s  telegram=on  (Ctrl-C to stop)
 ### An approval answered from a bound chat
 
 ```text
-(a require_approval pre_tool_call gate created token apr-1234...)
+(a require_approval pre_tool_call gate opened escalation esc-1a2b3c4d5e6f)
 
-Human, in the bound chat: /approve apr-1234-5678
-Bot reply:                Approval granted: apr-1234-5678
+Human, in the bound chat: /answer esc-1a2b3c4d5e6f approve_once
+Bot reply:                Resolved esc-1a2b3c4d5e6f.
 ```
 
-This writes the same `audit_log("approval.grant", "token=apr-1234-5678 project=... channel=telegram")`
-entry `docket task approve`/`POST /approvals/<token>` would write for the CLI/HTTP channels.
+This writes the same `audit_log("escalation.resolve", "escalation=esc-1a2b3c4d5e6f ... channel=telegram
+actor=telegram")` entry `docket task answer` and `POST /escalations/<id>` would write for the CLI and
+HTTP channels.
 
 ## Validation
 
@@ -324,8 +316,9 @@ entry `docket task approve`/`POST /approvals/<token>` would write for the CLI/HT
   channel catalog holds `actors: [<id>]` enabled, and every pod Lead has a binding.
 - After `docket setup notify unbind`, no binding for the agent **MUST** remain in `fleet.json`, and the next
   inbound message on that peer **MUST** be refused as unauthorized.
-- After a `/approve`/`/deny` from a bound chat, the approval record **MUST** be in its granted/
-  denied state and an `audit_log()` entry tagged `channel=telegram` **MUST** exist.
+- After an `/answer` from a bound chat, the escalation **MUST** be `resolved` (the approval record
+  behind an approval in its granted/denied state) and an `audit_log()` entry tagged
+  `channel=telegram` **MUST** exist.
 - After a `/delegate` from a bound Lead's chat, the pod's task queue **MUST** contain the new
   task, unless a `pre_input` policy blocked it (`telegram.delegate_blocked` audited, queue
   unchanged). A `warn`/`redact` verdict queues the task and audits `telegram.delegate_warn`.
@@ -333,8 +326,8 @@ entry `docket task approve`/`POST /approvals/<token>` would write for the CLI/HT
 ### Invariants
 
 - A peer **MUST** map to at most one agent at a time (per channel).
-- An unbound chat **MUST NEVER** be able to approve, deny, check status, delegate or answer
-  anything, regardless of message content — including a syntactically valid, real, pending token.
+- An unbound chat **MUST NEVER** be able to check status, delegate or answer anything,
+  regardless of message content — including a syntactically valid, real, pending escalation id.
 - The bot token **MUST NEVER** appear in an audit entry, a trace payload, a `--json` response, or
   a returned error string (the Bot API adapter reports HTTP status/Telegram's own `description`
   field/socket-exception detail — never the request URL the token is embedded in).
@@ -374,10 +367,9 @@ Where the names above live today:
 - `src/docket/kernel/home.py`: the `Home` members `telegram_bot_token_key`, `telegram_offset_file`,
   `telegram_poll_timeout_s`, `telegram_request_timeout_s`
 - `src/docket/teams/fleet.py`: `find_binding`, `upsert_binding`, `remove_binding`
-- `src/docket/governance/approval.py`, `src/docket/tasks/application/actions.py`,
-  `src/docket/tasks/application/queue.py`, `src/docket/hops/application/answers.py`,
-  `src/docket/operator/inbox.py`: `approval_grant`/`approval_deny`, `resolve_waiting_approval_detail`
-  and `enqueue_task_once`, `answer_task`, `build_inbox`
+- `src/docket/tasks/application/escalations.py`, `src/docket/tasks/application/queue.py`,
+  `src/docket/operator/inbox.py`: `resolve`, `enqueue_task_once`, `build_inbox`,
+  `escalation_views`
 - `src/docket/templates/channels/07-telegram.yaml`: the built-in `telegram` channel document
 - `tests/integration/interfaces/telegram/test_bot_inbound.py`, `tests/integration/interfaces/test_delete_bind_unbind.py`,
   `tests/unit/interfaces/telegram/test_poll__pacing.py`: the bot, bind/unbind and poll-loop tests

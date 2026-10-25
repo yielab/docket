@@ -97,37 +97,37 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Agent Lifecycle | 4.0.0 | Complete |
 | Agent Loop | 3.2.0 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
-| Audit | 3.1.0 | Implemented |
+| Audit | 3.2.0 | Implemented |
 | Config Format | 2.1.0 | Implemented |
 | Cost Tracking | 1.12.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 5.0.3 | Complete |
-| Observability Export | 2.4.0 | Implemented and live |
+| Observability Export | 3.0.0 | Implemented and live |
 | Pipeline Format | 4.2.0 | Implemented |
 | Pod Blueprints | 2.2.0 | Implemented |
-| Pod Dispatch | 10.10.0 | Implemented |
+| Pod Dispatch | 11.0.0 | Implemented |
 | Role Archetypes | 4.1.0 | Implemented |
-| Security Gates | 1.7.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 2.0.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.9.2 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
-| Telegram Integration | 4.2.0 | Implemented |
-| Trace Store | 3.2.0 | Implemented and live |
+| Telegram Integration | 5.0.0 | Implemented |
+| Trace Store | 4.0.0 | Implemented and live |
 | Workspace Structure | 2.2.0 | Complete |
-| CLI Interface | 4.6.0 | Complete |
+| CLI Interface | 5.1.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
-| MCP Server | 1.11.1 | Implemented |
-| CLI JSON Shapes | 4.3.0 | Complete |
+| MCP Server | 2.0.0 | Implemented |
+| CLI JSON Shapes | 4.4.0 | Complete |
 | docket-meta schema | 5.5.0 | Complete |
-| Docket Store | 2.3.0 | Implemented |
-| Operator API | 6.6.0 | Implemented (Phase 43, ADR 0027) |
-| A2A Binding | 1.1.0 | Implemented |
-| Serve Read API | 4.3.1 | Stable |
-| Adoption Benchmark | 2.1.0 | Implemented |
+| Docket Store | 3.1.0 | Implemented |
+| Operator API | 7.0.0 | Implemented (Phase 43, ADR 0027) |
+| A2A Binding | 1.2.0 | Implemented |
+| Serve Read API | 5.0.0 | Stable |
+| Adoption Benchmark | 2.2.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
-| Test Framework | 4.1.0 | Active |
-| Starter Journey | 2.0.1 | Implemented |
-| Operator Loop | 2.14.0 | Implemented |
-| User Stories | 2.0.1 | Active |
+| Test Framework | 4.2.0 | Active |
+| Starter Journey | 2.1.0 | Implemented |
+| Operator Loop | 3.0.1 | Implemented |
+| User Stories | 2.1.0 | Active |
 
 ## Tools
 

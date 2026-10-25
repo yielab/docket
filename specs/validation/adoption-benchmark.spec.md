@@ -1,8 +1,8 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -194,7 +194,7 @@ each under `benchmarks/scenarios/cases/`: `allowed`, `policy-denied`, `approval-
 `approval-granted`, `malformed-handoff`, `hard-crash-resume`, and `corrupt-primary-recovery`. For
 each repetition the driver writes the run, task, session, trace, and snapshot records itself as
 fixtures, invokes public Docket CLI actions only where a case needs one (`docket run --pod demo
---dry-run` to provision the pod, `docket task approve` or `docket task deny` for the two approval
+--dry-run` to provision the pod, `docket task answer --option approve_once` or `--option deny` for the two approval
 cases, `docket task show` to read the registry in the corrupt-primary case), and normalizes the
 result with the benchmark subprocess. The driver does not import any `docket` module. The
 `public_actions` labels in evidence are case data, not a record of the calls made. The driver
@@ -304,7 +304,7 @@ described as byte-stable when it was measured from a clock.
 `docs/ADOPTION-EVIDENCE.md` MUST link the manifest, raw records, schema, and exact source commit. It
 MUST state that the driver wrote the run, task, session, audit and trace records, that the
 `guardrail_block` events are fabricated by the driver, that the CLI is called only for `run --pod
-demo --dry-run`, `task approve`, `task deny` and `task show`, and that the approval latency is set
+demo --dry-run`, `task answer` and `task show`, and that the approval latency is set
 by the driver; no sentence in it or in `benchmarks/README.md` may present the records as a product
 run. It MUST publish the complete attempt/failure table and distinguish deterministic contract evidence
 from live model-quality or price evidence. README, compatibility, security, and the documentation

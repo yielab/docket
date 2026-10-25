@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 4.6.0
+**Version**: 5.1.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-25
@@ -68,7 +68,7 @@ Positional arguments are command-specific; the following conventions apply acros
 
 | Argument | Applies to | Rules |
 |----------|------------|-------|
-| `<ref>` | `task show|diff|trace|approve|deny|answer|retry|cancel` | A full task id, the short id `task list` prints, a unique prefix, or a run id (`resolve_task`); never omitted, never picked from a menu |
+| `<ref>` | `task show|diff|trace|answer|pregrant|retry|cancel` | A full task id, the short id `task list` prints, a unique prefix, or a run id (`resolve_task`); never omitted, never picked from a menu |
 | `ID` | `pod memory approve|refuse|revert` | A memory entry id as `pod memory list` prints it (`mem-` and ten hex characters); unknown to the resolved pod exits 1 |
 | `MEMBER` | `pod show|remove|reset`, `pod set|unset --member` | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; a member of the resolved pod |
 | `KEY VALUE` | `pod set|unset` | A `PodSettings` key, or `verify` with `--member` |
@@ -283,12 +283,12 @@ provisioning belongs to `init`, including multi-project automation.
 **Purpose**: List everything across every pod that needs the operator, in one call (see
 operator-loop.spec.md "One inbox, derived")
 **Syntax**: `docket inbox [--json] [--since <iso>] [--peek]`
-**Behavior**: Derives, fresh on every call, a pure `InboxView` (operator-v1) over
-every pod's tasks and pending approvals — `Needs you` (waiting/blocked tasks, pending approvals
-and "approved, ready" tasks), `Failed`, `Done`, `Running`. A plain call advances a durable
+**Behavior**: Derives, fresh on every call, a pure `InboxView` (operator-v2) over
+every pod's tasks and pending escalations — `Needs you` (waiting/blocked tasks, pending
+escalations no task carries and "approved, ready" tasks), `Failed`, `Done`, `Running`. A plain call advances a durable
 cursor (`~/.docket/inbox-cursor.json`) so a repeat call's `Done` only shows newly finished tasks;
 `--peek` reads without advancing it; `--since <iso>` overrides the stored cursor for this one
-call without touching it. Each item prints the exact `docket task approve|deny|answer <id>` (or
+call without touching it. Each item prints the exact `docket task answer <id>` (or
 `retry`, `run`) command and the full held command or question, never truncated. `--json` emits
 the `GET /inbox` shape with `state` and `command` added to every item (and to each
 `escalations` entry). A `needs_answer` task prints the question's options and
@@ -300,7 +300,7 @@ the `GET /inbox` shape with `state` and `command` added to every item (and to ea
 **Purpose**: Queue a pod's tasks, read each one's whole story (status, hops, evidence, runs,
 corrections, interruption forecast, worktree, diff and trace) and move one forward: grant or
 refuse what it waits on, answer its question, retry it or stop it
-**Syntax**: `docket task <add|list|show|diff|trace|prune|approve|deny|answer|retry|cancel> [args] [--pod <p>]`
+**Syntax**: `docket task <add|list|show|diff|trace|prune|answer|pregrant|retry|cancel> [args] [--pod <p>]`
 A `<ref>` is a full task id, the short id `task list` prints, a unique prefix, or a run id
 (`resolve_task`); an unknown or ambiguous ref exits 1 and an ambiguous one lists every
 candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every pod.
@@ -310,7 +310,7 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   [--max-tokens N] [--autonomy L3|L4|L5] [--pod <p>]`: Queue the task on
   the resolved pod's own list (`~/.docket/workspaces/projects/<project>-lead/TASK_LIST.json`).
   The text is one argument; empty text or text over 500 characters exits 1, an unknown priority
-  exits 2. `--brief` loads and validates the file as a `TaskBrief` (operator-v1); an invalid one
+  exits 2. `--brief` loads and validates the file as a `TaskBrief` (operator-v2); an invalid one
   exits 1 and enqueues nothing, a valid one is stored with the task. Prints the one-line
   interruption forecast (`NOTHING_WILL_ASK`, or `May ask you: ...` naming `docket task show`) and
   ends with `Next: docket run`
@@ -353,62 +353,59 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   (the unmerged branch stays) and audits it (`pod.worktrees.prune`). `--traces` also deletes
   TERMINATED trace files of the pod past `TRACE_RETENTION_DAYS` (an OPEN trace is never deleted)
   and terminal run records of the pod past the same window (another pod's records are never
-  touched; only the `docket start` sweep prunes run records fleet-wide); `--days N` overrides
-  the window and without `--traces` exits 2. `--dry-run` changes nothing. Ends with
+  touched; only the `docket start` sweep prunes run records fleet-wide) and the settled
+  escalation records past the same window (`prune_settled_escalations`: the store keeps them in
+  one directory, so this part is not limited to the pod, and a resolved record not yet applied is
+  kept); `--days N` overrides the window and without `--traces` exits 2. `--dry-run` changes nothing. Ends with
   `Next: docket task list`
 **Output**: Every bracketed identifier and every task description or failure reason is printed
 literally, never interpreted as terminal markup
 **Return**: `0` on success, `1` on error (no pod, unknown or ambiguous ref, invalid input)
 
-**`task approve | deny | answer | retry | cancel`**
-The answering verbs (operator-loop.spec.md "Answer surfaces", pod-dispatch.spec.md "Cancellation"):
+**`task answer | pregrant | retry | cancel`**
+The answering verbs (operator-loop.spec.md area 10, pod-dispatch.spec.md "Cancellation"):
 **Syntax**:
-- `docket task approve <ref> [--reason TEXT] [--once|--task] [--for "<command>" [--tool bash]] [--pod <p>]`
-- `docket task deny <ref> [--reason TEXT] [--pod <p>]`
-- `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline] [--pod <p>]`
+- `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline] [--reason TEXT] [--pod <p>]`
+- `docket task pregrant <ref> "<command>" [--tool bash] [--pod <p>]`
 - `docket task retry <ref> [--pod <p>]`
 - `docket task cancel <ref> [--pod <p>]`
 **Arguments**:
 - `ref` (required): a task id, its short id, a unique prefix, or a run id (`resolve_task`);
-  every pod is searched unless `--pod` or `DOCKET_POD` names one. `approve` and `deny` also
-  accept an `apr-*` token as given, for an approval no task carries. The approval store has
-  three production producers (pod-level/pipeline-step `require_approval` gates, a `pre_input`
-  policy match at enqueue, the in-turn tool-call gate at `dispatch_tool`) and is the only
-  approval system
+  every pod is searched unless `--pod` or `DOCKET_POD` names one. `answer` also accepts an
+  `esc-*` escalation id, for a pause no queued task carries. The approval store has three
+  production producers (pod-level/pipeline-step `require_approval` gates, a `pre_input` policy
+  match at enqueue, the in-turn tool-call gate at `dispatch_tool`), each backed by an escalation,
+  and is the only approval system. There is no `task approve` or `task deny`: an approval is
+  settled with `answer --option`
 **Behavior**:
-- `approve` resolves the task's pending approval from its own `approvalToken` and grants it
-  (`channel="cli"`); a task that is not `waiting_approval` exits 1. `--task` also allows the
-  same call for the rest of the task; `--once` is the default and conflicts with `--task` (exit
-  2). `--for` records a single-use pre-grant for one exact command ahead of dispatch instead
-  (`record_pregrant`) and conflicts with `--task` (exit 2)
-- `deny` denies the same approval; the task fails with `approval_denied` and, when `--reason`
-  was given, `reason: approval denied: <reason>` (what the inbox's Failed entry shows)
-- `answer` resolves an escalation (`resolve`, `operator-loop.spec.md` area 10): *ref* is a task
-  parked on a question, a `waiting_approval` task, or an `esc-` escalation id. On a question it
-  answers it (text, `--field`, `--option`, `--decline`); on a TTY with no text, field or option it
-  prompts, off a TTY it exits 1 naming `--option`; a `--field` that is not `name=value` exits 2.
-  A consult that a running turn waits on in place (the task is `running`, not parked) is answered
-  the same way, by its `esc-` id or by its task, through `resolve`: the record becomes `resolved`
-  and the turn reads the answer.
-  On an approval, gate or changed check, `--option approve_once|approve_task|deny` settles it;
-  a repeat on an escalation already settled that way is a warning,
-  exit 0. `approve` and `deny` are the older forms of the same two options and call the same
-  function
+- `answer` resolves an escalation (`resolve`, `operator-loop.spec.md` area 10): *ref* is an
+  `esc-` escalation id, or a task, whose newest pending escalation it takes (a task that waits on
+  none exits 1). On a question it answers it (text, `--field`, `--option`, `--decline`); on a
+  TTY with no text, field or option it prompts, off a TTY it exits 1 naming `--option`; a
+  `--field` that is not `name=value` exits 2. A consult that a running turn waits on in place
+  (the task is `running`, not parked) is answered the same way, by its `esc-` id or by its task,
+  through `resolve`: the record becomes `resolved` and the turn reads the answer.
+  On an approval, gate or changed check, `--option approve_once|approve_task|deny` settles it
+  (`approve_task` also allows the same call for the rest of the task) and `--reason` is carried
+  with it, so a denied task reads `reason: approval denied: <reason>` (what the inbox's Failed
+  entry shows); text, `--field` and `--decline` are refused there (exit 1). A repeat on an
+  escalation already settled that way is a warning, exit 0
+- `pregrant` records a single-use pre-grant for one exact command ahead of dispatch
+  (`record_pregrant`) and resolves nothing; a task not in the pod exits 1
 - `retry` puts a `failed` or `blocked` task back to `pending`, keeping the hops it finished, and
   audits `task.retry`; a task in any other status exits 1
 - `cancel` requests cancellation of the task's live run (one `runs.cancel` audit entry; every
   tracked process group is killed) and settles a stale `running` claim whose dispatcher is gone
   as `failed`. A task parked in `waiting_input` or `waiting_approval` is cancelled too: it
-  ends `cancelled` (the status a cancelled live run gives), its question or approval is cleared
-  (a pending approval record is denied) so `docket inbox` no longer lists it, no hop runs, and one
+  ends `cancelled` (the status a cancelled live run gives), its pause stops waiting (the approval
+  record behind it is denied) so `docket inbox` no longer lists it, no hop runs, and one
   `task.cancel` audit entry names the project, task, prior status and channel `cli`
-**Output**: One confirmation line. `approve`, `answer`, `retry` and `--for` end with the run
-hint: `docket is running and will pick it up` when `docket start` is running, else
-`Next: docket run --pod <p>` on stderr, for a task ref and for an `apr-` token alike (an approved
-`check_changed` approval ends its task `done`, so `approve` prints no run hint for it); `cancel` ends with `Next: docket task retry <id>` when it
-settled a stale claim
-**Return**: 0 on success (an approval already in the requested state is a warning, exit 0); 1 on
-an unknown or ambiguous ref, a task in the wrong state, an approval already resolved the
+**Output**: One confirmation line. `answer` (except a denial and a changed-check approval, which
+ends its task `done`), `pregrant` and `retry` end with the run hint: `docket is running and will
+pick it up` when `docket start` is running, else `Next: docket run --pod <p>` on stderr; `cancel`
+ends with `Next: docket task retry <id>` when it settled a stale claim
+**Return**: 0 on success (an escalation already in the requested state is a warning, exit 0); 1 on
+an unknown or ambiguous ref, a task that waits on nothing, an escalation already resolved the
 opposite way, a blocked or invalid answer, or a `cancel` with nothing in flight; 2 on a usage
 error
 
@@ -823,7 +820,7 @@ optionally drive pod dispatch pipelines
 - `--bind <addr>`: Listen address for the HTTP API (default: `127.0.0.1`, loopback only; any other address is reachable off this host)
 - `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30)
 - `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket start` never dispatches on its own.
-- `--telegram`: Long-poll docket's own Telegram bot for `/approve` `/deny` `/status` `/delegate`
+- `--telegram`: Long-poll docket's own Telegram bot for `/status` `/delegate`
   `/answer` (needs the stored `TELEGRAM_BOT_TOKEN` credential; without it the channel stays
   idle; see telegram-integration.spec.md)
 - `--mcp`: Serve docket's control plane as an MCP stdio server instead of the HTTP service
@@ -860,7 +857,7 @@ description in `pyproject.toml` is the same tagline.
 An unknown top-level word is a usage error (exit 2, `No such command`). Its message offers, from
 the live command tree only, the top-level commands the word resembles and every group that has a
 verb of that name (a top-level `add x` names `docket task add` and `docket pod add`; a top-level
-`approve` names `docket task approve`). A word that resembles nothing and is no verb gets no suggestion.
+`answer` names `docket task answer`). A word that resembles nothing and is no verb gets no suggestion.
 
 ## Output Formats
 
@@ -1003,10 +1000,14 @@ render one line per event on stderr while the dispatch runs, whenever stderr is 
 - dispatch's hop marker (the `tool_call` event whose JSON payload has exactly the keys `hop` and
   `agent`, written just before each hop runs) → `  ▶ <hop> …`, indented two spaces under the
   task line
-- `approval_requested` → `⏸ <role> wants: <action> · token <token> · denies in <n>s · docket
-  task approve <token>`, where `<n>` is `TOOL_APPROVAL_TIMEOUT` minus the elapsed time since the event
-- `approval_required` (the hop-level gate) → `⏸ <role> hop needs approval · token <token> ·
-  docket task approve <token>`
+- `escalation_asked` for an `approval` → `⏸ <role> wants: <prompt> · <esc-id> · denies in <t> ·
+  docket task answer <esc-id> --option approve_once`, where `<t>` is the time left until the
+  escalation's `expiresAt` (seconds under an hour, else hours; absent when it has none)
+- `escalation_asked` for a `gate` or `check_changed` → `⏸ <role> needs approval: <prompt> ·
+  <esc-id> · denies in <t> · docket task answer <esc-id> --option approve_once`
+- `escalation_asked` for a `consult` or `input` → `⏸ <role> asks: <title>: <prompt> · options
+  <ids> (recommended <id>) · docket task answer <task> --option <id>`, the `options` part only
+  when it offers any (operator-loop.spec.md area 11 item 10)
 - `session_end` → `■ <task> finished — status=<status>`, `<task>` resolved as for `session_start`
 
 No other trace event renders a line; in particular the agent loop's own `tool_call` events do not.
@@ -1017,15 +1018,14 @@ with no progress view (the no-change oracle the golden suite pins).
 ### In-place approval
 
 When the rendering above is active, stdin is also a real TTY, and `--no-prompt` is absent, every
-`approval_requested` event additionally prints `[a]pprove  [d]eny  [Enter] keep waiting` and reads
-one line from stdin. `a` MUST grant the approval on channel `cli` and settle the waiting task
-as granted; `d` MUST deny it on channel `cli` and settle the task as denied — the same
-grant-or-deny-then-settle operation `docket task approve`/`docket task deny` perform, so an
-in-place answer is indistinguishable from a second terminal's. Any other input (including a bare Enter)
-keeps waiting. A token already resolved through another channel prints one dim notice and the
-prompt keeps waiting on the next event; it MUST NOT raise out of the dispatch call. That covers a
-token resolved the same way (`ApprovalNoop`), one the opposite decision already won
-(`ApprovalConflict`, the notice naming the winning state), and one with no record.
+approval, gate or changed-check `escalation_asked` event additionally prints `[a]pprove  [d]eny
+[Enter] keep waiting` and reads one line from stdin. `a` MUST resolve the escalation
+`approve_once` on channel `cli` and `d` `deny` — the same `resolve` `docket task answer`
+performs, so an in-place answer is indistinguishable from a second terminal's. Any other input
+(including a bare Enter) keeps waiting. A pause already resolved through another channel prints
+one dim notice (`(already resolved elsewhere)`) and the prompt keeps waiting on the next event; it
+MUST NOT raise out of the dispatch call. That covers a pause resolved the same way, one the
+opposite decision already won, one that ended, and one with no record.
 
 ### Flags
 
@@ -1093,7 +1093,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/teams/pod.py`: `PodSettings`, member ids
 - `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskBrief`
 - `src/docket/hops/application/interruptions.py`: `record_pregrant`, `NOTHING_WILL_ASK`
-- `src/docket/hops/application/answers.py`: `answer_task`
+- `src/docket/tasks/application/escalations.py`: `resolve`
 - `src/docket/governance/approval.py`: `approval_grant`, `approval_deny`, `ApprovalNoop`
 - `src/docket/tasks/application/queue.py`: task enqueue
 - `src/docket/tasks/application/lifecycle.py`: `task_diff`, retry, cancel of a parked task,
