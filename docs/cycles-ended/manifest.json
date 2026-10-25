@@ -830,5 +830,13 @@
     "heading": "◇ PHASE 49 — closed 2026-10-24 — the task as a typed record behind one store (D-70)",
     "bytes": 32201,
     "sha256": "94ffb565d771e3981f38ce6861d26ee226549573273bc5ca2f96d38e1a7f0fde"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 50 — closed 2026-10-25 — end-to-end tests that run the product (D-71)",
+    "bytes": 44862,
+    "sha256": "1fd86e8329bdd1c8ea668f63e976b5f02fb0cbc1bfc52357028f46a0c972581b"
   }
 ]

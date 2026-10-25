@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (76 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (77 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
@@ -22,6 +22,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-10-25 | ◇ PHASE 50 — closed 2026-10-25 — end-to-end tests that run the product (D-71) | `todo-waves.md` | 44,862 |
 | 2026-10-24 | ◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close | `todo-waves.md` | 33,369 |
 | 2026-10-24 | ◇ PHASE 48 — closed 2026-10-24: isolation where the machine can jail, a task keeps its pipeline | `todo-waves.md` | 1,387 |
 | 2026-10-24 | ◇ PHASE 49 — closed 2026-10-24 — the task as a typed record behind one store (D-70) | `todo-waves.md` | 32,201 |

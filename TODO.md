@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **Active: none.** Phase 49 closed 2026-10-24 (D-70, ROADMAP §6). A new phase starts from a
+> **Active: none.** Phase 50 closed 2026-10-25 (D-71, ROADMAP §6). A new phase starts from a
 > measured trigger or a maintainer request. The integration branch is `plan/phase-46-structure`
 > until the maintainer merges it.
 
