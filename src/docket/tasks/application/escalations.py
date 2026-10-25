@@ -349,8 +349,8 @@ def _checked_content(
 def _apply_approval(
     token: str, option: str, *, project: str, channel: str, actor: str, reason: str
 ) -> tuple[str, bool]:
-    """Grant or deny the approval *token* and move the task it gated, as `docket task approve`
-    and `deny` always did; returns the note a refused task-wide grant produces and whether a
+    """Grant or deny the approval *token* and move the task it gated, as the retired
+    `task approve` and `deny` did; returns the note a refused task-wide grant produces and whether a
     waiting task moved. What a grant lets the next claim do is read there, not applied here."""
     _screen(project, [reason])
     # An actor is recorded with the decision only when a reason comes with it.

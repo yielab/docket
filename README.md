@@ -56,7 +56,7 @@ Five ideas cover everything docket does:
 
 Day to day you use a handful of commands: `init` creates the team, `task add` queues work, `run`
 takes the next task through the pipeline, `status` and `inbox` show where things stand and what
-needs you, and `task approve` answers what the gate is holding.
+needs you, and `task answer` settles whatever a task is waiting on, an approval or a question.
 
 docket is not an agent framework you program and not an interactive pair-programming assistant:
 it runs the team your files describe. It works beside the coding assistant you already use: that

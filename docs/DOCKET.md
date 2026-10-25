@@ -783,6 +783,12 @@ A queued task moves through `pending` → `running` → `done` | `failed` | `blo
   deny fails the task immediately with `failureKind: "approval_denied"`, and a parked approval
   left untouched past the pod's `approvalExpiryHours` (24h by default) expires the same way, via
   the same fail-closed sweep a pre-hop gate's pending approval already used.
+- **A2A.** A client that speaks A2A reaches the same records through `POST /a2a` (JSON-RPC:
+  `message/send`, `tasks/get`, `tasks/cancel`, push-config set and get) and the agent card at
+  `GET /.well-known/agent.json`, both behind the Bearer token. The facade keeps no state of its
+  own: a task in `INPUT_REQUIRED` carries its pending escalation, and a `message/send` with
+  `{action: accept|decline|cancel, content: {optionId}}` calls `resolve`
+  (`specs/api/a2a-binding.spec.md`).
 - **`waiting_input`** is for a question, not a permission: a pipeline `input` step
   (`- ask: {input: {from: <step>}}`, or the richer per-question schema a Lead's typed intake
   brief supplies) mints an MCP-elicitation-shaped question instead of running a hop. `docket task answer

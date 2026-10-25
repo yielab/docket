@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **One escalation record, one `resolve` verb (D-72, ADR 0032, Phase 51).** Every pause (a gated
+  tool call, a consult, an `input` step, a gate, a changed check) is one durable `Escalation`
+  record written by `platform/store.py`. `docket task answer <escalation-id> --option <id>`, `POST
+  /escalations/<id>`, the MCP `resolve` tool, Telegram `/answer` and the A2A facade all call the
+  same `resolve`, and `GET /escalations?since=` and `docket inbox` list them. The trace carries one
+  event family (`escalation_asked`, `escalation_delivered`, `escalation_resolved`,
+  `escalation_expired`, `escalation_decided`) and one renderer serves the inbox, `task show`, the
+  progress view, Telegram and notifications, with option ids always present. Breaking for a client
+  of the retired shapes: contract `operator-v2`, operator API 7.0.0, MCP server 2.0.0, Telegram
+  integration 5.0.0, operator loop 3.0.x.
+- **Per-task autonomy (`L3|L4|L5`).** `docket task add --autonomy` and `autonomy` on `POST /tasks`
+  say what happens to a pause when nobody is there; the level only narrows and the pod profile is
+  the ceiling. `consultMode: decide` answers a consult in the turn with the model's recommendation;
+  `lights-out` requires it. The table is the `kind: autonomy` document.
+- **A2A facade.** `POST /a2a` and `GET /.well-known/agent.json` expose tasks and their pending
+  escalation to an A2A client, over the same records and `resolve`.
+- **The live smoke refuses a world inside a git work tree** and can run with the jail on.
+
 - **The task is one typed record behind one store (D-70, Phase 49).** `TaskRecord` and `HopResult`
   are pydantic models; a pod's queue is read and written only through `TaskRepository` over
   `JsonTaskStore`, and every CLI command, HTTP route, Telegram handler, MCP tool, hop and test reads

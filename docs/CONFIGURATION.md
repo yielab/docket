@@ -681,6 +681,15 @@ The command writes `docket-mcp-servers.json`. Its tools appear in a turn as
   is audited (`profile.refused`), and the task can be retried once the fix is in.
   `docket status` and `docket setup` show the profile and what it still lacks. The default is
   `attended`, which changes nothing.
+- **What a pause does when nobody is there: the task's level.** `docket task add --autonomy
+  L3|L4|L5` (or `autonomy` on `POST /tasks`) sets it per task, and it only narrows: the pod's
+  profile is the ceiling (`attended` up to `L3`, `lights-out` up to `L5`), a higher level is refused
+  at enqueue, and a task with none takes the profile's default (`L3` attended, `L4` lights-out).
+  `L3` is a person validating every pause; `L4` a person only for a tool call that asks, denied
+  at its deadline; `L5` nobody waiting, so an `ask` is denied at once and the task fails with
+  `failureKind: "needs_human"`. The table is the built-in `kind: autonomy` document
+  (`templates/autonomy/default.yaml`); `consultMode` and `approvalMode`, where a pod sets them,
+  win over the row. The level never loosens a policy: `deny` is `deny` at every level.
 
 ### 3.9 Turn-loop limits
 

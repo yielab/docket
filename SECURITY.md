@@ -63,9 +63,10 @@ docket **always enforces its tool-approval gate** — there is no switch that tu
 curated allowlist plus an approval step for dangerous operations not on it (e.g. `rm`, `dd`,
 `docker`), with a fail-closed default — a call gated `ask` blocks on docket's own approval
 store (`governance/approval.py`) and times out to **denied**, never left pending. Approvals are
-answerable through **four channels** — `docket task approve`/`docket task deny` from any shell,
-`docket start`'s `POST /approvals/<token>` for CI/automation, MCP (a client like Claude Code or
-Codex answering through `docket start --mcp`), and Telegram (`docket setup notify`, then `docket
+answerable through **four channels** — `docket task answer <escalation-id> --option
+approve_once|approve_task|deny` from any shell, `docket start`'s `POST /escalations/<id>` for
+CI/automation, MCP (a client like Claude Code or
+Codex answering through `docket start --mcp`, the `resolve` tool), and Telegram (`docket setup notify`, then `docket
 start --telegram`) — and every grant, deny, or timeout is audit-logged with the channel it came
 from
 (`channel="cli"|"http"|"mcp"|"telegram"|"timeout"`). The classifier behind this
