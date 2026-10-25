@@ -728,6 +728,15 @@ rewrite its own gate for the next turn.
     free text passes through the redactor. An allowed call and an ordinary failure (file not
     found, HTTP error) **MUST NOT** write one. The classifier's containment branch needs no entry
     here: it returns `ask` or `deny`, which `tool.ask` and `tool.deny` already record.
+15. **A tool the pipeline already authorises is pre-granted by construction.** A `Tool` MAY be
+    marked `pregranted`: its only effect is a command a pipeline step declares (the `verify` tool,
+    "Verify tool" in `pod-dispatch.spec.md`), so the operator's pipeline is the approval.
+    `evaluate_tool_call` **MUST NOT** run the command classifier for such a tool, so it can never
+    be an `ask` or park a task; it **MUST** still be dispatched through `dispatch_tool`, still meet
+    every `pre_tool_call` policy, be traced as a tool call, and write an audit entry only under the
+    same rules as any allowed call (none for a plain allow). The tool takes no arguments, so the
+    model cannot widen what it runs. The command itself still meets the high-risk classes in the
+    runner that executes it (`run_command`), exactly as the mechanical gate does.
 
 ### File-tool containment — symlinks
 

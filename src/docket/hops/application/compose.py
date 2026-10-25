@@ -7,6 +7,7 @@ from typing import Any
 
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
+from docket.hops.application import verify_tool as _verify
 from docket.hops.application.verdict_tool import encode_values
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
 from docket.kernel import brief as _brief
@@ -42,11 +43,31 @@ class _HopComposition:
     truncated: bool = False
 
 
+_VERIFY_SENTENCE = (
+    "Your work is accepted only if `{}` exits 0. Run it with the `verify` tool and fix what it "
+    "reports before you finish."
+)
+
+
 def _resolve_hop_instructions(
+    role: str,
+    project: str,
+    rework_hop: HopResult | None,
+    step_instructions: str,
+    verify_cmd: str = "",
+) -> str:
+    """This role's hop instruction text; an Implementer whose step has *verify_cmd* is told it."""
+    text = _role_instructions(role, project, rework_hop, step_instructions)
+    if verify_cmd and role == "implementer":
+        return "\n\n".join(p for p in (text, _VERIFY_SENTENCE.format(verify_cmd)) if p)
+    return text
+
+
+def _role_instructions(
     role: str, project: str, rework_hop: HopResult | None, step_instructions: str
 ) -> str:
-    """This role's own hop instruction text: the step's own override, else a built-in
-    role's fixed text, else a custom role's registry-resolved ``hopInstruction``."""
+    """The role's own text: the step's own override, else a built-in role's fixed text, else a
+    custom role's registry-resolved ``hopInstruction``."""
     if step_instructions:
         return step_instructions
     if role == "implementer":
@@ -164,6 +185,7 @@ def _hop_message(
     rework_hop: HopResult | None = None,
     step_instructions: str = "",
     project: str = "",
+    verify_cmd: str = "",
 ) -> tuple[str, _HopComposition]:
     """Build one role's message via ``agent/context.py``'s token-budget compiler (see
     pod-dispatch.spec.md, "Bounded hop prompts"). The task description is never truncated;
@@ -177,7 +199,7 @@ def _hop_message(
     ``instructions`` (pipeline-format.spec.md) -- it replaces whatever instruction text the
     target role would otherwise carry, for every role including the Lead (a built-in's own
     instruction text, or a custom role's own ``hopInstruction``/generated fallback, see
-    role-archetypes.spec.md)."""
+    role-archetypes.spec.md). *verify_cmd* is named in the Implementer's instruction."""
 
     desc = task.description.strip()
     worktree = "" if role == "lead" else claimed_worktree_dir(task)
@@ -206,6 +228,7 @@ def _hop_message(
         project,
         None if is_gate_failure_carryover(rework_hop) else rework_hop,
         step_instructions,
+        verify_cmd,
     )
 
     # The role's total token budget, minus what the immutable task
@@ -361,6 +384,7 @@ def _compose_hop(
     trace pair. A downstream hop's message gets an extra checkout note naming the real
     implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
     step_override = ctx.step_instructions.get(node.step_id, "")
+    verify_plan = None if role == "lead" else _verify.plan_for_hop(ctx, node, member_id)
     message, composition = _hop_message(
         ctx.task,
         role,
@@ -368,6 +392,7 @@ def _compose_hop(
         rework_hop,
         step_instructions=step_override,
         project=ctx.project,
+        verify_cmd=verify_plan.command if verify_plan is not None else "",
     )
     message += _consult_answer_note(ctx.task, node.step_id)
     pipeline_worktree = ""
@@ -425,6 +450,8 @@ def _compose_hop(
         ),
     )
     env = hop_env(member_id, role)
+    if verify_plan is not None:
+        env = {**(env or {}), _rd.DOCKET_VERIFY_PLAN: _verify.plan_env_value(verify_plan)}
     if pipeline_worktree:
         env = dict(env or {})
         env[_rd.PIPELINE_WORKTREE_ENV] = pipeline_worktree

@@ -11,7 +11,7 @@ from __future__ import annotations
 import docket.kernel.templates as _templates
 from docket.agent import context as _ctx
 from docket.agent import ports as _ports
-from docket.kernel.handoff import HandoffArtifact
+from docket.kernel.handoff import HandoffArtifact, render_diff_omitted
 from docket.kernel.home import Home, use_home
 from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import config_docs as _config_docs
@@ -227,12 +227,13 @@ class TestCompileArtifact:
             diff_ref="/repo",
             diff="d",
         )
-        # A budget that only the bare summary fits -- every droppable field
-        # must go, in order, none of them left behind.
+        # A budget that only the bare summary fits -- every droppable field must go, in order,
+        # none of them left behind; the omitted-diff line does not count against it.
+        marker = render_diff_omitted(len(art.diff))
         budget = _ports.estimate_tokens(art.summary)
         compiled = _ctx.compile_artifact(art, budget_tokens=budget)
         assert compiled.dropped_fields == ("diff", "diff_ref", "files_changed", "verdict")
-        assert compiled.text == art.summary
+        assert compiled.text == f"{art.summary}\n{marker}"
         assert compiled.summary_truncated is False
 
     def test_empty_fields_are_skipped_not_reported_as_dropped(self) -> None:
@@ -283,3 +284,34 @@ class TestCompileArtifact:
 
         forced = _ctx.compile_artifact(art, budget_tokens=0)
         assert forced.truncated is True
+
+
+class TestOmittedDiffIsAnnounced:
+    """A diff shed by the budget leaves one line saying so and where to look."""
+
+    def test_the_marker_names_the_dropped_size_and_the_command(self) -> None:
+        art = HandoffArtifact(summary="did it", diff="+" * 400, files_changed=["a.py"])
+        budget = _ports.estimate_tokens(art.render()) - 1
+        compiled = _ctx.compile_artifact(art, budget_tokens=budget)
+        assert compiled.dropped_fields == ("diff",)
+        assert compiled.text.splitlines() == [
+            "did it",
+            "[diff omitted: 400 chars over budget; run git diff in the worktree]",
+            "Files changed: a.py",
+        ]
+
+    def test_it_survives_summary_truncation(self) -> None:
+        art = HandoffArtifact(summary="A" * 5000, diff="expendable")
+        compiled = _ctx.compile_artifact(art, budget_tokens=60)
+        assert compiled.summary_truncated is True
+        assert "[diff omitted: 10 chars over budget;" in compiled.text
+        assert compiled.tokens <= 60
+
+    def test_an_artifact_that_never_had_a_diff_gets_no_marker(self) -> None:
+        art = HandoffArtifact(summary="S" * 5000, files_changed=["a.py"])
+        compiled = _ctx.compile_artifact(art, budget_tokens=60)
+        assert "diff omitted" not in compiled.text
+
+    def test_an_artifact_that_fits_keeps_its_diff_and_no_marker(self) -> None:
+        compiled = _ctx.compile_artifact(HandoffArtifact(summary="s", diff="+x"), 1000)
+        assert "Diff:\n+x" in compiled.text and "diff omitted" not in compiled.text

@@ -151,3 +151,40 @@ class TestStepInstructionsOverride:
         )
         message, _ = _compose._hop_message(_TASK, "lead", [], project="acme")
         assert message == "You are the Lead. Plan for the Researcher.\n\nship the feature"
+
+
+_VERIFY_SENTENCE = (
+    "Your work is accepted only if `sh checks/verify.sh` exits 0. Run it with the `verify` tool "
+    "and fix what it reports before you finish."
+)
+
+
+class TestImplementerNamesItsVerifyCommand:
+    """A hop whose step has a verify command tells the Implementer how it will be judged."""
+
+    def test_the_sentence_follows_the_built_in_instruction(self) -> None:
+        message, _ = _compose._hop_message(
+            _TASK, "implementer", [], verify_cmd="sh checks/verify.sh"
+        )
+        assert message.endswith(
+            "You are the Implementer. Implement the change in the workspace.\n\n" + _VERIFY_SENTENCE
+        )
+
+    def test_no_verify_command_means_no_sentence(self) -> None:
+        message, _ = _compose._hop_message(_TASK, "implementer", [])
+        assert "`verify` tool" not in message and "accepted only if" not in message
+
+    def test_a_steps_own_instructions_still_get_the_sentence(self) -> None:
+        message, _ = _compose._hop_message(
+            _TASK,
+            "implementer",
+            [],
+            step_instructions="Fix it your way.",
+            verify_cmd="sh checks/verify.sh",
+        )
+        assert message.endswith("Fix it your way.\n\n" + _VERIFY_SENTENCE)
+
+    def test_only_the_implementer_is_told(self) -> None:
+        for role in ("reviewer", "tester", "lead"):
+            message, _ = _compose._hop_message(_TASK, role, [], verify_cmd="sh checks/verify.sh")
+            assert "sh checks/verify.sh" not in message, role

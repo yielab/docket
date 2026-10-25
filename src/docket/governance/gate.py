@@ -66,14 +66,14 @@ def render_tool_call(name: str, args: dict[str, Any]) -> str:
 
 def evaluate_tool_call(tool: GatedTool, args: dict[str, Any], ctx: GateContext) -> ToolVerdict:
     """Decide whether this call may proceed. **The** decision point: combines the
-    argument-aware command classifier (``exec`` tools only) and the ``pre_tool_call``
+    argument-aware command classifier (``exec`` tools only, not a ``pregranted`` one) and the ``pre_tool_call``
     policy hook in this one function so "what gates a call" has a single answer,
     most-restrictive-wins (deny beats ask beats allow) -- see
     specs/functional/security-gates.spec.md items 1-3 for why argument-awareness
     matters (``git`` is allowlisted, ``git push origin production`` is not). Never audits or
     traces, that is ``govern``'s job."""
     command: tuple[Decision, str] = ("allow", "")
-    if tool.kind == "exec":
+    if tool.kind == "exec" and not tool.pregranted:
         cmd_verdict = classify_command(
             str(args.get("command") or ""),
             extra_bins=frozenset(ctx.allow_commands),

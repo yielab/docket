@@ -93,6 +93,10 @@ DOCKET_APPROVAL_EXPIRES_AT = "DOCKET_APPROVAL_EXPIRES_AT"
 # unset value keeps the configured AGENT_LOOP_TOKEN_BUDGET default.
 DOCKET_TURN_TOKEN_BUDGET = "DOCKET_TURN_TOKEN_BUDGET"
 
+# Same route again: the JSON plan of the `verify` tool (command, directory, timeout) a hop whose
+# step has a verify command is offered. Popped by DocketDriver, which registers the tool from it.
+DOCKET_VERIFY_PLAN = "DOCKET_VERIFY_PLAN"
+
 # Same route again, one per task restriction (security-gates.spec.md "Task restrictions"), popped by
 # DocketDriver: a JSON list of tool names to block, the literal "none" to cut the jail's network,
 # and a JSON list of block-only policy documents evaluated after the pod's.

@@ -127,7 +127,9 @@ class ToolResult:
 class Tool:
     """One callable tool: its schema for the model, its handler for docket. ``kind`` drives gating:
     ``exec`` goes through the classifier, ``write`` is a mutating record, ``read`` is the cheap case.
-    ``ends_turn`` marks a tool whose successful call closes the turn (the agent loop's own rule)."""
+    ``ends_turn`` marks a tool whose successful call closes the turn (the agent loop's own rule).
+    ``pregranted`` marks an ``exec`` tool whose command the pipeline already authorises: it skips
+    the classifier and nothing else."""
 
     name: str
     description: str
@@ -135,6 +137,7 @@ class Tool:
     handler: Callable[[dict[str, Any], ToolContext], ToolOutcome]
     kind: ToolKind = "read"
     ends_turn: bool = False
+    pregranted: bool = False
 
     @property
     def required_args(self) -> tuple[str, ...]:

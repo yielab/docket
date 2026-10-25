@@ -163,7 +163,9 @@ This specification does NOT cover:
     generic function consuming it. The built-in tool set this requirement narrows is `read`,
     `write`, `edit`, `glob`, `grep`, `bash`, `skill`, `consult`, and `fetch` (when registered,
     requirement 83). A role's `deniedTools` may name any of them, and a denied tool follows the
-    same not-advertised refusal path as any other.
+    same not-advertised refusal path as any other. A hop whose step has a verify command is also
+    offered `verify`, an `exec`-kind tool the driver registers per hop (`pod-dispatch.spec.md`
+    "Verify tool"); a role denied `bash` loses it by capability.
 
 ### System prompt composition
 
