@@ -43,3 +43,15 @@ class TestRolesThatWritePreferTheFileTools:
         assert "`write`/`edit`" in soul
         assert "heredocs" in soul
         assert "`read`/`grep`/`glob`" in soul
+
+
+class TestTheLeadHasOneEscalationChannel:
+    """The Lead's SOUL points at `consult` alone and does not deny the human is reachable."""
+
+    def test_rendered_soul_names_consult_and_no_second_channel(self) -> None:
+        soul = render(BUILTIN_ARCHETYPES["lead"].soul_template, _SAMPLE_VARIABLES)
+
+        assert "`consult`" in soul
+        assert "list every assumption" in soul
+        assert "cannot message the human" not in soul
+        assert "NEEDS-INPUT" not in soul

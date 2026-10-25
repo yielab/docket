@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import urllib.parse
 from collections.abc import Callable
 from typing import Any
@@ -12,7 +13,7 @@ from docket.agent.tools.registry import (
     str_arg,
 )
 from docket.agent.tools.screening import screen_tool_result
-from docket.kernel.gate import CONSULT_TOOL
+from docket.kernel.gate import CONSULT_TOOL, DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 from docket.kernel.tool_outcome import text_outcome
@@ -113,6 +114,44 @@ def _consult_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     return ToolOutcome(outcome.ok, outcome.content, outcome.error)
 
 
+def consult_description(remaining: int, parks: bool) -> str:
+    """What the model reads about `consult`: asking ends the turn in dispatch (*parks*), and
+    *remaining* is what the handler will still accept on this task."""
+    if parks:
+        effect = (
+            "Asking ENDS your turn: the task waits for a person and the answer arrives "
+            "in your next message."
+        )
+    else:
+        effect = (
+            "Nobody can answer during this run: the call returns 'no answer; decide "
+            "yourself' at once and your turn continues."
+        )
+    if remaining <= 0:
+        left = "You have no consultations left on this task."
+    else:
+        left = (
+            f"You have {remaining} consultation{'' if remaining == 1 else 's'} left on this task."
+        )
+    return (
+        "Ask a person only when the repository cannot settle the decision. "
+        f"{effect} "
+        "If you can recommend one option from what is in the repository, do not ask: decide, "
+        "state the assumption in your reply, and continue. "
+        "Give at least two options and mark the one you recommend. "
+        f"{left}"
+    )
+
+
+def describe_consult(registry: ToolRegistry, remaining: int, parks: bool) -> None:
+    """Re-register `consult` in *registry* with this hop's real budget and effect."""
+    tool = registry.get(CONSULT_TOOL)
+    if tool is not None:
+        registry.register(
+            dataclasses.replace(tool, description=consult_description(remaining, parks))
+        )
+
+
 def _consult_tool() -> Tool:
     """The `consult` built-in: ask the operator a clarification or decision question."""
     option = {
@@ -128,12 +167,7 @@ def _consult_tool() -> Tool:
     }
     return Tool(
         name=CONSULT_TOOL,
-        description=(
-            "Ask the operator a question when the task cannot be decided from the "
-            "repository alone. Give at least two options and your recommendation. The "
-            "result is the operator's chosen optionId and content, or 'no answer; decide "
-            "yourself'. The number of consultations per task is capped; use it sparingly."
-        ),
+        description=consult_description(DEFAULT_MAX_CONSULTATIONS, parks=True),
         parameters={
             "type": "object",
             "properties": {
@@ -150,7 +184,7 @@ def _consult_tool() -> Tool:
                     "required": ["optionId", "rationale"],
                 },
             },
-            "required": ["kind", "message", "options"],
+            "required": ["kind", "message", "options", "recommendation"],
         },
         handler=_consult_handler,
         kind="read",
