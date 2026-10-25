@@ -52,8 +52,9 @@ question travels through `run`, `inbox`, `task show`, HTTP, MCP and Telegram. Ph
 
 ## Not decided here
 
-- Retirement of the old shapes (P51-9) waits for Tack to consume `escalations[]` and
-  `POST /escalations`.
+- Nothing waits on Tack. Retiring the old shapes (P51-9) follows the per-task level (P51-8) and
+  does not wait for Tack to consume `escalations[]` and `POST /escalations`: Tack adapts to docket
+  and both belong to the maintainer, so the runner is updated alongside, not ahead of, the deletion.
 
 ## A2A binding
 

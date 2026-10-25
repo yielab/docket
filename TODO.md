@@ -19,13 +19,15 @@
 > **Active: Phase 51** (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)),
 > opened 2026-10-25 at the maintainer's request. Phase 50 closed the same day (D-71). The
 > integration branch is `plan/phase-46-structure` until the maintainer merges it.
+> **Planned: Phase 52** (D-73, [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)),
+> cut by file ownership; its Wave A shares no file with Phase 51's open cards.
 
 ## ▶ PHASE 51 ACTIVE — one escalation: ask, resolve, decide (D-72, ADR 0032)
 
 > Opened 2026-10-25 by the maintainer. The reasoning and the measurements are in
 > [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md). P51-1 and P51-2 are ready;
 > P51-3..P51-6 follow in wave order; P51-7 (A2A facade) and P51-8 (per-task level) were approved by
-> the maintainer on 2026-10-25 and follow P51-5/P51-6; P51-9 waits for a trigger.
+> the maintainer on 2026-10-25 and follow P51-5/P51-6; P51-9 (retire the old shapes) follows P51-8.
 
 ### How a Phase 51 card runs (read before claiming one)
 
@@ -55,7 +57,7 @@
 | C | P51-5 | the verb; needs the view (P51-4) and events (P51-3) |
 | D | P51-6 ∥ P51-7 | continuation-on-claim owns `hops/`; the A2A facade owns `interfaces/http/` |
 | E | P51-8 | the level table; needs P51-6 (policy applied at creation and on claim) |
-| F | P51-9 | retirement; trigger: Tack consumes `escalations[]` and `POST /escalations` |
+| F | P51-9 | retirement; follows P51-8, no external trigger |
 
 ### P51-1 — a consult the pod decides alone (`consultMode: decide`)
 
@@ -345,9 +347,9 @@
 - **Contention:** `profile.py`, `pod_settings.py`, `escalations.py`, `task_create.py`,
   `pipeline/domain/*`. Serial after P51-6.
 
-### P51-9 — retire the old shapes (trigger: Tack on `escalations[]` + `POST /escalations`)
+### P51-9 — retire the old shapes
 
-**Status:** TODO (trigger) · **Size:** M · **Model:** Sonnet · **Kind:** deletion + spec
+**Status:** TODO (needs P51-8; no external trigger: Tack adapts to docket, decided by the maintainer 2026-10-25) · **Size:** M · **Model:** Sonnet · **Kind:** deletion + spec
 
 - **Goal:** delete the seven task fields (keep `escalations[]`), `ApprovalView` from `needsYou`,
   `POST /approvals/<token>`, `POST /tasks/<id>/answer`, MCP `approvals_*`/`task_answer`, the five
@@ -397,6 +399,276 @@
 - Send `autonomy` per task from `level_for`; map `failureKind: needs_human` to "re-route at L3".
 - After P51-7: one A2A client replaces `approval_question`, `held_approval_question`,
   `consult_question` and the task-view workaround.
+
+## ○ PHASE 52 PLANNED — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033)
+
+> Planned 2026-10-25 by the maintainer from a code audit against a harness-engineering survey
+> ([ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) holds the findings and the
+> refusals). Cards are cut by **file ownership**, not by technique: everything one worker would
+> change in the same files is one card, so no file is edited twice across the phase. Wave A may
+> start beside Phase 51's remaining cards: no Phase 52 card edits `hops/application/dispatch*`,
+> `tasks/`, `operator/` or `interfaces/http/` (P52-1 writes only `observability/`; `/metrics`
+> reads the fold).
+
+### How a Phase 52 card runs (read before claiming one)
+
+- Spec → failing test → smallest change. Bump the owning spec (MINOR) with `Last Updated` and the
+  `specs/README.md` row in the same commit.
+- **Read bounded, to spend little:** `card_packet.py P52-<n>`, ADR 0033 §"Decision" (one screen),
+  the spec section the card names, the files it names. Nothing else: not the ADR's findings, not
+  another card, not a spec directory. A worktree has no `internal-docs/`.
+- **Measure with what exists, free first.** The replay bench
+  (`scripts/maint/context_replay.py tests/fixtures/context-replay --policy <name>`) costs nothing
+  and is the oracle for bytes and counted tokens; a card that changes what the model sees adds its
+  `--policy` and reports the table before/after. The live eval (`scripts/maint/live_eval.py -n 3`,
+  local endpoint, `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`) runs **once per wave by the integrator**, not
+  per card; the remote provider once at the phase close, after a go.
+- **Every card:** focused tests by path under `timeout 120`; before handoff `ruff`, `mypy src`,
+  `pytest --co -q`, `tests/architecture`, `comment_lint.py --check` on touched files. The e2e lane
+  only on cards that change a tool's output or the wire (P52-2, P52-3, P52-7, P52-8).
+- **Integrator seams:** P52-2 and P52-3 both bump `agent-loop.spec.md`; the integrator renumbers at
+  merge (as in Phase 44). The full default suite runs once per merge, `--lf` after.
+- Workers in `.claude/worktrees/p52-<n>`, one card per worktree. **Model per card** is on the
+  card: Sonnet for behaviour in `src/`, Haiku for data-only cards. Delta-only handoff with the
+  end-of-work control summary.
+
+**Waves (by file contention)**
+
+| Wave | Cards | Why this order |
+| --- | --- | --- |
+| A | P52-1 ∥ P52-2 ∥ P52-3 ∥ P52-6 (∥ P52-4 once unblocked) | disjoint owners: `observability/`+bench · `kernel/text.py`+toolbox+`session.py` · request/wire/catalog · recipes · `governance/` |
+| B | P52-5 ∥ P52-7 ∥ P52-8 | P52-5 needs P52-1's re-read figure; P52-7 continues P52-3's files; P52-8 continues P52-2's files |
+
+### P52-1 — the numbers: cache hits, tokens per accepted task, re-reads
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** observability + script
+
+- **Trigger:** maintainer request (ADR 0033 §Decision 5). No cache-hit ratio exists; `task show`
+  prints usage per model but not per accepted task; the Phase 44 follow-up "measure which calls
+  repeat before cutting anything" never ran because its measurement was framed as a paid live run.
+  The recorded traces already hold the answer.
+- **Goal:** three figures, read-only on data docket already records. (1) `cache_hit =
+  cachedTokens / inputTokens` on every `llm_call` event and folded per task and per role in the
+  metrics fold `observability/` keeps (the `/metrics` route reads it unchanged). (2) `tokens per
+  accepted task`: counted tokens of tasks that ended `done`, as a line of `docket log --summary`
+  and a metrics key. (3) `context_replay.py --repeats`: per step, the `read`/`grep`/`glob` calls
+  whose canonical arguments repeat; per task, the files the Implementer read that the Lead had
+  read.
+- **Non-goals:** dollars; alerting; any change to what the model sees.
+- **Spec:** `trace-store.spec.md` (3.2.0 → 3.3.0: `cache_hit` is derived, not stored);
+  `serve-read-api.spec.md` (4.2.0 → 4.3.0: the two metrics keys); `cost-tracking.spec.md` only if
+  a sentence there names the per-task figure.
+- **Change:** `observability/` metrics fold (one function per figure); `interfaces/cli/commands/log*`
+  renders the summary line; `scripts/maint/context_replay.py` gains `--repeats` (a table: step,
+  repeated calls, re-read files, bytes they cost at the measured ratio).
+- **Acceptance:** fixture `tests/fixtures/traces` (an `llm_call` with `cachedTokens` > 0) →
+  `GET /metrics` shows `cacheHit` for that task's role; a task record `done` with usage →
+  `docket log --summary` prints `tokens per accepted task`; `context_replay.py
+  tests/fixtures/context-replay --repeats` prints a non-empty table and the JSON form lists at least
+  one repeated `read` (the committed implementer fixture has one). Oracle: the numbers equal a
+  hand-computed value from the fixture, asserted in `tests/unit/observability/` and
+  `tests/integration/observability/`. The private replay copies are run by the integrator and the
+  figure recorded on P52-5's trigger line.
+- **Contention:** `observability/` and the bench script only. Serial with nothing.
+
+### P52-2 — tool results the model can use
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0033 findings, verified 2026-10-25: `kernel/text.py::cut_output` keeps the head
+  only; `toolbox.py` merges stderr into stdout (`:419`) and hints only on exit 126 (`:472-473`);
+  `edit` says only "not found" (`:188-197`); no ANSI or repeated-line normalization anywhere; the
+  condensation window (`agent/session.py:65-69`) lets one 20 KB grep evict a 1.2 KB README that
+  is then re-read (Phase 44 close note).
+- **Goal, in order (a park leaves the rest visible):**
+  1. `cut_output` for `bash` and `verify` keeps head and tail (40/60) with the marker between
+     them; `read` keeps head-only (the head is right there).
+  2. Lossless normalization before the cut: strip ANSI escapes, resolve `\r` progress lines to
+     their last state, collapse consecutive identical lines to `line  [x N]`.
+  3. On exit ≠ 0, stderr first, then stdout; a fixed table of known causes: 126 (today's text),
+     127 (`not on PATH inside the jail or not in allowCommands`).
+  4. `edit` "not found" lists the three closest lines (`difflib`, ratio ≥ 0.6) with "the text
+     must match exactly; copy it from `read` without the line-number prefix". Never auto-apply.
+  5. Condensation: a tool result under 1,500 chars is never condensed while a larger one in the
+     same step is whole (monotone: never condenses more than today).
+- **Non-goals:** the artifact store (P52-8); timestamps or pids replaced; any change to `read`'s
+  window; a second normalization pass elsewhere.
+- **Spec:** `agent-loop.spec.md` (3.2.0 → 3.3.0, tool-output section: head+tail, normalization,
+  error order); `session-history.spec.md` (1.9.2 → 1.10.0, the small-results rule beside
+  requirement 31).
+- **Change:** `kernel/text.py` (`cut_output` gains a `tail` share; a new `normalize_output`),
+  `agent/tools/builtins/toolbox.py` (`bash`, `edit`), `hops/application/verify_tool.py`,
+  `agent/session.py::condense_history`.
+- **Acceptance:** a `bash` whose output is 20 lines of progress + a pytest summary at the tail →
+  the result shows the summary after the marker; an output with ANSI colour and 50 identical lines
+  → one line with `[x 50]`; `edit` with a near-miss `old_string` → the error names the closest
+  line; a step with one 20 KB grep then a 1 KB read → the read survives condensation. Oracles:
+  `tests/unit/kernel/test_text.py`, `tests/unit/agent/tools/builtins/`,
+  `tests/integration/agent/test_session_condensation*`; the bench `--policy p52-2` reports bytes
+  per step before/after on `tests/fixtures/context-replay` (no step worse). Lane e2e green.
+- **Contention:** the toolbox, `kernel/text.py`, `session.py`. P52-8 continues these files after
+  this merges.
+
+### P52-3 — one request shape: a stable prefix and sampling from the catalog
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** `agent/loop_request.py:139-153` appends the finalization instruction to the system
+  message, so the turn's last (longest) request misses the cached prefix; `LoopConfig.temperature`
+  (`agent/loop_types.py:64`) has no writer (unwired machinery, the eighth); `top_p` does not exist;
+  the local endpoint reports 1.0 inherited while the model card asks 0.7/0.8 in non-thinking mode.
+- **Goal:** (1) finalization is a trailing `user` message, request-only as today, the system
+  message untouched; (2) a catalog row may declare `sampling: {temperature, topP}`; the driver
+  passes it into `LoopConfig` and the wire sends both only when declared; the trace's `llm_call`
+  records what was sent.
+- **Non-goals:** the profile (P52-7); `tool_choice`; reasoning; any default when the row declares
+  nothing (the endpoint's own stays).
+- **Spec:** `agent-loop.spec.md` (finalization shape; sampling passthrough);
+  `model-profiles.spec.md` (5.0.3 → 5.1.0, the `sampling` fields on a catalog row).
+- **Change:** `agent/loop_request.py::_finalization_messages`, `agent/loop_types.py` (`top_p`),
+  `models/catalog.py` (row fields), `models/adapters/openai_wire.py::build_payload`,
+  `hops/application/driver.py` (LoopConfig construction), `agent/loop_trace.py` (record).
+- **Acceptance:** a turn that exhausts its budget → the finalization request's first message is
+  byte-identical to the previous request's (oracle: `tests/integration/agent/test_loop_*` compares
+  the two captured payloads); a provider doc with `sampling` → the payload carries `temperature`
+  and `top_p`, and without it carries neither (`tests/unit/models/adapters/test_openai_wire.py`);
+  `docket status` or `task show` unchanged. Lane e2e green.
+- **Contention:** `agent-loop.spec.md` with P52-2 (integrator renumbers). Files disjoint from
+  every Wave A card.
+
+### P52-4 — a command the lexer cannot parse is refused, not asked
+
+**Status:** BLOCKED (needs maintainer go: a parse failure stops being an `ask`) · **Size:** S ·
+**Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** `governance/security.py:353-440` with `command_lexer.py:162-169`: a `shlex`
+  `ValueError` (an unclosed quote) yields `ask: command could not be parsed`, which parks the
+  task for a person. The model's syntax error becomes human waiting time; with `consultMode`
+  irrelevant here, a lights-out pod stalls on a typo.
+- **Goal:** the parse failure is `REFUSED [syntax]: <lexer message>; fix the quoting and call
+  again`. Nothing runs, as today. The opaque markers (`$(`, backticks, `${`, `eval`, `exec`) and
+  the unclosed heredoc keep asking: they are risk, not syntax.
+- **Non-goals:** `bash -n`; any change to SAFE_BINS or `allowCommands`; the denial counter (a
+  refusal still counts toward the three-denials stop).
+- **Spec:** `security-gates.spec.md` (1.6.0 → 1.7.0, the classifier table row).
+- **Change:** `governance/security.py::classify_command` (one branch), the policy corpus row.
+- **Acceptance:** `bash` with `echo "unclosed` → `REFUSED [syntax]` and no escalation record, no
+  audit `approval` entry (oracle: `tests/integration/governance/test_security*` plus the audit
+  oracle from `tests/support/e2e_oracles.py`); the 310-row corpus unchanged except the parse rows.
+- **Contention:** `governance/` only.
+
+### P52-5 — the Lead's locators: the code it found reaches the Implementer
+
+**Status:** BLOCKED (needs P52-1's re-read figure on the private replay copies) · **Size:** L ·
+**Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger (to be filled by the integrator from P52-1):** source `context_replay.py --repeats`
+  on the recorded implementer steps; metric: share of the Implementer's `read` calls on files the
+  Lead had already read; window: the recorded steps; threshold: ≥ 30 %; observed: _pending_.
+  Context: Phase 44 closed with Implementers at 0.77/0.80 sent ratio "from longer trajectories";
+  `TaskBrief.context` is prose (`kernel/brief.py:24-38`), so the Lead's reads are lost.
+- **Goal:** the Lead may put locators `path:<file>#L<a>-<b>` in `context`; `_hop_message`
+  (`hops/application/compose.py:181`) reads each range from the task worktree, fresh, and renders
+  a `## Code the Lead located` section inside the Implementer's budget share
+  (`agent/context.py:148-157`); ranges that do not fit stay as bare locators; an invalid locator
+  is listed as such. The Lead's hop instruction asks for locators (`teams/builtin_roles.py:82-109`).
+- **Non-goals:** a viewer role; sub-agents; any model call in the composition; locators in
+  handoffs other than the Lead's.
+- **Spec:** `pod-dispatch.spec.md` (10.7.0 → 10.8.0, "Bounded hop prompts");
+  `role-archetypes.spec.md` (4.1.0 → 4.2.0, the Lead's instruction).
+- **Change:** `kernel/brief.py` (validate the locator form), `hops/application/compose.py`
+  (extraction + section), `agent/context.py` (share), `teams/builtin_roles.py` (instruction text).
+- **Acceptance:** a brief with two locators, one valid and one past EOF → the Implementer's
+  message holds the valid range's lines and names the invalid one; with a 200-token share → the
+  first range whole, the second as a bare locator (oracle: `tests/integration/hops/test_compose*`);
+  the starter example and `tests/agent/release/test_starter_journey.py` keep their field set
+  (locators live inside `context`, no new field). Bench: `--policy p52-5` on the implementer
+  fixtures reports re-reads before/after.
+- **Contention:** `compose.py` is shared with P51-6's continuation work if that card is still open;
+  claim after it merges.
+
+### P52-6 — recipes for the pod as a viewer/editor team
+
+**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** data + tests
+
+- **Trigger:** ADR 0033 §Decision 4: the pod already separates exploration from editing; no recipe
+  shows the three shapes the survey's level matrix asks for. `researcher` is `strong` by default
+  (`teams/builtin_roles.py:243-247`), so a cheap exploration must say so.
+- **Goal:** three recipes under `templates/recipes/`, each with its `README.md` sentence and
+  validated by the existing recipe tests: (a) `explore-then-edit`: `researcher`
+  (`modelClass: cheap`, read-only) → `implementer` → `reviewer`; (b) `strong-plan-cheap-edit`:
+  `lead` on `strong`, `implementer` on `cheap`, `verifyCmd` gate with `on: {fail: {goto:
+  implementer, max: 1}}`; (c) `parallel-explore`: a `parallel` group of two cheap researchers
+  with disjoint instructions → join → implementer, plus `on: {fail: {goto: lead, max: 1}}` from
+  the implementer's step back to the Lead.
+- **Non-goals:** code; a new role; a sub-agent tool; claims about savings in the README.
+- **Spec:** none (recipes are data; `pipeline-format.spec.md` 4.1.0 already allows every field).
+- **Change:** `templates/recipes/<name>/pipeline.yaml` + `README.md` × 3; the recipe index test's
+  expected list.
+- **Acceptance:** `docket pod apply <recipe>` on a fresh home loads each without a validation
+  error (oracle: the recipe lane's existing parametrized test picks them up); the `parallel`
+  group validates (`pipeline/domain/step.py:90-193`).
+- **Contention:** `templates/recipes/` only.
+
+### P52-7 — `ModelProfile`: the contract varies with the model
+
+**Status:** TODO (after P52-3) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0033 §Decision 1. Today's single contract: an Implementer's schemas are about
+  5,800 chars on every request (`consult` 1,229, `bash` 1,285); `tool_choice` is always `"auto"`
+  (`openai_wire.py:110-112`); `budget_for_role` is unreachable on a 32k window without the manual
+  env var in CONFIGURATION.md; the local eval needed the verdict parser's tolerance because the
+  verdict was free text.
+- **Goal:** a `profile` on a catalog row with built-ins `hosted` (today) and `local` (default for
+  `local: true`): `toolSurface: full|minimal` (minimal = `bash`, `read`, `verify`, `verdict` when
+  gated), `descriptions: full|compact` (≤ 2 sentences per tool for compact), `toolChoice: auto|
+  forced-on-close` (the closing call of a verdict-gated step sends `tool_choice` for `verdict`),
+  `budgets: window-derived` (`READ_DEFAULT_CHARS` and the tool-output cap as shares of
+  `contextWindow`). The profile name is on every `llm_call` and in `docket status`.
+- **Non-goals:** reasoning (deferred, ADR 0033); a per-role profile; heuristics by model name;
+  changing `hosted` behaviour by one byte (goldens stay).
+- **Spec:** `model-profiles.spec.md` (5.1.0 → 6.0.0, the profile and its two built-ins);
+  `agent-loop.spec.md` (`tool_choice` on the chat port; window-derived budgets).
+- **Change:** `models/catalog.py` (profile fields + resolution), `agent/ports.py` (`tool_choice` on
+  the chat call), `agent/loop_types.py`, `models/adapters/openai_wire.py`,
+  `hops/application/driver.py` (surface and budgets from the profile), `teams/role_composer.py`
+  (surface), `hops/application/builtin_tools.py` (compact descriptions), `kernel/home.py` (derived
+  defaults).
+- **Acceptance:** a provider doc `local: true` without `profile` → `local`; its Implementer's
+  request carries only the minimal surface and compact descriptions, and the closing call of a
+  verdict step carries `tool_choice: {"type":"function","function":{"name":"verdict"}}` (oracle:
+  captured payloads in `tests/integration/hops/test_docket_driver*`); a `hosted` row → payloads
+  byte-identical to before (the CLI goldens and `tests/e2e` unchanged); `request_part_bytes["tools"]`
+  for the local Implementer under 2,500. Live eval by the integrator at the wave close.
+- **Contention:** continues P52-3's files; `builtin_tools.py` is not touched by P52-2 or P52-8.
+
+### P52-8 — a result over the cap is kept whole and readable
+
+**Status:** TODO (after P52-2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0033: what passes `DOCKET_TOOL_MAX_OUTPUT_CHARS` is gone (the trace keeps a
+  capped copy, `agent/loop_trace.py:219-220`, and no tool reads it); the condensation notice says
+  "call X again", which re-runs a command whose result may differ and costs a round. A lower cap
+  (the local endpoint needs 2,500) is only safe when the whole result stays reachable.
+- **Goal:** a tool result over the cap is written whole to `<pod cache>/artifacts/<sha256>.txt`
+  (plain text, not docket-owned JSON; the jail's HOME is the pod cache, so it is readable without a
+  grant); the truncated result ends with `[full output: <path> — read it with read(path, offset,
+  limit)]`; the condensation notice points at the artifact when one exists instead of inviting a
+  re-run; retention follows the trace's. `read` must accept that path: check `toolbox.read`'s root
+  containment first and, if it refuses, add the artifacts directory to the readable roots in the
+  same card.
+- **Non-goals:** lifecycle condensation (deferred); indexing or search over artifacts; a new tool.
+- **Spec:** `session-history.spec.md` (1.10.0 → 1.11.0, the notice); `agent-loop.spec.md` (the
+  artifact line in the tool-output section); `workspace-structure.spec.md` (the directory).
+- **Change:** `agent/tools/builtins/toolbox.py` (write + marker, in the one place results are
+  cut), `agent/session.py` (notice), `agent/loop_trace.py` (record the artifact path), retention
+  in `observability/` where the trace's lives.
+- **Acceptance:** a `bash` with 50 KB output under a 2,500 cap → the result carries the marker, the
+  file exists with the full bytes, and a following `read(path, offset=2400, limit=50)` returns the
+  bytes past the cut (oracle: `tests/integration/agent/test_tool_artifacts.py`, jailed variant in
+  `tests/integration/sandbox/`); the notice for a condensed result names the path; the e2e jailed
+  journey stays green.
+- **Contention:** continues P52-2's files.
 
 ## How work runs on this board (read before claiming a card)
 
@@ -470,7 +742,24 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 - **The implementer sends 0.65 of what the backend counts** (Phase 45 real runs on `fab-dev`,
   2026-10-20: 14 and 13 calls, largest request about 7,000 estimated tokens; reviewer 0.62, tester 0.80
   and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
-  over half") fired. Next: on a real run, measure which calls repeat before cutting anything.
+  over half") fired. Next: P52-1 measures which calls repeat on the recorded traces (no live run
+  needed); P52-5 acts on the figure.
+
+**Model adaptation and context (ADR 0033, deferred with triggers; the cards are Phase 52).**
+
+- **Reasoning kept inside the turn** (`ChatMessage.reasoning`, resent only in the active tool
+  loop; `reasoning_content` is dropped today in `models/adapters/openai_wire.py::decode_response`).
+  Trigger: a profile that declares `reasoning: interleaved`.
+- **Lifecycle condensation** (a `read` superseded by a later `read` or an `edit` of the same file
+  is evicted first, in batches aligned to steps). Trigger: after P52-8, the bench `--repeats`
+  still shows re-reads on the recorded implementer steps.
+- **A bounded model escalation** on a step (`escalate: {on: [verify_failed, no_progress], model:
+  strong, max: 1}`), audited. Trigger: the `strong-plan-cheap-edit` recipe (P52-6) fails
+  `verifyCmd` on a measured share of real runs.
+- **A lazy MCP catalog** (`mcp_describe(server, tool)`, the tool list kept stable within a turn).
+  Trigger: a pod whose MCP schemas exceed its built-in ones (`request_part_bytes["tools"]`).
+- **A native Anthropic dialect** (1 h TTL, `cache_control` on tools, signed thinking blocks; the
+  provider note already defers it). Trigger: direct use without the gateway, which caches today.
 
 **Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
 
