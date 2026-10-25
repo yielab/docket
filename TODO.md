@@ -386,6 +386,26 @@
 - **Contention:** `platform/store.py` (settled directory), `operator/inbox.py`, `queue.py`,
   `a2a_push.py`, `commands/task.py`, `governance/privacy.py`, the four docs. Not P51-8's files.
 
+### P51-12 — the live smoke can run with the jail on
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
+
+- **Trigger (measured 2026-10-25):** two live evals (local model and a remote one, 0/3 each) parked
+  on an approval because the model ran `xxd` to read the artifact's bytes. The smoke runs
+  `docket setup sandbox off` (`scripts/smoke_workflow.py`, search `"sandbox", "off"`), and with the
+  jail off the command allowlist applies. `docket init` turns the jail on where Landlock or Seatbelt
+  is detected, and inside a working jail the allowlist stands down (security-gates), so the eval
+  measured a configuration the product does not default to.
+- **Goal:** `smoke_workflow.py --live-model` gains `--sandbox on|off` (default `off`, unchanged);
+  `on` runs `docket setup sandbox on` (or leaves `init`'s recorded choice) and fails fast with a
+  one-line reason when no backend is available; `scripts/maint/live_eval.py` passes it through.
+- **Non-goals:** any change under `src/`; making `on` the default (a separate decision once an eval
+  with the jail on passes).
+- **Acceptance:** tests for the argument rules and for the exact `setup` command run before the
+  pipeline (copy the style of the P51-10 tests in `tests/integration/product/smoke/`); the default
+  command line stays byte-identical; `live_eval.py --dry-run` prints the flag.
+- **Contention:** `scripts/smoke_workflow.py`, `scripts/maint/live_eval.py` and their tests.
+
 ### P51-9 — retire the old shapes
 
 **Status:** TODO (needs P51-8; no external trigger: Tack adapts to docket, decided by the maintainer 2026-10-25) · **Size:** M · **Model:** Sonnet · **Kind:** deletion + spec
@@ -394,7 +414,9 @@
   move the approval, gate and `check_changed` follow-up (`approval_grant`, pre-grants, gate override,
   task grants) out of `resolve` into the claim path; give `escalation_delivered` a real emitter or
   delete it (no event without a writer); store a record for a pod-decided consult or drop its
-  `decided_consult` id; count in-turn consults in the task's consult budget.
+  `decided_consult` id; count in-turn consults in the task's consult budget; make the
+  `SECURITY-SIMPLE.md` / `CONFIGURATION.md` sentence say `resolve` is the shared function; make
+  `docket task prune --traces` call `prune_settled_escalations`; add `level` to the A2A DataPart.
 - **Goal:** delete the seven task fields (keep `escalations[]`), `ApprovalView` from `needsYou`,
   `POST /approvals/<token>`, `POST /tasks/<id>/answer`, MCP `approvals_*`/`task_answer`, the five
   old trace events, `resolve_waiting_approval` and `answer_task`; contract `operator-v2`;
