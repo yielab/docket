@@ -27,7 +27,6 @@ from docket.operator.inbox import (
     escalation_views,
     pause_is_live,
     pending_memory,
-    question_escalation,
     task_view,
 )
 from docket.operator.notify import (
@@ -67,7 +66,6 @@ __all__ = [
     "load_channel_document",
     "pause_is_live",
     "pending_memory",
-    "question_escalation",
     "read_state",
     "render_escalation",
     "resolve_secret",

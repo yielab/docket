@@ -7,9 +7,27 @@ an approval record by its token reaches the escalation behind it through these t
 from __future__ import annotations
 
 from docket.governance import approval as _approval
+from docket.kernel.operator_contract import Escalation, new_escalation_id
 from docket.platform import list_escalations
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.domain.resolution import EscalationNotFound
+
+
+def escalation_record(**fields: object) -> Escalation:
+    """A pending `approval` escalation record of task-1 in pod demo, *fields* overriding the base."""
+    base: dict[str, object] = {
+        "id": new_escalation_id(),
+        "task": "task-1",
+        "pod": "demo",
+        "step": "implementer",
+        "role": "implementer",
+        "kind": "approval",
+        "causedBy": "call-1",
+        "prompt": "run rm",
+        "askedAt": "2026-10-25T10:00:00+00:00",
+        "onExpiry": "deny",
+    }
+    return Escalation.model_validate({**base, **fields})
 
 
 def escalation_of(token: str) -> str:

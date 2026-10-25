@@ -16,8 +16,6 @@ from docket.kernel.brief import TaskBrief
 from docket.kernel.operator_contract import (
     EVENT_KINDS,
     A2AState,
-    AnswerResult,
-    AnswerResultV11,
     CloudEvent,
     EscalationAffordances,
     EscalationView,
@@ -31,8 +29,7 @@ from docket.kernel.operator_contract import (
     canonical_args_digest,
     make_event,
     new_question_id,
-    validate_answer,
-    validate_answer_v11,
+    validate_content,
     validate_requested_schema,
 )
 
@@ -199,43 +196,28 @@ class TestQuestion:
         assert "properties" in schema
 
 
-# ── AnswerResult / validate_answer ──────────────────────────────────────────────
+# ── validate_content ───────────────────────────────────────────────────────────
 
 
-class TestValidateAnswer:
-    def test_accept_with_every_required_property_present_passes(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "staging"})
-        assert validate_answer(q, result) is result
+class TestValidateContent:
+    def test_every_required_property_present_passes(self) -> None:
+        validate_content(_question().requested_schema, {"env": "staging"})
 
-    def test_accept_missing_required_property_raises(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={})
+    def test_missing_required_property_raises(self) -> None:
         with pytest.raises(ValueError, match="missing required property: 'env'"):
-            validate_answer(q, result)
+            validate_content(_question().requested_schema, {})
 
-    def test_accept_wrong_type_raises(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "staging", "count": "not-a-number"})
+    def test_wrong_type_raises(self) -> None:
+        content = {"env": "staging", "count": "not-a-number"}
         with pytest.raises(ValueError, match="does not match type"):
-            validate_answer(q, result)
+            validate_content(_question().requested_schema, content)
 
-    def test_accept_enum_violation_raises(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "canary"})
+    def test_enum_violation_raises(self) -> None:
         with pytest.raises(ValueError, match="is not one of"):
-            validate_answer(q, result)
+            validate_content(_question().requested_schema, {"env": "canary"})
 
-    def test_accept_boolean_type_matches(self) -> None:
-        q = _question()
-        result = AnswerResult(action="accept", content={"env": "prod", "ok": True})
-        assert validate_answer(q, result) is result
-
-    @pytest.mark.parametrize("action", ["decline", "cancel"])
-    def test_decline_and_cancel_ignore_content(self, action: str) -> None:
-        q = _question()
-        result = AnswerResult(action=action, content={"env": "nonsense", "count": "nan"})
-        assert validate_answer(q, result) is result
+    def test_boolean_type_matches(self) -> None:
+        validate_content(_question().requested_schema, {"env": "prod", "ok": True})
 
 
 # ── TaskView / InboxView ─────────────────────────────────────────
@@ -404,34 +386,6 @@ class TestQuestionV11:
     def test_inherits_requested_schema_validation(self) -> None:
         with pytest.raises(ValidationError):
             _question_v11(requestedSchema={"type": "array"})
-
-
-class TestValidateAnswerV11:
-    def test_accept_without_option_id_when_options_exist(self) -> None:
-        with pytest.raises(ValueError, match="optionId"):
-            validate_answer_v11(_question_v11(), AnswerResultV11(action="accept"))
-
-    def test_accept_with_unknown_option_id(self) -> None:
-        answer = AnswerResultV11(action="accept", optionId="nope")
-        with pytest.raises(ValueError, match="nope"):
-            validate_answer_v11(_question_v11(), answer)
-
-    def test_accept_with_known_option_id(self) -> None:
-        answer = AnswerResultV11(action="accept", optionId="b")
-        assert validate_answer_v11(_question_v11(), answer) is answer
-
-    def test_decline_without_option_id_is_fine(self) -> None:
-        answer = AnswerResultV11(action="decline")
-        assert validate_answer_v11(_question_v11(), answer) is answer
-
-    def test_accept_without_options_needs_no_option_id(self) -> None:
-        answer = AnswerResultV11(action="accept")
-        assert validate_answer_v11(_question_v11(options=[]), answer) is answer
-
-    def test_content_still_validated_against_schema(self) -> None:
-        answer = AnswerResultV11(action="accept", optionId="a", content={"note": 3})
-        with pytest.raises(ValueError, match="note"):
-            validate_answer_v11(_question_v11(), answer)
 
 
 class TestEscalationView:

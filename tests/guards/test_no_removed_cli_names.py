@@ -77,7 +77,7 @@ class TestTable:
             ),
             ("docket add reviewer", "docket pod add reviewer"),
             ("docket delete myapp", "docket pod delete --pod myapp"),
-            ("docket approve apr-1", "docket task approve apr-1"),
+            ("docket approve apr-1", "docket task answer apr-1"),
             ("docket chat x-lead", "docket task answer x-lead"),
             ("docket gates status", "docket setup sandbox status"),
             ("docket models provider add x", "docket setup provider add x"),

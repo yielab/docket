@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import pytest
+from tests.support.approvals import escalation_record
 
 from docket.kernel.home import current_home
 from docket.kernel.operator_contract import Escalation, Resolution, new_escalation_id
@@ -69,24 +70,8 @@ def test_mkdir_private_makes_new_directories_0700_and_leaves_existing_ones(
     assert oct(os.stat(existing).st_mode & 0o777) == "0o755"
 
 
-def _escalation(**fields: object) -> Escalation:
-    base: dict[str, object] = {
-        "id": new_escalation_id(),
-        "task": "task-1",
-        "pod": "demo",
-        "step": "implementer",
-        "role": "implementer",
-        "kind": "approval",
-        "causedBy": "call-1",
-        "prompt": "run rm",
-        "askedAt": "2026-10-25T10:00:00+00:00",
-        "onExpiry": "deny",
-    }
-    return Escalation.model_validate({**base, **fields})
-
-
 def test_an_escalation_round_trips_with_the_next_seq_and_mode_0600() -> None:
-    first = _escalation(
+    first = escalation_record(
         options=[{"id": "deny", "label": "Deny", "description": "Refuse."}],
         requestedSchema={"type": "object", "properties": {"a": {"type": "string"}}},
     )
@@ -101,8 +86,8 @@ def test_an_escalation_round_trips_with_the_next_seq_and_mode_0600() -> None:
 
 
 def test_seq_is_monotonic_across_writes_and_kept_on_a_rewrite() -> None:
-    a = store.write_escalation(_escalation())
-    b = store.write_escalation(_escalation())
+    a = store.write_escalation(escalation_record())
+    b = store.write_escalation(escalation_record())
     assert (a.seq, b.seq) == (1, 2)
     again = store.write_escalation(a.model_copy(update={"state": "expired"}))
     assert again.seq == 1
@@ -110,9 +95,9 @@ def test_seq_is_monotonic_across_writes_and_kept_on_a_rewrite() -> None:
 
 
 def test_list_escalations_filters_by_state_and_exact_since_seq() -> None:
-    first = store.write_escalation(_escalation())
-    second = store.write_escalation(_escalation())
-    third = store.write_escalation(_escalation(state="expired"))
+    first = store.write_escalation(escalation_record())
+    second = store.write_escalation(escalation_record())
+    third = store.write_escalation(escalation_record(state="expired"))
 
     assert [e.id for e in store.list_escalations()] == [first.id, second.id, third.id]
     assert [e.id for e in store.list_escalations(state="pending")] == [first.id, second.id]
@@ -122,7 +107,7 @@ def test_list_escalations_filters_by_state_and_exact_since_seq() -> None:
 
 
 def test_list_escalations_skips_the_counter_strays_and_invalid_records() -> None:
-    good = store.write_escalation(_escalation())
+    good = store.write_escalation(escalation_record())
     folder = current_home().escalations_dir
     (folder / "esc-000000000000.json").write_text('{"nope": 1}')
     (folder / "notes.txt").write_text("x")
@@ -134,12 +119,12 @@ def test_read_escalation_refuses_a_path_shaped_id_and_an_absent_record() -> None
     assert store.read_escalation("../approvals/x") is None
     assert store.read_escalation("esc-0123456789ab") is None
     with pytest.raises(ValueError, match="escalation id"):
-        store.write_escalation(_escalation(id="esc-../../x"))
+        store.write_escalation(escalation_record(id="esc-../../x"))
 
 
 def test_settle_escalation_moves_only_the_pending_record_it_names() -> None:
-    mine = store.write_escalation(_escalation())
-    other = store.write_escalation(_escalation())
+    mine = store.write_escalation(escalation_record())
+    other = store.write_escalation(escalation_record())
 
     assert store.settle_escalation(mine.id, "expired") is True
     assert store.settle_escalation(mine.id, "expired") is False
@@ -152,7 +137,7 @@ def _resolved(**fields: object) -> Escalation:
     resolution = Resolution(
         option_id="redis", by="alice", channel="http", at="2026-10-25T10:00:00Z"
     )
-    return _escalation(state="resolved", resolution=resolution, **fields)
+    return escalation_record(state="resolved", resolution=resolution, **fields)
 
 
 def test_mark_escalation_applied_stamps_a_resolved_record_exactly_once() -> None:
@@ -183,11 +168,11 @@ def test_mark_escalation_applied_ignores_an_absent_record() -> None:
 
 
 def _settled(**fields: object) -> Escalation:
-    return _escalation(state="expired", **fields)
+    return escalation_record(state="expired", **fields)
 
 
 def test_the_pending_scan_opens_no_settled_file(monkeypatch: pytest.MonkeyPatch) -> None:
-    live = store.write_escalation(_escalation())
+    live = store.write_escalation(escalation_record())
     done = [store.write_escalation(_settled()) for _ in range(5)]
     assert len(list((current_home().escalations_dir / "settled").glob("esc-*.json"))) == 5
     opened: list[Path] = []
@@ -207,8 +192,8 @@ def test_the_pending_scan_opens_no_settled_file(monkeypatch: pytest.MonkeyPatch)
 
 def test_a_settled_record_leaves_the_pending_directory_and_keeps_its_seq() -> None:
     folder = current_home().escalations_dir
-    mine = store.write_escalation(_escalation())
-    resolved = store.write_escalation(_escalation())
+    mine = store.write_escalation(escalation_record())
+    resolved = store.write_escalation(escalation_record())
 
     assert store.settle_escalation(mine.id, "expired") is True
     resolution = Resolution(
@@ -238,7 +223,7 @@ def test_retention_deletes_old_settled_records_and_keeps_live_work() -> None:
     old = store.write_escalation(_settled())
     recent = store.write_escalation(_settled())
     unapplied = store.write_escalation(_resolved())
-    live = store.write_escalation(_escalation())
+    live = store.write_escalation(escalation_record())
     for record in (old, unapplied):
         _age(record.id, 90)
 
@@ -249,7 +234,7 @@ def test_retention_deletes_old_settled_records_and_keeps_live_work() -> None:
     assert store.read_escalation(old.id) is None
     kept = {recent.id, unapplied.id, live.id}
     assert {e.id for e in store.list_escalations()} == kept
-    assert store.write_escalation(_escalation()).seq == live.seq + 1
+    assert store.write_escalation(escalation_record()).seq == live.seq + 1
 
 
 def test_retention_applies_to_an_applied_resolution() -> None:
@@ -263,7 +248,7 @@ def test_retention_applies_to_an_applied_resolution() -> None:
 
 def test_rewriting_a_record_leaves_it_in_one_directory_only() -> None:
     folder = current_home().escalations_dir
-    record = store.write_escalation(_escalation())
+    record = store.write_escalation(escalation_record())
     settled = store.write_escalation(record.model_copy(update={"state": "expired"}))
     assert [p.parent.name for p in folder.rglob(f"{record.id}.json")] == ["settled"]
 

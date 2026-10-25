@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests.support.approvals import escalation_record
 from tests.support.tasks import put_tasks, task
 from tests.support.trace import write_trace as _write_trace
 
@@ -26,29 +27,12 @@ from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.routes import a2a_push
 from docket.kernel import threads as _threads
 from docket.kernel.home import Home, current_home, use_home
-from docket.kernel.operator_contract import Escalation, new_escalation_id
 from docket.observability import trace as _trace
 from docket.operator import load_catalog, save_channel
 from docket.platform import store as _store
 from docket.tasks.application import escalation_sweep as _escalation_sweep
 
 SUBJECT = "docket.interfaces.http.server"
-
-
-def _escalation(**fields: object) -> Escalation:
-    base: dict[str, object] = {
-        "id": new_escalation_id(),
-        "task": "task-1",
-        "pod": "demo",
-        "step": "implementer",
-        "role": "implementer",
-        "kind": "approval",
-        "causedBy": "call-1",
-        "prompt": "run rm",
-        "askedAt": "2026-10-25T10:00:00+00:00",
-        "onExpiry": "deny",
-    }
-    return Escalation.model_validate({**base, **fields})
 
 
 @pytest.fixture()
@@ -93,8 +77,8 @@ class TestSweepRunsRetention:
     def test_sweep_deletes_an_old_settled_escalation_and_keeps_a_pending_one(
         self, swept_home: Path
     ) -> None:
-        old = _store.write_escalation(_escalation(state="expired"))
-        live = _store.write_escalation(_escalation())
+        old = _store.write_escalation(escalation_record(state="expired"))
+        live = _store.write_escalation(escalation_record())
         path = swept_home / "escalations" / "settled" / f"{old.id}.json"
         stale = path.stat().st_mtime - 90 * 86400
         os.utime(path, (stale, stale))
