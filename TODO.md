@@ -388,7 +388,7 @@
 
 ### P51-12 — the live smoke can run with the jail on
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
+**Status:** DONE (merged 2026-10-25, fd33d8b4) · **Size:** S · **Model:** Sonnet · **Kind:** tooling (scripts only, no `src/`)
 
 - **Trigger (measured 2026-10-25):** two live evals (local model and a remote one, 0/3 each) parked
   on an approval because the model ran `xxd` to read the artifact's bytes. The smoke runs
