@@ -22,3 +22,7 @@ sys.modules[_SMOKE_SPEC.name] = _smoke
 
 
 _SMOKE_SPEC.loader.exec_module(_smoke)
+
+
+REMOTE_KEY_ENV = "ANTHROPIC_API_KEY"
+CANARY_KEY = "sk-ant-canary-0123456789abcdef"
