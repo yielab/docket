@@ -332,7 +332,11 @@ def read_escalation(escalation_id: str) -> Escalation | None:
     file or a file that is not a valid escalation."""
     if not is_escalation_id(escalation_id):
         return None
-    return _parse_escalation(read_json(_record_path(escalation_id)))
+    # Settling writes the settled file before it removes the pending one, so reading the pending
+    # file first and the settled one second never misses a record that is moving between them.
+    return _parse_escalation(read_json(_escalation_path(escalation_id))) or _parse_escalation(
+        read_json(_settled_path(escalation_id))
+    )
 
 
 def _parse_escalation(doc: dict[str, Any]) -> Escalation | None:
@@ -360,10 +364,12 @@ def list_escalations(
         *(_read_folder(folder) if state in (None, "pending") else []),
         *(_read_folder(_settled_dir()) if state != "pending" else []),
     ]
+    # A record caught mid-move is in both folders: the settled copy is the newer one.
+    latest = {e.id: e for e in found}
     return sorted(
         (
             e
-            for e in found
+            for e in latest.values()
             if (state is None or e.state == state) and (since_seq is None or e.seq > since_seq)
         ),
         key=lambda e: e.seq,
