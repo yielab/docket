@@ -243,8 +243,9 @@ def _gate_pre_hop_approval(
 
 
 def _consult_budget_env(ctx: UnitContext, env: dict[str, str] | None) -> dict[str, str] | None:
-    """Once the task has parked consultations, this hop's cap is what the task has left
-    (``maxConsultationsPerTask`` minus them); before that the pod setting applies as is."""
+    """Once the task has consulted, this hop's cap is what the task has left
+    (``maxConsultationsPerTask`` minus the consultations it made, answered or not); before that
+    the pod setting applies as is."""
     used = ctx.task.consultations
     if used <= 0:
         return env

@@ -102,13 +102,23 @@ def attach(task: TaskRecord, escalation: Escalation) -> bool:
     return True
 
 
+def _list_on(record: TaskRecord, escalation: Escalation) -> bool:
+    """List *escalation* on *record*; a ``consult`` also spends one of the task's consultations,
+    whoever answers it (a person, the pod's own recommendation) and wherever it waits."""
+    if not attach(record, escalation):
+        return False
+    if escalation.kind == "consult":
+        record.consultations += 1
+    return True
+
+
 def _persist(escalation: Escalation) -> Escalation:
     """Write *escalation* and list it on its task when the pod's queue holds that task."""
     stored = write_escalation(escalation)
     if stored.task:
         repository = TaskRepository.for_pod(stored.pod)
         if repository.get(stored.task) is not None:
-            repository.update(stored.task, lambda record: attach(record, stored))
+            repository.update(stored.task, lambda record: _list_on(record, stored))
     return stored
 
 

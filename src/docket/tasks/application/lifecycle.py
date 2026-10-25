@@ -64,8 +64,6 @@ def _apply_result(
     record.hops = list(res.hops)
     record.cost_usd = res.cost_usd
     record.check_changed = list(res.check_changed)
-    if res.status == _state.Status.waiting_input and record.question_is_consultation:
-        record.consultations += 1
 
 
 def _task_usage(res: TaskResult) -> TaskUsage:

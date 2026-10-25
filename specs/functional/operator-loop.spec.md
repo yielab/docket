@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 2.13.0
+**Version**: 2.14.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-25
@@ -1002,10 +1002,12 @@ Reviewer) lets a model put a clarification or decision to its operator.
    step from the resolved record (area 10 item 3a); the parked hop replays
    at its own index and its next message ends with `Operator answered your consultation <id>:
    option <id> (<label>)` (plus any note) or `... declined. Decide yourself.` A decline records
-   one `declined_answer` correction. Each parked consult increments the task's `consultations`;
-   once it is non-zero dispatch passes `DOCKET_MAX_CONSULTATIONS` = the setting minus that count
-   (never below 0) as the hop's cap, so a fourth consult after three parked ones returns the
-   budget-exhausted error. Intake `input` steps are unchanged.
+   one `declined_answer` correction. Every `consult` escalation listed on the task increments the
+   task's `consultations` as it is listed -- one parked, one a person answers in the turn under
+   `wait`, and one the pod decides alone (item 7) alike -- and an `input` step does not; once it is
+   non-zero dispatch passes `DOCKET_MAX_CONSULTATIONS` = the setting minus that count (never below
+   0) as the hop's cap, so a fourth consult after three on the task, whoever answered them,
+   returns the budget-exhausted error. Intake `input` steps are unchanged.
 6. **The description tells the truth.** The `consult` description the model reads **MUST** say
    that asking ends the turn (in pod dispatch the task waits for a person and the answer arrives
    in the role's next message; outside it the call returns `no answer; decide yourself` at once),
