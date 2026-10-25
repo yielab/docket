@@ -38,6 +38,7 @@ specs/
 │   ├── trace-store.spec.md               # Durable per-session JSONL trace store, EVENT_TYPES, subscribe seam
 │   └── workspace-structure.spec.md       # DOCKET_HOME and per-member workspace layout
 ├── api/                                   # API contracts
+│   ├── a2a-binding.spec.md               # POST /a2a: the A2A JSON-RPC facade over tasks and escalations
 │   ├── cli-interface.spec.md             # CLI command contracts and return codes
 │   ├── mcp-server.spec.md                # docket start --mcp: the MCP tool surface
 │   ├── operator-api.spec.md              # HTTP operator API 6: tasks, lifecycle, pods, escalations
@@ -118,7 +119,8 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | CLI JSON Shapes | 4.2.0 | Complete |
 | docket-meta schema | 5.4.0 | Complete |
 | Docket Store | 2.1.0 | Implemented |
-| Operator API | 6.4.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 6.5.0 | Implemented (Phase 43, ADR 0027) |
+| A2A Binding | 1.0.0 | Implemented |
 | Serve Read API | 4.2.0 | Stable |
 | Adoption Benchmark | 2.1.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |

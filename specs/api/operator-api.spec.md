@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.4.0
+**Version**: 6.5.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-25
 
@@ -42,7 +42,10 @@ It does NOT cover:
 - The `/health` body itself and `GET /approvals` -- `serve-read-api.spec.md`
 - `--bind`, the Bearer token and the stop signals of `docket start` --
   `serve-read-api.spec.md` and `pod-dispatch.spec.md`
-- Multi-tenancy, external authentication, push, streaming, quotas (ADR 0027 "What this does
+- The A2A JSON-RPC binding (`POST /a2a`, `GET /.well-known/agent.json`) -- `a2a-binding.spec.md`;
+  it is a second door over the same task and escalation records and `resolve`, and adds no route
+  to this table
+- Multi-tenancy, external authentication, streaming, quotas (ADR 0027 "What this does
   not buy")
 
 ## Syntax

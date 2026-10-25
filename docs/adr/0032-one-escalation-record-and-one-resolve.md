@@ -54,3 +54,34 @@ question travels through `run`, `inbox`, `task show`, HTTP, MCP and Telegram. Ph
 
 - Retirement of the old shapes (P51-9) waits for Tack to consume `escalations[]` and
   `POST /escalations`.
+
+## A2A binding
+
+ADR 0016 deferred the A2A binding until a named client would call docket; Tack is that client
+(approved above). The facade is `POST /a2a` (JSON-RPC 2.0: `message/send`, `tasks/get`,
+`tasks/cancel`, `tasks/pushNotificationConfig/set|get`) and `GET /.well-known/agent.json`;
+`specs/api/a2a-binding.spec.md` is the contract. It adds no state:
+
+- A task is the queue's record and its state is `a2a_state` of it (ADR 0016 section 3).
+- A task in `INPUT_REQUIRED` carries its pending escalation as a `data` part, built from the
+  `EscalationView`: the MCP elicitation request (`message`, `requestedSchema`) and the
+  operator-v1.1 fields (`kind`, `options`, `recommendation`) plus `escalationId`,
+  `escalationKind`, `expiresAt`, `onExpiry`, `policy`.
+- A `message/send` that names a task and carries a result `data` part
+  `{action: accept|decline|cancel, content: {optionId?}}` calls `resolve`. `optionId` is lifted
+  out of `content` by the facade, as the other surfaces do.
+- A push config is a task-scoped `kind: channel` webhook document, so it is delivered by the
+  machinery that already delivers notifications.
+
+**Extension declaration.** The agent card lists one extension in `capabilities.extensions`, and
+every escalation message lists it in `extensions`: the URI is the `$id` of the operator-v1.1
+question schema (`https://docket.dev/schemas/operator-v1.1/question.schema.json`), whose fields
+the data part reuses. It is not `required`: a client that ignores it still reads `message`,
+`requestedSchema` and the text part and can answer with `accept` and an `optionId`.
+
+**Decided with it.** The agent card requires the Bearer token (it names every pod; docket's public
+routes are read-only status, metrics and health). The push body is the CloudEvent the webhook
+dialect already sends, not an A2A `Task`; the client reads the state with `tasks/get`. A push
+config with a `token` or `authentication` is refused, because a channel document stores credential
+names and never values. The task-scoped channel is never deleted when its task ends; a later
+sweep may remove it.
