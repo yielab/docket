@@ -13,6 +13,8 @@ PROVIDER_TEMPLATES_DIR = _TEMPLATES / "providers"
 EXPORTER_TEMPLATES_DIR = _TEMPLATES / "exporters"
 CHANNEL_TEMPLATES_DIR = _TEMPLATES / "channels"
 POLICY_TEMPLATES_DIR = _TEMPLATES / "policies"
+# The built-in `kind: autonomy` document: the table of what a pause does at each autonomy level.
+AUTONOMY_TEMPLATES_DIR = _TEMPLATES / "autonomy"
 # Shipped role, pipeline and policy recipe bundles (`templates/recipes/<name>/`).
 RECIPES_DIR = _TEMPLATES / "recipes"
 # The published config-v1 JSON Schemas, shipped byte-for-byte from `docs/contracts/config-v1/`;

@@ -22,6 +22,12 @@ class PodSettingsError(InvalidInput):
     """A pod setting's value is invalid: bad type, out of range, or unknown key."""
 
 
+def is_explicit(project: str, key: str) -> bool:
+    """Whether the pod's Lead meta carries *key* itself. A loaded ``PodSettings`` always holds a
+    value (the field default), so only the raw stored key tells a choice from its absence."""
+    return bool(_fleet.meta_get(member_id(project, "lead"), key, ""))
+
+
 # alias -> attribute, so the CLI and dispatch never hardcode a second copy of
 # this mapping next to PodSettings.KEYS.
 _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
