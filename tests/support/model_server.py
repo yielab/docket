@@ -326,3 +326,19 @@ def fake_model() -> Iterator[Callable[..., FakeModel]]:
     yield _start
     for model in started:
         model.stop()
+
+
+def write_file(path: str, content: str) -> Reply:
+    """A ``write`` tool call, the step most scripted implementers make."""
+    return call("write", path=path, content=content)
+
+
+def only_if(marker: str, then: Reply) -> Callable[[Request], Reply]:
+    """A step that answers *then* only when the request carries *marker*, else fails loudly."""
+
+    def step(request: Request) -> Reply:
+        if marker in request.last_user_text:
+            return then
+        return fail(400, f"fake model: the request does not carry {marker!r}")
+
+    return step

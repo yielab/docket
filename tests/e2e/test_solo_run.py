@@ -10,7 +10,16 @@ from collections.abc import Callable
 
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import World
-from tests.support.model_server import FakeModel, Reply, Request, call, calls, fail, say
+from tests.support.model_server import (
+    FakeModel,
+    Reply,
+    Request,
+    call,
+    calls,
+    only_if,
+    say,
+    write_file,
+)
 
 PIPELINE = """name: solo-run
 steps:
@@ -27,21 +36,6 @@ steps:
 """
 
 REVIEW_NOTE = "REQUEST-CHANGES: record the fix in NOTES.md"
-
-
-def _write(path: str, content: str) -> Reply:
-    return call("write", path=path, content=content)
-
-
-def _only_if(marker: str, then: Reply) -> Callable[[Request], Reply]:
-    """A step that answers *then* only when the request carries *marker*, else fails loudly."""
-
-    def step(request: Request) -> Reply:
-        if marker in request.last_user_text:
-            return then
-        return fail(400, f"fake model: the request does not carry {marker!r}")
-
-    return step
 
 
 def test_a_team_takes_a_failing_check_to_done_through_a_retry_and_a_rework(
@@ -61,9 +55,9 @@ def test_a_team_takes_a_failing_check_to_done_through_a_retry_and_a_rework(
             "implementer": [
                 first_attempt,
                 say("app.txt now says still broken."),
-                _only_if("GATE FAILED", _write("app.txt", "fixed\n")),
+                only_if("GATE FAILED", write_file("app.txt", "fixed\n")),
                 say("app.txt now says fixed."),
-                _only_if(REVIEW_NOTE, _write("NOTES.md", "app.txt says fixed\n")),
+                only_if(REVIEW_NOTE, write_file("NOTES.md", "app.txt says fixed\n")),
                 say("Recorded the fix in NOTES.md."),
             ],
             "reviewer": [say(REVIEW_NOTE), say("APPROVE")],
