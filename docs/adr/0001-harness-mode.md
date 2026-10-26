@@ -60,7 +60,7 @@ ROADMAP §6 and date it here.
   shipped, decision 5's version field is named `v` on the wire (currently `"1.0.0"`), not
   `harness_contract_version`.
 - **Date:** 2026-09-08
-- **Counterpart:** Tack ADR 0066, `~/Sites/objetivosMios/docs/adr/0066-docket-as-a-third-harness.md`.
+- **Counterpart:** Tack ADR 0066, `docs/adr/0066-docket-as-a-third-harness.md` in the Tack repository.
   It specifies the consumer side and explicitly builds nothing until this contract exists.
   **This document lands first.**
 - **Executable plan:** ROADMAP.md "Planned program — PHASE 24" and the Wave 30 cards in

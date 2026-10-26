@@ -2,7 +2,7 @@ kind: channel
 name: telegram
 dialect: telegram
 description: >-
-  docket's own Telegram bot (`core/telegram.py`). It can notify, converse and decide, but only
+  docket's own Telegram bot (`interfaces/telegram/bot.py`). It can notify, converse and decide, but only
   for a chat id you have explicitly allow-listed -- `enable` refuses while `actors` is empty.
   `docket setup notify enable telegram --chat <chat-id>` names the chat(s) allowed to answer,
   approve, or receive a push when a task needs input; it stays disabled until then. The same

@@ -1,0 +1,23 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tasks/pushNotificationConfig/set",
+    "params": {
+      "taskId": "<task-id>",
+      "pushNotificationConfig": {
+        "url": "http://127.0.0.1:9/hook"
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "taskId": "<task-id>",
+      "pushNotificationConfig": {
+        "url": "http://127.0.0.1:9/hook"
+      }
+    }
+  }
+}

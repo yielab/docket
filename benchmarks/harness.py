@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 from urllib.parse import quote
 
-from docket.core.handoff import HandoffArtifact
+from docket.kernel.handoff import HandoffArtifact
 
 SCHEMA_VERSION = "1.0.0"
 MAX_INPUT_BYTES = 16 * 1024 * 1024
@@ -996,7 +996,7 @@ def _assert_private(payload: bytes, home: Path, approval_tokens: list[str]) -> N
         _fail("normalized output contains secret-shaped text")
 
 
-def _atomic_write(path: Path, payload: bytes) -> None:
+def _stage(path: Path, payload: bytes) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -1004,11 +1004,49 @@ def _atomic_write(path: Path, payload: bytes) -> None:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(temporary)
+        raise
+    return temporary
+
+
+def _atomic_write(path: Path, payload: bytes) -> None:
+    temporary = _stage(path, payload)
+    try:
         os.replace(temporary, path)
     except Exception:
         with contextlib.suppress(OSError):
             os.unlink(temporary)
         raise
+
+
+def _atomic_write_pair(
+    first: Path, first_payload: bytes, second: Path, second_payload: bytes
+) -> None:
+    """Stage both outputs, then rename both; a failed second rename restores the first."""
+    staged: list[str] = []
+    try:
+        staged.append(_stage(first, first_payload))
+        staged.append(_stage(second, second_payload))
+        prior = first.read_bytes() if first.is_file() else None
+        os.replace(staged[0], first)
+        try:
+            os.replace(staged[1], second)
+        except OSError:
+            if prior is None:
+                with contextlib.suppress(OSError):
+                    first.unlink()
+            else:
+                with contextlib.suppress(OSError):
+                    _atomic_write(first, prior)
+            raise
+    except OSError as exc:
+        raise BenchmarkError(f"could not place the outputs: {exc}") from exc
+    finally:
+        for temporary in staged:
+            with contextlib.suppress(OSError):
+                os.unlink(temporary)
 
 
 def run_scenario(scenario_path: Path, home: Path, jsonl_path: Path, aggregate_path: Path) -> None:
@@ -1025,8 +1063,7 @@ def run_scenario(scenario_path: Path, home: Path, jsonl_path: Path, aggregate_pa
     _assert_private(jsonl_bytes + aggregate_bytes, resolved_home, [])
     # All parsing, joins, validation, aggregation, and privacy checks complete before either prior
     # output is replaced. Invalid input is therefore a two-file no-op.
-    _atomic_write(jsonl_path, jsonl_bytes)
-    _atomic_write(aggregate_path, aggregate_bytes)
+    _atomic_write_pair(jsonl_path, jsonl_bytes, aggregate_path, aggregate_bytes)
 
 
 def aggregate_jsonl(jsonl_path: Path, aggregate_path: Path) -> None:

@@ -20,7 +20,7 @@ Homepage = "https://github.com/yielab/docket"
 # `docket` owns the control-plane namespace. This distribution owns only
 # `docket_runtime`: the versioned facade and a private, transformed copy of the
 # existing runtime implementation. The build hook deliberately includes only
-# the measured runtime closure; it never ships CLI modules.
+# the runtime closure computed from the facade's import graph; it never ships CLI modules.
 [tool.hatch.build.targets.wheel]
 packages = ["src/docket_runtime"]
 

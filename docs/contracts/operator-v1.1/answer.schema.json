@@ -3,7 +3,7 @@
   "$id": "https://docket.dev/schemas/operator-v1.1/answer.schema.json",
   "title": "AnswerResultV11",
   "additionalProperties": false,
-  "description": "operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``. The\ncross-check against the question lives in ``validate_answer_v11``.",
+  "description": "operator-v1.1 answer: an ``AnswerResult`` plus the chosen ``optionId``.",
   "properties": {
     "action": {
       "enum": [

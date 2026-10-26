@@ -10,6 +10,28 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-10-25 (D-74 recorded, ADR 0034, Phase 52 extended to twelve cards) — the turn owns its
+  processes and its time; the network stays a tool.** A reading of the live path, one recorded run
+  and two probes answered whether the synchronous tool call, the timeouts and the closed network
+  leave an agent unable to do a team's work. Time is not too strict but badly stitched: `bash`'s
+  `timeout` has no ceiling (the recorded run asked 600 and 900 s inside a 300 s turn), the wall
+  clock never interrupts a tool, an overrun retries the whole hop, the claim is never refreshed
+  during a tool and the stale sweep sits below the resume lease. A trailing `&` passes the
+  classifier and the child outlives the call with no handle, no exit event and no kill: the one
+  shape outside the turn's reach. `fetch` returns raw HTML cut at the head; no search exists. The
+  network posture matches Codex cloud's and stays. Four cards (P52-9 to P52-12) and a fourth recipe
+  on P52-6; larger defaults, an open network, a PTY, cross-hop processes, wildcard domains and a
+  native search tool refused; a tool-caused timeout made non-retryable and Docker background
+  processes deferred with triggers.
+- **2026-10-25 (D-73 recorded, ADR 0033, Phase 52 planned) — the harness adapts to the model by
+  data, and pays for context once.** A code audit of the live path against a harness-engineering
+  survey found what docket already has (rules that survive compaction by construction, non-periodic
+  atomic compaction, lazy skills, typed handoffs, measured tokens with cache reads outside the
+  budget) and what it lacks: no sampling or profile per model, reasoning dropped, `tool_choice`
+  always `auto`, head-only truncation, no lossless normalization, no retrievable full output, a
+  finalization that rewrites the system prompt, a parse failure that asks a person, a Lead whose
+  reads are lost in prose. Eight cards cut by file ownership over two waves; keepalive, a bash
+  grammar, in-turn sub-agents and placeholder scrubbing refused; five items deferred with triggers.
 - **2026-10-12 (D-59 answered, D-60 recorded, ADR 0024, Phase 41 planned) — one execution
   envelope.** After Waves 98–99 the maintainer asked for the sandbox and command-permission
   architecture to be rethought against Claude Code, Codex CLI and OpenHands: one jail for

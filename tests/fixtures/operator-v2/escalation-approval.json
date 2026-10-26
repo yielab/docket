@@ -1,0 +1,52 @@
+{
+  "id": "<escalation-id>",
+  "task": "<task-id>",
+  "pod": "e2e",
+  "step": "",
+  "role": "implementer",
+  "kind": "approval",
+  "causedBy": "c1",
+  "prompt": "tool call 'bash': 'rm' is not on the curated allowlist; call=bash command=\"rm -rf build\"",
+  "options": [
+    {
+      "id": "approve_once",
+      "label": "Approve once",
+      "description": "Run this call now; ask again next time.",
+      "risks": [],
+      "estimatedTokens": null
+    },
+    {
+      "id": "approve_task",
+      "label": "Approve for this task",
+      "description": "Run this call and any identical one in this task.",
+      "risks": [],
+      "estimatedTokens": null
+    },
+    {
+      "id": "deny",
+      "label": "Deny",
+      "description": "Refuse this call; a reason can be given.",
+      "risks": [],
+      "estimatedTokens": null
+    }
+  ],
+  "recommendation": null,
+  "requestedSchema": null,
+  "askedAt": "<time>",
+  "expiresAt": "<time>",
+  "onExpiry": "deny",
+  "policy": "person",
+  "level": "L3",
+  "state": "pending",
+  "resolution": null,
+  "seq": 1,
+  "affordances": {
+    "options": [
+      "approve_once",
+      "approve_task",
+      "deny"
+    ],
+    "acceptsText": false,
+    "resolveUrl": "/escalations/<escalation-id>"
+  }
+}

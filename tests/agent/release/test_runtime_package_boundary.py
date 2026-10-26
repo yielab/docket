@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.support.cli import run as _run
 
 LANE = "release"
 REASON = "Prevents the separately shipped docket-runtime package from pulling in a CLI dependency, or from losing its own independently rebuildable, versioned artifact."
@@ -14,10 +15,6 @@ RETIRE_WHEN = "docket-runtime is folded back into the main package, or gains its
 
 ROOT = Path(__file__).resolve().parents[3]
 RUNTIME = ROOT / "packages" / "docket-runtime"
-
-
-def _run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=True)
 
 
 def _python(
@@ -47,8 +44,8 @@ assert not any(name == "docket" or name.startswith("docket.cli") for name in sys
 home = Path(os.environ["DOCKET_HOME"])
 (home / "policies").mkdir(parents=True, exist_ok=True)
 (home / "policies" / "approval.json").write_text(json.dumps({
-    "id": "approve-fake", "applies_to": ["*"], "hook": "pre_tool_call",
-    "match": {"type": "regex", "pattern": "fake"}, "action": "require_approval",
+    "kind": "policy", "name": "approve-fake", "appliesTo": ["*"], "on": "toolCall",
+    "when": {"matches": "fake"}, "then": "ask",
     "message": "external approval",
 }))
 runtime = Runtime(approval_stub=lambda token: token.startswith("apr-"))
@@ -172,7 +169,7 @@ def test_runtime_artifacts_are_disjoint_rebuildable_and_embed_without_cli(tmp_pa
         cwd=outside,
         env=env,
     )
-    _python(runtime_then_root, "import docket.core.tools", cwd=outside, env=env)
+    _python(runtime_then_root, "import docket.agent.tools.registry", cwd=outside, env=env)
 
     root_then_runtime = _venv(tmp_path, "root-then-runtime", env)
     _run(

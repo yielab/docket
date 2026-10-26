@@ -1,14 +1,14 @@
-"""Guard: core/ must never import ``subprocess`` (or os.system/os.popen).
+"""Guard: only the adapter layers import ``subprocess`` (or os.system/os.popen).
 
-The layering rule (CLAUDE.md) is that ``core/`` is pure domain logic and ``edges/``
-is the only side-effecting layer — every shell-out goes through ``edges/adapters/``.
-``core/dispatch.py`` in particular *orchestrates* agent turns but delegates the
-actual process execution to a driver (``edges/adapters/docket_runtime.py``'s
-``DocketDriver``, which itself never shells out -- it makes in-process HTTP
-calls) and the system adapter (``_sys.run_verify_cmd``). A design-pattern audit
-once wrongly claimed dispatch ran subprocesses itself; this test locks in the
-real invariant so that concern can never become true by regression. (Sibling
-of ``test_no_ui_in_core_edges.py``.)
+The layering rule is that the contexts' domain and application code is pure logic and the
+side-effecting layers -- ``platform/``, ``sandbox/``, every ``adapters/`` package, the built-in
+tool handlers in ``agent/tools/builtins/`` and ``interfaces/`` -- are the only places a process
+is started. Dispatch (``tasks/application/``) *orchestrates* agent turns but delegates the
+actual process execution to a driver (``hops/application/driver.py``'s ``DocketDriver``, which itself
+never shells out -- it makes in-process HTTP calls) and the ``platform``/``sandbox`` wrappers.
+A design-pattern audit once wrongly claimed dispatch ran subprocesses itself; this test locks in
+the real invariant so that concern can never become true by regression. (Sibling of
+``test_no_ui_in_core_edges.py``.)
 """
 
 from __future__ import annotations
@@ -21,8 +21,23 @@ import docket
 _SRC_ROOT = Path(docket.__file__).resolve().parent
 
 
-def _python_files(subdir: str) -> list[Path]:
-    return sorted((_SRC_ROOT / subdir).rglob("*.py"))
+_PROCESS_LAYERS = ("platform", "sandbox", "interfaces")
+
+
+def _may_start_processes(rel: Path) -> bool:
+    parts = rel.parts
+    return (
+        parts[0] in _PROCESS_LAYERS
+        or "adapters" in parts[:-1]
+        or parts[:3] == ("agent", "tools", "builtins")
+    )
+
+
+def _python_files() -> list[Path]:
+    """Every module that is not one of the process-starting layers."""
+    return sorted(
+        p for p in _SRC_ROOT.rglob("*.py") if not _may_start_processes(p.relative_to(_SRC_ROOT))
+    )
 
 
 def _shells_out(path: Path) -> bool:
@@ -48,8 +63,11 @@ def _shells_out(path: Path) -> bool:
     return False
 
 
-def test_core_never_shells_out() -> None:
-    offenders = [str(p) for p in _python_files("core") if _shells_out(p)]
+def test_only_the_adapter_layers_shell_out() -> None:
+    files = _python_files()
+    assert files, "the scan found no modules: the layout moved and this guard went vacuous"
+    offenders = [str(p) for p in files if _shells_out(p)]
     assert not offenders, (
-        f"core/ must be process-free — delegate execution to edges/adapters (_sys.*): {offenders}"
+        "only platform/, sandbox/, adapters/, agent/tools/builtins/ and interfaces/ may start "
+        f"a process; delegate to them: {offenders}"
     )

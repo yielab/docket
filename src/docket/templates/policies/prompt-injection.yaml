@@ -1,6 +1,6 @@
 kind: policy
 name: prompt-injection
-description: Detect instruction-override and exfiltration attempts in untrusted input
+description: A phrase tripwire for instruction-override and exfiltration wording in untrusted input; paraphrases, other languages and encodings pass
 appliesTo: ["*"]
 on: input
 when:

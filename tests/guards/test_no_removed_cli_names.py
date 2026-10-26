@@ -77,7 +77,7 @@ class TestTable:
             ),
             ("docket add reviewer", "docket pod add reviewer"),
             ("docket delete myapp", "docket pod delete --pod myapp"),
-            ("docket approve apr-1", "docket task approve apr-1"),
+            ("docket approve apr-1", "docket task answer apr-1"),
             ("docket chat x-lead", "docket task answer x-lead"),
             ("docket gates status", "docket setup sandbox status"),
             ("docket models provider add x", "docket setup provider add x"),
@@ -168,15 +168,3 @@ class TestLateEntries:
     )
     def test_rewrites_the_forms_a_doc_card_found_wrong(self, old: str, new: str) -> None:
         assert rcn.rewrite_line(old) == new
-
-
-class TestRecord:
-    def test_a_spec_changelog_is_neither_checked_nor_rewritten(self, tmp_path: Path) -> None:
-        spec = rcn.ROOT / "specs" / "functional" / "_rcn_probe.spec.md"
-        text = "# X\n\nUse `docket task add`.\n\n## Changelog\n\n- Added `docket delegate`.\n"
-        spec.write_text(text, encoding="utf-8")
-        try:
-            assert rcn.check([spec]) == []
-            assert list(rcn.diffs([spec])) == []
-        finally:
-            spec.unlink()

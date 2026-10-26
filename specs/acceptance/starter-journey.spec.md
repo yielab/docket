@@ -1,8 +1,8 @@
 # Extractable Starter Journey
 
-**Version**: 1.0.2
+**Version**: 2.1.0
 **Status**: Implemented — artifact-installed Python 3.11 journey tested outside the checkout
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-25
 
 ## Overview
 
@@ -35,9 +35,10 @@ prints the public inspection commands and state locators.
 
 ### An operator verifies what happened
 
-Using the same installed `docket` executable and `DOCKET_HOME`, an operator can list and show the
-dispatch run, export the project's trace, and verify the audit hash chain. These are root CLI
-contracts: the starter MUST NOT claim that `docket-runtime` owns the CLI run registry.
+Using the same installed `docket` executable and `DOCKET_HOME`, an operator can show the dispatch
+task (its output names the runs that executed it), export the task's trace, and verify the audit
+hash chain. These are root CLI contracts: the starter MUST NOT claim that `docket-runtime` owns the
+CLI run registry.
 
 ## Criteria
 
@@ -48,33 +49,42 @@ contracts: the starter MUST NOT claim that `docket-runtime` owns the CLI run reg
    artifact directory, copy only `examples/starter/` to a directory outside the checkout, create a
    fresh Python 3.11 environment, install the locked dependencies, and install the exact wheel with
    dependency resolution disabled.
-3. After installation, the journey MUST clear API-key and source-override variables, set package
-   installers offline, route any accidental proxy traffic to a closed loopback address, and allow
-   only the starter's ephemeral loopback model endpoint. The starter MUST print that endpoint as
-   `STARTER LOOPBACK <url>`; its OS-assigned port MUST NOT be 8081.
-4. The public command MUST first reach a persisted `waiting_approval` state and print
-   `STARTER DENIAL PAUSED`. Until the test sends `deny`, the declared target bytes MUST remain
-   unchanged. After public CLI denial, it MUST print `STARTER DENIAL CONFIRMED`, leave those bytes
-   unchanged, and persist a terminal `approval_denied` task.
-5. The same command MUST enqueue a fresh task, reach a second persisted approval pause, and print
-   `STARTER GRANT PAUSED`. Until the test sends `grant`, the target bytes MUST remain unchanged.
-   Public CLI grant plus resumed dispatch MUST mutate exactly `starter-output.txt`, changing its
-   bytes from `starter pending\n` to `docket starter approved\n`. No other workspace file MAY be
-   created, removed, or changed.
+3. After installation, the journey MUST clear the API-key variables (`ANTHROPIC_API_KEY`,
+   `DOCKET_LLM_API_KEY`, `OPENAI_API_KEY`, `SMOKE_LOCAL_API_KEY`) and the source-override variables
+   (`DOCKET_LLM_BASE_URL`, `PYTHONHOME`; `PYTHONPATH` is set empty), set package installers offline
+   (`UV_OFFLINE`, `PIP_NO_INDEX`), route the proxy variables to a closed loopback address, and allow
+   only the starter's ephemeral loopback model endpoint (`NO_PROXY` names loopback only). The starter
+   MUST print that endpoint as `STARTER LOOPBACK <url>`; its OS-assigned port MUST NOT be 8081.
+4. The public command MUST first reach a persisted `waiting_approval` state, listed by
+   `docket inbox --peek` as needing approval, and print `STARTER DENIAL PAUSED <escalation id>`. Until the
+   test sends `deny` at the starter's prompt, the declared target bytes MUST remain unchanged. After
+   public CLI denial (`docket task answer <escalation id> --option deny`), it MUST print `STARTER DENIAL CONFIRMED`, leave
+   those bytes unchanged, and persist the denied task as `failed` with `failureKind`
+   `approval_denied`.
+5. The same command MUST enqueue a fresh task with `docket task add`, reach a second persisted
+   approval pause, and print `STARTER GRANT PAUSED <escalation id>`. Until the test sends `grant`, the target
+   bytes MUST remain unchanged. Public CLI grant (`docket task answer <escalation id> --option approve_once`) plus resumed dispatch
+   MUST mutate exactly `starter-output.txt`, changing its bytes from `starter pending\n` to
+   `docket starter approved\n`. No other workspace file MAY be created, removed, or changed.
 6. The deterministic model MUST issue exactly one admitted `write` call with call id
    `starter-write`, observe its matching tool result, and then return the terminal summary
    `Starter journey completed.`. The done task's persisted final hop MUST contain the complete
-   `HandoffArtifact` object (`summary`, `files_changed`, `diff_ref`, `verdict`, `notes`, and
+   `HandoffArtifact` object (`summary`, `files_changed`, `diff_ref`, `diff`, `verdict`, and
    `brief`), and its legacy `output` MUST equal the typed artifact's summary.
-7. The installed public CLI MUST successfully execute `docket task list --pod docket-starter
-   --json`, `docket task show <id> --pod docket-starter --json`, `docket task trace <id> --pod
-   docket-starter --export`, and
-   `docket log verify`. List/show MUST agree on a successful run that names the completed task;
-   the exported trace MUST contain one adjacent `tool_call`/`tool_result` pair with matching
-   project, session, role, tool, and call id; audit verification MUST report a clean chain.
+7. The installed public CLI MUST successfully execute `docket task show <id> --pod docket-starter
+   --json`, `docket task trace <id> --pod docket-starter --export`, and `docket log verify`.
+   The `show` output MUST name a succeeded run whose task ids include the completed task. The
+   exported trace MUST contain one `tool_call` record and one `tool_result` record, in that order,
+   both with call id `starter-write` and the same session id. The acceptance test also requires the
+   matching project, the `implementer` role, the `write` tool, and an `ok`, `executed` result, and
+   exactly one `approval_task_denied`, one `approval_resumed`, and two `approval_required` events
+   across the two exported tasks. Audit verification MUST report `verified clean`. The starter
+   prints `docket task list --pod docket-starter --json` as an inspection locator; it does not run it.
 8. The starter MUST print `STARTER JOURNEY PASS` plus the target, task-list, trace, and audit
-   locators. Failure MUST be bounded and actionable, with no traceback for an expected missing
-   dependency or unavailable local prerequisite.
+   locators, and the inspection commands. Failure MUST be bounded and actionable: the starter prints
+   one `STARTER FAIL` line to stderr, carrying at most the last 2,000 characters of a failed
+   command's output, with no traceback for an expected missing `docket` executable or an
+   unavailable local prerequisite.
 9. The complete artifact journey MUST finish within 600 seconds. Its test MUST use isolated
    `DOCKET_HOME`, home, temporary, artifact, dependency-cache, workspace, and ephemeral-port state.
 
@@ -82,11 +92,10 @@ contracts: the starter MUST NOT claim that `docket-runtime` owns the CLI run reg
 
 | Scenario | Initial state | Public action | Observable result | Durable side effect / rollback oracle |
 | --- | --- | --- | --- | --- |
-| RED / missing starter | `examples/starter/` absent | Run the owning pytest | Explicit missing-starter assertion | No build, install, or user state occurs |
-| Pre-approval pause | Target is `starter pending\n` | Run the documented command | `STARTER DENIAL PAUSED` | Target and all other workspace bytes are unchanged |
-| Denial | First token is pending | Enter `deny` | `STARTER DENIAL CONFIRMED` | Task is `approval_denied`; workspace is unchanged |
+| Pre-approval pause | Target is `starter pending\n` | Run the documented command | `STARTER DENIAL PAUSED <token>` | Target and all other workspace bytes are unchanged |
+| Denial | First token is pending | Enter `deny` | `STARTER DENIAL CONFIRMED` | Task is `failed` with `failureKind` `approval_denied`; workspace is unchanged |
 | Grant | Fresh second token is pending | Enter `grant` | `STARTER JOURNEY PASS` | Exactly one target changes; done task has typed terminal handoff |
-| Public inspection | Journey completed | Run installed `runs`, `trace`, and `audit` commands | Commands exit zero with matching identities | Run/trace/audit remain under the isolated `DOCKET_HOME` |
+| Public inspection | Journey completed | Run installed `task show`, `task trace --export`, and `log verify` | Commands exit zero with matching identities | Run/trace/audit remain under the isolated `DOCKET_HOME` |
 | Offline/source isolation | Exact artifact is installed | Run with offline/proxy guards, empty `PYTHONPATH`, no API key | Loopback journey succeeds | Imported `docket` resolves inside the venv; `docket_runtime` is absent |
 
 The model transport is the only fake edge. Artifact building, dependency installation, the console
@@ -100,38 +109,26 @@ all use their production paths.
 - Supported interpreter: Python 3.11.
 - Time budget: at most 600 seconds for the full owning test.
 - Workspace mutation count: exactly one changed file and zero created/deleted files.
-- Approval outcomes: one denied task with zero tool mutations, then one granted task with one tool
-  mutation.
-- Trace identity: exactly one `starter-write` call/result pair with no orphan or duplicate.
+- Approval outcomes: one denied task (`failed`, `approval_denied`) with zero tool mutations, then one
+  granted task with one tool mutation.
+- Trace identity: exactly one `starter-write` call/result pair with no duplicate.
 - Credential/network posture: zero inherited API keys and no non-loopback model endpoint after
   artifact installation.
 
-## Changelog
+## Implementation
 
-### Version 1.0.2 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 1.0.1 (2026-09-29)
-
-- Corrected requirement 6's `HandoffArtifact` field list: Phase 34's Lead intake (D-50, ADR
-  0016) added `brief` to the model, which the starter's own persisted-shape check already
-  caught as a real regression (`examples/starter/starter.py`, `tests/agent/release/
-  test_starter_journey.py`) before this spec was brought back into agreement.
-
-### Version 1.0.0 (2026-09-02)
-
-- Shipped the extractable starter with a locked dependency set, deterministic ephemeral-loopback
-  model, and one installed-root-CLI command that proves denial rollback followed by approval and
-  exactly one governed workspace mutation.
-- Added artifact-installed acceptance evidence for the public run list/show, paired trace export,
-  persisted complete handoff shape, and clean audit-chain verifier, with no API key or
-  `docket-runtime` dependency.
-
-### Version 0.1.0 (2026-09-02)
-
-- Specified the RED contract for a copied-outside-checkout, root-artifact-installed Python 3.11
-  starter with live deny/grant byte oracles, persisted typed handoff, paired trace identity, public
-  run inspection, and public audit verification.
-- Kept the starter on the root `docket` CLI boundary; the separate `docket-runtime` facade neither
-  participates in this journey nor owns the CLI run registry.
+- `examples/starter/starter.py`: the starter command, its deterministic loopback model, and the `STARTER ...` markers.
+- `examples/starter/README.md`, `examples/starter/requirements.lock`: the copy-and-run instructions and the exact locked dependencies.
+- `tests/agent/release/test_starter_journey.py`: the owning acceptance test (release lane).
+- `pyproject.toml`: the `docket` console entry point (`[project.scripts]`).
+- `src/docket/interfaces/cli/commands/agents.py`: `init --from`.
+- `src/docket/interfaces/cli/commands/setup_model.py`: `setup provider add`, `setup model set`.
+- `src/docket/interfaces/cli/commands/task.py`: `task add`, `task show`, `task trace --export`, `task list`, `task answer`.
+- `src/docket/interfaces/cli/commands/inbox.py`: `inbox --peek`.
+- `src/docket/interfaces/cli/commands/run.py`: `run --pipeline`.
+- `src/docket/interfaces/cli/commands/log.py`: `log verify`.
+- `src/docket/tasks/domain/task.py`: task statuses, `failureKind`, hop results.
+- `src/docket/tasks/application/actions.py`: the approval gate's resume path.
+- `src/docket/governance/approval.py`: approval transitions.
+- `src/docket/kernel/handoff.py`: `HandoffArtifact`.
+- `src/docket/observability/telemetry.py`: approval trace event names and their fields.

@@ -3,6 +3,86 @@
   "$id": "https://docket.dev/schemas/config-v1/policy.schema.json",
   "title": "PolicyDocument",
   "$defs": {
+    "PolicyCommand": {
+      "additionalProperties": false,
+      "description": "A policy's ``when.command`` predicate -- see security-gates.spec.md (\"Policy format v1\").",
+      "properties": {
+        "program": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Program"
+        },
+        "verb": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verb"
+        },
+        "args": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Args"
+        },
+        "writes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Writes"
+        }
+      },
+      "title": "PolicyCommand",
+      "type": "object"
+    },
     "PolicyWhen": {
       "additionalProperties": false,
       "description": "A policy's structured predicate -- see security-gates.spec.md (\"Policy format v1\").\n`plugin`/`with` describe the predicate-plugin escape hatch (ADR 0010 \u00a74); the runtime\nengine's own support for them is a separate, later card.",
@@ -54,6 +134,17 @@
           ],
           "default": null,
           "title": "Branch"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolicyCommand"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "anyOf": {
           "anyOf": [

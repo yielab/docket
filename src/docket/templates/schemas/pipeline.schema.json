@@ -3,7 +3,7 @@
   "$id": "https://docket.dev/schemas/config-v1/pipeline.schema.json",
   "title": "PipelineDocument",
   "additionalProperties": false,
-  "description": "The short-form pipeline document -- see pipeline-format.spec.md (\"Short form\"). Each\n`steps` entry's own sugar keys are validated by `core.pipeline.normalize_pipeline`, not\nhere.",
+  "description": "The short-form pipeline document -- see pipeline-format.spec.md (\"Short form\"). Each\n`steps` entry's own sugar keys are validated by `pipeline.domain.spec.normalize_pipeline`, not\nhere.",
   "properties": {
     "kind": {
       "const": "pipeline",

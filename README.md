@@ -16,8 +16,12 @@ waits for your approval, and anything a policy forbids is refused. Every decisio
 tamper-evident log you can verify.
 
 The team itself is a few YAML files in your repository, so changing who does what is editing a
-file and committing it. docket works with any OpenAI-compatible model, hosted or running on your
-own machine.
+file and committing it. Roles, pipelines and policies combine freely, with no code: a Lead and an
+Implementer; the same pair behind a read-only security vetter that can send the change back once
+(`secure-build`); a Reviewer and a Critic judging the same change in parallel (`dual-review`); a
+builder on one provider's model checked by a reviewer on another's (`cross-family-review`). A
+pipeline can also route on a step's outcome, skip a step on a condition, run a command, or stop
+and ask you. docket works with any OpenAI-compatible model, hosted or running on your own machine.
 
 [Website](https://yielab.com/docket) · [Documentation](docs/README.md) ·
 [Quick start](docs/QUICK-START-DOCKET.md) · [Recipes](docs/recipes.md) ·
@@ -52,10 +56,12 @@ Five ideas cover everything docket does:
 
 Day to day you use a handful of commands: `init` creates the team, `task add` queues work, `run`
 takes the next task through the pipeline, `status` and `inbox` show where things stand and what
-needs you, and `task approve` answers what the gate is holding.
+needs you, and `task answer` settles whatever a task is waiting on, an approval or a question.
 
 docket is not an agent framework you program and not an interactive pair-programming assistant:
-it runs the team your files describe. It has no web UI of its own; `/status.json` and `/metrics`
+it runs the team your files describe. It works beside the coding assistant you already use: that
+assistant helps you in a session, under its own permission prompts; docket takes queued work
+through a team, under one set of rules for every member and every step. It has no web UI of its own; `/status.json` and `/metrics`
 feed your own board, and docket does not ship one.
 
 ## Install
@@ -140,8 +146,9 @@ setting; the [recipe library](docs/recipes.md) shows what each recipe adds.
 Read these before trusting docket with anything consequential:
 
 - **One machine, one operator.** No multi-tenancy, hosted scheduler or worker queue.
-- **Sandboxing is opt-in.** Until you run `docket setup sandbox on`, an agent's shell commands run
-  on your machine and can reach the network.
+- **Sandboxing needs a backend.** `docket init` turns it on where the machine has Landlock or
+  Seatbelt; without one, or after `docket setup sandbox off`, an agent's shell commands run on your
+  machine and can reach the network.
 - **The audit log is tamper-evident, not tamper-proof.** Deleting it is visible, not impossible.
 - **Costs are estimates.** Token counts are measured; docket records no dollar spend, and its
   budget limit works on a labelled estimate.

@@ -8,14 +8,15 @@ Agents don't respond to messages in Telegram groups, even though they're registe
 ### Common Causes
 
 #### 0. **It isn't a chat**
-docket's inbound Telegram bot is inbound-only and understands exactly five verbs: `/approve`,
-`/deny`, `/status`, `/delegate <task>`, and `/answer <task-id> <text>` (for a parked question).
+docket's inbound Telegram bot is inbound-only and understands exactly three verbs: `/status`,
+`/delegate <task>`, and `/answer <escalation-id> <option or text>` (for any
+pause, an approval included; the older `/answer <task-id> <text>` still answers a parked question).
 Plain prose is refused by design, this bot never messages a chat first, and `/delegate`/`/answer`
 answer with a task id or a confirmation, never the pipeline's output. Use `docket task list`/`docket task trace <task-id>`
 to see results. A *push* notification into the chat is a separate,
 opt-in mechanism — the `telegram` channel (`docket setup notify enable telegram --set
 actors=<chat-id>`) — scoped to the chat ids you explicitly list; it never turns on by itself and
-never replaces the five verbs above.
+never replaces the three verbs above.
 
 #### 1. **Invalid Model Name**
 
@@ -86,7 +87,7 @@ docket setup provider list                    # is TELEGRAM_BOT_TOKEN stored?
 
 **How to fix:**
 ```bash
-docket setup provider add TELEGRAM_BOT_TOKEN --credential  # if not already stored
+docket setup notify enable telegram --chat <chat-id>  # if the token is not already stored
 docket start --telegram             # or: docket start --dispatch --telegram
 ```
 
@@ -156,7 +157,7 @@ rather than assuming something is broken.
 ## Model / Endpoint Errors
 
 ### "no endpoint configured for this model"
-**Cause:** `edges/adapters/llm.py`'s `resolve_endpoint` couldn't find a base URL for the model's
+**Cause:** `models/application/endpoint.py`'s `resolve_endpoint` couldn't find a base URL for the model's
 provider — no `DOCKET_LLM_BASE_URL`, no registered global document, and the provider isn't one of
 the built-in catalog documents (`docket setup provider list`). Every built-in document has a
 mapping now — not only OpenRouter (`openrouter/...`) and Vercel AI Gateway (`ai-gateway/...`), but
@@ -327,7 +328,7 @@ Lead also un-blocks every `blocked` task in that pod at once:
 docket status                    # see measured token usage
 docket pod set budgetUsd <N>    # raise the cap (USD), if the spend is expected
 docket run --resume        # clear the auto-pause + unblock the pod's queue
-# → Unblocked 1 budget-blocked task(s) in pod 'myapp'.
+# → Unblocked 1 blocked task(s) in pod 'myapp'.
 # ✓ Resumed 'myapp-lead' — auto-pause cleared.
 ```
 
@@ -348,8 +349,10 @@ exactly this.
 
 ```bash
 docket inbox                              # everything across every pod that needs you, right now
-docket task approve <task-id>                  # grant it -- the exact same hop re-runs, once
-docket task deny <task-id>                     # deny it -- the task fails with approval_denied
+docket task answer <escalation-id> --option approve_once   # grant it -- the exact same hop re-runs, once
+docket task answer <escalation-id> --option deny           # deny it -- the task fails with approval_denied
+# a task id works in place of the escalation id (its newest pending pause):
+docket task answer <task-id> --option approve_once
 docket setup notify enable desktop            # this machine; or webhook/ntfy/telegram/email
 ```
 
@@ -367,10 +370,11 @@ though both read as `INPUT_REQUIRED` over the MCP/A2A surfaces.
 **Fix:**
 
 ```bash
-docket task answer <task-id>                     # see the question (and any brief/earlier answers); on a
-                                           # TTY, prompts and answers it in one step
-docket task answer <task-id> "<answer>"                    # non-interactive, single-property question
-docket task answer <task-id> --field name=value ...        # non-interactive, multi-property question
+docket task answer <escalation-id>               # on a TTY, shows the question and answers it in one step
+docket task answer <escalation-id> --option <id>           # non-interactive, a question with options
+docket task answer <escalation-id> "<answer>"              # non-interactive, single-property question
+docket task answer <escalation-id> --field name=value ...  # non-interactive, multi-property question
+# the task id works in place of the escalation id: docket task answer <task-id> ...
 ```
 
 An unanswered question past its own deadline moves the task to `blocked`
@@ -441,8 +445,7 @@ There is no per-agent `SNAPSHOT.md` or `.memory-index.json`, and there is no sep
 index: docket's own turn loop has no `memory_search` tool of its own, so an agent searches
 its memory files with the same `read`/`grep` tools it uses for anything else. The real per-agent
 memory contract is: `WORKFLOW_AUTO.md` (the startup contract for reading the workspace by hand; a docket
-turn composes its own startup contract instead), `HEARTBEAT.md` (the durable task ledger), `MEMORY.md`, and the dated
-`memory/YYYY-MM-DD.md` logs.
+turn composes its own startup contract instead), `HEARTBEAT.md` (the durable task ledger) and `MEMORY.md`.
 
 ### Agents still using large context?
 

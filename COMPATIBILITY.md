@@ -12,7 +12,7 @@ records what docket is verified against and how breaks are tracked. See the READ
 |------------|-----------------|-----|-------|
 | 0.2.x | Non-streaming OpenAI-compatible `/chat/completions` (function tools) | stdio servers, optional `[mcp]` extra | Hermetic wire coverage for OpenRouter/Vercel and explicitly registered compatible endpoints; no live-provider CI |
 
-- **Model endpoint.** `edges/adapters/llm.py` is the one module that knows the
+- **Model endpoint.** `models/adapters/openai_http.py` is the one module that knows the
   chat-completions wire format, built on stdlib `urllib` — no vendor SDK is pulled in. Any
   endpoint that speaks Docket's non-streaming OpenAI-compatible `/chat/completions` and function
   tool shapes can be used. OpenRouter and Vercel AI Gateway have built-in base URLs and central-key
@@ -45,8 +45,9 @@ exclusively Docket-backed. ACP, native/provider tools, plugins/MCP added beside 
 arbitrary framework configurations are outside the proof. This is not framework-neutral support.
 
 The separate [adoption evidence report](docs/ADOPTION-EVIDENCE.md) publishes the exact-artifact
-starter, governance, and recovery fixture results. It is deterministic contract evidence, not live
-provider or framework benchmarking.
+starter and scripted governance and recovery fixture results. It is deterministic contract
+evidence over records a driver wrote, not a product run and not live provider or framework
+benchmarking.
 
 A2A is not used because these configurations integrate with Docket in process. OTLP is not used
 by the adapters because JSONL trace records preserve project, session, role, call, and decision
@@ -73,7 +74,7 @@ constructors. Neither framework is a dependency of the base `docket-runtime` ins
 ## Policy
 
 - **Model-endpoint changes.** Providers occasionally change response shapes or error codes.
-  `edges/adapters/llm.py` treats a documented set of HTTP statuses (`408/409/425/429/500/502/503/504`) as
+  `models/adapters/openai_wire.py` treats a documented set of HTTP statuses (`408/409/425/429/500/502/503/504`) as
   retryable and everything else as a real rejection; a genuinely breaking wire-format change
   is called out in [CHANGELOG.md](CHANGELOG.md).
 - **MCP SDK changes.** The `[mcp]` extra pins a floor version, not a ceiling

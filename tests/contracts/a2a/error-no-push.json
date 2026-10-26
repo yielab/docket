@@ -1,0 +1,21 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tasks/pushNotificationConfig/get",
+    "params": {
+      "id": "<task-id>"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "error": {
+      "code": -32602,
+      "message": "task <task-id> has no push notification config",
+      "data": {
+        "reason": "no_push_config"
+      }
+    }
+  }
+}

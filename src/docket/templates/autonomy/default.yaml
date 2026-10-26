@@ -1,0 +1,32 @@
+kind: autonomy
+name: default
+description: >-
+  What happens to a pause when nobody is there, by kind of pause and by the task's autonomy
+  level. L3: a person validates everything. L4: a person only for a tool call that needs
+  approval (denied at its deadline). L5: nobody waits; a person is informed.
+  person = wait for one (in place at a terminal, parked without one);
+  recommendation = apply the model's own recommendation in the turn;
+  deny = refuse the call and fail the task needs_human;
+  fail = refuse what would ask a person.
+  A check the change itself defines (check_changed) can never be satisfied by a machine.
+rows:
+  approval:
+    L3: {policy: person, onExpiry: deny}
+    L4: {policy: person, onExpiry: deny}
+    L5: {policy: deny, onExpiry: deny}
+  consult:
+    L3: {policy: person, onExpiry: block}
+    L4: {policy: recommendation, onExpiry: block}
+    L5: {policy: recommendation, onExpiry: block}
+  input:
+    L3: {policy: person, onExpiry: block}
+    L4: {policy: fail, onExpiry: block}
+    L5: {policy: fail, onExpiry: block}
+  gate:
+    L3: {policy: person, onExpiry: deny}
+    L4: {policy: fail, onExpiry: deny}
+    L5: {policy: fail, onExpiry: deny}
+  check_changed:
+    L3: {policy: person, onExpiry: deny}
+    L4: {policy: person, onExpiry: deny}
+    L5: {policy: person, onExpiry: deny}

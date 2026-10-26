@@ -1,0 +1,6 @@
+clock 0
+ids 0
+text 3
+error-classes 0
+error-raises 0
+environ 28

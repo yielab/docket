@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import re
 import sys
 import textwrap
 from pathlib import Path
@@ -31,7 +32,7 @@ sys.path.insert(0, str(SRC))
 def _load_click_group():
     import typer.main
 
-    from docket.cli import app
+    from docket.interfaces.cli.app import app
 
     return typer.main.get_command(app)
 
@@ -52,12 +53,10 @@ _TOC_SLUG_OVERRIDES: dict[str, str] = {}
 def _slug(heading: str) -> str:
     """Slugify a heading the way Python-Markdown's `toc` extension does, so the
     anchors this script writes match the ones mkdocs renders."""
-    import re as _re
-
     if heading in _TOC_SLUG_OVERRIDES:
         return _TOC_SLUG_OVERRIDES[heading]
-    stripped = _re.sub(r"[^\w\s-]", "", heading.lower())
-    return _re.sub(r"\s+", "-", stripped.strip())
+    stripped = re.sub(r"[^\w\s-]", "", heading.lower())
+    return re.sub(r"\s+", "-", stripped.strip())
 
 
 # --- rendering --------------------------------------------------------------------
@@ -147,17 +146,17 @@ docket -V
 
 # NOTE ON THIS TABLE: like the old _ENV_VARS blob, this is still hand-typed prose, not
 # checked against the code -- fixing that would mean adding a canonical exit-code
-# registry somewhere in cli/, which no code currently defines and which is out of this
+# registry somewhere in interfaces/cli/, which no code currently defines and which is out of this
 # script's owned paths. What IS in scope, and done below: the codes are the ones a
-# `typer.Exit(N)`/`return N` grep across `src/docket/cli/` actually finds today (0, 1,
+# `typer.Exit(N)`/`return N` grep across `src/docket/interfaces/cli/` actually finds today (0, 1,
 # 2 only) -- a prior version of this table claimed 2 meant "Missing dependency" and
 # listed 3/4/5, none of which any command emits (`docket init`'s own missing-dependency
 # check returns 1, and Click's automatic usage-error path is what actually owns 2).
 _EXIT_CODES = """\
 | Code | Meaning |
 |------|---------|
-| 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 0 | Success (includes `task answer` re-resolving an escalation to the outcome it already has) |
+| 1 | Error (generic; also used by `task answer` on an unknown escalation, one that is no longer pending, or one being flipped to the opposite outcome, and `docket init`'s missing-dependency check) |
 | 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, or an unrecognized flag or command (an unknown command word names the live commands it could mean) |
 
 No command emits any other exit code today.
@@ -174,7 +173,7 @@ No command emits any other exit code today.
 # silently going undocumented.
 #
 # What is deliberately NOT here: `DOCKET_APPROVAL_MODE` and `DOCKET_PIPELINE_WORKTREE`
-# (core/runtime_driver.py) look like environment variables and are named like one, but
+# (agent/ports.py) look like environment variables and are named like one, but
 # both are documented at their definition as an "internal env-coordinate route" -- a
 # plain dict passed caller-to-driver through `run_turn`'s `env` argument, never read from
 # the real process environment. Neither name is ever passed to `os.environ.get`/`getenv`,
@@ -185,9 +184,9 @@ _BIN_DOCKET = ROOT / "bin" / "docket"
 
 # Real, but not something an operator tunes for docket's own behavior: PATH is the
 # ordinary OS search path, read only to build a minimal subprocess environment
-# (edges/adapters/toolbox.py, edges/adapters/system.py); DISPLAY and WAYLAND_DISPLAY are the
+# (agent/tools/builtins/toolbox.py, platform/process.py); DISPLAY and WAYLAND_DISPLAY are the
 # desktop session's own markers, probed once to decide whether `docket init` may offer the
-# `desktop` channel (edges/adapters/system.py::desktop_notifications_available). Excluded by
+# `desktop` channel (platform/process.py::desktop_notifications_available). Excluded by
 # name, not silently dropped, so the exclusion itself is visible to anyone reading this file.
 _ENV_SCAN_EXCLUDE = {"PATH", "DISPLAY", "WAYLAND_DISPLAY"}
 
@@ -232,15 +231,22 @@ def _os_environ_subscript_name(node: ast.Subscript) -> str | None:
     return sl.value if isinstance(sl, ast.Constant) and isinstance(sl.value, str) else None
 
 
-def _optional_int_env_call_name(node: ast.Call) -> str | None:
-    """`config._optional_int_env(name)` hides its literal from the scans above --
-    the read inside it uses the parameter, not a literal -- so its call sites need
-    their own check."""
-    if isinstance(node.func, ast.Name) and node.func.id == "_optional_int_env" and node.args:
-        arg = node.args[0]
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-            return arg.value
-    return None
+def _home_env_names() -> set[str]:
+    """The variable names `Home.from_environ` reads. They are string arguments to its parsing
+    helpers rather than `os.environ` calls, so the scan below would never see them."""
+    tree = ast.parse((SRC / "docket" / "kernel" / "home.py").read_text(encoding="utf-8"))
+    reader = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "from_environ"
+    )
+    return {
+        node.value
+        for node in ast.walk(reader)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and re.fullmatch(r"[A-Z][A-Z0-9_]*[A-Z0-9]", node.value)
+    }
 
 
 def _scan_python_env_names() -> set[str]:
@@ -249,7 +255,7 @@ def _scan_python_env_names() -> set[str]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                found = _os_environ_call_name(node) or _optional_int_env_call_name(node)
+                found = _os_environ_call_name(node)
                 if found:
                     names.add(found)
             elif isinstance(node, ast.Subscript):
@@ -262,25 +268,23 @@ def _scan_python_env_names() -> set[str]:
 def _scan_bin_docket_env_names() -> set[str]:
     """bin/docket is bash, not Python -- a regex pass over `${VAR:-...}`/`${VAR}`
     reads keeps the launcher's own overrides in the checked set too."""
-    import re as _re
-
     text = _BIN_DOCKET.read_text(encoding="utf-8")
-    return set(_re.findall(r"\$\{([A-Z][A-Z0-9_]*)(?::?-|\})", text))
+    return set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)(?::?-|\})", text))
 
 
 def _dispatch_retry_role_names() -> set[str]:
-    """`DISPATCH_RETRIES_{role.upper()}` in config.py is built from
-    DISPATCH_RETRIES_PER_ROLE's own key set -- read that set back instead of
-    re-typing the role names here, so a new role shows up automatically."""
-    from docket import config as _config
+    """`DISPATCH_RETRIES_{role.upper()}` in `Home.from_environ` is built from the roles
+    `Home.dispatch_retries_per_role` keys on -- read that set back instead of re-typing the role
+    names here, so a new role shows up automatically."""
+    from docket.kernel.home import Home
 
-    return {f"DISPATCH_RETRIES_{role.upper()}" for role in _config.DISPATCH_RETRIES_PER_ROLE}
+    return {f"DISPATCH_RETRIES_{role.upper()}" for role in Home(Path()).dispatch_retries_per_role}
 
 
 def _provider_credential_names() -> set[str]:
-    """Provider API-key env var names, read from the provider catalog (core/provider.py)
+    """Provider API-key env var names, read from the provider catalog (models/catalog.py)
     instead of re-typing them."""
-    from docket.core.provider import load_catalog
+    from docket.models.catalog import load_catalog
 
     names: set[str] = set()
     for spec in load_catalog().entries.values():
@@ -293,6 +297,7 @@ def _true_env_var_names() -> set[str]:
     reads -- what `_ENV_VAR_ROWS` below is checked against."""
     return (
         _scan_python_env_names()
+        | _home_env_names()
         | _scan_bin_docket_env_names()
         | _dispatch_retry_role_names()
         | _provider_credential_names()
@@ -326,12 +331,12 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("SKILLS_DIR",),
-        "The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads",
+        "The operator's own Agent Skills, the outermost of the three scopes `agent.skills.discover_skills` reads",
         "`$DOCKET_HOME/skills`",
     ),
     (
         ("APPROVALS_DIR",),
-        "Where `docket task approve`/`deny`'s approval-token store lives",
+        "Where the approval records behind `docket task answer` live",
         "`$DOCKET_HOME/approvals`",
     ),
     (
@@ -351,7 +356,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("SESSIONS_DIR",),
-        "Root of durable per-session turn history (`core/session.py`)",
+        "Root of durable per-session turn history (`agent/session.py`)",
         "`$DOCKET_HOME/sessions`",
     ),
     (
@@ -361,33 +366,33 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("PROVIDERS_FILE",),
-        "Global provider catalog scope (`docket setup provider add`, `core/provider.py`)",
+        "Global provider catalog scope (`docket setup provider add`, `models/catalog.py`)",
         "`$DOCKET_HOME/docket-providers.json`",
     ),
     (
         ("EXPORTERS_FILE",),
-        "Global exporter catalog scope (`core/exporter.py`)",
+        "Global exporter catalog scope (`observability/exporter.py`)",
         "`$DOCKET_HOME/docket-exporters.json`",
     ),
     (
         ("EXPORTERS_HEALTH_FILE",),
-        "Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`)",
+        "Per-exporter delivery counters and last-error state (`observability/exporter.py::read_health`)",
         "`$DOCKET_HOME/exporters-health.json`",
     ),
     (
         ("CHANNELS_FILE",),
-        "Global channel catalog scope (`core/channel.py`)",
+        "Global channel catalog scope (`operator/channel.py`)",
         "`$DOCKET_HOME/docket-channels.json`",
     ),
     (
         ("NOTIFY_STATE_FILE",),
-        "`core/notify.py::flush`'s dedupe snapshot, so two flushes over the same state "
+        "`operator/notify.py::flush`'s dedupe snapshot, so two flushes over the same state "
         "deliver each event once",
         "`$DOCKET_HOME/notify-state.json`",
     ),
     (
         ("CHANNELS_HEALTH_FILE",),
-        "Per-channel delivery counters and last-error state (`core/notify.py::flush`)",
+        "Per-channel delivery counters and last-error state (`operator/notify.py::flush`)",
         "`$DOCKET_HOME/channels-health.json`",
     ),
     (
@@ -403,12 +408,12 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     (("SESSION_TIMEOUT",), "Age past which an expired approval is denied (fail-closed)", "`3600`"),
     (
         ("APPROVAL_TIMEOUT",),
-        "The async approval-gate window (`core/dispatch.py`'s `require_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it",
+        "The async approval-gate window (`hops/gates/pre_hop.py`'s `_gate_pre_hop_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it",
         "`900`",
     ),
     (
         ("TOOL_APPROVAL_TIMEOUT",),
-        "The in-turn approval wait (`core/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT`",
+        "The in-turn approval wait (`governance/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT`",
         "`120`",
     ),
     (
@@ -532,6 +537,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         ("DOCKET_TOOL_MAX_OUTPUT_CHARS",),
         "Ceiling on one tool result's text before it is visibly truncated — tune down for a small-context endpoint",
         "`30000`",
+    ),
+    (
+        ("DOCKET_CLOCK_OFFSET_S",),
+        "Shifts the wall clock by this many seconds so a test can expire a deadline without waiting; unset or invalid is `0`",
+        "`0`",
     ),
     (
         ("AGENT_LOOP_WALL_CLOCK_TIMEOUT_S",),
@@ -658,7 +668,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
             "TOGETHER_API_KEY",
         ),
         "Per-provider API key, named by a built-in provider document's `auth.credentials` "
-        "(`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a "
+        "(`models/catalog.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a "
         "catalog-resolved credential is already present; also checked against docket's own "
         "secret store (`docket setup provider add`). A provider absent from the catalog falls back to "
         "`<PROVIDER>_API_KEY`",

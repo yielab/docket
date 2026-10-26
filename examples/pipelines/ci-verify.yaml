@@ -10,41 +10,26 @@
 # REQUEST-CHANGES verdict from Reviewer sends the pod back to Implementer for
 # up to 2 rework cycles before the step fails outright.
 #
-# This is the one pipeline dialect docket actually executes (core/pipeline.py
-# + core/orchestrator.py) — the retired Lobster `docket workflow` dialect
+# This is the one pipeline dialect docket actually executes (pipeline/domain/spec.py
+# + hops/application/executor.py) — the retired Lobster `docket workflow` dialect
 # (free-form shell/LLM steps with string interpolation) was never wired to an
 # executor and is gone (ROADMAP decision D-16). A pipeline step targets a pod
 # *role*, not an arbitrary shell command chain; the command below only lives
 # inside a `mechanical` gate, which runs it in the Implementer's own
 # workspace after that hop.
+kind: pipeline
 name: ci-verify
 description: Build and verify a change, gated on tests and a human-reviewed diff.
 
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
 
-  - id: build
-    role: implementer
-    gate:
-      type: mechanical
-      command: "pytest -q"
-      timeout: 600
+  - build: implementer
+    verify: {command: "pytest -q", timeout: 600}
 
-  - id: review
-    role: reviewer
-    gate:
-      type: verdict
-      pattern: "^(APPROVE|REQUEST-CHANGES)$"
-      passValues: ["approve"]
-      rework:
-        to: build
-        when: ["request-changes"]
-        maxCycles: 2
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 2}}
 
-  - id: test
-    role: tester
-    gate:
-      type: verdict
-      pattern: "^(PASS|FAIL)$"
-      passValues: ["pass"]
+  - test: tester
+    verdict: [PASS, FAIL]

@@ -1,16 +1,16 @@
 # MCP Server Contract Specification
 
-**Version**: 1.9.2
+**Version**: 2.0.0
 **Status**: Implemented
-**Last Updated**: 2026-10-08
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
 This specification defines `docket start --mcp` — an MCP (Model Context Protocol) stdio server
-that exposes docket's control plane (pods, task queue, dispatch, the run registry, HITL
-approvals, and recorded cost) as MCP tools, so any MCP client (Claude Code, Codex, or any other
+that exposes docket's control plane (pods, task queue, dispatch, the run registry, the
+escalations that wait on a person, and recorded cost) as MCP tools, so any MCP client (Claude Code, Codex, or any other
 compliant client) can drive docket *through* the same governance spine a CLI invocation goes
-through, never around it (ROADMAP Phase 18 L-3).
+through, never around it.
 
 ## Scope
 
@@ -24,44 +24,44 @@ This specification covers:
 
 It does NOT cover:
 
-- The underlying `core/dispatch.py` state machine (hop order, budget gating, retries, the
-  Reviewer/Tester verdict gates) — see `pod-dispatch.spec.md`
+- The pod dispatch state machine (hop order, budget gating, retries, the Reviewer/Tester verdict
+  gates) — see `pod-dispatch.spec.md`
 - The run registry's own schema and lifecycle — see `serve-read-api.spec.md`'s `/runs` section
-  and `cli-json-shapes.spec.md`
-- The approval token lifecycle itself (`pending → granted/denied/expired`) — see
-  `security-gates.spec.md`
+- The approval lifecycle itself (`pending → granted/denied/expired`) — see
+  `security-gates.spec.md`; and what resolving an escalation does — `operator-loop.spec.md` area 10
 - The audit log's format and tamper-evidence chain — see `audit.spec.md`
-- Agent-side MCP *client* configuration (Docket consuming MCP tools inside a turn); see `mcp-client.spec.md`. The retired external-runtime feasibility spike is historical and lives in this spec’s changelog, ROADMAP, and Git history.
+- Agent-side MCP *client* configuration (docket consuming MCP tools inside a turn); see `mcp-client.spec.md`.
 
 ## Design constraint: a server, never a host
 
 `docket start --mcp` exposes docket's own control plane as MCP tools for an external client to
 call. It MUST NOT become an MCP *host*: this server has no notion of an upstream MCP server to
 call; it only ever answers requests. Docket consuming external MCP servers' tools inside an agent
-turn does exist since decision D-19 (docket owns the loop), but it lives in `core/mcp_tools.py`
-and `DocketDriver.run_turn` (see `mcp-client.spec.md`), never in this server.
+turn is a separate feature that lives in the turn path (`DocketDriver.run_turn`; see
+`mcp-client.spec.md`), never in this server.
 
 ## Design constraint: through the governance spine, not around it
 
 Every tool call MUST go through the same paths a CLI invocation (or, where one exists, a
 `docket start` HTTP call) would:
 
-1. **Audited.** Every tool call — including the six read-only ones, which have no other audited
-   surface anywhere in this project — writes an audit-log entry (`core/audit.py`, action
+1. **Audited.** Every tool call — including the seven read-only ones (`status`, `pods`, `queue`
+   without `retry_task_id`, `runs`, `inbox`, `escalations`, `cost`), which have no other audited
+   surface anywhere in this project — writes an audit-log entry (action
    `mcp.<tool>`) that participates in the same `seq`/`prev_hash` tamper-evidence chain as every
    other audit entry (see `audit.spec.md`). This entry is written unconditionally, before the
    underlying operation runs, so a call is recorded even if that operation goes on to fail.
-2. **No parallel logic.** `dispatch`, `delegate`, `approvals_grant`, and `approvals_deny` call the
-   *exact same* `core/` functions the CLI and `docket start`'s HTTP API already call
-   (`core.dispatch.dispatch_pod`/`enqueue_task`, `core.approval.approval_grant`/`approval_deny`).
+2. **No parallel logic.** `dispatch`, `delegate` and `resolve` call the
+   *exact same* functions the CLI and `docket start`'s HTTP API already call
+   (`dispatch_pod`/`enqueue_task_once`, `resolve`).
    There is no MCP-specific dispatch path, no auto-approve, and no shortcut around a budget or
    approval gate. The only MCP-specific behavior is tagging the approval channel as `"mcp"` and
    the run source as `"mcp"` — the same convention `"cli"`/`"http"`/`"webhook"` already establish.
-3. **Presentation-tier only.** `cli/_mcp.py` is a transport/presentation module, like `cli/_pod.py`
-   or `serve.py` — it reuses `core/` services directly and never duplicates their business logic.
-   `core/` has no knowledge that MCP exists (the one addition, `RunSource`'s `"mcp"` literal in
-   `core/runs.py`, is a generic string tag identical in kind to `"cli"`/`"webhook"`, not an
-   MCP-specific dependency).
+3. **Transport only.** The MCP server is a transport/presentation layer, like the CLI and the HTTP
+   API — it reuses the domain services directly and never duplicates their business logic. The
+   domain has no knowledge that MCP exists: the run source `"mcp"` and the approval channel `"mcp"`
+   are generic string tags identical in kind to `"cli"`/`"webhook"`/`"http"`, not an MCP-specific
+   dependency.
 
 ## Syntax
 
@@ -70,7 +70,8 @@ docket start --mcp
 ```
 
 `docket start --mcp` combined with `--dispatch`, `--telegram` or `--token-file` prints a usage error
-(to stderr — see stdio discipline below) and exits `2`. The MCP client configuration commands
+(to stderr — see stdio discipline below) and exits `2`. `--mcp` runs only the MCP server: no HTTP
+listener, no sweeps, no dispatch loop. The MCP client configuration commands
 (`docket setup mcp list|add|remove`, see `mcp-client.spec.md`) are a separate group.
 
 ## Transport
@@ -85,7 +86,7 @@ process and speaks the protocol over its stdin/stdout pipes.
 ### stdio discipline
 
 An MCP stdio server's stdout **IS** the protocol channel — any stray non-protocol byte on stdout
-corrupts the stream. `cli/_mcp.py`'s tool functions MUST NOT import or call `docket.ui` (which
+corrupts the stream. The MCP tool functions MUST NOT import or call `docket.interfaces.cli.render.ui` (which
 prints Rich-formatted output to stdout for every other command) and MUST return plain data, never
 print. The one human-readable line `docket start --mcp` itself prints (confirming the tool count at
 startup) MUST go to stderr, never stdout.
@@ -94,10 +95,9 @@ startup) MUST go to stderr, never stdout.
 
 The official `mcp` Python SDK is **not** a base dependency — it is an optional extra
 (`docket[mcp]`, pinned `mcp>=2.0.0`, no upper bound) so a base `pip install docket` stays
-dependency-light (the SDK pulls in starlette, uvicorn, cryptography, jsonschema, and more).
-`docket start --mcp` imports the SDK lazily, inside its own function, guarded by
-`try`/`except ImportError` — the same pattern this project already uses for the optional PyYAML
-dependency (`core/pipeline.py`/`cli/_agents.py`). When the SDK is missing, `docket start --mcp` prints
+dependency-light. `docket start --mcp` imports the SDK lazily, only when it starts serving,
+guarded by `try`/`except ImportError`, so importing docket never requires it. When the SDK is
+missing, `docket start --mcp` prints
 an actionable install hint to stderr and exits `1` instead of raising a bare traceback:
 
 ```
@@ -106,35 +106,31 @@ Install it with:  pip install 'docket[mcp]'
 (uv projects:      uv sync --extra mcp   or   uv pip install 'docket[mcp]')
 ```
 
-This integration targets `mcp`'s 2.x line's `mcp.server.MCPServer` — a high-level,
-decorator/`add_tool`-based server that is the direct successor of the 1.x line's
-`mcp.server.fastmcp.FastMCP` (same registration ergonomics: `add_tool(fn, name=...)`,
-`server.run(transport="stdio")`), just renamed and relocated as part of the SDK's 2.0 rework.
-`mcp.server.fastmcp` was removed outright in 2.0 (not deprecated in place), which is why the
-extra's floor moved to `2.0.0`; there is no reason to keep an upper bound once the integration
-targets the module that actually ships.
+The server is built on `mcp.server.MCPServer` (`add_tool(fn, name=...)`,
+`server.run(transport="stdio")`); the extra's floor is `2.0.0` and it has no upper bound.
 
 ## Tools
 
-Thirteen tools, grouped by the control-plane surface they expose. Every response shape below is a bare
+Eleven tools, grouped by the control-plane surface they expose. Every response shape below is a bare
 JSON value (object, per this project's "no envelope wrapper" convention — see
 `cli-interface.spec.md`'s Output Formats section) — there is no generic `{ok, data, error}`
 wrapper on the successful path. A tool that cannot complete (bad input, an unknown id, an invalid
 state transition) raises instead of returning an inline error field; the MCP SDK turns any raised
 exception from a tool call into a `CallToolResult` with `isError: true` carrying the message —
 this is the MCP-native way to signal "this call failed," so a successful response's shape never
-has to reserve a field for an error case that didn't happen. Two tools' *successful* response
-shapes do carry an `"ok": true` field — `dispatch` and `approvals_grant`/`approvals_deny` — because
-those shapes are a deliberate byte-for-byte match with `docket start`'s existing
-`POST /dispatch/<project>` and `POST /approvals/<token>` response bodies (see
-`serve-read-api.spec.md`), not a new generic envelope convention.
+has to reserve a field for an error case that didn't happen. Three tools' *successful* response
+shapes do carry an `"ok": true` field — `dispatch`, `resolve` and `task_pregrant` — because
+`dispatch` is a deliberate byte-for-byte match with `docket start`'s existing
+`POST /dispatch/<project>` response body (see `serve-read-api.spec.md`), and the other two follow
+the same convention; none is a generic envelope.
 
 ### `status`
 
 **Purpose**: Fleet-wide status snapshot — enabled channels, every agent's
 model/registration/cost, and total recorded spend.
 **Arguments**: none.
-**Output**: identical shape to `docket start`'s `GET /status.json` (see `serve-read-api.spec.md`).
+**Output**: identical shape to `docket start`'s `GET /status.json` (see `serve-read-api.spec.md`),
+including its `apiVersion`.
 **Failure modes**: none expected in normal operation.
 
 ### `pods`
@@ -151,17 +147,19 @@ Members are ordered Lead-first, matching `docket pod show`'s own member ordering
 
 ### `queue`
 
-**Purpose**: Show a pod's task queue (all statuses, not just pending); optionally un-block one
-`blocked` task first.
+**Purpose**: Show a pod's task queue (all statuses, not just pending); optionally re-queue one
+`blocked` or `failed` task first.
 **Arguments**:
 
 - `project` (string, required)
-- `retry_task_id` (string, optional) — mirrors `docket task retry <task-id>`
+- `retry_task_id` (string, optional) — mirrors `docket task retry <task-id>`: a `blocked` or
+  `failed` task goes back to `pending`, keeping its hops and clearing its block/failure fields,
+  and the retry is audited as `task.retry` in addition to `mcp.queue`
 
-**Output**: `{"project": "myapp", "tasks": [...]}` — the task shape matches `docket task list`'s
-underlying records (see `pod-dispatch.spec.md`).
-**Failure modes**: raises if `retry_task_id` is given but does not name a currently-`blocked` task
-in that project's queue.
+**Output**: `{"project": "myapp", "tasks": [...]}` — the pod's task records as stored (see
+`pod-dispatch.spec.md`); the retry, when given, is applied before the queue is read.
+**Failure modes**: raises if `retry_task_id` is given but does not name a `blocked` or `failed`
+task in that project's queue (the message says "not a failed or blocked task").
 
 ### `delegate`
 
@@ -172,7 +170,11 @@ in that project's queue.
 - `description` (string, required) — 1–500 chars
 - `priority` (string, optional, default `"normal"`) — `high` | `normal` | `low`
 
-**Output**: the created task record (bare, matching `core.dispatch.enqueue_task`'s return value).
+The task is recorded with channel `mcp`. The tool takes only these three arguments: the other
+`docket task add` inputs (`--brief`, `--external-ref`, `--idempotency-key`, `--base-ref`,
+`--pipeline`, `--gate`, `--max-tokens`, ...) and the matching `POST /tasks/<project>` fields are not
+available over MCP.
+**Output**: the created task record (the task of the `(task, created)` pair `enqueue_task_once` returns, bare).
 **Failure modes**: raises on an empty or >500-char description, an invalid `priority`, or a
 `project` with no provisioned pod — the same validation `docket task add` applies.
 
@@ -187,7 +189,7 @@ in that project's queue.
 - `timeout` (integer, optional) — overrides both the agent-turn and `verifyCmd` timeout for this
   run only; MUST be a positive integer if given
 
-**Gating**: calls `core.dispatch.dispatch_pod` directly — the pod budget cap, the Implementer's
+**Gating**: calls `dispatch_pod` directly — the pod budget cap, the Implementer's
 `verifyCmd` gate, the Reviewer verdict gate, and the Tester PASS/FAIL gate all apply exactly as
 they do for the CLI and the `docket start` webhook. There is no MCP-specific dispatch path.
 **Output**: `{"ok": true, "run": "run-...", "project": "myapp", "status": "dispatched"}` —
@@ -208,104 +210,84 @@ or a dispatch-pipeline exception does NOT raise from this call — it surfaces a
 - `project` (string, optional) — filter to one pod
 - `run_id` (string, optional) — fetch a single record
 
-**Output**: `{"runs": [...]}` (newest-first) when no `run_id` is given, matching `docket task list
---json`; the bare record (matching `docket task show <id> --json`) when `run_id` is given.
+**Output**: `{"runs": [...]}` (newest-first) when no `run_id` is given, identical to
+`docket start`'s `GET /runs` (with `?project=`); the bare run record, identical to `GET /runs/<id>`,
+when `run_id` is given (`run_id` wins over `project`).
 **Failure modes**: raises if `run_id` is given but unknown.
 
-### `approvals_list`
+### `resolve`
 
-**Purpose**: List pending HITL approvals awaiting a grant/deny decision.
-**Arguments**: none.
-**Output**: `{"pending": [...]}` — identical shape to `docket start`'s `GET /approvals`.
-
-### `approvals_grant`
-
-**Purpose**: Grant a pending approval token — the same grant `docket task approve <id>` records / `docket
-start`'s `POST /approvals/<token>` with `{"action": "grant"}`.
-**Arguments**: `token` (string, required); `option` (string, optional: `approve_once` or
-`approve_task`; anything else raises before any change). `approve_task` is recorded with
-`approval_set_option` before the grant, so a parked pod task gains the task-wide grant of
-operator-loop 5a (channel `mcp`); a refused 21st grant adds a `note` to the output.
-**Gating**: calls `core.approval.approval_grant(token, channel="mcp")` — the exact function every
-other channel calls, tagged so the audit trail records which surface performed the grant. No
-MCP-side bypass, auto-approve, or alternate transition path of any kind. If *token* gates a
-pod-dispatch task waiting on it (`waiting_approval`), the same `core.dispatch.resolve_waiting_approval`
-call the CLI/HTTP/Telegram channels make resumes it: the task returns to `pending` with the exact
-hop it stopped on handed to the next dispatch run as a single-use gate override (see
-pod-dispatch.spec.md, "require_approval gate and waiting_approval"). This resolution runs even on
-an already-granted token (see Failure modes) — it is not skipped just because the call raises.
-**Output**: `{"ok": true, "token": "apr-...", "state": "granted"}`.
-**Failure modes**: raises if the token is unknown, or if it is not currently `pending` (already
-granted, denied, or expired) — an already-granted token raises rather than silently reporting
-success, a deliberate difference from `docket task approve`'s CLI behavior (which treats a repeat grant
-as a benign warning, exit 0): an automated MCP caller should learn explicitly that its call did
-not perform a fresh state transition, rather than receiving an ambiguous `"ok": true` for a call
-that changed nothing. The `resolve_waiting_approval` follow-up still runs before this raise, so a
-dispatch task stuck `waiting_approval` from an earlier grant that never reached it is still freed.
-
-### `approvals_deny`
-
-**Purpose**: Deny a pending approval token — the same denial `docket task deny <id>` records / `docket start`'s
-`POST /approvals/<token>` with `{"action": "deny"}`.
-**Arguments**: `token` (string, required).
-**Gating**: calls `core.approval.approval_deny(token, channel="mcp")`, mirroring
-`approvals_grant`. If *token* gates a pod-dispatch task waiting on it, the same
-`core.dispatch.resolve_waiting_approval` follow-up fails that task immediately
-(`failureKind: "approval_denied"`) — never auto-retried by a later dispatch, even with `--resume`.
-**Output**: `{"ok": true, "token": "apr-...", "state": "denied"}`.
-**Failure modes**: same as `approvals_grant`, including that the `resolve_waiting_approval`
-follow-up still runs before the raise.
-
-### `task_answer`
-
-**Purpose**: Answer a task's parked `input` question — identical to `docket task answer
-<task-id>` / `docket start`'s `POST /tasks/<task-id>/answer`.
-**Arguments**: `project` (string, required), `task_id` (string, required), `action` (string,
-required — `"accept"`, `"decline"` or `"cancel"`), `content` (object, optional).
-**Gating**: calls `core.answers.answer_task(channel="mcp", actor="mcp")` — the exact function
-every other surface calls, so the schema/`pre_input` screen and the resume onto the step's own
-route are byte-for-byte the same as `docket task answer`/the HTTP route.
-**Output**: `{"ok": true, "task": "<task_id>", "project": "<project>", "action": "accept"}`.
-**Failure modes**: raises (`McpToolError`) naming the policy id if the answer's `content` matched
-a `pre_input` `block` policy; raises naming the underlying reason for an unknown task, a task not
-currently `waiting_input`, or `content` failing the question's own `requestedSchema`.
+**Purpose**: Settle one escalation: choose one of its options, give content. The one tool that
+answers an approval, a gate, a changed check, a consult and an `input` step alike — identical to
+`POST /escalations/<id>` (`operator-api.spec.md`).
+**Arguments**: `escalation_id` (string, required: the `id` an `escalations` entry or an `inbox`
+`escalations[]` entry carries), `option_id` (string, optional: one of the entry's
+`affordances.options`; `cancel` is an alias of `decline`; omitted only for a question whose options
+are just `decline`), `content` (object, optional: the answer against `requestedSchema`, or
+`{"reason": "<text>"}` for an approval).
+**Gating**: calls `resolve(escalation_id, option_id, content, by="mcp", channel="mcp")`
+(`operator-loop.spec.md` area 10) — the exact function every other surface calls, so the option
+check, the schema check, the `pre_input` screen and the continuation (grant and resume, deny and
+fail, answer and resume) are the same whichever surface settles the pause.
+**Output**: `{"ok": true, "escalation": "esc-...", "state": "resolved"}`, plus `"note"` only when a
+task-wide grant was refused.
+**Failure modes**: raises `McpToolError` for an unknown id, an escalation already settled or
+whose approval or question is no longer waiting (a repeat raises, it never reports success), an
+unknown option, content that fails the schema, or content a `pre_input` policy blocks. A refusal
+never carries an approval token.
+**Not tools**: `approvals_list`, `approvals_grant`, `approvals_deny` and `task_answer` do not
+exist; `escalations` lists the pauses and `resolve` settles them (`approve_once`, `approve_task`
+and `deny` for an approval, an option id or `decline` for a question).
 
 ### `task_pregrant`
 
 **Purpose**: Record a single-use pre-grant for one exact command on one task, ahead of dispatch
-(ADR 0016 §10) — identical to `docket task approve <task-id> --for "<command>"` / `docket
+(ADR 0016) — identical to `docket task pregrant <task-id> "<command>"` / `docket
 start`'s `POST /tasks/<task_id>/pregrants`.
 **Arguments**: `project` (string, required), `task_id` (string, required), `command` (string,
 required — the exact command line to pre-approve), `tool` (string, optional, default `"bash"`).
-**Gating**: calls `core.interruptions.record_pregrant(project, task_id, command, tool=tool,
-channel="mcp", actor="mcp")`, which calls `core.approval.create_pregrant` exactly as an in-turn
-park does, then appends the grant to the task's own `pregrants` list — the same shape a live park
-already produces. When the pipeline later reaches that exact call (matched by
-`core.operator_contract.canonical_args_digest`), it passes once without asking again.
+**Gating**: calls `record_pregrant(project, task_id, command, tool=tool, channel="mcp",
+actor="mcp")`, which creates the pre-grant exactly as an in-turn park does and names the task in
+the record, which is what the task's hops read. When the pipeline
+later reaches that exact call (matched by the canonical arguments digest), it passes once without
+asking again.
 **Output**: `{"ok": true, "token": "apr-...", "task": "<task_id>", "project": "<project>"}`.
-**Failure modes**: raises (`McpToolError`) if *task_id* is not in *project*'s own task queue.
+**Failure modes**: raises if *task_id* is not in *project*'s own task queue.
 
 ### `inbox`
 
 **Purpose**: The derived operator inbox — every pod's tasks needing a human, plus pending
-approvals, failed/done/running context — identical to `docket start`'s `GET /inbox`.
+escalations, failed/done/running context — identical to `docket start`'s `GET /inbox`.
 **Arguments**: `since` (string, optional) — an ISO timestamp; restricts `doneSince` to tasks that
 completed after it. Omitted, `doneSince` lists every terminal task.
-**Output**: `InboxView` (`core/operator_contract.py`), `by_alias` — `{"needsYou": [...], "failed":
+**Output**: the `InboxView` document with its camelCase aliases — `{"needsYou": [...], "failed":
 [...], "doneSince": [...], "running": [...], "next": "..." | null}`, matching `docket inbox
 --json` for the same state.
 **Failure modes**: none beyond the SDK's own argument-shape validation.
+
+`needsYou` holds `TaskView`s and the `EscalationView`s no waiting task carries; `escalations` holds every pending `EscalationView`.
+
+### `escalations`
+
+**Purpose**: The escalation records after a cursor, each joined with the pause it names —
+identical to `GET /escalations`.
+**Arguments**: `since` (integer, optional) — only records with a greater `seq`; omitted, all.
+**Output**: `{"escalations": [EscalationView...], "next": <seq>}` (`operator-api.spec.md`).
+**Failure modes**: none beyond the SDK's own argument-shape validation. Audited as
+`mcp.escalations`.
 
 ### `cost`
 
 **Purpose**: **Recorded** USD spend — one agent or the whole fleet.
 **Arguments**: `agent_id` (string, optional) — one agent's totals; omitted for the whole fleet.
-**Output**: `{"agents": [...], "totalUsd": ...}` (matches `docket status --json`) when `agent_id` is
-omitted; a single agent's cost record when given.
-**Failure modes**: raises if `agent_id` is given but not a known project agent.
+**Output**: `{"agents": [...], "totalUsd": ...}` when `agent_id` is omitted, where each agent row is
+`{"id", "model", "input", "output", "costUsd", "pricingKnown", "turns", "budgetUsd"}`; a single
+agent's row when given. Rows cover project agents (pod members) only.
+**Failure modes**: raises ("Project '<id>' not found.") if `agent_id` is given but is not a known
+project agent.
 **Cost-reporting discipline**: this figure is recorded spend from session data, which is always
 `0.0` today because `DocketDriver` records measured tokens but no dollar figure; the
-`MODEL_PRICING` estimate `docket status` shows is not returned here. It is never a
+token-price estimate `docket status` shows is not returned here. It is never a
 projected/estimated figure, and never presented as a dollar *savings* claim (a standing
 product discipline across every docket status surface — see `cost-tracking.spec.md`).
 
@@ -315,7 +297,7 @@ Per-tool arguments are listed above; there are no global arguments beyond each t
 argument is passed as a named JSON property in the MCP `CallToolRequest`'s `arguments` object (the
 SDK derives each tool's JSON Schema from its Python function signature and validates a call's
 arguments against it before invoking the function — an argument of the wrong type is rejected by
-the SDK itself, before `cli/_mcp.py`'s code runs at all).
+the SDK itself, before docket's tool code runs at all).
 
 ## Options
 
@@ -340,14 +322,18 @@ not as a process exit code — the server process itself only exits when the tra
 
 ## Validation
 
-- Every tool call MUST write exactly one `mcp.<tool>` audit-log entry (`core/audit.py`), written
+- Every tool call MUST write exactly one `mcp.<tool>` audit-log entry, written
   unconditionally before the underlying operation runs.
-- `dispatch`, `delegate`, `approvals_grant`, and `approvals_deny` MUST call the same `core/`
+- `dispatch`, `delegate` and `resolve` MUST call the same
   functions the CLI and `docket start` call — no duplicated or parallel implementation.
 - `dispatch` MUST create a run record (source `"mcp"`) and return its id before the dispatch
   pipeline itself has necessarily finished (or even started) running.
-- `approvals_grant`/`approvals_deny` MUST tag the approval's audit entry with `channel="mcp"`.
-- No tool function may import or call `docket.ui`, or otherwise print to stdout.
+- `resolve` MUST tag the resolution with `channel="mcp"` and `by="mcp"`.
+- The tool list MUST be exactly the eleven below; a pause is listed by `escalations` and settled by
+  `resolve` whatever its kind, and no tool takes an approval token or a task id and an `action`.
+- `resolve` MUST call the function every other surface calls (`operator-loop.spec.md` area 10): a
+  second call on the same escalation raises `McpToolError`.
+- No tool function may import or call `docket.interfaces.cli.render.ui`, or otherwise print to stdout.
 - A missing `mcp` SDK MUST produce the actionable hint above (stderr) and exit `1`, not a bare
   `ImportError` traceback.
 
@@ -374,7 +360,7 @@ concern, not docket's — see Scope above).
 // → CallToolRequest {"name": "status", "arguments": {}}
 // ← CallToolResult (structuredContent)
 {
-  "apiVersion": "3",
+  "apiVersion": "6",
   "timestamp": "2026-07-30T12:00:00Z",
   "channels": ["telegram"],
   "agents": [ /* ... */ ],
@@ -392,118 +378,17 @@ concern, not docket's — see Scope above).
 // ← {"id": "run-3f2a1c9e-...", "source": "mcp", "project": "myapp", "state": "succeeded", ...}
 ```
 
-## Changelog
+## Implementation
 
-### Version 1.9.2 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 1.9.1 (2026-10-07)
-
-- The server is started with `docket start --mcp`; the tool names, arguments, return shapes and the audit, approval and dispatch-gating guarantees are unchanged. `--mcp` prints nothing to stdout but JSON-RPC and exits 2 when combined with `--dispatch`, `--telegram` or `--token-file`.
-
-### Version 1.9.0 (2026-10-05)
-
-Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
-
-- `approvals_grant` takes an optional `option` (`approve_task` grants the call task-wide, operator-loop 5a).
-
-### Version 1.8.0 (2026-10-03)
-
-- **`status` follows `/status.json` to API version 3 (legacy purge).** The always-`"inactive"`
-  `gateway` key is gone from the `status` tool's output (it is `serve.build_status()`, the same
-  payload); the purpose line and the representative example drop it and show `apiVersion` `"3"`.
-
-### Version 1.7.0 (2026-09-29)
-
-- **One more tool this close missed, thirteen total.** `task_pregrant(project, task_id, command,
-  tool="bash")` — identical to `docket pod <project> pregrant` / `POST /tasks/<id>/pregrants`
-  (both shipped by P34-15, ADR 0016 §10) — was registered in `_TOOL_NAMES` and audited from the
-  start but never documented here. `docket mcp serve --help`'s own tool list and count
-  (`cli/__init__.py`) were also stale at the old twelve and did not name `task_pregrant`; both
-  corrected.
-
-### Version 1.6.0 (2026-09-29)
-
-- **Two new tools (Phase 34, D-50, ADR 0016), twelve total.** `task_answer(project, task_id,
-  action, content=None)` calls `answer_task(channel="mcp", actor="mcp")`, raising
-  `McpToolError` on rejection; `inbox(since=None)` returns the same derived `InboxView` shape
-  `GET /inbox` and `docket inbox --json` return. `docket mcp serve --help` and
-  `docs/commands.md`'s generated tool count and list corrected from a stale ten to the current
-  twelve.
-
-### Version 1.5.0 (2026-09-21)
-
-- `approvals_grant`/`approvals_deny` now resolve any dispatch task they gated, including on an `ApprovalNoop` (W36-C4). Previously a task decided over MCP stayed `waiting_approval`.
-
-### Version 1.4.1 (2026-09-18)
-
-- Alignment pass, no tool contract change. "A server, never a host" no longer says docket refuses
-  to execute other MCP servers' tools in a turn: since D-19 it does, through `core/mcp_tools.py`,
-  and this server still never calls upstream. Syntax now names `servers` as a recognized
-  subcommand beside `serve`. `cost` no longer says "daemon-recorded": the recorded figure is
-  always `0.0` (`DocketDriver`). The `status` example now shows `"gateway": "inactive"` and
-  `totalCostUsd: 0.0`, the only values the code can return. Dropped a pointer to the removed
-  L-4 scope note.
-
-### Version 1.4.0 (2026-08-19)
-
-- W21-C1 daemon-free truth pass: removed the superseded daemon-side MCP registry spike from the
-  current contract. Docket's MCP server and client boundaries now point only at their owning specs;
-  the dated investigation remains in ROADMAP and Git history.
-
-### Version 1.3.0 (2026-07-31)
-
-- Corrected the "Scope" section's agent-side MCP client cross-reference. It previously pointed at
-  L-4 (a daemon-gated, unbuilt card) as the place agent-side MCP consumption would eventually
-  live; decision D-19 has since had docket own the turn loop directly, and ROADMAP Phase 19
-  P19-10 built docket's own MCP client straight into `core/tools.py`'s gated registry — no daemon
-  involved at all. The scope note now points at the real spec, `mcp-client.spec.md`, and states
-  plainly that it supersedes the L-4 framing. No change to this server's own contract (tools,
-  transport, audit/no-bypass guarantees) — documentation accuracy only.
-
-### Version 1.2.0 (2026-07-30)
-
-- **ROADMAP Phase 18 L-4 spike concluded: the daemon-side MCP registry is real upstream, not
-  present in this fleet's targeted daemon.** Investigated whether docket can manage the OpenClaw
-  daemon's own MCP client configuration (the *other* direction from this server) through the ACL.
-  Verdict: **yes, the capability exists** — a genuine `mcp.servers` config surface plus a full
-  `openclaw mcp add|set|list|show|status|doctor|probe|configure|tools|login|logout|reload|unset`
-  CLI family, confirmed live against an isolated run of the current stable `openclaw@2026.7.1`
-  (a real `add`/`list`/`show`/`status`/`unset` roundtrip succeeded exactly as documented, all
-  reachable via the same subprocess-CLI pattern the ACL already uses everywhere) — but **not
-  present** in the daemon version this project actually targets and has verified everywhere else
-  in the codebase, `openclaw 2026.2.23` (confirmed directly: no `mcp` subcommand, `config get
-  mcp.servers` reports the path unknown). Per the card's own instructions, this is a "yes, but the
-  capability doesn't exist yet [in the deployed fleet]" outcome: no code was written. See "L-4
-  spike findings" above for the full dated evidence trail, including a methodology note on
-  sandboxing a newer CLI probe safely.
-
-### Version 1.1.0 (2026-07-30)
-
-- ROADMAP Phase 18 L-6: migrated the transport/registration layer from the `mcp` SDK's 1.x line
-  (`mcp.server.fastmcp.FastMCP`) to its 2.x line (`mcp.server.MCPServer`) — the `docket[mcp]` pin
-  widened from `mcp>=1.2.0,<2.0.0` to `mcp>=2.0.0` (no ceiling). This was verified by installing
-  `mcp==2.0.0` and reading the shipped package directly, not assumed: `MCPServer` is a straight
-  rename/relocation of `FastMCP`, keeping identical registration ergonomics (`add_tool(fn,
-  name=...)`, `server.run(transport="stdio")`); `mcp.server.fastmcp` no longer exists as an import
-  target in 2.0. **No contract change** — all ten tool names, arguments, return shapes, the
-  audit-before-work guarantee, and the no-bypass guarantee (mutating tools still call the exact
-  same `core/` functions) are unchanged; this is a transport-layer migration only. One
-  SDK-integration-test-only difference: `MCPServer.call_tool` now returns a `CallToolResult` object
-  (`.structured_content`/`.is_error`) rather than 1.x's `(content, structured_dict)` tuple — this
-  affects only test code that calls the SDK's `call_tool` directly, not any tool's documented
-  return shape (which was always the bare dict now found at `.structured_content`).
-
-### Version 1.0.1 (2026-07-30)
-
-- Retargeted the optional-dependency cross-reference at `core/pipeline.py` — `core/lobster.py`
-  (the module it named) was deleted when `docket workflow`/Lobster was retired (ROADMAP D-16,
-  Phase 16 W-3).
-
-### Version 1.0.0 (2026-07-30)
-
-- Initial specification for ROADMAP Phase 18 L-3: `docket mcp serve`, ten tools (`status`, `pods`,
-  `queue`, `delegate`, `dispatch`, `runs`, `approvals_list`, `approvals_grant`, `approvals_deny`,
-  `cost`), the audit/no-bypass/no-host design constraints, and the optional-dependency degrade
-  path.
+- `src/docket/interfaces/cli/commands/mcp.py`: the eleven tool functions (`tool_status` ... `tool_task_pregrant`, `tool_resolve`),
+  `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
+- `src/docket/interfaces/cli/commands/service.py`: the `docket start` command and its `--mcp` flag handling
+- `src/docket/hops/application/sweep.py`: `dispatch_pod`
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `pod_roster`
+- `src/docket/tasks/application/lifecycle.py`: `retry_task`
+- `src/docket/tasks/application/escalations.py`: `resolve`
+- `src/docket/hops/application/interruptions.py`: `record_pregrant`
+- `src/docket/operator/inbox.py`, `src/docket/kernel/operator_contract.py`: `build_inbox`, `escalation_views`, `InboxView`
+- `src/docket/tasks/application/runs.py`: `create_run`, `execute`, `get_run`, `list_runs`, `RunSource`
+- `src/docket/interfaces/http/routes/health.py`: `build_status`, `SERVE_API_VERSION`
+- `pyproject.toml`: the `mcp` extra

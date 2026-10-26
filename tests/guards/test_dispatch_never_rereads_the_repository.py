@@ -13,7 +13,17 @@ import docket
 
 _SRC = Path(docket.__file__).parent
 _FORBIDDEN = {"repo_changes", "classify_directory", "plan_apply", "reviewed_repos"}
-_UNREAD = ("core/dispatch.py", "serve.py", "cli/_service.py")
+# Dispatch is the tasks, hops and pipeline contexts; `docket start` is the HTTP server and the
+# service command.
+_UNREAD_DIRS = ("tasks", "hops", "pipeline", "interfaces/http")
+_UNREAD = (
+    *(
+        p.relative_to(_SRC).as_posix()
+        for d in _UNREAD_DIRS
+        for p in sorted((_SRC / d).rglob("*.py"))
+    ),
+    "interfaces/cli/commands/service.py",
+)
 
 
 def _names(path: Path) -> set[str]:
@@ -37,4 +47,4 @@ def test_no_dispatch_path_reads_the_repository_or_its_review() -> None:
 
 
 def test_the_typed_run_command_does() -> None:
-    assert "repo_changes" in _names(_SRC / "cli" / "_run.py")
+    assert "repo_changes" in _names(_SRC / "interfaces" / "cli" / "commands" / "run.py")

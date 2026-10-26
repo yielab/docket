@@ -220,8 +220,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "Known-open gaps carried forward (do not let these get quietly re-claimed)",
-    "bytes": 4275,
-    "sha256": "b1f94c675b30ddacd60331ce88118ff66173ed6878b81411b6b2b376803c5f17"
+    "bytes": 25665,
+    "sha256": "414f99f0daef96152ca6ef1e8d7024dd5f0212eec0067f99d76bc750e303e89e"
   },
   {
     "source": "ROADMAP.md",
@@ -644,8 +644,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07)",
-    "bytes": 65803,
-    "sha256": "b0968dc1c9a9000b220322a3f5caedaf240526f31f6b17eaeba96bff7deeecaf"
+    "bytes": 65798,
+    "sha256": "7ab9bb65f6fe753a7f8193326381be815df1145c0b7793745ea25e2cffb059ff"
   },
   {
     "source": "TODO.md",
@@ -716,8 +716,8 @@
     "dest": "docs/cycles-ended/todo-waves.md",
     "level": 2,
     "heading": "◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/)",
-    "bytes": 1346,
-    "sha256": "196fbb1b6eae0b98d0b5b6b116b896d4dd7cdd33d2d883f991af8d29472cd136"
+    "bytes": 1341,
+    "sha256": "e2e67476bcc49b2955047202c688b29a028bdc53d45b0189ec4911de8e221bbe"
   },
   {
     "source": "TODO.md",
@@ -758,5 +758,93 @@
     "heading": "◇ Phase 44 closed 2026-10-18",
     "bytes": 712,
     "sha256": "2275a8733f297eefe14d2af358a8eb21673986a5c487a96e495d5e8b3b35e102"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◆ CLOSED — Phase 45: a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19, closed 2026-10-20)",
+    "bytes": 15779,
+    "sha256": "901aa7a29ed194c5606991894c76293b1ea1c98c44c5f8d1622898deb364ac2d"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 46 — CLOSED 2026-10-23 — organize by context, refactor by tool (D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, started 2026-10-22 on `plan/phase-46-structure`)",
+    "bytes": 26902,
+    "sha256": "7df44ffe1f3430a496a4a0e0ffb5d27116947b89776e3d7592d00e6992f6bcd0"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ WAVE 120 — the defects the specs truth pass found (before P46-6; stages 1-3 above)",
+    "bytes": 33069,
+    "sha256": "ae92ded61deba6058b901492b44b47b65a28af8068a19926c2ecc36f9935f0ea"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ Phase 46 closed 2026-10-23",
+    "bytes": 941,
+    "sha256": "9a80a0f6b02e800cf30ba237c1de93139375b56ef7421de483b51f8957233760"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "☑ PHASE 47 WAVE 1 (2026-10-23) — P47-1..P47-9 executed: the seams, ports, functional core, tests by context, the layers contract",
+    "bytes": 31387,
+    "sha256": "85099086fa7665c2eff882a70b885d4a78ad442801ad16cfb7aac71178865d8a"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close",
+    "bytes": 33369,
+    "sha256": "04b01bb42eb3dc0c77664f04ee55f02f582539fad5a62d3507bc1036d7abf746"
+  },
+  {
+    "source": "ROADMAP.md",
+    "dest": "docs/cycles-ended/roadmap-decisions.md",
+    "level": 2,
+    "heading": "6. Decisions (D-1…D-66)",
+    "bytes": 61528,
+    "sha256": "d4a4b8be2159d6d96d14f8cda62f7e51d37219ed36e4110377fdf5daa8a8675a"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 48 — closed 2026-10-24: isolation where the machine can jail, a task keeps its pipeline",
+    "bytes": 1387,
+    "sha256": "cc04b91127f86b3b66657221108c94b3e3c97815c46f7393b7592c562e45940d"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 49 — closed 2026-10-24 — the task as a typed record behind one store (D-70)",
+    "bytes": 32201,
+    "sha256": "94ffb565d771e3981f38ce6861d26ee226549573273bc5ca2f96d38e1a7f0fde"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 50 — closed 2026-10-25 — end-to-end tests that run the product (D-71)",
+    "bytes": 44862,
+    "sha256": "1fd86e8329bdd1c8ea668f63e976b5f02fb0cbc1bfc52357028f46a0c972581b"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "◇ PHASE 51 — closed 2026-10-25 — one escalation: ask, resolve, decide (D-72, ADR 0032)",
+    "bytes": 36805,
+    "sha256": "193602b6c8e40435e6844804e7c641a4bfa5021a457b9b19b86fbc92310cef00"
   }
 ]

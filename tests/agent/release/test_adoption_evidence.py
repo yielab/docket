@@ -17,6 +17,9 @@ from urllib.parse import unquote
 import pytest
 import yaml  # type: ignore[import-untyped]
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
+from tests.support.pods import _object as _object
+from tests.support.pods import canonical as _canonical
+from tests.support.pods import under as _under
 
 LANE = "release"
 REASON = "Prevents the published adoption baseline from drifting from its committed manifest, shipping an attempt that is not rebuildable, or leaking private runtime material into public evidence."
@@ -100,21 +103,6 @@ PYPROJECT = ROOT / "pyproject.toml"
 PLACEHOLDER_SOURCES = {"2" * 40, "3" * 64}
 
 
-def _canonical(value: object) -> bytes:
-    return (
-        json.dumps(
-            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
-        ).encode("utf-8")
-        + b"\n"
-    )
-
-
-def _object(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    assert isinstance(value, dict), f"{path} must contain one JSON object"
-    return value
-
-
 def _jsonl(path: Path) -> list[dict[str, Any]]:
     records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
     assert records and all(isinstance(record, dict) for record in records)
@@ -127,15 +115,6 @@ def _require_red_targets() -> None:
     assert not missing, "RED: Wave 29 publication targets are not implemented: " + ", ".join(
         missing
     )
-
-
-def _under(root: Path, raw: object) -> Path:
-    assert isinstance(raw, str) and raw
-    relative = Path(raw)
-    assert not relative.is_absolute() and ".." not in relative.parts
-    resolved = (root / relative).resolve()
-    assert resolved.is_relative_to(root.resolve())
-    return resolved
 
 
 def _manifest() -> dict[str, Any]:
@@ -466,15 +445,25 @@ def test_ambient_build_interpreters_produce_the_committed_baseline_except_timing
 def test_public_report_links_raw_evidence_and_states_only_measured_truth() -> None:
     manifest = _manifest()
     report = REPORT.read_text(encoding="utf-8")
-    lowered = report.lower()
-    for phrase in (
+    lowered = " ".join(report.lower().split())
+    phrases = [
         "deterministic contract evidence",
         "does not measure model quality",
         "cost unavailable",
         "9 attempts",
         "5 completions",
         "4 failures",
-    ):
+        "not a record of the product running a task",
+        "fabricated by the driver",
+        "does not import a `docket` module",
+        "latency is set, not measured",
+        "docket run --pod demo --dry-run",
+        "docket task answer --option approve_once",
+        "`--option deny`",
+        "docket task show",
+        "",
+    ]
+    for phrase in phrases:
         assert phrase in lowered
     for scenario in FAILED_SCENARIOS:
         assert scenario in report

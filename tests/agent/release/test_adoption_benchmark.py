@@ -107,7 +107,7 @@ def _valid_hop(role: str, *, attempts: int, summary: str) -> dict[str, Any]:
             "files_changed": [RAW_HOME + "/changed.py"],
             "diff_ref": RAW_HOME,
             "verdict": None,
-            "notes": RAW_SECRET,
+            "diff": RAW_SECRET,
         },
     }
 
@@ -151,11 +151,9 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
         "created": "2026-09-02T00:00:00+00:00",
         "startedAt": "2026-09-02T00:00:01+00:00",
         "completedAt": "2026-09-02T00:00:03+00:00",
-        "source": "operator",
         "reason": "",
         "hops": [retained_hop, invalid_handoff_hop],
         "costUsd": 0.0,
-        "claimId": None,
         "claimedAt": "2026-09-02T00:00:02+00:00",
     }
     task_path = home / "workspaces" / "projects" / "demo-lead" / "TASK_LIST.json"

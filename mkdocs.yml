@@ -20,6 +20,7 @@ hooks:
   - scripts/mkdocs_hooks.py
 
 # `docs/cycles-ended/roadmap-phases.md`, `roadmap-changelog.md`,
+# `roadmap-decisions.md` (links authored against the repository root),
 # `todo-waves.md` and `handoffs/` are a verbatim historical archive (not
 # owned by this card) whose own internal links point at pre-Phase-19 paths
 # that no longer exist at all (an already-deleted `CLAUDE.md`, `sync.py`,
@@ -30,6 +31,7 @@ hooks:
 # resolve, via the same hook, to their real GitHub location.
 exclude_docs: |
   cycles-ended/roadmap-changelog.md
+  cycles-ended/roadmap-decisions.md
   cycles-ended/roadmap-phases.md
   cycles-ended/todo-waves.md
   cycles-ended/handoffs/

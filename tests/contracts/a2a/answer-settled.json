@@ -1,0 +1,38 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "message/send",
+    "params": {
+      "message": {
+        "kind": "message",
+        "role": "user",
+        "messageId": "m-6",
+        "taskId": "<task-id>",
+        "parts": [
+          {
+            "kind": "data",
+            "data": {
+              "action": "accept",
+              "content": {
+                "optionId": "redis"
+              },
+              "escalationId": "<escalation-id>"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "error": {
+      "code": -32004,
+      "message": "escalation <escalation-id> is not pending",
+      "data": {
+        "reason": "not_pending"
+      }
+    }
+  }
+}

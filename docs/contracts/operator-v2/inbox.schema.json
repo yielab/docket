@@ -1,0 +1,563 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/operator-v2/inbox.schema.json",
+  "title": "InboxView",
+  "$defs": {
+    "EscalationAffordances": {
+      "additionalProperties": false,
+      "description": "What a client may do with a pending escalation, without naming any surface's command.",
+      "properties": {
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "acceptsText": {
+          "default": false,
+          "title": "Acceptstext",
+          "type": "boolean"
+        },
+        "resolveUrl": {
+          "title": "Resolveurl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resolveUrl"
+      ],
+      "title": "EscalationAffordances",
+      "type": "object"
+    },
+    "EscalationView": {
+      "additionalProperties": false,
+      "description": "An escalation as a surface reads it: the record, its ``state`` joined with the pause it\nnames, and what can be done with it.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "task": {
+          "title": "Task",
+          "type": "string"
+        },
+        "pod": {
+          "title": "Pod",
+          "type": "string"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "approval",
+            "consult",
+            "input",
+            "gate",
+            "check_changed"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "causedBy": {
+          "title": "Causedby",
+          "type": "string"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/Option"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Recommendation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "requestedSchema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requestedschema"
+        },
+        "askedAt": {
+          "title": "Askedat",
+          "type": "string"
+        },
+        "expiresAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiresat"
+        },
+        "onExpiry": {
+          "enum": [
+            "deny",
+            "block"
+          ],
+          "title": "Onexpiry",
+          "type": "string"
+        },
+        "policy": {
+          "default": "person",
+          "enum": [
+            "person",
+            "recommendation",
+            "deny",
+            "fail"
+          ],
+          "title": "Policy",
+          "type": "string"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "enum": [
+                "L3",
+                "L4",
+                "L5"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
+        "state": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "resolved",
+            "expired",
+            "decided"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Resolution"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "seq": {
+          "default": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "affordances": {
+          "$ref": "#/$defs/EscalationAffordances"
+        }
+      },
+      "required": [
+        "id",
+        "task",
+        "pod",
+        "step",
+        "role",
+        "kind",
+        "causedBy",
+        "prompt",
+        "askedAt",
+        "onExpiry",
+        "affordances"
+      ],
+      "title": "EscalationView",
+      "type": "object"
+    },
+    "Option": {
+      "additionalProperties": false,
+      "description": "One choice a v1.1 question offers.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risks",
+          "type": "array"
+        },
+        "estimatedTokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimatedtokens"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "description"
+      ],
+      "title": "Option",
+      "type": "object"
+    },
+    "Recommendation": {
+      "additionalProperties": false,
+      "description": "The option the asker recommends, with its reasons and evidence.",
+      "properties": {
+        "optionId": {
+          "title": "Optionid",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "evidenceRefs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidencerefs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "optionId",
+        "rationale"
+      ],
+      "title": "Recommendation",
+      "type": "object"
+    },
+    "Resolution": {
+      "additionalProperties": false,
+      "description": "How an escalation was settled: the option chosen, any content, and who answered where.\n``applied_at`` is when the task's continuation was applied (the claim of the task for a\nquestion), unset until then.",
+      "properties": {
+        "optionId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Optionid"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "by": {
+          "title": "By",
+          "type": "string"
+        },
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "at": {
+          "title": "At",
+          "type": "string"
+        },
+        "appliedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Appliedat"
+        }
+      },
+      "required": [
+        "by",
+        "channel",
+        "at"
+      ],
+      "title": "Resolution",
+      "type": "object"
+    },
+    "TaskBrief": {
+      "additionalProperties": false,
+      "description": "The Lead's typed intake output: objective, acceptance, what the Implementer needs,\nand the resources a deterministic check must confirm before another turn runs.",
+      "properties": {
+        "objective": {
+          "title": "Objective",
+          "type": "string"
+        },
+        "acceptance": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Acceptance",
+          "type": "array"
+        },
+        "context": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Context",
+          "type": "array"
+        },
+        "constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        },
+        "assumptions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Questions",
+          "type": "array"
+        },
+        "resources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resources",
+          "type": "array"
+        },
+        "expectedRiskyActions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expectedriskyactions",
+          "type": "array"
+        },
+        "answers": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Answers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "objective"
+      ],
+      "title": "TaskBrief",
+      "type": "object"
+    },
+    "TaskView": {
+      "additionalProperties": false,
+      "description": "The operator-v2 rendering of one docket task: lifecycle plus its A2A state.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "pod": {
+          "title": "Pod",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "a2aState": {
+          "title": "A2Astate",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "priority": {
+          "default": "",
+          "title": "Priority",
+          "type": "string"
+        },
+        "createdAt": {
+          "default": "",
+          "title": "Createdat",
+          "type": "string"
+        },
+        "updatedAt": {
+          "default": "",
+          "title": "Updatedat",
+          "type": "string"
+        },
+        "escalation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Escalation"
+        },
+        "brief": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TaskBrief"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "pod",
+        "status",
+        "a2aState"
+      ],
+      "title": "TaskView",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The derived operator inbox: everything that needs a human, plus recent context.",
+  "properties": {
+    "needsYou": {
+      "items": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TaskView"
+          },
+          {
+            "$ref": "#/$defs/EscalationView"
+          }
+        ]
+      },
+      "title": "Needsyou",
+      "type": "array"
+    },
+    "failed": {
+      "items": {
+        "$ref": "#/$defs/TaskView"
+      },
+      "title": "Failed",
+      "type": "array"
+    },
+    "doneSince": {
+      "items": {
+        "$ref": "#/$defs/TaskView"
+      },
+      "title": "Donesince",
+      "type": "array"
+    },
+    "running": {
+      "items": {
+        "$ref": "#/$defs/TaskView"
+      },
+      "title": "Running",
+      "type": "array"
+    },
+    "next": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next"
+    },
+    "escalations": {
+      "items": {
+        "$ref": "#/$defs/EscalationView"
+      },
+      "title": "Escalations",
+      "type": "array"
+    },
+    "decided": {
+      "items": {
+        "$ref": "#/$defs/EscalationView"
+      },
+      "title": "Decided",
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

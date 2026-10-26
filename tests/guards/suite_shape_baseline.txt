@@ -1,0 +1,41 @@
+# Offenders of the suite-shape ratchets in test_suite_shape.py. A count may only fall; a line
+# whose file no longer offends is deleted. Format: <kind> <path under tests/> [<count>] [# why it stays]. A setenv entry stays
+# only where the environment variable is what the file tests or forces; Home does not hold it.
+setenv integration/agent/test_bash_cancellation.py 1  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/agent/test_mcp_stdio_jail.py 6  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/agent/test_mcp_stdio_root.py 2  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees
+setenv integration/agent/test_sandboxed_exec.py 21  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv integration/governance/test_audit_approval_parity.py 1  # kill switch read live from the process environment
+setenv integration/governance/test_trace_audit.py 2  # kill switch read live from the process environment
+setenv integration/hops/driver/test_wiring.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/hops/test_otlp_export.py 1  # kill switch read live from the process environment
+setenv integration/hops/test_task_prepare.py 2  # the PATH or HOME a spawned binary or jail sees
+setenv integration/hops/test_verify_gate.py 2  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_edit_snapshot.py 1  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_init_status_and_removed_names.py 1  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_install.py 1  # environment credentials and passthrough: the sourcing under test
+setenv integration/interfaces/test_pod_memory_controls.py 1  # CLI environment switch read outside Home
+setenv integration/models/llm_port/test_transport.py 9  # environment credentials and passthrough: the sourcing under test
+setenv integration/models/test_provider_agnosticism.py 1  # the PATH or HOME a spawned binary or jail sees
+setenv integration/sandbox/test_escape_matrix.py 2  # sandbox backend override read from the process environment by the real jail adapter; environment credentials and passthrough: the sourcing under test
+setenv integration/sandbox/test_network_lockdown.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/sandbox/test_task_credentials.py 7  # environment credentials and passthrough: the sourcing under test
+setenv integration/tasks/dispatch/test_recovery.py 1  # sandbox backend override read from the process environment by the real jail adapter
+setenv integration/tasks/test_envelope_commands.py 3  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees
+setenv unit/governance/test_secrets.py 2  # environment credentials and passthrough: the sourcing under test
+setenv unit/interfaces/cli/commands/test_contract.py 2  # CLI environment switch read outside Home
+setenv unit/interfaces/cli/commands/test_setup_model_credentials.py 2  # secrets backend read live from the process environment; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/interfaces/cli/commands/test_setup_notify.py 4  # secrets backend read live from the process environment; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/interfaces/cli/commands/test_setup_sandbox.py 3  # the PATH or HOME a spawned binary or jail sees
+setenv unit/interfaces/cli/commands/test_task.py 1  # CLI environment switch read outside Home
+setenv unit/interfaces/cli/render/test_ui.py 1  # CLI environment switch read outside Home
+setenv unit/interfaces/http/test_server__auth.py 6  # pinned serve token read from the process environment by bootstrap
+setenv unit/interfaces/http/test_server__notify_posture.py 1  # pinned serve token read from the process environment by bootstrap
+setenv unit/interfaces/http/test_server__telegram_and_keys.py 3  # pinned serve token read from the process environment by bootstrap
+setenv unit/observability/test_trace.py 3  # kill switch read live from the process environment; environment credentials and passthrough: the sourcing under test
+setenv unit/operator/adapters/test_ntfy__desktop__email.py 6  # the PATH or HOME a spawned binary or jail sees
+setenv unit/platform/test_process.py 11  # kill switch read live from the process environment; secrets backend read live from the process environment; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/sandbox/test_landlock.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv unit/sandbox/test_launch.py 5  # sandbox backend override read from the process environment by the real jail adapter; the PATH or HOME a spawned binary or jail sees; environment credentials and passthrough: the sourcing under test
+setenv unit/sandbox/test_seatbelt.py 2  # sandbox backend override read from the process environment by the real jail adapter
+setenv unit/test_bootstrap.py 1  # pinned serve token read from the process environment by bootstrap

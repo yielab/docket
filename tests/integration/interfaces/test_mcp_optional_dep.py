@@ -1,0 +1,127 @@
+"""The optional `mcp` SDK dependency degrade path + real-SDK smoke test.
+
+`docket start --mcp` needs the official MCP Python SDK (`mcp`), an *optional* extra
+(`docket[mcp]`) kept out of the base install so `pip install docket` stays
+dependency-light (the SDK pulls in starlette, uvicorn, cryptography, jsonschema,
+opentelemetry, ...). Covers three cases: a real absence check (skipped if the SDK
+happens to be installed), a deterministic version that simulates absence by
+forcing the import to fail regardless of what is actually installed (so this
+coverage does not depend on luck about the test venv), and a real end-to-end
+smoke test that skips when the SDK is absent. Either way the suite stays green.
+"""
+
+from __future__ import annotations
+
+import builtins
+import sys
+import tomllib
+from pathlib import Path
+from typing import Any
+
+import pytest
+from packaging.version import Version
+
+from docket.interfaces.cli.commands import mcp as _mcp
+from docket.kernel.home import Home, use_home
+
+SUBJECT = "docket.interfaces.cli.commands.mcp"
+
+
+class TestMissingSdkRealAbsence:
+    def test_serve_stdio_gives_actionable_hint_when_sdk_genuinely_absent(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        try:
+            import mcp  # noqa: F401
+        except ImportError:
+            pass
+        else:
+            pytest.skip("mcp SDK installed in this environment; cannot test genuine absence")
+
+        rc = _mcp.serve_stdio()
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "docket[mcp]" in err
+        assert "pip install" in err
+
+
+class TestMissingSdkSimulated:
+    """Deterministic coverage of the same path, independent of what's installed."""
+
+    def test_serve_stdio_gives_actionable_hint_via_simulated_import_failure(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        real_import = builtins.__import__
+
+        # `_build_server()` does `from mcp.server import MCPServer` (the mcp>=2.0
+        # SDK's server, see test_mcp_transport_contract.py) -- block that exact import
+        # target, simulating the SDK being absent regardless of what's actually
+        # installed in this test environment.
+        def _blocked_import(name: str, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+            if name == "mcp.server" or name.startswith("mcp.server."):
+                raise ImportError("simulated: mcp SDK not installed")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _blocked_import)
+        # Also evict any already-imported submodule so the blocked `__import__`
+        # is actually exercised rather than served from sys.modules' cache.
+        for name in list(sys.modules):
+            if name == "mcp.server" or name.startswith("mcp.server."):
+                monkeypatch.delitem(sys.modules, name, raising=False)
+
+        rc = _mcp.serve_stdio()
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert err == _mcp.MISSING_SDK_HINT + "\n"
+
+
+class TestUsage:
+    def test_mcp_extra_lock_stays_outside_the_cryptography_cve_range(self) -> None:
+        """The mcp-extra lock's transitive cryptography package stays outside
+        CVE-2026-69247's affected ``>=44,<50`` range."""
+        root = Path(__file__).resolve().parents[3]
+        project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+        assert project["project"]["optional-dependencies"]["mcp"], "MCP extra was removed"
+        lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
+        crypto_versions = [
+            Version(package["version"])
+            for package in lock["package"]
+            if package["name"] == "cryptography"
+        ]
+        assert crypto_versions, "the supported MCP graph no longer resolves cryptography"
+        assert all(version >= Version("50.0.0") for version in crypto_versions), (
+            "CVE-2026-69247 affects cryptography >=44,<50; "
+            f"committed lock resolves {crypto_versions}"
+        )
+
+
+class TestRealSdkIntegration:
+    """Only runs when the optional `mcp` SDK is actually installed."""
+
+    def test_a_real_call_through_the_sdk_round_trips_a_dict_result(self, tmp_path: Path) -> None:
+        pytest.importorskip("mcp")
+        import asyncio
+        import json as _json
+
+        # Isolate from the real ~/.docket — this exercises a real tool call
+        # (status → teams.fleet → fleet.json), so it must not touch the
+        # developer's actual docket home.
+        home = tmp_path / ".docket"
+        home.mkdir()
+        (home / "fleet.json").write_text(_json.dumps({"agents": [], "bindings": []}))
+        with use_home(Home(home)):
+            server = _mcp._build_server()
+
+            # mcp>=2.0's `MCPServer.call_tool` returns a `CallToolResult` object
+            # (`.structured_content`/`.is_error`), not the 1.x line's
+            # `(content, structured_dict)` tuple — see test_mcp_transport_contract.py
+            # for the real-transport round-trip coverage.
+            async def _call() -> Any:
+                return await server.call_tool("status", {})
+
+            result = asyncio.run(_call())
+            structured = result.structured_content
+            assert isinstance(structured, dict)
+            assert structured["apiVersion"] == "6"
+            # Round-trips through the SDK's own JSON serialization too.
+            assert _json.loads(_json.dumps(structured)) == structured

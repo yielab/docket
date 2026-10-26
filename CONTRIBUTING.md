@@ -66,40 +66,81 @@ git checkout -b feature/your-feature
 - Target Python 3.11+; type-annotate everything (the suite is checked with `mypy --strict`)
 - Format and lint with `ruff` (`uv run ruff format .` / `uv run ruff check .`)
 - Use meaningful names (snake_case for functions/vars, PascalCase for classes/Pydantic models)
-- Keep functions focused; prefer pure functions in `core/`
+- Keep functions focused; prefer pure functions in a context's `domain/`
 - Comments explain *why* something is shaped the way it is — never what it does or when it
   arrived. No card ids, phase numbers, dates or "used to" narration; git history holds those.
   A docstring is one line unless it states a contract (what is guaranteed, what fails closed).
   `uv run python scripts/maint/comment_lint.py --check src tests` reads this rule
 
-### Package layout (three layers: `cli/ → core/ → edges/`)
+### Package layout (one package per business context; ADR 0030, D-66)
 
-All command logic lives in the `docket` package under `src/docket/`. Dependencies point
-inward only — a `cli` command may call `core` and `edges`; `core` never imports `cli`. Two
-invariants matter most, both enforced by tests rather than convention alone:
+All command logic lives in the `docket` package under `src/docket/`. The rule new code follows
+is **one package per business context, at most two levels inside it**, and the dependencies
+between packages are import-linter contracts, not prose.
 
-1. **Every tool call goes through `core/tools.py`'s single dispatcher** (`dispatch_tool`).
-   docket's governance stack — the policy engine, the approval store, the high-risk classifier,
-   the audit log — only means anything if there is exactly one place a tool can execute from.
-   An AST test enforces this:
-   `tests/unit/core/test_tools.py::test_only_the_chokepoint_imports_the_handler_module`.
-2. **docket-owned JSON goes through `edges/store.py`** (atomic write + filelock + `.bak`
-   rotation + 0600 perms) — never write those files directly. The one documented exemption is
-   append-only JSONL (`core/trace.py`, `core/audit.py`), which writes directly by design.
+**The target.** `src/docket/` holds twelve context packages (`kernel`, `tasks`, `pipeline`,
+`hops`, `agent`, `governance`, `sandbox`, `teams`, `models`, `observability`, `operator`,
+`platform`), `interfaces/` (`cli`, `http`, `mcp`, `telegram`) and one `bootstrap.py`. Inside a
+context there are at most two levels: `domain/`, `application/` and `adapters/` where the context
+needs them, flat otherwise. The full tree is "Target layout" in
+[ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
 
-- **Commands** are Typer functions in `src/docket/cli/` — add them to `cli/__init__.py`, or to
-  a `_<group>.py` module for a larger subcommand group (e.g. `cli/_gates.py`).
-- **Domain logic / helpers** go in `src/docket/core/` — Pydantic models in `core/models.py`,
-  plus pure services (policy resolution, sync, security, audit, trace, the turn loop, the tool
-  registry, the model-endpoint port).
-- **I/O and side effects** go in `src/docket/edges/`:
+**Allowed dependencies** (the ADR's table; `tests/architecture/` enforces it from stage 2 of
+Phase 46 on):
+
+| From | May import |
+|---|---|
+| `kernel` | nothing in `docket` |
+| `<context>/domain` | `kernel`, its own `domain` |
+| `<context>/application` | `kernel`, its own `domain` and `ports`, any module of a context below it in the layer order (amended 2026-10-23) |
+| `<context>/adapters`, `platform`, `sandbox` | `kernel`, `platform`'s `__init__`, the ports and domain types they implement |
+| `agent` | `kernel`, `platform`'s `__init__` (amended 2026-10-23), its own modules |
+| `interfaces` | `kernel`, `bootstrap`, any context (amended 2026-10-23) |
+| `bootstrap` | everything |
+
+The layer order, bottom to top (amended 2026-10-23): `platform` < `governance` < `agent` < `models`
+< `observability` < `pipeline` < `teams` < `sandbox` < `operator` < `tasks` < `hops`.
+
+So a domain package never imports an adapter, a context imports only contexts below it in that
+order (an import of one above it is the violation the baseline records, and the baseline only
+shrinks), and nothing imports `interfaces/`. Function-local imports of `docket.*` are
+forbidden because they hide cycles; the existing ones are a baseline that only shrinks. A module
+over **700 lines is a defect**, and the ceiling ratchets down to it from today's largest module.
+
+**What holds today.** The code has moved: `cli/`, `core/` and `edges/` no longer exist, the CLI
+is `interfaces/cli/` and the HTTP control plane is `interfaces/http/`, and this section is the
+whole rule. The import contracts live in `tests/architecture/`.
+
+Two invariants matter most and are enforced by tests rather than convention alone; they do not
+move with the refactor:
+
+1. **Every tool call goes through the single tool dispatcher** (`dispatch_tool`, today in
+   `agent/tools/registry.py`). docket's governance stack — the policy engine, the approval store, the
+   high-risk classifier, the audit log — only means anything if there is exactly one place a tool
+   can execute from. An AST test enforces this:
+   `tests/unit/agent/tools/test_registry__dispatch.py::test_only_the_chokepoint_imports_the_handler_module`.
+2. **docket-owned JSON goes through the one store module** (today `platform/store.py`: atomic write
+   + filelock + `.bak` rotation + 0600 perms) — never write those files directly. The one
+   documented exemption is append-only JSONL (`observability/trace.py`, `governance/audit.py`), which writes
+   directly by design.
+
+Where things go today:
+
+- **Commands** are Typer functions in `src/docket/interfaces/cli/` — register them in
+  `interfaces/cli/app/__init__.py`, with the command bodies in `interfaces/cli/commands/<group>.py`
+  (e.g. `commands/pod.py`, `commands/task.py`) and the Rich output in `interfaces/cli/render/`.
+- **Domain logic / helpers** go in the owning context's `domain/` or `application/` — Pydantic models
+  in `teams/models.py`, plus pure services (policy resolution in `governance/`, trace in
+  `observability/`, the turn loop and the tool registry in `agent/`, the model-endpoint port in
+  `models/`).
+- **I/O and side effects** go in a context's `adapters/`, in `platform/` or in `sandbox/`:
   - docket-owned JSON (`.docket-meta.json`, etc.) is read/written **only** through
-    `edges/store.py`, per invariant 2 above.
-  - the model endpoint (`edges/adapters/llm.py`), MCP client (`edges/adapters/mcp_client.py`),
-    Telegram Bot API (`edges/adapters/telegram.py`), the sandboxed-exec/fetch tool handlers
-    (`edges/adapters/toolbox.py`, `edges/adapters/fetch.py`), and shell-outs to `docker` / `git`
-    (`edges/adapters/system.py`) each live behind their own adapter module — no other module
-    should know their wire formats.
+    `platform/store.py`, per invariant 2 above.
+  - the model endpoint (`models/adapters/openai_http.py`), MCP client (`agent/tools/mcp_client.py`),
+    Telegram Bot API (`interfaces/telegram/client.py`), the sandboxed-exec/fetch tool handlers
+    (`agent/tools/builtins/toolbox.py`, `platform/fetch.py`), and shell-outs to `docker` / `git`
+    (`platform/git.py`, `platform/process.py`, `sandbox/docker.py`) each live behind their own
+    adapter module — no other module should know their wire formats.
 - **Tests** go in `tests/` (see [Testing](#testing)); **specs** go in `specs/`;
   **documentation** goes in `docs/`.
 
@@ -108,28 +149,27 @@ invariants matter most, both enforced by tests rather than convention alone:
 All contributions must include appropriate tests:
 
 - Tests are placed by lane, named by module, per `specs/test-framework.md` §"Lanes and
-  placement": `tests/unit/` mirrors `src/docket/` one file per module, `tests/integration/`
-  covers cross-module or real-process behaviour, `tests/guards/` holds AST/layout invariants,
+  placement": `tests/unit/` mirrors `src/docket/` one file per module, `tests/integration/<context>/`
+  covers cross-module, real-socket or real-process behaviour, one folder per context, `tests/guards/` holds AST/layout invariants,
   and `tests/agent/` holds checks on prose, release artifacts or agent hook scripts — that lane
   is budgeted, never the default suite, and runs in its own CI job
+  (the directories of today; ADR 0030 replaces them with a mirror of the code, lanes as pytest
+  markers, and `tests/{fixtures,contracts,e2e,architecture,release}/` as the only directories
+  that do not mirror a module — see that section for what holds now and what Phase 46 moves)
 - New commands also get a spec under `specs/` and golden-parity coverage where output is frozen
 
-For scale, so you know what you're getting into: **5,109 tests** in the default suite
-(`tests/unit/`, `tests/integration/`, `tests/guards/`; the budgeted agent lane in `tests/agent/`
-runs separately), **~50,397 lines** of Python in the shipped package, **32 specifications**
-validated in CI, and **10 commands** in the [command reference](docs/commands.md).
-`scripts/metrics.py --check` computes these from the tree on every CI run, so this paragraph
-cannot silently go stale.
+For scale on demand, run `uv run python scripts/metrics.py`; no document quotes those numbers, so a change
+never has to update them.
 
 Run the full aggregator before submitting:
 
 ```bash
-# Observable full workflow (temporary state + deterministic loopback model; no credentials)
-uv run python scripts/smoke_workflow.py
+# Deterministic whole-workflow journeys against the fake model (no credentials)
+uv run pytest tests/e2e -n auto -q
 
 # Opt-in realistic memory-backed repair with genuine inference on port 8081
 uv run python scripts/smoke_workflow.py --live-model
-DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/integration/test_workflow_smoke.py
+DOCKET_RUN_LIVE_SMOKE=1 uv run pytest -q tests/integration/product/smoke
 
 # Smaller live infrastructure-only scenario retained for diagnosis
 uv run python scripts/smoke_workflow.py --live-model --scenario basic
@@ -138,7 +178,7 @@ uv run python scripts/smoke_workflow.py --live-model --scenario basic
 ./tests/run-all-tests.sh
 
 # pytest suite only (default lanes: unit, integration, guards)
-uv run pytest   # 5,109-test Python suite
+uv run pytest   # Python suite
 
 # agent lane only (prose, release artifacts, agent hook scripts; own CI job)
 uv run pytest tests/agent
@@ -155,6 +195,20 @@ uv run python scripts/gen_recipe_docs.py --check
 uvx --with mkdocs-material --with 'mkdocstrings[python]' mkdocs build --strict
 ```
 
+### How much to run, and when
+
+The same budget as ROADMAP §4 ("Definition of Done"):
+
+- **Each commit:** `ruff check`, `ruff format --check`, `mypy src` and `pytest --co` (about 10 s).
+- **While changing code:** only the tests of what you changed, by path.
+- **Once per change, before merging:** the default suite in parallel (`uv run pytest -n auto --dist
+  loadfile`, about a minute); fix by cause and re-run only what failed.
+- **Once per phase close or release:** everything below, plus
+  `scripts/maint/pytest-without-sandbox.sh` (the suite as a host with no sandbox backend sees it)
+  and a real run.
+
+A check that fails again after one fix is a finding to report, not a loop to keep iterating.
+
 ### CI gates
 
 These all gate CI and must pass locally before opening a PR:
@@ -167,7 +221,6 @@ uv run pytest                # default lanes: unit, integration, guards
 uv run pytest tests/agent    # agent lane (CI job `agent-lane`)
 bash tests/golden/run.sh verify-all   # golden parity
 ./scripts/validate-specs.sh  # spec format validation
-uv run python scripts/metrics.py --check            # this doc's metric-drift guard (see above)
 uv run python scripts/gen_cli_docs.py --check       # docs/commands.md drift (CI job `docs`)
 uv run python scripts/gen_recipe_docs.py --check    # docs/recipes.md drift (CI job `docs`)
 uv run python scripts/render-doc-assets.py --check  # README screenshot/GIF drift guard (run by the agent lane)
@@ -180,10 +233,12 @@ docket follows spec-driven development (see [SSD-WORKFLOW.md](SSD-WORKFLOW.md)).
 command:
 
 1. Write a spec under `specs/functional/<command>.spec.md`.
-2. Register the command as a Typer function in `src/docket/cli/` (in `cli/__init__.py`, or a
-   `_<group>.py` module for a larger group) and wire its help into `cli/_help.py`.
-3. Put domain logic in `core/` and any I/O behind `edges/` (`store.py` for docket JSON,
-   `system.py` for shell-outs to `docker`/`git`).
+2. Register the command as a Typer function under `src/docket/interfaces/cli/` (registered in
+   `interfaces/cli/app/__init__.py`, body in `interfaces/cli/commands/<group>.py`) and wire its help
+   into `interfaces/cli/render/help.py`.
+3. Put domain logic in the owning context and any I/O behind that context's `adapters/` or in
+   `platform/` (`platform/store.py` for docket JSON, `platform/git.py` and `platform/process.py`
+   for shell-outs to `git` and the host).
 4. Add pytest coverage in the unit file named for the module (see [Testing](#testing)), and
    golden cases if the output is frozen.
 5. Run the CI gates (see [Testing](#testing)).
@@ -192,7 +247,7 @@ command:
 
 - Update relevant documentation in `docs/`
 - `docs/commands.md` is generated from the Typer registry by `scripts/gen_cli_docs.py` and must
-  never be hand-edited; put command prose in the command's own help string (`cli/_help.py` or the
+  never be hand-edited; put command prose in the command's own help string (`interfaces/cli/render/help.py` or the
   Typer function) and regenerate with `uv run python scripts/gen_cli_docs.py`
 - `docs/recipes.md` is generated from the shipped recipes by `scripts/gen_recipe_docs.py`; put
   recipe prose in the recipe's own `README.md` and `pod.yaml` `description`, then regenerate with
@@ -209,7 +264,7 @@ Seven rules, each written down because breaking it cost real work here.
    red, restore it, watch it go green, and put that in the pull request. Guards that verified the
    wrong set have shipped here more than once, and a guard you only ever saw pass proves nothing.
 2. **Never edit a counting script or regenerate a golden to make a claim agree.** `scripts/
-   metrics.py` and `scripts/validate-specs.sh` are the guards, not the claim. Regenerate a golden
+   validate-specs.sh` is the guard, not the claim. Regenerate a golden
    only when a change deliberately alters CLI surface, or when the old string was factually false,
    and explain the diff line by line either way.
 3. **Prove "pre-existing" before claiming it.** Check the base commit out in a clean worktree and
@@ -217,10 +272,11 @@ Seven rules, each written down because breaking it cost real work here.
    a baseline. Run `uv sync --all-extras` first: a missing `anyio` produces three phantom mypy
    errors that are not real.
 4. **Isolation is part of done.** The suite has leaked into a developer's real `~/.docket` three
-   times, once displacing the whole environment with fixture agents. Any new `DOCKET_HOME`-derived
-   constant in `config.py` must reach `_DOCKET_HOME_PATHS` in `tests/conftest.py`, and any test
-   choosing its own home calls `repoint_docket_home` rather than hand-rolling a partial copy. Both
-   are guarded. A test must not depend on the host's sandbox either: one that turns isolation on
+   times, once displacing the whole environment with fixture agents. Every path docket writes is a
+   `Home` field or property in `kernel/home.py`, every test runs inside the autouse
+   `use_home` home in `tests/conftest.py`, and a test choosing its own home enters
+   `use_home(Home(root))` rather than patching constants;
+   `tests/guards/test_docket_home_isolation.py` checks every path the current `Home` hands out. A test must not depend on the host's sandbox either: one that turns isolation on
    stubs `sandbox_availability` or skips with a named reason when it needs a real backend, and
    `scripts/maint/pytest-without-sandbox.sh` runs the suite as a host with no usable backend
    (`DOCKET_SANDBOX_PROBE=none`, like a stock CI container). Forcing `DOCKET_SANDBOX_BACKEND=none` is not that check; it hid 40 macOS
@@ -231,20 +287,6 @@ Seven rules, each written down because breaking it cost real work here.
 6. **Scrub every diff before committing.** Real client names, home-directory paths and usernames do
    not belong in a public repository. Commit subjects follow `Type: description` with a detailed
    body, ASCII only.
-
-7. **Nothing is kept for the past.** docket has no users, so there is nothing from an earlier
-   version to protect. A removed or renamed command, flag, alias, route, persisted shape or
-   behaviour is deleted in the same change that replaces it, together with its tests, its spec
-   text and its documentation. No alias table, no retirement notice, no "did you mean the old
-   name", no migration, no hidden command, no deprecated no-op flag, no `_REMOVED` map. A
-   retired name is an ordinary unknown command (exit 2), and `CHANGELOG.md` is the only record.
-   The compatibility layers this project carried (a removed-command map, an alias table, a
-   `--debug` no-op, `gates enable/disable` stubs, `editRights` on the wire) each had a writer,
-   a reader in `cli/` and no consumer on the live path; they were purged on 2026-10-03 and the
-   rule became a decision on 2026-10-07 (ROADMAP D-57, ADR 0022). It stands until docket has an
-   installed base, which is a fact about the world and not a release number. One thing is not
-   legacy: a current format that happens to be older than another (canonical policy JSON
-   without `kind:`).
 
 ### Comments and docstrings
 

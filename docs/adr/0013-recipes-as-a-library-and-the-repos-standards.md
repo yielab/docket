@@ -157,6 +157,6 @@ One RED behavioural test per card in the module's `SUBJECT` file or the integrat
 names; a negative case only for a fail-closed property (P31-1: `scope:` refused; P31-5: an
 explicit list never gains the default; P31-6: a denied `skill` tool is a typed denial). The
 library's proof is executable: every shipped recipe validates, applies onto a lean fixture pod,
-and leaves every step resolvable (`tests/integration/test_recipes.py`, extended to the three
+and leaves every step resolvable (`tests/integration/teams/test_recipes.py`, extended to the three
 kinds); `reflexion` dispatches once against the fake driver and takes its bounded loop. Goldens
 change only where a card lists the lines (`completions` for the new top-level command).

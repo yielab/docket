@@ -166,8 +166,8 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
     # tasks and runs
     (_c("delegate"), "docket task add"),
     (_c("dispatch"), "docket run"),
-    (_c("approve"), "docket task approve"),
-    (_c("deny"), "docket task deny"),
+    (_c("approve"), "docket task answer"),
+    (_c("deny"), "docket task answer"),
     (_c("chat"), "docket task answer"),
     (_c("runs[ \t]+show"), "docket task show"),
     (_c("runs[ \t]+list", r"[ \t]+--project\b"), "docket task list --pod"),
@@ -277,28 +277,13 @@ def read_text(path: Path) -> str | None:
         return None
 
 
-_RECORD_HEADING = "## Changelog"
-
-
-def split_record(path: Path, text: str) -> tuple[str, str]:
-    """A spec's changelog is the record: (editable text, record text) for ``path``."""
-    if not _rel(path).startswith("specs/"):
-        return text, ""
-    for n, line in enumerate(text.splitlines(keepends=True)):
-        if line.rstrip("\n") == _RECORD_HEADING:
-            head = "".join(text.splitlines(keepends=True)[:n])
-            return head, text[len(head) :]
-    return text, ""
-
-
 def scan(paths: Iterable[str | Path], pred=survivors, skip: Iterable[str] = ()) -> list[str]:
     hits: list[str] = []
     for path in iter_files(paths, skip):
         text = read_text(path)
         if text is None:
             continue
-        editable, _record = split_record(path, text)
-        for n, line in enumerate(editable.splitlines(), 1):
+        for n, line in enumerate(text.splitlines(), 1):
             if pred(line):
                 hits.append(f"{_rel(path)}:{n}: {line.strip()}")
     return hits
@@ -317,8 +302,7 @@ def diffs(paths: Iterable[str | Path], skip: Iterable[str] = ()) -> Iterator[tup
         old = read_text(path)
         if old is None:
             continue
-        editable, record = split_record(path, old)
-        new = rewrite_text(editable) + record
+        new = rewrite_text(old)
         if new != old:
             yield path, old, new
 
@@ -335,7 +319,7 @@ def _leading_words(replacement: str) -> list[str]:
 def self_check() -> list[str]:
     import typer.main
 
-    from docket.cli import app
+    from docket.interfaces.cli.app import app
 
     root = typer.main.get_command(app)
     problems: list[str] = []

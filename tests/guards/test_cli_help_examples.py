@@ -10,7 +10,7 @@ from typer.core import TyperGroup
 from typer.main import get_command
 from typer.testing import CliRunner
 
-from docket.cli import app
+from docket.interfaces.cli.app import app
 
 _runner = CliRunner()
 

@@ -92,7 +92,7 @@ docket pod set budgetUsd 5     # cap pod spend at $5 (token-based estimate)
 
 Before *each* hop, docket compares the pod's token-based dollar estimate to this cap — docket's
 own turn loop reports real, measured token counts but no billed dollar figure, so the gate always
-runs off the labelled estimate (`core/dispatch.py`'s `pod_gating_cost`), never a claimed "recorded
+runs off the labelled estimate (`hops/gates/pre_hop.py`'s `pod_gating_cost`), never a claimed "recorded
 spend". Over budget → the task is set to **blocked** and the Lead is paused, never silently
 run.
 
@@ -155,7 +155,7 @@ Lead  →  Implementer  →  Reviewer  →  Tester
 
 ```
 → Running 2 pending task(s) through: lead → implementer → reviewer → tester
-  Pod budget cap: $5.00 (spent $0.00)
+  Pod budget cap: $5.00 (estimate so far ~$0.00, no cost recorded)
 verification skipped — verifyCmd not set for myapp-implementer
 ✓   [task-9c745f95-984d-497b-abdd-1bed9ec9b0b0] done — 4 hop(s)
 verification skipped — verifyCmd not set for myapp-implementer
@@ -176,7 +176,7 @@ unattended caller); see [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s operator-loop
 how a human finds out and answers.
 
 The dispatch orchestrator invokes each hop through its own turn loop
-(`core/agent_loop.py`), captures the result, and threads it to the next role. The Lead plans,
+(`agent/loop.py`), captures the result, and threads it to the next role. The Lead plans,
 the Implementer is the **single writer**, the Reviewer can **veto** the diff, the Tester gives
 an independent PASS/FAIL.
 
@@ -193,7 +193,7 @@ docket run
 ```
 
 Over-budget tasks are blocked **between hops**, not abandoned mid-write, and the pod's Lead is
-paused so no further task is claimed. Raising the Lead's cap un-blocks the pod's budget-blocked
+paused so no further task is claimed. Changing the Lead's cap un-blocks the pod's blocked
 tasks and clears the pause; then re-dispatch:
 
 ```bash
@@ -258,9 +258,6 @@ git commit -m "Fix open-redirect on /auth/callback"
 git push
 ```
 
-The Lead records the outcome in the pod's memory log
-(`~/.docket/workspaces/projects/myapp-lead/memory/YYYY-MM-DD.md`).
-
 ---
 
 ## Autonomous dispatch (opt-in)
@@ -282,7 +279,7 @@ docket start               # READ-ONLY monitor — health checks only, never dis
 > dispatch — an over-budget pod's tasks are set to `blocked` (not `pending`) and the pod's Lead
 > is paused. A blocked task does **not** resume on its own: raise the Lead's cap
 > (`docket pod set budgetUsd N`) or run `docket run --resume`, either of
-> which unpauses the Lead and unblocks the pod's budget-blocked tasks, or requeue one with
+> which unpauses the Lead and unblocks the pod's blocked tasks, or requeue one with
 > `docket task retry <task-id>`.
 > Leaving them blocked is deliberate — rewriting them straight back to `pending` would let a
 > budget-capped task retry forever on every sweep.
@@ -293,13 +290,13 @@ docket start               # READ-ONLY monitor — health checks only, never dis
 
 Everything in Step 6 above — Lead → Implementer → Reviewer → Tester, one hop per role — is
 docket's **built-in pipeline**. It is not hardcoded prose; it is a real, typed pipeline document
-(`core/pipeline.py`) that `docket run` runs whenever a pod has no pipeline
+(`pipeline/domain/spec.py`) that `docket run` runs whenever a pod has no pipeline
 file of its own. Writing a pipeline file lets you change the step order, add a parallel fan-out,
 or swap in a different gate — without touching pod membership at all.
 
 ### Zero migration: nothing changes until you opt in
 
-A pod with no pipeline file behaves **exactly** like `core/dispatch.py`'s hardcoded pipeline
+A pod with no pipeline file behaves **exactly** like `pipeline/domain/spec.py`'s hardcoded `default_pipeline`
 always has: Lead (no gate) → Implementer (mechanical check against its own `verifyCmd`) →
 Reviewer (APPROVE/REQUEST-CHANGES, bounded rework back to the Implementer) → Tester
 (PASS/FAIL, hard gate, no rework). A lean pod without a Reviewer/Tester simply never reaches
@@ -322,7 +319,7 @@ $ docket pod validate workflows/broken.yml
 
 ### `docket pod plan` — see what would actually run, without running it
 
-`plan` renders straight from the real executor (`core.orchestrator.resolve_plan`/`render_plan`)
+`plan` renders straight from the real executor (`pipeline.domain.plan.resolve_plan`/`render_plan`)
 — never a second, drift-prone pretty-printer, and never a token spent:
 
 ```bash
@@ -355,32 +352,19 @@ name: release
 description: Fan the fix out across both implementers, then require a human OK before it ships.
 
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
 
-  - id: fanout
-    parallel:
-      - id: impl-a
-        agent: myapp-implementer
-      - id: impl-b
-        agent: myapp-implementer-2
+  - fanout:
+      parallel:
+        - impl-a: myapp-implementer
+        - impl-b: myapp-implementer-2
 
-  - id: review
-    role: reviewer
-    gate:
-      type: verdict
-      pattern: "^(APPROVE|REQUEST-CHANGES)\\b"
-      passValues: [approve]
-      rework:
-        to: fanout
-        when: [request-changes]
-        maxCycles: 2
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: fanout, max: 2}}
 
-  - id: ship
-    role: tester
-    gate:
-      type: approval
-      message: "Tests passed — ready to deploy?"
+  - ship: tester
+    approval: "Tests passed — ready to deploy?"
 ```
 
 ```bash
@@ -412,8 +396,8 @@ it asks a question before one runs — and what each does to the task:
 |---|---|---|
 | `mechanical` | Implementer's `verifyCmd` by default (or a `command` you set) | Task → **failed**, a `verification_failed` trace event, no advance to the next step. An unset command is never silently skipped — it prints `verification skipped — verifyCmd not set for <id>` and emits its own trace event |
 | `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
-| `approval` | A pipeline `approval` step, or a pod-level `requireApprovalRoles` list | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
-| `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <task-id>`; unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
+| `approval` | A pipeline `approval` step | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
+| `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <escalation-id> --option <id>` (or `<task-id>`); unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
 
 ### Declared variables — interpolated into step instructions
 
@@ -423,8 +407,7 @@ resolved variable namespace before that hop runs:
 
 ```yaml
 steps:
-  - id: deploy
-    role: implementer
+  - deploy: implementer
     instructions: "Deploy to ${env}, then verify the health check."
 ```
 
@@ -603,11 +586,11 @@ reviewed and validated before it landed."
 
 ### Pod dispatch settings — `docket pod show`
 
-A pod's dispatch behavior is nineteen typed keys on the Lead's meta, read/written through one
+A pod's dispatch behavior is twenty typed keys on the Lead's meta, read/written through one
 generic command instead of hand-editing files: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
 `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
-`maxConsultationsPerTask`, `network`, `profile`, `readOnly`, `prepare`. A repository's `.docket/pod.yaml` can carry the same keys under
+`maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`. A repository's `.docket/pod.yaml` can carry the same keys under
 `settings:`, applied by `docket init` or `docket pod update`.
 
 ```bash
@@ -704,8 +687,8 @@ docket start --dispatch
 You can also queue work from Telegram: bind the Lead once with `docket setup notify bind myapp-lead`, run
 `docket start --telegram`, and send `/delegate <task>` in that group. The task lands on the same
 pod queue and the reply is its task id, not the pipeline's output. Plain messages are refused;
-the only verbs are `/approve`, `/deny`, `/status`, `/delegate` and `/answer <task-id> <text>` (for
-a parked question). This bot only ever replies to a message it received — it never messages the
+the only verbs are `/status`, `/delegate` and `/answer <escalation-id> <option or
+text>` (for any pause, an approval included; the older `/answer <task-id> <text>` still answers a parked question). This bot only ever replies to a message it received — it never messages the
 group first. Pushing a notification into the group instead is a separate, opt-in mechanism
 (`docket setup notify enable telegram --set actors=<chat-id>`, §3.15 in CONFIGURATION.md), scoped to
 the chat ids you explicitly list, never every wired binding.

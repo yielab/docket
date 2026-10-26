@@ -1,0 +1,46 @@
+{
+  "id": "<escalation-id>",
+  "task": "<task-id>",
+  "pod": "e2e",
+  "step": "ask",
+  "role": "",
+  "kind": "input",
+  "causedBy": "ask",
+  "prompt": "Operator input requested (from step 'plan').",
+  "options": [
+    {
+      "id": "decline",
+      "label": "Decline",
+      "description": "Refuse without choosing an option.",
+      "risks": [],
+      "estimatedTokens": null
+    }
+  ],
+  "recommendation": null,
+  "requestedSchema": {
+    "type": "object",
+    "properties": {
+      "answer": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "answer"
+    ]
+  },
+  "askedAt": "<time>",
+  "expiresAt": "<time>",
+  "onExpiry": "block",
+  "policy": "person",
+  "level": "L3",
+  "state": "pending",
+  "resolution": null,
+  "seq": 1,
+  "affordances": {
+    "options": [
+      "decline"
+    ],
+    "acceptsText": true,
+    "resolveUrl": "/escalations/<escalation-id>"
+  }
+}

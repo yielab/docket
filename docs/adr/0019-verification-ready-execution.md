@@ -113,7 +113,7 @@ The integrator owns two tests that cross the seams:
 - **evidence → command step**: a pipeline whose `run:` step prints `DOCKET_BASE_COMMIT`. It
   equals the Implementer hop's evidence `baseCommit`, read back through `task_evidence`.
 
-Both exist: `tests/integration/test_task_worktrees.py::test_two_tasks_back_to_back_each_get_their_own_branch_and_directory`
+Both exist: `tests/integration/tasks/test_task_worktrees.py::test_two_tasks_back_to_back_each_get_their_own_branch_and_directory`
 and `::test_a_command_step_gets_the_task_id_and_the_evidence_commits`.
 
 **The check recipes run more than the classifier sees.** `anti-tautology` and `mutation` are each

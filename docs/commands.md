@@ -123,36 +123,26 @@ A dirty worktree or unmerged branch is kept unless --force.
 
 Example: docket task prune --dry-run
 
-### task approve
+### task pregrant
 
-**Usage:** `docket task approve`
+**Usage:** `docket task pregrant`
 
-Approve what a task is waiting on, or pre-grant one command before it asks.
+Approve one exact command for a task before it asks; the approval is single-use.
 
-Resolves the task's pending approval and grants it; with --task the same call is also
-allowed for the rest of the task. --for records a single-use pre-grant for one exact
-command instead.
-
-Example: docket task approve task-04ff --reason "reviewed the diff"
-
-### task deny
-
-**Usage:** `docket task deny`
-
-Deny what a task is waiting on; the task fails and nothing runs.
-
-Example: docket task deny task-04ff --reason "touches production"
+Example: docket task pregrant task-04ff "git push origin main"
 
 ### task answer
 
 **Usage:** `docket task answer`
 
-Answer the question a task is parked on and let it continue.
+Answer what a task is waiting on and let it continue.
 
-On a terminal with no text or option it shows the question and prompts. Off a terminal
-pass text, --field name=value or --option <id>; a question with options needs --option.
+A question takes text, --field or --option; on a terminal with none of them it shows the
+question and prompts. Off a terminal pass text, --field name=value or --option <id>; a
+question with options needs --option. An approval takes --option approve_once, approve_task
+or deny, and --reason. The reference may be the escalation id that `docket inbox` prints.
 
-Example: docket task answer task-04ff --option opt2
+Example: docket task answer esc-1a2b3c4d5e6f --option approve_once
 
 ### task retry
 
@@ -428,7 +418,8 @@ Set up this workstation: model endpoint, notifications, sandbox, shell.
 
 Bare, this is the first run: the report, then only what is missing. On a terminal it asks for what is missing, required first, and prints every
 command it runs. Off a terminal it prints the report and exits 1 when the
-model endpoint is missing. --fix repairs detected drift.
+model endpoint is missing. --fix makes the repairs listed on that option, then
+reports health; with --json the dispatch ledger is only reported.
 
 Example: docket setup
 
@@ -907,8 +898,8 @@ docket -V
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (includes `task approve`/`task deny` re-resolving a token to the verdict it already has) |
-| 1 | Error (generic; also used by `task approve`/`task deny` on an unknown token or one being flipped to the opposite verdict, and `docket init`'s missing-dependency check) |
+| 0 | Success (includes `task answer` re-resolving an escalation to the outcome it already has) |
+| 1 | Error (generic; also used by `task answer` on an unknown escalation, one that is no longer pending, or one being flipped to the opposite outcome, and `docket init`'s missing-dependency check) |
 | 2 | Usage/refusal error: Typer's own automatic response to a missing or invalid argument, or an unrecognized flag or command (an unknown command word names the live commands it could mean) |
 
 No command emits any other exit code today.
@@ -924,24 +915,24 @@ No command emits any other exit code today.
 | `TRACES_DIR` | Root of per-session trace JSONL files (`docket task trace`) | `$DOCKET_HOME/traces` |
 | `POLICIES_DIR` | Root of installed/edited policy JSON (`docket pod policies`, `docket setup sandbox`) | `$DOCKET_HOME/policies` |
 | `PLUGINS_DIR` | Root of operator-applied predicate plugins (`docket pod policies --plugins`, a policy's `when.plugin`) | `$DOCKET_HOME/plugins` |
-| `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `core.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
-| `APPROVALS_DIR` | Where `docket task approve`/`deny`'s approval-token store lives | `$DOCKET_HOME/approvals` |
+| `SKILLS_DIR` | The operator's own Agent Skills, the outermost of the three scopes `agent.skills.discover_skills` reads | `$DOCKET_HOME/skills` |
+| `APPROVALS_DIR` | Where the approval records behind `docket task answer` live | `$DOCKET_HOME/approvals` |
 | `CORRECTIONS_DIR` | Per-pod append-only ledger of operator decisions and rejections (`docket task show`) | `$DOCKET_HOME/corrections` |
 | `SCHEDULE_FILE` | The persisted pod schedules (`docket pod set schedule`) | `$DOCKET_HOME/docket-schedules.json` |
 | `RUNS_FILE` | The persisted dispatch-run registry — one record per `dispatch_pod` invocation | `$DOCKET_HOME/docket-runs.json` |
-| `SESSIONS_DIR` | Root of durable per-session turn history (`core/session.py`) | `$DOCKET_HOME/sessions` |
+| `SESSIONS_DIR` | Root of durable per-session turn history (`agent/session.py`) | `$DOCKET_HOME/sessions` |
 | `MCP_SERVERS_FILE` | Registry of configured external MCP tool servers (`docket setup mcp`) | `$DOCKET_HOME/docket-mcp-servers.json` |
-| `PROVIDERS_FILE` | Global provider catalog scope (`docket setup provider add`, `core/provider.py`) | `$DOCKET_HOME/docket-providers.json` |
-| `EXPORTERS_FILE` | Global exporter catalog scope (`core/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
-| `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`core/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
-| `CHANNELS_FILE` | Global channel catalog scope (`core/channel.py`) | `$DOCKET_HOME/docket-channels.json` |
-| `NOTIFY_STATE_FILE` | `core/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/notify-state.json` |
-| `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`core/notify.py::flush`) | `$DOCKET_HOME/channels-health.json` |
+| `PROVIDERS_FILE` | Global provider catalog scope (`docket setup provider add`, `models/catalog.py`) | `$DOCKET_HOME/docket-providers.json` |
+| `EXPORTERS_FILE` | Global exporter catalog scope (`observability/exporter.py`) | `$DOCKET_HOME/docket-exporters.json` |
+| `EXPORTERS_HEALTH_FILE` | Per-exporter delivery counters and last-error state (`observability/exporter.py::read_health`) | `$DOCKET_HOME/exporters-health.json` |
+| `CHANNELS_FILE` | Global channel catalog scope (`operator/channel.py`) | `$DOCKET_HOME/docket-channels.json` |
+| `NOTIFY_STATE_FILE` | `operator/notify.py::flush`'s dedupe snapshot, so two flushes over the same state deliver each event once | `$DOCKET_HOME/notify-state.json` |
+| `CHANNELS_HEALTH_FILE` | Per-channel delivery counters and last-error state (`operator/notify.py::flush`) | `$DOCKET_HOME/channels-health.json` |
 | `FLEET_FILE` | Agent registration, channel bindings, gate/isolation flags, org default model | `$DOCKET_HOME/fleet.json` |
 | `AUDIT_LOG_MAX_BYTES` | Audit-log rotation threshold (`docket log`) | `5242880` (5 MiB) |
 | `SESSION_TIMEOUT` | Age past which an expired approval is denied (fail-closed) | `3600` |
-| `APPROVAL_TIMEOUT` | The async approval-gate window (`core/dispatch.py`'s `require_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it | `900` |
-| `TOOL_APPROVAL_TIMEOUT` | The in-turn approval wait (`core/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT` | `120` |
+| `APPROVAL_TIMEOUT` | The async approval-gate window (`hops/gates/pre_hop.py`'s `_gate_pre_hop_approval`) — a task waits `waiting_approval`; no process or turn is blocked on it | `900` |
+| `TOOL_APPROVAL_TIMEOUT` | The in-turn approval wait (`governance/approval.py`'s `wait_for_approval`) — blocks a live tool call, so it is far shorter than `APPROVAL_TIMEOUT` | `120` |
 | `TOOL_APPROVAL_POLL_INTERVAL_S` | How often the in-turn approval wait re-checks the record while blocked | `2` |
 | `CLAIM_STALE_TIMEOUT` | A pod task claimed longer than this without finishing is presumed crashed and failed by the dispatch sweep | `1800` |
 | `METRICS_WINDOW` | Rolling terminal-session count for `docket status` | `50` |
@@ -967,6 +958,7 @@ No command emits any other exit code today.
 | `AGENT_LOOP_NO_PROGRESS_ROUNDS` | Stops a turn after this many consecutive tool rounds that only repeat earlier results; `0` disables | `3` |
 | `AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS` | Stops a denial-only loop before it consumes the iteration/tool/token limits | `3` |
 | `DOCKET_TOOL_MAX_OUTPUT_CHARS` | Ceiling on one tool result's text before it is visibly truncated — tune down for a small-context endpoint | `30000` |
+| `DOCKET_CLOCK_OFFSET_S` | Shifts the wall clock by this many seconds so a test can expire a deadline without waiting; unset or invalid is `0` | `0` |
 | `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` | Default overall wall-clock budget for one turn with no explicit `LoopConfig` | `300` |
 | `AGENT_LOOP_TOKEN_BUDGET` | Hard cap on one turn's cumulative measured token usage | `100000` |
 | `AGENT_LOOP_REQUEST_TIMEOUT_S` | Per-HTTP-call timeout passed to the chat backend | `120` |
@@ -992,7 +984,7 @@ No command emits any other exit code today.
 | `DOCKET_SERVE_TOKEN` | Fix `docket start`'s bearer token instead of generating one per run | unset (random) |
 | `DOCKET_LLM_BASE_URL` | Process-wide override that points every model at one endpoint (local dev, tests without stored config) | unset |
 | `DOCKET_LLM_API_KEY` | Process-wide API key override, paired with `DOCKET_LLM_BASE_URL` | unset |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHER_API_KEY` | Per-provider API key, named by a built-in provider document's `auth.credentials` (`core/provider.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a catalog-resolved credential is already present; also checked against docket's own secret store (`docket setup provider add`). A provider absent from the catalog falls back to `<PROVIDER>_API_KEY` | unset |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHER_API_KEY` | Per-provider API key, named by a built-in provider document's `auth.credentials` (`models/catalog.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a catalog-resolved credential is already present; also checked against docket's own secret store (`docket setup provider add`). A provider absent from the catalog falls back to `<PROVIDER>_API_KEY` | unset |
 | `DOCKET_CLI_ROOT` | Repo root override used by the `bin/docket` launcher to select which project to `uv run` against | package/launcher location |
 | `DOCKET_PYTHON` | Explicit interpreter for `bin/docket` to exec (e.g. a Homebrew venv) | unset (auto-resolved) |
 

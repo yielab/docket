@@ -1,4 +1,4 @@
-"""Guard: only `cli/_contract.py` and the listed TTY-checked flows may prompt; confirmations refuse off a TTY.
+"""Guard: only `interfaces/cli/commands/contract.py` and the listed TTY-checked flows may prompt; confirmations refuse off a TTY.
 
 Layer one is an AST count of direct `input(`/`getpass(` calls per module, so a new prompt site
 fails until it is listed here on purpose. Layer two runs every confirming verb with stdin closed
@@ -10,30 +10,34 @@ from __future__ import annotations
 import ast
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from tests.conftest import record_isolation_off, register_local_provider, repoint_docket_home
+from tests.support.home import record_isolation_off, register_local_provider
+from tests.support.pods import build_pod
 from typer.testing import CliRunner
 
-from docket.cli import _pod, app
-from docket.core import dispatch as _dispatch
-from docket.core import fleet as _fleet
-from docket.core import models_policy as _mp
+from docket.interfaces.cli.app import app
+from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel.home import Home, use_home
+from docket.tasks.application import queue as _queue
+from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _mp
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "docket"
 
 # module -> number of direct prompt calls. _contract.py is the shared confirmation; the rest are
 # flows that check for a TTY themselves (first-run setup, enable flows, credential entry, answers).
 _PROMPT_SITES: dict[str, int] = {
-    "cli/_contract.py": 2,
-    "cli/_setup.py": 5,
-    "cli/_setup_notify.py": 4,
-    "cli/_setup_model.py": 1,
-    "cli/_setup_export.py": 1,
-    "cli/_agents.py": 2,
-    "cli/_task.py": 2,
-    "cli/_run.py": 1,
+    "interfaces/cli/commands/contract.py": 2,
+    "interfaces/cli/commands/setup.py": 5,
+    "interfaces/cli/commands/setup_notify.py": 4,
+    "interfaces/cli/commands/setup_model_credentials.py": 1,
+    "interfaces/cli/commands/setup_export.py": 1,
+    "interfaces/cli/commands/agents.py": 2,
+    "interfaces/cli/commands/task_approval.py": 2,
+    "interfaces/cli/commands/run.py": 1,
 }
 
 
@@ -93,25 +97,25 @@ def _seed_documents(tmp_path: Path) -> None:
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     root = tmp_path / ".docket"
     (root / "workspaces" / "projects").mkdir(parents=True)
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    repoint_docket_home(monkeypatch, root)
-    record_isolation_off(root)
-    code = tmp_path / "code"
-    code.mkdir()
-    _pod.build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
-    register_local_provider(root, "loopback", [{"id": "tiny"}])
-    _dispatch.enqueue_task("demo", "a queued task", channel="cli")
-    _fleet.upsert_binding("demo-lead", "-1001")
-    _mp.write_registry({"lead": "loopback/tiny"})
-    _seed_documents(tmp_path)
-    monkeypatch.setenv("DOCKET_POD", "demo")
-    monkeypatch.setenv("DOCKET_NO_HINTS", "1")
-    monkeypatch.chdir(code)
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
-    return root
+    with use_home(Home(root)):
+        record_isolation_off(root)
+        code = tmp_path / "code"
+        code.mkdir()
+        build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(code))
+        register_local_provider(root, "loopback", [{"id": "tiny"}])
+        _queue.enqueue_task_once("demo", "a queued task", channel="cli")
+        _fleet.upsert_binding("demo-lead", "-1001")
+        _mp.write_registry({"lead": "loopback/tiny"})
+        _seed_documents(tmp_path)
+        monkeypatch.setenv("DOCKET_POD", "demo")
+        monkeypatch.setenv("DOCKET_NO_HINTS", "1")
+        monkeypatch.chdir(code)
+        monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
+        yield root
 
 
 @pytest.mark.parametrize(

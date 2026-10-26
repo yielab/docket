@@ -21,7 +21,7 @@ and which cards earn a place on the board?
 | One policy directory | `core/policy.py::policy_files` globs `POLICIES_DIR`; `policy_eval_detail(role, hook, text)` has no project; `core/tools.py::ToolContext.project` exists and is not passed to the policy call |
 | Every MCP tool is a write; every server loads in every turn | `core/mcp_tools.py::_build_tool` registers `kind="write"` unconditionally; `McpServerConfig` has `name/command/args/env/timeout` only; `edges/adapters/docket_runtime.py::_load_mcp_tools(registry, role)` loads `load_mcp_servers()` whole |
 | The Lead's instruction is fixed and step `instructions` skip it by design | `core/dispatch.py` hop-message builder, the `role == "lead"` branch ("plan for the Implementer (you never edit code yourself)") and its docstring's stated scope boundary |
-| A recipe is six commands | `src/docket/templates/recipes/*/README.md` "Apply it"; `tests/integration/test_recipes.py` plans and dispatches `secure-build` |
+| A recipe is six commands | `src/docket/templates/recipes/*/README.md` "Apply it"; `tests/integration/teams/test_recipes.py` plans and dispatches `secure-build` |
 | The manifest was deferred with a trigger that this request fires | ADR 0008 verdict table: "Declarative pod manifest (apply/diff/export) — DEFER — trigger: a pod reproduced on a second machine, or `POST /pods` needing a full spec" |
 | Positioning finding | `internal-docs/positioning-audit-2026-09-26.md` §9 (gitignored): "the format exists, the distribution does not" |
 

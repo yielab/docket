@@ -13,32 +13,19 @@
 # directly — `mechanical`'s command is optional and, left unset, defers to
 # the Implementer's own configured verify command instead of duplicating it
 # in the pipeline file.
+kind: pipeline
 name: code-review
 description: Implementer change, reviewer verdict with rework, human ship approval.
 
 steps:
-  - id: plan
-    role: lead
+  - plan: lead
 
-  - id: build
-    role: implementer
-    gate:
-      type: mechanical
-      command: null
+  - build: implementer
+    verify: true
 
-  - id: review
-    role: reviewer
-    gate:
-      type: verdict
-      pattern: "^(APPROVE|REQUEST-CHANGES)$"
-      passValues: ["approve"]
-      rework:
-        to: build
-        when: ["request-changes"]
-        maxCycles: 1
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}
 
-  - id: ship
-    role: lead
-    gate:
-      type: approval
-      message: "Reviewer approved — confirm this is safe to ship."
+  - ship: lead
+    approval: "Reviewer approved — confirm this is safe to ship."

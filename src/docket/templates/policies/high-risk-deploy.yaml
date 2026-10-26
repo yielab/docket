@@ -4,6 +4,23 @@ class: high-risk
 description: Production deployment always requires approval (high-risk class — overrides allowlist)
 appliesTo: ["*"]
 when:
-  matches: 'kubectl\s+(apply|delete|replace|rollout)|helm\s+upgrade|terraform\s+apply|git\s+(?:-{1,2}[A-Za-z][\w.-]*(?:=\S*)?(?:\s+[^-\s]\S*)?\s+)*push\s+.*\b(main|master|production|prod)\b|npm\s+publish|docker\s+push|fly\s+deploy|vercel\s+--prod|heroku\s+promote'
+  anyOf:
+    - command: {program: kubectl, verb: [apply, delete, replace, rollout]}
+    - command: {program: helm, verb: [upgrade, install, uninstall, rollback]}
+    - command: {program: [terraform, tofu, terragrunt], verb: [apply, destroy]}
+    - command: {program: pulumi, verb: [up, destroy]}
+    - command: {program: git, verb: [push], args: [main, master, production, prod, "*:*", "+*", --all, --mirror]}
+    - command: {program: [npm, pnpm, yarn], verb: [publish]}
+    - command: {program: [cargo, gem, poetry, flit], verb: [publish, push]}
+    - command: {program: twine, verb: [upload]}
+    - command: {program: [docker, podman, nerdctl, buildah], verb: [push]}
+    - command: {program: [docker, podman, nerdctl], args: [--push]}
+    - command: {program: [flyctl, fly], verb: [deploy]}
+    - command: {program: vercel, verb: [deploy, promote, rollback]}
+    - command: {program: vercel, args: [--prod, --production]}
+    - command: {program: heroku, verb: [promote, "releases:rollback", "pipelines:promote"]}
+    - command: {program: gh, verb: [release], args: [create, delete, upload, edit]}
+    - command: {program: aws, verb: [s3], args: [sync]}
+    - command: {program: [ansible-playbook, ansible]}
 then: ask
 message: Production deployment always requires approval, regardless of exec allowlist.

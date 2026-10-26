@@ -1,255 +1,145 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 6.60.1
-**Status**: Complete. **P45-3** (ADR 0029 point 3) keeps a check from being defined by the change it checks: a task whose
-finished diff touches a protected path parks `waiting_approval` for a person, whatever the profile — see "A change that
-edits its own check" below. **P45-1** (ADR 0029 point 1) prepares the worktree docket makes: before a claimed task's first hop,
-`dispatch_pod` runs one install command (the task's `prepare`, the pod's `prepare` setting, else one derived from
-the worktree's lockfile) and keeps what it installed once per codebase and lockfile hash — see "Task preparation" below. **P44-5** (ADR 0028 §5) makes every hop that changed the tree deliver what it
-produced: `HandoffArtifact.diff`, a capped diff of the hop's tracked changes plus the content of
-its new files, rendered once after the summary — see "Structured handoff artifacts" and
-"Implementer diff producer" below. **P35-4** (ADR 0017 §4) persists real evidence on a hop: `HopResult.verify`
-(cmd/exitCode/durationS/redacted outputTail, set by `_evaluate_mechanical_gate` on pass and fail)
-and `HopResult.evidence` (real commit/baseCommit/diffStat from `_hop_diff_probe`, each
-field independently `None` off a non-repo checkout) — see "Hop evidence" below. **P32-3** (ADR
-0014) makes every hop-scoped trace event `core/agent_loop.py`
-writes carry the claimed task's `task_id` (new "Per-hop execution" requirement 6), threaded from
-the single `driver.run_turn(...)` call site; see `trace-store.spec.md` 1.1.0 for the record-shape
-side of this. **P30-3** (ADR 0012 §2 rule 6) makes a pipeline step's own `model`
-(`pipeline-format.spec.md`'s "Steps" Requirement 10) load-bearing at hop execution — see
-"Per-hop execution" requirement 5 below; resolution of the `cheap`/`strong` rank words is
-`model-profiles.spec.md`'s concern, applied per hop only, never persisted to `.docket-meta.json`.
-**P28-6** adds a new "Conditional steps and command steps" section: a
-`when`-gated step is evaluated and, on a false predicate, skipped with a `step_skipped` trace
-event and no hop; a `run` step executes its command directly (`command_step` trace event), with
-no agent turn, gated on `core.security.classify_command` before it runs. **P28-5** generalizes "Generalized gate execution": a step's own `on` map
-(`pipeline-format.spec.md`'s "Outcome routing") now routes a mechanical `pass`/`fail` or a verdict
-gate's matched marker to `fail`, `stop`, or any other step — forward, backward or self, bounded by
-`max` — instead of that outcome's ordinary advance/rework/fail handling, tracing one `route_taken`
-event per decision. **P27-5** ("Bounded hop prompts" new requirement 8) makes the Lead's hop
-instruction data instead of a process-wide hardcoded string: `_hop_message`'s `role == "lead"`
-branch now resolves its instruction text through `core/archetypes.py`'s `resolve_hop_instruction`
-(the `lead` archetype's own `hopInstruction`, defaulting to the pre-existing hardcoded text) and
-honors a step's own `instructions` override, the same as every other role — see
-`role-archetypes.spec.md`'s "Hop instructions" and `pipeline-format.spec.md`'s "Steps"
-Requirement 8. The public CLI reconstructs the full delegated task from every task
-positional before enqueueing, whether the shell supplied one quoted argv item or several ordinary
-positional words. A pod-dispatch hop executes through
-`edges.adapters.docket_runtime.DocketDriver`, docket's own gated turn loop
-(`core/agent_loop.py` dispatching every tool call through `core/tools.py`'s chokepoint). See
-"Runtime driver resolution" and "Cancellation" below for the hop-execution and cancellation
-contracts. ROADMAP Phase 17's C-3 (one durable task state) and C-5 (conversation
-registry auto-population) are now implemented — see "Mechanical HEARTBEAT ledger" and
-"Conversation registry auto-population" below: the pod Lead's `HEARTBEAT.md` dispatch ledger and
-a wired agent's conversation `last_message`/`task_ref` are now kept current mechanically, at the
-same claim/persist/retry/finalize points the task state machine itself uses, closing Phase 17.
-Task cancellation and parallel hop execution (ROADMAP Phase 16 W-2) and
-generalized gate execution (Phase 16 W-8) are now implemented — see "Generalized gate execution",
-"Parallel step groups", and "Cancellation" below. The require_approval gate
-(Requirements → "require_approval gate and waiting_approval") now ships with **two** wired
-sources (pod-level and pipeline-defined); the policy-driven source (Phase 15 G-2) remains an
-explicit, inert seam — see that section's "Sources" list. Hops run through the RuntimeDriver port
-(Phase 18 L-1) — a containment refactor with no behavior change **at the time it shipped**; P19-7a
-(2026-08-03) is the behavior change that port made possible — see "Runtime driver resolution"
-below. The role-archetype registry's
-`gateContract` (Phase 16 W-6) is now load-bearing: it is the fallback a step's gate resolves to
-when the step declares none of its own. **Structured handoff artifacts (ROADMAP Phase 16 W-5)**
-are implemented — see "Structured handoff artifacts" below: a hop's output is a typed
-`HandoffArtifact` (`core/handoff.py`), not a raw string; the next hop's prompt is composed from
-its rendered form, and it is persisted alongside the hop record so `--resume` recovers it exactly.
-The `core/dispatch.py:1313` `print()` (a layering violation — `core/` never prints) is also gone:
-a mechanical gate's unset-command skip is now a typed `HopResult.verification_skipped` flag
-rendered by `cli/_pod.py`, plus a `tool_result` trace event carrying the same fact — see
-"Implementer verification gate" and "Generalized gate execution" below. **W-5b** closes the
-`files_changed`/`diff_ref` seam W-5 declared: a successful Implementer hop's artifact now carries a
-real git probe's output — see "Implementer diff producer" below. `notes` remains reserved, with no
-producer, documented as such. **ROADMAP Phase 17's C-1 (the context compiler) is now implemented**
-— see "Bounded hop prompts" below, rewritten: R-7's process-wide byte cap and its blind head+tail
-truncation are retired, and every prior hop's rendered artifact is fit to a **per-role token
-budget** (`core/archetypes.py`'s `RoleArchetype.token_budget`, see `role-archetypes.spec.md`
-v1.3.0) via `core/context.py`'s `compile_artifact`, which sheds `HandoffArtifact.DROP_ORDER` fields
-before ever truncating `summary` itself.
-**Wave 20 card W20-C4** isolates durable model history by pipeline `step_id`: downstream roles
-receive prior work through the bounded typed artifact once, while all audit events remain on the
-task-wide trace coordinate.
-**Last Updated**: 2026-10-19
+**Version**: 11.0.0
+**Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
+queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
+crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
-This specification defines the pod dispatch pipeline's state machine — how `docket run`
-(and the opt-in `docket start --dispatch` loop) claims and drives queued
-tasks through a pod's roles hop by hop, how it survives a crash mid-task, how a task retries,
-blocks, waits for a human decision, and resumes, what gates can stop advancement at each hop, and
-what a caller can observe (task status, per-hop record, trace events) after a run. The pipeline
-itself lives in `src/docket/core/dispatch.py`; this document is its behavioral contract.
-**Version 1.0.0** (Phase 12/13) documented the original straight-line pipeline (three gates,
-`done`/`failed`/`blocked` only, no persisted `running` state, no retries, one hardcoded timeout).
-**ROADMAP Phase 14** (R-1…R-7, "runtime truth & dispatch hardening") rebuilt the state machine
-underneath that contract: locked claims, a persisted `running` state, crash recovery, retries
-with a failure taxonomy, independent timeouts, a real Reviewer gate with bounded rework, real
-budget auto-pause, and a bounded hop prompt. **ROADMAP Phase 15 G-1** ("approval-gated dispatch")
-added a sixth task status, `waiting_approval`, and the require_approval gate that produces it —
-`core/approval.py`'s pending-approval store previously had no production producer at all; this is
-that missing producer. **ROADMAP Phase 16 W-2 (executor) / W-8 (generalized gates)** — shipped
-together per ROADMAP's explicit sequencing rule ("W-6/7/8 land with the executor, not after") —
-is this version's own major change: `core/orchestrator.py` resolves a
-`~docket.core.pipeline.PipelineSpec` (W-1) against a pod's live roster into a deterministic
-`ExecutionPlan` and runs it over this exact state machine (claiming, budget/approval gates,
-retries, crash resume all unchanged); gate execution reads each step's *resolved* gate — its own
-declared `gate`, or (only when a step omits one) its archetype's `gateContract` (W-6) — instead of
-branching on a hardcoded role name; a `parallel` step's children run concurrently via a bounded
-worker pool and join before the pipeline advances; and `docket task cancel <ref>` kills an
-in-flight hop's process group. This version documents that machine as it actually ships.
+This specification defines the pod dispatch pipeline's state machine: how `docket run` (and the
+opt-in `docket start --dispatch` sweep) claims queued tasks and drives them through a pod's roles
+hop by hop, how a task survives a crash mid-run, how it retries, blocks, waits for a human decision
+or answer, and resumes, which gates can stop advancement at each hop, and what a caller can observe
+afterwards (task status, per-hop record, trace events). The pipeline a task runs is a
+`PipelineSpec` resolved against the pod's live roster into a deterministic `ExecutionPlan`; the
+executor walks that plan step by step, evaluating each step's resolved gate by its type, running a
+`parallel` group's children concurrently, and honouring each step's own `on:` routes.
 
 ## Scope
 
 This specification covers:
 
-- The task record's full lifecycle: creation, locked claiming, persisted `running` state,
-  per-hop incremental persistence, terminal states, and how a task moves between them
-- Crash recovery: the stale-claim sweep and `--resume`-driven continuation from the last
-  persisted hop (including mid-rework, and — best-effort — mid-parallel-group)
+- The task record's lifecycle: creation, locked claiming, the persisted `running` state, per-hop
+  incremental persistence, terminal and waiting states, and how a task moves between them
+- Crash recovery: the stale-claim sweep and `--resume`-driven continuation from the last persisted
+  hop (including mid-rework, and, at group granularity, mid-parallel-group)
 - Concurrency: why two dispatchers can never double-run one task
-- Pipeline step order and which roles/agents participate for a given pod and spec, including a
-  verdict gate's bounded rework loop (a step may run more than once within one dispatch attempt)
-  and a `parallel` group's concurrent children
-- Per-hop execution: message construction (with a bounded-size carryover cap), environment
-  injection, the real agent turn, and retries of a transient failure
-- Timeout configuration: independent agent-turn vs. `verifyCmd` timeouts and their resolution
+- Pipeline step order and which roles and agents take part for a given pod and spec, including a
+  verdict gate's bounded rework loop and a `parallel` group's concurrent children
+- Per-hop execution: message construction under per-role token budgets, environment injection,
+  the real agent turn, and retries of a transient failure
+- Timeout configuration: independent agent-turn and verify-command timeouts and their resolution
   order, including a step's own `retries`/`timeout` override
-- The gates that can block pipeline advancement mid-run: budget (with auto-pause), the
-  require_approval gate (waits on a human decision, resumable — now with two wired sources),
-  a `mechanical` gate (`verifyCmd`-equivalent, worktree-aware cwd resolution for any role), and a
-  `verdict` gate (generalizing the pre-W-8 hardcoded Reviewer APPROVE/REQUEST-CHANGES and Tester
-  PASS/FAIL gates to any archetype's marker vocabulary)
-- **Generalized gate execution** (W-8): how a step's gate is resolved (its own, or its
-  archetype's fallback), how a `VerdictGate`/`MechanicalGate`/`ApprovalGate` is evaluated
-  generically, and the byte-identical-behavior guarantee for the four built-in roles
-- **Parallel step groups** (W-2): bounded concurrent execution of a group's children, join
-  semantics, and per-hop persistence ordering
-- **Cancellation** (W-2, W26-C10c, W30-C1): how `docket task cancel <ref>` reaches an in-flight hop
-  — the cooperative run signal, an in-flight `bash` command's process group, and any tracked pid
-- The require_approval gate's two wired sources for this version (a pod-level Lead-meta role
-  list, and a pipeline step whose resolved gate is `approval`), how a fired gate is resolved
-  (grant resumes at the exact hop, deny fails the task immediately, an expiry fail-closes to
-  denied), and why a `waiting_approval` task is never claimable by a plain dispatch run; and
-  which pod a dispatch hop's approval trace events must file under
-- **Registry retention**: the shared trigger and liveness rule that bounds `docket-runs.json`,
-  the approval store, and the conversation registry, without owning any one store's own shape
-- **Structured handoff artifacts** (W-5): the `HandoffArtifact` model's fields and field-priority
-  drop order, how a hop's artifact is built and rendered into the next hop's prompt, and its
-  persistence/backward-compatibility contract for `--resume`
-- **Implementer diff producer** (W-5b): how a successful Implementer hop's `files_changed`/
-  `diff_ref` are populated via a real git probe (`edges/adapters/system.py`), and the three ways
-  it degrades cleanly (a `workdir` pod, a non-repo codebase, a missing `git` binary)
+- The gates that can stop a task mid-run: budget (with auto-pause), the require_approval gate,
+  `mechanical`, `verdict` and `external` gates, a task's own gate, and the protected-path check at
+  the end of a run
+- Parked approvals and operator questions, pre-grants, and task briefs
+- Cancellation: how `docket task cancel <ref>` reaches an in-flight hop and a parked task
+- Registry retention: the shared trigger and liveness rule that bound `docket-runs.json`, the
+  approval store and the conversation registry
+- Structured handoff artifacts, the diff producer, hop evidence, hop events and task usage
+- Task worktrees, worktree preparation, and the evidence document a task's hops produce
 - The complete task-status and failure-kind vocabulary, and every trace event this pipeline emits
 
 This specification does NOT cover:
 
-- The `.docket-meta.json` fields that configure a pod member (`portRangeStart`,
-  `portRangeCount`, `scratchDir`, `verifyCmd`, `turnTimeoutS`, `verifyTimeoutS`,
-  `maxReworkCycles`, `requireApprovalRoles`, `paused`/`pausedReason`) — see `docket-meta.spec.md`
-- A policy-driven require_approval match (ROADMAP Phase 15 G-2) — an explicit, documented seam
-  in `core/dispatch.py` (`_policy_requires_approval`) that always returns `False` today; not wired
-  to any real source yet, and this spec does not invent one. (The pipeline-defined `approval` step
-  source, ROADMAP Phase 16 W-1/W-2, **is** wired now — see "Generalized gate execution" below.)
-- `core/approval.py`'s own approval-record lifecycle (`pending`/`granted`/`denied`, the CLI/HTTP
-  channels, audit-log parity) — see `security-gates.spec.md`. This spec covers only how
-  *dispatch* creates and reacts to a record, not the record's own store contract
-- The CLI surface for queuing/inspecting/dispatching tasks (`docket task add|list|show|diff|trace|prune`, `docket pod
-  add` and `docket pod set verify`, `docket run`, `docket task cancel`, including their flags) — see `cli-interface.spec.md`
-- Budget-cap accounting in general, and the `docket pod set budgetUsd` and `docket run --resume` CLI
-  contract — see `cost-tracking.spec.md`. This spec covers only the pre-hop budget check and the
-  auto-pause/claim-refusal mechanics it drives
-- The persisted dispatch-run registry (`core/runs.py`, `GET /runs`) that records
-  *invocations* of this pipeline (one record per `dispatch_pod` call, whatever triggered it),
-  including its `pids`/cancellation-outcome fields — see `serve-read-api.spec.md` and
-  `cli-json-shapes.spec.md`. This spec is scoped to what happens *inside* one such invocation and
-  to how a hop's pid is reported into that registry (`core.runs.add_hop_pid`/`current_run_id`),
-  not the registry's own record shape
-- `edges/store.py`'s `with_lock`/`read_modify_write` locking primitive itself (this spec only
-  relies on its atomicity guarantee) — see the module's own docstring
-- The retired org-wide manual queue (durable record in ROADMAP decision D-11 — its spec was
-  removed 2026-07-30)
-- The declarative role-archetype registry's schema itself (`gateContract`'s closed kinds, the
-  built-in/starter-library archetypes, the user overlay) — see `role-archetypes.spec.md`. This
-  spec covers only how the executor *consumes* an archetype's `gateContract` as a gate fallback,
-  not the registry's own authoring/validation contract
-- Pod provisioning / blueprints (which roles a pod actually has, `--count N` duplicate members,
-  workspace kind) — see `workspace-structure.spec.md` and `pod-blueprints.spec.md` (ROADMAP Phase 16
-  card W-7)
-- `core/context.py`'s own internals (the chars-per-token approximation, `compile_artifact`'s
-  field-shedding/summary-truncation mechanics, `RoleArchetype.token_budget`'s schema) — see
-  `role-archetypes.spec.md` for the archetype-side schema and `core/context.py`'s own module
-  docstring for the compiler itself. This spec covers only how `_hop_message` *consumes* that
-  compiler to build one hop's message — see "Bounded hop prompts" below. Both the token-budgeting
-  consumer (C-1) and the `files_changed`/`diff_ref` producer (W-5b) shipped in the same wave, so
-  neither is a gap: this spec covers the artifact's shape, how dispatch builds/renders/persists
-  one, and how the diff fields are populated — see "Implementer diff producer" below
+- The member-level `.docket-meta.json` fields dispatch reads (`portRangeStart`, `portRangeCount`,
+  `scratchDir`, `verifyCmd`, `paused`/`pausedReason`): see `docket-meta.spec.md`. The pod
+  settings dispatch reads are listed under "Pod dispatch settings" below
+- The approval store's own record lifecycle (`pending`/`granted`/`denied`, the CLI/HTTP
+  channels, audit-log parity): see `security-gates.spec.md`. This spec covers only how dispatch
+  creates and reacts to a record
+- The CLI surface for queuing, inspecting and dispatching tasks (`docket task add|list|show|diff|trace|prune`,
+  `docket pod add`, `docket pod set`, `docket run`, `docket task cancel`, and their flags) beyond the
+  behaviour stated here: see `cli-interface.spec.md`
+- Budget-cap accounting in general and the `docket pod set budgetUsd` contract: see
+  `cost-tracking.spec.md`. This spec covers the pre-hop budget check and the auto-pause it drives
+- The persisted dispatch-run registry (`GET /runs`, `docket log`) that records each invocation of
+  this pipeline, including its `pids` and cancellation fields: see `serve-read-api.spec.md` and
+  `cli-json-shapes.spec.md`. This spec covers what happens inside one invocation and how a hop's
+  pid is reported into that registry
+- The locked read-modify-write primitive itself; this spec relies only on its atomicity
+- The role-archetype registry's schema (`gateContract`, the built-in and starter archetypes, the
+  overlay): see `role-archetypes.spec.md`. This spec covers how the executor consumes a
+  `gateContract` as a gate fallback
+- Pod provisioning and blueprints (which roles a pod has, `--count N` members, workspace kind):
+  see `workspace-structure.spec.md` and `pod-blueprints.spec.md`
+- The context compiler's internals (the chars-per-token approximation, field shedding, summary
+  truncation, `RoleArchetype.token_budget`'s schema): see `role-archetypes.spec.md`. This spec
+  covers how a hop's message consumes that compiler
 
 ## Requirements
 
 ### Task lifecycle and identity
 
-1. A newly queued task (`docket task add`) **MUST** be created with a unique
-   `task-<uuid4>` id (not a timestamp — concurrent enqueues under the same millisecond would
-   otherwise collide and leak false ordering), `status: "pending"`, a `created` timestamp,
-   `priority` (`high`/`normal`/`low`, default `normal`), an empty `hops` array, `costUsd: 0.0`,
-   and `claimId`/`claimedAt`/`startedAt`/`completedAt` all unset.
-2. A task record loaded from a pre-Phase-14 queue file (missing the fields this version adds)
-   **MUST** be transparently backfilled with their defaults on every read (`_normalize_task`) —
-   no separate migration step exists or is required.
-3. A task's status **MUST** be one of exactly seven values: `pending`, `running`, `done`,
-   `failed`, `blocked`, `waiting_approval`, `cancelled`. (See "Task status vocabulary" below for
-   terminal vs. non-terminal.)
+1. A newly queued task (`enqueue_task_once`) **MUST** be created with a unique `task-<uuid4>` id (not a
+   timestamp: concurrent enqueues under the same millisecond would otherwise collide and leak
+   false ordering), `status: "pending"`, a `created` timestamp, `priority` (`high`/`normal`/`low`;
+   any other value is stored as `normal`), `channel`, an empty `hops` array,
+   `costUsd: 0.0`, `reason: ""`, and `claimedAt`/`startedAt`/`completedAt` all unset. The record
+   carries no claim token: a stale claim is read from `claimPid` with `claimedAt`, and `channel`
+   says where the task came from.
+   Enqueue screens the description through `pre_input` once: a `block` raises `DispatchError` and
+   stores nothing; a `require_approval` stores the task `waiting_approval` with
+   `pendingApprovalIndex: 0`, opens the `approval` escalation of the approval it creates once the
+   task is stored (a lost idempotency race opens none) and traces `approval_required` naming that
+   escalation (`security-gates.spec.md`), so the inbox lists the pause once
+   (`operator-loop.spec.md` area 11).
+   Enqueueing into a project with no pod raises `DispatchError`.
+2. Every read of a pod's queue (`TaskRepository.list`) **MUST** fill each field enqueue does not write with
+   its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`, `costUsd`,
+   `claimedAt`, `pendingApprovalIndex`,
+   a fresh empty `hops` list, `created`, `id`); no
+   separate migration step exists or is required.
+3. A task's status **MUST** be one of exactly eight values: `pending`, `running`,
+   `waiting_approval`, `waiting_input`, `blocked`, `done`, `failed`, `cancelled`. (See "Task
+   status vocabulary" below for terminal vs. non-terminal.)
 
-#### Delegation input reconstruction (W25-C1)
+#### Task text at the CLI
 
-The public CLI contract requires the full free-form task text to reach `enqueue_task` whether the
-shell supplied it as one quoted argv item or equivalent split positional items. Quoting is still
-needed for shell metacharacters, but is not application metadata and is not itself a Docket
-requirement. `_pod_delegate` **MUST** remove a well-formed `--priority`/`-p` option, join every
-remaining task positional with one space, and apply the existing empty and 500-character checks to
-that reconstructed description before calling `enqueue_task`. A missing or invalid priority
-**MUST** fail without enqueueing.
+`docket task add` **MUST** take the task text as a single argument (quote it in the shell) and
+refuse, exiting 1 without enqueueing, an empty text or a text longer than 500 characters.
+`--priority` accepts only `high`, `normal` or `low`; any other value exits 2 without enqueueing.
 
 #### Enqueue channel
 
-`enqueue_task` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram` or
-`mcp`, persist it on the task as `channel` beside `source`, and append
-`task.enqueue` to the audit log naming the project, the task and the channel. `source` stays the
-origin class (`operator`, `reviewer` for a rework task) and alone drives the `pre_input` trust
-default; `channel` never changes trust. The detail names no description text. A task persisted
-before this version has no `channel`. `POST /dispatch/<project>` **MUST** append `run.dispatch`
-naming the run, the project and `channel=http` beside its `create_run`.
+`enqueue_task_once` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram` or
+`mcp`, persist it on the task as `channel` beside `source`, and append `task.enqueue` to the audit
+log naming the project, the task and the channel. `source` stays the origin class (`operator`,
+`reviewer` for a rework task) and alone drives the `pre_input` trust default; `channel` never
+changes trust. The detail names no description text. `POST /dispatch/<project>` **MUST** append
+`run.dispatch` naming the run, the project and `channel=http` beside the run record it creates.
 
-#### Addressable task (P43-1, ADR 0027)
+#### Addressable task (ADR 0027)
 
-1. `enqueue_task` **MUST** accept `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
-   `gate`, `max_tokens` and `restrictions` as keyword arguments, validate them through
-   `core/task_options.py::validate_task_options` (shape and narrowing only) before anything is
-   persisted, and store each one that is set on the task record verbatim under its camelCase key:
-   `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens`, `restrictions`.
-   A field left unset is absent from the record. Later cards read `baseRef` (P43-2), `pipeline`
-   and `gate` (P43-3), `maxTokens` and `restrictions` (P43-4) at claim or hop time; enqueue acts
-   on none of them.
-2. A wrongly shaped field (a non-string `externalRef`, an empty string, a `maxTokens` that is not
-   a positive integer, a `gate` without a `command`) raises `DispatchError`. A `restrictions`
-   entry that would widen -- `network` other than `"none"`, a `deniedTools` name outside
-   `core.archetypes.BUILTIN_TOOL_KINDS`, a policy whose action is not `block` or that does not
-   validate -- raises `TaskRestrictionError`, a `DispatchError` subclass, so a caller can tell
-   `422` from `400`. Nothing is persisted and no `task.enqueue` is audited in either case.
+1. `enqueue_task_once` **MUST** accept `external_ref`, `idempotency_key`, `base_ref`, `pipeline`,
+   `gate`, `max_tokens`, `prepare`, `restrictions` and `autonomy` as keyword arguments, validate them through
+   `validate_task_options` (shape and narrowing only) before anything is persisted, and store each
+   one that is set on the task record verbatim under its camelCase key: `externalRef`,
+   `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens`, `prepare`, `restrictions`,
+   `autonomy`. A field left unset is absent from the record. `baseRef`, `pipeline`, `gate` and `prepare` are
+   acted on at claim, `gate`, `maxTokens` and `restrictions` at hop time; enqueue acts on none of
+   them.
+2. A wrongly shaped field (a non-string `externalRef`, an empty string, a blank `pipeline`, a
+   `maxTokens` that is not a positive integer, a `gate` without a `command`, an invalid
+   `prepare` command, an `autonomy` outside `L3`/`L4`/`L5`) raises `DispatchError`. An `autonomy`
+   above the pod profile's ceiling raises `TaskRestrictionError` (`422`). A `restrictions` entry that would widen --
+   `network` other than `"none"`, a `deniedTools` name outside `BUILTIN_TOOL_KINDS`, a policy
+   whose action is not `block` or that does not validate -- raises `TaskRestrictionError`, a
+   `DispatchError` subclass, so a caller can tell `422` from `400`. Nothing is persisted and no
+   `task.enqueue` is audited in either case.
 3. When `idempotency_key` is set and a task in this pod's queue already carries that
    `idempotencyKey`, the lookup runs inside the same locked read-modify-write that appends, the
    queue is left untouched, no `task.enqueue` is audited, and that existing record is returned.
-   `enqueue_task_once(...)` returns `(task, created)`; `enqueue_task(...)` returns the task alone.
+   `enqueue_task_once(...)` returns `(task, created)`.
 
 ### Task references
 
-1. `core/task_ref.py::resolve_task(project, ref)` **MUST** resolve a full task id, the short id
-   `task list` prints (the first 18 characters), or any unambiguous prefix, within one pod or,
-   when `project` is `None`, across every dispatchable pod. An exact id wins over longer ids it
-   prefixes.
+1. `resolve_task(project, ref)` **MUST** resolve a full task id, the short id `task list` prints
+   (the first 18 characters), or any unambiguous prefix, within one pod or, when `project` is
+   `None`, across every dispatchable pod. An exact id wins over longer ids it prefixes.
 2. A reference beginning `run-` **MUST** resolve through the run record to the task that run
    dispatched; a run that dispatched no queued task, or more than one, or belongs to another pod
    than the one asked for, **MUST** raise `TaskRefError`.
@@ -257,401 +147,379 @@ naming the run, the project and `channel=http` beside its `create_run`.
    `step_session_key` for the Lead hop), `run_ids` (every run record listing the task, newest
    first) and the recorded worktree directory, empty when the task runs in place.
 4. An ambiguous reference **MUST** raise `TaskRefError` listing every candidate id with its pod;
-   an unknown one **MUST** raise it naming the pods searched. The resolver reads `read_tasks` and
+   an unknown one **MUST** raise it naming the pods searched. The resolver reads the queue and
    never writes.
 
 ### Claiming (locked, race-free)
 
-1. Before a task's first hop runs, it **MUST** be **claimed**: a single locked
-   read-modify-write (`edges/store.py`'s `read_modify_write`, holding the queue file's
-   per-directory filelock for the whole operation) that selects the next eligible task, flips its
-   status `pending` → `running`, and persists `startedAt`, a fresh `claimId` (a `uuid4` token,
-   regenerated on every claim — an identifying/observability value, not itself compared on a
-   later write; the concurrency guarantee comes from the filelock held during the
-   read-modify-write, not from a claimId check), and `claimedAt` — all **before** the function
-   returns and before any hop is attempted.
-2. Because the read (which task is next), the mutation (flip to `running`), and the write all
+1. Before a task's first hop runs, it **MUST** be **claimed**: a single locked read-modify-write
+   of the pod's queue file (holding its filelock for the whole operation) that selects the next
+   eligible task, flips its status to `running`, clears its `failureKind`, and persists
+   `startedAt`, `claimedAt`, and `claimPid` (the claiming process's pid; the concurrency guarantee
+   comes from the filelock held during the read-modify-write, not from any token) -- all **before** the claim returns and before any hop is attempted.
+2. Because the read (which task is next), the mutation (flip to `running`) and the write all
    happen inside one lock acquisition, two concurrent `dispatch_pod` calls against the same pod
    (different threads, or different processes) **MUST NOT** be able to claim the same task: the
    second caller's read already observes the first caller's claim and either picks a different
-   eligible task or finds none left. This is what makes the serve webhook thread, the schedule
-   thread, the sweep loop, and a manual CLI dispatch all safe to run concurrently against one
-   pod.
+   eligible task or finds none left. This is what makes the HTTP webhook, the schedule, the sweep,
+   the MCP dispatch tool and a manual `docket run` all safe to run concurrently against one pod.
 3. Eligible-for-claim rules: a `pending` task is always eligible. A `failed` task whose
-   `failureKind` is one of `RESUMABLE_FAILURE_KINDS` — `"stale_claim"` (see "Crash recovery"
-   below) or `"dispatch_refused"` (see "Deterministic refusal inside a claimed task" below) — is
-   eligible **only** when the caller passed `resume=True` (`docket run
-   --resume`); crash/refusal recovery is opt-in, never automatic, and neither tag waits out a
-   staleness timer at claim time (a swept `stale_claim` already waited for
-   `CLAIM_STALE_TIMEOUT` to be tagged in the first place; a `dispatch_refused` task's claim was
-   never left dangling, so it needs no wait at all). No other status is ever claimable (in
-   particular, `blocked` and a plain `failed` task — one whose failure was a real graded
-   hop/gate outcome, not a settled crash or refusal — are never reclaimed by a dispatch run; see
-   "blocked and terminal-failure re-entry" below).
+   `failureKind` is one of `RESUMABLE_FAILURE_KINDS` -- `"stale_claim"` (see "Crash recovery"
+   below) or `"dispatch_refused"` (see "Deterministic refusal inside a claimed task" below) -- is
+   eligible **only** when the caller passed `resume=True` (`docket run --resume`); crash and
+   refusal recovery is opt-in, never automatic, and neither tag waits out a staleness timer at
+   claim time (a swept `stale_claim` already waited for `CLAIM_STALE_TIMEOUT` to be tagged; a
+   `dispatch_refused` task's claim was never left dangling). No other status is ever claimable (in
+   particular, `blocked`, `waiting_approval`, `waiting_input` and a plain `failed` task -- one
+   whose failure was a real graded hop or gate outcome -- are never reclaimed by a dispatch run;
+   see "blocked and terminal-failure re-entry" below).
+   Within one dispatch run a task is claimed **at most once**: a `dispatch_refused` task that
+   the run just settled is not claimed again by the same run, so a resuming sweep cannot spin on
+   a refusal that only an operator action can clear.
 4. Among eligible tasks, the highest-priority one is claimed first (`high` < `normal` < `low`
    rank); ties are broken by queue order (a stable sort preserves each task's original enqueue
    position).
 5. A pod whose Lead is currently paused (see "Budget gate and auto-pause") **MUST** refuse every
-   claim outright — no task is even flipped to `running`, and a `paused_refused` trace event is
-   emitted every time a claim is attempted against a paused pod. This check happens before the
-   locked claim operation (pause changes are rare, operator-driven events, not something
-   concurrent claims race over), so a paused pod costs nothing further to not dispatch: no claim
-   write, no wasted agent turn.
-6. The CLI's pre-flight "is there anything to do?" gate (`cli/_run.py::_pod_dispatch`, behind
-   `docket run`) **MUST NOT** require a `pending` or
-   already-tagged-resumable task to exist before it will even attempt a dispatch when `--resume`
-   is passed and some task is `running`. A `running` task's claim may or may not actually be
-   stale — the CLI does not duplicate that judgment — so it only needs to let the call *proceed*
-   into `dispatch_pod`, whose own stale-claim sweep (see "Per-hop incremental persistence and
-   crash recovery") decides and reclaims within that same call. Without this, an operator facing
-   an orphaned `running` task (from a crash, or from the pre-fix `dispatch_refused` defect this
-   version closes) could not trigger the sweep at all short of queueing an unrelated task just to
-   satisfy the gate.
+   claim outright -- no task is even flipped to `running`, and a `paused_refused` trace event
+   (payload: the pause reason) is emitted every time a claim is attempted against a paused pod.
+   This check happens before the locked claim operation (pause changes are rare, operator-driven
+   events, not something concurrent claims race over), so a paused pod costs nothing further: no
+   claim write, no wasted agent turn.
+6. `docket run --resume` **MUST NOT** require a `pending` or already-tagged-resumable task to
+   exist before it attempts a dispatch when some task is `running`. A `running` task's claim may
+   or may not be stale -- the CLI does not duplicate that judgment -- so it only lets the call
+   proceed into `dispatch_pod`, whose own stale-claim handling (see "Per-hop incremental
+   persistence and crash recovery") decides and reclaims within that same call. An operator facing
+   an orphaned `running` task can therefore trigger recovery without queueing an unrelated task.
 
 ### Per-hop incremental persistence and crash recovery
 
-1. As each hop completes — success or failure, including every rework hop (see "Reviewer verdict
-   gate") — its record **MUST** be appended to the task's persisted `hops[]` array immediately
-   (`_persist_hop`), not held in memory until the whole task finishes. A crash between hop *N*
-   finishing and hop *N+1* starting therefore loses at most the in-flight attempt, never a
-   completed hop.
+1. As each hop completes -- success or failure, including every rework hop (see "Reviewer verdict
+   gate") -- its record **MUST** be appended to the task's persisted `hops[]` array immediately
+   (and the task's `costUsd` recomputed from them), not held in memory until the whole task
+   finishes. A crash between hop *N* finishing and hop *N+1* starting therefore loses at most the
+   in-flight attempt, never a completed hop.
 2. Every hop-completion persist, and every retry attempt (see "Retries"), **MUST** refresh the
-   task's `claimedAt` timestamp (`_persist_hop`/`_touch_claim`) — both are forward progress, not
-   staleness, and this is what stops a legitimately long-running hop (especially one retrying)
-   from being mistaken for a crashed claim by a *concurrent* dispatcher's stale-claim sweep.
-3. At the top of every `dispatch_pod` call (including one made by a different thread/process
+   task's `claimedAt` timestamp -- both are forward progress, not staleness, and this is what stops
+   a legitimately long-running hop (especially one retrying) from being mistaken for a crashed
+   claim by a *concurrent* dispatcher's stale-claim sweep.
+3. At the top of every `dispatch_pod` call (including one made by a different thread or process
    than the one that claimed a task), any `running` task whose `claimedAt` is older than
    `CLAIM_STALE_TIMEOUT` (default 1800s, env-overridable) **MUST** be swept to `failed` with
-   `failureKind: "stale_claim"` and a `stale_claim` trace event, its `claimId` cleared, and its
-   already-persisted `hops[]` left untouched. This is the presumption that the dispatcher which
+   `failureKind: "stale_claim"`, reason `stale claim — dispatcher likely crashed mid-task`, and a
+   `stale_claim` trace event (payload: the task and its `claimedAt`), and
+   its already-persisted `hops[]` left untouched. This is the presumption that the dispatcher which
    claimed it crashed mid-task.
-4. `docket run --resume` **MUST** reclaim a `stale_claim`-failed task (per the
-   eligibility rule above) and continue it from its last persisted hop rather than hop 0: the
-   claimed task's existing `hops[]` seed `dispatch_task`'s `resume_from`, and the roles they
-   represent are skipped rather than re-invoked. Without `--resume`, a swept task **MUST** stay
-   `failed` and untouched by future dispatch runs (crash recovery is never automatic).
+4. `docket run --resume` **MUST** reclaim a `stale_claim`-failed task (per the eligibility rule
+   above) and continue it from its last persisted hop rather than hop 0: the claimed task's
+   existing `hops[]` seed `dispatch_task`'s `resume_from`, and the steps they represent are skipped
+   rather than re-invoked. Without `--resume`, a swept task **MUST** stay `failed` and untouched by
+   future dispatch runs (crash recovery is never automatic).
 4a. A `running` task is **stale** when either condition holds: (i) the dispatcher process that
-   claimed it is gone -- the claim records `claimPid`, and `edges/adapters/system.py::process_alive`
-   reports that pid dead -- or (ii) its `claimedAt` is older than the pod's `turnTimeoutS` plus
+   claimed it is gone -- the claim records `claimPid`, and a process-liveness check reports that
+   pid dead -- or (ii) its `claimedAt` is older than the pod's `turnTimeoutS` plus
    `verifyTimeoutS` (each falling back to `DEFAULT_TIMEOUT` when unset). Under `--resume`,
    `dispatch_pod` **MUST** reclaim a stale `running` task immediately, with no wait for
-   `CLAIM_STALE_TIMEOUT`: it is settled to `failed`/`stale_claim`, its `hops[]` kept, claimed again
-   and continued from its last persisted hop, and `audit_log("task.reclaimed", ...)` records the
-   task id and which condition fired. A `running` task whose claimant is alive and whose claim is
-   inside the lease **MUST NOT** be reclaimed. Without `--resume` nothing is reclaimed (requirement
-   4); the `CLAIM_STALE_TIMEOUT` sweep of requirement 3 is unchanged.
+   `CLAIM_STALE_TIMEOUT` (`reclaim_stale_running`): it is settled to `failed`/`stale_claim`, its
+   `hops[]` kept, claimed again and continued from its last persisted hop, a `task.reclaimed`
+   audit entry records the task id and which condition fired, and the same `stale_claim` trace
+   event as requirement 3 (payload: the task and its `claimedAt`) marks the task's trace, so a
+   restarted hop is distinguishable from an ordinary retry. A `running` task whose claimant is
+   alive and whose claim is inside the lease **MUST NOT** be reclaimed. Without `--resume` nothing
+   is reclaimed this way (requirement 4); the `CLAIM_STALE_TIMEOUT` sweep of requirement 3 still
+   runs.
 4b. `dispatch_pod(stop=)` **MUST** evaluate `stop()` before each claim and return once it is true,
-   leaving unclaimed tasks `pending`; a task already claimed runs to its terminal state (the stop
-   is never checked inside a task). The `docket start --dispatch` sweep passes the server's stop
-   event and `resume=True`; `reclaim_stale_running` on a queue with no stale claim **MUST NOT**
-   write the queue, trace or audit.
-5. Resuming correctly requires more than "which roles already ran" once the Reviewer's bounded
-   rework loop exists, because a role can legitimately appear more than once in a resumed task's
-   history (the Implementer re-runs after a REQUEST-CHANGES, then the Reviewer re-reviews).
-   `_replay_pipeline_position` **MUST** replay the persisted hop sequence to recompute the exact
-   pipeline position, rework-cycle count, and (if resuming mid-rework) which Reviewer hop's text
-   still needs to reach the Implementer — the same decision a live run makes — so a task resumed
-   mid-rework re-enters the rework Implementer hop, never a stale position past the Reviewer.
+   leaving unclaimed tasks `pending`; a task already claimed runs to its terminal or waiting state
+   (the stop is never checked inside a task). The `docket start --dispatch` sweep passes the
+   server's stop event and `resume=True`; `reclaim_stale_running` on a queue with no stale claim
+   **MUST NOT** write the queue, trace or audit.
+5. Resuming correctly requires more than "which roles already ran", because a step can
+   legitimately appear more than once in a resumed task's history (the Implementer re-runs after a
+   REQUEST-CHANGES, then the Reviewer re-reviews; an `on:` route revisits a step). Resume **MUST**
+   replay the persisted hop sequence to recompute the exact pipeline position, the rework-cycle
+   and route counts, and (if resuming mid-rework) which hop's text still needs to reach the rework
+   target -- the same decision a live run makes -- so a task resumed mid-rework re-enters the
+   rework Implementer hop, never a stale position past the Reviewer.
 
 ### Deterministic refusal inside a claimed task
 
-*(Before this version, a `DispatchError` reached anywhere on a claimed task's path — most
-concretely the cross-pod membership check near the top of `_execute_unit` — propagated all the
-way out of `dispatch_pod`. The task's claim was never settled: it stayed `running` with no
-process attached, indistinguishable from a genuine crash except that no crash actually happened.
-Because "Claiming" only ever let `--resume` reclaim a `stale_claim`-tagged `failed` task, and the
-CLI's own pre-flight gate required a `pending` or already-tagged-resumable task to exist before it
-would even call `dispatch_pod`, the stale-claim sweep that would eventually fail the orphan out
-could never run without an operator queueing an unrelated task first. This section, and "Claiming"
-requirement 6, close that gap.)*
-
 1. `dispatch_task` **MUST** catch a `DispatchError` raised anywhere on the path it drives for one
-   already-claimed task — the cross-pod membership check (`_execute_unit`, "Pipeline order and
-   participation" requirement 3), its own up-front `pod_pipeline` revalidation, and the driver's
-   refused isolation or network posture (`security-gates.spec.md`; never retried) are the sites
-   reachable there today — and fold it into a normal return: a `TaskResult` with
-   `status="failed"`, `reason` set to the `DispatchError`'s message verbatim, and
+   already-claimed task -- the cross-pod membership check ("Pipeline order and participation"
+   requirement 3), its own up-front pod and Lead revalidation, a step `model` that does not
+   resolve, a task restriction policy that is invalid or not `block` ("Per-hop execution"
+   requirement 7), a task gate with no step to follow ("Generalized gate execution" requirement 7),
+   an unmet `lights-out` profile (audited `profile.refused`), and the driver's refused isolation or
+   network posture (`security-gates.spec.md`; never retried) -- and fold it into a normal return: a
+   `TaskResult` with `status="failed"`, `reason` set to the `DispatchError`'s message verbatim, and
    `failure_kind="dispatch_refused"`. It **MUST NOT** let the exception propagate to
    `dispatch_pod`.
-2. `dispatch_pod` therefore always finalizes this task exactly as it does any other terminal
-   result: `_finalize_task`/`_apply_result` persist `status: "failed"`, the refusal `reason`,
-   `failureKind: "dispatch_refused"`, and clear `claimId` — the claim is settled, not orphaned —
-   and the loop **MUST** continue to the pod's next eligible task rather than aborting the whole
-   dispatch run. Any hop that completed before the refusal (e.g. the Lead's) was already
-   persisted incrementally (see above) and **MUST** remain in the task's `hops[]`.
-3. A `dispatch_refused`-tagged `failed` task **MUST** be reclaimable by `docket run
-   --resume` (per "Claiming" requirement 3) once its underlying cause is fixed — a
-   corrected pipeline file naming a real pod member, for instance — and **MUST** then continue
-   from its last persisted hop exactly as a resumed `stale_claim` task does (requirements 4-5
-   above apply identically; `dispatch_refused` is not a fifth pipeline-position bookkeeping
-   scheme). Unlike `stale_claim`, this reclaim needs no `CLAIM_STALE_TIMEOUT` wait and no decoy
-   task queued first (see "Claiming" requirement 6) — the claim was already cleanly settled, not
-   crashed.
+2. `dispatch_pod` therefore always settles this task exactly as it does any other terminal result:
+   the stored task gets `status: "failed"`, the refusal `reason` and `failureKind:
+   "dispatch_refused"`, and the claim is settled, not orphaned -- and
+   the loop **MUST** continue to the pod's next eligible task rather than aborting the whole
+   dispatch run. Any hop that completed before the refusal (e.g. the Lead's) was already persisted
+   incrementally and **MUST** remain in the task's `hops[]`.
+3. A `dispatch_refused`-tagged `failed` task **MUST** be reclaimable by `docket run --resume` (per
+   "Claiming" requirement 3) once its underlying cause is fixed -- a corrected pipeline file naming
+   a real pod member, for instance -- and **MUST** then continue from its last persisted hop exactly
+   as a resumed `stale_claim` task does (requirements 4-5 above apply identically; it is not a
+   separate pipeline-position scheme). This reclaim needs no `CLAIM_STALE_TIMEOUT` wait and no decoy
+   task queued first: the claim was already cleanly settled, not crashed.
 4. This is scoped to `DispatchError` specifically, never any other exception. A real crash (the
    agent-turn process dying, a network failure, an unhandled bug) **MUST** still propagate out of
-   `dispatch_pod` unchanged, leaving the task `running` for the stale-claim sweep exactly as
-   before this version — catching a broader exception class here would wrongly settle a genuinely
-   orphaned claim as a clean `"failed"` outcome instead of leaving it for crash recovery.
-5. `dispatch_task` **MUST** emit a `dispatch_refused` trace event (payload: the refusal reason)
-   at the point it catches the error, in addition to the `session_end` event every `dispatch_task`
-   call already emits with the final status. The run registry (`core/runs.py::execute`) requires
-   no change to record this: a `TaskResult` returned with `status="failed"` already finishes that
-   CLI/HTTP run as `"failed"` with an error summary and its own `error` trace event, the same as
-   any other failed task.
+   `dispatch_pod` unchanged, leaving the task `running` for the stale-claim sweep -- catching a
+   broader exception class here would wrongly settle a genuinely orphaned claim as a clean
+   `"failed"` outcome instead of leaving it for crash recovery.
+5. `dispatch_task` **MUST** emit a `dispatch_refused` trace event (payload: the refusal reason) at
+   the point it catches the error, in addition to the `session_end` event every `dispatch_task`
+   call emits with the final status. The run registry needs nothing further to record this: a
+   `TaskResult` returned with `status="failed"` already finishes that run as `"failed"` with an
+   error summary and its own `error` trace event, the same as any other failed task.
 
-### Mechanical HEARTBEAT ledger (ROADMAP Phase 17 C-3)
+### Mechanical HEARTBEAT ledger
 
-*(Before this version, `TASK_LIST.json` — this pipeline's own machine-read/written queue — and
-`HEARTBEAT.md`'s `## Active Tasks` section — the durable ledger the resume/durability contract in
-`WORKFLOW_AUTO.md` tells the agent to hand-maintain — were never reconciled: the ledger was only
-ever as honest as an LLM's compliance. This section makes dispatch write its own record of
-in-flight work mechanically, closing that gap. See `workspace-structure.spec.md` for HEARTBEAT.md's
-file-level contract and `core/memory.py`'s "The dispatch task ledger" module-doc section for the
-implementation notes this section summarizes.)*
+The pod Lead's `HEARTBEAT.md` carries a docket-owned dispatch ledger inside `## Active Tasks`,
+kept equal to the queue's `running` tasks mechanically, whether or not an agent writes anything
+itself. `workspace-structure.spec.md` owns the file-level contract.
 
-1. A successful claim (see "Claiming") **MUST** mechanically sync the pod Lead's `HEARTBEAT.md`
-   dispatch ledger — a delimited, docket-owned region inside `## Active Tasks`
-   (`core.memory.sync_dispatch_tasks`, called from `_claim_next_task`) — from the queue's own
-   `running` tasks, before the function returns and before any hop is attempted. The ledger entry
-   for a task therefore exists *before* its first hop ever runs, mechanically, whether or not the
-   agent would have written it down itself.
-2. Every hop-completion persist (`_persist_hop`) and every retry-attempt claim refresh
-   (`_touch_claim`) **MUST** re-sync the same ledger from the queue's current `running` tasks —
-   so a task's entry reflects its current hop count and refreshes its shown claim time across a
-   long retry loop.
-3. Once a task leaves `running` (to `done`, `failed`, `blocked`, or `waiting_approval` —
-   `_finalize_task`, after `_apply_result`), the ledger **MUST** be re-synced so that task's entry
-   is removed: the ledger reflects exactly the set of tasks currently `running` in
-   `TASK_LIST.json`, for this pod, at all times — never a task that has left that state, and
-   never one that hasn't been claimed yet.
+1. A successful claim (see "Claiming") **MUST** sync the pod Lead's ledger (`sync_dispatch_tasks`)
+   from the queue's own `running` tasks, before the claim returns and before any hop is attempted.
+   The ledger entry for a task therefore exists *before* its first hop runs.
+2. Every hop-completion persist and every retry-attempt claim refresh **MUST** re-sync the same
+   ledger from the queue's current `running` tasks -- so a task's entry reflects its current hop
+   count and refreshes its shown claim time across a long retry loop.
+3. Once a task leaves `running` (to any other status, including through a claim-time refusal, a
+   parked-task cancellation or a resolved `check_changed` approval), the ledger **MUST** be
+   re-synced so that task's entry is removed: the ledger reflects exactly the set of tasks
+   currently `running` in `TASK_LIST.json`, for this pod, at all times -- never a task that has left
+   that state, and never one that has not been claimed yet.
 4. The ledger sync **MUST NOT** clobber anything outside its own delimited region
-   (`DISPATCH_BLOCK_BEGIN`/`_END`, two HTML-comment markers inside `## Active Tasks`) — an agent's
+   (`DISPATCH_BLOCK_BEGIN`/`_END`, two HTML-comment markers inside `## Active Tasks`) -- an agent's
    own hand-written entries under the same heading, and every other section of `HEARTBEAT.md`
    (`## Pending Decisions`, `## Notes`, anything else), **MUST** survive every dispatch-driven
-   rewrite byte-for-byte. The first sync against a file with no such region yet **MUST** insert
-   one immediately after the `## Active Tasks` heading (or, if that heading is missing entirely,
-   append a fresh one at end-of-file) rather than require the region to pre-exist.
-5. Two tasks concurrently `running` in the same pod (see "Claiming" — two concurrent
-   `dispatch_pod` calls may each claim a different task) **MUST** both appear in the ledger; a
-   sync triggered by either task's lifecycle **MUST** regenerate the *whole* region from the
-   queue's current state, never just the one task that triggered it, so neither dispatcher's sync
-   can silently erase the other's entry.
+   rewrite byte-for-byte. The first sync against a file with no such region yet **MUST** insert one
+   immediately after the `## Active Tasks` heading (or, if that heading is missing entirely, append
+   a fresh one at end-of-file) rather than require the region to pre-exist.
+5. Two tasks concurrently `running` in the same pod (see "Claiming" -- two concurrent
+   `dispatch_pod` calls may each claim a different task) **MUST** both appear in the ledger; a sync
+   triggered by either task's lifecycle **MUST** regenerate the *whole* region from the queue's
+   current state, never just the one task that triggered it, so neither dispatcher's sync can
+   silently erase the other's entry.
 6. `docket setup` **MUST** flag a divergence between `TASK_LIST.json`'s `running` tasks and the
-   Lead's ledger — a task `running` with no matching ledger entry, or a ledger entry naming a
-   task that is not (or is no longer) `running` — and **MUST**, under `--fix`, resolve it by
-   re-syncing the ledger from `TASK_LIST.json` (the same `sync_dispatch_tasks` dispatch itself
-   calls) — always safe, since `TASK_LIST.json` is this pipeline's own source of truth and the
-   ledger's dispatch region is entirely docket-owned.
+   Lead's ledger -- a task `running` with no matching ledger entry, or a ledger entry naming a task
+   that is not `running` -- and **MUST**, under `--fix`, resolve it by re-syncing the ledger from
+   `TASK_LIST.json` (the same sync dispatch calls) -- always safe, since `TASK_LIST.json` is this
+   pipeline's own source of truth and the ledger's dispatch region is entirely docket-owned.
+7. Every write of the queue **MUST** re-sync the ledger once the write is done, whichever
+   operation made it: the writes through `TaskRepository` (enqueue, claim, hop persist, claim
+   refresh, finalize, stale sweep, reclaim, `retry_task`, `unblock_pod`, parked cancellation,
+   approval resolution, worktree prune, a stored worktree or prepare record) are all covered, so
+   a ledger entry left behind by a task that is no longer `running` goes with the next write,
+   `retry_task` included. A call that changes nothing writes nothing and re-syncs nothing.
 
-### Conversation registry auto-population (ROADMAP Phase 17 C-5)
+### Conversation registry auto-population
 
-*(`core/conversations.py`'s registry was previously populated only at bind time — `docket setup notify bind`
-— and by hand (`docket setup notify show telegram` lists them). This section closes the deferred TC item: dispatch
-keeps a wired agent's conversation current with the real task it is working, not just whatever
-was seeded once at binding time.)*
+The conversation registry is seeded at binding time (`docket setup notify bind`); dispatch keeps a
+wired agent's conversation current with the task it is working.
 
-1. After each hop persists (`_persist_hop`), every tracked conversation belonging to that hop's
-   agent (`hop.member_id`) — there **MAY** be more than one, across different channels/peers —
+1. After each hop persists, every tracked conversation belonging to that hop's agent
+   (`hop.member_id`) -- there **MAY** be more than one, across different channels and peers --
    **MUST** have its `last_message` (a short preview of the hop's output) and `task_ref` (the
-   dispatched task's id) refreshed (`core.conversations.touch_for_hop`), and its `updated`
-   timestamp bumped. A pod member with no tracked conversation at all **MUST NOT** have one
-   fabricated by this path — it is a no-op for an unwired member.
+   dispatched task's id) refreshed (`touch_for_hop_durable`), and its `updated` timestamp bumped. A
+   pod member with no tracked conversation **MUST NOT** have one fabricated by this path -- it is a
+   no-op for an unwired member.
 2. This path **MUST NOT** alter a conversation's `topic`, `status`, `channel`, `peer_id`, or
-   `peer_kind` — only `last_message`/`task_ref`/`updated` move; an operator's own classification
-   of a thread (by hand in the conversation registry) is never overwritten by dispatch activity.
-3. A hop for one pod member (e.g. the Implementer) **MUST NOT** touch a different member's
-   (e.g. the Lead's) conversation — each hop only ever refreshes the conversation(s) keyed to its
-   own `member_id`.
-4. A hop touch, and every public durable conversation mutation, **MUST** read, transform, and
-   write the registry within one `edges.store.read_modify_write` boundary. Concurrent mutations
-   for different conversations **MUST** merge; concurrent mutations for the same conversation are
-   serialized by that boundary, so the later completed mutation is the durable value. An unwired
-   hop and an unknown conversation resume are true no-ops: they **MUST NOT** rewrite the registry.
-   Invalid registry data and a mutation exception **MUST** leave the existing file untouched.
-   The boundary preserves unknown registry and conversation fields and writes no raw full hop
-   output (only the existing bounded preview).
+   `peer_kind` -- only `last_message`/`task_ref`/`updated` move; an operator's own classification
+   of a thread is never overwritten by dispatch activity.
+3. A hop for one pod member (e.g. the Implementer) **MUST NOT** touch a different member's (e.g.
+   the Lead's) conversation -- each hop only refreshes the conversation(s) keyed to its own
+   `member_id`.
+4. A hop touch, and every public durable conversation mutation, **MUST** read, transform, and write
+   the registry within one locked read-modify-write boundary. Concurrent mutations for different
+   conversations **MUST** merge; concurrent mutations for the same conversation are serialized by
+   that boundary, so the later completed mutation is the durable value. An unwired hop and an
+   unknown conversation resume are true no-ops: they **MUST NOT** rewrite the registry. Invalid
+   registry data and a mutation exception **MUST** leave the existing file untouched. The boundary
+   preserves unknown registry and conversation fields and writes no raw full hop output (only the
+   bounded preview).
 
 ### blocked and terminal-failure re-entry
 
-1. A task the budget gate stops (see "Budget gate and auto-pause") **MUST** transition to
-   `blocked`, **MUST NOT** be silently rewritten back to `pending`, and **MUST** persist a
-   `blockedReason`. A `blocked` task is not attempted again by any future `dispatch_pod` call —
-   it is not in the claimable set at all — until one of exactly two operator-driven actions moves
-   it back to `pending`:
-   - `retry_task` (`docket task retry <task-id>`) — a single named task, a
-     no-op if that task is neither `blocked` nor `failed` (requirement 2).
-   - A pod-wide budget change on the Lead (`docket pod set budgetUsd <n>` with `n > 0`,
-     or `docket run --resume`) — `unblock_pod` flips **every** `blocked` task in
-     that pod's queue back to `pending` (see `cost-tracking.spec.md`).
-2. A plain `failed` task (a real graded gate/hop outcome — not a `RESUMABLE_FAILURE_KINDS`-tagged
-   settlement) is terminal for that dispatch attempt and **MUST NOT** be automatically retried by
-   a later `dispatch_pod` call, with or without `--resume`. It **MUST** be retryable by an
-   operator: `retry_task(project, task_id)` flips a `failed` (or `blocked`) task to `pending`,
-   keeps its `hops[]`, clears `failureKind`/`reason`/`completedAt`, and writes
-   `audit_log("task.retry", ...)`. It returns False for a missing task or any other status.
-   `docket task retry <ref>` (`cli/_task.py::_task_retry`) is the operator surface: it calls
-   `retry_task` for the resolved task, exits 1 naming the task's status when it returns False,
-   and otherwise ends with the run hint.
+1. A task that is stopped by the budget gate (see "Budget gate and auto-pause"), by a brief's
+   missing resources ("Task brief" requirement 3), or by an expired question ("Operator input steps
+   and answers" requirement 8) **MUST** transition to `blocked`, **MUST NOT** be silently rewritten
+   back to `pending`, and **MUST** persist a `blockedReason`. A `blocked` task is not attempted
+   again by any future `dispatch_pod` call -- it is not in the claimable set at all -- until one of
+   exactly two operator-driven actions moves it back to `pending`:
+   - `retry_task` (`docket task retry <task-id>`) -- a single named task, a no-op if that task is
+     neither `blocked` nor `failed` (requirement 2).
+   - `unblock_pod`, which flips **every** `blocked` task in the pod's queue back to `pending`
+     whatever its `blockedReason`, and clears that reason. It runs on every
+     `docket pod set budgetUsd <n>` and `docket pod unset budgetUsd`, and on `docket run --resume`
+     (see `cost-tracking.spec.md`).
+2. A plain `failed` task (a real graded gate or hop outcome -- not a `RESUMABLE_FAILURE_KINDS`
+   settlement) is terminal for that dispatch attempt and **MUST NOT** be automatically retried by a
+   later `dispatch_pod` call, with or without `--resume`. It **MUST** be retryable by an operator:
+   `retry_task(project, task_id)` flips a `failed` (or `blocked`) task of any `failureKind` to
+   `pending`, keeps its `hops[]`, clears `failureKind`/`reason`/`completedAt`/`blockedReason`, and
+   writes a `task.retry` audit entry. It returns False for a missing task or any other status.
+   `docket task retry <ref>` is the operator surface: it calls `retry_task` for the resolved task,
+   exits 1 naming the task's status when it returns False, and otherwise ends with the run hint.
 
 ### Pipeline order and participation
 
-1. A dispatch run **MUST** drive steps in the order declared by its `PipelineSpec` (W-1) —
-   `dispatch_task`'s `spec` parameter; `None` (every pre-W-2 caller, `docket run`, the serve sweep/schedule/webhook, and `cli/_mcp.py`'s dispatch tool) resolves
-   `effective_pipeline(project, None)`. The resolution order is: a caller-supplied `spec`
-   always wins outright (returned unpatched); otherwise this pod's **bound pipeline**
-   (`core.pod.PodSettings.pipeline`, see "Pod dispatch settings" below) wins next, also
-   unpatched; otherwise the Lead's `blueprint` meta is looked up
-   (`core.blueprints.get_blueprint`) and, when it names a known blueprint, that blueprint's
-   `defaultPipeline` is the base pipeline; when the meta is absent, empty, or names an unknown
-   blueprint, the base pipeline is `core/pipeline.py`'s `default_pipeline()` — Lead →
-   Implementer → Reviewer → Tester, byte-identical to the pre-W-2 hardcoded `PIPELINE_ORDER`
-   walk. Only the blueprint/built-in base pipeline is then patched so every `VerdictGate` step
-   with a rework edge reflects this pod's own `maxReworkCycles` (see "Reviewer verdict gate and
-   bounded rework") — for a blueprint pipeline this reaches whichever step declares the rework
-   edge (e.g. the `research`/`content` blueprints' Critic step), not only a step named
-   `reviewer`. A bound pipeline is caller-supplied-like and is **never** patched this way — an
-   operator who hand-wrote a rework edge's own `maxCycles` did not ask for the pod setting to
-   override it, matching the pre-existing `--file` precedent. A role-targeted step whose role
-   the pod does not have is skipped and consumes no pipeline position
-   (`core.orchestrator.resolve_plan`'s `skipped` flag), the same behavior `PIPELINE_ORDER`-
-   filtering always had, for a bound pipeline exactly as for any other. A lean `software` pod
-   (Lead + Implementer only) running the default pipeline still runs exactly two hops per pass;
-   a full pod runs up to four, plus any rework cycles (see below); a `research`, `content`, or
-   `ops` pod now runs its blueprint's full roster and gates on dispatch, not only its Lead step.
-2. A pod **MUST** have a Lead to be dispatchable at all; dispatching a project with no pod, or a
-   pod with no Lead, **MUST** raise a `DispatchError` rather than attempt any hop.
-3. Dispatch **MUST NOT** send a task to any agent outside the target project's own pod — each
+1. A dispatch run **MUST** drive steps in the order declared by its `PipelineSpec` --
+   `dispatch_pod`'s and `dispatch_task`'s `spec` parameter. `None` (every caller that names no
+   pipeline: `docket run` without `--pipeline`, the `docket start` sweep, schedule and webhook, and
+   the MCP dispatch tool) resolves `effective_pipeline(project, None)`. The resolution order is: a
+   caller-supplied `spec` always wins outright (returned unpatched); otherwise this pod's **bound
+   pipeline** (`PodSettings.pipeline`, see "Pod dispatch settings" below) wins next, also
+   unpatched; otherwise the Lead's `blueprint` is looked up (`get_blueprint`) and, when it names a
+   known blueprint, that blueprint's `defaultPipeline` is the base pipeline; when it is absent,
+   empty, or names an unknown blueprint, the base pipeline is `default_pipeline()` -- Lead ->
+   Implementer -> Reviewer -> Tester. Only the blueprint or built-in base pipeline is then patched
+   so every `VerdictGate` step with a rework edge reflects this pod's own `maxReworkCycles` (see
+   "Reviewer verdict gate and bounded rework") -- for a blueprint pipeline this reaches whichever
+   step declares the rework edge (e.g. the `research`/`content` blueprints' Critic step), not only a
+   step named `reviewer`. A bound pipeline is caller-supplied-like and is **never** patched this way
+   -- an operator who hand-wrote a rework edge's own `maxCycles` did not ask for the pod setting to
+   override it, the same as a `docket run --pipeline` file. A role-targeted step whose role the pod
+   does not have is skipped and consumes no pipeline position (the plan marks it `skipped`), for a
+   bound pipeline exactly as for any other. A lean `software` pod (Lead + Implementer only) running
+   the default pipeline runs exactly two hops per pass; a full pod runs up to four, plus any rework
+   cycles (see below); a `research`, `content`, or `ops` pod runs its blueprint's full roster and
+   gates. Before any task is claimed, `dispatch_pod` **MUST** refuse (`DispatchError`) a run whose
+   variables leave a step's `instructions` with an unresolved reference (`pipeline-format.spec.md`
+   "Variables").
+2. A pod **MUST** have a Lead to be dispatchable at all; dispatching a project with no pod, or a pod
+   with no Lead, **MUST** raise a `DispatchError` rather than attempt any hop.
+3. Dispatch **MUST NOT** send a task to any agent outside the target project's own pod -- each
    hop's member id is asserted against the pod before its turn runs, raising `DispatchError` on a
    mismatch. This applies identically to a `parallel` group's children (see "Parallel step
-   groups"). This check is `core.pod.pod_of`, which **MUST** resolve a member's pod from its own
-   recorded `.docket-meta.json` (`pod` field) first, falling back to id-string parsing only for a
-   member with no meta or no recorded `pod` — a member id ending in a registered role name that is
-   not its own role (e.g. a custom `security-reviewer` role's member id `<project>-security-
-   reviewer`, whose tail `reviewer` is itself a registered role) is not misread as belonging to a
-   truncated project name. A member id with no recorded pod and no id-string match is still
-   refused.
+   groups"). This check is `pod_of`, which **MUST** resolve a member's pod from its own recorded
+   `.docket-meta.json` (`pod` field) first, falling back to id-string parsing only for a member with
+   no meta or no recorded `pod` -- a member id ending in a registered role name that is not its own
+   role (e.g. a custom `security-reviewer` role's member id `<project>-security-reviewer`, whose
+   tail `reviewer` is itself a registered role) is not misread as belonging to a truncated project
+   name. A member id with no recorded pod and no id-string match is still refused.
 4. A step **MAY** legitimately run more than once within one dispatch attempt: a verdict-gated
    step's rework-triggering marker re-runs its gate's declared `rework.to` target and then the
-   gating step again (bounded — see "Reviewer verdict gate and bounded rework" and "Generalized
-   gate execution"). The pipeline position is tracked as an index that can move backward for a
-   rework cycle, not a per-role "has this run yet" set; rework-cycle counts are tracked per
-   *gated step id*, not one pod-wide counter, since a custom pipeline may declare more than one
-   independent rework-capable gate (the built-in pipeline only ever has one — the Reviewer's).
-5. A custom `PipelineSpec` **MAY** target a role `docket pod`'s legacy four-role
-   `PIPELINE_ORDER` doesn't know about (e.g. a starter-library `researcher`/`critic`, or a role
-   defined only in this pod's own overlay) — `pod_full_roster` resolves *every* role the pod's
-   members actually carry (first member per role), not just the four legacy ones `pod_pipeline`
-   considers. `core.pod`'s roster helpers (`_role_names`, `parse_member_id`, `members_of`)
-   **MUST** resolve that role against the pod's own overlay (`core.archetypes.load_registry
-   (project)`) as well as the global one, so a pod-only custom role is a real roster member, not
-   only visible to `docket pod roles --pod`.
-6. `docket pod set pipeline <file>` **MUST** validate *file*
-   (`core.pipeline.load_pipeline`) and plan it against the pod's *current* roster
-   (`core.orchestrator.resolve_plan`) before accepting it: a role-targeted step whose role the
-   roster lacks, or an agent-targeted step naming a member outside this pod, **MUST** refuse at
-   `set` (exit 1, meta untouched) rather than silently binding a pipeline that can never fully
-   run — this is stricter than requirement 1's ordinary skip-on-run behavior, which still
-   applies once a pipeline is bound and a role is later removed from the pod. On success, `set`
-   **MUST** write a docket-owned copy of *file*'s contents into the Lead's own workspace
-   (`core.pod.bound_pipeline_path`) and persist only that copy's sha256 hex digest as the
-   Lead's `pipeline` meta — never the operator's original path, which can drift or disappear.
-   `effective_pipeline` **MUST** re-read that copy and verify it still hashes to the stored
-   digest on every resolution; a missing/unreadable copy, a hash mismatch, or a copy that no
-   longer validates **MUST** raise `DispatchError` naming the reason and the rebind command —
-   fail loud, never a silent fall back to the blueprint/built-in pipeline. `unset pipeline`
-   **MUST** clear the stored digest (falling back to requirement 1's blueprint/built-in
-   resolution) and **SHOULD** best-effort remove the stored copy, never failing the unset if
-   that removal fails. `docket pod plan` **MUST** name its resolved source: an
-   explicit `--file`'s path, the bound pipeline's hash, the blueprint's name, or "built-in
-   default".
-7. **Pipeline per task (P43-3).** A claimed task that carries a `pipeline` name (a string,
+   gating step again, and an `on:` route can send the task backward (bounded -- see "Reviewer
+   verdict gate and bounded rework" and "Generalized gate execution"). The pipeline position is
+   tracked as an index that can move backward, not a per-role "has this run yet" set; rework-cycle
+   counts are tracked per *gated step id*, not one pod-wide counter, since a custom pipeline may
+   declare more than one independent rework-capable gate (the built-in pipeline has one -- the
+   Reviewer's).
+5. A custom `PipelineSpec` **MAY** target a role outside the built-in four (`PIPELINE_ORDER`), e.g.
+   a starter-library `researcher`/`critic`, or a role defined only in this pod's own overlay --
+   `pod_full_roster` resolves *every* role the pod's members carry (first member per role), not
+   just the four built-in ones `pod_pipeline` considers. The pod's roster resolution **MUST**
+   resolve a role against the pod's own archetype overlay as well as the global registry, so a
+   pod-only custom role is a real roster member, not only visible to `docket pod roles --pod`.
+6. `docket pod set pipeline <file>` **MUST** validate *file* (`load_pipeline`) and plan it against
+   the pod's *current* roster (`resolve_plan`) before accepting it: a role-targeted step whose role
+   the roster lacks, or an agent-targeted step naming a member outside this pod, **MUST** refuse at
+   `set` (exit 1, settings untouched) rather than silently binding a pipeline that can never fully
+   run -- this is stricter than requirement 1's ordinary skip-on-run behaviour, which still applies
+   once a pipeline is bound and a role is later removed from the pod. On success, `set` **MUST**
+   write a docket-owned copy of *file*'s contents (`PIPELINE.yaml` in the Lead's workspace,
+   `bound_pipeline_path`, mode 0600) and persist only that copy's sha256 hex digest as the Lead's
+   `pipeline` setting -- never the operator's original path, which can drift or disappear -- and
+   audit `pod.config`. `effective_pipeline` **MUST** re-read that copy and verify it still hashes
+   to the stored digest on every resolution; a missing or unreadable copy, a hash mismatch, or a
+   copy that no longer validates **MUST** raise `DispatchError` naming the reason and the rebind
+   command -- fail loud, never a silent fall back to the blueprint or built-in pipeline.
+   `unset pipeline` **MUST** clear the stored digest (falling back to requirement 1's blueprint or
+   built-in resolution) and **SHOULD** best-effort remove the stored copy, never failing the unset
+   if that removal fails. `docket pod plan` **MUST** name its resolved source: `file '<path>'` for
+   `--pipeline <file>`, `bound pipeline (hash <first 12 hex>...)`, `blueprint '<name>'`, or
+   `built-in default`.
+7. **Pipeline per task.** A claimed task that carries a `pipeline` name (a string,
    `^[a-z0-9][a-z0-9._-]*$`; a name with a path separator never reaches the filesystem) **MUST**
-   run that pipeline instead of the pod's effective one, resolved once at claim by
-   `_task_pipeline(project, task, default_spec)`: first
+   run that pipeline instead of the pod's effective one, resolved once at claim: first
    `<pod config dir>/pipelines/<name>.yaml` (or `.yml`), source `pod:<name>`; then a recipe
    directory of that name (the operator's `recipes/` before the shipped ones) holding a
    `pipeline.yaml`, source `recipe:<name>`; otherwise the task is refused. A task with no
-   `pipeline` runs the default and records source `default`. A chosen pipeline is
+   `pipeline`, claimed under a caller-supplied file (`docket run --pipeline <file>`), runs that
+   file, records source `file` and **MUST** keep the file's spec on the task as `pipelineSpec`;
+   an answer to a question it parks, and a later claim of it with no file, run that kept spec,
+   never the pod's; a later claim under a file runs that file and keeps it instead. A task with neither runs the default and records source
+   `default`. A chosen pipeline is
    caller-supplied-like: it is never patched with the pod's `maxReworkCycles`, and its variables
    are resolved per task as the default's are. A name that resolves to nothing, a file that does
-   not validate, or unresolved step variables **MUST** settle the claimed task `failed` with
-   `failureKind: "pipeline"` and the reason, before any hop and with no hop recorded, and emit
-   one `dispatch_refused` trace event naming the reason; the dispatch loop then continues to the
-   next task. `pipeline` is not in `RESUMABLE_FAILURE_KINDS`: `--resume` does not reclaim it.
-   The claim records `pipelineSource` on the task.
+   not validate, unresolved step variables, or a task `gate` that cannot be built **MUST** settle
+   the claimed task `failed` with `failureKind: "pipeline"` and the reason, before any hop and with
+   no hop recorded, and emit one `dispatch_refused` trace event naming the reason; the dispatch
+   loop then continues to the next task. `pipeline` is not in `RESUMABLE_FAILURE_KINDS`:
+   `--resume` does not reclaim it. The claim records `pipelineSource` on the task.
 
 ### Per-hop execution
 
-1. Each hop **MUST** be one real agent turn via the `RuntimeDriver` port's `run_turn`
-   (`core/runtime_driver.py`). The production path resolves
-   `edges.adapters.docket_runtime.default_driver().run_turn`; dispatch never simulates or skips a
-   turn to save usage. `DocketDriver` reports measured tokens but no USD cost, as specified under
-   "Runtime driver resolution" below.
+1. Each hop **MUST** be one real agent turn via the `RuntimeDriver` port's `run_turn`. With no
+   injected runner, dispatch calls `default_driver().run_turn` (`DocketDriver`); dispatch never
+   simulates or skips a turn to save usage. `DocketDriver` reports measured tokens but no USD
+   cost, as specified under "Runtime driver resolution" below.
 2. The message handed to each role **MUST** thread prior hops' output so a later role sees what
-   earlier roles produced, subject to the bounded carryover cap (see "Bounded hop prompts"
-   below); the Reviewer and Tester messages additionally state their required verdict-marker
-   reply convention verbatim.
-3. An **Implementer** hop with an allocated pod port range (`portRangeStart` set) **MUST**
-   receive `DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`, and `DOCKET_SCRATCH_DIR` in its tool
-   subprocesses' real environment (`ToolContext.env`) (layered on top of the parent env, which is never mutated). Every other hop
-   (Lead, Reviewer, Tester, or an Implementer with no allocation) **MUST** receive no environment
-   override — today's inherit-the-parent-env behavior. See `docket-meta.spec.md` for the fields
-   themselves.
-   A **jailed** command (a hop's `bash`, a `verifyCmd` or a `run:` step, with a sandbox backend
-   resolved for it) **MUST** additionally run with `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `UV_CACHE_DIR`, `PIP_CACHE_DIR` and
-   `npm_config_cache` all set to the pod's cache directory (`config.pod_cache_dir`, mode 0700,
-   created beside the scratch directory at provisioning), and that directory **MUST** be a
-   read-write root of the jail; the file tools' roots are unchanged. `system.task_environment`
-   sets those six variables when given a `cache_dir`, and an unjailed command never has its
-   `HOME` redirected. The `GIT_AUTHOR_*`/`GIT_COMMITTER_*` identity still comes from the
-   variables dispatch sets, not from `HOME`.
-4. Every hop **MUST** emit a `context_composed` event (the composed prompt's byte accounting —
-   see "Bounded hop prompts") and a `tool_call` trace event before the turn, and a `tool_result`
-   (on success) or `error` (on failure) event after it; a nonzero-cost turn **MUST** additionally
-   emit a `cost_charged` event.
+   earlier roles produced, subject to the per-role token budget (see "Bounded hop prompts" below);
+   the Reviewer and Tester messages additionally state their required verdict-marker reply
+   convention verbatim, and a non-Implementer verdict-gated hop with a task worktree is reminded
+   that its final message must end with the marker as its last line.
+3. An **Implementer** hop with an allocated pod port range (`portRangeStart` set) **MUST** receive
+   `DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`, and `DOCKET_SCRATCH_DIR` in its tool subprocesses' real
+   environment (layered on top of the parent environment, which is never mutated). Every other hop
+   (Lead, Reviewer, Tester, or an Implementer with no allocation) **MUST** receive no such override.
+   See `docket-meta.spec.md` for the fields themselves.
+   A **jailed** command (a hop's `bash`, a `verifyCmd`, a gate command or a `run:` step, with a
+   sandbox backend resolved for it) **MUST** additionally run with `HOME`, `XDG_CACHE_HOME`,
+   `XDG_CONFIG_HOME`, `UV_CACHE_DIR`, `PIP_CACHE_DIR` and `npm_config_cache` all set to the pod's
+   cache directory (mode 0700, created beside the scratch directory at provisioning), and that
+   directory **MUST** be a read-write root of the jail; the file tools' roots are unchanged. An
+   unjailed command never has its `HOME` redirected. The `GIT_AUTHOR_*`/`GIT_COMMITTER_*` identity
+   comes from the variables dispatch sets, not from `HOME`.
+4. Every hop **MUST** emit a `context_composed` event (the composed prompt's byte accounting -- see
+   "Bounded hop prompts"), a `tool_call` hop marker and a `hop_started` event before the turn, and
+   a `tool_result` (on success) or `error` (on failure) event after it; a nonzero-cost turn **MUST**
+   additionally emit a `cost_charged` event.
 5. A planned unit whose pipeline step declared its own `model` (`pipeline-format.spec.md`'s
-   "Steps" Requirement 10) **MUST** run that hop on the resolved model instead of the target
-   agent's own role-policy model — resolution (`cheap`/`strong` via the live rank anchors, else the
-   literal id as given) is `model-profiles.spec.md`'s "Where a member's model comes from". This resolution
-   **MUST** happen once per hop attempt (`core.dispatch._run_hop_turn`) and **MUST NOT** write
-   `.docket-meta.json`: the member's own persisted `model` is unchanged before,
-   during and after the hop, so `docket pod show` keeps reporting the agent's real
-   standing model, never the step's transient override. The override reaches only the production
-   `RuntimeDriver.run_turn` call (`edges.adapters.docket_runtime.DocketDriver`, "Runtime driver
-   resolution" below); an injected five-argument `Runner` test double is unaffected and continues
-   to run its own agent's configured model, since that seam predates and does not carry a `model`
-   parameter. A step `model` literal whose provider is absent from the provider catalog **MUST**
-   be a `docket pod validate`/`plan` error naming the step, the same "caught before dispatch"
-   posture an unresolvable `role`/`agent` target already gets.
-6. Every trace event `core/agent_loop.py` writes for a hop (`context_composed`, `tool_call`,
-   `tool_result`, `llm_call`, `session_compaction`, `request_fit`, `budget_warning`) **MUST**
-   carry `task_id` equal to the claimed task's id — threaded from `core.dispatch`'s single
-   `driver.run_turn(...)` call site through `run_agent_turn`'s `trace_task_id` parameter
-   (`trace-store.spec.md` requirement 19). The task-level `session_start`/`session_end`/
-   `dispatch_refused` events `core/dispatch.py` writes directly (see "Trace events this pipeline
-   emits" below) are unaffected and carry no `task_id`.
+   "Steps" Requirement 10) **MUST** run that hop on the resolved model instead of the target agent's
+   own role-policy model -- resolution (`cheap`/`strong` via the live rank anchors, else the literal
+   id as given) is `model-profiles.spec.md`'s "Where a member's model comes from". This resolution
+   **MUST** happen once per hop and **MUST NOT** write `.docket-meta.json`: the member's own
+   persisted `model` is unchanged before, during and after the hop, so `docket pod show` keeps
+   reporting the agent's standing model, never the step's transient override. The override reaches
+   only the production `RuntimeDriver.run_turn` call; an injected five-argument runner runs its own
+   agent's configured model. A step `model` that does not resolve refuses the task
+   (`dispatch_refused`). A step `model` literal whose provider is absent from the provider catalog
+   **MUST** be a `docket pod validate`/`docket pod plan` error naming the step, the same "caught
+   before dispatch" posture an unresolvable `role`/`agent` target gets.
+6. Every trace event the turn loop writes for a hop (`tool_call`, `tool_result`, `llm_call`,
+   `session_compaction`, `request_fit`, `budget_warning`) **MUST** carry `task_id` equal to the
+   claimed task's id, threaded from dispatch's single `run_turn` call (`trace_task_id`;
+   `trace-store.spec.md`). The events dispatch writes itself (`session_start`, `session_end`,
+   `context_composed`, the hop's `tool_call` marker, `hop_started`/`hop_finished`, gate, route and
+   refusal events) carry no `task_id`, except `prepare`.
 7. A task's `restrictions` (operator-api.spec.md "Arguments") **MUST** narrow every hop of that
-   task: `_compose_hop` hands the denied tools, the `none` network and the block-only policy
-   documents to the driver (security-gates.spec.md "Task restrictions"); a policy document that
-   is not valid or whose action is not `block` **MUST** refuse the hop before it starts
-   (`dispatch_refused`).
+   task: dispatch hands the denied tools, the `none` network and the block-only policy documents to
+   the driver (security-gates.spec.md "Task restrictions"); a policy document that is not valid or
+   whose action is not `block` **MUST** refuse the hop before it starts (`dispatch_refused`).
 8. A task's `maxTokens` **MUST** bound its counted usage: a hop runs with
-   `token_budget = maxTokens - sum(input - cached + output of the task's persisted hops)`
-   (`_task_token_budget`, read from the queue record so a sibling's or earlier hop's usage
-   counts). A hop that would start with `<= 0` left **MUST NOT** run; the task fails with
-   `failureKind: "budget"` and reason naming the cap. A hop the turn loop stops on its
-   `token_budget` (`stop_reason == "token_budget"`) under a task `maxTokens` **MUST** fail the
-   task with the same `failureKind`. An unset `maxTokens` leaves the turn loop's configured default.
+   `token_budget = maxTokens - sum(input - cached + output of the task's persisted hops)` (read from
+   the queue record so a sibling's or earlier hop's usage counts). A hop that would start with
+   `<= 0` left **MUST NOT** run; the task fails with `failureKind: "budget"` and a reason naming the
+   cap (`task token budget reached (maxTokens=<n>) before <role>`). A hop the turn loop stops on its
+   `token_budget` (`stop_reason == "token_budget"`) under a task `maxTokens` **MUST** fail the task
+   with the same `failureKind`. An unset `maxTokens` leaves the turn loop's configured default.
 
-### Step-scoped durable runtime history (Wave 20 W20-C4)
+### Step-scoped durable runtime history
 
-1. A pod-dispatch task's audit/trace identity **MUST** remain
-   `agent:<project>:<task-id>` for `session_start`, every hop/gate event, and `session_end`.
-   Changing history scope **MUST NOT** split one task's audit trail into per-step trace files.
+1. A pod-dispatch task's audit and trace identity **MUST** be `agent:<project>:<task-id>` for
+   `session_start`, every hop and gate event, and `session_end`. History scope **MUST NOT** split one
+   task's audit trail into per-step trace files.
 2. Each runnable pipeline unit **MUST** use a durable-history key of the form
-   `agent:<member-id>:<project>:task:<task-id>:step:<step-id>`. Every dynamic component **MUST** be
-   UTF-8 percent-encoded as necessary with no delimiter treated as safe, making the mapping
-   deterministic and collision-free even when a custom `step_id` contains `:` or `/`.
+   `agent:<member-id>:<project>:task:<task-id>:step:<step-id>` (`step_session_key`). Every dynamic
+   component **MUST** be UTF-8 percent-encoded as necessary with no delimiter treated as safe,
+   making the mapping deterministic and collision-free even when a custom `step_id` contains `:` or
+   `/`.
 3. The key **MUST** use the resolved pipeline node's globally unique `step_id`, not its role.
    Distinct repeated-role steps and distinct children of a parallel group therefore receive
    distinct histories; a parallel group container receives none because it runs no turn itself.
@@ -659,178 +527,175 @@ was seeded once at binding time.)*
    re-enters that same node **MUST** reuse its exact step-history key. A different step targeting
    the same member **MUST NOT** reuse it.
 5. `dispatch_task` **MUST** pass the step-history key as `RuntimeDriver.run_turn`'s ordinary
-   `session_key`. On the production `DocketDriver` path it **MUST** additionally pass the project
-   and task-wide identity as `trace_project`/`trace_session_key`; an injected five-argument runner
-   remains compatible and still receives the step-history key.
+   `session_key`. On the production `DocketDriver` path it **MUST** additionally pass the project and
+   task-wide identity as `trace_project`/`trace_session_key`; an injected five-argument runner
+   receives the step-history key.
 6. A downstream step's model-visible messages **MUST NOT** replay a previous step's assistant-role
-   messages from durable history. Prior cross-step work **MUST** arrive only through
-   `_hop_message`'s bounded `HandoffArtifact` sections. This does not remove the artifact summary;
-   it removes the second raw-history copy of that summary.
-7. Existing task-wide session files **MUST NOT** be deleted, renamed, or migrated. They remain
-   readable by their old key. New step histories are naturally exposed by
-   `DocketDriver.list_sessions(member_id)` because their keys begin with that member's namespace;
-   an old `agent:<project>:<task-id>` history remains discoverable under the old prefix behavior.
-8. `core.pod.session_key(project, project_key)` **MUST** continue producing the base scoped key
-   persisted in member metadata. It is not the dispatch-history key and changing pipeline steps
-   **MUST NOT** rewrite `.docket-meta.json`.
+   messages from durable history. Prior cross-step work **MUST** arrive only through the hop
+   message's bounded `HandoffArtifact` sections. This does not remove the artifact summary; it
+   removes a second raw-history copy of that summary.
+7. Dispatch **MUST NOT** delete, rename, or migrate a session file. A member's step histories are
+   listed by `DocketDriver.list_sessions(member_id)` because their keys begin with that member's
+   namespace.
+8. `session_key(project, project_key)` **MUST** keep producing the base scoped key persisted in
+   member metadata. It is not the dispatch-history key, and changing pipeline steps **MUST NOT**
+   rewrite `.docket-meta.json`.
 
 ### Retries and the failure-kind taxonomy
 
-1. Every agent turn's outcome (`core.runtime_driver.TurnResult`) **MUST** carry a `failure_kind`
-   on failure: `timeout` (the turn exceeded its timeout), `daemon_error` (the stable compatibility
-   label for a runtime or transport failure), `nonzero_exit` (an invoked process returned a real
-   non-zero result), `invalid_output` (the runtime returned output that could not be used), or
-   `run_cancelled` (the owning run's cancellation signal was observed — see "Cancellation"). A
-   successful turn carries no `failure_kind`. The `daemon_error` enum spelling is persisted API
-   vocabulary; it does not imply an external process dependency.
-2. Only `timeout` and `daemon_error` **MUST** be treated as retryable — a transient hiccup, not a
-   real answer. `nonzero_exit` and `invalid_output` (and, separately, a bad Reviewer/Tester
-   verdict — see those gates) **MUST NEVER** be retried: retrying a real failure risks masking it
+1. Every agent turn's outcome (`TurnResult`) **MUST** carry a `failure_kind` on failure: `timeout`
+   (the turn exceeded its timeout), `daemon_error` (the stable label for a runtime or transport
+   failure), `nonzero_exit` (an invoked process returned a real non-zero result), `invalid_output`
+   (the runtime returned output that could not be used, including a turn stopped on an approval it
+   could not get), or `run_cancelled` (the owning run's cancellation signal was observed -- see
+   "Cancellation"). A successful turn carries no `failure_kind`. The `daemon_error` spelling is
+   persisted API vocabulary; it does not imply an external process dependency.
+2. Only `timeout` and `daemon_error` **MUST** be treated as retryable -- a transient hiccup, not a
+   real answer. `nonzero_exit` and `invalid_output` (and, separately, a bad Reviewer or Tester
+   verdict -- see those gates) **MUST NEVER** be retried: retrying a real failure risks masking it
    as transient and burns budget for nothing.
 3. A retryable failure **MUST** be retried in place, up to a per-role budget
-   (`config.DISPATCH_RETRIES_PER_ROLE`, default 2 additional attempts — 3 total tries — per
-   role, individually overridable per role via `DISPATCH_RETRIES_<ROLE>` env vars). The sleep
-   before retry attempt N **MUST** be
+   (`DISPATCH_RETRIES_PER_ROLE`, default 2 additional attempts -- 3 total tries -- for each of the
+   four built-in roles, each overridable via `DISPATCH_RETRIES_<ROLE>`; any other role uses
+   `DISPATCH_RETRIES_DEFAULT`, default 2). The sleep before retry attempt N **MUST** be
    `min(max(DISPATCH_RETRY_BACKOFF_S * N, retryAfter), DISPATCH_RETRY_MAX_WAIT_S)` seconds
    (`DISPATCH_RETRY_BACKOFF_S` default base 2s, `DISPATCH_RETRY_MAX_WAIT_S` default ceiling 60s),
    where `retryAfter` is the failing attempt's endpoint-reported `Retry-After` in seconds
-   (`core.runtime_driver.TurnResult.retry_after_s`) when the failure came from a retryable HTTP
-   status, else `0` — so a linear backoff still applies when the endpoint names no wait, and an
-   endpoint's requested wait still yields to the ceiling rather than sleeping unbounded.
-   Exhausting the retry budget **MUST** fall through to the same failed-hop handling as a
-   non-retryable failure.
-4. The **total number of tries made** for a hop (1 if it succeeded or failed non-retryably on
-   the first attempt; more only for a retried, ultimately-successful-or-exhausted hop) **MUST**
-   be persisted on that hop's record as `attempts`.
+   (`TurnResult.retry_after_s`) when the failure came from a retryable HTTP status, else `0` -- so a
+   linear backoff still applies when the endpoint names no wait, and an endpoint's requested wait
+   still yields to the ceiling rather than sleeping unbounded. Exhausting the retry budget **MUST**
+   fall through to the same failed-hop handling as a non-retryable failure.
+4. The **total number of tries made** for a hop (1 if it succeeded or failed non-retryably on the
+   first attempt; more only for a retried hop) **MUST** be persisted on that hop's record as
+   `attempts`.
 5. Every retry attempt (before its backoff sleep) **MUST** emit a `hop_retry` trace event naming
-   the attempt number, the role, the retry budget, the failure kind that triggered it, and the
-   `retry_after_s` value that failure carried (`null` when the endpoint named none) — and
-   **MUST** refresh the task's `claimedAt` (see "Per-hop incremental persistence") before
-   sleeping, so a long retry loop is never swept as a stale claim by a concurrent dispatcher.
+   the attempt number, the role, the retry budget, the failure kind that triggered it, the error,
+   and the `retry_after_s` value that failure carried (`null` when the endpoint named none) -- and
+   **MUST** refresh the task's `claimedAt` (see "Per-hop incremental persistence") before sleeping,
+   so a long retry loop is never swept as a stale claim by a concurrent dispatcher.
 
 ### Timeout configuration
 
-1. The agent-turn timeout and the `verifyCmd` timeout **MUST** be independently configurable —
-   `turnTimeoutS` and `verifyTimeoutS` respectively, both optional fields on the pod Lead's
-   `.docket-meta.json` (see `docket-meta.spec.md`).
+1. The agent-turn timeout and the verify-command timeout **MUST** be independently configurable --
+   `turnTimeoutS` and `verifyTimeoutS` respectively, both optional pod settings stored on the pod
+   Lead's `.docket-meta.json` (see `docket-meta.spec.md`).
 2. Resolution order for a given dispatch invocation, highest precedence first: (a) an explicit
-   override passed to that specific invocation — `docket run --timeout
-   <seconds>` for a CLI-triggered run (this one flag overrides **both** the turn and verify
-   timeout for that run), or the process-wide `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S`
-   env config for a run `docket start` triggers (webhook, due schedule, or the sweep loop); (b)
-   the pod Lead's own `turnTimeoutS`/`verifyTimeoutS` meta; (c) `DEFAULT_TIMEOUT` (300 seconds,
-   `core/dispatch.py`) as the fallback of last resort.
-3. When `docket start`'s process-wide timeout env vars are set, they take the "explicit
-   override" slot for every pod that server instance dispatches (webhook/schedule/sweep) — for
-   those runs they are resolved *before* that pod's own Lead-meta setting is even consulted, not
-   layered beneath it. A CLI-triggered `docket run` (no `--timeout`) is
-   unaffected by the serve-wide env vars; it resolves straight to Lead-meta, then
-   `DEFAULT_TIMEOUT`.
+   override passed to that invocation -- `docket run --timeout <seconds>` for a CLI-triggered run
+   or the MCP dispatch tool's `timeout` (each overrides **both** the turn and verify timeout for that
+   run), or the process-wide `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S` environment
+   config for a run `docket start` triggers (webhook, due schedule, or the sweep); (b) the pod
+   Lead's own `turnTimeoutS`/`verifyTimeoutS`; (c) `DEFAULT_TIMEOUT` (300 seconds) as the fallback
+   of last resort.
+3. When `docket start`'s process-wide timeout variables are set, they take the "explicit override"
+   slot for every pod that server instance dispatches (webhook, schedule, sweep) -- for those runs
+   they are resolved *before* that pod's own setting is consulted, not layered beneath it. A
+   CLI-triggered `docket run` (no `--timeout`) is unaffected by the server-wide variables; it
+   resolves straight to the pod's setting, then `DEFAULT_TIMEOUT`.
 
-### Pod dispatch settings (`core.pod.PodSettings`)
+### Pod dispatch settings (`PodSettings`)
 
-1. `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS` **MUST** be read through one
-   typed, validated model (`core.pod.PodSettings.load_for`), not four independent ad hoc
-   parsers. A missing/blank meta key resolves to that field's declared default (`0.0`, `1`,
-   `None`, `None` respectively); a *present but malformed* stored value (e.g. a hand-edited
-   `.docket-meta.json` with `"turnTimeoutS": "abc"`) **MUST** raise, naming the key and the
-   reason, and **MUST NOT** be silently replaced by the default. Every dispatch entry point that
-   reads a pod setting (`pod_budget`, `pod_max_rework_cycles`, `pod_turn_timeout`,
-   `pod_verify_timeout`) lets that refusal propagate rather than catching it.
+1. Every pod setting (`PodSettings.KEYS`: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
+   `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
+   `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
+   `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`, `protects`) **MUST** be
+   read through one typed, validated model (`PodSettings.load_for`), not independent ad hoc
+   parsers. A missing or blank stored key resolves to that field's declared default (e.g. `0.0`,
+   `1`, `None`, `None` for `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`); a
+   *present but malformed* stored value (e.g. a hand-edited `.docket-meta.json` with
+   `"turnTimeoutS": "abc"`) **MUST** raise, naming the key and the reason, and **MUST NOT** be
+   silently replaced by the default. Every dispatch reader of a pod setting (`pod_budget`,
+   `pod_max_rework_cycles`, `pod_turn_timeout`, `pod_verify_timeout`, ...) lets that refusal
+   propagate as a `DispatchError` rather than catching it.
 2. `docket pod show [--json]`, `docket pod set <key> <value>` and `docket pod unset <key>` are the
-   dedicated CLI surface for these keys — see `cli-json-shapes.spec.md` for the `show --json`
-   shape. `set` validates before writing and persists through the same meta writer every other
-   pod-meta setter uses (`core.fleet.meta_set`); an invalid value exits 1 with the meta record
-   untouched. `unset` clears an override by writing `null` (round-trips as absent through
-   `AgentMeta`'s typed fields), falling back to the field's default. Every write is
-   audit-logged as `pod.config`. `docket pod set budgetUsd <usd>` persists `budgetUsd`
-   as this same validated number, not the raw CLI argument string.
-3. `approvalMode` (`"wait"` | `"park"` | `"refuse"`, field default `"wait"`) is a fifth key on
-   the same model (`core.pod.PodSettings.approval_mode`), writable through the same `show`/`set`/`unset`
-   surface. A present-but-invalid stored value (anything other than the three
-   literals) raises exactly like a malformed numeric setting — naming the key — and refuses
-   dispatch rather than defaulting to `"wait"`. The read path's message says `invalid stored
-   value`; `PodSettings.coerce` (the `set` path) says `<key>: invalid value <v!r> (<rule>)`. "Unset" (no `approvalMode` key at all in the
-   Lead's stored meta) is a distinct state from a stored `"wait"` — see "Parked approvals" below
-   for what it resolves to. `approvalExpiryHours` (int `>= 1`, default `24`) and
-   `inputExpiryHours` (int `>= 1`, default `72`) are two further keys on the same model,
-   likewise writable through `pod show`/`set`/`unset`; `inputExpiryHours` is the default
-   deadline of every parked question: `_finalize_task` reads it when a task settles
-   `waiting_input` and `_apply_result` stamps `expiresAt` (now plus the hours) on a question that
-   has none. An `input` step's own `expiresHours` wins and is never overwritten. Expiry blocks the
-   task `input_expired` (operator-loop.spec.md area 7), never `failed`.
-4. `PodSettings` also carries `pipeline` (`str | None`, a 64-character lowercase hex sha256
-   digest): the hash of this pod's bound pipeline copy (`core.pod.bound_pipeline_path`), or
-   unset. Unlike the scalar keys, `set pipeline <value>` does not accept an arbitrary
-   string through the same `coerce`-then-`meta_set` path — `docket pod set
-   pipeline <file>` is a dedicated CLI code path (`cli/_pod.py::_pod_config_set_pipeline`) that
-   reads *file*, validates and plans it, writes the docket-owned copy, and only then persists
-   its digest through `coerce`/`meta_set` like any other key. See "Pipeline order and
-   participation" requirement 6 for the full validate-plan-store-verify contract.
+   CLI surface for these keys -- see `cli-json-shapes.spec.md` for the `show --json` shape. `set`
+   validates (`PodSettings.coerce`) before writing and persists through the same meta writer every
+   other pod-meta setter uses (`meta_set`); an invalid value or an unknown key exits 1 with the
+   stored settings untouched, and a recorded key (`configSource`, `configDigest`, `exporters`) is
+   refused as written by `docket pod update`, not by `set`. `unset` clears an override by writing
+   `null` (read back as absent), falling back to the field's default. Every write is audit-logged as
+   `pod.config`. `docket pod set budgetUsd <usd>` persists `budgetUsd` as the validated number, not
+   the raw CLI argument string; any `set` or `unset` of `budgetUsd`, whatever the value, re-queues
+   the pod's blocked tasks (`unblock_pod`) and clears the Lead's `paused`/`pausedReason`. The line
+   it prints counts every task `unblock_pod` re-queued, whatever its `blockedReason`:
+   `Unblocked <n> blocked task(s)`. `docket pod set maxReworkCycles` on a pod with a bound pipeline
+   **MUST** be refused with exit 2 and the stored settings untouched, the message
+   (`REWORK_BOUND_BY_PIPELINE`) naming the pipeline's own bound, `on: {<label>: {goto: <step>,
+   max: <n>}}`: a bound pipeline is never patched with the pod's `maxReworkCycles`, so the setting
+   would be accepted and ignored. The other order is refused the same way: `docket pod set pipeline`
+   on a pod that stores a `maxReworkCycles` **MUST** exit 2, bind nothing, and name `docket pod
+   unset maxReworkCycles`. `unset` is always allowed. `docket pod show` reports a bound
+   pod's `maxReworkCycles` with source `pipeline` and, as its value, the bounds the pipeline itself
+   carries (`<step>:<max>` comma-joined, `none` when it has none).
+3. `approvalMode` (`"wait"` | `"park"` | `"refuse"`, field default `"wait"`) is a setting on the
+   same model (`PodSettings.approval_mode`), writable through the same `show`/`set`/`unset` surface.
+   A present-but-invalid stored value (anything other than the three literals) raises exactly like a
+   malformed numeric setting -- naming the key -- and refuses dispatch rather than defaulting to
+   `"wait"`. The read path's message is `<key>: invalid stored value <v!r> (<rule>)`; the `set`
+   path's is `<key>: invalid value <v!r> (<rule>)`. "Unset" (no `approvalMode` key at all in the
+   Lead's stored settings, `pod_approval_mode_is_set`) is a distinct state from a stored `"wait"` --
+   see "Parked approvals" below for what it resolves to. `approvalExpiryHours` (int `>= 1`, default
+   `24`) and `inputExpiryHours` (int `>= 1`, default `72`) are two further keys on the same model,
+   likewise writable through `docket pod set`/`unset`; `inputExpiryHours` is the default deadline of
+   every parked question: when a question's escalation is opened, `expiresAt` is stamped (now plus
+   the hours) on a question that has none. An `input` step's own `expiresHours` wins and is never
+   overwritten. Expiry blocks the task `input_expired` (operator-loop.spec.md area 7), never
+   `failed`.
+4. `PodSettings` also carries `pipeline` (`str | None`, a 64-character lowercase hex sha256 digest):
+   the hash of this pod's bound pipeline copy (`bound_pipeline_path`), or unset. Unlike the scalar
+   keys, `docket pod set pipeline <file>` is a dedicated CLI path that reads *file*, validates and
+   plans it, writes the docket-owned copy, and only then persists its digest through `meta_set`.
+   See "Pipeline order and participation" requirement 6 for the full validate-plan-store-verify
+   contract.
 5. `PodSettings` also carries `schedule` (`str | None`): an `@every`/`HH:MM`/cron spec (see
-   "Schedule configuration and doctor visibility" below), validated through the same
-   `coerce` path every scalar key uses — an unrecognized spec raises `PodSettingsError`
-   naming the key and the reason `core.schedule.describe_spec_error` gives, refusing the
-   write rather than storing or silently ignoring it. Unlike the scalar keys, `set schedule
-   <spec>` is a dedicated CLI code path (`cli/_pod.py::_pod_config_set_schedule`) that, after
-   validating, persists *spec* into `docket-schedules.json`'s `schedules[project]` through
-   `core.schedule.set_schedule` (this is the schedule's real source of truth for the serve
-   sweep, not the Lead's meta) and mirrors the same string into the Lead's meta via
-   `meta_set` purely so `config get`/`list` can display it through the same generic
-   `value_and_source` path every other setting uses. `unset schedule` clears both.
-6. `PodSettings` also carries `projectInstructions` (`tuple[str, ...]`, comma-joined in storage
-   like `allowCommands`): relative paths inside this pod's codebase root that
-   `core.identity`'s opt-in project-instructions section composes into a live turn's system
-   prompt right after `INSTRUCTIONS.md` (see `agent-loop.spec.md` requirement 30) — the
-   AGENTS.md/CLAUDE.md convention, never auto-discovered, unset by default. Unlike `pipeline`
-   (a dedicated CLI path that reads and plans an operator file) or `schedule` (a dedicated path
-   that writes a second store), `set projectInstructions <paths>` needs neither: it goes through
-   the same generic `coerce`-then-`meta_set` path every scalar/tuple key uses. Its own `coerce`
-   validator is what makes that safe — it refuses an absolute path, a home-relative (`~`) path,
-   or any path containing a `..` segment, naming the offending path, because those are the only
-   shapes that could ever resolve outside the codebase root once `core.identity` joins them
+   "Schedule configuration and doctor visibility" below), validated through the same `coerce` path
+   every scalar key uses -- an unrecognized spec raises `PodSettingsError` naming the key and the
+   reason `describe_spec_error` gives, refusing the write rather than storing or silently ignoring
+   it. `set schedule <spec>` is a dedicated CLI path that, after validating, persists *spec* into
+   `docket-schedules.json`'s `schedules[project]` through `set_schedule` (the schedule's real
+   source of truth for the server's sweep) and mirrors the same string into the Lead's settings so
+   `docket pod show` can display it through the same `value_and_source` path every other setting
+   uses. `unset schedule` clears both.
+6. `PodSettings` also carries `projectInstructions` (`tuple[str, ...]`, comma-joined in storage like
+   `allowCommands`): relative paths inside this pod's codebase root that the opt-in
+   project-instructions section composes into a live turn's system prompt right after
+   `INSTRUCTIONS.md` (see `agent-loop.spec.md`) -- the AGENTS.md/CLAUDE.md convention, never
+   auto-discovered, unset by default. `set projectInstructions <paths>` goes through the generic
+   `coerce`-then-`meta_set` path. Its `coerce` validator refuses an absolute path, a home-relative
+   (`~`) path, a path with a NUL byte, or any path containing a `..` segment, naming the offending
+   path, because those are the only shapes that could resolve outside the codebase root once joined
    against it; the check is purely syntactic (no filesystem access), so it fires at `set` even
-   before this pod has a resolved codebase root to check the path against.
-7. `PodSettings` also carries `mcpServers` (`tuple[str, ...] | None`, `None` by default): this
-   pod's selection from the shared MCP server catalog (`core.mcp_tools.load_mcp_servers()`).
-   `None` (unset, and every pod before this key existed) means "every configured server" —
-   byte-for-byte identical to dispatch before this key existed. Written through the same
-   generic `coerce`-then-`meta_set` path every scalar/tuple key uses (no dedicated CLI code
-   path). Unlike `allowCommands`/`projectInstructions`, its `coerce` validator (`core.pod
-   .PodSettings._parse_mcp_servers`) is **not** purely syntactic — it checks every comma-
-   separated name against the *live* catalog, at `set` time and on every subsequent
-   `load_for`/`config get` alike, raising `PodSettingsError` naming the first unrecognized
-   name. Because this re-check runs on every read, not only at `set`, a selection that was
-   valid when written but has since been renamed or removed from the catalog surfaces on
-   its own the next time this pod's settings are read — see `mcp-client.spec.md`'s
-   "Pod-scoped server selection" requirements for how
-   `edges/adapters/docket_runtime.py::_load_mcp_tools` turns that `PodSettingsError` into a
-   `DispatchError` naming the stale selection, refusing the dispatch rather than silently
-   loading a subset or none of the configured servers.
-8. `PodSettings` also carries `deniedTools` (`tuple[str, ...]`, comma-joined in storage like
-   `allowCommands`, empty by default): built-in tool names (the same universe
-   `core.archetypes.BUILTIN_TOOL_KINDS` keys off) this pod's *every* role additionally denies,
-   on top of each role's own archetype-declared `denied_tools`. Written through the same
-   generic `coerce`-then-`meta_set` path; its own `coerce` validator refuses a name outside
-   that known universe, naming it, exactly as `allowCommands` refuses an unrecognized/unsafe
-   binary name. See `role-archetypes.spec.md`'s "Per-role tool sets" requirement 7 for how
-   `core.archetypes.registry_for_role` unions this setting with the role's own denylist
-   before narrowing — a pod-level denial reaches every role in it, not only the ones whose
-   own archetype already names that tool. Unlike `mcpServers`, an unreadable/malformed
-   stored value here degrades to "no additional pod-level denial" rather than raising,
-   because `BUILTIN_TOOL_KINDS` is a fixed, compile-time set (nothing here can drift the
-   way an externally-mutable MCP catalog can) and `registry_for_role` runs on every turn's
-   live agent-loop path, which must never crash over a hand-edited meta file.
-9. `PodSettings` also carries `network` (`none`|`open`, default `open`; any other value is
-   refused at `set`). `none` cuts the network of this pod's jailed tool calls; it only narrows
-   the global `docket setup sandbox network` mode (a pod `open` under a global `none` stays `none`), via
-   `core.pod.effective_network`, which `DocketDriver` reads each turn. See `security-gates.spec.md`
-   "Network egress" requirement 7.
+   before this pod has a resolved codebase root.
+7. `PodSettings` also carries `mcpServers` (`tuple[str, ...] | None`, `None` by default): this pod's
+   selection from the MCP server catalog. `None` means "every configured server". Written through
+   the generic `coerce`-then-`meta_set` path. Unlike `allowCommands`/`projectInstructions`, its
+   validator is **not** purely syntactic -- it checks every comma-separated name against the *live*
+   catalog (the global servers plus this pod's own pod-scoped servers), at `set` time and on every
+   later read alike, raising `PodSettingsError` naming the first unrecognized name (and naming the
+   owning pod when the name is another pod's server). Because this re-check runs on every read, a
+   selection that was valid when written but has since been renamed or removed surfaces the next
+   time this pod's settings are read -- see `mcp-client.spec.md`'s "Pod-scoped server selection"
+   for how the driver turns that `PodSettingsError` into a `DispatchError` naming the stale
+   selection, refusing the dispatch rather than loading a subset or none of the servers.
+8. `PodSettings` also carries `deniedTools` (`tuple[str, ...]`, comma-joined in storage, empty by
+   default): built-in tool names (the `BUILTIN_TOOL_KINDS` universe) this pod's *every* role
+   additionally denies, on top of each role's own archetype-declared `denied_tools`. Written
+   through the generic `coerce`-then-`meta_set` path; its validator refuses a name outside that
+   universe, naming it. See `role-archetypes.spec.md`'s "Per-role tool sets" for how
+   `registry_for_role` unions this setting with the role's own denylist before narrowing -- a
+   pod-level denial reaches every role in it. Unlike `mcpServers`, unreadable or malformed stored
+   settings degrade here to "no additional pod-level denial" rather than raising, because
+   `BUILTIN_TOOL_KINDS` is a fixed set and `registry_for_role` runs on every turn's live path, which
+   must never crash over a hand-edited meta file.
+9. `PodSettings` also carries `network` (`none`|`open`, default `open`; any other value is refused
+   at `set`). `none` cuts the network of this pod's jailed tool calls; it only narrows the global
+   `docket setup sandbox network` mode (a pod `open` under a global `none` stays `none`), via
+   `effective_network`, which `DocketDriver` reads each turn; unreadable pod settings fail closed to
+   `none`. See `security-gates.spec.md` "Network egress".
 10. `PodSettings` also carries `prepare` (`str`, `""` by default, at most 1,000 characters, no NUL
     or newline): the install command a pod's tasks run in a fresh worktree, or `none` to turn
     preparation off (see "Task preparation"). Written by `pod.yaml`'s top-level `prepare:` (never
-    inside `settings`, like `pipeline`) or by `docket pod set prepare` through the generic
-    `coerce`-then-`meta_set` path. `""` is unset: the lockfile decides.
+    inside `settings`, like `pipeline`; a blank value means `none`) or by `docket pod set prepare`
+    through the generic `coerce`-then-`meta_set` path. `""` is unset: the lockfile decides.
 11. `PodSettings` also carries `protects` (a comma-joined list of glob patterns in storage, `()` by
     default): the paths a task may not change without a person ("A change that edits its own
     check"). It adds to the defaults and never removes one. Written by `pod.yaml`'s top-level
@@ -838,1086 +703,1040 @@ was seeded once at binding time.)*
     non-empty repository-relative glob of at most 200 characters with no comma, NUL, newline,
     leading `/` or `..` segment; at most 50.
 
-### Schedule configuration and doctor visibility (ROADMAP P26-12)
+### Schedule configuration and doctor visibility
 
-1. **Trigger.** `docket-schedules.json` had no writer of its own — a schedule could only be
-   added by hand-editing the file — and three related silent-skip patterns left a bad
-   configuration invisible: `core.schedule.load_schedules`/`load_last_run` return `{}` on any
-   read/parse error, `is_schedule_due` treats an unrecognized spec as simply never due, and
-   `core.models_policy.load_registry` (see `model-profiles.spec.md`) and
-   `core.archetypes.load_registry` (see `role-archetypes.spec.md`) each silently ignore or
-   skip a malformed registry/overlay entry. None of these crash the sweep or a live fleet —
-   that tolerance is intentional and unchanged — but nothing ever told an operator why a
-   schedule never fired or an override never took effect.
-2. `docket pod set schedule "<spec>"` **MUST** validate *spec* (rejecting an
-   unrecognized `@every`/`HH:MM`/cron string with exit 1 and the meta record untouched, same
-   as every other setting) and, on success, persist it into `docket-schedules.json` via
-   `core.schedule.set_schedule` — the writer that file lacked. `unset schedule` **MUST**
-   remove the project's entry via `core.schedule.unset_schedule`, leaving `lastRun` as-is.
-   Both go through `edges/store.py`'s locked read-modify-write, never a direct file write.
+1. Reading schedules is tolerant by design: `load_schedules`/`load_last_run` return `{}` on any read
+   or parse error, `is_schedule_due` treats an unrecognized spec as never due, and the model-policy
+   and archetype registries (see `model-profiles.spec.md`, `role-archetypes.spec.md`) skip a
+   malformed entry. None of these crashes the sweep or a live fleet; requirements 2-4 make each case
+   visible to an operator instead of silent.
+2. `docket pod set schedule "<spec>"` **MUST** validate *spec* (rejecting an unrecognized
+   `@every`/`HH:MM`/cron string with exit 1 and the settings untouched, same as every other
+   setting) and, on success, persist it into `docket-schedules.json` via `set_schedule`.
+   `unset schedule` **MUST** remove the project's entry via `unset_schedule`, leaving `lastRun`
+   as-is. Both go through a locked read-modify-write, never a direct file write.
 3. `docket setup` **MUST** run a read-only check over `docket-schedules.json`
-   (`core.schedule.find_schedule_problems`) and report every entry that `is_schedule_due`
-   would silently treat as never-due, or an unreadable/malformed file itself — naming the
-   file, the project key, and the reason. It never edits the file.
-4. `serve.py`'s sweep (`_check_schedules`) **MUST** print one line naming the project and
-   reason for each schedule entry `core.schedule.describe_spec_error` rejects, once per sweep
-   pass, before it would otherwise fall through to `is_schedule_due`'s silent skip. This is
-   diagnostic output only — the schedule is still not fired, and no new failure kind, trace
-   event, or task status is introduced.
-5. Non-goal: no new schedule spec format. The `@every`/`HH:MM`/5-field-cron vocabulary is
-   unchanged; this only makes an already-unrecognized spec loud instead of silent.
+   (`find_schedule_problems`) and report every entry that `is_schedule_due` would silently treat as
+   never-due, or an unreadable or malformed file itself -- naming the file, the project key, and the
+   reason. It never edits the file.
+4. The `docket start --dispatch` sweep **MUST** print one line naming the project and reason
+   (`[serve] sweep: schedule '<project>' skipped — <reason>`) for each schedule entry
+   `describe_spec_error` rejects, once per sweep pass, instead of falling through to
+   `is_schedule_due`'s silent skip. This is diagnostic output only -- the schedule is not fired, and
+   no failure kind, trace event, or task status is involved.
+5. The schedule spec vocabulary is `@every`, `HH:MM` and 5-field cron; validation only makes an
+   unrecognized spec loud, it adds no format.
 
-### Unattended approval posture (`approvalMode`, ROADMAP P26-5)
+### Unattended approval posture (`approvalMode`)
 
-1. **Trigger.** A pod-dispatch hop that hits an `ask` policy verdict with nobody able to answer
-   (no operator watching a headless `docket start`/schedule/webhook run) previously blocked the
-   whole hop for `TOOL_APPROVAL_TIMEOUT` (120s, see `security-gates.spec.md`) per gated call, with
-   no way to shorten that for a pod that is known to run unattended.
-2. `_compose_hop` (`core/dispatch.py`) reads `pod_approval_mode(project, caller_default=...)`
-   for every hop and, when the resolved mode is `"refuse"` or `"park"`, sets
-   `DOCKET_APPROVAL_MODE` to that value in that hop's tool env — merged into whatever env the
-   hop already carries (e.g. an Implementer's `DOCKET_PORT_*`/`DOCKET_SCRATCH_DIR` vars, or a
-   downstream hop's `PIPELINE_WORKTREE_ENV`), never replacing it. This is the same internal
-   caller-to-driver coordinate `PIPELINE_WORKTREE_ENV` already travels: `DocketDriver.run_turn`
-   pops it out of the tool env before building `ToolContext`, so it is never a real tool-visible
-   environment variable, and maps it onto `ToolContext.approval_mode` (`security-gates.spec.md`
-   requirement 11). See "Parked approvals" below for `caller_default`'s resolution and for
-   `park`'s own behavior.
-3. Under `"wait"`, a hop's env is byte-identical to every dispatch before this setting
-   existed — no key is added, no existing key is touched.
-4. Under `"refuse"`, a gated call inside that hop ends immediately with the existing
-   `approval_unavailable` denial (no approval record created, no wait), the agent loop stops on
+1. Under `"wait"`, a hop that hits an `ask` policy verdict with nobody able to answer blocks that
+   hop for up to `TOOL_APPROVAL_TIMEOUT` (120s, see `security-gates.spec.md`) per gated call;
+   `approvalMode` lets a pod that runs unattended choose another posture.
+2. For every hop, dispatch **MUST** resolve `pod_approval_mode(project, caller_default=...)` and,
+   when the resolved mode is `"refuse"` or `"park"`, set `DOCKET_APPROVAL_MODE` to that value in
+   that hop's tool environment -- merged into whatever environment the hop already carries (e.g. an
+   Implementer's `DOCKET_PORT_*`/`DOCKET_SCRATCH_DIR`, or a downstream hop's worktree coordinate),
+   never replacing it. This is an internal dispatch-to-driver coordinate: `DocketDriver.run_turn`
+   pops it out of the tool environment before building the tool context, so it is never a real
+   tool-visible environment variable, and maps it onto `ToolContext.approval_mode`
+   (`security-gates.spec.md`). See "Parked approvals" below for `caller_default`'s resolution and
+   for `park`'s own behaviour.
+3. Under `"wait"`, no approval-mode key is added to a hop's environment.
+4. Under `"refuse"`, a gated call inside that hop ends immediately with the `approval_unavailable`
+   denial (no approval record created, no wait), the agent loop stops on
    `stop_reason="approval_unavailable"`, and the hop's `TurnResult` comes back `ok=False` with
-   `error` naming the tool, call id and policy (`core.agent_loop.approval_unavailable_error`).
-   `core/dispatch.py`'s ordinary hop-failure path (`_persist_hop_and_trace`) then fails the task
-   with reason `"<role> hop failed: approval_unavailable: ..."`, traces it as an `error` event, and
-   never retries — `"invalid_output"` (the failure kind this stop reason maps to) is not in
-   `_RETRYABLE_FAILURE_KINDS`. No new task status, trace event type, or failure-kind vocabulary is
-   introduced; this only changes which hop-failure reason a stuck-on-approval hop now produces.
-5. Non-goal (deliberately out of scope): detecting whether an approval channel is actually live
-   before choosing `"wait"` vs `"refuse"` vs `"park"`.
+   `failure_kind="invalid_output"` and `error` naming the tool, call id and policy
+   (`approval_unavailable_error`). Dispatch's ordinary hop-failure path then fails the task with
+   reason `"<role> hop failed: approval_unavailable: ..."`, traces it as an `error` event, and never
+   retries it (`invalid_output` is not retryable).
+5. Dispatch does not detect whether an approval channel is live before resolving the mode; the
+   mode is configuration, not a probe.
 
-### Parked approvals (`approvalMode: "park"`, ADR 0016 SS2)
+### Parked approvals (`approvalMode: "park"`, ADR 0016)
 
-1. **Trigger.** `serve --dispatch`'s sweep ran every dispatchable pod serially in one thread
-   (`serve.py::_run_sweeps`; now one worker per pod, see "Sweep workers" below); an in-turn `ask`
-   blocking under `"wait"` in one pod's hop stalled every other pod's turn in the same sweep call
-   for up to `TOOL_APPROVAL_TIMEOUT`. `"park"`
-   answers this without the pod ever choosing `"refuse"` (which loses the call rather than
-   deferring it to a human).
+1. The `docket start --dispatch` sweep runs each pod on its own worker (see "Sweep workers"); a hop
+   waiting on an `ask` under `"wait"` would hold that worker for up to `TOOL_APPROVAL_TIMEOUT`.
+   `"park"` defers the call to a human instead, without losing it the way `"refuse"` does.
 2. **Caller-scoped default.** An *unset* pod `approvalMode` (no key at all in the Lead's stored
-   meta — `pod_approval_mode_is_set`) no longer fixes to `"wait"`. It resolves through the
-   caller's own `caller_default`: `serve.py::_run_sweeps`'s dispatch loop and `dispatch_pod`'s
-   default both pass `"park"`; `cli/_run.py::_pod_dispatch` passes `"wait"` when `sys.stdin`
-   is a real TTY, else `"park"`. An explicit stored `approvalMode` (including an explicit
-   `"wait"`) always wins over the caller's default. A pod that never had `approvalMode` set and
-   is dispatched from a real foreground TTY sees no behavior change from before this section
-   existed.
-3. **The park itself.** Under a resolved `"park"`, `_compose_hop` sets
-   `DOCKET_APPROVAL_MODE=park` in the hop's tool env (`core/tools.py`'s `ToolContext
-   .approval_mode`, unchanged by this spec). An `ask` verdict there records the exact call (tool
-   name plus a canonical-JSON argument digest) and the task position, creates an approval record
-   with `context.parked = true`, and ends the turn on `stop_reason="approval_parked"` — the
+   settings -- `pod_approval_mode_is_set`) resolves through the caller's own `caller_default`: the
+   sweep passes `"park"`; `docket run` passes `"wait"` when standard input is a real TTY, else
+   `"park"`; every other caller (the webhook, a due schedule, the MCP dispatch tool) passes nothing,
+   so `dispatch_pod`'s default `"wait"` applies. An explicit stored `approvalMode` (including an
+   explicit `"wait"`) always wins over the caller's default.
+3. **The park itself.** Under a resolved `"park"`, dispatch sets `DOCKET_APPROVAL_MODE=park` in the
+   hop's tool environment (`ToolContext.approval_mode`). An `ask` verdict there records the exact
+   call (tool name plus a canonical-JSON argument digest) and the task position, creates an approval
+   record with `context.parked = true`, and ends the turn on `stop_reason="approval_parked"` -- the
    agent loop's `error` string carries the token in the same `key=value` shape
-   `approval_unavailable_error` already uses (`core.agent_loop.approval_parked_error`).
-4. **From denial to a durable park.** `_persist_hop_and_trace` (`core/dispatch.py`) parses that
-   token back out of the hop's `TurnResult.error` (`_parked_approval_token`, failing closed —
-   an unparseable token falls through to an ordinary `failed` outcome, never a silent forever-
-   wait). When found, the hop is persisted with `parked: true` (a new boolean field on the
-   persisted hop record, `false` for every prior hop shape) **before** the crash-safety
-   `on_hop` callback runs, and the unit outcome is the same `kind="waiting_approval"` shape the
-   pre-hop `require_approval` gate already produces, carrying this hop's own pipeline index —
-   see "Task status vocabulary" item 6. The event traced is `approval_required` (reused, not a
-   new trace event type): "a require_approval-equivalent gate fired; task -> waiting_approval",
-   whichever of the two triggers fired it.
-5. **Expiry.** `_compose_hop` also sets `DOCKET_APPROVAL_EXPIRES_AT` (ISO UTC,
-   `now + approvalExpiryHours`, computed fresh per hop) whenever the resolved mode is `"park"`;
-   `core/tools.py` stamps this onto the parked record's own `expiresAt`, which
-   `core.approval.approval_sweep_expired`'s existing fail-closed deadline logic already prefers
-   over the generic `APPROVAL_TIMEOUT`. Past that deadline the sweep resolves the record to
-   **denied**, and `resolve_waiting_approval` fails the task exactly as an explicit human deny
-   does (`failureKind: "approval_denied"`).
-6. **Resume at the same index.** `_replay_pipeline_position` treats a `hop.parked` entry as an
-   attempt, not a decided outcome: it neither advances past it nor evaluates it as a rework/route
-   target, and sets the resume position to that hop's own index — re-running the exact step
-   rather than the one after it. The step id may then appear more than once in the task's
-   persisted `hops` (the parked attempt, then the real one), the same "each attempt is its own
-   audit record" shape a rework cycle's repeated Reviewer hop already has. This is deliberately
-   not the same mechanism as the pre-hop gate's `gateOverridePipelineIndex`: that field skips a
-   gate check at a position no hop was ever attempted at, which does not describe a hop that
-   already ran and parked mid-turn — a granted parked approval never sets it.
-7. **Single-use pre-grant on resume.** `resolve_waiting_approval(token, "granted")`, for a
-   record whose context carries `parked: true`, appends `{token, tool, argsDigest}` to the
-   task's own `pregrants` list (new, defaulting to `[]` on every task) instead of setting
-   `gateOverridePipelineIndex`, inside the same locked read-modify-write. `_compose_hop`
-   serialises the task's `pregrants` as JSON into `DOCKET_PREGRANTS` on every hop it composes
-   for that task; `core/tools.py`'s existing pre-grant matcher (unchanged by this spec) consumes
-   at most one entry per exact `(tool, argsDigest)` match, so the re-run hop's identical call
-   passes once without asking again, and anything else still asks.
-8. **Denial.** `resolve_waiting_approval(token, "denied")` for a parked record behaves exactly
-   like a pre-hop gate's deny: the task moves straight to `failed`,
-   `failureKind: "approval_denied"`, never reclaimable.
-9. Non-goals (deliberately out of scope, ADR 0016): resuming the exact live model-turn session
-   with the granted call's result injected (a hop re-run is a new turn, sharing the same durable
-   session history); one worker per pod in the sweep (a parked pod still occupies its own turn
-   in the serial sweep loop, only without blocking); the foreground TTY `[p]ark and continue`
-   prompt key.
+   `approval_unavailable_error` uses (`approval_parked_error`). The persisted hop's `error`, the
+   task's `reason` and the trace withhold that `approval_token=` pair: they name the pause by its
+   escalation, never by the token behind it.
+4. **From denial to a durable park.** Dispatch parses that token back out of the hop's
+   `TurnResult.error`, failing closed -- an unparseable token falls through to an ordinary `failed`
+   outcome, never a silent forever-wait. When found, the hop is persisted with `parked: true` (a
+   boolean on the persisted hop record, `false` otherwise) **before** the crash-safety `on_hop`
+   callback runs, and the unit outcome is the same `waiting_approval` shape the pre-hop
+   `require_approval` gate produces, carrying this hop's own pipeline index -- see "Task status
+   vocabulary" item 6. The event traced is `approval_required`: "a require_approval-equivalent gate
+   fired; task -> waiting_approval", whichever of the two triggers fired it. A parked token that
+   belongs to a `consult` question instead parks the task `waiting_input` (operator-loop.spec.md);
+   under a resolved `"wait"` (a TTY `docket run`) a `consult` does not park, it waits in the turn
+   for the person at that terminal (operator-loop.spec.md "Consult" item 3).
+5. **Expiry.** Under a resolved `"park"`, dispatch also sets `DOCKET_APPROVAL_EXPIRES_AT` (ISO UTC,
+   `now + approvalExpiryHours`, computed fresh per hop); the tool gate stamps this onto the parked
+   record's own `expiresAt`, which `sweep_escalations`'s fail-closed deadline logic prefers over
+   the generic `APPROVAL_TIMEOUT`. Past that deadline the sweep resolves the record to **denied**,
+   and the waiting task fails exactly as an explicit human deny does
+   (`failureKind: "approval_denied"`).
+6. **Resume at the same index.** Resume treats a `hop.parked` entry as an attempt, not a decided
+   outcome: it neither advances past it nor evaluates it as a rework or route target, and sets the
+   resume position to that hop's own index -- re-running the exact step rather than the one after it.
+   The step id may then appear more than once in the task's persisted `hops` (the parked attempt,
+   then the real one), the same "each attempt is its own audit record" shape a rework cycle's
+   repeated Reviewer hop has. This is not the pre-hop gate's skipped position: that skips a gate
+   check at a position no hop was attempted at, and a granted parked approval never names one.
+7. **Single-use pre-grant on resume.** The grant of a record whose context carries `parked: true`
+   only reopens the task `pending`; the granted record itself, whose context names the task, the
+   tool and the call's `argsDigest`, is the pre-grant. Dispatch reads the task's unspent pre-grants
+   (granted approval records naming the task, not yet consumed) from the approval store and
+   serialises them as JSON `{token, tool, argsDigest}` into `DOCKET_PREGRANTS` on every hop it
+   composes for that task; the tool gate's pre-grant matcher consumes at most one entry per exact
+   `(tool, argsDigest)` match, so the re-run hop's identical call passes once without asking
+   again, and anything else still asks. A grant that chose `approve_task` is also a task-wide
+   grant (at most `TASK_GRANT_CAP`, 20, per task; audited `approval.task_grant`, or
+   `approval.task_grant_refused` past the cap, in which case the call is approved once only), from
+   which dispatch mints one single-use pre-grant per grant for each later hop of the same role
+   (operator-loop.spec.md). A pre-grant minted that way is marked as such and is never read as a
+   grant of its own. The task keeps none of this: its terminal status ends its grants.
+8. **Denial.** The denial of a parked record behaves exactly like a pre-hop gate's deny: the task moves straight to `failed`, `failureKind: "approval_denied"`,
+   never reclaimable by `--resume`.
+9. A re-run hop is a new turn sharing the same durable step history; the granted call's result is
+   not injected into the turn that parked.
 
-### Pre-grants from intake (P34-15, ADR 0016 SS10)
+### Pre-grants from intake (ADR 0016)
 
-1. **Trigger.** "Parked approvals" above gives a human a pre-grant only *after* an in-turn `ask`
-   has already parked a task. A Lead intake brief's `expectedRiskyActions` (see "Task brief"
-   below) names a command before any hop has run it -- there is nothing yet to grant from.
-2. `core.interruptions.record_pregrant(project, task_id, command, *, tool="bash", channel,
-   actor)` is the write side, callable ahead of any dispatch: it looks *task_id* up in
-   `read_tasks(project)` (refusing one from another pod), collapses whitespace in *command*, and
-   computes `operator_contract.canonical_args_digest(tool, {"command": normalized})` -- the exact
-   digest `core/tools.py`'s park/consume matcher computes for a live call. It then calls
-   `core.approval.create_pregrant(project, "implementer", tool, digest, task_id=task_id,
-   expires_at=<now + this pod's approvalExpiryHours>, channel=channel, actor=actor)` unchanged.
-3. It appends `{"token", "tool", "argsDigest": digest}` to the named task's own `pregrants` list,
-   via `edges.store.read_modify_write(pod_task_list_path(project), ...)` -- the identical shape
-   "Parked approvals" item 7 appends on a live grant, so `_compose_hop` serialises it into
-   `DOCKET_PREGRANTS` on that task's very first hop, not only a re-run after a park. A command
-   pre-granted this way that never actually runs, or runs with different arguments, is simply
-   never consumed -- it expires by the same `approvalExpiryHours` deadline like any other
-   pre-grant, with no other effect on the task.
-4. Non-goal: any change to `core/tools.py`'s matcher, `core/approval.py`'s `create_pregrant`, or
-   the `pregrants` field's shape -- this is a second writer producing the exact same record
-   shape, not a new mechanism. See operator-loop.spec.md, "Seeing it coming, and not being
-   interrupted twice", for the CLI/HTTP/MCP surface and the forecast this pairs with.
+1. A pre-grant can be recorded before any hop runs, for a command a Lead brief's
+   `expectedRiskyActions` (see "Task brief" below) names, so the task is not interrupted for it
+   later.
+2. `record_pregrant(project, task_id, command, *, tool="bash", channel, actor)` is the write side,
+   callable ahead of any dispatch: it looks *task_id* up in the pod's queue (refusing one from
+   another pod with `InterruptionsError`), collapses whitespace in *command*, and computes
+   `canonical_args_digest(tool, {"command": normalized})` -- the exact digest the tool gate's park
+   and consume matcher computes for a live call. It then calls `create_pregrant(project,
+   "implementer", tool, digest, task_id=task_id, expires_at=<now + this pod's approvalExpiryHours>,
+   channel=channel, actor=actor)`.
+3. The record is the pre-grant: it names the task in its context, so dispatch reads it from the
+   approval store like the grant of a parked call ("Parked approvals" item 7) and serialises it
+   into `DOCKET_PREGRANTS` on that task's very first hop, not only a re-run after a park. A command pre-granted this way that never runs,
+   or runs with different arguments, is never consumed -- it expires by the same
+   `approvalExpiryHours` deadline like any other pre-grant, with no other effect on the task.
+4. This writer produces the same record shape a live grant leaves; the matcher and
+   `create_pregrant` consume it unchanged. See operator-loop.spec.md, "Seeing it coming, and not
+   being interrupted twice", for the CLI/HTTP/MCP surface and the forecast this pairs with.
 
-### Operator input steps and answers (P34-10, ADR 0016 SS4/SS8)
+### Operator input steps and answers (ADR 0016)
 
-1. **Trigger.** `_run_pipeline` reaching a `PlannedUnit` whose `input` is set (see
-   pipeline-format.spec.md, "Operator input steps") runs `_run_input_step` instead of an agent
-   turn: it mints a `Question` (`core.operator_contract`, MCP-elicitation-shaped) from the
-   step's `from:` source, traces `input_requested`, and returns a `waiting_input` outcome. No
-   hop is persisted for this attempt -- the same posture the pre-hop `require_approval` gate's
-   `waiting_approval` already has (see "Parked approvals" above). The task's `question` field
-   carries the minted `Question`, dumped by alias. When the `from` step's latest hop holds a gate that did not
-   pass, the question's message **MUST** append that gate's report (its screened reasons, else
-   its redacted output tail) under `The gate on step '<from>' reported:`, so the operator decides
-   on what the verifier saw.
-2. **The question's schema.** A generic `input` step (no Lead intake brief attached) asks a
-   single free-text property: `{"type": "object", "properties": {"answer": {"type": "string"}},
-   "required": ["answer"]}`. A richer, per-question schema derived from the Lead's typed intake
-   brief (`TaskBrief.questions[]`) is a later requirement area's job, not this one.
-3. **Resolution.** `core.answers.answer_task(project, task_id, action, content, channel=,
-   actor=)` validates *content* against the question's schema
-   (`operator_contract.validate_answer`), screens every string value in *content* through
-   `core.policy.policy_eval_detail("lead", "pre_input", value, trusted=False)` -- a `block`
-   action raises `AnswerRejected` and writes nothing -- appends the answer to the task's
-   `answers[]`, and resolves the step's own `on:` route (`answered` for `accept`, `declined`
-   for `decline`/`cancel`) exactly the way `_route_outcome` resolves any other routed step's
-   outcome, minus the tracing (this runs outside a live hop, so there is no `_UnitContext`
-   to trace through). Every string value screened is caller-supplied answer content, never the
-   question text itself.
-4. **The synthetic hop.** A resolved answer persists one `HopResult(role="operator",
+1. When the pipeline reaches a planned unit whose `input` is set (see pipeline-format.spec.md,
+   "Operator input steps"), dispatch **MUST** run no agent turn: it mints a `Question`
+   (MCP-elicitation-shaped) from the step's `from:` source, opens the `input` escalation that
+   carries it, and returns a `waiting_input` outcome with reason `awaiting operator answer for
+   step '<id>' (escalation=<id>)`. No hop is persisted for this attempt -- the same posture the
+   pre-hop `require_approval` gate's `waiting_approval` has. The task lists the escalation and
+   keeps no copy of the question. When the `from` step's latest hop holds a gate that did not pass, the question's message
+   **MUST** append that gate's report (its screened reasons, else its redacted output tail) under
+   `The gate on step '<from>' reported:`, so the operator decides on what the verifier saw.
+2. **The question's schema.** A generic `input` step (no Lead intake brief attached) asks a single
+   free-text property: `{"type": "object", "properties": {"answer": {"type": "string"}},
+   "required": ["answer"]}`. A brief with questions gets a richer schema ("Task brief"
+   requirement 5).
+3. **Resolution.** An answer is received in two steps. `resolve` (operator-loop.spec.md area 10)
+   validates *content* against the question's schema (`validate_answer`), screens every string
+   value in *content* through `pre_input` as untrusted Lead input -- a `block` action writes
+   nothing -- records the answer as the escalation's `resolution` and reopens the task `pending`;
+   it resolves no pipeline and takes the pod's task-list lock only for that one status change. The next **claim** applies the answer: before the task's resume position is
+   computed, dispatch reads the escalations the task lists (`escalations`) and, for each `input`
+   record in state `resolved` whose `resolution.appliedAt` is unset, resolves the step's own `on:`
+   route (`answered` for `accept`, `declined` for `decline`/`cancel`) the way a live hop's route
+   is resolved, minus the tracing. The parked position is located by the record's own `step`
+   against the pipeline the claimed task runs with (requirement 1 of "Pipeline order and
+   participation"); a position that no longer names that step fails the task `dispatch_refused`
+   (an answer is accepted by `resolve` without that check, so this is where a stale one is
+   refused).
+   Only then is `appliedAt` stamped, so a crash between the two leaves the record to be applied
+   again and the application is idempotent (item 4). A record in state `expired` or `decided` is
+   never applied. Every string
+   value screened is caller-supplied answer content, never the question text itself.
+4. **The synthetic hop.** An applied answer persists one `HopResult(role="operator",
    member_id="operator", step_id=<the input step's id>, ok=True, output="answered:
-   <questionId>", next_step=<the resolved route target, or None for an ordinary advance>)`.
-   Its `artifact.verdict` is set to the outcome label (`"answered"`/`"declined"`) -- not a real
-   verdict marker, but the same field `_replay_pipeline_position`'s route-counts rebuild already
-   keys a backward/self route by (see the comment at its `hop.next_step` handling); a plain
-   `HandoffArtifact.from_output` fallback would leave `verdict` `None` there and
-   mis-key every reconstructed route as `"fail"`.
-5. **Terminal routes settle immediately.** A route resolving to `"fail"` (or an `on:` target
-   that names no known step id) moves the task straight to `failed`; one resolving to `"stop"`
-   moves it to `done` -- both settled inside `answer_task` itself, with `completedAt` set and
-   `claimId` cleared, exactly as `_run_pipeline`'s own `"routed"` handling would for a live hop,
-   since answering happens with no live dispatch context to do it for it. Any other target (or
-   no `on:` entry for the label at all) reopens the task `pending`, carrying the synthetic hop's
-   `next_step` for the next claim to follow.
-6. **Resume.** `_replay_pipeline_position` treats the synthetic `operator` hop exactly like any
-   other routed hop: `hop.next_step` (when it names a known step id) becomes the resume
-   position, bumping `route_counts` keyed by `(step_id, hop.artifact.verdict)` when the target is
-   backward or self -- unmodified by this section, since item 4's artifact convention is what
-   makes the existing mechanism apply unchanged. A cap exhausted by that rebuild (see "Parked
-   approvals" and `_route_outcome`'s own cap check, mirrored by `core.answers._resolve_route`)
-   settles the task `failed` on the *next* `answer_task` call that would have routed backward
-   again, not on a live dispatch call.
-7. **The Lead's next hop.** `_hop_message`'s Lead branch appends `\n\n## Operator answers\n`
-   followed by one `Q: <message>\nA: <rendered content>` block per entry in `answers[]`, oldest
-   first, capped near 4,000 characters with `core.context`'s existing truncation marker (never
-   silently cut). `A:` renders an `accept`'s single `answer` property value directly, else
-   `(declined)`/`(cancelled)`/`(no answer)`.
-8. **Expiry.** `core.answers.sweep_expired_questions`, run from `serve.py::_run_sweeps` (every
-   sweep, like `approval.approval_sweep_expired`), moves a `waiting_input` task whose question's
-   `expiresAt` has passed to `blocked`/`blockedReason: "input_expired"` -- never `failed` (fail
-   closed but never fails, item 5 above is unrelated to this rule). No hop was ever persisted
-   for the parked attempt, so `retry_task`/`unblock_pod` reopening it to `pending` sends the next
-   claim straight back to the same `input` step, which mints a brand new `Question`.
-9. Non-goal (this card): a richer per-question schema from the Lead's typed intake brief, the
-   CLI/HTTP/MCP/Telegram answer surfaces, and event delivery for `input_requested` -- all owned
-   by later requirement areas (operator-loop.spec.md).
+   <escalation id>", next_step=<the resolved route target, or None for an ordinary advance>)`. Its
+   `artifact.verdict` is set to the outcome label (`"answered"`/`"declined"`) -- not a real verdict
+   marker, but the same field resume's route-count rebuild keys a backward or self route by; a plain
+   `HandoffArtifact.from_output` fallback would leave `verdict` `None` there and mis-key every
+   reconstructed route as `"fail"`. The claim persists it inside the pod's task-list lock and only
+   when the task's hops hold no operator hop for that step and escalation already, so a task claimed
+   twice (a crash, a `stale_claim` reclaim) gains one hop, not two.
+5. **Terminal routes settle at the claim.** A route resolving to `"fail"` (or an `on:` target that
+   names no known step id, or a backward route whose cap is exhausted) settles the task `failed`;
+   one resolving to `"stop"` settles it `done` -- both by the claim that applies the answer, which
+   persists the synthetic hop and returns that result without running a hop (`session_start` and
+   `session_end` are traced around it, `completedAt` is set by the ordinary finalisation). Until
+   that claim the task is `pending`. Any other target (or no `on:` entry for the label at all)
+   leaves the task running its pipeline from the synthetic hop's `next_step`.
+6. **Resume.** Resume treats the synthetic `operator` hop like any other routed hop: `hop.next_step`
+   (when it names a known step id) becomes the resume position, bumping the route count keyed by
+   `(step_id, hop.artifact.verdict)` when the target is backward or self. A cap exhausted by that
+   rebuild settles the task `failed` at the claim that would have routed backward again.
+7. **The Lead's next hop.** The Lead's hop message appends `\n\n## Operator answers\n` followed by
+   one `Q: <message>\nA: <rendered content>` block per resolved `consult` or `input` escalation
+   the task lists (`answers_of`), oldest first, capped
+   near 4,000 characters with the context compiler's truncation marker (never silently cut). `A:`
+   renders an `accept`'s single `answer` property value directly (other accepted content as sorted
+   JSON), else `(declined)`/`(cancelled)`/`(no answer)`.
+8. **Expiry.** `sweep_escalations`, run on every `docket start` sweep,, moves a `waiting_input` task whose question's `expiresAt` has passed to
+   `blocked`/`blockedReason: "input_expired"` and writes `escalation_expired` -- never `failed`. No hop
+   was persisted for the parked attempt, so `retry_task`/`unblock_pod` reopening it to `pending`
+   sends the next claim straight back to the same `input` step, which mints a new `Question`.
 
-### Task brief (P34-12, ADR 0016 §4)
+### Task brief (ADR 0016)
 
-1. **Parsing.** `core.handoff.parse_brief(text)` reads the **last** fenced ` ```json ` block in
-   *text* and, only if it both parses as JSON and validates as `operator_contract.TaskBrief`,
-   returns it -- any other outcome (no fence, invalid JSON, a non-object payload, a schema
-   mismatch) returns `None`, never raises. `core/dispatch.py`'s `_build_hop_result` calls this on
-   every hop's raw output (`hop_ok` only) and sets the resulting `HandoffArtifact.brief` --- so a
-   brief is not limited to the Lead role by construction, though in practice only a Lead step's
-   own instructions ever produce one. `HandoffArtifact.brief` is excluded from `DROP_ORDER`, the
-   same posture `summary` already has: a token-budgeted consumer never sheds it.
-2. **The recipe's own gate.** `templates/recipes/intake/pipeline.yaml`'s Lead step matches one of
+1. **Parsing.** `parse_brief(text)` reads the **last** fenced ` ```json ` block in *text* and, only
+   if it both parses as JSON and validates as `TaskBrief`, returns it -- any other outcome (no
+   fence, invalid JSON, a non-object payload, a schema mismatch) returns `None`, never raises.
+   Dispatch calls this on every successful hop's output and sets the resulting
+   `HandoffArtifact.brief` -- so a brief is not limited to the Lead role by construction, though in
+   practice only a Lead step's own instructions produce one. `HandoffArtifact.brief` is excluded
+   from `DROP_ORDER`, the same posture `summary` has: a token-budgeted consumer never sheds it.
+2. **The intake recipe's gate.** The shipped `intake` recipe's Lead step matches one of
    `READY`/`NEEDS-INPUT`/`REJECT` with a `passValues` sentinel its pattern can never capture, so
    every real marker is resolved through the step's own `on:` map (`pipeline-format.spec.md`,
-   "Outcome routing") rather than an unconditional gate-pass advance -- `on: {READY: build,
-   NEEDS-INPUT: ask, REJECT: fail}`. This is a property of that recipe's own YAML, not a new
-   dispatch mechanism: any custom pipeline may use the ordinary pass-value shortcut instead, and
-   requirement 3 below still applies to it identically (see requirement 3's own outcome-kind
-   note).
-3. **The resource pre-check.** `core.dispatch._check_brief_resources(project, brief)` walks the
-   brief's own `resources[]` and returns every entry a deterministic check cannot confirm:
-   `secret:<NAME>` against `core.secrets.secrets_keys()`, `path:<p>` against `Path(p).exists()`,
-   and the literal `verify` against the pod's Implementer having a non-empty `verifyCmd`
-   (`core.fleet.meta_get`). Pure -- no writes, no trace. `_run_pipeline`'s
-   `_block_on_missing_resources` calls it for any outcome labelled `READY` (case-insensitive)
-   that carries a brief, whether that outcome's `kind` is `"advance"` (the label matched the
-   gate's own `passValues`) or `"routed"` (the label matched an `on:` entry, requirement 2's
-   shape) -- both are real shapes a `READY` marker can take depending on how the pipeline authors
-   its gate, and this check applies identically either way. A non-empty result ends the task
-   `blocked`, `TaskResult.blocked_reason = "resources"` (a short code `_apply_result` prefers over
-   `reason`'s free text when persisting `blockedReason`, so `operator_contract.a2a_state`'s
-   `AUTH_REQUIRED` check has something stable to key on), `reason` naming every missing item, with
-   no further hop attempted. A brief naming no `resources[]`, or every one already present, is
-   unaffected -- the pipeline proceeds exactly as an ordinary `READY`/pass outcome would.
-4. **`REJECT` fails with a kind.** `_ROUTE_FAILURE_KINDS = {"REJECT": "rejected"}` is the one
-   place this mapping exists; `_run_pipeline`'s `"routed"`-to-`"fail"` branch (the generic path
-   any pipeline's `on: {<label>: fail}` already reaches) sets `TaskResult.failure_kind` from it,
-   keyed by the matched label uppercased -- `""` (the prior, unchanged behaviour) for every label
-   that is not `"REJECT"`. `operator_contract.a2a_state("failed", failure_kind="rejected")` then
-   resolves to `REJECTED` rather than the generic `FAILED`.
-5. **The question's schema, revisited.** `_run_input_step` (see "Operator input steps and
-   answers" requirement 2) resolves the `from:` step's most recent hop
-   (`core.dispatch._brief_from_step`); when that hop's artifact carries a brief with a non-empty
-   `questions[]`, the minted `Question.requested_schema` has one required string property per
-   question (`q1`..`qn`, `title` = the question's own text, `_brief_questions_schema`) instead of
-   the generic single `answer` property, and `Question.message` is `"The Lead needs answers
-   before starting: <brief.objective>"` instead of the step's own configured `message`/fallback.
-   A step whose `from:` hop has no brief, or a brief with no questions, is unaffected.
-6. **The Implementer's view.** `_hop_message`'s Implementer branch finds the most recent prior
-   hop whose artifact carries a brief (recency, not role -- see requirement 1) and, for that hop
-   only, replaces its usual carried-forward prose (`--- lead output ---\n<compiled text>`) with
-   `## Brief\n<core.handoff.render_brief(brief)>` -- the brief's own fields (objective, acceptance,
-   context, constraints, assumptions, resources, expectedRiskyActions, questions), in that fixed
-   order, never the Lead's raw reply text for that hop. Every other prior hop in the same message
-   (a rework note, or a different role's carryover) is unaffected and still goes through the
-   ordinary token-budget compiler. A reply with no parseable brief is unaffected: the Implementer
-   sees the Lead's prose exactly as before this section existed.
-7. **A pre-brief at enqueue.** `enqueue_task(..., brief: dict | None = None)` validates *brief* as
-   a `TaskBrief` (an invalid one raises `DispatchError`, nothing persisted), folds
-   `core.handoff.render_brief` of it into the enqueued `description` under its own `## Pre-brief`
-   heading **before** the existing `pre_input` gate runs -- so the same screen that covers every
-   other human-sent string at enqueue covers this text too -- and stores the validated brief on
-   the task's own `brief` field (`TaskBrief.model_dump(by_alias=True)`). The Lead's first hop
-   therefore sees the pre-brief as part of its task description without any change to
-   `_hop_message`'s Lead branch.
-8. **The verdict rule is unchanged.** A reply with no parseable brief (`HandoffArtifact.brief is
-   None`) but a valid `READY` (or any other) marker still advances exactly as before this section
-   existed -- a brief is always optional, and requirement 3's check is skipped outright whenever
+   "Outcome routing") rather than an unconditional pass -- `on: {READY: build, NEEDS-INPUT: ask,
+   REJECT: fail}`. This is a property of that recipe's YAML, not a dispatch mechanism: any custom
+   pipeline may use the ordinary pass-value shortcut instead, and requirement 3 applies to it
+   identically.
+3. **The resource pre-check.** For any outcome labelled `READY` (case-insensitive) whose hop
+   carries a brief -- whether that outcome advanced (the label matched the gate's `passValues`) or
+   was routed (the label matched an `on:` entry, requirement 2's shape) -- dispatch **MUST** check
+   the brief's own `resources[]` and collect every entry a deterministic check cannot confirm:
+   `secret:<NAME>` against the configured secret names, `path:<p>` against the path existing, and
+   the literal `verify` against the pod's Implementer having a non-empty `verifyCmd`. The check is
+   pure -- no writes, no trace. A non-empty result ends the task `blocked` with `blockedReason:
+   "resources"` (a short code preferred over `reason`'s free text, so the A2A state mapping's
+   `AUTH_REQUIRED` check has something stable to key on) and `reason` `brief names missing
+   resources: <items>`, with no further hop attempted for that task; the run goes on to claim the
+   pod's next task. A brief naming no `resources[]`, or every one
+   present, is unaffected -- the pipeline proceeds as an ordinary `READY` outcome would.
+4. **`REJECT` fails with a kind.** A route to `fail` from the label `REJECT` (matched uppercased)
+   **MUST** set the task's `failureKind` to `rejected`; every other label routed to `fail` sets none
+   (an external gate's own label excepted, see "Generalized gate execution" requirement 6). The A2A
+   state mapping then resolves `failed` with `rejected` to `REJECTED` rather than the generic
+   `FAILED`.
+5. **The question's schema from a brief.** An `input` step resolves the `from:` step's most recent
+   hop; when that hop's artifact carries a brief with a non-empty `questions[]`, the minted
+   `Question.requested_schema` has one required string property per question (`q1`..`qn`, `title`
+   = the question's text) instead of the generic single `answer` property, and `Question.message`
+   is `"The Lead needs answers before starting: <brief.objective>"` instead of the step's own
+   configured `message` or fallback. A step whose `from:` hop has no brief, or a brief with no
+   questions, is unaffected.
+6. **The Implementer's view.** The Implementer's hop message finds the most recent prior hop whose
+   artifact carries a brief (recency, not role -- see requirement 1) and, for that hop only,
+   replaces its usual carried-forward prose with `## Brief\n<render_brief(brief)>` -- the brief's
+   own fields (objective, acceptance, context, constraints, assumptions, resources,
+   expectedRiskyActions, questions), in that fixed order, never the Lead's raw reply text for that
+   hop. Every other prior hop in the same message is unaffected and still goes through the ordinary
+   token-budget compiler. A reply with no parseable brief is unaffected: the Implementer sees the
+   Lead's prose.
+7. **A pre-brief at enqueue.** `enqueue_task_once(..., brief: dict | None = None)` validates *brief* as a
+   `TaskBrief` (an invalid one raises `DispatchError`, nothing persisted), folds `render_brief` of it
+   into the enqueued `description` under its own `## Pre-brief` heading **before** the `pre_input`
+   gate runs -- so the same screen that covers every other human-sent string at enqueue covers this
+   text too -- and stores the validated brief on the task's own `brief` field (by alias). The Lead's
+   first hop therefore sees the pre-brief as part of its task description.
+8. **The verdict rule is unaffected by a brief.** A reply with no parseable brief
+   (`HandoffArtifact.brief is None`) but a valid `READY` (or any other) marker advances or routes as
+   its gate says -- a brief is always optional, and requirement 3's check is skipped whenever
    `brief is None`.
-9. Non-goals (this card): making `intake` the default `software` pipeline (deferred, no measured
-   trigger yet); the CLI/HTTP/MCP answer/delegate surfaces that accept `brief=` end-to-end
-   (P34-13); a CLI/HTTP pre-grant surface for a brief's `expectedRiskyActions` (P34-15).
 
 ### Budget gate and auto-pause
 
-1. Before **every** hop (not just the first, and including a rework hop), dispatch **MUST**
-   check the pod's accumulated spend (summed across all pod members) against the pod's budget
-   cap (the Lead's `budgetUsd`, `0` = unlimited).
-2. Spend for this check **MUST** prefer recorded cost; when recorded cost is exactly `0` across
-   the pod (always true under `DocketDriver`, which reports `cost_usd = 0.0` — see "Runtime driver
-   resolution" and `cost-tracking.spec.md`), dispatch **MUST** fall back to a labelled token-based estimate (`pod_gating_cost`) so a real
-   cap can still trip. This estimate is for gating only and is rendered distinctly labelled
-   wherever it appears (never mixed into `docket status`'s recorded figures).
+1. Before **every** hop (not just the first, and including a rework hop), dispatch **MUST** check
+   the pod's accumulated spend (summed across all pod members) against the pod's budget cap (the
+   Lead's `budgetUsd`, `0` = unlimited). A task's own `maxTokens` is checked first ("Per-hop
+   execution" requirement 8).
+2. Spend for this check **MUST** prefer recorded cost; when recorded cost is exactly `0` across the
+   pod (always true under `DocketDriver`, which reports `cost_usd = 0.0` -- see "Runtime driver
+   resolution" and `cost-tracking.spec.md`), dispatch **MUST** fall back to a labelled token-based
+   estimate (`pod_gating_cost`) so a real cap can still trip. This estimate is for gating only and
+   is rendered distinctly labelled wherever it appears (never mixed into `docket status`'s recorded
+   figures). Under a cap, a hop whose model has no price emits a `budget_warning` and runs.
 3. If the cap is met or exceeded, the task **MUST** transition to `blocked` (see "blocked and
-   terminal-failure re-entry"; `blockedReason` persisted) and the pipeline **MUST NOT** attempt
-   the gated hop or any later one for this task. A `budget_exceeded` trace event **MUST** be
-   emitted naming the role the budget was checked before, the spend, the cap, and whether the
-   spend figure was estimated.
-4. The same check that blocks the task **MUST** also mark the pod's Lead paused
-   (`_pause_lead_for_budget`: `paused = true`, `pausedReason = "budget"`, through the Docket
-   store's `meta_set`). From that point on, **every** further claim
-   attempt against this pod — for this task or any other in its queue — **MUST** be refused
+   terminal-failure re-entry"; `blockedReason` persisted as the reason, `pod budget reached (<spent>
+   ≥ $<cap>) before <role>`, the spent figure labelled `(estimated — no cost recorded)` when
+   estimated) and the pipeline **MUST NOT** attempt the gated hop or any later one for this task. A
+   `budget_exceeded` trace event **MUST** be emitted naming the role the budget was checked before,
+   the spend, the cap, and whether the spend figure was estimated.
+4. The same check that blocks the task **MUST** also mark the pod's Lead paused (`paused = true`,
+   `pausedReason = "budget"`, through `meta_set`). From that point on, **every** further claim
+   attempt against this pod -- for this task or any other in its queue -- **MUST** be refused
    outright at claim time (see "Claiming", item 5), not merely re-blocked hop by hop, until an
-   operator clears the pause (`docket run --resume`; see `cost-tracking.spec.md`).
+   operator clears the pause (`docket run --resume`, or a new positive `budgetUsd`; see
+   `cost-tracking.spec.md`). After a task ends `blocked` on the budget, `dispatch_pod` claims no
+   further task in that run; a task blocked on its brief's missing resources ("Task brief"
+   requirement 3) does not stop the run, because the pause is what makes the budget pod-wide.
 
-### require_approval gate and waiting_approval (ROADMAP Phase 15 G-1 / Phase 16 W-2)
+### require_approval gate and waiting_approval
 
-1. Immediately after the budget gate (affordability) and before a hop's message is composed or
-   its agent turn runs (permission), dispatch **MUST** evaluate whether that hop requires a human
-   decision (`_hop_requires_approval`). This is an **OR** of independent sources — any one of them
-   firing is enough to gate:
-   - **Pod-level (wired):** the pod Lead's `requireApprovalRoles` meta field, a comma-separated,
-     case-insensitive role list (e.g. `"implementer,reviewer"`) — see `docket-meta.spec.md`. Read
-     the same way `maxReworkCycles`/`budgetUsd` are: only the Lead's value is consulted, and it
-     has no dedicated CLI setter yet (`meta-set` only).
-   - **Policy-driven (seam only — ROADMAP Phase 15 G-2, not wired):** `_policy_requires_approval`
-     always returns `False` today. No policy source (e.g. a high-risk action-class match) is
-     consulted. This is an explicit, documented gap, not a claim of coverage.
-   - **Pipeline-defined (wired — ROADMAP Phase 16 W-2):** `_pipeline_step_requires_approval(gate)`
-     returns `True` exactly when the current pipeline position's *resolved* gate (its own declared
-     `gate`, or its archetype's `gateContract` fallback — see "Generalized gate execution") is an
-     `ApprovalGate`. This applies to any role/archetype, not just a hardcoded one, and composes
-     with the pod-level source (either firing is enough). Only meaningful for a top-level step —
-     see "Parallel step groups" for why a group's children never check this source at all.
-2. A fired gate **MUST**: create a real, persisted approval record via `core/approval.py`'s
-   `approval_create` (project, role, a human-readable action string, and a `context` of
-   `{"taskId", "pipelineIndex"}` so the record can be traced back to the exact task and hop it
-   gated); emit an `approval_required` trace event on the task's own session; and transition the
-   task to `waiting_approval` **without** running the gated hop's agent turn at all. The task's
-   `approvalToken` and `pendingApprovalIndex` (the pipeline position the gate fired at) **MUST**
-   be persisted; its `claimId` **MUST** be cleared (no active claim while waiting). This is a real
-   producer for a store that, before this card, had zero production callers.
+1. Immediately after the budget gate (affordability) and before a hop's message is composed or its
+   agent turn runs (permission), dispatch **MUST** evaluate whether that hop requires a human
+   decision. The one source is the pipeline; no pod setting and no policy (e.g. a high-risk
+   action-class match) is consulted at this point, and in-turn tool-call policies are the tool
+   gate's (`security-gates.spec.md`):
+   - **Pipeline-defined:** the current pipeline position's *resolved* gate (its own declared `gate`,
+     or its archetype's `gateContract` fallback -- see "Generalized gate execution") is an
+     `ApprovalGate`. This applies to any role or archetype, and composes with the pod-level source.
+     Only meaningful for a top-level step -- see "Parallel step groups" for why a group's children
+     never check it.
+2. A fired gate **MUST**: create a real, persisted approval record via `approval_create` (project,
+   role, a human-readable action string, and a `context` of `{"taskId", "pipelineIndex"}` so the
+   record can be traced back to the exact task and hop it gated); open the `gate` escalation that
+   record backs; emit an `approval_required` trace event on the task's own session naming the
+   escalation; and transition the task to `waiting_approval` (reason `approval required before
+   <role> hop (escalation=<id>)`) **without** running the gated hop's agent turn. The task lists
+   the escalation and its `pendingApprovalIndex` (the pipeline position the gate fired at)
+   **MUST** be persisted; the task holds no token.
 3. A `waiting_approval` task **MUST NOT** be claimable by any dispatch run, with or without
-   `--resume` — `_eligible_for_claim` recognizes only `pending` and a `stale_claim`-tagged
-   `failed`. It re-enters `pending` only through a resolved approval (below), never automatically,
-   and never via `retry_task`/`unblock_pod` (those are budget-gate-only escape hatches).
-4. Resolving the gate's approval (`core/dispatch.py`'s `resolve_waiting_approval`, called by
-   `docket task approve`/`docket task deny`, `serve.py`'s `POST /approvals/<token>`, the Telegram
-   `/approve`/`/deny` verbs (`core/telegram.py`), `cli/_mcp.py`'s `approvals_grant`/`approvals_deny`
-   MCP tools, and `approval_sweep_expired`'s fail-closed timeout path — see
-   `security-gates.spec.md`) **MUST**:
-   - **On a grant:** transition the task `waiting_approval` -> `pending`, clear `approvalToken`/
-     `pendingApprovalIndex`, and hand the exact pipeline position the gate fired at to the *next*
-     claim as a **single-use** `gateOverridePipelineIndex` — "the next dispatch continues from
-     that hop." No agent turn runs as part of resolving the grant itself; a real dispatch
-     invocation is still required to actually continue the pipeline.
+   `--resume` -- only `pending` and a `RESUMABLE_FAILURE_KINDS`-tagged `failed` task are eligible. It
+   re-enters `pending` only through a resolved approval (below), never automatically, and never via
+   `retry_task` or `unblock_pod` (those accept only `blocked`/`failed`).
+4. Resolving the gate's escalation (`resolve_waiting_approval`, called by `resolve` for every
+   surface -- `docket task answer`, `POST /escalations/<id>`, the MCP `resolve` tool, Telegram
+   `/answer`, the `docket run` progress view's in-place prompt -- and by `sweep_escalations`'s
+   fail-closed timeout path -- see `security-gates.spec.md`) **MUST**:
+   - **On a grant:** transition the task `waiting_approval` -> `pending`, clear
+     `pendingApprovalIndex`, and leave the exact pipeline position the gate fired at
+     to the *next* claim (item 5) -- "the next dispatch continues from that hop." No agent turn
+     runs as part of resolving the grant itself; a real dispatch invocation is still required to
+     continue the pipeline.
    - **On a deny:** transition the task `waiting_approval` -> `failed` **immediately** (no agent
      turn needed to fail a task that never ran its gated hop), `failureKind: "approval_denied"`,
      `reason: "approval denied"` (or `approval denied: <reason>` when the decision carried the
      operator's reason, so the inbox's Failed entry and `task show` say why), `completedAt` set,
-     `claimId` cleared. Terminal — never
-     auto-retried by a later `dispatch_pod` call, with or without `--resume`.
-   - Resolving a token not created by this gate (missing `context.taskId`/`project`), an unknown
-     token, or a task no longer `waiting_approval` on that exact token (already resolved by a
-     concurrent caller) **MUST** be a harmless no-op — it **MUST NOT** raise.
-5. The gate-override handoff **MUST** be single-use and consumed atomically at claim time: the
-   *next* `_claim_next_task` call for this task captures `gateOverridePipelineIndex` into the
-   claimed copy handed to `dispatch_task`, then clears it from the **stored** record in the same
-   locked operation — so it can never leak into a later, unrelated claim of the same task (e.g. a
-   crash-and-`--resume`, or the task revisiting the same pipeline position on a Reviewer rework
-   cycle). `dispatch_task` consumes the override **in memory** the first time it reaches that
-   exact pipeline position in the run; a later hop at the same role within the *same* run (a
-   rework cycle sending the task back to the Implementer a second time) **MUST** gate again
-   normally, with a fresh token — the override never suppresses more than the one resumed hop it
-   was minted for.
-6. The require_approval gate **MUST NOT** bypass, or be bypassed by, the budget gate — budget is
+     the task's grants ended. Never auto-retried by a later `dispatch_pod` call,
+     with or without `--resume`.
+   - Each resolution traces `approval_resumed` (grant) or `approval_task_denied` (deny) on the
+     task's session.
+   - Resolving an approval not created by a dispatch gate (no `context.taskId` and no escalation
+     naming a task, or no `project`), an unknown approval, or a task no longer `waiting_approval`
+     on that exact escalation (already resolved by a concurrent caller) **MUST** be a harmless
+     no-op -- it **MUST NOT** raise.
+5. The gate-override handoff **MUST** be single-use and applied exactly once at claim time:
+   `dispatch_task` reads the task's escalations (`apply_resolutions`), takes the pipeline position
+   from the approval record of each `approval` or `gate` escalation that is `resolved` and not
+   stamped (`context.pipelineIndex`), and stamps it `appliedAt` -- so it can never leak into a
+   later, unrelated claim of the same task (e.g. a crash-and-`--resume`, or the task revisiting the
+   same pipeline position on a rework cycle), and a record that is `expired`, `decided` or still
+   `pending` is never applied. `dispatch_task` consumes the
+   override **in memory** the first time it reaches that exact pipeline position in the run; a later
+   hop at the same position within the *same* run (a rework cycle sending the task back to the
+   Implementer a second time) **MUST** gate again normally, with a fresh token -- the override never
+   suppresses more than the one resumed hop it was minted for.
+6. The require_approval gate **MUST NOT** bypass, or be bypassed by, the budget gate -- budget is
    always checked first (affordability before permission); a hop blocked on budget **MUST**
    transition to `blocked`, not `waiting_approval`, and no approval record is created for it.
-7. Every trace event this pipeline's approval mechanics produce — including an **in-turn**
-   `core/tools.py` tool-call gate reached from inside a dispatch hop's agent turn, not only the
-   pod-level/pipeline-defined gates above — **MUST** file under the pod's own trace directory
-   (`traces/<project>/`), never under the hop's agent id. `edges/adapters/docket_runtime.py`'s
-   `DocketDriver.run_turn` builds the `ToolContext` a hop's turn runs under; its `project` field
-   **MUST** resolve to the caller-supplied `trace_project` (the pod, threaded in from
-   `core/dispatch.py`'s `_run_hop_turn`) when one is given, falling back to the agent id only for
-   a non-dispatch caller that has no pod to file under. This is what
-   `core/approval.py`'s `approval_create`/`approval_grant`/`approval_deny` — called with
-   `ctx.project` — actually file their `approval_requested`/`approval_granted`/`approval_denied`
-   events against; before this requirement, an in-turn gate's approval trace landed under
-   `traces/<agent-id>/`, invisible to an operator looking at the pod's own trace directory for
-   everything else that hop did.
+7. Every trace event this pipeline's approval mechanics produce -- including an **in-turn** tool-call
+   gate reached from inside a dispatch hop's agent turn, not only the gates above -- **MUST** file
+   under the pod's own trace directory (`traces/<project>/`), never under the hop's agent id.
+   `DocketDriver.run_turn` builds the tool context a hop's turn runs under; its `project` field
+   **MUST** resolve to the caller-supplied `trace_project` (the pod, passed by dispatch) when one is
+   given, else the agent's own pod, else the agent id. This is the project `approval_create`,
+   `approval_grant` and `approval_deny` file their `approval_granted`/`approval_denied` events
+   against, so an in-turn gate's approval trace lands beside everything
+   else that hop did.
 
 ### Registry retention (runs, approvals, conversations)
 
-1. `core/runs.py`'s `docket-runs.json`, `core/approval.py`'s per-token files under
-   `$APPROVALS_DIR`, and `core/conversations.py`'s `docket-conversations.json` **MUST** each be
-   bounded by a retention sweep sharing `config.TRACE_RETENTION_S` — the same knob
-   `core/trace.py`'s `expire_old_traces` already uses — rather than growing forever. This spec
-   covers only that these three stores share the trigger and the liveness rule below; each
-   store's own record shape and CLI surface are documented where the rest of that store is (see
-   "does NOT cover" above for the run registry and `security-gates.spec.md` for the approval
-   record).
+1. `docket-runs.json`, the approval store's per-token files under `$APPROVALS_DIR`, and
+   `docket-conversations.json` **MUST** each be bounded by a retention sweep sharing
+   `TRACE_RETENTION_S` -- the same knob trace expiry uses -- rather than growing forever. This spec
+   covers only that these three stores share the trigger and the liveness rule below; each store's
+   own record shape and CLI surface are documented where the rest of that store is (see "does NOT
+   cover" above for the run registry and `security-gates.spec.md` for the approval record).
 2. A **live** record **MUST NEVER** be removed regardless of age: a `queued`/`running` run, a
-   `pending` approval, or a conversation not in `done` status. Only a record already terminal
-   (a run in `succeeded`/`failed`/`cancelled`; an approval in `granted`/`denied`/`expired`; a
-   conversation `done`) is eligible, and only once it has sat terminal past the retention window.
-3. Eligibility is measured from when a record **became** terminal, not from when it was created:
-   a run's `finishedAt`, an approval file's own mtime (its state transition is its only write
-   after creation), and a conversation's `updated` timestamp.
-4. `docket start`'s periodic sweep (`_run_sweeps`) **MUST** run all three prunes, each
-   independently best-effort like the existing trace/approval-expiry sweeps — one store's prune
-   failing **MUST NOT** block the others or the server. `docket task prune --traces [--days N]` **MUST** expose the same
-   underlying functions for on-demand use between sweeps.
+   `pending` approval, or a conversation not in `done` status. Only a record already terminal (a run
+   in `succeeded`/`failed`/`cancelled`/`waiting_input`/`waiting_approval`; an approval in
+   `granted`/`denied`/`expired`; a conversation `done`) is eligible, and only once it has sat
+   terminal past the retention window.
+3. Eligibility is measured from when a record **became** terminal, not from when it was created: a
+   run's `finishedAt`, an approval file's own mtime (its state transition is its only write after
+   creation), and a conversation's `updated` timestamp.
+4. `docket start`'s periodic sweep **MUST** run all three prunes, each independently best-effort
+   like the trace and approval-expiry sweeps -- one store's prune failing **MUST NOT** block the
+   others or the server. `docket task prune --traces [--days N]` **MUST** expose the trace expiry
+   and the run-record prune for one pod on demand between sweeps (`--days` needs `--traces`).
 
 ### Implementer verification gate (`verifyCmd`)
 
-*(This is a `mechanical` gate — see "Generalized gate execution" for how W-8 generalizes the
-mechanics below to any role's mechanically-gated step, not just one hardcoded to "implementer".
-Every requirement below still holds byte-for-byte for the Implementer specifically.)*
+The built-in pipeline's Implementer step carries a `mechanical` gate whose command is the
+Implementer's own `verifyCmd`; "Generalized gate execution" states the same mechanics for any
+mechanically gated step.
 
 1. After a **successful** Implementer hop, if the Implementer's `verifyCmd` is set, dispatch
-   **MUST** run it via `run_verify_cmd` and treat a nonzero exit as a gate failure.
-2. The command **MUST** run in the task's **worktree** directory if one is recorded
-   (`task["worktree"]["dir"]`, created at claim — see "Task worktrees"); otherwise the pod's
-   shared `codebase` root; otherwise the Implementer's own docket workspace directory
-   (`core/pod.py`'s `resolve_member_cwd` — the single helper shared with the TOOLS.md generator
-   so the two can never disagree about which tree an Implementer's work is checked against).
-3. The verify command **MUST** use its own timeout (`verifyTimeoutS`, see "Timeout
-   configuration"), independent of the agent-turn timeout — a hung test suite and a hung LLM
-   turn are never forced to share one budget.
-4. A verification failure **MUST** transition the task to `failed` (reason includes the
-   command), emit a `verification_failed` trace event with the (redacted) command output, and
+   **MUST** run it and treat a nonzero exit as a gate failure.
+2. The command **MUST** run in the task's **worktree** directory if one is recorded (created at
+   claim -- see "Task worktrees"); otherwise the Implementer's `codebase`; otherwise the
+   Implementer's own docket workspace directory (`resolve_member_cwd` -- the single helper shared
+   with the TOOLS.md generator so the two can never disagree about which tree an Implementer's work
+   is checked against).
+3. The verify command **MUST** use its own timeout (`verifyTimeoutS`, see "Timeout configuration"),
+   independent of the agent-turn timeout -- a hung test suite and a hung LLM turn never share one
+   budget.
+4. A verification failure **MUST** transition the task to `failed` (reason `verifyCmd failed:
+   '<cmd>'`), emit a `verification_failed` trace event with the command and its redacted output, and
    **MUST NOT** advance to Reviewer/Tester.
-5. If `verifyCmd` is unset or empty, dispatch **MUST NOT** silently skip without a visible
-   record (honesty rule: an operator can tell a gate was configured or not, never guess). As of
-   ROADMAP Phase 16 W-5 this is a `tool_result` trace event (`{"verification": "skipped",
-   "member": <id>}`) plus the hop's own `HopResult.verification_skipped` flag, which
-   `cli/_pod.py`'s dispatch renderer prints as `[dispatch] verification skipped — verifyCmd not
-   set for <id>` — the same visible wording a bare `print()` inside `core/dispatch.py` produced
-   before this card, now emitted by the `cli/` layer instead (`core/` never prints — see
-   CLAUDE.md's layering rule).
-6. This gate only applies to the Implementer hop; Reviewer and Tester hops are never subject to
-   it.
-6. With isolation recorded on, the verify command **MUST** run inside the same jail a `bash` call of
-   the pod takes (`security-gates.spec.md` Exec sandbox item 11): cwd the task worktree, the
-   worktree its read-write root, the pod's network. With no usable backend it **MUST NOT** run and
-   the gate fails (`[verify not run: ...]`, audited `isolation.refused`). With isolation off it runs on the host
-   unchanged.
+5. If `verifyCmd` is unset or empty, dispatch **MUST NOT** silently skip without a visible record
+   (an operator can tell whether a gate was configured, never guess): it emits a `tool_result` trace
+   event (`{"verification": "skipped", "member": <id>}`) and sets the hop's own in-memory
+   `HopResult.verification_skipped` flag, which `docket run` prints as `verification skipped —
+   verifyCmd not set for <id>`.
+6. In the built-in pipeline only the Implementer step carries a mechanical gate; a Reviewer or
+   Tester step runs no verify command unless its own pipeline step declares one.
+7. With isolation recorded on, the verify command **MUST** run inside the same jail a `bash` call of
+   the pod takes (`security-gates.spec.md` Exec sandbox): cwd the task worktree, the worktree its
+   read-write root, the pod's network, and every prepared cache entry the worktree links into as a
+   read-only root. With no usable backend it **MUST NOT** run and the gate fails (`[verify not run:
+   ...]`, audited `isolation.refused`). With isolation off it runs on the host.
+
+#### Verify tool
+
+8. The Implementer **MUST** be told how it will be judged: when the hop's step has a verify command
+   its instruction names it ("Hop instructions" in `role-archetypes.spec.md`), and the hop's turn
+   **MUST** be offered a `verify` tool. The tool is registered for that hop only when the step has
+   a verify command; it takes no parameters and **MUST** run exactly that command, never another.
+9. `verify` **MUST** run through the gate's own execution path, so the model sees what the gate will
+   see: the same working directory (requirement 2), the same jail or host posture (requirement 7),
+   the same timeout (the gate's `timeout`, else `verifyTimeoutS`), the same output cap and the same
+   secret redaction. Its result is `exit <N>` followed by the captured output; a command that never
+   reached an exit (refused, timed out, no usable backend) reports `exit none` and the reason the
+   runner gave. The tool is `exec`-kind, so a role denied `bash` is not offered it (Lead, Reviewer).
+10. `verify` does not replace the gate: the mechanical gate **MUST** still run after the hop and
+    decide the step, whatever the model did or did not do with the tool.
 
 ### Required verification (`requireVerify`)
 
-1. A pod's Lead **MAY** set the `requireVerify` pod setting (default `false`) to declare that
-   every Implementer hop **MUST** have a `verifyCmd` configured, either through the
-   Implementer's `verifyCmd` meta or the mechanical gate's own `command` field.
-2. When `requireVerify` is `true` and an Implementer hop's mechanical gate finds no `verifyCmd`,
-   dispatch **MUST** transition the task to `failed` (reason: `"verifyCmd required but not
-   set"`) and **MUST NOT** advance to Reviewer/Tester.
-3. A `verification_failed` trace event **MUST** be emitted with `{"reason":
-   "verification_missing", "member": <implementer_id>}` when this rule triggers.
-4. When `requireVerify` is `false` (the default), an unset `verifyCmd` behaves as documented
-   in "Implementer verification gate" requirement 5 (skipped with an honesty-rule trace event
-   and the `verification_skipped` flag).
+1. A pod **MAY** set the `requireVerify` pod setting (default `false`) to declare that every
+   Implementer hop **MUST** have a `verifyCmd` configured, either through the Implementer's
+   `verifyCmd` or the mechanical gate's own `command` field.
+2. When `requireVerify` is `true` and an Implementer hop's mechanical gate finds no command,
+   dispatch **MUST** transition the task to `failed` (reason: `"verifyCmd required but not set"`)
+   and **MUST NOT** advance to Reviewer/Tester.
+3. A `verification_failed` trace event **MUST** be emitted with `{"reason": "verification_missing",
+   "member": <implementer_id>}` when this rule triggers.
+4. When `requireVerify` is `false` (the default), an unset `verifyCmd` behaves as documented in
+   "Implementer verification gate" requirement 5 (skipped with a trace event and the
+   `verification_skipped` flag).
 
 ### Reviewer verdict gate and bounded rework
 
-*(This is a `verdict` gate — see "Generalized gate execution" for how W-8 generalizes the marker
-parsing below to any role's verdict-gated step via `core.orchestrator.parse_verdict`, instead of
-a Reviewer-specific hardcoded parser. Every requirement below still holds byte-for-byte for the
-Reviewer specifically — this is what "byte-identical built-in behavior" means in practice.)*
+The built-in Reviewer step carries a `verdict` gate; "Generalized gate execution" states the same
+parsing for any verdict-gated step (`parse_verdict`).
 
-1. After a **successful** Reviewer hop, dispatch **MUST** apply
-   `^(APPROVE|REQUEST-CHANGES)\b` case-insensitively at the start of every non-blank output line.
-   Exactly one distinct normalized marker is the verdict wherever that line appears. Repeated
-   identical marker lines collapse to one; a marker embedded later in prose does not count; zero
-   matches or both distinct markers are unparseable. The same generic parser and structural
-   convention apply to the Tester's PASS/FAIL gate.
+1. After a **successful** Reviewer hop, dispatch **MUST** read the verdict with `parse_verdict`
+   (`pipeline-format.spec.md` "Gates") against `^\s*(APPROVE|REQUEST-CHANGES)\b`,
+   case-insensitively: each line is stripped of markdown decoration, the last marker line is the
+   verdict, a marker embedded later in prose does not count, and zero marker lines is
+   unparseable. The Reviewer's instruction **MUST** say that the last line of its final message is
+   exactly `APPROVE` or `REQUEST-CHANGES`, with nothing else on that line and reasons above it.
+   The same generic parser and instruction convention apply to the Tester's PASS/FAIL gate.
 2. An `APPROVE` verdict **MUST** allow the pipeline to advance past the Reviewer normally.
 3. A `REQUEST-CHANGES` verdict **MUST NOT** immediately fail the task. Instead, while the pod's
-   rework budget (`maxReworkCycles`, a Lead-meta field, default `1`; `0` disables rework
-   entirely, making the Reviewer a hard gate) is not yet exhausted, dispatch **MUST**: emit a
+   rework budget (`maxReworkCycles`, a pod setting, default `1`; `0` disables rework entirely,
+   making the Reviewer a hard gate) is not yet exhausted, dispatch **MUST**: emit a
    `rework_started` trace event; jump the pipeline position back to the Implementer; re-run the
    Implementer's hop with the Reviewer's REQUEST-CHANGES text rendered as its own prominent
-   "REWORK REQUIRED" prompt section (sized off the full, un-derated per-hop carryover budget and
-   excluded from the generic recency-ranked carryover loop, so the one thing this hop must not
-   lose to truncation never is, and it is never rendered twice); then re-run the Reviewer.
-4. A **second** `REQUEST-CHANGES` for the same task once the rework budget is exhausted (or,
-   defensively, if the pod has no Implementer to rework against) **MUST** become terminal: the
-   task transitions to `failed`, a `review_rejected` trace event is emitted naming the number of
-   rework cycles consumed, and the reason states the rejection occurred "after N rework
-   cycle(s)".
-5. Reviewer output with zero recognized marker lines, or with conflicting distinct marker lines,
-   **MUST** be treated as unparseable — distinct from an explicit `REQUEST-CHANGES` rejection,
+   `--- REWORK REQUIRED: <role> requested changes ---` prompt section (sized off the full per-hop
+   carryover budget and excluded from the generic recency-ranked carryover loop, so the one thing
+   this hop must not lose to truncation never is, and it is never rendered twice); then re-run the
+   Reviewer. Each REQUEST-CHANGES that starts a rework cycle is also recorded in the pod's
+   corrections ledger.
+4. A **further** `REQUEST-CHANGES` for the same task once the rework budget is exhausted (or,
+   defensively, if the rework target is not in the plan) **MUST** become terminal: the task
+   transitions to `failed`, a `review_rejected` trace event is emitted naming the number of rework
+   cycles consumed, and the reason states the rejection occurred "after N rework cycle(s)"
+   (`reviewer rejected after N rework cycle(s): REQUEST-CHANGES`).
+5. Reviewer output with zero recognized marker lines, after the one re-ask of "Generalized gate
+   execution", **MUST** be treated as unparseable -- distinct from an explicit `REQUEST-CHANGES` rejection,
    mirroring the Tester gate's FAIL-vs-unparseable distinction. This **MUST** emit a
    `reviewer_verdict_unparseable` trace event and fail the task immediately (unparseable output is
    never given a rework cycle).
-6. Every rework cycle's hops (the re-run Implementer, the re-run Reviewer) **MUST** persist into
-   the task's `hops[]` through the same incremental per-hop persistence as any other hop, so the
-   full rework history is visible afterward, and correctly replayable on resume (see
-   "Per-hop incremental persistence and crash recovery").
-7. This gate **MUST NOT** affect pods with no Reviewer member — the check only runs when a
-   Reviewer hop is actually part of the pipeline for that pod.
+6. Every rework cycle's hops (the re-run Implementer, the re-run Reviewer) **MUST** persist into the
+   task's `hops[]` through the same incremental per-hop persistence as any other hop, so the full
+   rework history is visible afterward and correctly replayable on resume (see "Per-hop incremental
+   persistence and crash recovery").
+7. This gate **MUST NOT** affect pods with no Reviewer member -- the check only runs when a Reviewer
+   hop is part of the pipeline for that pod.
 
 ### Tester PASS/FAIL gate
 
-1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** apply
-   `^(PASS|FAIL)\b` case-insensitively at the start of every non-blank output line. Exactly one
-   distinct normalized marker is the verdict; repeated identical marker lines collapse to one,
-   while zero matches or both distinct markers are unparseable. Marker words embedded later in a
-   prose line do not count.
+1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** read the verdict
+   with `parse_verdict` against `^\s*(PASS|FAIL)\b` case-insensitively, under the same rule as the
+   Reviewer's: decoration stripped, the last marker line is the verdict, zero marker lines is
+   unparseable. Marker words embedded later in a prose line do not count.
 2. A `PASS` verdict **MUST** allow the pipeline to advance normally.
-3. A `FAIL` verdict, or unparseable output (empty, no recognized marker line, or conflicting
-   distinct marker lines), **MUST** block pipeline advancement: the task transitions to `failed`
-   with a distinct reason (`"tester reported FAIL"` vs a reason requiring one unambiguous
-   recognized marker line), and a `tester_verdict_failed` trace event **MUST** be emitted carrying
-   the parsed verdict (`"fail"` or `"unparseable"`) and the redacted output. FAIL and unparseable
-   **MUST** remain distinguishable in the reason and are never conflated.
-4. This gate **MUST NOT** affect pods with no Tester member. Unlike the Reviewer gate, there is
-   no rework loop on a Tester FAIL — it is a hard terminal gate.
-5. This gate is structural, not textual advice: a successful subprocess call alone (`ok=True`) is
-   insufficient for the pipeline to advance past a Tester hop — the reply content itself is
-   inspected.
+3. A `FAIL` verdict, or unparseable output (empty or no recognized marker line, after the one
+   re-ask), **MUST** block pipeline advancement: the task transitions to `failed`
+   with a distinct reason (`"tester reported FAIL"` vs `tester output unparseable (expected one
+   unambiguous recognized verdict marker at the start of a line)`), and a `tester_verdict_failed`
+   trace event **MUST** be emitted carrying the parsed verdict (`"fail"` or `"unparseable"`) and the
+   redacted output. FAIL and unparseable **MUST** remain distinguishable in the reason and are never
+   conflated.
+4. This gate **MUST NOT** affect pods with no Tester member. Unlike the Reviewer gate, there is no
+   rework loop on a Tester FAIL -- it is a hard terminal gate.
+5. This gate is structural, not textual advice: a successful turn alone (`ok=True`) is insufficient
+   for the pipeline to advance past a Tester hop -- the reply content itself is inspected.
 
-### Generalized gate execution (ROADMAP Phase 16 W-8)
+### Generalized gate execution
 
 1. Before a hop's agent turn runs, dispatch **MUST** resolve the current pipeline position's gate
-   (`core.orchestrator.resolve_gate`): the step's own declared `gate` (W-1) if present, else —
-   only when the step omits one — its resolved archetype's `gateContract` (W-6), looked up by the
-   step's `archetype` field if set, else its `role`. A step with neither an explicit `gate` nor a
-   resolvable archetype **MUST** have no gate at all — the step always advances once its turn
-   completes, the same as today's Lead hop.
+   (`resolve_gate`): the step's own declared `gate` if present, else -- only when the step omits one
+   -- its resolved archetype's `gateContract`, looked up by the step's `archetype` field if set,
+   else its `role`. A step with neither an explicit `gate` nor a resolvable archetype **MUST** have
+   no gate at all -- the step always advances once its turn completes, like the Lead hop.
 2. Gate *evaluation* **MUST** be driven by the resolved gate's own type
-   (`MechanicalGate`/`VerdictGate`/`ApprovalGate`/none), never by a hardcoded role-name check:
-   - A `MechanicalGate` **MUST** run `gate.command` if set, else the target member's own
-     `verifyCmd` meta (the same "defer to the member's own check" convention "Implementer
-     verification gate" documents) via `core/pod.py`'s `resolve_member_cwd` — worktree-aware cwd
-     resolution now applies to **any** mechanically-gated step, not only one hardcoded to
-     "implementer". A nonzero exit **MUST** fail the step and emit a `verification_failed` trace
-     event; a pass **MUST** emit a `tool_result` event and advance — **unless** the step's own
-     `on` map (`pipeline-format.spec.md`'s "Outcome routing") names the resulting `"pass"`/`"fail"`
-     label, in which case that outcome **MUST** be routed instead (see item 5 below) and the
-     ordinary trace event above **MUST NOT** fire. An unset command (both
-     `gate.command` and the member's `verifyCmd`) **MUST** produce the same honesty-rule signal
-     "Implementer verification gate" documents (a `tool_result` "skipped" trace event plus the
-     hop's own `verification_skipped` flag), generalized to name the actual member id — for any
-     mechanically-gated role, not only "implementer"; routing never applies to a skipped check.
-   - A `VerdictGate` **MUST** parse the hop's reply via `core.orchestrator.parse_verdict` —
-     generalizing "Reviewer verdict gate"/"Tester PASS/FAIL gate"'s marker parsing to the gate's
-     own `pattern`/`passValues`/`caseSensitive`/`rework` instead of two separate hardcoded
-     Reviewer/Tester regexes and parsers (both removed from `core/dispatch.py` once this shipped).
-     A matched value in `passValues` **MUST** advance the pipeline; otherwise, when the step's own
-     `on` map names the matched value, that outcome **MUST** be routed instead (item 5 below,
-     beating the rework/fail handling that follows); otherwise a matched value in a configured
-     `rework.when` **MUST** trigger a bounded rework cycle to `rework.to` (any earlier
-     top-level step id, not hardcoded to "implementer") while that gate's own rework-cycle count
-     (tracked per gated step id) is below `rework.maxCycles`; anything else (no rework configured,
-     the value matches neither list, or no match at all) **MUST** fail the step.
+   (`MechanicalGate`/`VerdictGate`/`ApprovalGate`/`ExternalGate`/none), never by a role-name check:
+   - A `MechanicalGate` **MUST** run `gate.command` if set, else the target member's own `verifyCmd`
+     (the same "defer to the member's own check" convention "Implementer verification gate"
+     documents) in the directory `resolve_member_cwd` gives -- worktree-aware cwd resolution applies
+     to **any** mechanically gated step. A nonzero exit **MUST** fail the step and emit a
+     `verification_failed` trace event; a pass **MUST** emit a `tool_result` event and advance --
+     **unless** the step's own `on` map (`pipeline-format.spec.md`'s "Outcome routing") names the
+     resulting `"pass"`/`"fail"` label, in which case that outcome **MUST** be routed instead (see
+     item 5 below) and the ordinary trace event above **MUST NOT** fire. An unset command (both
+     `gate.command` and the member's `verifyCmd`) **MUST** produce the honesty-rule signal
+     "Implementer verification gate" documents (a `tool_result` "skipped" trace event plus the hop's
+     own `verification_skipped` flag), naming the actual member id, for any mechanically gated role;
+     routing never applies to a skipped check.
+   - A `VerdictGate` **MUST** parse the hop's reply via `parse_verdict` with the gate's own
+     `pattern`/`passValues`/`caseSensitive`/`rework`. A matched value in `passValues` **MUST**
+     advance the pipeline; otherwise, when the step's own `on` map names the matched value, that
+     outcome **MUST** be routed instead (item 5 below, beating the rework/fail handling that
+     follows); otherwise a matched value in a configured `rework.when` **MUST** trigger a bounded
+     rework cycle to `rework.to` (any earlier top-level step id) while that gate's own rework-cycle
+     count (tracked per gated step id) is below `rework.maxCycles`; anything else (no rework
+     configured, the value matches neither list, or no match at all) **MUST** fail the step.
+   - A verdict-gated hop whose successful reply carries no marker **MUST** be asked once more
+     before that failure: dispatch sends exactly one further request on the hop's own session
+     with the message `Your reply had no verdict line. Reply with exactly one line: <v1> or <v2>.`
+     (the gate's allowed values, upper-case unless the gate is case-sensitive, joined by ` or `),
+     emits one `verdict_reasked` trace event, and reads the verdict from the original reply
+     followed by the answer. The re-ask happens at most once per hop attempt, never when the first
+     reply carries a marker, and a failed re-ask request leaves the original reply and its
+     unparseable outcome in place. A reply that still has no marker fails exactly as before.
+   - A verdict-gated hop **MUST** be offered a `verdict` tool (`kind="read"`) whose single required
+     `value` parameter is a string with a JSON-schema `enum` of the gate's allowed values (upper-case
+     unless the gate is case-sensitive) and whose description is "Record your verdict and finish.
+     Call this once, as your last action.". A call with a value in the enum (matched ignoring case
+     unless the gate is case-sensitive) **MUST** succeed and end the turn (`agent-loop.spec.md`
+     "A tool that ends the turn"): the hop's output is the assistant text of that message followed
+     by a final line holding exactly the recorded value, so `parse_verdict` reads it like any
+     other reply and the verdict, gate, rework and routing handling are unchanged. A value outside
+     the enum **MUST** fail the call with the allowed values named and **MUST NOT** end the turn.
+     The text marker remains accepted: a hop that never calls `verdict` is parsed, and re-asked,
+     exactly as above. A hop with no verdict gate **MUST NOT** be offered the tool.
    - An `ApprovalGate` **MUST** be evaluated **pre-hop** (see "require_approval gate and
-     waiting_approval") — by the time a hop's turn has actually run, an `ApprovalGate` gate simply
-     advances (the gate already did its job before the turn, or a granted single-use override
-     already let it through). Outcome routing (item 5) does not apply to an approval gate.
-3. **Byte-identical behavior for the four built-in roles is a hard requirement, not a best
-   effort.** For the built-in `default_pipeline()`, every step already declares its own explicit
-   gate (Lead: none; Implementer: `MechanicalGate(command=None)`; Reviewer/Tester:
-   `VerdictGate(...)`), so the archetype-fallback path in requirement 1 above never fires for any
-   of them — their gate behavior, reasons, and trace event *payloads* are unchanged from the
-   pre-W-8 hardcoded implementation. Trace event *names* for a verdict outcome are preserved via a
-   lookup (`_verdict_event_names`), not a decision branch: `reviewer`/`tester` keep emitting
-   exactly the event names they always have
-   (`rework_started`/`review_rejected`/`reviewer_verdict_unparseable` for reviewer,
-   `tester_verdict_failed` for tester, both slots for tester since it has no rework); any other
-   role/archetype emits the new generic names `verdict_rework_started`/`verdict_rejected`/
-   `verdict_unparseable` instead.
-4. A step **MAY** declare its own `retries`/`timeout`, overriding the pod's role-based retry
-   budget / resolved agent-turn timeout for that step only; a `MechanicalGate`'s own `timeout`
-   (if set) overrides the resolved `verifyCmd` timeout for that step's mechanical check only.
-   Omitting either **MUST** fall back to the pre-W-8 pod-wide resolution ("Timeout configuration",
-   "Retries and the failure-kind taxonomy") — the built-in pipeline's steps never set either, so
-   this is never a behavior change for it.
-5. **Outcome routing (P28-5).** When a mechanical or verdict gate's outcome is named in the
-   step's own `on` map (`pipeline-format.spec.md`'s "Outcome routing"), dispatch **MUST** resolve
-   it against that map instead of the outcome's ordinary handling: `fail` **MUST** fail the task
-   naming the step and outcome; `stop` **MUST** end the task `done`; a step id **MUST** continue
-   the pipeline there, a backward or self target counted against its own `max` in a per-`(step
-   id, outcome label)` budget analogous to `rework.maxCycles`, exhausted **MUST** fail the task
-   naming the step, outcome and budget. Every routing decision **MUST** emit one `route_taken`
-   trace event naming the step, outcome and target; an outcome the map does not name is never
-   routed at all and keeps emitting whatever trace event it always has. A routed hop's persisted
-   record **MUST** carry the resolved target, so a resumed task (`_replay_pipeline_position`)
-   follows the same decision rather than re-deriving it.
-6. **The external gate (P42-2, ADR 0025 D1).** An `ExternalGate` **MUST** run `gate.command`
-   and nothing else (the member's `verifyCmd` is not run) through `_run_in_envelope`, in the
-   directory a mechanical gate uses, with the task coordinates of `_task_command_env`
-   (`DOCKET_TASK_ID`, `DOCKET_BASE_COMMIT`, `DOCKET_HEAD_COMMIT`) plus `DOCKET_GATE_REASONS_FILE`,
-   bounded by the gate's `timeout` else `verifyTimeoutS`. The file lives under the pod cache dir
-   (a read-write jail root), is deleted before the command runs and is never read from a prior run.
-   Its envelope, working-tree fingerprint, output redaction and `hop.verify` are the mechanical
-   gate's own (one shared helper). The exit code maps through `exitMap`; an unmapped code, a
-   timeout, a jail refusal (`[verify not run: ...]`) and an empty command are `error`. After the
-   command, the reasons file, when present, **MUST** be read: UTF-8 JSON of at most 64 KiB shaped
-   `{"reasons": [{"summary": str, ...}]}`; anything else sets `reasonsInvalid` and the redacted
-   output tail stands in as the reasons. Reasons are untrusted: each text field is redacted and
-   screened as `pre_input` the way an MCP result is (`tools.screen_tool_result`), a blocked one
-   is dropped and sets `reasonsInvalid`, and no reason field drives control flow. A routed outcome
-   (`on` names the label) **MUST** persist `hop.verify` with the label and route; an unrouted
-   `fail`, `needs_human` or `error` **MUST** fail the task with failure kind `gate_failed`,
-   `gate_needs_human` or `gate_error`; an unrouted `pass` advances. The exit status is always the
-   process's own (`system.run_command`), never a value the command wrote; a pod without a cache
-   dir still runs the gate, with no reasons file, so the output tail is the reasons.
-7. **Gate per task (P43-3).** A claimed task that carries a `gate` (`{"command": str,
-   "timeoutS"?: int, "map"?: {exit code: label}}`) **MUST** get an `ExternalGate` built from it
-   (`_task_gate`; `map` moves the named codes to their label over the default `pass: 0`,
-   `fail: 1`, `needs_human: 2`), evaluated after the own gate of the pipeline's **last
-   `implementer` step** (else the last step that runs an agent turn) has advanced, and never in
-   place of that gate. It uses the step's own `on` map and the same label handling as item 6. The
-   step's own gate is evaluated first: a non-advancing outcome (a failure, or a route other than
-   `pass`) stands and the task gate does not run. A task gate that does not pass decides the
-   hop's outcome, so `{"command": "false"}` fails the task `gate_failed` after the implementer
-   passed `verifyCmd`. The trace events of item 6 carry `"source": "task"` in their payload and
-   `hop.verify` carries `"source": "task"` and, when the step's own gate also produced evidence
-   and the task gate passed, nests the task gate's evidence under `taskGate`. A gate that cannot
-   be built, or a pipeline with no step to attach it to, refuses the task as item 7 of "Pipeline
-   order and participation" does. The claim records `gateApplied` (`true` when the task carries a
-   gate) on the task.
+     waiting_approval") -- by the time a hop's turn has run, an `ApprovalGate` simply advances.
+     Outcome routing (item 5) does not apply to an approval gate.
+   - An `ExternalGate` is evaluated as item 6 describes.
+3. **Byte-identical behaviour for the four built-in roles is a hard requirement.** In the built-in
+   `default_pipeline()`, every step declares its own explicit gate (Lead: none; Implementer:
+   `MechanicalGate(command=None)`; Reviewer/Tester: `VerdictGate(...)`), so the archetype-fallback
+   path in requirement 1 never fires for any of them. Trace event *names* for a verdict outcome come
+   from a lookup by role, not a decision branch: `reviewer` emits
+   `rework_started`/`review_rejected`/`reviewer_verdict_unparseable`; `tester` emits
+   `tester_verdict_failed` for both a rejected and an unparseable verdict; any other role or
+   archetype emits the generic names `verdict_rework_started`/`verdict_rejected`/
+   `verdict_unparseable`.
+4. A step **MAY** declare its own `retries`/`timeout`, overriding the pod's role-based retry budget
+   or resolved agent-turn timeout for that step only; a `MechanicalGate`'s or `ExternalGate`'s own
+   `timeout` (if set) overrides the resolved verify timeout for that step's check only. Omitting
+   either **MUST** fall back to the pod-wide resolution ("Timeout configuration", "Retries and the
+   failure-kind taxonomy") -- the built-in pipeline's steps set neither.
+5. **Outcome routing.** When a mechanical, external or verdict gate's outcome (or a command step's
+   outcome, see "Conditional steps and command steps") is named in the step's own `on` map
+   (`pipeline-format.spec.md`'s "Outcome routing", labels compared case-insensitively), dispatch
+   **MUST** resolve it against that map instead of the outcome's ordinary handling: `fail` **MUST**
+   fail the task naming the step and outcome; `stop` **MUST** end the task `done`; a step id
+   **MUST** continue the pipeline there, a backward or self target counted against its own `max`
+   (default 1) in a per-`(step id, outcome label)` budget analogous to `rework.maxCycles`, exhausted
+   **MUST** fail the task naming the step, outcome and budget; a target that names no known step id
+   fails the task. Every routing decision **MUST** emit one `route_taken` trace event naming the
+   step, outcome and target; an outcome the map does not name is never routed and keeps emitting
+   its ordinary trace event. A routed hop's persisted record **MUST** carry the resolved target
+   (`nextStep`), so a resumed task follows the same decision rather than re-deriving it.
+6. **The external gate (ADR 0025).** An `ExternalGate` **MUST** run `gate.command` and nothing else
+   (the member's `verifyCmd` is not run), under the same envelope as a verify command, in the
+   directory a mechanical gate uses, with the task coordinates (`DOCKET_TASK_ID`,
+   `DOCKET_BASE_COMMIT`, `DOCKET_HEAD_COMMIT`, see "Conditional steps and command steps"
+   requirement 4) plus `DOCKET_GATE_REASONS_FILE`, bounded by the gate's `timeout` else
+   `verifyTimeoutS`. The reasons file lives under the pod cache directory (a read-write jail root),
+   one per task and step, is deleted before the command runs and is never read from a prior run. Its
+   envelope, working-tree fingerprint, output redaction and `hop.verify` are the mechanical gate's
+   own (one shared helper). The process's exit code maps through `exitMap` to `pass`, `fail` or
+   `needs_human`; an unmapped code, a timeout, a command that never ran to an exit, and a jail
+   refusal (`[verify not run: ...]`) are `error`. After the command, the reasons file, when present,
+   **MUST** be read: UTF-8 JSON of at most 64 KiB shaped `{"reasons": [{"summary": str, ...}]}`;
+   anything else sets `reasonsInvalid` and the redacted output tail stands in as the reasons.
+   Reasons are untrusted: each text field (`summary`, `id`, `path`, `severity`, `detail`) is
+   redacted and screened as `pre_input` the way an MCP result is, a blocked one makes the file
+   invalid, and no reason field drives control flow. A routed outcome (`on` names the label)
+   **MUST** persist `hop.verify` with the label and route; an unrouted `fail`, `needs_human` or
+   `error` **MUST** fail the task with failure kind `gate_failed`, `gate_needs_human` or
+   `gate_error` (also when one of these labels is routed straight to `fail`); an unrouted `pass`
+   advances. The exit status is always the process's own, never a value the command wrote. When the
+   reasons file's directory cannot be prepared, the gate still runs, no reasons are read, and the
+   output tail is the reasons.
+7. **Gate per task.** A claimed task that carries a `gate` (`{"command": str, "timeoutS"?: int,
+   "map"?: {exit code: label}}`) **MUST** get an `ExternalGate` built from it (`map` moves the named
+   codes to their label over the default `pass: 0`, `fail: 1`, `needs_human: 2`), evaluated after
+   the own gate of the pipeline's **last `implementer` step** (else the last step that runs an agent
+   turn; a `run` or `input` step never takes it) has advanced, and never in place of that gate. It
+   uses the step's own `on` map and the same label handling as item 6. The step's own gate is
+   evaluated first: a non-advancing outcome (a failure, or a route other than `pass`) stands and the
+   task gate does not run. A task gate that does not pass decides the hop's outcome, so
+   `{"command": "false"}` fails the task `gate_failed` after the Implementer passed `verifyCmd`. The
+   trace events of item 6 carry `"source": "task"` in their payload, and `hop.verify` carries
+   `"source": "task"` and, when the step's own gate also produced evidence and the task gate passed,
+   the step's own evidence with the task gate's nested under `taskGate`. A gate that cannot be built
+   refuses the task at claim as item 7 of "Pipeline order and participation" does
+   (`failureKind: "pipeline"`); a pipeline with no step to attach it to refuses it inside the task
+   run (`failureKind: "dispatch_refused"`, see "Deterministic refusal inside a claimed task"). The
+   claim records `gateApplied` (`true` when the task carries a gate) on the task.
 
 ### Conditional steps and command steps
 
-1. Before a top-level step's gate or hop runs, dispatch **MUST** evaluate its `when` (if any,
-   `core/dispatch.py`'s `_step_skipped`), called ahead of `_execute_unit`: `changed` matches when
-   any path matches the glob among the paths changed between the latest `ok` Implementer hop's
-   evidence `baseCommit` and `commit` (`edges.adapters.system.git_diff_names`) together with the
-   uncommitted paths `edges.adapters.system.git_changed_files` reports (of the latest successful
-   Implementer's worktree, or the pod Lead's own codebase when there is none), because the hop's
-   own work is committed by then ("Task worktrees" requirement 8);
+1. Before a top-level step's gate or hop runs, dispatch **MUST** evaluate its `when` (if any):
+   `changed` matches when any path matches the glob among the paths changed between the latest `ok`
+   Implementer hop's evidence `baseCommit` and `commit` together with the uncommitted paths git
+   reports, both read in the task's worktree (or the pod Lead's own codebase when the task runs in
+   place), because the hop's own work is committed by then ("Task worktrees" requirement 8);
    `var`/`is` compares this run's resolved pipeline variable namespace (stringified) against the
-   given value; `memberPresent` checks the role against `pod_full_roster`. Every predicate set on
-   the step **MUST** be ANDed. A false predicate **MUST** emit a `step_skipped` trace event
-   naming the step and its `when`, and the pipeline **MUST** advance to the next position with no
-   hop, no agent turn, and no cost.
-2. A `run` step (pipeline-format.spec.md's Steps Requirement 9) **MUST** execute via
-   `core/dispatch.py`'s `_run_command_step` instead of `_execute_unit`: no agent turn, no
-   session, no cost. Its command **MUST** first be classified (`core.security.classify_command`,
-   extended by the pod's own `allowCommands`); an `allow` verdict **MUST** run it via
-   `edges.adapters.system.run_verify_cmd`, in the same cwd this section's `changed` predicate
-   uses, bounded by the step's own `timeout` else the pod's `verifyTimeoutS`. With isolation recorded on the command **MUST** run in the same jail as the verify command (Implementer verification gate item 6) and a missing backend fails the step. A non-`allow`
-   verdict **MUST NOT** run the command: under the pod's `approvalMode: "refuse"` the step
-   **MUST** fail immediately, naming the classifier's reason; under the default `"wait"` it
-   **MUST** gate exactly like a pipeline `approval` step (`_gate_pre_hop_approval`, keyed to the
-   step's own pipeline position), so a granted single-use override lets a resumed run through
+   given value; `memberPresent` checks the role against `pod_full_roster`. Every predicate set on the
+   step **MUST** be ANDed. A false predicate **MUST** emit a `step_skipped` trace event naming the
+   step and its `when`, and the pipeline **MUST** advance to the next position with no hop, no agent
+   turn, and no cost.
+2. A `run` step (pipeline-format.spec.md's Steps Requirement 9) **MUST** execute its command
+   directly: no agent turn, no session, no cost. Its command **MUST** first be classified
+   (`classify_command`, extended by the pod's own `allowCommands`); an `allow` verdict **MUST** run
+   it in the same directory this section's `changed` predicate reads, bounded by the step's own
+   `timeout` else the pod's `verifyTimeoutS`. With isolation recorded on, the command **MUST** run in
+   the same jail as the verify command ("Implementer verification gate" requirement 7) and a missing
+   backend fails the step. A non-`allow` verdict **MUST NOT** run the command: under the pod's
+   resolved `approvalMode: "refuse"` the step **MUST** fail immediately, naming the classifier's
+   reason; under `"wait"` or `"park"` it **MUST** gate exactly like a pipeline `approval` step, keyed
+   to the step's own pipeline position, so a granted single-use override lets a resumed run through
    without asking again.
-3. A command step's exit code **MUST** be its outcome: `0` advances, nonzero fails the task with
-   a reason naming the step and command. Its `HopResult` **MUST** carry `role` set to the step
-   id, `member_id=""`, the redacted captured output, and `ok` set to whether the exit was `0`; it
-   is persisted through the same `on_hop`/`hops[]` path as any other hop, so it is visible and
-   replayable on resume exactly like an agent hop would be. A `command_step` trace event
-   `{"step", "cmd", "exit"}` **MUST** be emitted for every outcome that reached a verdict
-   (`exit` is `0`/`1`); a step refused under `approvalMode: "refuse"` without ever running
-   **MUST** also emit `command_step` with `exit: null`, so an operator can tell "never ran" apart
-   from "ran and failed".
-4. A command step's process **MUST** receive the task's coordinates as environment variables,
-   merged over the inherited environment (`_task_command_env`, passed as
-   `run_verify_cmd(..., env=)`): `DOCKET_TASK_ID`, and `DOCKET_BASE_COMMIT` /
+3. A command step's outcome label is the last non-blank output line when that line is a single
+   upper-case token (e.g. `PASS`, `NEEDS-REVIEW`), else `pass` for exit `0` and `fail` otherwise. A
+   label named in the step's own `on` map is routed (Generalized gate execution item 5); otherwise
+   exit `0` advances and a nonzero exit fails the task with a reason naming the step and command.
+   Its `HopResult` **MUST** carry `role` set to the step id, `member_id=""`, the redacted captured
+   output, and `ok` set to whether the exit was `0`; it is persisted through the same incremental
+   path as any other hop, so it is visible and replayable on resume like an agent hop. A
+   `command_step` trace event `{"step", "cmd", "exit"}` **MUST** be emitted for every command that
+   ran (`exit` is `0`/`1`); a step refused under `approvalMode: "refuse"` without running **MUST**
+   also emit `command_step` with `exit: null`, so an operator can tell "never ran" apart from "ran
+   and failed".
+4. A command step's process **MUST** receive the task's coordinates as environment variables, merged
+   over the inherited environment: `DOCKET_TASK_ID`, and `DOCKET_BASE_COMMIT` /
    `DOCKET_HEAD_COMMIT` taken from the `evidence` (`baseCommit` / `commit`) of the latest `ok`
    Implementer hop of the run. With no such hop, or a missing value, each **MUST** be the empty
    string, never absent. They **MUST NOT** be computed from git or from a worktree path: the
    recorded evidence is the one source, so a check recipe and the evidence it is judged against
    agree.
-   A step's own `env` ("pipeline-format.spec.md") **MUST** be merged under these coordinates, so
-   a coordinate always wins. Its values **MUST NOT** appear in the `command_step` trace event,
-   which records the command text only.
+   A step's own `env` ("pipeline-format.spec.md") **MUST** be merged under these coordinates, so a
+   coordinate always wins. Its values **MUST NOT** appear in the `command_step` trace event, which
+   records the command text only.
 5. **Known limitation:** this section covers only a **top-level** step. A `parallel` group's
-   children run through `_execute_unit` directly (see "Parallel step groups"), which does not
-   evaluate `when` or execute a `run` command — a child declaring either is not yet a supported
-   combination.
+   children run as ordinary units (see "Parallel step groups"), which do not evaluate `when` or
+   execute a `run` command -- a child declaring either is not a supported combination.
 
-### Parallel step groups (ROADMAP Phase 16 W-2)
+### Parallel step groups
 
-1. A `parallel` step's children (W-1's shape) **MUST** run concurrently via a bounded thread pool
-   (`core.orchestrator.run_group`; hops are subprocess-bound, so this is a real resource bound,
-   not a code-tidiness knob) and **MUST** all be observed (joined) before the pipeline advances
-   past that position — a group is one pipeline position, not one per child.
+1. A `parallel` step's children **MUST** run concurrently via a bounded thread pool (`run_group`, at
+   most `DEFAULT_MAX_PARALLEL_WORKERS`, 4; hops are subprocess-bound, so this is a real resource
+   bound) and **MUST** all be observed (joined) before the pipeline advances past that position -- a
+   group is one pipeline position, not one per child.
 2. Every child **MUST** independently go through the same budget gate, hop execution, and gate
-   evaluation a top-level step does — each child is a real, costed agent turn. A child's resolved
-   gate being an `ApprovalGate` **MUST** fail that child clearly (an explicit configuration error,
-   e.g. "an 'approval' gate is not supported inside a parallel group") rather than attempting
-   fragile mid-group human-approval semantics — approval gating applies only to top-level steps
-   (see "require_approval gate and waiting_approval").
-3. The group's outcome **MUST** merge its children's outcomes by priority: `blocked` (any child)
-   > `failed` (any child) > `advance` (all children). A rework outcome is impossible inside a
-   group — the pipeline format's own validator forbids a `rework` edge on a step nested inside a
-   `parallel` group. The merged `failed` outcome **MUST** keep the failing child's `failure_kind`
-   (a child stopped by the task's `maxTokens` makes the group, and the task, `failureKind: "budget"`).
-4. Each child's hop **MUST** be persisted (`on_hop`) the moment that child's turn completes — not
-   deferred until the whole group joins — so a crash in one sibling **MUST NOT** lose a hop that
-   already finished in another (R-1's crash-safety guarantee, generalized to a concurrent
-   fan-out). The task's in-memory `hops[]`/persisted queue record **MUST** reflect children in
-   their **declaration** order regardless of completion order.
+   evaluation a top-level step does -- each child is a real, costed agent turn. A child's resolved
+   gate being an `ApprovalGate` **MUST** fail that child clearly (`<role>: an 'approval' gate is not
+   supported inside a parallel group`) rather than attempt mid-group human-approval semantics --
+   approval gating applies only to top-level steps (see "require_approval gate and
+   waiting_approval").
+3. The group's outcome **MUST** merge its children's outcomes by priority: `cancelled` (any child) >
+   `blocked` (any child) > `failed` (any child) > `advance` (all children). A rework outcome is
+   impossible inside a group -- the pipeline format's own validator forbids a `rework` edge on a step
+   nested inside a `parallel` group. The merged `failed` outcome **MUST** keep the failing child's
+   `failure_kind` (a child stopped by the task's `maxTokens` makes the group, and the task,
+   `failureKind: "budget"`).
+4. Each child's hop **MUST** be persisted the moment that child's turn completes -- not deferred
+   until the whole group joins -- so a crash in one sibling **MUST NOT** lose a hop that already
+   finished in another. The group's merged outcome, and the task's `hops[]` as persisted when the
+   task settles, **MUST** list children in their **declaration** order regardless of completion
+   order.
 5. Trace writes from concurrent children **MUST** be serialized against each other because they
-   append to the same task trace. `core/trace.py` owns an in-process append lock covering loop
-   events as well as dispatch events; dispatch's group-level lock additionally preserves its
-   existing event ordering. The JSONL store remains intentionally free of a cross-process
-   read-modify-write lock under the documented D-12 append-only exemption.
-6. **Known, documented limitation:** resuming a task that crashed mid-group re-runs the **entire**
-   group from scratch on `--resume`, including any child that had already completed — there is no
-   child-by-child resume granularity. (This does not affect the rework-replay path at all, per
-   requirement 3.)
+   append to the same task trace: the trace store holds an in-process append lock covering loop
+   events as well as dispatch events, and dispatch's group-level lock additionally preserves its
+   event ordering. The JSONL store has no cross-process read-modify-write lock under the documented
+   D-12 append-only exemption.
+6. **Known limitation:** resuming a task that crashed mid-group re-runs the **entire** group on
+   `--resume`, including any child that had already completed -- there is no child-by-child resume
+   granularity. (This does not affect the rework-replay path, per requirement 3.) A group counts as
+   finished on resume only when every child's **latest** persisted hop succeeded and was not parked;
+   a child whose latest hop failed (a budget stop, a backend error) re-runs the group, so a
+   `docket task retry` after a failed review branch never ends the task `done` with that gate unmet.
 
 ### Runtime driver resolution
 
-1. `core/dispatch.py`'s production hop-execution call sites **MUST** resolve
-   `edges.adapters.docket_runtime.default_driver()`. `DocketDriver` dispatches every tool call
-   through `core/tools.py`'s gated chokepoint (`pre_tool_call`, approval, and audit). An
-   **injected** `runner` (a test double or explicit alternate implementation) always wins; this
-   requirement governs the no-injected-runner path used by real `docket run` and
-   `docket run --pipeline` invocations.
+1. Dispatch's production hop-execution path **MUST** resolve `default_driver()` (`DocketDriver`).
+   `DocketDriver` dispatches every tool call through the gated tool chokepoint (`pre_tool_call`,
+   approval, and audit). An **injected** `runner` (a test double or explicit alternate
+   implementation) always wins; this requirement governs the no-injected-runner path used by real
+   `docket run`, `docket run --pipeline` and `docket start` invocations.
 2. A driver-backed hop's `cost_usd` **MUST** stay `0.0` when the resolved driver's
-   `capabilities().reports_cost_usd` is `False` (true for `DocketDriver`, always) — real measured
-   token counts are still recorded (`core.session`'s `MeasuredUsage`, surfaced through
-   `core.utils.aggregate_cost`), but a token count **MUST NOT** be converted into a dollar figure
-   at this boundary. R-5's estimate-fallback budget gate (`pod_gating_cost`) already accounts for
-   a driver that records tokens but not cost; it works unchanged against `DocketDriver` for
-   exactly that reason.
+   `capabilities().reports_cost_usd` is `False` (true for `DocketDriver`, always) -- real measured
+   token counts are still recorded (`MeasuredUsage`, surfaced through `aggregate_cost`), but a token
+   count **MUST NOT** be converted into a dollar figure at this boundary. The budget gate's
+   estimate fallback (`pod_gating_cost`) accounts for a driver that records tokens but not cost.
 
 ### Cancellation
 
-1. `docket task cancel <ref>` (`cli/_task.py::_task_cancel`) **MUST** resolve the task through
-   `core.task_ref.resolve_task`, then call `core.runs.cancel_run` for every queued or running run
-   of the task's pod that lists the task or, while the task is `running`, names none yet (a run
-   lists its tasks only when it finishes), and **MUST** settle a `running` task whose claimant is
-   gone through `core.dispatch.reclaim_stale_running` (`failed`, `failureKind: "stale_claim"`,
-   audited `task.reclaimed`), ending with `Next: docket task retry <id>`. A task parked in
-   `waiting_input` or `waiting_approval` **MUST** be cancelled through
-   `core.dispatch.cancel_parked_task`: it ends `cancelled` with no hop run, its question, approval
-   token and task grants are cleared, a pending approval record is denied on the calling channel
-   (so neither leaves anything in the inbox), the Lead's ledger is re-synced and one `task.cancel`
-   audit entry names the prior state and channel. With no live run, no stale claim and no parked
-   state it **MUST** exit 1 and change nothing. `cancel_run` **MUST** durably
-   request cancellation and kill every tracked process group currently recorded as in-flight for
-   that run. Queued work becomes terminal immediately;
-   running work remains `running` with a visible request until its executor observes the signal and
-   finishes stopping — see
-   `serve-read-api.spec.md`/`cli-json-shapes.spec.md` for the run record's own `pids`/state
-   fields; this spec covers only how a hop's pid gets into that list and what killing it does to
-   the task it belongs to.
-2. Any other tracked child process (an in-flight `bash` tool command whose pid was registered via
-   `on_spawn`) **MUST** run in its own session (`start_new_session=True`), so its pid doubles as
-   its process-group id. Cancelling **MUST** kill the whole group through
-   `edges.adapters.system.kill_process_group` (SIGTERM, a bounded grace period, then SIGKILL), and
-   completed work **MUST NOT** leave stale pids behind.
+1. `docket task cancel <ref>` **MUST** resolve the task through `resolve_task`, then (`cancel_task`)
+   call `cancel_run` for every queued or running run of the task's pod that lists the task or, while
+   the task is `running`, names none yet (a run lists its tasks only when it finishes), recording
+   the calling channel (`cli`, `http`, `mcp`) as the cancellation's `source`, and **MUST**
+   settle a `running` task whose claimant is gone through `reclaim_stale_running` (`failed`,
+   `failureKind: "stale_claim"`, audited `task.reclaimed`), ending with
+   `Next: docket task retry <id>`. A task parked in `waiting_input` or `waiting_approval` **MUST** be
+   cancelled through `cancel_parked_task`: it ends `cancelled` (reason `cancelled by operator`) with
+   no hop run, its pending index cleared and its task grants ended, the approval record behind each
+   of its pending escalations denied on the calling channel (so nothing it waited on stays in the
+   inbox), the
+   Lead's ledger is re-synced and one `task.cancel` audit entry names the prior state and channel.
+   Stopping a live run of a task that was not parked also writes one `task.cancel` entry. With no
+   live run, no stale claim and no parked state it **MUST** exit 1 and change nothing. `cancel_run`
+   **MUST** durably request cancellation and kill every tracked process group currently recorded as
+   in-flight for that run. Queued work becomes terminal immediately; running work remains `running`
+   with a visible request until its executor observes the signal and finishes stopping -- see
+   `serve-read-api.spec.md`/`cli-json-shapes.spec.md` for the run record's own `pids` and state
+   fields; this spec covers only how a hop's pid gets into that list and what killing it does to the
+   task it belongs to.
+2. Any tracked child process (an in-flight `bash` tool command whose process group was registered
+   against the current run) **MUST** run in its own session (`start_new_session=True`), so its pid
+   doubles as its process-group id. Cancelling **MUST** kill the whole group (SIGTERM, a bounded
+   grace period, then SIGKILL), and completed work **MUST NOT** leave stale pids behind.
 
-   An external verification command (`edges.adapters.system.run_verify_cmd`) is a **narrower**
-   case: it also **MUST** run in its own session and its whole group **MUST** be killed
-   (`SIGKILL`, tolerating an already-exited process) when the command's own *timeout* expires, so
-   a command that backgrounds work leaves no orphan behind. But its pid is never registered —
-   `DocketDriver.run_turn` ignores `on_spawn` for it — so it is **not** reachable from
-   `docket task cancel`; a cancelled run's in-flight verify command keeps running until it returns
-   or times out on its own. This is a known limit, not a bug to fix under this requirement.
+   A command dispatch runs itself -- a verify command, a gate command, a `run:` step or a prepare
+   command -- is a **narrower** case: it also **MUST** run in its own session and its whole group
+   **MUST** be killed (`SIGKILL`, tolerating an already-exited process) when the command's own
+   *timeout* expires, so a command that backgrounds work leaves no orphan behind. But its pid is
+   never registered, so it is **not** reachable from `docket task cancel`; a cancelled run's
+   in-flight verify command keeps running until it returns or times out on its own. This is a known
+   limit.
 3. An injected test runner or in-process `DocketDriver` call has no OS pid and **MUST NOT** report
-   one. `core/agent_loop.py` cooperatively checks the run signal at turn boundaries, after backend
+   one. The turn loop cooperatively checks the run signal at turn boundaries, after the backend
    response, before each tool dispatch, and after each tool result. A response or tool result that
    loses a cancellation race **MUST** be discarded and later handlers **MUST NOT** start. An
-   in-flight `bash` tool command is the one handler interrupted mid-call (W30-C1): the same signal
-   reaches `edges/adapters/toolbox.py::run_bash` through `ToolContext.cancellation_check`, which
-   kills the command's process group — see `security-gates.spec.md` and `agent-loop.spec.md`
-   requirement 65.
+   in-flight `bash` tool command is the one handler interrupted mid-call: the same signal reaches the
+   `bash` handler through `ToolContext.cancellation_check`, which kills the command's process group
+   -- see `security-gates.spec.md` and `agent-loop.spec.md`.
 4. A hop stopped by that signal returns the typed, non-retryable `run_cancelled` failure kind.
-   Dispatch **MUST** persist the hop evidence and transition its owning task to the additive
-   terminal status `cancelled`, never `failed`; no later pipeline hop may start. Parallel children
-   fold cancellation atomically so a sibling success cannot overwrite it.
+   Dispatch **MUST** persist the hop evidence and transition its owning task to the terminal status
+   `cancelled` (reason `run cancellation requested`), never `failed`; no later pipeline hop may
+   start. Parallel children fold cancellation atomically so a sibling success cannot overwrite it.
 4a. A run's terminal state is the worst outcome among the tasks it returned: `cancelled`, else
-   `failed`, else `waiting_approval`/`waiting_input` when a hop parked a task (the first parked
-   task in return order decides), else `succeeded`. A run whose task parked **MUST NOT** be
-   recorded `succeeded`; `waiting_input` and `waiting_approval` are terminal run states (the
-   dispatch invocation is over; the task is not) and are retained and pruned like the other three.
-5. Cancelling an already-terminal run (`succeeded`/`failed`/`cancelled`/`waiting_input`/`waiting_approval`) **MUST** be a no-op,
-   reported as such, never re-signalled or double-finished. A run's own normal completion
-   (`core.runs.execute`) **MUST NOT** clobber a `"cancelled"` state a concurrent cancel already
-   wrote back to `"succeeded"`/`"failed"`.
-6. Apart from an in-flight `bash` command (requirement 3), the cooperative boundary does not
-   abort Python/backend computation already executing in the current call. The run therefore remains visibly `running` with cancellation requested until
-   that call returns to a checkpoint; `stoppedAt` and terminal `cancelled` are written only after
-   the dispatch body has fully returned.
+   `failed`, else `waiting_approval`/`waiting_input` when a task parked (the first parked task in
+   return order decides), else `succeeded`. A run whose task parked **MUST NOT** be recorded
+   `succeeded`; `waiting_input` and `waiting_approval` are terminal run states (the dispatch
+   invocation is over; the task is not) and are retained and pruned like the other three.
+5. Cancelling an already-terminal run (`succeeded`/`failed`/`cancelled`/`waiting_input`/
+   `waiting_approval`) **MUST** be a no-op, reported as such, never re-signalled or double-finished.
+   A run's own normal completion **MUST NOT** clobber a `"cancelled"` state a concurrent cancel
+   already wrote back to `"succeeded"`/`"failed"`.
+6. Apart from an in-flight `bash` command (requirement 3), the cooperative boundary does not abort
+   Python or backend computation already executing in the current call. The run therefore remains
+   visibly `running` with cancellation requested until that call returns to a checkpoint;
+   `stoppedAt` and terminal `cancelled` are written only after the dispatch body has fully returned.
 
 ### Hop-failure semantics (general)
 
 1. If a hop's underlying `run_turn` call is not `ok` and its failure was not retried away (see
-   "Retries"), the task **MUST** immediately transition to `failed` with a reason naming the role
-   and the underlying error, and **MUST NOT** attempt any later hop.
+   "Retries"), the task **MUST** immediately transition to `failed` with a reason naming the role and
+   the underlying error (`<role> hop failed: <error>`), and **MUST NOT** attempt any later hop. A
+   `pre_output` `block` verdict fails an otherwise successful hop the same way
+   (`security-gates.spec.md`).
 2. A `failed` task **MUST** persist its full per-hop record (`role`, `member`, `ok`, `costUsd`,
    `error`, `attempts`) so a caller can see exactly which hop stopped the pipeline, how many
    attempts it took, and why.
 
-### Structured handoff artifacts (ROADMAP Phase 16 W-5, W-5b)
+### Structured handoff artifacts
 
-1. Every hop **MUST** produce a typed `HandoffArtifact` (`core/handoff.py`) — a Pydantic model with
-   exactly six fields: `summary` (the hop's full reply text — always populated), `verdict`
-   (the parsed gate marker for a `VerdictGate`-gated hop, else `None`), `files_changed` (populated
-   by a real git probe for any hop that changed the tree — see "Implementer diff producer"
-   below), `diff_ref` (the same probe, Implementer hops only), `diff` (the capped text of what a
-   hop that changed the tree wrote, `""` otherwise) and `notes` (free-form and
-   **reserved**: the schema and `DROP_ORDER` account for it so a future producer needs no schema
-   migration, but no dispatch code writes it). `HopResult.artifact` **MUST** always be set once a
-   hop is constructed — a hop built without one explicitly backfills via
-   `HandoffArtifact.from_output(output)` (treating the raw text as `summary`, every other
-   field at its default) in `__post_init__`.
+1. Every hop **MUST** produce a typed `HandoffArtifact` -- a Pydantic model with exactly seven
+   fields: `summary` (the hop's full reply text -- always populated), `verdict` (the parsed gate
+   marker for a `VerdictGate`-gated hop, else `None`), `files_changed` (populated by a real git
+   probe for any hop that changed the tree -- see "Implementer diff producer" below), `diff_ref` (the
+   same probe, Implementer hops only), `diff` (the capped text of what a hop that changed the tree
+   wrote, `""` otherwise), `brief` (a parsed `TaskBrief`, see "Task brief", else `None`). `HopResult.artifact` **MUST** always be set once a hop is constructed -- a hop built
+   without one backfills `HandoffArtifact.from_output(output)` (the raw text as `summary`, every other
+   field at its default).
 2. The next hop's prompt **MUST** be composed from the prior hop's *rendered artifact*
    (`HandoffArtifact.render()`), never from its raw `output` string directly. `render()` returns
-   exactly `summary` unchanged when every other field is at its default (true for every hop today
-   except a verdict-gated one, or a hop whose diff probe found real changes); a populated `diff`
-   renders as a `"Diff:"` block directly after the summary, once — so a
-   hop with nothing else to report composes byte-identically to the pre-W-5 raw-text behaviour; a
-   populated `verdict` (Reviewer/Tester and any verdict-gated archetype) appends a
-   `"Verdict: <value>"` line, and a populated `files_changed`/`diff_ref` (an Implementer hop with
-   real changes) appends `"Files changed: ..."`/`"Diff ref: ..."` lines the raw reply itself does
-   not structurally carry.
-3. The artifact **MUST** be persisted alongside its hop record (an `artifact` key in the
-   persisted `hops[]` entry, dumped via `HandoffArtifact.model_dump()`) so `--resume` recovers it
-   exactly, not just the raw `output` string it was already persisting. A hop record whose
-   `artifact` is missing or fails to validate **MUST** degrade to
-   `HandoffArtifact.from_output(output)` (via `HopResult.__post_init__`) rather than fail the
-   resume. Replay **MUST** use a persisted artifact's normalized `verdict` without reparsing its
-   raw model prose. A record whose artifact carries no verdict falls back to parsing the hop's
-   raw output.
+   exactly `summary` unchanged when every other field is at its default; otherwise it appends, in
+   this fixed order, a `"Diff:"` block, a `"Brief:"` block, a `"Verdict: <value>"` line, a
+   `"Files changed: ..."` line, a `"Diff ref: ..."` line for each field
+   that is set, so the next hop sees structure the raw reply does not carry, and the diff only once.
+3. The artifact **MUST** be persisted alongside its hop record (an `artifact` key in the persisted
+   `hops[]` entry, `HandoffArtifact.model_dump()`) so `--resume` recovers it exactly, not just the
+   raw `output` string. A hop record whose `artifact` is missing or fails to validate **MUST**
+   degrade to `HandoffArtifact.from_output(output)` rather than fail the resume. Replay **MUST** use
+   a persisted artifact's normalized `verdict` without reparsing its raw model prose. A record whose
+   artifact carries no verdict falls back to parsing the hop's raw output.
 4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
-   (`diff`, `notes`, `diff_ref`, `files_changed`, `verdict` — `summary` is deliberately never included, it
-   is the artifact's minimum viable content) and a `dropped(field)` helper that returns a copy with
-   *field* reset to empty. **ROADMAP Phase 17's C-1 (the context compiler) is this seam's real
-   consumer** — see "Bounded hop prompts" below for how `core/context.py`'s `compile_artifact`
-   walks `DROP_ORDER` to budget one hop's carryover against its role's token budget.
-5. This module **MUST** stay pure — no filesystem I/O, no subprocess, no import of
-   `core/dispatch.py` (the same "leaf" shape as `core/pipeline.py`).
+   (`diff`, `diff_ref`, `files_changed`, `verdict` -- `summary` and `brief` are never
+   included; `summary` is the artifact's minimum viable content) and a `dropped(field)` helper that
+   returns a copy with *field* reset to empty. The context compiler (`compile_artifact`) walks
+   `DROP_ORDER` to budget one hop's carryover against its role's token budget (see "Bounded hop
+   prompts").
+5. The artifact module **MUST** stay pure -- no filesystem I/O, no subprocess, and no dependency on
+   the dispatch state machine.
 
-### Implementer diff producer (ROADMAP Phase 16 follow-up W-5b)
+### Implementer diff producer
 
-1. After a **successful** hop (`hop_ok`), dispatch **MUST** attempt to populate that hop's
-   artifact `files_changed`/`diff_ref`/`diff` via `_hop_diff_probe` before the artifact is
-   constructed. `diff_ref` and the `evidence` of "Hop evidence" stay Implementer-only
-   (`None` for every other role); `files_changed` and `diff` are filled for any role whose hop
-   left the working tree changed (requirements 6-8).
-2. The probe **MUST** resolve the member's working tree via `core.pod.resolve_member_cwd` — the
-   same task worktree → shared codebase → member workspace-dir preference order the mechanical verify
-   gate already uses (see "Implementer verification gate") — so the diff probe and the verify gate
-   can never disagree about which tree is being inspected.
-3. When the resolved directory is a real git repository and a `git` binary is on `PATH`
-   (`edges/adapters/system.py`'s `git_available`/`git_is_repo`), the probe **MUST** set
-   `files_changed` from `git_changed_files` (the working tree's uncommitted staged/unstaged/
-   untracked paths — not a diff against a fixed base ref) and `diff_ref` from
-   `git_current_branch` (the member's current branch name, `None` rather than `""` when detached
-   or unresolvable) — both via `edges/adapters/system.py`; **no module outside `edges/adapters/`
-   MUST ever shell out to `git` directly.**
-4. The probe **MUST** degrade to `files_changed=[]`/`diff_ref=None` — never raise, never fail the
-   hop, never stop the pipeline — for each of: a `workdir`-kind (non-codebase) pod, whose
-   Implementer has no codebase and no worktree and therefore resolves to its own plain workspace
-   dir (never a git repository); a `codebase` that exists on disk but was never `git init`-ed
-   (worktree provisioning already falls back to a flat workspace for this case — see
-   `workspace-structure.spec.md`'s CD-5 section — and the diff probe reaches the same conclusion
-   independently via `git_is_repo`); and a host with no `git` binary on `PATH` at dispatch time,
-   even against an otherwise-real git repository.
-5. `git_current_branch` (`edges/adapters/system.py`) is this probe's `diff_ref` source — it has a
-   real production caller as of this version.
+1. After a **successful** hop, dispatch **MUST** attempt to populate that hop's artifact
+   `files_changed`/`diff_ref`/`diff` before the artifact is constructed. `diff_ref` and the
+   `evidence` of "Hop evidence" are Implementer-only (`None` for every other role); `files_changed`
+   and `diff` are filled for any role whose hop left the working tree changed (requirements 6-8).
+2. The probe **MUST** resolve the member's working tree via `resolve_member_cwd` -- the same task
+   worktree -> member codebase -> member workspace-dir preference order the mechanical verify gate
+   uses (see "Implementer verification gate") -- so the diff probe and the verify gate can never
+   disagree about which tree is being inspected.
+3. When the resolved directory is a real git repository and a `git` binary is on `PATH`, the probe
+   **MUST** set `files_changed` from the working tree's uncommitted staged, unstaged and untracked
+   paths (not a diff against a fixed base ref) and `diff_ref` from the member's current branch name
+   (`None` rather than `""` when detached or unresolvable). Every git call goes through the
+   side-effect adapter layer; **no domain module shells out to `git` directly.**
+4. The probe **MUST** degrade to `files_changed=[]`/`diff_ref=None` -- never raise, never fail the
+   hop, never stop the pipeline -- for each of: a `workdir`-kind (non-codebase) pod, whose Implementer
+   has no codebase and no worktree and therefore resolves to its own plain workspace dir (never a git
+   repository); a `codebase` that exists on disk but was never `git init`-ed (the task runs in place,
+   see `workspace-structure.spec.md`, and the probe reaches the same conclusion independently); and a
+   host with no `git` binary on `PATH` at dispatch time, even against an otherwise-real git
+   repository.
+5. `diff_ref` is the member's current branch as git reports it (`git_current_branch`), the same
+   helper the in-place evidence's base-branch lookup uses.
 6. `diff` **MUST** be the tracked changes (`git diff HEAD`) followed by the content of each new
-   untracked file (`.gitignore` respected), each introduced by a `--- new file: <path>` line, in
-   path order, read before an Implementer hop is pinned. A symlink, a non-regular file or a
-   binary file contributes its header and a one-line note, never its content. `diff` **MUST** be
-   cut at `config.HANDOFF_DIFF_MAX_CHARS` (8000) and end with a `[diff cut at N characters; M
-   more not shown]` marker when it was cut; a tree with no change gives `""`.
+   untracked file (`.gitignore` respected), each introduced by a `--- new file: <path>` line, in path
+   order, read before an Implementer hop is pinned. A symlink, a non-regular file or a binary file
+   contributes its header and a one-line note, never its content. `diff` **MUST** be cut at
+   `HANDOFF_DIFF_MAX_CHARS` (8000) and end with a `[diff cut at N characters; M more not shown]`
+   marker when it was cut; a tree with no change gives `""`.
 7. A hop that left no change adds no `diff`: when the probe's text equals the `diff` of the most
-   recent earlier hop of the run that carried one, a non-Implementer hop's `files_changed` and
-   `diff` are `[]`/`""`, so a read-only hop after a writing hop does not hand the same text on
-   again. An Implementer hop keeps its `files_changed`. A tree already dirty before the task
-   (an in-place task) is delivered once, with the first hop that finds it, not per hop.
+   recent earlier hop of the run that carried one, a non-Implementer hop's `files_changed` and `diff`
+   are `[]`/`""`, so a read-only hop after a writing hop does not hand the same text on again. An
+   Implementer hop keeps its `files_changed`. A tree already dirty before the task (an in-place task)
+   is delivered once, with the first hop that finds it, not per hop.
 8. The next hop's message **MUST** carry the diff once, from the artifact's `render()` (so the
-   per-hop token budget sheds it first); it **MUST NOT** carry the list of files the previous
-   hop read.
-9. In a task worktree, a non-Implementer hop that hands on a `diff` (requirement 7) **MUST**
-   commit the tree on the task branch, as the Implementer's pin does (`git add -A`, message
-   `<task subject>` then `docket task <id>, <role> hop`), so a pipeline with no Implementer (a
-   research or content team) leaves its work on the branch. Its `diff_ref` and `evidence` stay
-   `None`; in place, nothing is committed for it.
+   per-hop token budget sheds it first); it **MUST NOT** carry the list of files the previous hop
+   read.
+9. In a task worktree, a non-Implementer hop that hands on a `diff` (requirement 7) **MUST** commit
+   the tree on the task branch, as the Implementer's pin does (`git add -A`, message `<task subject>`
+   then `docket task <id>, <role> hop`), so a pipeline with no Implementer (a research or content
+   team) leaves its work on the branch. Its `diff_ref` and `evidence` stay `None`; in place, nothing
+   is committed for it.
 
-### Hop evidence (ROADMAP Phase 35, ADR 0017, card P35-4)
+### Hop evidence (ADR 0017)
 
-*Trigger: before this card, a passing `verifyCmd` left no trace of what actually ran — only a
-failure was ever traced (`verification_failed`) — and the Implementer diff producer recorded only
-a branch name, not a commit or a diff stat. Pod dispatch's own live state was too thin for an
-external consumer (a control-plane product such as Tack, polling docket's read API) to show what a
-hop actually did. This section adds two new, independently optional `HopResult` fields; it does not
-change the `verification_failed` trace event, `requireVerify` gating (that is a separate card), or
-any CLI rendering of this evidence.*
+Two independently optional `HopResult` fields record what a hop's gate ran and what its work
+changed, for an external consumer that reads the hop record instead of trace text.
 
-1. `HopResult.verify` **MUST** be a `dict | None`: `None` for any hop whose step has no mechanical
-   gate, or whose mechanical gate had no `verifyCmd` configured (`HopResult.verification_skipped`
-   already covers that "no check configured" case honestly; `verify` staying `None` is consistent
-   with it, not a second way to say the same thing). For a hop whose mechanical gate **did** run a
-   command, `_evaluate_mechanical_gate` **MUST** populate `verify` on **both** a pass and a fail,
-   before checking the step's own `on` route (so a routed outcome carries the same evidence as an
-   ordinary pass/fail), with exactly these keys:
-   - `cmd` (`str`): the exact command that ran (`gate.command` or the resolved `verifyCmd`, the
-     same string already used in the `verification_failed` trace event and the `tool_result`
-     "passed" trace event).
-   - `exitCode` (`int`): `0` when `run_verify_cmd` reports a pass, `1` otherwise (a real nonzero
-     exit, a timeout, a refused command, or a missing binary all read as `1`) -- `run_verify_cmd`'s
-     own `(passed, output)` shape carries no numeric exit code to relay, so this is the honest
-     pass/fail projection of it, not a claim of the underlying process's real status.
-   - `durationS` (`float`): wall-clock seconds the command took, measured around the call, rounded
-     to milliseconds (3 decimal places).
+1. `HopResult.verify` **MUST** be a `dict | None`: `None` for any hop whose step has no mechanical or
+   external gate, or whose mechanical gate had no command configured (`HopResult.verification_skipped`
+   covers that "no check configured" case; `verify` staying `None` is consistent with it). For a hop
+   whose gate **did** run a command, dispatch **MUST** populate `verify` on **both** a pass and a
+   fail, before checking the step's own `on` route (so a routed outcome carries the same evidence as
+   an ordinary pass or fail), with exactly these keys:
+   - `cmd` (`str`): the exact command that ran (`gate.command` or the resolved `verifyCmd`, the same
+     string the `verification_failed` and `tool_result` "passed" trace events carry).
+   - `exitCode` (`int`): for a mechanical gate, `0` when the command passed and `1` otherwise (a
+     real nonzero exit, a timeout, a refused command, or a missing binary all read as `1`) -- the
+     pass/fail projection, not the process's own status.
+   - `durationS` (`float`): wall-clock seconds the command took, measured around the call, rounded to
+     milliseconds (3 decimal places).
    - `outputTail` (`str`): the last `VERIFY_EVIDENCE_TAIL_CHARS` (4000) characters of the command's
-     combined stdout+stderr, **after** `core/trace.py`'s `redact` — the same redaction already
-     applied to the `verification_failed` trace event's `output` field. A secret held in
-     `core/secrets.py` and echoed by the verify command **MUST NOT** appear anywhere in a persisted
-     `outputTail`.
-   - P42-2: an external gate's `verify` also carries `label` (`pass|fail|needs_human|error`),
-     the real `exitCode` (the process's code, captured by a wrapper into a pod-cache file; `-1` when the command never finished, e.g. a timeout; the pass/fail projection 0/1 when the pod has no cache dir),
-     `reasons` (the screened, redacted entries, absent when there are none) and
-     `reasonsInvalid` (`bool`, `true` when the file was present but unusable). A mechanical gate's
-     `exitCode` stays `0` or `1` and it adds no `label`.
-   - `touched` (`list[str]`, internal, unreleased P35-12): absolute paths a git status snapshot
-     taken immediately before and after the command shows as created or changed by it
-     (`system.git_worktree_fingerprint`). Empty off a git checkout. It is internal and is never published in a `verify` block.
-2. This requirement adds evidence storage only. The existing `verification_failed` trace event
-   (cmd + redacted output) and the `tool_result` "passed"/"skipped" trace events **MUST** remain
-   byte-for-byte unchanged; `verify` is a new field on the hop record, not a new trace event and not
-   a replacement for the existing ones.
-3. `HopResult.evidence` **MUST** be a `dict | None`: `None` for any non-Implementer hop (unchanged
-   from the diff producer's existing `([], None)` shape for those roles). For an Implementer hop
-   whose diff probe runs (`hop_ok` true), `_hop_diff_probe` **MUST** always return an
+     combined stdout and stderr, **after** redaction -- the same redaction applied to the
+     `verification_failed` trace event's `output` field. A stored secret echoed by the verify command
+     **MUST NOT** appear anywhere in a persisted `outputTail`.
+   - An external gate's `verify` also carries `label` (`pass|fail|needs_human|error`), and its
+     `exitCode` is the process's own exit code (`-1` when the command never reached one, e.g. a
+     timeout or a refusal), plus `reasons` (the screened, redacted entries, absent when there are
+     none) and `reasonsInvalid` (`bool`, `true` when the file was present but unusable). A mechanical
+     gate adds no `label`.
+   - `touched` (`list[str]`): absolute paths a git status snapshot taken immediately before and after
+     the command shows as created or changed by it. Empty off a git checkout. It is internal and is
+     never published in an evidence document.
+2. `verify` is a field on the hop record, not a trace event: the `verification_failed` trace event
+   (cmd + redacted output) and the `tool_result` "passed"/"skipped" trace events **MUST** be emitted
+   whether or not `verify` is set, with their own payloads.
+3. `HopResult.evidence` **MUST** be a `dict | None`: `None` for any non-Implementer hop. For an
+   Implementer hop whose diff probe runs (the hop succeeded), the probe **MUST** always return an
    `evidence` dict with exactly these keys, each independently `None` rather than the whole dict
    collapsing to `None`:
-   - `commit` (`str | None`): the commit that holds the hop's work, pinned at the close of the
-     hop ("Task worktrees" requirement 8), 40 hex characters when present; `None` when pinning
-     failed. It is never the bare HEAD of a tree with uncommitted work: an Implementer normally
-     leaves its work uncommitted, and that HEAD is the base, so every check reading `commit`
-     would see no change.
-   - `baseCommit` (`str | None`): for a task with a recorded worktree, the `baseCommit` recorded
-     on `task["worktree"]` at claim (the codebase HEAD the task branch was created from), so a
-     task's `diffStat` never includes another task's commits. For a task that runs in place, the
-     merge-base of that HEAD with the pod's shared codebase directory's own current branch
-     (`git_current_branch` on `codebase`, then `git_merge_base` on the resolved directory against
-     that branch name).
+   - `commit` (`str | None`): the commit that holds the hop's work, pinned at the close of the hop
+     ("Task worktrees" requirement 8), 40 hex characters when present; `None` when pinning failed. It
+     is never the bare HEAD of a tree with uncommitted work: an Implementer normally leaves its work
+     uncommitted, and that HEAD is the base, so every check reading `commit` would see no change.
+   - `baseCommit` (`str | None`): for a task with a recorded worktree, the `baseCommit` recorded on
+     `task["worktree"]` at claim (the codebase HEAD the task branch was created from), so a task's
+     `diffStat` never includes another task's commits. For a task that runs in place, the merge-base
+     of that HEAD with the current branch of the member's codebase.
    - `diffStat` (`dict | None`): `{"files": int, "insertions": int, "deletions": int}` from
-     `git_diff_stat(cwd, baseCommit, commit)`, which diffs `baseCommit` against `commit` (`git
-     diff --shortstat`), so the stat and the commit describe the same change; `None` when either
-     is `None`.
-   Each of `git_head_sha`/`git_merge_base`/`git_diff_stat` **MUST** degrade to `None` — never raise
-   — on a missing `git` binary, a non-repository directory, an unresolvable ref, or a timeout, the
-   same degrade-to-empty convention `git_changed_files`/`git_current_branch` already use for
-   `files_changed`/`diff_ref`. When the resolved working tree is not a git repository at all (or
+     `git diff --shortstat` of `baseCommit` against `commit`, so the stat and the commit describe the
+     same change; `None` when either is `None`.
+   Each of these git reads **MUST** degrade to `None` -- never raise -- on a missing `git` binary, a
+   non-repository directory, an unresolvable ref, or a timeout, the same degrade-to-empty convention
+   `files_changed`/`diff_ref` use. When the resolved working tree is not a git repository at all (or
    `git` is unavailable), the probe **MUST** still return an `evidence` dict with all three keys
-   `None`, not `None` itself — this dict is what proves "checked, found nothing" rather than
-   "never checked."
-4. Both fields **MUST** round-trip through persistence. `_hop_record` **MUST** persist `verify` and
-   `evidence` verbatim (each `None` when the hop never set it); `_hop_from_record` **MUST** restore
-   both, accepting only a `dict` value for each key and defaulting to `None` on any other type
-   (including the key being absent entirely). A hop record written before this version — with no
-   `verify`/`evidence` key at all — **MUST** still load via `_hop_from_record` without raising, with
-   both fields defaulting to `None`; this is the same backward-compatibility contract "Structured
-   handoff artifacts" already established for `artifact`.
-5. Neither field changes gating. No requirement in "Implementer verification gate" or "Generalized
-   gate execution" is altered by this section — `verify`/`evidence` are additive record-keeping,
-   read by nothing on the live gate-decision path.
+   `None`, not `None` itself -- this dict is what proves "checked, found nothing" rather than "never
+   checked."
+4. Both fields **MUST** round-trip through persistence: the hop record persists `verify` and
+   `evidence` verbatim (each `None` when the hop never set it), and reading a hop record back
+   restores both, accepting only a `dict` value for each key and defaulting to `None` on any other
+   type (including the key being absent). A hop record with no `verify`/`evidence` key at all
+   **MUST** still load without raising, with both fields `None` -- the same contract "Structured
+   handoff artifacts" states for `artifact`.
+5. Neither field changes gating. `verify`/`evidence` are record-keeping, read by nothing on the live
+   gate-decision path (the `GATE FAILED` carryover and an `input` step's gate report read them to
+   compose text, not to decide).
 
-### Hop events and task usage (ROADMAP Phase 43, card P43-5)
+### Hop events and task usage (ADR 0027)
 
-*Trigger: a full run's trace had no hop-level event, so an external consumer could not see where a
-hop began or ended without parsing `tool_call`/`tool_result` text, and the hop record carried
-`usage` with no model or provider to attribute it to (ADR 0027, measurement 3). This section adds
-two trace events and two persisted fields; `tool_call`, `tool_result`, `error` and the evidence
-document (`evidence.py`, `docs/contracts/`) are unchanged.*
+Two trace events bracket each hop, and the hop record and task record carry the model and token
+counts to attribute usage to.
 
-1. Every hop **MUST** write a `hop_started` trace event in the task's session, immediately after
-   its `tool_call` hop marker and before the turn. Its payload is exactly these keys: `task`
-   (the task id), `step` (the hop's pipeline step id), `role`, `member` (the hop's member id),
-   `model`, `provider`, `cycle` (the task's rework cycles consumed so far, the sum of
-   `ctx.rework_counts`; `0` before any `REQUEST-CHANGES`) and `attempt` (always `1`: retries are
-   `hop_retry` events, not new starts).
-2. Every hop **MUST** write a `hop_finished` trace event after its closing record (`tool_result`
-   or `error`, and `cost_charged` when present) and before `on_hop` persists the hop. Its payload
-   is the `hop_started` keys, with `attempt` set to the hop's total tries (`HopResult.attempts`),
-   and these additional keys: `ok` (the hop's outcome), `verdict` (`HopResult.artifact.verdict`,
-   or `null`), `gate` (the mechanical gate's `pass`/`fail` from its exit code, an external gate's
-   `label`, or `null` for a hop with no `verify`), `usage` (`HopResult.usage`, `{input, cached, cacheWrite, output}`,
-   or `null`), `durationMs` (the hop's trace window, `HopResult.trace` `lastTs` minus `firstTs`,
-   in milliseconds at the trace's one-second precision; `null` when tracing is off) and `error`
-   (`HopResult.error`, `""` when none).
-3. `HopResult` **MUST** carry `model: str = ""` and `provider: str = ""`. `model` is the served
-   model in the form `<provider>/<model id>` (the form the spec's `usage.byModel` keys use);
-   `provider` is the catalog provider name. `_hop_record` persists both as `model` and `provider`
-   keys; `_hop_from_record` reads them and defaults an old record that has neither to `""`. Both
-   are additive: the evidence document does not read them, and no existing key changes meaning.
-4. `hop_started`'s `model` and `provider` name the **planned** model: the step's own `model`
-   override (resolved as "Per-hop execution" requirement 5) when the step declares one, else the
-   member's configured `model` in `.docket-meta.json`, else the driver's default model. The
-   `hop_started` event is written before the turn, so it cannot name the served model.
-   `hop_finished`'s `model` and `provider` name the **served** model the turn reported, and the
-   hop record persists the same served values. A hop whose turn reported no served model records
-   `""` for both. The two events can differ when the endpoint serves a different model than the
-   one requested.
-5. Each time `_finalize_task` settles a task (a terminal state or a waiting one), it **MUST**
-   write `task["usage"]` as `{"input": n, "cached": n, "cacheWrite": n, "output": n, "byModel":
-   {<model>: {"input": n, "cached": n, "cacheWrite": n, "output": n}}}`, summed over the task's persisted `hops` (a hop with `usage` `null` adds
-   nothing). A hop whose `model` is `""` is summed under the `""` key. A task that has never
-   settled has no `usage` key.
+1. Every hop **MUST** write a `hop_started` trace event in the task's session, immediately after its
+   `tool_call` hop marker and before the turn. Its payload is exactly these keys: `task` (the task
+   id), `step` (the hop's pipeline step id), `role`, `member` (the hop's member id), `model`,
+   `provider`, `cycle` (the task's rework cycles consumed so far in this run, summed over every
+   gated step; `0` before any rework) and `attempt` (always `1`: retries are `hop_retry` events, not
+   new starts).
+2. Every hop **MUST** write a `hop_finished` trace event after its closing record (`tool_result` or
+   `error`, and `cost_charged` when present) and before the hop is persisted. Its payload is the
+   `hop_started` keys, with `attempt` set to the hop's total tries (`HopResult.attempts`), and these
+   additional keys: `ok` (the hop's outcome), `verdict` (`HopResult.artifact.verdict`, or `null`),
+   `gate` (the mechanical gate's `pass`/`fail` from its exit code, an external gate's `label`, or
+   `null` for a hop with no `verify`), `usage` (`HopResult.usage`,
+   `{input, cached, cacheWrite, output}`, or `null`), `durationMs` (the hop's trace window,
+   `HopResult.trace` `lastTs` minus `firstTs`, in milliseconds at the trace's one-second precision;
+   `null` when tracing is off) and `error` (`HopResult.error`, `""` when none).
+3. `HopResult` **MUST** carry `model: str = ""` and `provider: str = ""`. `model` is the served model
+   in the form `<provider>/<model id>` (the form `usage.byModel` keys use); `provider` is the catalog
+   provider name. The hop record persists both as `model` and `provider` keys, and a record that has
+   neither reads back as `""`. Both are additive: the evidence document does not read them, and no
+   other key changes meaning.
+4. `hop_started`'s `model` and `provider` name the **planned** model: the step's own `model` override
+   (resolved as "Per-hop execution" requirement 5) when the step declares one, else the member's
+   configured `model` in `.docket-meta.json`, else the configured default model; `provider` is the
+   part before `/`. The `hop_started` event is written before the turn, so it cannot name the served
+   model. `hop_finished`'s `model` and `provider` name the **served** model the turn reported, and
+   the hop record persists the same served values. A hop whose turn reported no served model records
+   `""` for both. The two events can differ when the endpoint serves a different model than the one
+   requested.
+5. Each time `dispatch_pod` settles a task from a dispatch result (a terminal state or a waiting
+   one), it **MUST** write `task["usage"]` as `{"input": n, "cached": n, "cacheWrite": n, "output":
+   n, "byModel": {<model>: {"input": n, "cached": n, "cacheWrite": n, "output": n}}}`, summed over the
+   result's hops (a hop with `usage` `null` adds nothing). A hop whose `model` is `""` is summed under
+   the `""` key. A task that has never settled this way has no `usage` key.
 
 ### Task worktrees
 
-1. `docket pod add`/`docket init` **MUST NOT** create a git worktree for a repo Implementer, and
-   provisioning records no `worktreeDir`/`worktreeBranch` on any member. There is no per-member
-   worktree code path.
-2. At claim (`_claim_next_task`), for a task with no `worktree` recorded, a pod whose Implementer
-   has a `codebase` **MUST** get `<Implementer workspace>/tasks/<taskId>`
-   created on a new branch `docket/<project>/<taskId>` from the codebase's HEAD, and **MUST**
-   record `task["worktree"] = {dir, branch, baseCommit, gitDir, commonDir}` through the task-list
-   writer (`edges/store.py`); `baseCommit` is the new worktree's HEAD, the creation commit;
-   `gitDir`/`commonDir` are the worktree's git dirs as git reported them at creation. Resolving
-   the task's worktree registers them (`system.trust_worktree`), so host-side git in it names
-   them explicitly and never reads the agent-writable `.git` file (security-gates 0.48.0).
-3. Every hop, verify gate and `when`/command cwd of that task **MUST** resolve to that directory.
-   A task that already records a worktree (parked `waiting_input`/`waiting_approval`, resumed, or
-   retried) **MUST** reuse it; claim never creates a second one.
-4. When git is missing, the codebase is not a repo, or `worktree add` fails, the task **MUST** run
-   in place and record `worktree = {dir: "", branch: "", baseCommit: "", fallbackReason}`, unless
-   the task carries a `baseRef` (requirement 4a).
-   - 4a. A task with a `baseRef` **MUST** get its worktree created on the new task branch from
-     that ref (`git worktree add -b <branch> <dir> <baseRef>`), record `worktree.baseRef` as
-     given, and `baseCommit` is the new worktree's HEAD, the commit the ref resolved to. A ref
-     that begins with `-` is refused outright. The caller asked for a base, so running in place
-     is wrong: when the ref does not resolve, the codebase is not a repo, git is missing, or the
-     Implementer has no codebase or runs in place, claim **MUST** record no `worktree`, leave no
-     worktree directory or task branch behind, and settle the task through the claim-time refusal
-     (requirement 4b) with `failureKind: "base_ref"` and a reason naming the ref. No hop runs.
-   - 4b. The claim-time refusal (`_refuse_claimed_task(project, task, failure_kind, reason)`)
-     settles the claimed task `failed` with `failureKind`, `reason` and `completedAt`, clears
-     `claimId`, leaves the recorded `hops` untouched, and writes a `dispatch_refused` trace event
-     whose payload `reason` is the refusal reason; `dispatch_pod` then continues to the next
-     eligible task. `base_ref` is not in `RESUMABLE_FAILURE_KINDS`: a resume would refuse again,
-     so the operator re-enqueues with a corrected ref.
-5. Removing the Implementer (`teardown_member`) **MUST** remove every task worktree under its
-   `tasks/` directory and delete each task branch merged into the codebase's current branch; a
-   branch that is not merged is kept and reported with the manual `git branch -D` command.
-6. Docket never merges a task's work. A finished task's worktree lives until the member is
-   removed or `docket task prune` removes it (requirement 7).
-7. `core.pod_provisioning.prune_task_worktrees(project, force=False, dry_run=False)` **MUST**
-   consider only tasks whose status is `done`, `failed` or `cancelled`, with a recorded
-   `worktree.dir` and no `worktree.prunedAt`; a pending, running, blocked or waiting task is never
-   touched, and neither is a `failed` task whose `failureKind` is resumable (`dispatch --resume`
-   re-claims it in its recorded worktree), even with `force`. `worktree.dir` **MUST** resolve directly inside a pod member's `tasks/` directory
-   before anything is removed, else the task is kept and reported. Without `force` it removes the
-   worktree and deletes the branch only when the branch is merged into the codebase's current
-   branch and the worktree has no uncommitted change to a tracked file; every other task is kept
-   with its reason. Untracked files (build and verify artifacts such as `__pycache__/`) do not
-   keep a worktree: they are discarded with it and counted in the entry's reason.
-   `force` removes the worktree regardless, deletes the branch only when merged (an unmerged
+1. Provisioning a pod member (`docket pod add`, `docket init`) **MUST NOT** create a git worktree
+   and records no per-member worktree fields; worktrees exist only per task, created at claim.
+2. At claim, for a task with no `worktree` recorded, a pod whose Implementer has a `codebase`
+   **MUST** get `<Implementer workspace>/tasks/<taskId>` created on a new branch
+   `docket/<project>/<taskId>` from the codebase's HEAD, and **MUST** record `task["worktree"] =
+   {dir, branch, baseCommit, gitDir, commonDir}` through a locked write of the queue; `baseCommit`
+   is the new worktree's HEAD, the creation commit; `gitDir`/`commonDir` are the worktree's git dirs
+   as git reported them at creation. Resolving the task's worktree registers them
+   (`trust_worktree`), so host-side git in it names them explicitly and never reads the
+   agent-writable `.git` file (`security-gates.spec.md`).
+3. Every hop, verify gate and `when`/command directory of that task **MUST** resolve to that
+   directory. A task that already records a worktree (parked `waiting_input`/`waiting_approval`,
+   resumed, or retried) **MUST** reuse it; claim never creates a second one.
+4. When git is missing, the codebase is not a repo, or `worktree add` fails, the task **MUST** run in
+   place and record `worktree = {dir: "", branch: "", baseCommit: "", fallbackReason}`, unless the
+   task carries a `baseRef` (requirement 4a). An Implementer with no `codebase` records no worktree.
+   - 4a. A task with a `baseRef` **MUST** get its worktree created on the new task branch from that
+     ref (`git worktree add -b <branch> <dir> <baseRef>`), record `worktree.baseRef` as given, and
+     `baseCommit` is the new worktree's HEAD, the commit the ref resolved to. A ref that begins with
+     `-` is refused outright. The caller asked for a base, so running in place is wrong: when the ref
+     does not resolve, the codebase is not a repo, git is missing, or the Implementer has no
+     codebase, claim **MUST** record no `worktree`, leave no worktree directory or task branch
+     behind, and settle the task through the claim-time refusal (requirement 4b) with `failureKind:
+     "base_ref"` and a reason naming the ref. No hop runs.
+   - 4b. The claim-time refusal settles the claimed task `failed` with `failureKind`, `reason` and
+     `completedAt`, leaves the recorded `hops` untouched, re-syncs the ledger, and
+     writes a `dispatch_refused` trace event whose payload carries the refusal `reason` and
+     `failureKind`; `dispatch_pod` then continues to the next eligible task. `base_ref` is not in
+     `RESUMABLE_FAILURE_KINDS`: a resume would refuse again, so the operator re-enqueues with a
+     corrected ref.
+5. Removing the Implementer (`docket pod remove`, `teardown_member`) **MUST** remove every task
+   worktree under its `tasks/` directory and delete each task branch merged into the codebase's
+   current branch; a branch that is not merged is kept and reported with the manual
+   `git branch -D` command.
+6. Docket never merges a task's work. A finished task's worktree lives until the member is removed or
+   `docket task prune` removes it (requirement 7).
+7. `prune_task_worktrees(project, force=False, dry_run=False)` **MUST** consider only tasks whose
+   status is `done`, `failed` or `cancelled`, with a recorded `worktree.dir` and no
+   `worktree.prunedAt`; a pending, running, blocked or waiting task is never touched, and neither is a
+   `failed` task whose `failureKind` is resumable (`docket run --resume` re-claims it in its recorded
+   worktree), even with `force`. `worktree.dir` **MUST** resolve directly inside a pod member's
+   `tasks/` directory before anything is removed, else the task is kept and reported. Without
+   `force` it removes the worktree and deletes the branch only when the branch is merged into the
+   codebase's current branch and the worktree has no uncommitted change to a tracked file; every
+   other task is kept with its reason. Untracked files (build and verify artifacts such as
+   `__pycache__/`) do not keep a worktree: they are discarded with it and counted in the entry's
+   reason. `force` removes the worktree regardless, deletes the branch only when merged (an unmerged
    branch is kept and reported), and writes a `pod.worktrees.prune` audit entry. `dry_run` changes
-   nothing. A removal records `worktree.prunedAt` through the task-list writer (`edges/store.py`).
-8. When an Implementer hop ends `ok`, dispatch **MUST** pin the hop's working tree in a commit
-   before reading its evidence (`core/dispatch.py::_hop_diff_probe`), so the evidence
-   `commit`, `DOCKET_HEAD_COMMIT`, the `diffStat` and the task branch all hold the work the agent
-   left, committed or not. The paths `files_changed` reports are read before pinning.
+   nothing. A removal records `worktree.prunedAt` through a locked write of the queue.
+8. When an Implementer hop ends `ok`, dispatch **MUST** pin the hop's working tree in a commit before
+   reading its evidence, so the evidence `commit`, `DOCKET_HEAD_COMMIT`, the `diffStat` and the task
+   branch all hold the work the agent left, committed or not. The paths `files_changed` reports are
+   read before pinning.
    - A task with a recorded worktree `dir`: every change in it, untracked files included and
-     `.gitignore` respected, **MUST** be committed on the task branch
-     (`edges.adapters.system.git_commit_all`), so `git merge <branch>` (the command `docket task
-     show` prints) brings the work and `docket task prune` keeps the worktree until that branch
-     is merged. The commit's subject is the task description's first line cut to at most 72 characters at a word boundary (the whole line
-     when it fits; a single word longer than 72 is cut at 72), else `docket task
-     <id>`,
-     its body names the task id and the hop; it runs with repository hooks and commit signing
-     disabled (bookkeeping, not a gate), as the operator's git identity, else `docket
-     <docket@localhost>`. A tree with nothing to commit **MUST NOT** get a commit; `commit` is
-     then its HEAD.
+     `.gitignore` respected, **MUST** be committed on the task branch (`git_commit_all`), so
+     `git merge <branch>` (the command `docket task show` prints) brings the work and
+     `docket task prune` keeps the worktree until that branch is merged. The commit's subject is the
+     task description's first line cut to at most 72 characters at a word boundary (the whole line
+     when it fits; a single word longer than 72 is cut at 72), else `docket task <id>`; its body
+     names the task id and the hop; it runs with repository hooks and commit signing disabled
+     (bookkeeping, not a gate), as the operator's git identity, else `docket <docket@localhost>`. A
+     tree with nothing to commit **MUST NOT** get a commit; `commit` is then its HEAD.
    - A task that runs in place: the tree **MUST** be pinned in a snapshot commit parented on HEAD
-     through a temporary index (`edges.adapters.system.git_snapshot_commit`), leaving the index,
-     the branch and the working tree untouched; a tree equal to HEAD's yields HEAD itself.
-   - A failure of either **MUST** leave `commit` `None` (never the unpinned HEAD), so a check
-     step receives an empty `DOCKET_HEAD_COMMIT` and fails instead of comparing the base to
-     itself. The shipped `anti-tautology` and `mutation` recipes **MUST** fail on an empty
-     `DOCKET_HEAD_COMMIT`.
+     through a temporary index (`git_snapshot_commit`), leaving the index, the branch and the working
+     tree untouched; a tree equal to HEAD's yields HEAD itself.
+   - A failure of either **MUST** leave `commit` `None` (never the unpinned HEAD), so a check step
+     receives an empty `DOCKET_HEAD_COMMIT` and fails instead of comparing the base to itself. The
+     shipped `anti-tautology` and `mutation` recipes **MUST** fail on an empty `DOCKET_HEAD_COMMIT`.
 
-### Task preparation (P45-1, ADR 0029 point 1)
+### Task preparation (ADR 0029)
 
 A task's worktree is a bare checkout: nothing the project's own checks import is installed in it.
-`core/prepare.py` owns the resolution, the cache and the run; `dispatch_pod` owns the call.
+Dispatch prepares it once per claim, before any hop.
 
 1. After the claim-time refusals (requirement 4b of "Task worktrees") and the task's pipeline and
    gate resolution, and before the task's first hop, `dispatch_pod` **MUST** prepare the claimed
    task's worktree. A task with no recorded worktree `dir` (one that runs in place) **MUST NOT** be
    prepared: docket installs only into a checkout it made. No hop runs, and no token is spent, until
    preparation has finished.
-2. The command is the first of these that is present; a blank string or `none` (any case) at a
-   level turns preparation off and wins over every lower level:
+2. The command is the first of these that is present; a blank string or `none` (any case) at a level
+   turns preparation off and wins over every lower level:
    1. the task's own `prepare` (`POST /tasks/<pod>`, stored on the task record before it runs);
    2. the pod's `prepare` setting (`PodSettings.prepare`, set by `pod.yaml`'s top-level `prepare:`
       or `docket pod set prepare`);
@@ -1927,13 +1746,12 @@ A task's worktree is a bare checkout: nothing the project's own checks import is
       `poetry install`; `Cargo.lock` -> `cargo fetch`.
    No command and no lockfile **MUST** run nothing, record nothing and write no event: docket never
    guesses an install.
-3. The command **MUST** run with the worktree as its working directory and `PREPARE_TIMEOUT_S`
-   (900 seconds) as its limit, under the same posture as a `verifyCmd`
-   (`_run_in_envelope`): on the host when isolation is off, and when isolation is on through
-   `system.jail_launch` with the worktree writable and **the network open for this launch only**
-   whatever the pod's `network` records; the hops keep the pod's setting
-   (`security-gates.spec.md` Exec sandbox requirement 15). Isolation on with no usable backend
-   refuses the run like any other command: the task fails `prepare` with that reason.
+3. The command **MUST** run with the worktree as its working directory and `PREPARE_TIMEOUT_S` (900
+   seconds) as its limit, under the same posture as a `verifyCmd`: on the host when isolation is off,
+   and when isolation is on through the pod's jail with the worktree writable and **the network open
+   for this launch only** whatever the pod's `network` records; the hops keep the pod's setting
+   (`security-gates.spec.md` Exec sandbox). Isolation on with no usable backend refuses the run like
+   any other command: the task fails `prepare` with that reason.
 4. Cache. With a lockfile present, what the command installs is kept in
    `DOCKET_HOME/cache/prepare/<codebase name>-<8 hex of the codebase path's sha256>/<lock>-<cmd>/`,
    `<lock>` being the first 16 hex characters of the lockfile's sha256 and `<cmd>` the first 8 of the
@@ -1942,266 +1760,272 @@ A task's worktree is a bare checkout: nothing the project's own checks import is
    - A hit (the entry exists) runs no command: `node_modules` is symlinked into the worktree.
    - A miss runs the command in the worktree, then moves `node_modules` into a `.partial` sibling,
      renames it to the entry (never visible half-built) and symlinks it back. The whole of a miss
-     runs under a `filelock` on `<codebase dir>/.lock`, so two tasks of one codebase never build
-     the same entry twice; a failed command leaves no entry.
+     runs under a `filelock` on `<codebase dir>/.lock`, so two tasks of one codebase never build the
+     same entry twice; a failed command leaves no entry.
    - After a build, the three most recently used entries of the codebase are kept and the others
      removed; a hit refreshes its entry's modification time.
    - A name that already exists in the worktree (a tracked `node_modules`) is left alone.
    - The linked names are added to the repository's `info/exclude` (common git dir) so the link is
      never part of the task's commit.
 5. Record and resume. A prepared task records `prepared = {command, source, lockHash, cacheHit}`
-   (`source` is `task`, `pod` or `lockfile`; `lockHash` the lockfile's full sha256, `""` without one).
-   A claimed task whose record carries the same `command` and `lockHash` and whose links still
+   (`source` is `task`, `pod` or `lockfile`; `lockHash` the lockfile's full sha256, `""` without
+   one). A claimed task whose record carries the same `command` and `lockHash` and whose links still
    resolve **MUST NOT** be prepared again; a link whose cache entry was removed since is replaced.
-6. A failing command (non-zero exit, timeout, refusal) **MUST** settle the task `failed` through
-   the claim-time refusal (`_refuse_claimed_task`) with `failureKind: "prepare"` and a `reason` of
-   `prepare failed: <command> (exit <n>): <tail>`, the tail being the last
-   `VERIFY_EVIDENCE_TAIL_CHARS` characters of the redacted output. No hop runs. `prepare` is not in
-   `RESUMABLE_FAILURE_KINDS`: a resume would fail the same way, so the operator fixes the command
-   or the lockfile and re-enqueues.
+6. A failing command (non-zero exit, timeout, refusal), or unreadable pod settings, **MUST** settle
+   the task `failed` through the claim-time refusal with `failureKind: "prepare"` and a `reason` of
+   `prepare failed: <command> (exit <n>): <tail>` (`no exit status` in place of `exit <n>` when the
+   command never reached one), the tail being the last `VERIFY_EVIDENCE_TAIL_CHARS` characters of the
+   redacted output. No hop runs. `prepare` is not in `RESUMABLE_FAILURE_KINDS`: a resume would fail
+   the same way, so the operator fixes the command or the lockfile and re-enqueues.
 7. Every preparation that runs a command or links a cache entry **MUST** write one `prepare` trace
-   event (`trace-store.spec.md`) with `{command, source, cacheHit, seconds, exit}`; `exit` is
-   `null` on a hit and when the command could not start.
+   event (`trace-store.spec.md`) with `{command, source, cacheHit, seconds, exit}`; `exit` is `null`
+   on a hit and when the command could not start.
 8. Hops and gates **MUST** be able to read what was linked but not write it: the cache entry is a
    read-only root of every jailed hop and gate command whose worktree links into it
-   (`security-gates.spec.md` Exec sandbox requirement 15). A tool that writes into
-   `node_modules` (a `.cache` or `.vite` directory) therefore cannot, under isolation.
+   (`security-gates.spec.md` Exec sandbox). A tool that writes into `node_modules` (a `.cache` or
+   `.vite` directory) therefore cannot, under isolation.
 
-### A change that edits its own check (P45-3, ADR 0029 point 3)
+### A change that edits its own check (ADR 0029)
 
 A team's gate is quick feedback for the agent; it reads configuration the agent can edit. The
 protected-path rules (defaults, `protects`, command-named files) are `security-gates.spec.md`
-"Protected paths"; `core/protected_paths.py` owns them as pure functions over a list of paths.
+"Protected paths", pure functions over a list of paths.
 
 1. When `dispatch_task`'s pipeline ends `done` and the task records a worktree (`dir`, `branch`,
    `baseCommit`), dispatch **MUST** list the paths the task changed: `git diff --name-only
    <baseCommit> <branch>` united with the worktree's uncommitted and untracked paths
-   (`git status --porcelain --untracked-files=all`, so a file inside a new directory is listed by
-   its own path), read host-side (`edges.adapters.system`). A task with no worktree
-   record (it ran in place) **MUST NOT** be checked: it has no base to diff against.
+   (`git status --porcelain --untracked-files=all`, so a file inside a new directory is listed by its
+   own path), read host-side. A task with no worktree record (it ran in place) **MUST NOT** be
+   checked: it has no base to diff against.
 2. The patterns are the defaults, the pod's `protects` setting, and every tracked file of the
-   worktree that a command the task ran as a check names: the Implementer's `verifyCmd`, the
-   command of every `mechanical` or `external` gate and every `run:` step of the resolved
-   pipeline (a `parallel` group's children too), and the task's own `gate.command`.
+   worktree that a command the task ran as a check names: the Implementer's `verifyCmd`, the command
+   of every `mechanical` or `external` gate and every `run:` step of the resolved pipeline (a
+   `parallel` group's children too), and the task's own `gate.command`.
 3. A changed path that is protected **MUST** park the task `waiting_approval` instead of `done`,
    whatever the pod's `profile` (`lights-out` included) and `approvalMode`: dispatch creates an
-   approval through `core.approval.approval_create` with context `{"kind": "check_changed",
-   "taskId", "paths"}`, sets `task["checkChanged"]` to all the sorted protected paths,
-   `approvalToken`, a `reason` of `the change edits what checks it: <paths> (token=<token>)` (the
-   text lists at most 20 paths, then `and <n> more`), and
-   traces `approval_required` with `kind: "check_changed"`. `pendingApprovalIndex` is `null`. No
-   hop runs and no token is spent after the pipeline's last hop.
-4. `resolve_waiting_approval_detail` for a `check_changed` approval: a **grant** ends the task
-   `done` (`completedAt` set, `claimId` cleared, `approvalToken` cleared, `checkChanged` kept as
-   the record of what was granted) and never `pending` or a gate override; a **deny**, or an
-   approval that expired, ends it `failed` with `failureKind: "check_changed"` and `reason`
-   `approval denied[: <reason>]`, `checkChanged` kept. `docket task approve|deny`, `POST
-   /approvals/<token>`, MCP and Telegram all resolve it, and each decision writes the audit entry
-   with its channel that every approval writes.
+   approval through `approval_create` with context `{"kind": "check_changed", "taskId", "paths"}`,
+   sets `task["checkChanged"]` to all the sorted protected paths, opens the `check_changed`
+   escalation the approval backs, gives the task a `reason` of
+   `the change edits what checks it: <paths> (escalation=<id>)` (the text lists at most 20 paths,
+   then `and <n> more`), and traces `approval_required` with `kind: "check_changed"`.
+   `pendingApprovalIndex` is `null`. No hop runs after the pipeline's last hop.
+4. `resolve_waiting_approval` for a `check_changed` approval: a **grant** ends the task `done`
+   (reason `check_changed approved`, `completedAt` set, `checkChanged` kept as the record of what
+   was granted) and never `pending` or a gate override; a **deny**, or an approval that expired,
+   ends it `failed` with `failureKind: "check_changed"` and `reason` `approval denied[: <reason>]`,
+   `checkChanged` kept. Either outcome re-syncs the ledger. `docket task answer`, `POST
+   /escalations/<id>`, MCP `resolve` and Telegram `/answer` all resolve it, and each decision
+   writes the audit entry with its channel that every approval writes.
 5. `check_changed` is not in `RESUMABLE_FAILURE_KINDS`. A `failed` task retried runs the pipeline
-   again and is checked again; `_apply_result` clears a stale `checkChanged` from any result that
-   does not set one.
-6. Not done here: files are not restored before a gate, and nothing is checked at claim.
+   again and is checked again; settling a result that carries no protected paths clears a stale
+   `checkChanged` from the task.
+6. Files are not restored before a gate, and nothing is checked at claim; the check runs once, after
+   the pipeline ends `done`.
 
 ### Downstream worktree continuity
 
 1. When the task has a recorded worktree, every non-Lead hop (the Implementer included) **MUST**
-   receive that checkout path in a short explicit prompt note and as an internal dispatch→driver
-   coordinate. A downstream hop **MUST NOT** inspect the unchanged origin checkout when judging
-   or testing the Implementer's result.
-2. `DocketDriver` **MUST** accept that root only when it byte-resolves to a directory directly
-   under a same-pod Implementer's `tasks/` directory (`<member workspace>/tasks/<taskId>`). An absent, malformed, cross-pod, or unregistered
-   path **MUST** be ignored; it is never a caller-controlled arbitrary root expansion.
+   receive that checkout path in its message (the `Working directory:` line of "Bounded hop prompts"
+   requirement 10) and as an internal dispatch-to-driver coordinate. A downstream hop **MUST NOT**
+   inspect the unchanged origin checkout when judging or testing the Implementer's result.
+2. `DocketDriver` **MUST** accept that root only when it resolves to a directory directly under a
+   same-pod Implementer's `tasks/` directory (`<member workspace>/tasks/<taskId>`). An absent,
+   malformed, cross-pod, or unregistered path **MUST** be ignored; it is never a caller-controlled
+   arbitrary root expansion.
 3. The coordinate **MUST** be removed before constructing the tool subprocess environment.
-   Reviewer/Tester tool capabilities remain role-narrowed and unchanged; this changes what checkout
-   they can read/test, not whether they can write.
-4. The effective path note is additive bounded context, not copied session history. The existing
-   typed artifact remains the only prior-hop content carried into the downstream session.
+   Reviewer and Tester tool capabilities remain role-narrowed; this changes which checkout they can
+   read and test, not whether they can write.
+4. The path note is bounded context, not copied session history. The typed artifact remains the only
+   prior-hop content carried into the downstream session.
 
-### Bounded hop prompts (ROADMAP Phase 17 C-1 — the context compiler)
-
-*(Before this version, ROADMAP Phase 14 R-7 bounded this same message with one process-wide byte
-constant and truncated whatever didn't fit blindly — head and tail kept, the middle cut with no
-regard for what was actually in it. This section documents the compiler that replaced that
-mechanism. The two mechanisms are never layered: R-7's `_hop_carryover_budget`/`_truncate_carryover`
-helpers and the `HOP_CARRYOVER_BYTES` constant were removed outright when C-1 merged — C-1's own
-file-ownership carve-out let it edit only `_hop_message`, so it correctly left them in place and
-flagged them, and the integrator deleted them on merge. See `role-archetypes.spec.md` v1.3.0 for
-the archetype-side `tokenBudget` schema this section consumes.)*
+### Bounded hop prompts
 
 1. The message composed for a hop **MUST** cap how much of each *prior* hop's rendered artifact it
-   carries forward (not the raw hop output — see "Structured handoff artifacts"): a **per-role
-   token budget** (`core/archetypes.py`'s `RoleArchetype.token_budget`, resolved via
-   `core/context.py`'s `budget_for_role`) that halves for each step further into the past
-   (`core.context.hop_share`: `total_budget >> (rank + 1)`, rank 0 = the most recent prior hop) —
-   the same partial-geometric-series allocation R-7 used, now denominated in tokens, that never
-   sums past the configured total no matter how many prior hops exist, while the most recent
-   (most relevant) hop is squeezed the least.
+   carries forward (not the raw hop output -- see "Structured handoff artifacts"): a **per-role token
+   budget** (`RoleArchetype.token_budget`, resolved via `budget_for_role`) that halves for each step
+   further into the past (`hop_share`: `total_budget >> (rank + 1)`, rank 0 = the most recent prior
+   hop) -- a partial geometric series that never sums past the configured total no matter how many
+   prior hops exist, while the most recent (most relevant) hop is squeezed the least.
 2. The role's total token budget **MUST** first be reduced by the (approximate) token cost of the
-   task's own description and that role's fixed instruction footer (the trailing "You are the
-   Implementer/Reviewer/Tester..." text) — what remains funds the carryover budget requirement 1
-   describes. The task's own description **MUST NEVER** itself be truncated or shed — only a
-   prior hop's rendered artifact is subject to budgeting.
-3. When a prior hop's rendered artifact does not fit its share, `core.context.compile_artifact`
-   **MUST** shed `HandoffArtifact.DROP_ORDER`'s fields one at a time, least-valuable-first
-   (`diff`, then `notes`, then `diff_ref`, then `files_changed`, then `verdict`), re-measuring the rendered
-   text against the budget after each drop and stopping the moment it fits. A field that is
-   already empty **MUST NOT** be reported as dropped — only a field whose removal actually changed
-   the rendered text counts. The token estimate this checks **MUST** be the rendered artifact's
-   size (`summary` plus any appended `Verdict:`/other labelled lines), not `summary` alone, so the
-   budget bounds the same structured content the next hop actually reasons about.
-4. `summary` **MUST NEVER** be shed outright (it is deliberately absent from `DROP_ORDER` — see
-   "Structured handoff artifacts"). If the rendered text still does not fit its share once every
-   droppable field is gone, `summary` **MUST** be truncated head + tail (kept in roughly equal
-   shares of the remaining room) with an explicit `[... summary truncated: N bytes omitted ...]`
-   marker recording exactly how many bytes were omitted — never a silent cut, and never an empty
-   section. A share too small to fit even the marker itself (a degenerate, near-zero budget)
-   **MUST** still emit the marker in full rather than silently produce nothing.
-5. A rework cycle's REQUEST-CHANGES note (see "Reviewer verdict gate") is exempt from the
-   generic recency-ranked loop and its budgeting — it gets the full carryover budget on its own
-   (fit via the same `compile_artifact` rule as any other section), since it is what the rework
-   Implementer hop exists to address.
-6. Every hop **MUST** emit a `context_composed` trace event recording, per section (the rework
-   note if present, and each prior hop carried forward): the role, original byte count, sent byte
-   count, whether it was truncated, and which fields (if any) were dropped — plus the task
-   description's byte count and the composed message's total size.
-7. No tokenizer dependency **MUST** be introduced for any of the above (ROADMAP §4.5's
-   no-new-heavyweight-deps rule) — `core/context.py`'s `estimate_tokens` reuses the project's
-   existing, already-documented `config.CONTEXT_BYTES_PER_TOKEN` bytes-per-token approximation
-   (default 4, the same ratio `cli/_agents.py`'s `maintain check`/`maintain sessions` already use),
-   not a second, independently-tunable one. This is an honest approximation, not an exact count
-   from any real model tokenizer, and is never used to bill against.
-8. The Lead's hop message (`role == "lead"`) **MUST NOT** be a process-wide hardcoded string
-   (P27-5): `_hop_message` **MUST** resolve its instruction segment through
-   `core.archetypes.resolve_hop_instruction` against the `lead` archetype, exactly as it already
-   does for any custom role reaching the `else` branch below — the built-in `lead` archetype
-   carries a `hopInstruction` equal to the pre-existing hardcoded text, so a pod with no `lead`
-   overlay sees a byte-identical message. A step's own `instructions` (see
-   `pipeline-format.spec.md`'s "Steps" Requirement 8) **MUST** override that resolved text for a
-   step targeting `role: lead`, the same as it already does for every other role — the prior scope
-   boundary excluding the Lead from `step_instructions` is removed. The Lead's hop message
-   **MUST** still return before any token-budgeting in requirements 1-2 above (it carries no prior-
-   hop carryover) — this requirement changes only which instruction text is prepended to the task
-   description, not the Lead's budget-free composition path.
-9. A **backward `on:` route out of a mechanical gate** (P42-1; the target is at or before the routed
-   step, e.g. `until: verify`) **MUST** carry the gate's output into the target's next hop. When
-   the routed hop holds `verify` evidence of a gate that did not pass (exit code nonzero, or a
-   label other than `pass`), dispatch **MUST** hand that hop to the target's next
-   hop as its carryover, and `_hop_message` **MUST** render a section
-   `--- GATE FAILED: <step id> ---` followed by the hop's persisted, redacted
-   `verify.outputTail` (never raw output), fit to the carryover budget with the usual visible
-   truncation marker and recorded in the `context_composed` sections as role `gate_failed`.
-   `_gate_failed_section` is the one function that writes this text. The routed hop's own output
-   stays in the generic carryover, and the Implementer instruction is the ordinary one, not the
-   reviewer-rework text. A resume rebuilds the carryover from the last routed hop the way it
-   rebuilds a rework hop (`_replay_pipeline_position`). For an external gate the section carries
-   its screened `verify.reasons` (one line each: severity, `path:line`, summary, detail) in place
-   of the output tail, which stands in only when there are none; and when the gate's routed hop
-   went forward to an `input` step, the operator's `answered` route back to the gated step
-   (`core.answers.answer_task`) carries the same section into that retry: replay hands the
-   gate-failed hop to the target of the operator hop that follows it. That retry's section **MUST** also
-   carry the operator's latest answer (`Operator answer:`), rendered like the Lead's operator
-   answers, because it is what the human decided. A forward route, a backward `pass` route, an
-   unrouted gate and a verdict rework **MUST** compose byte-identical messages to before.
-10. **Task root and repository map (P44-6, ADR 0028 sections 1 and 5).** The hop message **MUST**
-    name the directory the hop's tools are rooted in, as a `Working directory: <path>` line
-    followed by a derived repository map, placed right after the task description (the Lead's
-    message after its description too) and ahead of every prior artifact. The root is the task's
-    recorded worktree when it has one, else the pod's codebase or working directory (the same
-    root `edges/adapters/docket_runtime.py::_resolve_roots` gives the tools). The map
-    (`core/repo_map.py::render_repo_map`) is derived from `git ls-files` through
-    `edges/adapters/system.py::git_ls_files`: relative directories with their file counts, the
-    deepest directory depth (3, 2, then 1) that fits `config.REPO_MAP_MAX_CHARS`, skipping the
-    directories the built-in `glob`/`grep` skip. A root that is not a git repository gets the
-    `Working directory` line and no map. The block is never shed by the budget compiler; its
-    estimated tokens are reserved before the carryover budget is computed. A pod's system prompt
-    carries neither the root nor the map, so it is identical between tasks.
+   task's own description, the working-directory block (requirement 10) and that role's fixed
+   instruction text -- what remains funds the carryover budget requirement 1 describes. The task's
+   own description **MUST NEVER** itself be truncated or shed -- only a prior hop's rendered artifact
+   is subject to budgeting.
+3. When a prior hop's rendered artifact does not fit its share, `compile_artifact` **MUST** shed
+   `HandoffArtifact.DROP_ORDER`'s fields one at a time, least-valuable-first (`diff`, then
+   `diff_ref`, then `files_changed`, then `verdict`), re-measuring the rendered text against
+   the budget after each drop and stopping the moment it fits. A field that is already empty **MUST
+   NOT** be reported as dropped -- only a field whose removal changed the rendered text counts. The
+   token estimate this checks **MUST** be the rendered artifact's size (`summary` plus any appended
+   labelled lines), not `summary` alone, so the budget bounds the same structured content the next
+   hop reasons about. When `diff` was non-empty and is shed, the rendered text **MUST** carry, in
+   the diff's place, the single line `[diff omitted: N chars over budget; run git diff in the
+   worktree]` (`N` the dropped diff's length in characters), so a reader is told the diff is
+   missing and where to find it. The line is not counted when deciding what to shed (the drop order
+   and the fields kept are those of the artifact without it), and it is kept when `summary` is
+   truncated. An artifact that never had a diff carries no marker.
+4. `summary` **MUST NEVER** be shed outright (it is absent from `DROP_ORDER` -- see "Structured
+   handoff artifacts"). If the rendered text still does not fit its share once every droppable field
+   is gone, `summary` **MUST** be truncated head + tail (kept in roughly equal shares of the
+   remaining room) with an explicit `[... summary truncated: N bytes omitted ...]` marker recording
+   exactly how many bytes were omitted -- never a silent cut, and never an empty section. A share too
+   small to fit even the marker itself **MUST** still emit the marker in full rather than silently
+   produce nothing.
+5. A rework cycle's REQUEST-CHANGES note (see "Reviewer verdict gate") is exempt from the generic
+   recency-ranked loop and its budgeting -- it gets the full carryover budget on its own (fit via the
+   same `compile_artifact` rule as any other section), since it is what the rework Implementer hop
+   exists to address.
+6. Every hop **MUST** emit a `context_composed` trace event recording, per section (the rework or
+   gate-failed note if present, and each prior hop carried forward): the role, original byte count,
+   sent byte count, whether it was truncated, and which fields (if any) were dropped -- plus the task
+   description's byte count, the composed message's total size and whether anything was truncated.
+7. No tokenizer dependency **MUST** be introduced for any of the above -- `estimate_tokens` uses the
+   project's documented `CONTEXT_BYTES_PER_TOKEN` bytes-per-token approximation (default 4,
+   env-overridable), not a second, independently tunable one. This is an approximation, not an exact
+   count from any model tokenizer, and is never used to bill against.
+8. The Lead's hop message (`role == "lead"`) **MUST NOT** be a process-wide hardcoded string: it
+   **MUST** resolve its instruction segment through `resolve_hop_instruction` against the `lead`
+   archetype, exactly as for any custom role -- the built-in `lead` archetype carries a
+   `hopInstruction`, so a pod with no `lead` overlay sees the built-in text. A step's own
+   `instructions` (see `pipeline-format.spec.md`'s "Steps" Requirement 8) **MUST** override that
+   resolved text for a step targeting `role: lead`, the same as for every other role. The Lead's hop
+   message **MUST** still be composed without the token budgeting of requirements 1-2 (it carries no
+   prior-hop carryover): its instruction, then the task description, then the working-directory
+   block, then any operator answers ("Operator input steps and answers" requirement 7).
+9. A **backward `on:` route out of a mechanical or external gate** (the target is at or before the
+   routed step, e.g. `until: verify`) **MUST** carry the gate's output into the target's next hop.
+   When the routed hop holds `verify` evidence of a gate that did not pass (exit code nonzero, or a
+   label other than `pass`), dispatch **MUST** hand that hop to the target's next hop as its
+   carryover, and the hop message **MUST** render a section `--- GATE FAILED: <step id> ---` followed
+   by the hop's persisted, redacted `verify.outputTail` (never raw output), fit to the carryover
+   budget with the usual visible truncation marker and recorded in the `context_composed` sections as
+   role `gate_failed`. One function writes this text. The routed hop's own output stays in the
+   generic carryover, and the Implementer instruction is the ordinary one, not the rework text. A
+   resume rebuilds the carryover from the last routed hop the way it rebuilds a rework hop. For an
+   external gate the section carries its screened `verify.reasons` (one line each: severity,
+   `path:line`, summary, then an indented detail) in place of the output tail, which stands in only
+   when there are none; and when the gate's routed hop went forward to an `input` step, the
+   operator's `answered` route back to the gated step carries the same section into that retry:
+   replay hands the gate-failed hop to the target of the operator hop that follows it. That retry's
+   section **MUST** also carry the operator's latest answer (`Operator answer:`), rendered like the
+   Lead's operator answers, because it is what the human decided. A forward route, a backward `pass`
+   route, an unrouted gate and a verdict rework **MUST** compose no such section.
+10. **Task root and repository map (ADR 0028).** The hop message **MUST** name the directory the
+    hop's tools are rooted in, as a `Working directory: <path>` line followed by a derived repository
+    map (`Repository map (tracked files by directory):`), placed right after the task description
+    (the Lead's message after its description too) and ahead of every prior artifact. The root is the
+    task's recorded worktree when it has one (for every hop but the Lead's), else the pod's codebase
+    or working directory (the same root the driver gives the tools). The map (`render_repo_map`) is
+    derived from `git ls-files`: relative directories with their file counts, at the deepest
+    directory depth (3, 2, then 1) that fits `REPO_MAP_MAX_CHARS`, skipping the directories the
+    built-in `glob`/`grep` skip. A root that is not a git repository gets the `Working directory`
+    line and no map. The block is never shed by the budget compiler; its estimated tokens are
+    reserved before the carryover budget is computed. A pod's system prompt carries neither the root
+    nor the map, so it is identical between tasks.
 
 ### Task status vocabulary
 
-1. `pending` — queued, not yet claimed by any dispatch run (or a `blocked`/`stale_claim`-failed
-   task explicitly moved back here — see "blocked and terminal-failure re-entry"). Not terminal.
-2. `running` — claimed by a dispatch run; at least the claim has been persisted, and zero or
-   more hops may have completed and been persisted. Not terminal — either a live dispatcher is
-   working it, or (if `claimedAt` has gone stale) the next `dispatch_pod` call's sweep will move
-   it to `failed`/`stale_claim`.
-3. `done` — every present hop ran and passed all applicable gates (including any rework cycles)
-   and, for a task with a worktree, its diff touched no protected path or a person granted it
-   ("A change that edits its own check"). Terminal.
-4. `failed` — a hop's subprocess call failed (after exhausting any retries), a `verifyCmd`
-   failed, a Tester verdict was FAIL/unparseable, a Reviewer's rework budget was exhausted or its
-   verdict was unparseable, a stale claim was swept, or a require_approval gate's approval was
-   denied (`failureKind: "approval_denied"`, see below). Terminal for this dispatch attempt,
-   **except** a `failureKind: "stale_claim"` failure, which is reclaimable via `--resume` (see
-   "Crash recovery") — a `failureKind: "approval_denied"` failure is **never** reclaimable, with
-   or without `--resume`. A denied `check_changed` approval (`failureKind: "check_changed"`) is
-   likewise never reclaimable.
-5. `blocked` — the pod's budget cap was reached before a hop could run, or (ADR 0016, "Operator
-   input steps and answers" below) a parked question's `expiresAt` passed unanswered
-   (`blockedReason: "input_expired"`). Not terminal — re-enters `pending` only via
-   `docket task retry <task-id>` or a pod-wide budget change on the Lead (never
-   automatically, never via a plain dispatch run). An expired question is never `failed` --
-   `retry_task` accepts any `blockedReason` unchanged.
-6. `waiting_approval` (ROADMAP Phase 15 G-1) — either a require_approval gate fired before a hop
-   could run, or (ADR 0016, "Parked approvals" below) a hop's in-turn tool call parked mid-turn
-   under `approvalMode: "park"`; either way a real approval record was created and the task is
-   waiting on a human (or automated headless) decision. Not terminal — re-enters `pending` only
-   via a granted approval (`resolve_waiting_approval`), never automatically, never via a plain
-   dispatch run, `retry_task`, or `unblock_pod`. The pre-hop gate's grant hands the exact
-   pipeline position back as a single-use override (`gateOverridePipelineIndex`); a parked call's
-   grant instead appends a single-use pre-grant to the task's `pregrants` and resumes the
-   already-attempted hop at its own index (see "Parked approvals"); a grant that chose
-   `approve_task` also appends to the task's `taskGrants`, from which `_compose_hop` mints one
-   single-use pre-grant per entry for each later hop (operator-loop requirement 5a). A denied (or
-   fail-closed-expired) approval instead moves the task straight to `failed` (see above) — it
-   does not pass through `pending` at all. A `check_changed` approval ("A change that edits its
-   own check") is the one exception to re-entering `pending`: its grant ends the task `done` and
-   its denial `failed`, and it is never skipped by a profile or an `approvalMode`.
-7. `cancelled` (Wave 26 W26-C10c) — the owning run's persisted cancellation signal was observed
-   during execution. Terminal. The task retains its completed and cancelled-hop evidence, records
-   `completedAt`, and cannot be reclaimed or overwritten by a late successful response.
-8. `waiting_input` (ADR 0016, "Operator input steps and answers" below) — an `input` step parked
-   the task, waiting on an operator's answer to a minted `Question`. Not terminal — re-enters
-   `pending` only via `core.answers.answer_task` (or moves straight to `blocked`/`failed`/`done`
-   there — see below), never automatically, never via a plain dispatch run, `retry_task`, or
-   `unblock_pod`. Never claimable by any dispatch run, the same posture `waiting_approval` has.
+1. `pending` -- queued, not yet claimed by any dispatch run (or moved back here by `retry_task`,
+   `unblock_pod`, a granted approval, or an answered question). Not terminal.
+2. `running` -- claimed by a dispatch run; at least the claim has been persisted, and zero or more
+   hops may have completed and been persisted. Not terminal -- either a live dispatcher is working
+   it, or (if its claim has gone stale) a later `dispatch_pod` call will move it to
+   `failed`/`stale_claim`.
+3. `done` -- every present hop ran and passed all applicable gates (including any rework cycles), or
+   a route ended it with `stop`, and, for a task with a worktree, its diff touched no protected path
+   or a person granted it ("A change that edits its own check"). Terminal.
+4. `failed` -- a hop failed (after exhausting any retries), a gate failed (`verifyCmd`, an external
+   or task gate, a Tester FAIL or unparseable verdict, a Reviewer's exhausted rework budget or
+   unparseable verdict), a route went to `fail`, a claim-time or in-run refusal settled it, a stale
+   claim was swept, or an approval was denied. Terminal for this dispatch attempt, **except** that a
+   `failureKind` in `RESUMABLE_FAILURE_KINDS` (`stale_claim`, `dispatch_refused`) is reclaimable via
+   `--resume` (see "Crash recovery"); `approval_denied`, `check_changed` and every other kind are
+   never reclaimed by `--resume`. Any `failed` task can be put back on the queue by `retry_task`.
+5. `blocked` -- the pod's budget cap was reached before a hop could run, a brief named missing
+   resources (`blockedReason: "resources"`), or a parked question's `expiresAt` passed unanswered
+   (`blockedReason: "input_expired"`). Not terminal -- re-enters `pending` only via `retry_task` or
+   `unblock_pod` (never automatically, never via a plain dispatch run). An expired question is never
+   `failed`; `retry_task` accepts any `blockedReason`.
+6. `waiting_approval` -- a require_approval gate fired before a hop could run, a hop's in-turn tool
+   call parked mid-turn under `approvalMode: "park"`, a `run:` step needs approval, or the enqueue
+   screen required approval; either way a real approval record exists and the task is waiting on a
+   human (or automated headless) decision. Not terminal -- re-enters `pending` only via a granted
+   approval (a resolved approval escalation), never automatically, never via a plain dispatch run,
+   `retry_task`, or `unblock_pod`. The pre-hop gate's grant hands the exact pipeline position back to
+   the next claim as a single-use override (item 5 of "require_approval gate and
+   waiting_approval"); a parked call's grant instead leaves a single-use pre-grant in the approval
+   store and resumes the already-attempted hop at its own index (see "Parked approvals"); a grant
+   that chose `approve_task` is also a task-wide grant, from which dispatch mints one single-use
+   pre-grant per grant for each later hop (operator-loop.spec.md). A denied (or fail-closed-expired) approval moves the task straight to
+   `failed` without passing through `pending`. A `check_changed` approval ("A change that edits its
+   own check") is the one exception to re-entering `pending`: its grant ends the task `done` and its
+   denial `failed`, and it is never skipped by a profile or an `approvalMode`. `docket task cancel`
+   ends a waiting task `cancelled`.
+7. `cancelled` -- the owning run's persisted cancellation signal was observed during execution, or
+   `docket task cancel` cancelled a parked task. Terminal. The task retains its completed and
+   cancelled-hop evidence, records `completedAt`, and cannot be reclaimed or overwritten by a late
+   successful response.
+8. `waiting_input` -- an `input` step parked the task, or a hop parked a `consult` question
+   (operator-loop.spec.md), waiting on an operator's answer to the escalation that carries the
+   minted `Question`. Not terminal -- re-enters `pending` only via a resolution of that escalation
+   (`resolve`; the claim that follows may then settle it `failed`/`done` by the step's route, and
+   expiry moves it to `blocked` -- see "Operator input steps and answers"), never automatically, never via a
+   plain dispatch run, `retry_task`, or `unblock_pod`. Never claimable by any dispatch run, the same
+   posture `waiting_approval` has.
+9. Failure kinds. A `failed` task's `failureKind` **MUST** be one of: `stale_claim`,
+   `dispatch_refused`, `base_ref`, `pipeline`, `prepare`, `budget`, `rejected`, `gate_failed`,
+   `gate_needs_human`, `gate_error`, `approval_denied`, `check_changed`, `needs_human` (a tool
+   call needed approval at autonomy level `L5`, security-gates.spec.md "Autonomy levels" item 4),
+   or absent for an ordinary
+   graded hop or gate failure (a hop's own `TurnResult.failure_kind`, see "Retries", is not copied
+   onto the task). A new terminal result replaces any earlier `failureKind`.
+10. Transitions. A task's `status` **MUST** change only through `tasks.domain.state.decide`, applied by
+    `tasks.application.transitions.apply_to_task` (the one assignment of `status`; an architecture
+    test refuses a second). `decide` is pure: given the record's status, the target and the facts
+    (time, reason, failure kind, ...), it returns the fields to set and drop, or raises
+    `IllegalTransition` before the record is touched. The table is: a pipeline result or an operator
+    action may end a task `waiting_input`, `waiting_approval`, `blocked`, `done`, `failed` or
+    `cancelled` from whatever status the record holds (a stale sweep or a retry can race the run still
+    finishing, and the record takes the run's outcome); a claim moves `pending` or `failed` to
+    `running`; `blocked`, `failed`, `waiting_input` and `waiting_approval` move to `pending`. Nothing
+    else is a transition: a `done` or `cancelled` task never
+    moves to `pending` or `running`. A `stale_claim` failure is evidence of a lost claim: it stamps
+    no `completedAt` and keeps the claim's pid and the task's grants. A `retry` move clears the
+    previous outcome (`reason`, `failureKind`, `completedAt`, `blockedReason`); an `unblock` clears
+    only `blockedReason`.
 
-### Evidence v1 (ROADMAP Phase 36, ADR 0018 SS6, card P36-3)
+### Evidence v1 (ADR 0018)
 
-*Trigger: an external verifier needs one stable document of what a task's hops kept, instead of
-reading `verify`/`evidence` dicts and trace files itself. This section adds two optional hop-record
-fields and the `core/evidence.py` models; it serves no surface (CLI and HTTP are a later
-card), scores nothing, and carries no dollar figure.*
+One stable document of what a task's hops kept, for an external verifier, built from the persisted
+hop records. It scores nothing and carries no dollar figure.
 
-1. `core/evidence.py` **MUST** hold every evidence-v1 model: `HopEvidence{role, stepId, ok,
-   verdict, verify, commit, baseCommit, diffStat, usage{input, output}, trace{project, session,
-   firstTs, lastTs}}` and `TaskEvidence{v, pod, taskId, status, hops}` with camelCase wire names.
-   `EVIDENCE_CONTRACT_VERSION` is `"1.0.0"`. The schema is generated by
-   `scripts/gen_evidence_schema.py` into `docs/contracts/evidence-v1/schema.json`; `--check` runs in
-   CI's docs job.
-2. `task_evidence(project, task_id)` **MUST** be the only builder, reading `read_tasks`. An unknown
-   task raises `EvidenceNotFound` (surfaces map it to 404 / exit 1).
-3. `verify` in evidence **MUST** carry exactly `cmd`, `exitCode`, `durationS`, `outputTail`. The
-   internal `touched` key **MUST NOT** appear in evidence.
-4. Each hop record **MUST** persist `usage` (`{"input", "output"}`, the turn's measured
-   `TokenUsage`, never an estimate) and `trace` (`{"project", "session", "firstTs", "lastTs"}`).
-   `TurnResult.usage` carries the measured counts; `DocketDriver` sets it, and leaves it `None`
-   when the endpoint reported no tokens, in which case the hop's `usage` is `null`. `trace` is
-   `null` under `DOCKET_NO_TRACE`.
-5. The trace link is an identifier the existing readers accept: `session` is the task's trace
-   session id (`agent:<project>:<taskId>`), the file `docket task trace <ref>` reads
-   (`core.trace.find_trace` resolves `<TRACES_DIR>/<project>/<session>.jsonl`); `project` is the
-   argument of `GET /traces/<project>`. `firstTs` is taken just before the hop's turn and `lastTs`
-   after its closing `tool_result`/`error` event is written (before the hop is persisted), both in
-   the trace's one-second `%Y-%m-%dT%H:%M:%SZ` form. The hop's events are those of that file whose
-   `ts` lies in `[firstTs, lastTs]` and whose `agent_role` is the hop's role; hops of a parallel
-   group share a file and may overlap in time.
-6. A record written before these fields existed **MUST** still build: `usage`, `trace`, `verify`,
-   `commit`, `baseCommit` and `diffStat` are `null`.
-7. **Evidence 1.1.0** (ADR 0025 D4 as amended) adds exactly two optional fields and nothing
-   else. `task_evidence(project, task_id, version)` **MUST** take the version, `"1.0.0"` or
-   `"1.1.0"`; `"1.0.0"` **MUST** produce the same document as before this requirement, byte for
-   byte, and **MUST** carry neither new field. `docket task show --json` and `GET /tasks/<pod>/<id>/evidence` **MUST** serve `"1.1.0"`.
+1. The evidence models **MUST** be: `HopEvidence{role, stepId, ok, verdict, verify, commit,
+   baseCommit, diffStat, usage{input, output}, trace{project, session, firstTs, lastTs}}` and
+   `TaskEvidence{v, pod, taskId, status, hops}` with camelCase wire names. The version constant is
+   `EVIDENCE_V1_1` (`"1.1.0"`). The schema is generated into
+   `docs/contracts/evidence-v1.1/schema.json` by a generator whose `--check` runs in CI's docs job.
+2. `task_evidence(project, task_id, version)` **MUST** be the only builder, reading the pod's queue.
+   An unknown task raises `EvidenceNotFound` (surfaces map it to 404 / exit 1); an unknown version
+   raises `ValueError`.
+3. `verify` in evidence **MUST** carry exactly `cmd`, `exitCode`, `durationS`, `outputTail`.
+4. Each hop record **MUST** persist `usage` (`{"input", "cached", "cacheWrite", "output"}`, the turn's
+   measured `TokenUsage`, never an estimate; evidence projects `input` and `output`) and `trace`
+   (`{"project", "session", "firstTs", "lastTs"}`). `TurnResult.usage` carries the measured counts;
+   `DocketDriver` sets it, and leaves it `None` when the endpoint reported no tokens, in which case
+   the hop's `usage` is `null`. `trace` is `null` under `DOCKET_NO_TRACE`.
+5. The trace link is an identifier the existing readers accept: `session` is the task's trace session
+   id (`agent:<project>:<taskId>`), the file `docket task trace <ref>` reads
+   (`<TRACES_DIR>/<project>/<session>.jsonl`); `project` is the argument of
+   `GET /traces/<project>`. `firstTs` is taken just before the hop's turn and `lastTs` after its
+   closing `tool_result`/`error` event is written (before the hop is persisted), both in the trace's
+   one-second `%Y-%m-%dT%H:%M:%SZ` form. The hop's events are those of that file whose `ts` lies in
+   `[firstTs, lastTs]` and whose `agent_role` is the hop's role; hops of a parallel group share a file
+   and may overlap in time.
+6. A hop record that lacks these fields **MUST** still build: `usage`, `trace`, `verify`, `commit`,
+   `baseCommit` and `diffStat` are `null`.
+7. **Evidence 1.1.0** (ADR 0025) adds exactly two optional fields and nothing else. `task_evidence`
+   **MUST** take the version `"1.1.0"`, the only evidence version; any other version raises `ValueError`.
+   `docket task show --json` and `GET /tasks/<pod>/<id>/evidence` **MUST** serve `"1.1.0"`.
 8. Under `"1.1.0"`, `HopEvidence.gate` is `{label, exitCode, reasonsInvalid}`, copied from the hop's
    `verify` and present only when that `verify` carries a `label` (a hop that ran an external gate);
    it adds no verdict about the work. `TaskEvidence.directives` is a list of `{path, sha256}`: the
@@ -2209,1168 +2033,440 @@ card), scores nothing, and carries no dollar figure.*
    `repoFiles` (the `TurnResult.repo_files` the turn composed from the task's base commit; dispatch
    copies it onto the hop, evidence never recomputes it). A field with nothing to say **MUST** be
    absent from the document, not `null`. The 1.1.0 schema is generated into
-   `docs/contracts/evidence-v1.1/schema.json`; `docs/contracts/evidence-v1/schema.json` stays
-   byte-identical.
+   `docs/contracts/evidence-v1.1/schema.json`.
 
 ### Sweep workers
 
-1. `serve.py::_run_sweeps(dispatch=True)` **MUST** sweep each dispatchable pod on a pool worker
-   (`_sweep_one_pod`: one run record, source `"sweep"`, then `dispatch_pod`, exactly as before)
-   and return without waiting for the turns, so a pod blocked in a hop never delays another pod's
-   task. At most `DISPATCH_SWEEP_WORKERS` (env-overridable, default 4; 1 is serial) sweeps run at
-   once.
+1. The `docket start --dispatch` sweep **MUST** sweep each dispatchable pod on a pool worker (one run
+   record, source `"sweep"`, then `dispatch_pod` with `resume=True`) and return without waiting for
+   the turns, so a pod blocked in a hop never delays another pod's task. At most
+   `DISPATCH_SWEEP_WORKERS` (env-overridable, default 4; 1 is serial) sweeps run at once. The same
+   sweep also expires approvals and questions, prunes the registries, and checks due schedules.
+   A pod with nothing a resuming dispatch could claim (no claimable task and no `running` one)
+   **MUST** be skipped before its run record is created (`tasks.application.queue.
+   has_claimable_work`): an idle tick writes nothing. Measured 2026-10-24: one record per pod per
+   tick had grown a live `docket-runs.json` to 85,540 empty records and 47 MB in a week, and its
+   rewrites missed the 10 s store lock.
 2. A pod whose previous sweep has not ended **MUST** be skipped by the next tick; a pod is never
    swept twice concurrently by the sweep loop.
-3. `_sweep_loop` **MUST**, once its stop event is set, wait for the in-flight sweeps to end
-   before returning, and `docket start` joins it on shutdown.
+3. The sweep loop **MUST**, once its stop event is set, wait for the in-flight sweeps to end before
+   returning, and `docket start` joins it on shutdown.
 4. `docket start` **MUST** stop in two stages on SIGINT/SIGTERM (handlers installed in the main
-   thread before the startup sweep). The first signal stops the server and the sweep loop,
-   prints one line (`stopping: waiting for N pod sweep(s); signal again to abandon`) and waits
-   for in-flight sweeps (requirement 3). The second signal **MUST** request cancellation
-   (`core.runs.cancel_run`) of every in-flight sweep run (`_sweep_one_pod` records its run id per
-   pod), cancel queued sweeps, wait at most `serve.SWEEP_ABANDON_WAIT_S` (5 s) for the runs to
-   settle, and exit 130 (SIGINT) or 143 (SIGTERM) without running interpreter teardown, so a
-   wedged worker thread cannot hold the process.
-5. An abandoned sweep follows the ordinary cancellation path ("Cancellation"): a hop in flight
-   has its process group killed, the hop returns `run_cancelled`, and the task ends terminal
-   `cancelled` with its persisted hops kept (never requeued to `pending`); the run record ends
-   `cancelled`. A run whose body never observes the request (a wedged thread) stays nonterminal
-   with `cancellation.requestedAt` set. Dispatch itself is unchanged.
+   thread before the startup sweep). The first signal stops the server and the sweep loop, prints one
+   line (`stopping: waiting for N pod sweep(s); signal again to abandon`) and waits for in-flight
+   sweeps (requirement 3). The second signal **MUST** request cancellation (`cancel_run`) of every
+   in-flight sweep run (each pod's sweep records its run id), cancel queued sweeps, wait at most
+   `SWEEP_ABANDON_WAIT_S` (5 s) for the runs to settle, and exit 130 (SIGINT) or 143 (SIGTERM)
+   without running interpreter teardown, so a wedged worker thread cannot hold the process.
+5. An abandoned sweep follows the ordinary cancellation path ("Cancellation"): a hop in flight has its
+   process group killed, the hop returns `run_cancelled`, and the task ends terminal `cancelled` with
+   its persisted hops kept (never requeued to `pending`); the run record ends `cancelled`. A run whose
+   body never observes the request (a wedged thread) stays nonterminal with
+   `cancellation.requestedAt` set. Dispatch itself is unchanged by the stop.
 
 ### CLI entry: `docket run`
 
 1. `docket run` **MUST** be the one foreground entry to this pipeline. It takes `--resume`,
-   `--timeout S`, `--progress`, `--no-prompt`, `--pipeline FILE`, repeatable `--var k=v`,
-   `--dry-run` and the pod selector; an undeclared flag **MUST** exit 2 naming it, never be dropped.
-2. `--dry-run` **MUST** print the plan `core.orchestrator.render_plan` renders for the effective
-   pipeline against the pod's roster and **MUST NOT** claim a task, create a run record, write a
-   trace event or change a task status. It **MUST NOT** require a model endpoint.
-3. The "Running N task(s) through: ..." banner **MUST** list the effective pipeline's runnable
-   steps after roster filtering, so a two-member pod names two hops, not four.
-4. Without a model endpoint (`cli/_setup.py::readiness().endpoint` not ok) `run` **MUST** exit 1
-   with `No model endpoint yet. Run docket setup` before any run record exists.
-5. `--resume` **MUST** also clear the Lead's budget auto-pause and un-block the pod's
-   budget-blocked tasks (audited `run.resume`) before it reclaims stale claims.
-6. A run ends with one summary line (`<n> done · <n> failed · <tokens> tokens (~$<x> est.)`, the
-   dollar figure a labelled estimate, never billed spend) and one `Next:` line.
+   `--timeout S`, `--progress`, `--no-prompt`, `--pipeline FILE`, repeatable `--var k=v`, `--dry-run`
+   and the pod selector; an undeclared flag **MUST** exit 2 naming it, never be dropped. A malformed
+   `--var` exits 2; an invalid `--pipeline` file exits 1.
+2. `--dry-run` **MUST** print the plan `render_plan` renders for the effective pipeline against the
+   pod's roster and **MUST NOT** claim a task, create a run record, write a trace event or change a
+   task status. It **MUST NOT** require a model endpoint.
+3. The banner `Running <n> pending task(s) through: <steps>` (under `--resume` also
+   `, <n> resumable` and, when some task is running, `, <n> running (reclaimed only if the claim is
+   stale)`) **MUST** list the effective pipeline's runnable steps after roster filtering, so a
+   two-member pod names two hops, not four. With nothing to run it prints `No pending tasks in pod
+   '<pod>'` with the `docket task add` hint and starts nothing.
+4. Without a model endpoint `run` **MUST** exit 1 with `No model endpoint yet` and the hint
+   `Run docket setup` before any run record exists.
+5. `--resume` **MUST** clear the Lead's pause (audited `run.resume` when a pause was cleared) and
+   re-queue the pod's blocked tasks (`unblock_pod`; every `blockedReason`, see "blocked and
+   terminal-failure re-entry") before it reclaims stale claims.
+6. A run prints one line per task (`[<task-id>] done — <n> hop(s)`, or `[<task-id>] <status> —
+   <reason>`), then one summary line (`<n> done · <n> failed`, then `· <n> waiting` and
+   `· <n> blocked` when non-zero, then `· <tokens> tokens (~$<x> est.)`, the dollar figure a
+   labelled estimate, never billed spend) and one `Next:` line (`docket inbox` when anything failed,
+   waits or is blocked, else `docket status`). It exits 1 when the run record ended `failed`.
+
+### An escalation for every park
+
+1. Each of the five ways a task stops for a person MUST open one escalation record
+   (`operator-loop.spec.md` "Escalations") when the pause is created, before the task is written
+   `waiting_approval` or `waiting_input`, and append its id to the task's `escalations`: a parked
+   in-turn tool call (`approval`), a parked `consult` (`consult`), an `input` step (`input`), the
+   pipeline `approval` gate (`gate`) and a change that edits its own check (`check_changed`).
+2. The record is the pause. The task holds no approval token, question or answer, only the
+   escalations it lists and a `reason` naming the escalation; an approval, gate or changed-check
+   escalation is backed by an approval record that names it back, and a `consult` waiting in the
+   turn has one beside it.
+3. **Resume reads the record.** A claim reads the task's `escalations` (see "Operator input steps
+   and answers" item 3): a `consult` record in state `resolved` with no `resolution.appliedAt`
+   is read by the re-run hop of its step (the note its message ends with, `consult_note`) and
+   stamped once a hop of that step is persisted,
+   an `input` record becomes the synthetic hop and route, an `approval` or `gate` at a pipeline
+   position becomes the position the run skips the approval at once, and each is then stamped
+   `appliedAt`. A record already stamped, `expired`, `decided` or still `pending` is skipped, so a
+   resolution is applied once however many times the task is claimed. `resolve` does the status
+   change of an approval (the grant reopens the task `pending`, a denial fails it, a changed check
+   ends it) and stamps the record when nothing is left for the claim: a denial, a changed check,
+   a wait in the turn and a parked call, whose grant the hop reads from the approval store (item 7
+   of "Parked approvals"). The inbox's `approved ready` state reads the same two places: an
+   unspent pre-grant of the task, or a resolved approval not yet stamped.
 
 ## Interface Contracts
 
-This spec defines behavior only; the CLI surface that triggers it (`docket task retry <task-id>`,
-`docket run [--pipeline <file>] [--var k=v] [--resume] [--timeout <seconds>] [--dry-run]`, `docket start
---dispatch`) is documented in `cli-interface.spec.md`. The persisted run-registry record each
-invocation of this pipeline creates (`docket task list`, `GET /runs`), including its `pids` field and
-the `"cancelled"` state `docket task cancel <ref>` produces, is documented in
+This spec defines behaviour only; the CLI surface that triggers it (`docket task retry <task-id>`,
+`docket run [--pipeline <file>] [--var k=v] [--resume] [--timeout <seconds>] [--dry-run]`,
+`docket start --dispatch`) is documented in `cli-interface.spec.md`. The persisted run-registry
+record each invocation of this pipeline creates (`docket log`, `GET /runs`), including its `pids`
+field and the `"cancelled"` state `docket task cancel <ref>` produces, is documented in
 `serve-read-api.spec.md`/`cli-json-shapes.spec.md`.
 
 ### Trace events this pipeline emits
 
 ```text
-session_start              # once, at the start of dispatch_task; carries whether this is a resume
-context_composed           # before each hop's turn — composed-prompt byte accounting
-tool_call                  # before each hop's run_turn attempt
-hop_retry                  # before each retry attempt of a retryable failure
-tool_result                 # after a successful hop; also emitted (payload {"verification":
-                             #   "skipped", "member": <id>}) when a mechanical gate's command was
-                             #   unset — W-5, parity with the "passed" case, replacing a print()
-error                       # after a failed hop (in place of tool_result)
-cost_charged                # after any hop with nonzero cost
-budget_exceeded             # the budget gate blocked a hop (task -> blocked)
-budget_warning              # action "unpriced_model": the hop's model has no price, so the cap
-                             #   cannot stop it; the hop runs (cost-tracking.spec.md req. 6)
-verification_failed         # a mechanical gate's command exited nonzero (any role, not just implementer);
-                             #   an external gate's payload carries `source: "task"` for a task's own gate
-tester_verdict_failed       # the Tester's reply was FAIL or unparseable (legacy name, preserved)
-rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle (legacy name, preserved)
-review_rejected              # a second REQUEST-CHANGES exhausted the rework budget (legacy name, preserved)
-reviewer_verdict_unparseable # the Reviewer's reply had no single unambiguous marker (legacy name, preserved)
-verdict_rework_started       # W-8: a non-built-in verdict gate's rework-triggering marker fired
-verdict_rejected              # W-8: a non-built-in verdict gate's reply matched but wasn't pass/rework
-verdict_unparseable           # W-8: a non-built-in verdict gate's reply had no recognized marker
-route_taken                  # a step's own `on` map resolved a gate outcome (naming step/outcome/target)
+session_start                # once, at the start of dispatch_task; carries whether this is a resume
+context_composed             # before each hop's turn: composed-prompt byte accounting
+tool_call                    # the hop marker, before each hop's run_turn attempt
+hop_started                  # after the hop marker, before the turn: task/step/role/member/model
+hop_retry                    # before each retry attempt of a retryable failure
+tool_result                  # after a successful hop; also {"verification": "passed"|"skipped", ...}
+                             #   for a gate command that passed or a mechanical gate with no command
+error                        # after a failed hop (in place of tool_result)
+cost_charged                 # after any hop with nonzero cost
+hop_finished                 # after the hop's closing events, before the hop is persisted
+guardrail_check              # a pre_output policy verdict other than allow on a hop's output
+guardrail_block              # a pre_output block failed the hop
+budget_exceeded              # the budget gate blocked a hop (task -> blocked)
+budget_warning               # action "unpriced_model": the hop's model has no price, so the cap
+                             #   cannot stop it; the hop runs (cost-tracking.spec.md)
+verification_failed          # a mechanical or external gate did not pass (any role); an external
+                             #   gate's payload carries its label and `source: "task"` for a task gate
+tester_verdict_failed        # the Tester's reply was FAIL or unparseable
+rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle
+review_rejected              # a REQUEST-CHANGES after the rework budget was exhausted
+verdict_reasked              # a verdict-gated hop's reply had no marker; one more request was sent
+reviewer_verdict_unparseable # the Reviewer's reply had no marker, even after the re-ask
+verdict_rework_started       # another role's verdict gate triggered a rework cycle
+verdict_rejected             # another role's verdict matched but was neither pass nor rework
+verdict_unparseable          # another role's verdict gate found no recognized marker
+route_taken                  # a step's own `on` map resolved an outcome (naming step/outcome/target)
 stale_claim                  # the crash sweep failed a running task whose claim went stale
 dispatch_refused             # a DispatchError on the claimed-task path settled the task as failed;
-                             #   also a claim-time refusal (an unknown task `pipeline`), payload `reason`
-paused_refused                # a claim attempt was refused because the pod's Lead is paused
-approval_required              # a require_approval gate fired (task -> waiting_approval)
-approval_resumed                # a granted approval flipped the task back to pending (G-1)
-approval_task_denied             # a denied approval failed the task terminally (G-1)
+                             #   also a claim-time refusal (base_ref, pipeline, prepare), payload `reason`
+paused_refused               # a claim attempt was refused because the pod's Lead is paused
+approval_required            # a require_approval gate or a parked call fired (task -> waiting_approval); names the escalation
+approval_resumed             # a granted approval moved the task on (pending, or done for check_changed)
+approval_task_denied         # a denied approval failed the task terminally
 session_end                  # once, at the end of dispatch_task, carrying the final status
 run_cancellation_observed    # once when execution first observes the persisted run request
 run_cancelled                # once when execution has fully stopped and terminalizes the run
-step_skipped                  # a `when` predicate was false; the step advanced with no hop
-command_step                  # a `run` step executed (or was refused), carrying its exit code
-input_requested                # an `input` step parked the task, waiting on an operator question
-input_answered                 # `core.answers.answer_task` resumed a parked `input` step
-input_expired                  # an unanswered question passed its deadline (task -> blocked)
-prepare                        # a claimed task's worktree was prepared (command, source, cacheHit, seconds, exit)
+step_skipped                 # a `when` predicate was false; the step advanced with no hop
+command_step                 # a `run` step executed (or was refused), carrying its exit code
+escalation_asked             # a pause was opened (operator-loop.spec.md area 11 item 11); with
+escalation_delivered         #   escalation_resolved, escalation_expired and escalation_decided
+escalation_resolved          #   these five describe every park of a task
+escalation_expired
+escalation_decided
+prepare                      # a claimed task's worktree was prepared (command, source, cacheHit, seconds, exit)
 ```
 
 ## Examples
+
+The CLI output below is the plain console voice (`ok`, `!`, `x`, `->`) a piped `docket` prints; the
+`Next:` line goes to stderr.
 
 ### A lean pod (Lead + Implementer, no `verifyCmd`) completing normally
 
 ```text
 $ docket run
-[dispatch] verification skipped — verifyCmd not set for myapp-implementer
-  [task-3f2a1c9e-...] done — 2 hop(s), $0.0000
+-> Running 1 pending task(s) through: lead → implementer
+verification skipped — verifyCmd not set for myapp-implementer
+ok   [task-3f2a1c9e-...] done — 2 hop(s)
+ok 1 done · 0 failed · 6.1k tokens (~$0.00 est.)
+-> Next: docket status
 ```
 
-### A full pod blocked by a Tester FAIL
+### A full pod stopped by a Tester FAIL
 
 ```text
 $ docket run
-  [task-91a2c410-...] failed — tester reported FAIL
-  Details: docket task show run-...
+-> Running 1 pending task(s) through: lead → implementer → reviewer → tester
+x   [task-91a2c410-...] failed — tester reported FAIL
+x 0 done · 1 failed · 18.4k tokens (~$0.00 est.)
+-> Next: docket inbox
 ```
 
-(The command exits 1 because the run ended `failed`; a `blocked` or `waiting_approval` task
-exits 0 — see `cli-interface.spec.md`.)
+(The command exits 1 because the run ended `failed`; a run whose task ends `blocked`,
+`waiting_approval` or `waiting_input` exits 0 -- see `cli-interface.spec.md`.)
 
 ### A Reviewer REQUEST-CHANGES driving one rework cycle, then approving
 
 ```text
 $ docket run
-Dispatching 1 pending task(s) through: lead → implementer → reviewer → tester
-  [task-7c1e2b90-...] done — 6 hop(s), $0.0000
+-> Running 1 pending task(s) through: lead → implementer → reviewer → tester
+ok   [task-7c1e2b90-...] done — 6 hop(s)
+ok 1 done · 0 failed · 31.0k tokens (~$0.00 est.)
+-> Next: docket status
 ```
 
-(`hops[]` for this task shows: lead, implementer, reviewer [REQUEST-CHANGES], implementer
-[rework], reviewer [APPROVE], tester [PASS] — six hops, because the one rework cycle re-ran the
-Implementer and Reviewer once each.)
+(`hops[]` for this task shows: lead, implementer, reviewer [REQUEST-CHANGES], implementer [rework],
+reviewer [APPROVE], tester [PASS] -- six hops, because the one rework cycle re-ran the Implementer
+and Reviewer once each.)
 
 ### A pod blocked on budget, auto-paused, then resumed
 
 ```text
 $ docket run
-  [task-c410e91a-...] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
+-> Running 2 pending task(s) through: lead → implementer
+  Pod budget cap: $5.00 (estimate so far ~$0.00, no cost recorded)
+!   [task-c410e91a-...] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
+ok 0 done · 0 failed · 1 blocked · 2.3k tokens (~$0.04 est.)
+-> Next: docket inbox
 
-$ docket run --resume
-  Unblocked 1 budget-blocked task(s) in pod 'myapp'.
-✓ Resumed 'myapp-lead' — auto-pause cleared.
+$ docket pod set budgetUsd 10
+-> Unblocked 1 blocked task(s)
+ok Set budgetUsd=10.0 for pod 'myapp'
+-> Next: docket pod show
 ```
+
+(The second task was never claimed: after a budget `blocked` result `dispatch_pod` stops the run, and the
+Lead stays paused. A positive new cap re-queues the blocked task and clears the pause;
+`docket run --resume` does the same without changing the cap.)
 
 ### A crashed dispatch resumed
 
 ```text
 $ docket run --resume
-Dispatching 0 pending, 1 resumable task(s) through: lead → implementer → reviewer
-  [task-a1b2c3d4-...] done — 3 hop(s), $0.0000
+-> Running 0 pending, 0 resumable, 1 running (reclaimed only if the claim is stale) task(s) through: lead → implementer → reviewer
+ok   [task-a1b2c3d4-...] done — 3 hop(s)
+ok 1 done · 0 failed · 9.7k tokens (~$0.00 est.)
+-> Next: docket status
 ```
 
-(The Implementer hop that had already completed before the crash is not re-invoked; the resumed
-run continues from the Reviewer.)
+(The dispatcher that claimed the task is gone, so `--resume` settles its claim `stale_claim`,
+reclaims it, and continues from its last persisted hop: the Implementer hop that completed before the
+crash is not re-invoked, and the run continues from the Reviewer.)
 
-### A require_approval gate (pod-level), granted, then continued (G-1)
+### A pipeline `approval` step, granted, then continued
+
+The pod's pipeline declares `gate: {type: approval}` on its implementer step.
 
 ```text
 $ docket run
-  [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
+-> Running 1 pending task(s) through: lead → implementer
+!   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (escalation=esc-...)
+ok 0 done · 0 failed · 1 waiting · 1.8k tokens (~$0.00 est.)
+-> Next: docket inbox
 
-$ docket task approve task-9a1b2c3d
-✓ Approved task-9a1b2c3d
-Next: docket run --pod myapp
+$ docket task answer task-9a1b2c3d --option approve_once
+ok Approved task-9a1b2c3d-4e5f
+-> Next: docket run --pod myapp
 
 $ docket run
-  [task-9a1b2c3d-...] done — 2 hop(s), $0.0000
+-> Running 1 pending task(s) through: lead → implementer
+ok   [task-9a1b2c3d-...] done — 2 hop(s)
+ok 1 done · 0 failed · 5.2k tokens (~$0.00 est.)
+-> Next: docket status
 ```
 
-(The Lead hop already completed before the gate fired is not re-invoked; `docket task approve` moves
-the task back to `pending`, and the *next* `docket run` continues from the
-Implementer — the exact hop the gate stopped it on.)
+(The Lead hop that completed before the gate fired is not re-invoked; `docket task answer` moves the
+task back to `pending`, and the *next* `docket run` continues from the Implementer -- the exact hop
+the gate stopped it on.)
 
 ### The same gate, denied instead
 
 ```text
-$ docket run
-  [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (token=apr-...)
-
-$ docket task deny task-9a1b2c3d
-✓ Denied task-9a1b2c3d; the action is blocked
+$ docket task answer task-9a1b2c3d --option deny --reason "touches production"
+ok Denied task-9a1b2c3d-4e5f; the action is blocked
 ```
 
-(The task is now `failed`, `failureKind: "approval_denied"`, immediately — no further dispatch
-run is needed to observe this; a later `docket run` — with or without `--resume`
-— will not touch it again.)
+(The task is now `failed`, `failureKind: "approval_denied"`, reason `approval denied: touches
+production`, immediately -- no further dispatch run is needed to observe this; a later `docket run`,
+with or without `--resume`, will not touch it again. `docket task retry` can put it back on the
+queue.)
 
 ## Validation
 
 ### Pre-conditions
 
 - The target project **MUST** have a provisioned pod with at least a Lead.
-- The task **MUST** already be queued (`docket task add`) and eligible for claim
-  (`pending`, or `failed`/`stale_claim` when `--resume` is passed).
+- The task **MUST** already be queued and eligible for claim (`pending`, or `failed` with a
+  `RESUMABLE_FAILURE_KINDS` kind when `--resume` is passed).
 
 ### Post-conditions
 
-- After a claim, the task's `status`, `startedAt`, `claimId`, and `claimedAt` **MUST** be
+- After a claim, the task's `status`, `startedAt`, `claimedAt` and `claimPid` **MUST** be
   persisted to the pod's `TASK_LIST.json` before the first hop runs.
-- After each hop, that hop's record (including `attempts`) **MUST** be persisted and
-  `claimedAt` refreshed, before the next hop is attempted.
-- After a run reaches a terminal state, the task's `status`, `reason`, `hops`, and `costUsd`
-  **MUST** be persisted back, and its `claimId` cleared.
-- A `blocked` task **MUST** stay `blocked` in storage — it is never rewritten to `pending` by
+- After each hop, that hop's record (including `attempts`) **MUST** be persisted and `claimedAt`
+  refreshed, before the next hop is attempted.
+- After a run reaches a terminal or waiting state, the task's `status`, `reason`, `hops`, `costUsd`
+  and `usage` **MUST** be persisted back.
+- A `blocked` task **MUST** stay `blocked` in storage -- it is never rewritten to `pending` by
   `dispatch_pod` itself.
-- A gate firing **MUST** persist the task's `approvalToken` and `pendingApprovalIndex` before
-  `dispatch_pod` returns, and **MUST** create the approval record before the task is persisted as
-  `waiting_approval` (never the reverse — a persisted `waiting_approval` task **MUST NOT** exist
-  without a corresponding approval record for its `approvalToken`).
+- A gate firing **MUST** persist the task's `pendingApprovalIndex` and the id of its escalation
+  before `dispatch_pod` returns, and **MUST** create the approval record and its escalation before
+  the task is persisted as `waiting_approval` (never the reverse -- a persisted `waiting_approval`
+  task **MUST NOT** exist without a corresponding approval record and escalation).
 - After a claim, and after every hop-completion persist and retry-attempt claim refresh, the pod
   Lead's `HEARTBEAT.md` dispatch ledger **MUST** be re-synced from `TASK_LIST.json`'s `running`
-  tasks (see "Mechanical HEARTBEAT ledger"); after a run reaches a terminal state, that same sync
-  **MUST** leave the finished task's entry removed.
+  tasks (see "Mechanical HEARTBEAT ledger"); after a task leaves `running`, that same sync **MUST**
+  leave its entry removed.
 - After each hop, any conversation tracked for that hop's agent **MUST** have its
   `last_message`/`task_ref` refreshed (see "Conversation registry auto-population").
 
 ### Invariants
 
-- Dispatch **MUST NOT** cross pods: every hop's member id belongs to the dispatched project's own
-  pod — including every child of a `parallel` group.
+- Dispatch **MUST NOT** cross pods: every hop's member id belongs to the dispatched project's own pod
+  -- including every child of a `parallel` group.
 - Two concurrent `dispatch_pod` calls against the same pod **MUST NOT** both claim (flip to
   `running`) the same task.
-- A gate (budget, require_approval, `mechanical`, `verdict`) **MUST NOT** be bypassed by an
-  otherwise-`ok` subprocess call — `ok=True` is necessary but not sufficient for pipeline
-  advancement past a mechanically- or verdict-gated hop, for any role/archetype, not only the
-  four built-in ones.
-- A hop's failure **MUST NOT** be retried unless its `failure_kind` is `timeout` or
-  `daemon_error`. Cooperative run cancellation always surfaces as non-retryable `run_cancelled`;
-  a killed external subprocess may surface as a non-retryable `nonzero_exit`/negative-signal exit.
+- A gate (budget, require_approval, `mechanical`, `verdict`, `external`) **MUST NOT** be bypassed by
+  an otherwise-`ok` turn -- `ok=True` is necessary but not sufficient for pipeline advancement past a
+  gated hop, for any role or archetype, not only the four built-in ones.
+- A hop's failure **MUST NOT** be retried unless its `failure_kind` is `timeout` or `daemon_error`.
+  Cooperative run cancellation always surfaces as non-retryable `run_cancelled`; a killed external
+  subprocess may surface as a non-retryable `nonzero_exit` or negative-signal exit.
 - A paused pod's queue **MUST NOT** yield any claim until the pause is explicitly cleared.
-- A `waiting_approval` task **MUST NOT** be claimable by any `dispatch_pod` call, with or without
-  `--resume`, until its approval resolves (grant or deny).
-- The gate-override handoff (`gateOverridePipelineIndex`) **MUST** be consumed at most once per
-  grant: captured and cleared from storage atomically at claim time, and consumed in memory the
-  first time the resumed run reaches that pipeline position — a later occurrence of the same
-  position within the same run (a rework cycle) **MUST** gate again, not skip silently.
-- `core.orchestrator.resolve_plan` **MUST** be deterministic: the same `PipelineSpec` + the same
-  roster + the same archetype registry **MUST** always resolve to a byte-identical
-  `ExecutionPlan`, independent of wall-clock time, dict-construction order, or which thread calls
-  it — the property `docket pod plan` and the real executor both rely on to never drift from
-  each other.
-- Every hop, gate pass, gate failure, retry, claim, and sweep **MUST** be traceable via `docket
-  task trace <ref> --tail` — nothing in the pipeline is silent (including the printed
-  verification-skipped notice), for any role/archetype, not only the built-in four.
+- A `waiting_approval` or `waiting_input` task **MUST NOT** be claimable by any `dispatch_pod` call,
+  with or without `--resume`, until its approval resolves or its question is answered.
+- The gate-override handoff **MUST** be consumed at most once per
+  grant: applied and stamped at claim time (the escalation's `appliedAt`), and consumed in memory the first
+  time the resumed run reaches that pipeline position -- a later occurrence of the same position
+  within the same run (a rework cycle) **MUST** gate again, not skip silently.
+- `resolve_plan` **MUST** be deterministic: the same `PipelineSpec` + the same roster + the same
+  archetype registry **MUST** always resolve to a byte-identical `ExecutionPlan`, independent of
+  wall-clock time, dict-construction order, or which thread calls it -- the property `docket pod plan`,
+  `docket run --dry-run` and the real executor rely on to never drift from each other.
+- Every hop, gate pass, gate failure, retry, claim, and sweep **MUST** be traceable via
+  `docket task trace <ref> --tail` -- nothing in the pipeline is silent (including a skipped
+  verification), for any role or archetype.
 - Every production pod-turn loop event **MUST** join that same task-wide trace even though its
   messages and measured usage are persisted under a step-scoped history key.
-- Cancelling a run (`docket task cancel`) **MUST** kill a hop's entire process group, never leave
-  an orphaned child process running after the cancellation lifecycle reaches full stop.
-- The HEARTBEAT dispatch ledger sync **MUST NOT** alter any byte outside its own delimited region
-  — an agent's own prose anywhere else in `HEARTBEAT.md` survives every dispatch-driven rewrite.
-- The ledger **MUST** always equal the pod's current `running` task ids — never a superset (a
-  stale entry for a finished task) or a subset (a running task missing its entry) once a sync has
-  run against current state.
-
-## Changelog
-
-### Version 6.60.1 (2026-10-19)
-
-- "A change that edits its own check" requirement 1: the untracked paths are listed with
-  `--untracked-files=all`, so a protected file inside a directory git has never seen is matched
-  by its own path (found integrating P45-3).
-
-### Version 6.60.0 (2026-10-19)
-
-- New "A change that edits its own check" section (P45-3, ADR 0029 point 3): a task that ends
-  `done` with a protected path in its diff parks `waiting_approval` (approval kind `check_changed`,
-  `checkChanged: [paths]`) whatever the profile; a grant ends it `done`, a deny `failed` with
-  `failureKind: "check_changed"`. `PodSettings` gains `protects`. Task states 3, 4 and 6 name it.
-- "Parallel step groups" requirement 3: the merged `failed` outcome keeps the child's
-  `failure_kind`. "Task worktrees": the pin commit's subject is cut at a word boundary, and the
-  `inPlace` Implementer meta key, which nothing wrote, is gone.
-
-### Version 6.59.0 (2026-10-19)
-
-- New "Task preparation" section (P45-1, ADR 0029 point 1): `dispatch_pod` prepares a claimed
-  task's worktree before its first hop from the task's `prepare`, the pod's `prepare` setting or
-  the worktree's lockfile; `node_modules` is cached per codebase and lockfile and linked read-only
-  to the hops; a failure settles the task `failureKind: "prepare"` with no hop. `PodSettings`
-  gains `prepare`. The `prepare` trace event joins the list of events this pipeline emits.
-
-### Version 6.58.0 (2026-10-18)
-
-- `inputExpiryHours` reaches the questions it promises to expire: a parked question without an
-  `expiresAt` (a consultation) is stamped now plus the pod's `inputExpiryHours` when the task
-  settles `waiting_input`; a step's `expiresHours` still wins. It was set, shown and never read.
-
-### Version 6.57.0 (2026-10-18)
-
-- A non-Implementer hop's work in a task worktree is committed on the task branch (requirement 9
-  of "Implementer diff producer"). A real research task (researcher, then critic) ended `done`
-  with the researcher's report untracked and the branch at its base, so an external verifier
-  refused it as empty.
-
-### Version 6.56.0 (2026-10-18)
-
-- `task["usage"]` carries `cached` and `cacheWrite` at the top level as well as per model
-  (requirement 5 of "Hop events"), so a consumer reads the cache figures where it reads `input`.
-
-### Version 6.55.0 (2026-10-18)
-
-- The downstream checkout note is gone: it repeated the worktree the task block already names
-  and pointed at an origin codebase path the prompt no longer carries. A verdict-gated
-  downstream hop keeps only its verdict-marker line.
-- **The task message names its root and carries a repository map** (requirement 10 of "Bounded
-  hop prompts", ADR 0028 sections 1 and 5, P44-6). The roots moved out of the system prompt, which
-  is now identical between tasks of one member; `_hop_message` composes `Working directory: <root>`
-  plus `render_repo_map(root)` after the task description, for every role including the Lead.
-
-### Version 6.54.0 (2026-10-18)
-
-- A hop's `usage` is `{input, cached, cacheWrite, output}` and a task's `maxTokens` counts
-  `input - cached + output` (ADR 0028 point 2; requirement 8 and the `hop_finished` usage keys
-  reworded with P44-2).
-- **Every writing hop delivers what it produced.** `HandoffArtifact` gains `diff` (first in
-  `DROP_ORDER`, rendered once after the summary); `_implementer_diff_probe` is renamed `_hop_diff_probe`
-  and runs for every role, filling `files_changed` and `diff` (tracked changes plus the content of
-  new files, `HANDOFF_DIFF_MAX_CHARS`, with a cut marker), with `diff_ref` and `evidence` still
-  Implementer-only; a hop that changed nothing since an earlier hop's diff adds none. Red reason:
-  the critic's first request held the researcher's summary but not the note it wrote, so it
-  re-read it with tools.
-
-### Version 6.53.0 (2026-10-18)
-
-- Before each hop of a pod with `budgetUsd`, a hop whose model has no price emits
-  `budget_warning` (`action: "unpriced_model"`) and runs (cost-tracking.spec.md 1.9.0).
-
-### Version 6.52.1 (2026-10-17)
-
-- The `exec` command and the harness are removed: the `channel` list, the unattended-posture and
-  trace-project notes and the evidence item 7 lose their harness clauses. The "In-place ephemeral
-  pods" section is deleted with its module.
-
-### Version 6.52.0 (2026-10-17)
-- **Stop and resume under the daemon.** `dispatch_pod` takes `stop: Callable[[], bool] | None`,
-  evaluated before each claim and never inside a task: once it returns true the loop returns the
-  results so far and leaves the remaining tasks `pending`. The serve sweep passes the server's
-  first-signal event as `stop` and `resume=True`, so a claim abandoned by a second signal is
-  settled `failed`/`stale_claim` by `reclaim_stale_running` and continued from its last persisted
-  hop on the next sweep; on a queue with no stale claim the reclaim changes, traces and audits
-  nothing. Red reason: `dispatch_pod` had no `stop` parameter, so a stop signal waited for the
-  whole queue.
-
-### Version 6.51.0 (2026-10-17)
-- **Cancel and diff in core (P43-10, ADR 0027).** `core.dispatch.cancel_task(project, task_id,
-  *, channel, actor="", reason="")` owns the whole `docket task cancel` decision and returns a
-  frozen `TaskCancelOutcome`: the pod's queued or running runs that carry the task (or an in-flight
-  one naming none while the task is `running`) go through `runs.cancel_run`, a parked task through
-  `cancel_parked_task`, a stale `running` claim through `reclaim_stale_running`. A live-run cancel
-  audits one `task.cancel` (channel, reason); a parked one audits through `cancel_parked_task`; an
-  unknown task raises `TaskNotFoundError`. `core.dispatch.task_diff(project, task_id)` returns
-  `{task, branch, baseCommit, head, patch, untracked, worktreePresent}`: `patch` is `git diff
-  <baseCommit>..<branch>` in the Implementer's codebase (capped at `system.DIFF_MAX_CHARS`
-  characters, cut with a trailing marker line), `untracked` the `??` paths of the worktree while
-  it exists. No worktree branch raises `DispatchError("task ran in place")`; a deleted branch
-  raises `TaskNotFoundError`. Red reason: neither function existed.
-
-### Version 6.50.0 (2026-10-14)
-- **Hop events and task usage (P43-5, ADR 0027).** New "Hop events and task usage" section:
-  `hop_started`/`hop_finished` trace events per hop (`trace-store.spec.md` 1.8.0),
-  `HopResult.model`/`provider` persisted on the hop record (`hop_started` names the planned model,
-  `hop_finished` and the record the served one, from the turn result), and `task["usage"]`
-  (`input`/`output`/`byModel` keyed by the served model) written at finalize. Red reason: the trace
-  vocabulary had no hop-level event, `HopResult` had no model fields, and `_finalize_task` wrote
-  no task usage.
-
-### Version 6.49.0 (2026-10-14)
-- "Per-hop execution" items 7-8: a task's `restrictions` narrow its hops, and its `maxTokens` is a
-  budget over the hops' measured usage (`failureKind: "budget"`).
-
-### Version 6.48.0 (2026-10-14)
-- Pipeline order and participation item 7 and Generalized gate execution item 7: a task's
-  `pipeline` selects a pod-local or shipped-recipe pipeline at claim (`failureKind: "pipeline"`
-  when it resolves to nothing), a task's `gate` is an external gate after the last implementer
-  step's own gate; the claim records `pipelineSource` and `gateApplied` (P43-3).
-
-### Version 6.47.0 (2026-10-14)
-
-- "Task worktrees" 4a/4b: a task's `baseRef` is the start point of its worktree; an unresolvable
-  ref (or any condition that stops the worktree being made) fails the task at claim with
-  `failureKind: "base_ref"`, a `dispatch_refused` trace event and no hop, instead of running in
-  place. The claim-time refusal helper `_refuse_claimed_task` is generic over the failure kind.
-  `dispatch_refused` was never reaching a trace file (`trace_event` rejected it as unknown);
-  `trace-store.spec.md` 1.8.0 admits it.
-
-### Version 6.46.0 (2026-10-14)
-- "Addressable task": `enqueue_task` takes and stores `externalRef`, `idempotencyKey`, `baseRef`, `pipeline`, `gate`, `maxTokens` and `restrictions`; an existing `idempotencyKey` returns the queued task and enqueues nothing; a widening restriction raises `TaskRestrictionError` (P43-1).
-
-### Version 6.45.0 (2026-10-13)
-- Cancellation item 1: `task cancel` cancels a task parked in `waiting_input` or
-  `waiting_approval` through `core.dispatch.cancel_parked_task` (Wave 108).
-
-### Version 6.44.0 (2026-10-13)
-
-- Operator input steps: a question minted after a failed gate carries the gate's report. "Bounded hop prompts" item 9: the retry behind an `input` answer carries the operator's answer. "Generalized gate execution" item 6: the exit status is the process's own; the stale cache-dir projection sentence is gone (found by the Phase 42 live run).
-
-### Version 6.43.0 (2026-10-13)
-
-- "Evidence v1" 7-8: evidence `1.1.0` (`gate` per hop, `directives` per task, `HopResult.repo_files` persisted as `repoFiles`); `task_evidence` takes the version (P42-5).
-
-### Version 6.42.0 (2026-10-13)
-
-- "Generalized gate execution" item 6, "Hop evidence" 1 and "Bounded hop prompts" 9: the external gate (exit map, reasons file, `label`/`reasons`/`reasonsInvalid`/real `exitCode` on `hop.verify`, failure kinds `gate_failed`/`gate_needs_human`/`gate_error`), and the reasons surviving an `input` step's answer (P42-2).
-
-### Version 6.41.0 (2026-10-13)
-
-- "Bounded hop prompts" item 9: a backward route out of a mechanical gate carries the gate's redacted output tail into the target's next hop under `--- GATE FAILED: <step id> ---` (P42-1).
-
-### Version 6.40.1 (2026-10-13)
-
-- "Task worktrees" item 2: the worktree record carries `gitDir` and `commonDir`, registered for host-side git (P41-8).
-
-### Version 6.40.0 (2026-10-13)
-
-- "Implementer verification gate" item 6 and "Conditional steps and command steps" item 2: `verifyCmd` and `run:` commands run inside the isolation jail when isolation is on, fail closed with no backend, and are unchanged with isolation off. The pod cache dir (6.39.0) is a read-write root of that jail and its six variables are set there too.
-
-### Version 6.39.0 (2026-10-13)
-
-- "Task environment": a pod has a cache directory (0700) and a jailed `bash` runs with `HOME`,
-  the XDG cache and config dirs and the `uv`, `pip` and `npm` cache variables pointing at it, with
-  the directory as a read-write jail root. Before this, a jail with the home denied broke every
-  tool that writes `~/.cache` or `~/.npm`.
-
-### Version 6.38.0 (2026-10-12)
-
-- "Enqueue channel": every enqueue persists a `channel` and audits `task.enqueue`; the dispatch
-  route audits `run.dispatch`. Before this, `POST /tasks`, Telegram `/delegate` and `POST
-  /dispatch` left no audit entry and every task read `source=operator` whatever its origin.
-
-### Version 6.37.0 (2026-10-10)
-
-- An `ok` Implementer hop's tree is pinned in a commit before its evidence is read ("Task
-  worktrees" 8): committed on the task branch in a worktree, a snapshot commit in place. Before
-  this, an Implementer that left its work uncommitted (the normal case, found in two real tasks)
-  recorded the base as `commit`: check recipes compared the base to itself and passed, `docket
-  task show`'s merge command was a no-op, and the COMMIT column contradicted `diffStat`.
-- `diffStat` diffs `baseCommit` against `commit`, not the working tree ("Hop evidence" 3); the
-  `changed` predicate reads that diff plus the uncommitted paths ("Conditional steps and command
-  steps" 1). The `anti-tautology` and `mutation` recipes fail on an empty `DOCKET_HEAD_COMMIT`.
-
-### Version 6.36.3 (2026-10-08)
-
-- `pod set` rejects a bad value as `<key>: invalid value <v!r> (<rule>)`; only reading a stored
-  value says `invalid stored value`, because only then was something stored.
-
-### Version 6.36.2 (2026-10-08)
-
-- A deny's operator reason reaches the task: `resolve_waiting_approval[_detail]` take `reason=`
-  and the failed task's `reason` is `approval denied: <reason>` when one was given (`docket task
-  deny --reason`, `POST /approvals/<token>` with `reason`); without one it stays `approval denied`.
-
-### Version 6.36.1 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 6.35.0 (2026-10-08)
-
-- Task views move to the `task` group: `docket task add` queues (and prints the interruption
-  forecast and `Next: docket run`), `task list` shows the queue with the worktree path, `task show
-  <ref>` prints hops, evidence, runs, corrections, the forecast and, for a task with a recorded
-  worktree, its path, branch, base commit and the exact diff and merge commands (a run id
-  resolves to its task), `task diff` prints the worktree diff, `task prune` removes finished
-  worktrees (and, with `--traces`, old traces and run records). `pod <p> delegate|queue|explain|
-  evidence|corrections|worktrees`, `runs list|show|prune` and `trace` are removed.
-### Version 6.36.0 (2026-10-08)
-
-- Phase 39 (P39-9): `docket task retry <ref>` is the operator surface of `retry_task`; `docket task cancel <ref>` replaces `docket runs cancel <id>` and also settles a `running` task whose dispatcher is gone (`reclaim_stale_running`, the public name of the `--resume` reclaim); `docket task approve|deny <ref>` replace `docket approve|deny <token>` and `docket pod <p> pregrant`.
-
-### Version 6.34.0 (2026-10-07)
-
-- New "CLI entry: `docket run`": `docket run` replaces `docket pod <p> dispatch` and `docket pipeline run`; `--dry-run` starts nothing, the banner is roster-filtered, `--resume` clears a budget pause, no endpoint refuses with the setup line.
-
-### Version 6.33.0 (2026-10-07)
-
-- A run whose dispatch parked a task is recorded `waiting_input`/`waiting_approval`, never `succeeded` ("Cancellation" 4a).
-- A `failed` task is retryable through `retry_task` (status `pending`, hops kept, audited `task.retry`) ("blocked and terminal-failure re-entry" 1-2).
-- `--resume` reclaims a `running` task whose claimant pid is gone or whose lease exceeds `turnTimeoutS + verifyTimeoutS`, audited `task.reclaimed`; claims record `claimPid` ("Crash recovery" 4a).
-
-### Version 6.32.0 (2026-10-07)
-
-- New "Task references": one resolver turns a full id, short id, prefix or run id into a task, its Lead-hop session key, runs and worktree (`core/task_ref.py`).
-
-### Version 6.31.0 (2026-10-05)
-
-Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
-
-- `worktrees prune` counts only tracked changes as unsaved work; untracked artifacts are discarded and counted (found live: a verify command's `__pycache__/` kept every Python task worktree).
-- Task record gains `taskGrants` (an `approve_task` grant on a parked approval, at most 20, minted into one single-use pre-grant per later hop, dropped at a terminal status); see operator-loop requirement 5a.
-- A command step's `env` reaches its process under the task coordinates and never the trace ("Conditional steps and command steps" 4).
-- Serve stop is two-stage: a second SIGINT/SIGTERM cancels in-flight sweep runs and exits
-  130/143 ("Sweep workers" 4-5).
-- `docket task prune [--dry-run] [--force]` removes finished tasks' worktrees ("Task worktrees" 7).
-
-### Version 6.30.0 (2026-10-05)
-
-Phase 38 close (P38-9, ADR 0020): the entries below were Unreleased and are now this version.
-
-- A refused isolation or network posture is a `dispatch_refused` cause: one attempt, resumable
-  once the operator fixes the setting ("Deterministic refusal inside a claimed task" 1).
-
-- Pod setting `network` (`none`|`open`) narrows the sandbox network ("Pod dispatch settings" 9).
-
-- Serve sweep workers: one pool worker per pod, at most `DISPATCH_SWEEP_WORKERS` at once, a pod
-  still in flight is skipped, stop waits for in-flight sweeps ("Sweep workers").
-
-### Version 6.29.0 (2026-10-04)
-
-Phase 37 close (P37-8): the entries below were Unreleased and are now this version.
-
-- Command steps receive `DOCKET_TASK_ID`, `DOCKET_BASE_COMMIT` and `DOCKET_HEAD_COMMIT` from the
-  latest successful Implementer hop's evidence ("Conditional steps and command steps"
-  Requirement 4; the known limitation is now Requirement 5).
-- One git worktree per task: created at claim under `<Implementer workspace>/tasks/<taskId>`,
-  recorded as `task["worktree"]`, used by every hop, the verify gate and evidence `baseCommit`,
-  removed with the member; the per-member worktree (`worktreeDir`/`worktreeBranch`) is deleted
-  (see "Task worktrees").
-
-### Version 6.28.0 (2026-10-04)
-
-Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
-
-- **P36-8.** A `consult` call in a hop parks the task `waiting_input` (hop persisted `parked`, question on
-  the task) and `answer_task` re-runs the same step with the answer in its message; the task
-  counts parked consultations in `consultations` (operator-loop.spec.md "Consult"). Version not
-  bumped.
-- **P36-3.** **Evidence v1.** New "Evidence v1" section: `core/evidence.py` models and `task_evidence`, hop
-  records persist measured `usage` and a `trace` link, `TurnResult.usage`, and
-  `docs/contracts/evidence-v1/schema.json`. A hop's closing trace events are now written before
-  the hop is persisted, so its recorded `lastTs` covers them.
-
-### Version 6.27.0 (2026-10-03)
-
-- **Legacy purge, wording only for dispatch.** `HandoffArtifact.from_legacy_output` is renamed
-  `from_output`; "Structured handoff artifacts" requirements 1 and 3 and the operator-answer
-  synthetic hop use the new name, and requirement 3 describes a missing or invalid `artifact`
-  degrading through `HopResult.__post_init__` instead of a "pre-W-5"/legacy-record compatibility
-  path. Resume behaviour is unchanged.
-
-### Version 6.26.0 (2026-10-03)
-
-- **Required verification (P35-8, ADR 0017).** New section "Required verification": the
-  `requireVerify` pod setting (default false). When true, an Implementer hop with no `verifyCmd`
-  fails with `verification_missing` instead of advancing. The default path is byte-identical.
-- **In-place ephemeral pods (P35-7, ADR 0017).** Added a section for a recipe pod whose
-  Implementer ran in the codebase itself; that section and its module are gone with the `exec` command.
-
-### Version 6.25.0 (2026-09-29)
-
-- **Hop evidence (P35-4, ADR 0017 §4).** New "Hop evidence" section: `HopResult.verify` and
-  `.evidence` persist a mechanical gate's real command output (redacted, tail-capped at
-  `config.VERIFY_EVIDENCE_TAIL_CHARS`) and an Implementer hop's real git commit/baseCommit/
-  diffStat (new `edges/adapters/system.py` helpers `git_head_sha`/`git_merge_base`/
-  `git_diff_stat`, each degrading to `None` rather than raising). Both round-trip through
-  `_hop_record`/`_hop_from_record`; a hop record written before this version still loads, with
-  both fields defaulting to `None`. Additive record-keeping only — no gating decision changes.
-
-### Version 6.24.0 (2026-09-29)
-
-- **Phase 34, D-50, ADR 0016 — four new sections.** "Parked approvals" (`approvalMode:
-  "park"`, §2): the dispatch-side resume mechanics for a mid-turn parked call, including
-  `gateOverridePipelineIndex` never being reused for a parked hop's re-entry, which instead
-  re-runs the exact hop carrying a single-use pre-grant. "Operator input steps and answers"
-  (P34-10, §4/§8): an `input` pipeline step parks the task `waiting_input`, and
-  `core.answers.answer_task` resumes it on the step's own `on:` route, never failing an
-  unanswered question. "Task brief" (P34-12, §4): the Lead's typed `TaskBrief`, the
-  deterministic `secret:`/`path:`/`verify` resource pre-check, and the Implementer's `## Brief`
-  view replacing raw prose. "Pre-grants from intake" (P34-15, §10): `docket task approve <ref> --for`
-  records a task-scoped, exact-command pre-grant through the same digest matcher a parked
-  in-turn call uses.
-
-### Version 6.23.0 (2026-09-27)
-
-- **P32-3: hop trace records carry `task_id` (ADR 0014).** New "Per-hop execution" requirement 6:
-  every trace event the real agent loop writes for a hop (`tool_call`, `tool_result`, `llm_call`,
-  `session_compaction`, `request_fit`, `budget_warning`, `context_composed`) carries `task_id`
-  equal to the claimed task's id, forwarded from the one `driver.run_turn(...)` call site
-  (`core/dispatch.py`) through `run_agent_turn`'s new `trace_task_id` parameter. The task-level
-  `session_start`/`session_end`/`dispatch_refused` events `core/dispatch.py` writes directly are
-  unchanged and carry no `task_id`. See `trace-store.spec.md` 1.1.0 requirement 19.
-
-### Version 6.22.0 (2026-09-27)
-
-- **P30-3: a pipeline step's own `model` wins for that hop only (ADR 0012 §2 rule 6).** New "Per-
-  hop execution" requirement 5: `core.dispatch._run_hop_turn` resolves a planned unit's `model`
-  (`cheap`/`strong`/literal, `model-profiles.spec.md`) once per attempt and passes it to the
-  production `RuntimeDriver.run_turn` call only; `.docket-meta.json` is never written. A step with
-  no `model` is unaffected — hop execution resolves the target's own policy/pin model exactly as
-  before. An unresolvable literal (its provider absent from the catalog) is a `plan`/`validate`
-  error, not a dispatch-time failure.
-
-### Version 6.21.0 (2026-09-27)
-
-- **P29-5: a retry waits as long as the provider asked, up to a ceiling.** "Retries and the
-  failure-kind taxonomy" requirement 3's backoff formula becomes
-  `min(max(DISPATCH_RETRY_BACKOFF_S * N, retryAfter), DISPATCH_RETRY_MAX_WAIT_S)`, where
-  `retryAfter` comes from `core.runtime_driver.TurnResult.retry_after_s` (new field, parsed from
-  the endpoint's `Retry-After` header by `edges/adapters/llm.py::complete` only on a retryable
-  HTTP status); requirement 5's `hop_retry` trace event gains a `retry_after_s` field. New env
-  var `config.DISPATCH_RETRY_MAX_WAIT_S` (default 60). No behavior change when the endpoint sends
-  no `Retry-After` header: `retryAfter` is then `0` and the formula reduces to the prior linear
-  backoff, still bounded by the new 60s ceiling (unreachable by the existing per-role retry
-  budgets and 2s base at their current defaults).
-
-### Version 6.20.0 (2026-09-26)
-
-- **P28-6: conditional (`when`) and command (`run`) steps execute.** New "Conditional steps and
-  command steps" requirements subsection; the trace-event list gains `step_skipped` and
-  `command_step`. `core/dispatch.py` gains `_step_skipped` and `_run_command_step`, both called
-  from the top of `_run_pipeline`'s loop body ahead of `_execute_unit`: a false `when` predicate
-  skips a top-level step with no hop; a `run` step executes its command directly, classified via
-  `core.security.classify_command` (allow runs it; anything else gates like a pipeline `approval`
-  step, or fails outright under `approvalMode: "refuse"`) and gated on its own exit code. Known
-  limitation: a `parallel` group's children do not yet support `when`/`run` (see the new
-  section's requirement 4). No change to any existing pipeline's execution — a step declaring
-  neither `when` nor `run` is unaffected.
-### Version 6.19.0 (2026-09-26)
-
-- **P28-5: a step's own `on` map routes a gate outcome beyond built-in rework/fail.**
-  "Generalized gate execution" item 2's mechanical and verdict bullets gain the routing rule
-  (`on:` beats the ordinary pass/fail/rework handling for a named outcome), and new item 5 states
-  the routing contract itself: `fail`/`stop`/a step id, a backward or self target bounded by its
-  own `max`, one `route_taken` trace event per decision, and persistence of the resolved target so
-  a resumed task follows the same decision. "Trace events this pipeline emits" gains
-  `route_taken`. See `pipeline-format.spec.md` v2.8.0 for the format-side `on`/`until` fields this
-  reads. No behavior change for the built-in `default_pipeline()`, whose steps declare no `on`.
-
-### Version 6.18.0 (2026-09-26)
-
-- **P27-9: a pod-scoped custom role is a real roster member.** "Pipeline order and
-  participation" requirement 5 corrects a gap `_role_names()` (no `project`) left in
-  `core/pod.py`: `parse_member_id`/`members_of`/`normalize_role`/`resolve_member` now resolve a
-  pod's own role overlay too, so `pod_full_roster` no longer silently drops a member whose role
-  exists only in that overlay. See `pod-blueprints.spec.md` v1.7.0 and `role-archetypes.spec.md`
-  v1.16.0 for the companion `apply`/recipe correction.
-
-### Version 6.17.0 (2026-09-26)
-
-- **P27-5: the Lead's instruction is data.** "Bounded hop prompts" gains requirement 8:
-  `_hop_message`'s `role == "lead"` branch now resolves its instruction text through
-  `core.archetypes.resolve_hop_instruction` against the `lead` archetype instead of a hardcoded
-  string, and a step's own `instructions` now overrides it too. The built-in `lead` archetype's
-  `hopInstruction` is the pre-existing hardcoded text, so a pod with no `lead` overlay and no step
-  override sees a byte-identical Lead hop message. See `role-archetypes.spec.md` v1.14.0 and
-  `pipeline-format.spec.md` v2.6.0 for the registry- and format-side halves.
-
-### Version 6.16.0 (2026-09-26)
-
-- **P27-4: pod settings `mcpServers` and `deniedTools`, each with its live reader.** "Pod
-  dispatch settings" gains items 7-8: `mcpServers` selects this pod's servers from the shared
-  MCP catalog (`None` = every server, byte-identical to before; validated against the live
-  catalog at `set` and on every read, and a stale selection refuses the dispatch as a
-  `DispatchError` naming it through `edges/adapters/docket_runtime.py::_load_mcp_tools`), and
-  `deniedTools` names built-in tools every role in the pod additionally denies (unknown names
-  refused at write; `core.archetypes.registry_for_role` unions it with the role's own list).
-  See `mcp-client.spec.md` 1.6.0 and `role-archetypes.spec.md` 1.13.0.
-
-### Version 6.15.0 (2026-09-26)
-
-- **P26-17: `PodSettings` gains `projectInstructions`.** New "Pod dispatch settings" item 6: a
-  sixth key, relative paths inside the codebase root that `core.identity`'s opt-in
-  project-instructions section (`agent-loop.spec.md` requirement 30) composes into a live turn's
-  system prompt. Written through the same generic `coerce`-then-`meta_set` path every
-  scalar/tuple key uses (no dedicated CLI code path, unlike `pipeline`/`schedule` — nothing here
-  reads a file or writes a second store before persisting); its own `coerce` validator refuses an
-  absolute, home-relative, or `..`-containing path, syntactically, at `set`.
-
-### Version 6.14.0 (2026-09-26)
-
-- **P26-15: registries stay bounded; approval traces are filed where an operator looks.** New
-  "require_approval gate" requirement 7: every approval-related trace event a dispatch hop
-  produces, including the **in-turn** `core/tools.py` tool-call gate, must file under the pod's
-  trace directory (`traces/<project>/`), never the hop's agent id — fixed by having
-  `edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn` resolve `ToolContext.project` from
-  the caller-supplied `trace_project` (falling back to the agent id only when none is given, e.g.
-  a standalone turn). New "Registry retention (runs, approvals, conversations)" section: the
-  run registry, the approval store, and the conversation registry now share one retention sweep
-  (`config.TRACE_RETENTION_S`, the same knob trace expiry uses) that removes only records already
-  terminal — a live record is never touched regardless of age. `docket serve`'s periodic sweep
-  runs all three prunes independently best-effort; `docket task prune --traces [--days N]` exposes the same functions on demand.
-
-### Version 6.13.0 (2026-09-26)
-
-- **P26-12: configuration errors are loud; schedules get a writer.** `docket-schedules.json`
-  gains its first writer: `docket pod <project> config set/unset schedule "<spec>"`
-  (`core.schedule.set_schedule`/`unset_schedule`, both through `edges/store.py`'s locked
-  read-modify-write). "Pod dispatch settings" gains requirement 5 for the new `schedule` key
-  on `PodSettings` — validated through the same `coerce` path as every scalar key, but
-  persisted through a dedicated CLI code path like `pipeline`, because its real source of
-  truth for the serve sweep is `docket-schedules.json`, not the Lead's meta (meta carries a
-  display-only mirror). New "Schedule configuration and doctor visibility" section:
-  `docket doctor` gains a read-only check (`core.schedule.find_schedule_problems`) naming
-  the file, project key, and reason for a schedule `is_schedule_due` would otherwise silently
-  treat as never-due, and `serve.py`'s sweep now prints one skip line per invalid schedule
-  per sweep pass instead of dropping it with no trace. See `model-profiles.spec.md` v2.9.0
-  and `role-archetypes.spec.md` v1.10.0 for the companion doctor checks over
-  `docket-models.json`/`docket-roles.json` malformed entries this same card added.
-
-### Version 6.12.0 (2026-09-26)
-
-- **P26-6: a pipeline file can be a pod's default for every trigger.** "Pipeline order and
-  participation" requirement 1 adds a **bound pipeline** step to the resolution order (caller
-  `spec` -> bound pipeline -> blueprint -> built-in), unpatched by `maxReworkCycles` exactly
-  like a caller-supplied `spec` — an operator's own rework config wins over the pod setting.
-  New requirement 6 specifies `docket pod <project> config set pipeline <file>`'s
-  validate-plan-store-verify contract: refuse at `set` when a step's role/agent isn't in the
-  pod's current roster (rather than skipping it at run time), persist a docket-owned copy plus
-  its sha256 hash in the Lead's workspace (never the operator's path), and have
-  `effective_pipeline` re-verify that copy's hash on every resolution, raising `DispatchError`
-  on a mismatch/missing copy/re-validation failure instead of silently falling back. Fixes the
-  measured defect where only `cli/_pod.py`'s dispatch and `cli/_pipeline.py`'s run/plan passed
-  `spec=`, so a declared pipeline could never run from the serve sweep, a due schedule, the
-  webhook, or `cli/_mcp.py`'s dispatch tool — all five now converge on the same
-  `effective_pipeline(project, None)` resolution with no change to any of those callers. "Pod
-  dispatch settings" gains requirement 4 documenting `PodSettings.pipeline`'s dedicated
-  validate-then-store CLI path (distinct from the scalar keys' plain
-  `coerce`-then-`meta_set`). `docket pipeline plan` now prints a `Source:` line naming an
-  explicit `--file`'s path, the bound pipeline's hash, the blueprint's name, or "built-in
-  default".
-
-### Version 6.11.0 (2026-09-26)
-
-- **P26-5: unattended turns can refuse instead of waiting on nobody.** New "Pod dispatch settings"
-  requirement 3 and new subsection "Unattended approval posture (`approvalMode`, ROADMAP P26-5)":
-  a fifth `PodSettings` key, `approvalMode` (`wait`|`refuse`, default `wait`), threads
-  `DOCKET_APPROVAL_MODE=refuse` into a hop's tool env the same internal-coordinate way
-  `PIPELINE_WORKTREE_ENV` already travels, closing the gap that left an unattended turn waiting out the 120s `TOOL_APPROVAL_TIMEOUT` wait.
-  `wait` (the default) is byte-identical to every prior dispatch. No new task status, trace event
-  type, or failure-kind vocabulary — a refused hop fails through the existing
-  `approval_unavailable`/`_persist_hop_and_trace` path.
-
-### Version 6.10.0 (2026-09-25)
-
-- **P26-4: pod settings are typed, validated and writable.** New "Pod dispatch settings
-  (`core.pod.PodSettings`)" section: `budgetUsd`/`maxReworkCycles`/`turnTimeoutS`/`verifyTimeoutS`
-  are read through one validated model instead of four ad hoc parsers, and a present-but-invalid
-  stored value now refuses dispatch naming the key instead of silently substituting its default
-  — the opposite of the fallback this spec previously documented. Adds the dedicated
-  `docket pod <project> config` CLI surface (get/set/unset, audited as `pod.config`) and fixes
-  `docket profile --budget` to persist `budgetUsd` as a number.
-
-### Version 6.9.0 (2026-09-25)
-
-- **P26-19: a deterministic dispatch refusal settles the claim; the settled task is
-  recoverable.** New subsection "Deterministic refusal inside a claimed task" (after "Per-hop
-  incremental persistence and crash recovery"): `dispatch_task` now catches a `DispatchError`
-  raised on the claimed-task path (the cross-pod membership check, or its own up-front
-  `pod_pipeline` revalidation) and folds it into a `"failed"` result tagged
-  `failureKind: "dispatch_refused"` instead of letting it propagate out of `dispatch_pod` —
-  fixes a live defect where such a refusal left the task `running` with no process, and the CLI's
-  "anything to do?" gate could never even start a dispatch to let the stale-claim sweep find it,
-  short of queueing an unrelated decoy task. "Claiming" requirement 3 and "blocked and
-  terminal-failure re-entry" requirement 2 now name `RESUMABLE_FAILURE_KINDS`
-  (`stale_claim`, `dispatch_refused`) as the two `failed` tags `--resume` reclaims — a settled
-  refusal needs no `CLAIM_STALE_TIMEOUT` wait, unlike a swept crash, since its claim was never
-  left dangling. "Claiming" gains requirement 6: under `--resume`, the CLI's "is there anything
-  to do" gate also counts a `running` task as work to attempt, deferring the actual staleness
-  judgment to `dispatch_pod`'s own sweep in the same call — this is what removes the decoy-task
-  requirement for a genuinely crashed (not merely refused) task too. `dispatch_refused` added to
-  "Trace events this pipeline emits". Non-goal, pinned by test: an actual crash (any exception
-  other than `DispatchError`) is untouched and still leaves the task `running` for the stale
-  sweep.
-
-### Version 6.8.0 (2026-09-25)
-
-- **P26-18: pod membership is read from recorded metadata, never guessed from the id string.**
-  "Pipeline order and participation" requirement 3 now states that the cross-pod dispatch check
-  (`core.pod.pod_of`) resolves a member's pod from its own `.docket-meta.json` first, falling
-  back to id-string parsing only for a member with no meta/no recorded `pod`. Fixes a live,
-  deterministic defect: a custom role registered with a name ending in a registered role's own
-  name (e.g. `security-reviewer`, ending in `reviewer`) was provisionable via `docket pod <p> add`
-  but not dispatchable — `pod_of` rpartitioned its member id and matched the trailing `reviewer`
-  as the role, answering a wrong, truncated project. A genuinely cross-pod or unregistered member
-  id is still refused.
-
-### Version 6.7.0 (2026-09-21)
-
-- Dispatch resolves and runs the pod's blueprint pipeline (W36-C6): "Pipeline order and participation" requirement 1 now states the resolution order caller spec -> Lead's `blueprint` meta pipeline -> built-in default, and the rework-budget patch applies to any `VerdictGate` rework edge, not only `reviewer`. A research, content or ops pod runs its full roster instead of only its Lead.
-- Requirement 4's `resolve_waiting_approval` caller list now includes `cli/_mcp.py`'s `approvals_grant`/`approvals_deny` (W36-C4).
-- Cancellation requirement 2 narrowed (W36-C7): the verify-command process-group kill fires on the command's own timeout, not on `docket runs cancel` (its pid is never registered); tracked bash-tool processes are the only case cancel actually reaches.
-
-### Version 6.6.1 (2026-09-18)
-
-- Aligned the spec with the shipped code; no behavior change. Task-status requirement 3 now lists
-  all seven statuses (it still said five after `waiting_approval` and `cancelled` shipped);
-  `run_cancelled` joins the failure-kind list; the budget gate's spend source no longer describes a
-  daemon (`DocketDriver` always records `0.0`, so the gate uses the estimate); "Claiming, item 6"
-  corrected to item 5; the Telegram verbs added to `resolve_waiting_approval`'s callers; the deleted
-  `agent_run` replaced by `run_turn`; Cancellation records W30-C1 (an in-flight `bash` command is
-  now killed); Implementer env vars described as tool-subprocess env; W-7 pointed at
-  `pod-blueprints.spec.md` instead of "not shipped". Examples now show `$0.0000` costs, the
-  estimated budget label, the real `--resume` banner, and the exit-1 `Details:` line for a failed
-  run (99c9673).
-
-### Version 6.6.0 (2026-08-31)
-
-- **Wave 26 card W26-C10c.** Folded the typed cooperative run signal through dispatch: the owning
-  task now becomes terminal `cancelled`, successful race losers cannot advance the pipeline, and
-  observation/full-stop lifecycle edges emit one bounded trace event each. Running requests stay
-  publicly nonterminal until the dispatch body has actually stopped.
-
-### Version 6.5.0 (2026-08-30)
-
-- **Wave 25 card W25-C11.** Reviewer, Tester, and custom verdict gates now accept one distinct
-  line-anchored configured marker anywhere in complete output. Repeated identical markers
-  normalize to one; absent or conflicting markers fail closed. The parsed normalized verdict is
-  persisted once in the hop artifact, and crash resume consumes that value without reinterpreting
-  model prose; legacy artifact-free records retain their parsing fallback.
-
-### Version 6.4.0 (2026-08-20)
-
-- **Wave 25 card W25-C1.** The public `docket pod ... delegate` boundary now reconstructs complete
-  free-form task text from quoted or split argv, validates the reconstructed value, and fails
-  malformed priority options without writing to the queue.
-
-### Version 6.3.0 (2026-08-19)
-
-- W24's Git-backed live canary proved the Implementer fixed and mechanically validated its
-  worktree while Tester correctly failed against the untouched origin checkout. Dispatch now
-  carries the latest successful Implementer's registered worktree to downstream verification;
-  DocketDriver validates same-pod ownership, uses it as the sole tool root for that turn, and
-  strips the internal coordinate from tool environments. Role permissions and bounded typed
-  handoff semantics are unchanged.
-
-### Version 6.5.1 (2026-08-31)
-
-- **Wave 26, card W26-C9.** Conversation mutations now share one locked registry
-  read-modify-write boundary. Dispatch hop touches and public registry writers cannot discard a
-  concurrent conversation update; unwired/unknown no-ops leave the file byte-identical, and
-  malformed input or a mutation failure fails closed without replacing it. The registry's wire
-  shape and bounded hop-preview contract are unchanged.
-
-### Version 6.2.0 (2026-08-19)
-
-- Removed the retired runtime bridge from the current dispatch contract. The spec now describes
-  only `DocketDriver`, its stable failure vocabulary, and the actual cancellation boundary;
-  migration detail remains in older changelog entries and git history.
-
-### Version 6.1.0 (2026-08-19)
-
-- **Wave 20, card W20-C4.** Replaced task-wide durable replay with deterministic step-scoped
-  history keys while retaining one task-wide trace. Keys are based on `step_id`, so retries,
-  rework, resume, repeated roles, and parallel children have explicit continuity/isolation rules;
-  typed handoffs remain the only cross-step model context.
-
-### Version 6.0.0 (2026-08-03)
-
-- **ROADMAP Phase 19 P19-7a (the runtime cutover).** `core/dispatch.py`'s two production
-  driver-resolution call sites now resolve `edges.adapters.docket_runtime.default_driver()`
-  (`DocketDriver`) instead of `edges.adapters.openclaw.default_driver()` (`OpenClawDriver`) — a
-  real pod-dispatch hop executes on docket's own gated turn loop, not the daemon. See "Runtime
-  driver resolution (P19-7a)" (new) and "Cancellation" (narrowed, new requirement 6) above.
-  Behavior changes, not just an internal refactor:
-  - A hop's `cost_usd` is now unconditionally `0.0` (`DocketDriver.capabilities().reports_cost_usd`
-    is always `False`); real token counts are still recorded and still drive R-5's estimate
-    fallback for budget gating, which is unaffected.
-  - `docket runs cancel` can no longer interrupt an in-flight hop's model/tool call — no OS
-    process exists to kill under `DocketDriver`. The run registry still transitions honestly to
-    `"cancelled"`; the hop itself keeps running. Named as a gap, not fixed here (out of scope: new
-    capability work on `core/agent_loop.py`, not a driver-resolution flip).
-  - `docket cost --history` (`core/trace.py`'s `trace_ingest`, `core/utils.py`'s `aggregate_cost`/
-    `cost_history`, all repointed at the same resolution point) now always reports an empty
-    per-day breakdown against the production driver — `DocketDriver.usage().by_day` is always
-    `[]` (a session's stored usage is one running total, not timestamped per turn). `docket cost`
-    (non-history) and `docket trace` both still work correctly against real `DocketDriver` data.
-  - `edges.adapters.openclaw.OpenClawDriver` is untouched and still directly constructible/tested
-    — this version does not delete it, only stops routing production hops through it. Deletion is
-    ROADMAP P19-7b.
-  - No new trace event types, no new CLI flags, no change to the task status vocabulary or the
-    claim/retry/finalize state machine itself.
-
-### Version 5.1.0 (2026-07-31)
-
-- **ROADMAP Phase 17, cards C-3 (one durable task state) and C-5 (conversation registry
-  auto-population).** Both write from the same dispatch lifecycle points
-  (`_claim_next_task`/`_persist_hop`/`_touch_claim`/`_finalize_task`), so they shipped together.
-  See "Mechanical HEARTBEAT ledger" and "Conversation registry auto-population" above for the
-  full requirements; summary:
-  - C-3: dispatch now mechanically writes/updates/clears a docket-owned entry in the pod Lead's
-    `HEARTBEAT.md` (`core.memory.sync_dispatch_tasks`/`write_dispatch_tasks`) at claim, every hop
-    persist, every retry-claim refresh, and finalize — the durable ledger the resume/durability
-    contract points the model at is no longer pure prose. `docket doctor` gained a check
-    (`_check_dispatch_ledger`) that flags `TASK_LIST.json` <-> ledger divergence in either
-    direction and re-syncs it under `--fix`.
-  - C-5: `_persist_hop` now calls `core.conversations.touch_for_hop` after every hop, keeping a
-    wired agent's `last_message`/`task_ref` current with the real task dispatch is working — no
-    new registry API; `record()` (already shipped) is the write path.
-  - No new trace event types, no new CLI flags, no change to the task status vocabulary or the
-    claim/retry/finalize state machine itself — this is additive bookkeeping alongside it.
-
-### Version 5.0.0 (2026-07-30)
-
-- **ROADMAP Phase 17, card C-1 (context compiler) — supersedes ROADMAP Phase 14 R-7's stopgap.**
-  See the rewritten "Bounded hop prompts" above for the full requirements; summary of what
-  changed:
-  - New module `core/context.py` (pure, no filesystem I/O beyond the archetype registry read, no
-    subprocess, no import of `core/dispatch.py` — the same "leaf" shape as `core/handoff.py`):
-    `estimate_tokens` (the bytes/`config.CONTEXT_BYTES_PER_TOKEN` approximation), `budget_for_role`
-    (resolves a role against the live archetype registry), `hop_share` (R-7's recency-halving
-    series, now in tokens), and `compile_artifact` (the field-shedding + marked-summary-truncation
-    compiler). See `tests/unit/core/test_context.py` for its own unit coverage.
-  - `core/archetypes.py`'s `RoleArchetype` gains `token_budget` (positive integer, default 6000;
-    `tokenBudget` on the wire) — every built-in and starter-library archetype now declares one.
-    See `role-archetypes.spec.md` v1.3.0.
-  - `core/dispatch.py`'s `_hop_message` is rewritten to compose via `core/context.py` instead of
-    R-7's byte cap: the role's token budget is reduced by the task description's and the role's
-    instruction footer's estimated cost, and what remains funds the recency-weighted carryover
-    loop and any rework note, each fit via `compile_artifact`. `_hop_carryover_budget`/
-    `_truncate_carryover`/`config.HOP_CARRYOVER_BYTES` are no longer called from here — the two
-    truncation mechanisms are never layered — but the first two remain defined, unused, in
-    `core/dispatch.py` (this card's file-ownership carve-out permitted editing only
-    `_hop_message`; their removal is left for a follow-up card, per the project's dead-code
-    register convention).
-  - The `context_composed` trace event's per-section payload gains a `dropped_fields` list (which
-    `HandoffArtifact.DROP_ORDER` fields, if any, were shed for that section) alongside its
-    pre-existing `original_bytes`/`sent_bytes`/`truncated` keys.
-  - `HandoffArtifact.DROP_ORDER`/`dropped()` (ROADMAP Phase 16 W-5) now has its intended real
-    consumer — see "Structured handoff artifacts" requirement 4, reworded to point here instead of
-    describing this as future work.
-  - No CLI surface added; `bash tests/golden/run.sh verify-all` stays byte-identical (none of the
-    18 cases exercise the pod-dispatch runtime pipeline). Message *layout* is unchanged for the
-    common (small-output) case — a hop whose carryover already fits its budget composes
-    byte-identically to before this card; only the behavior once a budget is actually exceeded
-    changes (structured field-shedding instead of a blind byte-halving truncation).
-
-### Version 4.1.0 (2026-07-30)
-
-- **ROADMAP Phase 16 follow-up, card W-5b (Implementer diff producer) — closes the seam W-5
-  declared.** W-5 shipped `HandoffArtifact.files_changed`/`.diff_ref` as real, structurally-typed
-  fields with no producer, documented as an honest seam because the git shell-out surface
-  (`edges/adapters/system.py`) belonged to a different in-flight card that wave. This card closes
-  it:
-  - New `edges/adapters/system.py` function `git_changed_files(cwd)` — returns the working tree's
-    uncommitted changes (`git status --porcelain`, staged/unstaged/untracked, rename lines
-    collapsed to their new path, sorted for determinism) or `[]` on a missing binary, a non-repo
-    directory, a timeout, or a clean tree. Follows the module's existing degrade pattern exactly
-    (`git_available`/`git_is_repo`/`git_current_branch`).
-  - `git_current_branch` (`edges/adapters/system.py`) gains its first production caller as of this
-    version — the 2026-07-30 CL-2 dead-code note kept it as tested scaffolding for exactly this
-    kind of near-term caller; that note is now removed from its docstring.
-  - New `core/dispatch.py` function `_hop_diff_probe(member_id, role)` — the producer call
-    site, invoked once per successful hop right before its `HandoffArtifact` is constructed.
-    Returns `([], None)` immediately for any non-Implementer role; for an Implementer, resolves the
-    member's working tree via the same `core.pod.resolve_member_cwd` preference order the
-    mechanical verify gate already uses (worktree → shared codebase → workspace dir), then calls
-    `git_changed_files`/`git_current_branch` only when that directory is confirmed a real git
-    repository with a `git` binary on `PATH`. Every shell-out still goes through
-    `edges/adapters/system.py`; `core/dispatch.py` itself never calls `git` directly.
-  - Degrades to an empty artifact (`files_changed=[]`, `diff_ref=None`) — never an exception, never
-    a failed hop — for a `workdir`-kind pod (no codebase, no worktree, resolves to a plain
-    non-repo workspace dir), a `codebase` that exists but was never `git init`-ed (the same
-    flat-workspace-fallback case CD-5 already handles for worktree provisioning), and a host with
-    no `git` binary on `PATH` at dispatch time even against an otherwise-real repository. All three
-    paths are test-pinned end to end through `dispatch_task`, not just at the unit level.
-  - `notes` remains free-form and **reserved**: the schema and `DROP_ORDER` already accounted for
-    it, so no migration is needed if it ever gains a producer, but nothing in dispatch writes it as
-    of this version — documented explicitly in `core/handoff.py`'s module docstring rather than
-    left to look populated.
-  - No CLI surface, no schema change to `HandoffArtifact` itself (both fields existed since W-5) —
-    goldens are unaffected.
-
-### Version 4.0.0 (2026-07-30)
-
-- **ROADMAP Phase 16, card W-5 (structured handoff artifacts) — gates Phase 17's C-1.** Hops used
-  to exchange concatenated raw text (`HopResult.output`, threaded straight into the next hop's
-  message by `_hop_message`). This card replaces that with a typed record:
-  - New module `core/handoff.py`: `HandoffArtifact` (Pydantic, `extra="forbid"`, frozen) —
-    `summary` (required), `files_changed`, `diff_ref`, `verdict`, `notes`. `DROP_ORDER` declares a
-    least-valuable-first field-shedding order (`notes`, `diff_ref`, `files_changed`, `verdict` —
-    `summary` is never in it) and `dropped(field)` returns a copy with that field reset to empty —
-    the seam Phase 17's C-1 is expected to use to budget tokens per field. `render()` returns
-    exactly `summary` when every other field is at its default (true for every hop today except a
-    verdict-gated one), so a hop with nothing else to report composes byte-identically to the
-    pre-W-5 raw-text behaviour. `from_legacy_output(output)` degrades a bare string to
-    `summary`-only — the backward-compatibility path.
-  - `HopResult` gains an `artifact: HandoffArtifact | None = None` field, backfilled in
-    `__post_init__` via `from_legacy_output(output)` when unset — every `HopResult` therefore
-    always carries a real artifact, whether built explicitly (`_execute_unit`, verdict pre-parsed
-    and embedded before the hop is persisted) or hand-built by an existing test that only ever
-    passed `output=`. `rendered_artifact()` is the one accessor `_hop_message` uses.
-  - `_hop_message` now composes both the rework-note section and the generic prior-hop carryover
-    loop from `h.rendered_artifact()`, never `h.output` directly — see "Bounded hop prompts" for
-    how R-7's byte-budget cap now applies to that rendered text (unchanged cap mechanics, a
-    different, structurally richer input).
-  - `_hop_record`/`_hop_from_record` persist/restore the artifact (`artifact` key, a
-    `model_dump()`/`model_validate()` round trip) alongside the pre-existing `output` field
-    (never replacing it). A record with no `artifact` key (every task queued before this version)
-    or a malformed one degrades via `from_legacy_output` — verified end to end, including a
-    simulated crash-and-`--resume` round trip through the exact persisted-record shape.
-  - `files_changed`/`diff_ref` are real fields but **not populated by dispatch** as of this
-    version — an honest, documented seam (`core/handoff.py`'s own docstring explains why: doing so
-    needs a real git-diff probe, and the git shell-out surface belongs to a different in-flight
-    card this wave). `verdict` **is** populated: parsed once (reusing the existing
-    `core.orchestrator.parse_verdict` call `_execute_unit`'s `VerdictGate` branch already made,
-    now computed before the hop is constructed so it lands in the same artifact that gets
-    persisted) for any `VerdictGate`-gated hop (Reviewer/Tester, or a W-8 non-built-in verdict
-    gate); `None` for every other hop.
-- **Dead-code register, three items this card's owner (`core/dispatch.py`) closed:**
-  1. The `print(f"[dispatch] verification skipped...")` at the old line 1313 — a layering
-     violation (`core/` never prints). Replaced with a `tool_result` trace event
-     (`{"verification": "skipped", "member": <id>}`, parity with the existing "passed" case) plus
-     a new `HopResult.verification_skipped` flag; `cli/_pod.py`'s dispatch renderer prints the
-     exact same wording the old `print()` produced, in the same position (before the task's own
-     summary line). See "Implementer verification gate" and "Generalized gate execution".
-  2. `dispatch_all_pods` (flagged uncalled) — **deleted, not wired**. Investigated: it has zero
-     production callers for a real reason, not an oversight — R-3 replaced its one former call
-     site (`serve.py`'s sweep loop) with a per-pod loop over `dispatchable_pods()` +
-     `dispatch_pod()` through `core.runs.execute`, specifically for the per-pod run-registry
-     granularity `dispatch_all_pods`'s coarse "one sweep, swallow `DispatchError`" shape did not
-     have (`tests/guards/test_no_suppressed_dispatch.py` pins both halves of this fact). Wiring
-     it back would reintroduce the exact behaviour R-3 deliberately replaced.
-  3. Finished Phase 18 CL-1's blocked sweep: the ~76 `edges.adapters.openclaw.AgentRunResult(...)`
-     call sites across `test_r2/r4/r5/r6/r7`, `test_cd2`, `test_dispatch`, `test_g1_*`, `test_l1_*`
-     now spell `core.runtime_driver.TurnResult` directly (`core/dispatch.py`'s own `Runner` type
-     alias too). With zero references left anywhere in the tree, the `AgentRunResult` alias itself
-     (kept alive by exactly this file's `Runner` alias, per CL-1's own note) was deleted from
-     `edges/adapters/openclaw.py` — not left as a compatibility shim nobody uses.
-- No CLI surface added; `bash tests/golden/run.sh verify-all` stays byte-identical (none of the 18
-  cases exercise the pod-dispatch runtime pipeline). One existing test's trace-event count
-  (`test_dispatch.py::TestPipeline::test_traces_written_per_hop`) updated to account for the new
-  "skipped" `tool_result` event on a lean pod's un-configured Implementer verify gate — a real,
-  intentional, additive observability improvement, not a bug.
-
-### Version 3.0.0 (2026-07-30)
-
-- **ROADMAP Phase 16, card W-2 (executor) / W-8 (generalized gates), shipped together** per
-  ROADMAP's explicit sequencing rule ("W-6/7/8 land with the executor, not after — an executor
-  that hardcodes roles a second time forces a second migration"). This is a generalization, not a
-  behavior change: the built-in lead/implementer/reviewer/tester pipeline's observable behavior
-  (task status, hop sequence, trace event names/payloads, reasons, retries, budget/approval
-  gating, crash resume, rework bounds) is byte-identical to 2.1.0, verified by the full pre-
-  existing test suite passing unchanged.
-  - `dispatch_task`/`dispatch_pod` gain an optional `spec: PipelineSpec | None` parameter — `None`
-    (every pre-W-2 caller) resolves `effective_pipeline(project, None)`, the pod's zero-migration
-    pipeline (`core/pipeline.py`'s `default_pipeline()`, patched only so its Reviewer rework
-    budget reflects this pod's `maxReworkCycles`, since the pipeline format necessarily hardcodes
-    a fixed default and there is no "pod" concept at that layer).
-  - Gate execution reads each step's *resolved* gate (`core.orchestrator.resolve_gate`) instead of
-    branching on a hardcoded role name — see "Generalized gate execution". `_parse_reviewer_
-    verdict`/`_parse_tester_verdict`/`_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE` (dispatch's own
-    private, independent copy of what the pipeline format already declared) are deleted; the
-    single source of truth for those patterns is now `core/pipeline.py`'s `default_pipeline()`,
-    cross-checked against the W-6 archetype registry by test.
-  - `_pipeline_step_requires_approval` — G-1's deliberately inert seam ("W-1/W-2 fills this"),
-    previously a permanently-`False` stub — is now real: a step whose resolved gate is
-    `ApprovalGate` genuinely gates pre-hop, composing with the pod-level source.
-  - A `parallel` step's children now actually execute — see "Parallel step groups": a bounded
-    thread pool, join semantics, per-child persistence as each completes (not deferred to the
-    group's join, preserving R-1's crash-safety guarantee for a concurrent fan-out), and a
-    documented limitation that a mid-group crash resumes by re-running the whole group.
-  - `docket task cancel <ref>` — see "Cancellation": kills every pid recorded in-flight for a run
-    (its whole process group, not just the immediate child — every hop subprocess now starts its
-    own session), and marks the run a new terminal state, `"cancelled"`.
-  - `_replay_pipeline_position` (crash resume) generalizes from a role-keyed set to a step-id-
-    keyed replay driven by each position's own resolved gate, with per-gate rework-cycle counters
-    (a pipeline may declare more than one independent rework-capable gate) instead of one pod-wide
-    counter. Persisted hop records gain a `stepId` field (defaulting to `role` for a legacy
-    record — no behavior change for the built-in pipeline, whose step ids equal their role names).
-  - `pod_full_roster` resolves every role a pod's members actually carry (not just the four legacy
-    ones `pod_pipeline` considers), so a custom pipeline can target a non-legacy (e.g.
-    starter-library) role.
-  - New trace event types: `verdict_rework_started`/`verdict_rejected`/`verdict_unparseable` (any
-    non-built-in verdict-gated role/archetype); the two built-in verdict roles keep their exact
-    legacy event names.
-  - `docket pipeline validate|plan|run` (see `cli-interface.spec.md`) is the new CLI surface that
-    drives a custom `PipelineSpec` through this machine; `plan` renders directly from
-    `core.orchestrator.resolve_plan`/`render_plan` — the same function the real executor calls,
-    never a second, drift-prone pretty-printer.
-
-### Version 2.1.1 (2026-07-30)
-
-- **Phase 18 CL-1 (legacy/dead-code cleanup) — documentation only, no behavior change.**
-  `edges/adapters/openclaw.py`'s own code (the `agent_run` free function and its docstring) now
-  spells the canonical name `core.runtime_driver.TurnResult` directly instead of the Phase 18
-  L-1 alias `AgentRunResult`. The `AgentRunResult` name itself is **not** deleted — it still
-  has one real consumer, `core/dispatch.py`'s `Runner = Callable[..., _oc.AgentRunResult]` type
-  alias, and that file is owned by a different in-flight card (Phase 16 W-2) and out of CL-1's
-  file scope. This section's wording is updated to match; the alias, its fields, and its
-  positional-construction compatibility are otherwise unchanged from 2.0.1.
-
-### Version 2.1.0 (2026-07-30)
-
-- **ROADMAP Phase 15 G-1 — approval-gated dispatch.** `core/approval.py`'s pending-approval
-  store previously had zero production callers (`approval_create` was called only by tests); this
-  card gives it its first one. Added:
-  - A sixth task status, `waiting_approval`, and the require_approval gate that produces it
-    (`_hop_requires_approval`, evaluated pre-hop, after the budget gate and before the hop's
-    message is composed or its agent turn runs).
-  - One wired gate source for this version: the pod Lead's `requireApprovalRoles` meta field
-    (`_pod_requires_approval`). Two more sources are documented, explicit, inert seams —
-    `_policy_requires_approval` (ROADMAP Phase 15 G-2) and `_pipeline_step_requires_approval`
-    (ROADMAP Phase 16 W-1/W-2) — both always return `False` today; neither is claimed as wired.
-  - `resolve_waiting_approval`: reacts to a grant/deny already applied by `core/approval.py` (via
-    `docket task approve`/`docket task deny`, `serve.py`'s `POST /approvals/<token>`, or the expiry sweep)
-    by moving the gated task `waiting_approval` -> `pending` (grant, with a single-use
-    `gateOverridePipelineIndex` handoff to the next claim) or `waiting_approval` -> `failed`
-    (deny, immediately, `failureKind: "approval_denied"`, never reclaimed).
-  - Three new trace events: `approval_required`, `approval_resumed`, `approval_task_denied`.
-  - `core/approval.py`'s `approval_sweep_expired` now resolves a stale pending record to
-    **denied** (fail-closed), not the prior, read-by-nobody `"expired"` state, and reaches into
-    dispatch (a guarded, best-effort local import) to fail any task waiting on that exact token —
-    see `security-gates.spec.md` v0.5.0 for the approval-store side of this change.
-  - `docket pod <project> dispatch`'s human-readable output now renders `waiting_approval` with
-    the same warn-not-error treatment as `blocked` (an expected pause, not a failure).
-  - Not shipped: a policy-driven gate source and a pipeline-defined `approval` step (see the
-    seams above); task cancellation of an in-flight hop remains out of scope per Phase 16 W-2
-    (unchanged from 2.0.0).
-
-### Version 2.0.1 (2026-07-30)
-
-- ROADMAP Phase 18 L-1 (D-14): each hop's agent turn now runs through the typed `RuntimeDriver`
-  port (`core/runtime_driver.py`) — `dispatch_task`'s default runner is
-  `edges.adapters.openclaw.default_driver().run_turn`, swapped in at the exact call site that
-  used to read `_oc.agent_run` (a one-line change; `core/dispatch.py` is otherwise untouched).
-  `OpenClawDriver.run_turn` delegates straight through to the pre-existing `agent_run` free
-  function, so the daemon subprocess call, its argv, and its retry/timeout/failure-kind semantics
-  are byte-for-byte unchanged — this is a containment refactor (closing an ACL leak the
-  session-JSONL cost/trace parsing had opened), not a behavior change to the pipeline.
-  `AgentRunResult` is now an alias of `core.runtime_driver.TurnResult`; every existing
-  positional-construction call site (tests included) keeps working unchanged. Test coverage
-  gained a shared `FakeDriver` test double (`tests/fakes.py`) implementing the full
-  `RuntimeDriver` protocol, adopted by `test_dispatch.py` in place of its former ad-hoc
-  `_RecordingRunner` shim.
-- Cross-reference only (ROADMAP Phase 16 W-6): named the new declarative role-archetype registry
-  (role-archetypes.spec.md) in "Does NOT cover" and clarified that its `gateContract` field is
-  descriptive data only today — this pipeline's own Reviewer/Tester/Implementer gate logic is
-  unchanged and still independently hardcoded (wiring the two together is Phase 16 W-8). No
-  behavior in this pipeline changed.
-
-### Version 2.0.0 (2026-07-30)
-
-- **ROADMAP Phase 14, R-1…R-7 — the dispatch-hardening program.** This is a rewrite, not an
-  incremental update; nearly every requirement above is new or materially changed from 1.0.0:
-  - **R-1**: persisted `running` state; locked claiming (`edges/store.py`'s new
-    `with_lock`/`read_modify_write`) closing the concurrent-dispatch race; per-hop incremental
-    persistence; the stale-claim crash sweep and `--resume`-driven continuation from the last
-    hop; `blocked` no longer silently rewritten to `pending` (moves only via `retry_task`/
-    `unblock_pod`); `task-<uuid4>` ids.
-  - **R-2**: the `AgentRunResult.failure_kind` taxonomy and retryable-kind policy; per-role retry
-    budget + linear backoff; `attempts` persisted per hop; the `hop_retry` trace event; claim
-    refresh on every retry/completed hop; independent `turnTimeoutS`/`verifyTimeoutS` with a
-    `--timeout` CLI override and a serve-wide config knob.
-  - **R-3**: out of this spec's direct scope (it built the *run registry* around invocations of
-    this pipeline, not the pipeline itself — see `serve-read-api.spec.md`) but referenced above
-    since a caller now observes a dispatch run through both this spec's task record and that
-    registry.
-  - **R-4**: the Reviewer verdict gate and its bounded rework loop (`maxReworkCycles`), the
-    pipeline-position replay needed to resume correctly mid-rework, and the three new Reviewer
-    trace events.
-  - **R-5**: real budget auto-pause (`_pause_lead_for_budget`) and claim-time refusal for a
-    paused pod (`paused_refused`), plus the labelled estimate fallback for budget gating when the
-    daemon has recorded no cost.
-  - **R-6**: `verifyCmd` now runs in the Implementer's actual worktree (falling back to
-    `codebase`, then the workspace dir) via the shared `resolve_member_cwd` helper, instead of
-    always the shared codebase root.
-  - **R-7**: the bounded, recency-weighted hop-carryover cap and the `context_composed` trace
-    event.
-  - Rewrote "Task status vocabulary" to add `pending`/`running` and the crash/resume-relevant
-    distinction within `failed`; rewrote the trace-event list (9 new event types); replaced every
-    example with one reflecting the current CLI output and state machine.
-
-### Version 1.0.0 (2026-07-02)
-
-- FD-6: initial specification. No prior spec owned the dispatch pipeline's state machine
-  directly (confirmed absent per Phase 12's CH-10 audit); this document closed that gap for the
-  behavior Phase 13 made real: FD-0's environment injection for Implementer hops, and FD-2's
-  structural Tester PASS/FAIL gate (`tester_verdict_failed`). The pre-existing budget gate,
-  general hop-failure semantics, and CD-2's `verifyCmd` gate (previously undocumented as a state
-  machine, only as data fields in `docket-meta.spec.md`) were documented here for the first time
-  as the current, shipped behavior.
+- Cancelling a run (`docket task cancel`) **MUST** kill a hop's entire registered process group,
+  never leave an orphaned child process running after the cancellation lifecycle reaches full stop.
+- The HEARTBEAT dispatch ledger sync **MUST NOT** alter any byte outside its own delimited region --
+  an agent's own prose anywhere else in `HEARTBEAT.md` survives every dispatch-driven rewrite.
+- The ledger **MUST** always equal the pod's current `running` task ids -- never a superset (a stale
+  entry for a finished task) or a subset (a running task missing its entry) once a sync has run
+  against current state.
+
+## Implementation
+
+The dispatch state machine, by module (public names first, then private ones for orientation):
+
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`,
+  `validate_task_options`, `RESUMABLE_FAILURE_KINDS`, `pod_full_roster`, `dispatchable_pods`,
+  `pod_roster`; the claim (`claim_next_task`, `refuse_claimed_task`,
+  `prepare_claimed_task`), `touch_claim`
+- `src/docket/tasks/application/repository.py`: `TaskRepository`, the one door to a pod's queue
+  (`get`, `list`, `add`, `update`, `update_each`, `claim_next`); `claimable`; `Claim`
+- `src/docket/tasks/application/json_store.py`: `JsonTaskStore`, the queue file as `TaskRecord`s
+- `src/docket/hops/application/sweep.py`: `dispatch_pod`
+- `src/docket/tasks/application/lifecycle.py`: `reclaim_stale_running`, `retry_task`, `cancel_task`,
+  `cancel_parked_task`, `task_diff`, `unblock_pod`; `finalize_task`, `_apply_result`,
+  `sweep_stale_claims`
+- `src/docket/tasks/application/escalations.py`: the escalation opener (`operator-loop.spec.md`
+  "Escalations"), called from the five park sites
+- `src/docket/tasks/application/actions.py`: `TASK_GRANT_CAP`, `resolve_waiting_approval`,
+  `resolve_waiting_approval_detail`
+- `src/docket/tasks/domain/task.py`: `DispatchError`, `TaskRestrictionError`, `TaskRunRefusal`,
+  `TaskNotFoundError`, `HopResult`, `TaskResult`, `TaskRecord`
+- `src/docket/teams/settings.py`: `pod_task_list_path`, `DEFAULT_TIMEOUT`, `pod_budget`,
+  `pod_max_rework_cycles`, `pod_turn_timeout`, `pod_verify_timeout`, `pod_approval_mode`,
+  `pod_approval_mode_is_set`, `pod_recorded_cost`
+- `src/docket/hops/application/steps.py`: `PIPELINE_ORDER`, `TASK_PIPELINE_NAME`,
+  `pod_pipeline`, `effective_pipeline`, `effective_pipeline_source`, `unpriced_budget_models`;
+  the step loop's `_run_command_step`, `_run_input_step`
+- `src/docket/hops/application/executor.py`: `dispatch_task`; the step loop's `_run_pipeline`,
+  `_run_group_node`, `_step_skipped`, `_route_outcome`
+- `src/docket/hops/application/runner.py`: `step_session_key`; the hop's `_run_hop_turn`,
+  and the step loop's `execute_unit`
+- `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
+  `_gate_failed_section`
+- `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,
+  `verdict_event_names`, resume (`replay_pipeline_position`,
+  `_group_complete`)
+- `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`; gates (`_gate_budget`,
+  `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`, `_check_brief_resources`,
+  `_park_if_check_changed`)
+- `src/docket/hops/gates/post_hop.py`: gates (`_evaluate_mechanical_gate`,
+  `_evaluate_external_gate`, `_evaluate_verdict_gate`); the hop's `_task_command_env`,
+  `_run_in_envelope`
+- `src/docket/teams/workspace/worktree.py`: the claim's `ensure_task_worktree`, which returns the worktree record or a refusal and
+  never touches the queue; `trusted_worktree_dir`; the hop's
+  `hop_diff_probe` (it takes the task's id, description, worktree directory and base commit, not
+  the record), `_pin_hop_tree`
+- `src/docket/pipeline/domain/plan.py`: `resolve_plan`, `resolve_gate`, `parse_verdict`,
+  `normalize_values`, `render_plan`, `run_group`, `ExecutionPlan`, `PlannedUnit`, `PlannedGroup`,
+  `DEFAULT_MAX_PARALLEL_WORKERS`, `trace_write_lock`
+- `src/docket/pipeline/domain/spec.py`: `PipelineSpec`, `default_pipeline`, `load_pipeline`,
+  `MechanicalGate`, `VerdictGate`, `ApprovalGate`, `ExternalGate`, `resolve_variables`,
+  `unresolved_step_variables`
+- `src/docket/tasks/domain/options.py`: `validate_task_options`, `TaskOptions`, `TASK_STATUSES`
+- `src/docket/tasks/domain/refs.py`: `resolve_task`, `TaskRef`, `TaskRefError`, `SHORT_ID_LEN`
+- `src/docket/teams/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`,
+  `value_and_source`), `PodSettingsError`, `pod_of`, `members_of`, `member_id`, `session_key`,
+  `resolve_member_cwd`, `bound_pipeline_path`, `effective_network`, `effective_read_only`
+- `src/docket/tasks/application/answers.py`: `answers_of`, `consult_note`;
+  `src/docket/hops/application/resolutions.py`: `apply_resolutions`
+- `src/docket/hops/application/interruptions.py`: `record_pregrant`, `forecast`, `InterruptionsError`
+- `src/docket/kernel/handoff.py`: `HandoffArtifact` (`DROP_ORDER`, `render`, `dropped`,
+  `from_output`), `parse_brief`, `render_brief`, `cap_diff`
+- `src/docket/agent/context.py`: `compile_artifact`, `budget_for_role`, `hop_share`,
+  `estimate_tokens`, `SUMMARY_TRUNCATION_MARKER`
+- `src/docket/teams/workspace/repo_map.py`: `render_repo_map`, `task_root_block`
+- `src/docket/teams/roles.py`: `load_registry`, `resolve_hop_instruction`, `registry_for_role`,
+  `BUILTIN_TOOL_KINDS`
+- `src/docket/teams/blueprints.py`: `get_blueprint`
+- `src/docket/tasks/application/evidence.py`: `task_evidence`, `EVIDENCE_V1_1`, `HopEvidence`,
+  `TaskEvidence`, `EvidenceNotFound`
+- `src/docket/teams/workspace/prepare.py`: preparation resolution, cache and record (`resolve`,
+  `needs_prepare`, `prepare_worktree`, `linked_entries`)
+- `src/docket/kernel/protected_paths.py`: `changed_protected`, `check_pattern`, `MAX_LISTED_PATHS`
+- `src/docket/teams/agent_memory.py`: `sync_dispatch_tasks`, `read_dispatch_task_ids`,
+  `DISPATCH_BLOCK_BEGIN`/`DISPATCH_BLOCK_END`
+- `src/docket/teams/conversations.py`: `touch_for_hop_durable`, `prune_closed_durable`
+- `src/docket/tasks/application/runs.py`: `execute`, `create_run`, `cancel_run`, `current_run_id`,
+  `add_hop_pid`, `remove_hop_pid`, `prune_terminal`
+- `src/docket/governance/approval.py`: `approval_create`, `approval_grant`, `approval_deny`,
+  `expire_approval`, `prune_unconsumed_pregrants`, `create_pregrant`, `prune_resolved`
+- `src/docket/pipeline/application/schedule.py`: `set_schedule`, `unset_schedule`, `find_schedule_problems`,
+  `describe_spec_error`, `load_schedules`, `load_last_run`, `is_schedule_due`
+- `src/docket/agent/loop.py`: `run_agent_turn` (`trace_task_id`),
+  `approval_unavailable_error`, `approval_parked_error`, the cooperative cancellation checks
+- `src/docket/agent/ports.py`: `RuntimeDriver`, `TurnResult`
+- `src/docket/kernel/operator_contract.py`: `Question`, `TaskBrief`, `validate_answer`,
+  `canonical_args_digest`, `a2a_state`
+- `src/docket/governance/security.py`: `classify_command`
+- `src/docket/teams/pod_provisioning.py`: `provision_task_worktree`, `prune_task_worktrees`,
+  `teardown_member`
+- `src/docket/hops/application/driver.py`: `DocketDriver`, `default_driver`,
+  `resolve_command_jail`, `PIPELINE_WORKTREE_ENV` and the other internal coordinates
+- `src/docket/sandbox/launch.py`: `run_command`, `task_environment`, `cache_environment`
+- `src/docket/platform/process.py`: `process_alive`, `kill_process_group`
+- `src/docket/platform/git.py`: `trust_worktree`,
+  `git_worktree_add`, `git_commit_all`, `git_snapshot_commit`, `git_changed_files`,
+  `git_current_branch`, `git_merge_base`, `git_diff_stat`, `git_diff_names`, `git_ls_files`
+- `src/docket/platform/store.py`: `read_modify_write`
+- `src/docket/tasks/domain/state.py`: `Status`, `FailureKind`, `decide`; `src/docket/tasks/application/transitions.py`: `apply_to_task`
+- `src/docket/kernel/home.py`: the `Home` members `claim_stale_timeout`, `dispatch_retries_default`,
+  `dispatch_retries_per_role`, `dispatch_retry_backoff_s`, `dispatch_retry_max_wait_s`,
+  `dispatch_turn_timeout_s`, `dispatch_verify_timeout_s`, `dispatch_sweep_workers`,
+  `handoff_diff_max_chars`, `repo_map_max_chars`, `context_bytes_per_token`,
+  `verify_evidence_tail_chars`, `prepare_timeout_s`, `trace_retention_s`, `pod_cache_dir`
+- `src/docket/interfaces/http/server.py`: the periodic sweep (`_run_sweeps`, `_sweep_one_pod`,
+  `_abandon_sweeps`)
+- `src/docket/interfaces/http/sweeps.py`: `check_schedules`, `SWEEP_ABANDON_WAIT_S`
+- `src/docket/interfaces/http/routes/dispatch.py`: `POST /dispatch/<project>`
+- `src/docket/interfaces/http/routes/escalations.py`: `POST /escalations/<id>`
+- `src/docket/interfaces/http/routes/tasks.py`: `GET /tasks/<pod>/<id>/evidence`
+- `src/docket/interfaces/cli/commands/run.py`: `docket run`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task add|retry|cancel|answer|pregrant|prune|show`
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset` (pipeline and schedule paths, budget re-queue)
+- `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod plan|validate`
+- `src/docket/interfaces/cli/render/progress.py`: the `docket run` progress view's in-place approval prompt
+- `src/docket/interfaces/cli/commands/setup_check.py`: the ledger and schedule checks of `docket setup`
+- `src/docket/interfaces/cli/commands/mcp.py`: the MCP `dispatch`, `delegate`, `queue` and `approvals_*` tools
+- `scripts/gen_evidence_schema.py`: the evidence schema generator (`--check` in CI)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""gen_operator_schemas.py -- render docs/contracts/operator-v1/{task,question,answer,approval,
-inbox,brief,event}.schema.json from the Pydantic models in ``core.operator_contract``;
+"""gen_operator_schemas.py -- render docs/contracts/operator-v2/{task,question,answer,
+inbox,brief,event}.schema.json from the Pydantic models in ``operator.contract``;
 also docs/contracts/operator-v1.1/{question,answer}.schema.json.
 
 ``question.schema.json``'s ``requestedSchema`` property is rendered from
@@ -21,7 +21,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
-DOCS_SCHEMA_DIR = ROOT / "docs" / "contracts" / "operator-v1"
+DOCS_SCHEMA_DIR = ROOT / "docs" / "contracts" / "operator-v2"
 DOCS_SCHEMA_DIR_V11 = ROOT / "docs" / "contracts" / "operator-v1.1"
 
 sys.path.insert(0, str(SRC))
@@ -30,7 +30,6 @@ _NAME_FOR_MODEL: dict[str, str] = {
     "task": "TaskView",
     "question": "Question",
     "answer": "AnswerResult",
-    "approval": "ApprovalView",
     "inbox": "InboxView",
     "brief": "TaskBrief",
     "event": "CloudEvent",
@@ -41,13 +40,14 @@ KINDS: tuple[str, ...] = tuple(_NAME_FOR_MODEL)
 _NAME_FOR_MODEL_V11: dict[str, str] = {"question": "QuestionV11", "answer": "AnswerResultV11"}
 
 
-def render(kind: str, version: str = "1") -> str:
+def render(kind: str, version: str = "2") -> str:
     """Return the generated ``<kind>.schema.json`` content, trailing newline included.
-    *version* is ``"1"`` or ``"1.1"``."""
-    from docket.core import operator_contract
+    *version* is ``"2"`` or ``"1.1"``."""
+    from docket.kernel import operator_contract as operator_contract
+    from docket.kernel.brief import TaskBrief
 
     names = _NAME_FOR_MODEL_V11 if version == "1.1" else _NAME_FOR_MODEL
-    model = getattr(operator_contract, names[kind])
+    model = TaskBrief if kind == "brief" else getattr(operator_contract, names[kind])
     schema: dict[str, Any] = model.model_json_schema()
     if kind == "question":
         schema["properties"]["requestedSchema"] = (
@@ -62,7 +62,7 @@ def render(kind: str, version: str = "1") -> str:
     return json.dumps(document, indent=2, sort_keys=False) + "\n"
 
 
-def _target(kind: str, version: str = "1") -> Path:
+def _target(kind: str, version: str = "2") -> Path:
     base = DOCS_SCHEMA_DIR_V11 if version == "1.1" else DOCS_SCHEMA_DIR
     return base / f"{kind}.schema.json"
 
@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     check_only = "--check" in argv
 
     stale: list[Path] = []
-    jobs = [(k, "1") for k in KINDS] + [(k, "1.1") for k in _NAME_FOR_MODEL_V11]
+    jobs = [(k, "2") for k in KINDS] + [(k, "1.1") for k in _NAME_FOR_MODEL_V11]
     for kind, version in jobs:
         rendered = render(kind, version)
         target = _target(kind, version)

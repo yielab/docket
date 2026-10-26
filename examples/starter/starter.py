@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import threading
@@ -24,7 +23,7 @@ TARGET_NAME = "starter-output.txt"
 INITIAL_BYTES = b"starter pending\n"
 APPROVED_TEXT = "docket starter approved\n"
 TERMINAL_SUMMARY = "Starter journey completed."
-HANDOFF_FIELDS = {"summary", "files_changed", "diff_ref", "diff", "verdict", "notes", "brief"}
+HANDOFF_FIELDS = {"summary", "files_changed", "diff_ref", "diff", "verdict", "brief"}
 
 
 class StarterFailure(RuntimeError):
@@ -262,29 +261,31 @@ def _write_inputs(base: Path, workspace: Path) -> tuple[Path, Path]:
     )
     pipeline = base / "starter.pipeline.yaml"
     pipeline.write_text(
-        """name: docket-starter
+        """kind: pipeline
+name: docket-starter
 description: One approval-gated Implementer mutation.
 steps:
-  - id: implement
-    role: implementer
-    gate:
-      type: approval
-      message: Approve the starter file mutation.
+  - implement: implementer
+    approval: Approve the starter file mutation.
 """,
         encoding="utf-8",
     )
     return pod, pipeline
 
 
-def _pending_token(docket: Path, *, cwd: Path, env: dict[str, str]) -> str:
-    """The id of the one task parked for approval; `task approve|deny` resolve its token."""
-    result = _command([str(docket), "inbox", "--peek"], cwd=cwd, env=env, label="approval listing")
-    tasks = sorted(
-        set(re.findall(r"\btask (task-[0-9a-f-]+)\s+pod=\S+\s+needs approval\b", result.stdout))
+def _pending_escalation(docket: Path, *, cwd: Path, env: dict[str, str]) -> str:
+    """The id of the one escalation a task is parked on; `task answer` settles it."""
+    result = _command(
+        [str(docket), "inbox", "--peek", "--json"], cwd=cwd, env=env, label="approval listing"
     )
-    if len(tasks) != 1:
-        raise StarterFailure(f"expected one pending approval, found {len(tasks)}")
-    return str(tasks[0])
+    pending = [
+        entry["id"]
+        for entry in json.loads(result.stdout).get("escalations", [])
+        if entry.get("kind") in {"approval", "gate"}
+    ]
+    if len(pending) != 1:
+        raise StarterFailure(f"expected one pending approval, found {len(pending)}")
+    return str(pending[0])
 
 
 def _decision(expected: str) -> None:
@@ -455,11 +456,11 @@ def _run(workspace: Path) -> None:
 
         _delegate(docket, cwd=base, env=env)
         _dispatch(docket, pipeline, cwd=base, env=env)
-        first_token = _pending_token(docket, cwd=base, env=env)
-        print(f"STARTER DENIAL PAUSED {first_token}", flush=True)
+        first_escalation = _pending_escalation(docket, cwd=base, env=env)
+        print(f"STARTER DENIAL PAUSED {first_escalation}", flush=True)
         _decision("deny")
         _command(
-            [str(docket), "task", "deny", first_token],
+            [str(docket), "task", "answer", first_escalation, "--option", "deny", "--pod", PROJECT],
             cwd=base,
             env=env,
             label="public approval denial",
@@ -469,11 +470,20 @@ def _run(workspace: Path) -> None:
 
         _delegate(docket, cwd=base, env=env)
         _dispatch(docket, pipeline, cwd=base, env=env)
-        second_token = _pending_token(docket, cwd=base, env=env)
-        print(f"STARTER GRANT PAUSED {second_token}", flush=True)
+        second_escalation = _pending_escalation(docket, cwd=base, env=env)
+        print(f"STARTER GRANT PAUSED {second_escalation}", flush=True)
         _decision("grant")
         _command(
-            [str(docket), "task", "approve", second_token],
+            [
+                str(docket),
+                "task",
+                "answer",
+                second_escalation,
+                "--option",
+                "approve_once",
+                "--pod",
+                PROJECT,
+            ],
             cwd=base,
             env=env,
             label="public approval grant",

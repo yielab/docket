@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the public Wave 29 adoption baseline from an exact Git commit."""
+"""Regenerate the public adoption baseline from an exact Git commit."""
 
 from __future__ import annotations
 
@@ -140,6 +140,15 @@ def _resolve_commit(source_commit: str, env: dict[str, str]) -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise RegenerationError("source commit did not resolve to a full SHA-1")
     return commit
+
+
+def _require_clean_tree(env: dict[str, str]) -> None:
+    status = _run(["git", "status", "--porcelain"], cwd=ROOT, env=env, timeout=60).stdout
+    if status.strip():
+        raise RegenerationError(
+            "the working tree has uncommitted changes; the build constraints and the wheel "
+            "canonicalizer are read from it, so commit or discard them first"
+        )
 
 
 def _archive_source(commit: str, destination: Path, env: dict[str, str]) -> Path:
@@ -683,6 +692,7 @@ def regenerate(source_commit: str, output: Path, repetitions: int) -> None:
     with tempfile.TemporaryDirectory(prefix="docket-wave29-") as raw_temp:
         work = Path(raw_temp)
         env = _isolated_env(work / "environment")
+        _require_clean_tree(env)
         commit = _resolve_commit(source_commit, env)
         source = _archive_source(commit, work, env)
         version = (source / "VERSION").read_text(encoding="utf-8").strip()

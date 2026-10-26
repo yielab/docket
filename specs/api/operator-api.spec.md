@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 6.1.0
-**Status**: Implemented (Phase 43, ADR 0027; Phase 45, ADR 0029). `SERVE_API_VERSION` is `"6"`.
-**Last Updated**: 2026-10-19
+**Version**: 7.0.0
+**Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
@@ -10,11 +10,11 @@ This specification defines the routes an external plan of record (a project mana
 an operator's script) uses to run work on a long-lived pod through `docket start --dispatch`:
 enqueue an addressable task, follow its hops, cancel, retry and diff it, read and apply a pod's
 configuration, and read the corrections ledger. It is the one door for a program; the CLI is
-the door for a person, and both call the same `core/` functions (the Phase 22 rule: expose what
-`core/` already does, add no new behaviour).
+the door for a person, and both run the same domain functions: a route exposes what the CLI
+already does and adds no behaviour of its own.
 
 Version 6 is negotiated, not pinned: a consumer reads `apiVersion` from `GET /status.json`
-(`serve-read-api.spec.md`) and names the version it needs. There is no interim version.
+(`serve-read-api.spec.md`) and names the version it needs.
 
 ## Scope
 
@@ -24,46 +24,58 @@ This specification covers:
 - `GET /tasks/<pod>` filtering, `GET /tasks/<pod>/<id>`, `POST .../cancel`, `POST .../retry`,
   `GET .../diff`
 - The `hop_started` / `hop_finished` trace events a consumer reads from `GET /traces/<pod>`
+- `GET /escalations`, the pauses a task waits on, one record each (`operator-loop.spec.md` area 11)
 - `GET /pods`, `GET /pods/<p>`, `POST /pods` with `ensure`, `POST /pods/<p>/apply`,
   `GET /pods/<p>/corrections`
-- `/health` under dispatch, `--bind`, the stop and resume rules of the daemon
+- The `dispatch` block of `GET /health` under `--dispatch`
+- Re-attaching a client after a restart, and the `check_changed` approval a consumer sees
 - Status codes and error bodies
 
 It does NOT cover:
 
-- The unchanged read routes (`/status.json`, `/metrics`, `/approvals`, `/runs`, `/inbox`,
+- The other read routes (`/status.json`, `/metrics`, `/runs`, `/inbox`,
   `GET /traces/<pod>`'s cursor, `GET .../evidence`) -- `serve-read-api.spec.md`
-- `POST /approvals/<token>`, `POST /tasks/<id>/answer`, `POST /tasks/<id>/pregrants`,
-  `POST /dispatch/<pod>` -- unchanged, `serve-read-api.spec.md` and `operator-loop.spec.md`
+- `POST /tasks/<id>/pregrants` and `POST /dispatch/<pod>` -- `serve-read-api.spec.md` and
+  `operator-loop.spec.md`
 - The task record's persisted shape -- `pod-dispatch.spec.md`; the trace record --
   `trace-store.spec.md`; the `.docket/teams/<pod>/` layout -- `pod-blueprints.spec.md`
-- Multi-tenancy, external authentication, push, streaming, quotas (ADR 0027 "What this does
+- The `/health` body itself -- `serve-read-api.spec.md`
+- `--bind`, the Bearer token and the stop signals of `docket start` --
+  `serve-read-api.spec.md` and `pod-dispatch.spec.md`
+- The A2A JSON-RPC binding (`POST /a2a`, `GET /.well-known/agent.json`) -- `a2a-binding.spec.md`;
+  it is a second door over the same task and escalation records and `resolve`, and adds no route
+  to this table
+- Multi-tenancy, external authentication, streaming, quotas (ADR 0027 "What this does
   not buy")
 
 ## Syntax
 
 Every route below requires `Authorization: Bearer <token>` (the token `docket start` prints or
-writes with `--token-file`); `401` comes before any other check. `<pod>` is a project id and is
-validated as today (`_reject_bad_project_id`). Bodies are JSON objects; a malformed body is `400`.
+writes with `--token-file`); `401` comes before any other check. `<pod>` is a project id, validated
+as a project id (a bad one is `400`). Bodies are JSON objects; a malformed body is `400`, a body
+over 1 MiB is `413`.
 
-| Route | Owner in `core/` | Card | Status |
-|---|---|---|---|
-| `POST /tasks/<pod>` | `dispatch.enqueue_task` | P43-1 | Implemented (Wave 109) |
-| `GET /tasks/<pod>?externalRef=&status=` | `dispatch.read_tasks` | P43-1 | Implemented (Wave 109) |
-| `GET /tasks/<pod>/<id>` | `dispatch.read_tasks` | P43-1 | Implemented (Wave 109) |
-| `POST /tasks/<pod>/<id>/cancel` | `dispatch.cancel_task` (moved from `cli/_task.py`) | P43-10 | Implemented (Wave 111) |
-| `POST /tasks/<pod>/<id>/retry` | `dispatch.retry_task` | P43-10 | Implemented (Wave 111) |
-| `GET /tasks/<pod>/<id>/diff` | `dispatch.task_diff` over `edges/adapters/system.py` | P43-10 | Implemented (Wave 111) |
-| `GET /pods` | `dispatch.dispatchable_pods` | P43-6 | Implemented (Wave 110) |
-| `GET /pods/<p>` | `pod_report.pod_report` (moved from `cli/_pod_show.py`) + `profile` | P43-6 | Implemented (Wave 110) |
-| `POST /pods` (`ensure`) | `pod_provisioning.provision_pod` | P43-6 | Implemented (Wave 110) |
-| `POST /pods/<p>/apply` | `pod_apply.apply_directory` (plan, `review_decision`, apply) | P43-8 | Implemented (Wave 110) |
-| `GET /pods/<p>/corrections?since=` | `corrections.read` | P43-9 | Implemented (Wave 110) |
-| `GET /health` (dispatch block) | `serve.render_health` | P43-11 | Implemented (Wave 111) |
+| Route | Does |
+|---|---|
+| `POST /tasks/<pod>` | enqueue a task, optionally idempotent and addressable |
+| `GET /tasks/<pod>?externalRef=&status=` | list the pod's tasks, filtered |
+| `GET /tasks/<pod>/<id>` | one task record |
+| `POST /tasks/<pod>/<id>/cancel` | stop a running or parked task |
+| `POST /tasks/<pod>/<id>/retry` | put a `blocked` or `failed` task back on the queue |
+| `GET /tasks/<pod>/<id>/diff` | what the task's branch changed |
+| `GET /escalations?since=<seq>&pod=&task=` | the escalation records after a cursor, each joined with its pause |
+| `POST /escalations/<id>` | resolve one escalation: choose an option, give content |
+| `GET /pods` | every dispatchable pod with its queue counts |
+| `GET /pods/<p>` | one pod's report |
+| `POST /pods` (`ensure`) | provision a pod, or find it |
+| `POST /pods/<p>/apply` | apply a directory of configuration to a pod |
+| `GET /pods/<p>/corrections?since=` | the corrections ledger, from a cursor |
+| `GET /health` (dispatch block) | whether the sweep is on and what is in flight |
 
-The CLI keeps symmetry: `docket task add` gains `--external-ref`, `--idempotency-key`,
-`--base-ref`, `--pipeline`, `--gate`, `--max-tokens` (P43-1); `docket task cancel|retry|diff`
-call the same core functions (P43-10); `docket start` gains `--bind` (P43-11).
+The CLI keeps symmetry: `docket task add` takes `--external-ref`, `--idempotency-key`,
+`--base-ref`, `--pipeline`, `--gate`, `--max-tokens` and `--autonomy`; `docket task cancel|retry|diff` run the
+same functions as their routes; `docket start` takes `--bind`. `prepare`, `restrictions` and
+`trusted` are body fields with no `docket task add` flag.
 
 ## Arguments
 
@@ -71,56 +83,58 @@ call the same core functions (P43-10); `docket start` gains `--bind` (P43-11).
 
 | Field | Type | Rule |
 |---|---|---|
-| `description` | string | required, as today |
-| `priority` | `high` / `normal` / `low` | as today |
-| `trusted` | bool | as today |
-| `brief` | object | as today (`TaskBrief`) |
+| `description` | string | required, non-empty |
+| `priority` | `high` / `normal` / `low` | default `normal` |
+| `trusted` | bool | overrides the `pre_input` trust flag for this enqueue only |
+| `brief` | object | a `TaskBrief`; an invalid one is `422` and nothing is enqueued |
 | `externalRef` | string, 1-200 chars | a caller label, stored verbatim, never interpreted; filterable |
 | `idempotencyKey` | string, 1-200 chars | when a task in this pod's queue already carries it, nothing is enqueued and that task is returned with `200`; a new task answers `201` |
-| `baseRef` | string | a branch name or commit the task worktree starts from (`git worktree add -b <task-branch> <dir> <baseRef>`); unset means the codebase's HEAD as today. Validated at claim, not at enqueue: an unresolvable ref fails the task before any hop with `failureKind: "base_ref"` |
-| `pipeline` | string | the name of a pod-local pipeline (`<pod config dir>/pipelines/<name>.yaml`) or a shipped methodology recipe (`docket pod recipes`); unset means the pod's effective pipeline. Resolved at claim; an unknown name fails the task before any hop with `failureKind: "pipeline"` |
+| `baseRef` | string | a branch name or commit the task worktree starts from (`git worktree add -b <task-branch> <dir> <baseRef>`); unset means the codebase's HEAD. Validated at claim, not at enqueue: an unresolvable ref, or a pod whose Implementer has no codebase, fails the task before any hop with `failureKind: "base_ref"` |
+| `pipeline` | string | the name of a pod-local pipeline (`<pod config dir>/pipelines/<name>.yaml`) or of a recipe that carries a `pipeline.yaml`, the operator's own (`~/.docket/recipes/`) before the shipped ones (`docket pod recipes`); unset means the pod's effective pipeline. Resolved at claim; a name that resolves to nothing valid, or a `gate` that cannot be honoured, fails the task before any hop with `failureKind: "pipeline"` |
 | `gate` | object | `{"command": string, "timeoutS"?: int, "map"?: {exit code: label}}` -- an `ExternalGate` (ADR 0025) added **after** the last implementer step's own gate, with the same labels and `on:` routing. It never replaces a gate the pipeline declares |
-| `maxTokens` | int > 0 | a budget over the task's counted usage (`input - cached + output` summed over hops; a cache read is not counted); each hop runs with `token_budget = maxTokens - used so far`; a hop that would start with nothing left fails the task with `failureKind: "budget"` |
-| `prepare` | string | the install command run in this task's worktree before its first hop; `""` or `none` runs nothing and wins over the pod's `prepare` and the lockfile. Unset means the pod's `prepare` setting, else the command for the worktree's lockfile (`pod-dispatch.spec.md` "Task preparation"). Stored on the task record before it runs and shown by `GET /tasks/<pod>/<id>`; an install that fails settles the task before any hop with `failureKind: "prepare"` and the output tail as `reason`. A newline or NUL, or more than 1,000 characters, is `400` |
+| `maxTokens` | int > 0 | a budget over the task's counted usage (`input - cached + output` summed over hops; a cache read is not counted); each hop runs with a turn token budget of `maxTokens - used so far`; a hop that would start with nothing left, or a turn that stops on that budget, fails the task with `failureKind: "budget"` |
+| `prepare` | string | the install command run in this task's worktree before its first hop; `""` or `none` runs nothing and wins over the pod's `prepare` and the lockfile. Unset means the pod's `prepare` setting, else the command for the worktree's lockfile (`pod-dispatch.spec.md` "Task preparation"). Stored on the task record and shown by `GET /tasks/<pod>/<id>`; an install that fails settles the task before any hop with `failureKind: "prepare"` and the output tail as `reason`. A newline or NUL, or more than 1,000 characters, is `400` |
 | `restrictions` | object | see below. Anything that would widen is `422` |
+| `autonomy` | `L3` / `L4` / `L5` | the level the task's pauses are decided at (`security-gates.spec.md` "Autonomy levels"). It only narrows: the pod's profile is the ceiling, `attended` admits up to `L3` and `lights-out` up to `L5`, and a level above it is `422` with the ceiling named. Unset takes the profile's default (`L3` attended, `L4` lights-out), so `L5` is always asked for. Any other value is `400`. Stored on the task record and shown by `GET /tasks/<pod>/<id>` |
 
 `restrictions`:
 
 | Field | Type | Rule |
 |---|---|---|
-| `deniedTools` | list of tool names | unioned with the role's `denied_tools` and the pod's `deniedTools` when the hop's registry is narrowed; an unknown name is `422` (same universe as `pod set deniedTools`) |
+| `deniedTools` | list of tool names | unioned with the role's denied tools and the pod's `deniedTools` when the hop's registry is narrowed; an unknown name is `422` (the built-in tool names, as for `pod set deniedTools`) |
 | `network` | `"none"` | the hop's jail network is `none` whatever the pod records; the only accepted value, since `"open"` would widen |
 | `policies` | list of policy documents | each a `kind: policy` short or canonical form; every rule's action MUST be `block`, any other action is `422`; loaded for the task's session after the pod's policies, never persisted to the pod |
 
 ### `POST /tasks/<pod>/<id>/cancel`
 
-Body optional: `{"reason"?: string}`. Cancels a `running` task (kills the hop's process group
-through `runs.cancel_run`, as `docket task cancel` does) or a parked one
-(`cancel_parked_task`). Both halves are `dispatch.cancel_task`. Audited `task.cancel` with channel
-`http` and the reason. `404` for an unknown pod or task; `409` when nothing is in flight to cancel
-(a terminal task). The answer's `status` is `cancelled` when a run was stopped or a parked task
-cancelled, else the task's own status after a stale claim was settled (`failed`).
+Body optional: `{"reason"?: string, "actor"?: string}`; `actor` is a label for the audit entry,
+default `http`. Cancels a `running` task (kills the hop's process group, as `docket task cancel`
+does) or a parked one (`waiting_input` or `waiting_approval`); the CLI runs the same function.
+Audited `task.cancel` with channel `http` and the reason. `404` for an unknown pod or task; `409`
+when nothing is in flight to cancel (a terminal task). The answer's `status` is `cancelled` when a
+run was stopped or a parked task cancelled, else the task's own status after a stale claim was
+settled (`failed`).
 
 ### `POST /tasks/<pod>/<id>/retry`
 
-No body. A `blocked` or `failed` task flips to `pending` keeping its hops (`retry_task`). A
-rework that must start from the previous attempt's branch is a new `POST /tasks/<pod>` with
+No body. A `blocked` or `failed` task flips to `pending` keeping its hops, with `blockedReason`,
+`failureKind` and `reason` cleared; audited `task.retry`. A task in any other status is `409`, an
+unknown task `404`. A rework that must start from the previous attempt's branch is a new `POST /tasks/<pod>` with
 `baseRef` set to that branch, not a retry.
 
 ### `POST /pods`
 
-`name`, `location`, `blueprint`, `pod`, `budget`, `verifyCmd` (`serve-read-api.spec.md`
-§POST /pods), plus `ensure: true`:
-when the pod exists the answer is `200` with `"created": false` and nothing is changed or
-re-applied. Without `ensure` an existing pod stays `409`.
+The body, the `201` answer for a new pod and the `ensure` flag are owned by
+`serve-read-api.spec.md` (POST /pods). With `ensure: true` and an existing pod the answer is `200`
+with `"created": false` and nothing is changed or re-applied; without it an existing pod is `409`.
 
 ### `POST /pods/<p>/apply`
 
 | Field | Type | Rule |
 |---|---|---|
-| `directory` | string | absolute path, or unset for the repository's own directory (`.docket/teams/<p>/` when present, else `.docket/`) |
-| `dryRun` | bool | plan only, nothing written |
-| `accept` | string | the review code for a directory that runs things on this machine (ADR 0024 §6). HTTP is off a terminal: without the matching code such a directory is `409` with the code in the body and nothing is created |
+| `directory` | string | absolute path to an existing directory, or unset for the repository's own directory (`.docket/teams/<p>/` when present, else `.docket/`) |
+| `dryRun` | bool | plan only, nothing written; no review code is needed |
+| `accept` | string | the review code for a directory that runs things on this machine (ADR 0024). HTTP is off a terminal: without the matching code such a directory is `409` with the code in the body and nothing is written |
 
 ## Options
 
@@ -128,8 +142,8 @@ Query parameters:
 
 | Route | Parameter | Rule |
 |---|---|---|
-| `GET /tasks/<pod>` | `externalRef` | exact match |
-| `GET /tasks/<pod>` | `status` | one task status, the enum of `cli-json-shapes.spec.md` |
+| `GET /tasks/<pod>` | `externalRef` | exact match; both parameters combine |
+| `GET /tasks/<pod>` | `status` | one of `pending`, `running`, `waiting_input`, `waiting_approval`, `blocked`, `failed`, `done`, `cancelled`; any other value is `400` |
 | `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
 
 ## Output
@@ -142,14 +156,16 @@ Query parameters:
 {"ok": true, "created": true, "task": "task-5d0c...", "project": "web-dev", "status": "pending"}
 ```
 
-The same body with an `idempotencyKey` already in the queue (`200`):
+A task gated by a `require_approval` `pre_input` verdict is created (`201`) with `"status":
+"waiting_approval"` and an extra `"escalation"`, the id of the escalation to resolve. The same body with an `idempotencyKey` already
+in the queue (`200`):
 
 ```json
 {"ok": true, "created": false, "task": "task-5d0c...", "project": "web-dev", "status": "running"}
 ```
 
 `GET /tasks/<pod>/<id>` returns the full task record of `pod-dispatch.spec.md` (the same object
-`GET /tasks/<pod>` lists), with the fields this version adds:
+`GET /tasks/<pod>` lists), including the addressable-task fields:
 
 ```json
 {
@@ -171,11 +187,12 @@ The same body with an `idempotencyKey` already in the queue (`200`):
 `tokenBudget` is the measured-token ceiling the next hop of the task would run under: the
 configured per-turn budget (`AGENT_LOOP_TOKEN_BUDGET`) for a task without `maxTokens`; for a task
 with one, what its cap has left after its persisted hops (`maxTokens` minus the hops' counted
-usage), never below 0. It is computed on read, from the same values `core/dispatch.py` applies, and
+usage), never below 0. It is computed on read, from the same values dispatch applies, and
 is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod>/<id>` return.
 
 The task's `usage` and each `byModel` entry sum their hops' `input`, `cached`, `cacheWrite` and
-`output`. `input` includes the cache reads and writes, so a consumer counting new tokens computes
+`output`; the task-level `usage` is written when the task settles, so a task still in flight has
+only its hops' usage. `input` includes the cache reads and writes, so a consumer counting new tokens computes
 `input - cached + output`, the rule docket's own budget applies.
 
 `POST .../cancel` (`200`): `{"ok": true, "task": "...", "status": "cancelled"}`.
@@ -191,16 +208,17 @@ The task's `usage` and each `byModel` entry sum their hops' `input`, `cached`, `
 }
 ```
 
-`patch` is `git diff <baseCommit>..<branch>` run in the codebase repository (the branch outlives
-the worktree); `untracked` is `git status --porcelain` of the worktree while it exists and `[]`
+`patch` is `git diff <baseCommit>..<branch>` run in the Implementer's codebase repository (the
+branch outlives the worktree); `untracked` is `git status --porcelain` of the worktree while it exists and `[]`
 with `"worktreePresent": false` afterwards. A task that ran in place (no worktree) answers `409`
-with `"reason": "task ran in place"`. `patch` is capped at 500000 characters
-(`system.DIFF_MAX_CHARS`); a longer one is cut and ends with a `[diff truncated ...]` line. A task
+with `"ok": false`, `"error"` and `"reason"` both `"task ran in place"`. `patch` is capped at
+500000 characters; a longer one is cut and ends with a `[diff truncated at 500000 characters]`
+line. A task
 whose branch no longer exists answers `404` with a sentence.
 
 ### Trace events
 
-Two typed records join `trace-store.spec.md`'s `EVENT_TYPES`, written in the task's session
+Two typed records are among the event types of `trace-store.spec.md`, written in the task's session
 (`agent:<pod>:<task-id>`) and read through `GET /traces/<pod>?since=`:
 
 ```json
@@ -221,19 +239,19 @@ Two typed records join `trace-store.spec.md`'s `EVENT_TYPES`, written in the tas
 `cycle` is the rework cycle (0 before any `REQUEST-CHANGES`); `verdict` is the Reviewer's or
 Tester's label or `null`; `gate` is the step's gate label or `null`. `hop_started` names the
 *planned* model (the step's `model` override, else the member's configured model), and
-`hop_finished` names the *served* model the turn reported. The existing `tool_call`
-hop marker and the `tool_result`/`error` closing record stay as they are.
+`hop_finished` names the *served* model the turn reported. `attempt` on `hop_started` is always `1`.
 
 ### Pod answers
 
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp", "members": 2,
 "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
-"waitingInput": 0, "failed": 0, "completed": 4}}]}`; `queue` carries the counts `status --json` prints
-under `tasks`.
+"waitingInput": 0, "blocked": 0, "failed": 0, "done": 4, "cancelled": 0}}]}`; `queue` carries the
+counts `status --json` prints under `tasks`: one per task status.
 
-`GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`,
-unchanged keys: `members` with `role`, `model`, `modelSource`; `settings`; `pipeline`;
-`configOfRecord`; `mcpServers`; `skills`; `exporters`) plus:
+`GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
+`pod`, `members`, `settings`, `approvalMode`, `pipeline`, `network`, `budgetUnpriced`,
+`configSource`, `configDigest`, `drift`) plus the four keys below, where `profile` here is the
+verdict object (a row of `GET /pods` carries the profile name as a string):
 
 ```json
 {"profile": {"name": "lights-out", "violations": [{"requirement": "network", "fix": "docket pod set network none"}]},
@@ -245,25 +263,33 @@ unchanged keys: `members` with `role`, `model`, `modelSource`; `settings`; `pipe
 `readOnly` is the read-only jail grants a turn of this pod gets: the machine's
 (`docket setup sandbox read add`), kept only where the pod's `settings.readOnly` names them
 (`security-gates.spec.md` Exec sandbox requirement 14); `[]` when there are none.
+`profile.violations` is empty unless the effective profile is `lights-out`, `pipelineSource` says
+where the effective pipeline comes from, and `repoConfigDir` is `""` for a pod with no codebase.
+A pod that is not dispatchable is `404`. A pod whose stored settings no longer validate is `500`
+with the error envelope naming the setting.
 
 `POST /pods` with `ensure` on an existing pod (`200`): `{"ok": true, "created": false,
-"project": "web-dev"}`; a new pod answers as today with `"created": true`.
+"project": "web-dev"}`; a new pod answers `201` with `"created": true` (`serve-read-api.spec.md`).
 
-`POST /pods/<p>/apply` (`200`): `{"ok": true, "project", "items", "dryRun": true|false}`, `items`
+`POST /pods/<p>/apply` looks the pod up (`404`) before it reads the body (`400` for a body that
+is not a JSON object). On success (`200`): `{"ok": true, "project", "items", "dryRun": true|false}`, `items`
 being the `docket pod update --json` list (`cli-json-shapes.spec.md`); a dry run writes nothing.
-A directory that runs things without a matching `accept` (`409`; a wrong `accept` is the same
-`409`, listing only the items that changed since the code was issued, and never the current code):
+A directory that runs things without `accept` is `409` as below. A wrong `accept` is `409` with
+`"error": "the directory changed what runs on this machine since that code"` and no `reviewCode`,
+and `runs` lists only the items that changed since the code was issued:
 
 ```json
 {"ok": false, "error": "this directory runs commands on this machine; pass accept",
  "reviewCode": "7f3a2c...", "runs": [{"kind": "pipeline-step", "name": "build", "runs": "npm ci"}]}
 ```
 
-A directory that names a refused `allowCommands` shell is `409` with no `reviewCode`. A
+A directory whose `allowCommands` names a refused command is `409` with an `error` naming it and
+no `reviewCode`. A
 nonexistent or relative `directory` is `400`, an unknown pod `404`. A pod with no recorded
-codebase (its Lead has no `codebase` meta) is `400` with a message naming `docket pod update`
-and a codebase; it is never reviewed against the directory's parent. The apply is audited as
-`pod.apply` with `channel=http`; an accepted code is remembered as the CLI does (`repo.allow`).
+codebase is `400` with a message naming `docket pod update`
+and a codebase; it is never reviewed against the directory's parent. A plan that changes something
+is audited as `pod.apply` with `channel=http`; an accepted code is remembered as the CLI does
+(audit action `repo.allow`). A body field of the wrong type is `400`.
 
 `GET /pods/<p>/corrections?since=2026-10-01T00:00:00Z` (`200`):
 
@@ -273,41 +299,109 @@ and a codebase; it is never reviewed against the directory's parent. The apply i
  "next": "2026-10-03T10:12:00Z"}
 ```
 
-### `/health` under dispatch
+### Escalations
 
-Unchanged keys plus, when `docket start` runs with `--dispatch`:
+`GET /escalations?since=<seq>&pod=<pod>&task=<id>` answers `200` with
 
 ```json
-{"ok": true, "apiVersion": "6",
+{"escalations": [{"id": "esc-0123456789ab", "task": "task-1", "pod": "demo", "step": "implementer",
+  "role": "implementer", "kind": "consult", "causedBy": "c1", "prompt": "Which store?",
+  "options": [{"id": "redis", "label": "Redis", "description": "fast", "risks": []}],
+  "recommendation": {"optionId": "redis", "rationale": "...", "evidenceRefs": []},
+  "requestedSchema": {}, "askedAt": "...", "expiresAt": "...", "onExpiry": "block",
+  "policy": "person", "level": "L3", "state": "pending", "resolution": null, "seq": 1,
+  "affordances": {"options": ["redis", "decline"], "acceptsText": true,
+                  "resolveUrl": "/escalations/esc-0123456789ab"}}],
+ "next": 1}
+```
+
+Each entry is an `EscalationView` (`operator-loop.spec.md` area 11 item 7): the stored record
+plus `affordances`, its `state` joined with the pause it names, in `seq` order.
+`since` is an integer `seq` (default `0`): only records with a greater `seq` are returned, whatever
+their state, so a poller never misses a record that settled between two reads. `pod` and `task`
+narrow the list. `next` is the highest `seq` returned, else `since`; pass it back as `since`. A
+`since` that is not a non-negative integer answers `400`. `resolveUrl` names the route that
+resolves the escalation (below). `GET /inbox` carries the pending ones as
+`escalations` (and lists a pause no waiting task carries in `needsYou`) and the pauses the pod settled alone as
+`decided`, newest first and at most twenty, a key that is absent while there are none.
+
+`POST /escalations/<id>` takes `{"optionId"?: string, "content"?: object, "actor"?: string}` and
+calls `resolve` (`operator-loop.spec.md` area 10) with channel `http` and actor `actor` (default
+`http`; a label only, the Bearer token is the authority). `optionId` is one of the view's
+`affordances.options` (`cancel` is accepted as an alias of `decline`); it may be omitted only for a
+question whose options are just `decline`, which accepts `content` against `requestedSchema`. An
+approval, gate or changed-check takes `content` `{"reason": "<text>"}` at most. It answers `200`
+with the resolved `EscalationView` (`state: "resolved"`, `resolution` set, `affordances.options`
+empty), plus a `note` only when a task-wide grant was refused. A body that is not an object, an `optionId` that is not a string, a `content` that is not
+an object or an `actor` that is not a string answers `400`; an id no record has `404`; an
+escalation already settled, or whose approval or question is no longer waiting, `409`; an
+unknown option, a `content` that fails `requestedSchema` or a `content` blocked by a `pre_input`
+policy `422`.
+
+`POST /escalations/<id>` is the only route that settles a pause, whatever its kind, and
+`GET /escalations` is the only list of them. A client written against the earlier per-kind
+surfaces adapts as follows; the names on the left do not exist, and a request to a retired route
+answers `404`:
+
+| Retired | Use instead |
+|---|---|
+| `GET /approvals` | `GET /escalations?since=<seq>` (an approval is an escalation of kind `approval`, `gate` or `check_changed`) |
+| `POST /approvals/<token>` | `POST /escalations/<id>` with `optionId` `approve_once`, `approve_task` or `deny`, and `content` `{"reason"}` at most; `actor` replaces the body's `channel` (the channel is always `http`) |
+| `POST /tasks/<id>/answer` | `POST /escalations/<id>` with `optionId` and `content`; `optionId` `decline` declines |
+| MCP `approvals_list`, `approvals_grant`, `approvals_deny`, `task_answer` | MCP `escalations`, `resolve` |
+| `task approve`, `task deny` (CLI) | `docket task answer <ref> --option approve_once\|approve_task\|deny`; `docket task pregrant` for a command approved ahead |
+| Telegram `/approve`, `/deny` | Telegram `/answer <esc-id> <option>` |
+| task keys `approvalToken`, `question`, `answers`, `consultAnswer`, `pregrants`, `taskGrants`, `gateOverridePipelineIndex` | `escalations` on the task record; `escalation` on a task view and on the `POST /tasks/<pod>` answer of a gated enqueue |
+| inbox `needsYou` approval items (`ApprovalView`, `token`) | `EscalationView` items (`id`, `kind`, `affordances`) |
+| trace events `approval_requested`, `question_asked`, `input_requested`, `input_answered`, `input_expired` | `escalation_asked`, `escalation_delivered`, `escalation_resolved`, `escalation_expired`, `escalation_decided` |
+| contract `operator-v1` (`docs/contracts/operator-v1/`) | `operator-v2` (`docs/contracts/operator-v2/`); `operator-v1.1` stays |
+
+A task record lists the escalations opened for it as `escalations`, and `GET /inbox` shows the
+one a task waits on as the `escalation` of its task view. An approval's `apr-` token is not an
+address: no response and no request body carries it.
+
+### `/health` under dispatch
+
+The keys and the unauthenticated access of `GET /health` are owned by `serve-read-api.spec.md`.
+Under `docket start --dispatch` its `dispatch` block reads:
+
+```json
+{"status": "ok", "apiVersion": "6",
  "dispatch": {"on": true, "inflight": ["web-dev"], "stopping": false, "workers": 4}}
 ```
+
+`inflight` lists the pods whose sweep is running, `stopping` is true after the first stop signal,
+and `on` is false when `--dispatch` was not given.
 
 ### Re-attaching after a restart
 
 A client whose runner, or docket itself, restarted re-attaches from durable state alone. Every
-rule below holds because the task list (`TASK_LIST.json`) and the approval records are the only
-state; a server instance holds none.
+rule below holds because the pod's task list and the approval records, on disk under
+`DOCKET_HOME`, are the only state; a server instance holds none.
 
 1. `GET /tasks/<pod>/<id>` serves any task of the pod from disk, whatever its status and
-   whichever server instance started its hops. A `waiting_approval` task carries its
-   `approvalToken`; a `waiting_input` task carries its `question`, with `options` when the park
-   was a consultation or a decision.
-2. A token or a question is answerable after either process restarts: `POST /approvals/<token>`
-   and `POST /tasks/<id>/answer` read the same files, so a fresh instance over the same
-   `DOCKET_HOME` accepts the grant or answer a previous instance parked. The approval's own
-   `expiresAt` is on its record (`GET /approvals`).
-3. An answer or grant moves the task to `pending` and starts nothing (a grant of a `check_changed`
-   approval is the exception: it ends the task `done`, see "Check changed" below). The next sweep tick
-   (30 s under `--dispatch`) or `POST /dispatch/<pod>` resumes it at the hop it stopped on; a
+   whichever server instance started its hops. A `waiting_approval` or `waiting_input` task lists
+   the escalations opened for it in `escalations`, and the one it waits on is a record of
+   `GET /escalations?task=<id>` with `state` `pending`.
+2. An escalation is resolvable after either process restarts: `POST /escalations/<id>` reads the
+   same files, so a fresh instance over the same `DOCKET_HOME` accepts the answer a previous
+   instance parked. The pause's own `expiresAt` is on its record (`GET /escalations`).
+3. A resolution moves the task to `pending` and starts nothing (a grant of a `check_changed`
+   escalation is the exception: it ends the task `done`, see "Check changed" below). The next sweep tick
+   (every 30 s by default under `--dispatch`) or `POST /dispatch/<pod>` resumes it at the hop it stopped on; a
    completed hop is never re-run.
 4. Use one `idempotencyKey` per attempt. The key binds to the task for as long as the task is in
    the pod's queue, whatever its status: a retry that reuses the key after a failure answers
    `200` with `"created": false` and the failed task, and enqueues nothing. A new attempt takes a
    new key, or `POST .../retry` on the failed task.
 5. Expiry and its final states are not restated here: an approval past its `expiresAt` resolves
-   to denied (`security-gates.spec.md` 0.63.0, "Approval tokens and approval packs"); a question past its
+   to denied (`security-gates.spec.md`, "Approval tokens and approval packs"); a question past its
    `expiresAt` moves the task to `blocked` with `blockedReason: "input_expired"`
-   (`operator-loop.spec.md`, `inputExpiryHours`).
+   (`operator-loop.spec.md`, `inputExpiryHours`); both are ended by the one sweep, by each
+   record's `onExpiry`.
+5a. A task at `L5` whose tool call needs approval fails at once with `failureKind: "needs_human"`
+   (`security-gates.spec.md` "Autonomy levels" item 4) and is final until `POST .../retry`, which
+   a caller uses to run it again at `L3`.
 6. A `failed` task with `failureKind: "stale_claim"` is transient under `--dispatch`: the sweep
    resumes it from its last persisted hop on the next tick. A `failed` task with any other
    `failureKind` (except a settled `dispatch_refused`, which the sweep also resumes) is final
@@ -320,13 +414,12 @@ the reviewed digest") is not `done`: it is `waiting_approval` whatever the pod's
 consumer that polls for `done` does not see an unreviewed change to a check.
 
 1. The task record (`GET /tasks/<pod>/<id>`, `GET /inbox`'s task view reason) carries
-   `checkChanged`, the sorted protected paths the diff touched, with `approvalToken`; `GET
-   /approvals` lists the approval with context kind `check_changed`.
-2. `POST /approvals/<token>` with a grant ends the task `done`; a deny (or an approval past its
-   `expiresAt`) ends it `failed` with `failureKind: "check_changed"`, which is final until
-   `POST .../retry`. `checkChanged` stays on the record either way.
-3. `apiVersion` stays `"6"`: `checkChanged` and the new `failureKind` are additive to it, and the
-   Phase 45 version has not been released.
+   `checkChanged`, the sorted protected paths the diff touched; `GET /escalations?task=<id>`
+   lists the escalation of kind `check_changed` it waits on (`serve-read-api.spec.md`).
+2. `POST /escalations/<id>` with `optionId` `approve_once` ends the task `done`; `deny` (or an
+   escalation past its `expiresAt`) ends it `failed` with `failureKind: "check_changed"`, which is
+   final until `POST .../retry`. `checkChanged` stays on the record either way.
+3. `checkChanged` and `failureKind: "check_changed"` are additive keys of version 6.
 
 ## Return
 
@@ -334,136 +427,58 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 |---|---|
 | `200` | a read; an idempotent re-post; cancel/retry/apply/ensure done |
 | `201` | a new task or a new pod |
-| `400` | malformed JSON, missing `description`, an unknown field type, a `baseRef`/`pipeline`/`gate`/`prepare` of the wrong shape |
+| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
-| `404` | no pod, no task, no such route |
-| `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code |
-| `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an invalid `brief` as today |
+| `404` | no pod (checked before an `apply` body is read), no task, no escalation (`POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
+| `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting |
+| `413` | a request body over 1 MiB |
+| `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an `autonomy` above the pod profile's ceiling; an invalid `brief`; `POST /escalations/<id>` with an unknown option, content that fails the schema or content a policy blocks |
+| `500` | `POST /pods` could not provision (the attempt is rolled back); `GET /pods/<p>` for a pod whose stored settings are invalid |
 
-Error bodies are `{"error": "<sentence>"}` as today, with the extra keys the examples show.
+`GET /tasks/<pod>` for a pod with no queue answers `200` with an empty list. Error bodies are
+`{"ok": false, "error": "<sentence>"}`, with the extra keys the examples show.
 
 ## Validation
 
-- `tests/integration/test_serve_reattach.py`: one test per rule of "Re-attaching after a
-  restart"; a restart is a first `ThreadingHTTPServer` shut down and a second one started over
-  the same temporary `DOCKET_HOME`. The oracles are the HTTP bodies and `TASK_LIST.json`.
-- `tests/integration/test_serve_tasks_endpoint.py` (extended) and new
-  `tests/integration/test_serve_task_lifecycle.py`, `test_serve_pods_config.py`: the real
-  `_DocketHandler` on a loopback `ThreadingHTTPServer`, a pod seeded in a temporary
-  `DOCKET_HOME`, a stub OpenAI-compatible server on loopback for the routes that run a hop
-  (the stub in `tests/integration/llm_stub.py`, fixture `llm_server`).
+- One test per rule of "Re-attaching after a restart": a restart is a first server shut down and a
+  second one started over the same temporary `DOCKET_HOME`. The oracles are the HTTP bodies and the
+  pod's task list.
+- The routes are tested against a real server on a loopback port, a pod seeded in a temporary
+  `DOCKET_HOME`, and a stub OpenAI-compatible server on loopback for the routes that run a hop.
+- `GET /escalations` is pinned through the real route by a contract test that parks a consult
+  through dispatch and compares both it and `GET /inbox` to a recorded fixture.
 - Each example body above is asserted key-for-key by the route's test (the oracle is the key
   set and the status code, not the prose).
-- `tests/unit/core/test_dispatch.py`: `enqueue_task` idempotency, `restrictions` validation,
-  `maxTokens` arithmetic; `tests/unit/core/test_trace.py`: the two event types;
-  `tests/unit/core/test_pod_report.py` after the move.
+- Unit tests cover enqueue idempotency, `restrictions` validation, `maxTokens` arithmetic, the two
+  hop event types and the pod report.
 - The security condition of `restrictions` is pinned by an escape-style test: a pod whose
   implementer may `write` runs a task with `deniedTools: ["write"]` against the stub server and
   the `write` call is refused with `policy_id == "task-restriction"` in the audit log.
-- `bash tests/golden/run.sh verify-all`: `task add --help`, `start --help` and
-  `task cancel|retry|diff --help` goldens change deliberately in P43-1, P43-10 and P43-11.
-- `serve-read-api.spec.md` bumps its `API version` line to `5` in P43-12 and records the
-  routes this spec owns.
 
-## Changelog
+## Implementation
 
-### Version 6.1.0 (2026-10-19)
-
-- New "Check changed" section (P45-3, ADR 0029 point 3): a task whose diff touches a protected
-  path is `waiting_approval` with `checkChanged: [paths]` under every profile; a grant ends it
-  `done`, a deny `failed` with `failureKind: "check_changed"` (final). `apiVersion` stays `"6"`.
-
-### Version 6.0.0 (2026-10-19)
-
-- `apiVersion` `"6"` (P45-1, ADR 0029 point 1): `POST /tasks/<pod>` accepts `prepare`, the task
-  record carries it and `prepared`, and `failureKind: "prepare"` is a new final failure (the sweep
-  does not resume it). A consumer that needs docket to install a task's dependencies reads
-  `apiVersion >= 6`; one that sends no `prepare` gets the pod's setting or the lockfile's command.
-
-### Version 5.10.0 (2026-10-19)
-
-- `POST /pods/<p>/apply` (P45-4): a pod with no recorded codebase is `400` instead of being reviewed
-  against the directory's parent; the remembered review is per codebase and pod, so an approval
-  for one pod never replaces another's (pod-blueprints 1.34.0 requirement 12).
-
-### Version 5.9.0 (2026-10-19)
-
-- New section "Re-attaching after a restart": six rules a client may rely on after its runner or
-  docket restarts (tasks served from disk, tokens and questions answerable across restarts,
-  answers start no sweep, one `idempotencyKey` per attempt, expiry by cross-reference,
-  `stale_claim` resumed by the next sweep). Documents existing behaviour; pinned by
-  `tests/integration/test_serve_reattach.py`.
-
-### Version 5.8.0 (2026-10-18)
-
-- `GET /pods/<p>` carries `readOnly`, the pod's effective read-only jail grants (the machine's
-  list narrowed by the pod's `readOnly` setting). Additive: no existing key changes.
-
-### Version 5.7.0 (2026-10-18)
-
-- The task's top-level `usage` carries `cached` and `cacheWrite` beside `input` and `output`,
-  summed over its hops like each `byModel` entry. Additive: no existing key changes.
-
-### Version 5.6.0 (2026-10-18)
-
-- Every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod>/<id>` return carries
-  `tokenBudget` (the per-turn ceiling, or what a task's `maxTokens` has left; see "Task answers").
-  Additive: no existing key changes.
-- A `byModel` entry carries `cached` and `cacheWrite` summed from its hops, beside `input` and
-  `output`. Additive; the top-level `usage` keys are unchanged.
-
-### Version 5.5.0 (2026-10-18)
-
-- A hop's `usage` carries `cached` (the part of `input` served from a cache) and `cacheWrite` (the
-  part of `input` written to one; 0 where the endpoint does not report it) beside `input` and
-  `output`. Additive: a consumer that reads `input` and `output` is unaffected. A task's
-  `maxTokens` counts `input - cached + output` over its hops; the task's own `usage` keys are
-  unchanged.
-
-### Version 5.4.1 (2026-10-18)
-
-- `POST /pods` now reads `name` and `location` as this spec has said since 5.0.0; until
-  0.2.0-beta.6's fix the route read `project` and `path` (found by Tack's first run against a real
-  docket). A test sends the ADR 0027 body literally.
-
-### Version 5.4.0 (2026-10-17)
-
-- Status: implemented. The `exec` command and the harness are deleted; this spec is the one door
-  for a program. `GET /status.json` answers
-  `apiVersion` `"5"`.
-
-### Version 5.3.0 (2026-10-17)
-
-- `POST /tasks/<pod>/<id>/cancel`, `POST .../retry` and `GET .../diff` implemented (P43-10).
-  `docket task diff` prints the same `patch` (`--json` the whole object).
-
-### Version 5.2.0 (2026-10-17)
-
-- `GET /pods`, `GET /pods/<p>` and `POST /pods` with `ensure` implemented (P43-6). The pod report
-  is `core/pod_report.py`, shared with `docket pod show --json`. `repoConfigDir` is
-  `pod_apply.repo_config_dir` (`<codebase>/.docket/teams/<pod>` when it exists, else `<codebase>/.docket`).
-- `POST /pods/<p>/apply` implemented (P43-8): the review rule off a terminal, `reviewCode` and
-  `runs` on `409`, `dryRun`, `pod.apply` audited with `channel=http`.
-- `GET /pods/<p>/corrections?since=` reads the corrections
-  ledger (P43-9) in append order, keeping records with `ts > since` (`corrections.read(project,
-  since=)`). `since` is any ISO-8601 timestamp with an offset, normalised to UTC before the
-  comparison; a naive `since` (no offset) is `400`, as is one that does not parse. `next` is
-  the last returned record's `ts` in UTC with a `Z` suffix, else the normalised `since` in
-  UTC `Z`, else `""`. The route answers `404` for a pod with no Lead and `401` without the
-  bearer token.
-
-### Version 5.1.0 (2026-10-14)
-
-- Status: partially implemented. Wave 109 closed P43-1..5: the task fields and their claim-time
-  and hop-time effects, the three P43-1 task routes, the hop events. The route table gains a
-  Status column.
-
-### Version 5.0.1 (2026-10-14)
-
-- Trace events: `hop_started` names the planned model and `hop_finished` the served one (P43-5).
-
-### Version 5.0.0 (2026-10-14)
-
-- First version: the Phase 43 contract (ADR 0027). Planned; implemented route by route by
-  P43-1, P43-5, P43-6, P43-8, P43-9, P43-10, P43-11; version negotiation and the harness
-  deletion in P43-12.
+- `src/docket/interfaces/http/routes/`: the handler for every route above (`table.py` is the
+  route table, one module per resource).
+- `src/docket/interfaces/http/routes/escalations.py`: `get_escalations`, `post_escalation`.
+- `src/docket/tasks/application/escalations.py`: `resolve`.
+- `src/docket/interfaces/http/server.py`: `render_health`.
+- `src/docket/interfaces/http/routes/health.py`: `SERVE_API_VERSION`, the `tokenBudget`
+  computation on read.
+- `src/docket/interfaces/http/exchange.py`: the 1 MiB body cap.
+- `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `dispatchable_pods`,
+  the claim-time refusals (`base_ref`, `pipeline`, `prepare`).
+- `src/docket/tasks/application/lifecycle.py`: `cancel_task`, `retry_task`, `task_diff`.
+- `src/docket/tasks/domain/options.py`: addressable-task and `restrictions` validation,
+  `TASK_STATUSES`.
+- `src/docket/hops/application/report.py`: the `GET /pods` row (`pod_summary`) and `GET /pods/<p>`
+  (`pod_detail`).
+- `src/docket/teams/apply/plan.py`: `apply_directory`; `src/docket/governance/review.py`: the
+  review code and `repo.allow`.
+- `src/docket/teams/pod_provisioning.py`: `provision_pod`.
+- `src/docket/tasks/application/corrections.py`: `read` and the cursor helpers.
+- `src/docket/observability/trace.py`: `hop_started`, `hop_finished` in `EVENT_TYPES`.
+- `src/docket/platform/git.py`: `git_diff_range`, `git_untracked`, `DIFF_MAX_CHARS`.
+- `tests/integration/interfaces/test_serve_reattach.py`, `test_serve_tasks_endpoint.py`,
+  `test_serve_task_lifecycle.py`, `test_serve_pods_endpoint.py`, `test_serve_pods_config.py`,
+  `test_serve_pods_corrections.py`, `test_task_check_changed.py`; `tests/support/model_server.py`
+  (fixture `fake_model`).

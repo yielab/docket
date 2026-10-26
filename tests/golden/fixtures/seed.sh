@@ -32,7 +32,7 @@ chmod 700 "$STATE_DIR"
 # ── fleet.json (docket's own registry, DOCKET_HOME-pinned to $STATE_DIR by
 # run.sh — see that file's run_docket() for why) ────────────────────────────────
 # Agent registration, channel bindings, and gates/isolation flags. Per-agent
-# model is deliberately NOT duplicated (see core/fleet.py) -- only the bare
+# model is deliberately NOT duplicated (see teams/fleet.py) -- only the bare
 # registration fact.
 cat >"$STATE_DIR/fleet.json" <<'JSON'
 {

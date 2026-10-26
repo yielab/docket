@@ -8,6 +8,7 @@ import tarfile
 from pathlib import Path
 
 import pytest
+from tests.support.cli import run as _run
 
 LANE = "release"
 REASON = "Prevents the published root docket artifact from reintroducing the source tree or losing its status as the one canonical install path."
@@ -19,10 +20,6 @@ PROJECT_URLS = {
     "Issues, https://github.com/yielab/docket/issues",
     "Source, https://github.com/yielab/docket",
 }
-
-
-def _run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, env=env, text=True, capture_output=True, check=True)
 
 
 @pytest.mark.parametrize("suffix", [".whl", ".tar.gz"])

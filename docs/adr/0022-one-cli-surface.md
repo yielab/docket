@@ -1,4 +1,4 @@
-# ADR 0022 (D-57): one CLI surface, and nothing kept for the past
+# ADR 0022 (D-57): one CLI surface
 
 **Question:** docket's CLI is 46 flat top-level commands over 161 named entry points, none of them
 a real Typer sub-command. The maintainer asked for the commands to be "way more intuitive and
@@ -31,8 +31,8 @@ here so a contributor without that directory can follow the reasoning.
 | The pod is named seven ways; only `status` and `add` infer it from the cwd | `cli/_agents.py::_pod_for_directory` (two callers) |
 | Two role vocabularies: `models` lists `manager`/`programmer`/`repo`; pods use `lead`/`implementer`; `policy_role` bridges them | `core/models_policy.py::ALL_ROLES`, `core/archetypes.py::RoleArchetype.policy_role` |
 | The three org specialists (`manager`, `knowledge`, `security`) and the opt-in portfolio manager are provisioned on first `init`, listed, model-resolved and health-checked, and **nothing ever runs one**: no reader in `core/dispatch.py`, `core/orchestrator.py`, `core/pipeline.py`, `serve.py` or the driver | `config.py::ORG_SPECIALIST_ORDER` callers: `cli/_install.py`, `cli/_doctor.py`, `cli/__init__.py` (list, snapshot), `serve.py::_SPECIALISTS`, `core/models_policy.py` |
-| Tack, the plan of record, calls exactly one docket command, `harness run`, and reads its final result line | `objetivosMios/crates/tack-runner/src/harness/docket/probe.rs` |
-| The README and the landing page speak "team" in prose (25 and 20 lines) and `pod` in every command (15 and 18); `pod.yaml` is `kind: pod` in 32 recipes; HTTP has `/pods`, MCP a `pods` tool; Tack never says either | `README.md`, `newPortaflio/content/docket-landing.ts`, `src/docket/templates/recipes/*/pod.yaml`, `serve.py`, `cli/_mcp.py` |
+| Tack, the plan of record, calls exactly one docket command, `harness run`, and reads its final result line | `crates/tack-runner/src/harness/docket/probe.rs` |
+| The README and the landing page speak "team" in prose (25 and 20 lines) and `pod` in every command (15 and 18); `pod.yaml` is `kind: pod` in 32 recipes; HTTP has `/pods`, MCP a `pods` tool; Tack never says either | `README.md`, `content/docket-landing.ts` (YieLab site), `src/docket/templates/recipes/*/pod.yaml`, `serve.py`, `cli/_mcp.py` |
 | `docket help`'s four examples all pass a pod id to a command that takes only an agent id; every one fails | `cli/_help.py` examples vs `info`/`profile`/`context`/`maintain` |
 | Exit code for an unknown action is 0 for three commands, 1 for eighteen, 2 for two | measured per command in the inventory |
 | `ROADMAP.md` §3 still said removed commands get a notice from `__main__.py`'s `_REMOVED` map, deleted 2026-10-03; §2 said `__main__.py` maps aliases | `ROADMAP.md` before this decision |
@@ -97,14 +97,10 @@ flag it; re-verifying the inventory against the live turn path did.
    README and the landing page keep "team" in prose and define `pod` with that sentence where
    the first command appears. `pod.yaml`, `kind: pod`, `/pods` and the MCP `pods` tool stand.
 
-4. **Nothing is kept for the past.** docket has no users. A removed or renamed command, flag,
-   alias, route, persisted shape or behaviour is deleted in the same change that replaces it,
-   together with its tests, its spec text and its documentation. No alias table, no retirement
-   notice, no "did you mean the old name", no migration, no `_REMOVED` map, no hidden command, no
-   deprecated no-op flag. A retired name is an ordinary unknown command (exit 2) and
-   `CHANGELOG.md` is the only record. This rule is written into `CONTRIBUTING.md` ("Rules that
-   have cost this project time"), `AGENTS.md` and `ROADMAP.md` §3, and it stands until docket has
-   an installed base, which is a fact about the world and not a release number.
+4. **Withdrawn 2026-10-24.** This point was a rule, "nothing is kept for the past": no alias,
+   notice or migration for a removed name. It existed so that compatibility was not designed
+   for while docket had no users. Compatibility is now decided per change. The commands this ADR
+   removed stay removed, and a retired name is still an ordinary unknown command (exit 2).
 
 5. **Where every old name went, and what goes with nothing in its place.** A command survived
    only with a live consumer: the daily loop uses it, or it is the only operator path to a

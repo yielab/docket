@@ -3,7 +3,6 @@
 Guards:
   - the 3 dead template files are gone and never referenced under src/ again
     (install/pod provisioning write SOUL/AGENTS/workflow templates inline)
-  - README's test-count claims aren't left stale
   - scripts/render-doc-assets.py doesn't point at a file that doesn't exist
 """
 
@@ -12,13 +11,10 @@ from __future__ import annotations
 from pathlib import Path
 
 LANE = "truth"
-REASON = "Prevents a deleted template file from being silently reintroduced under src/, and prevents README test-count claims or doc-asset script references from going stale."
-RETIRE_WHEN = (
-    "README stops stating a specific test count, or the doc-asset generation script is retired."
-)
+REASON = "Prevents a deleted template file from being silently reintroduced under src/, and a doc-asset script reference from going stale."
+RETIRE_WHEN = "the doc-asset generation script is retired."
 
 _REPO = Path(__file__).parent.parent.parent.parent
-README = _REPO / "README.md"
 TEMPLATES_DIR = _REPO / "src" / "docket" / "templates"
 RENDER_DOC_ASSETS = _REPO / "scripts" / "render-doc-assets.py"
 
@@ -55,15 +51,6 @@ class TestDeadTemplatesStayDeleted:
             "dead template file(s) referenced again under src/ (re-orphaning guard): "
             + ", ".join(offenders)
         )
-
-
-class TestTestCountNotStale:
-    """README's quoted pytest count must not regress to the old wrong numbers."""
-
-    def test_readme_does_not_claim_stale_test_counts(self) -> None:
-        text = README.read_text(encoding="utf-8")
-        assert "694 tests" not in text
-        assert "694-test Python suite" not in text
 
 
 class TestRenderDocAssetsNoDanglingReference:

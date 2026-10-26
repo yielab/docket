@@ -1,0 +1,45 @@
+{
+  "name": "docket",
+  "description": "Teams of coding agents, governed. Each skill is a pod.",
+  "url": "<url>/a2a",
+  "version": "<version>",
+  "protocolVersion": "0.3.0",
+  "preferredTransport": "JSONRPC",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": true,
+    "stateTransitionHistory": false,
+    "extensions": [
+      {
+        "uri": "https://docket.dev/schemas/operator-v1.1/question.schema.json",
+        "required": false
+      }
+    ]
+  },
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain",
+    "application/json"
+  ],
+  "skills": [
+    {
+      "id": "e2e",
+      "name": "e2e",
+      "description": "Runs tasks in the e2e pod.",
+      "tags": []
+    }
+  ],
+  "securitySchemes": {
+    "bearer": {
+      "type": "http",
+      "scheme": "bearer"
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ]
+}
