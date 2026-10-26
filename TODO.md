@@ -584,30 +584,9 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 
 **Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
 
-- **`tests/integration/sandbox/test_task_credentials.py` failed in parallel default-suite runs
-  three times during Phase 51 and passes alone each time** (the file also holds four of the
-  serial no-sandbox failures below). The trigger fired at the Phase 51 merge preparation
-  (2026-10-25, tree `34f5ccb7`): of four consecutive `pytest -n auto --dist loadfile` runs two
-  failed and two passed (6848 passed, 0 failed) with nothing changed between them. The failing
-  runs were the four tests of this file (the child process saw `OPENAI_API_KEY` and the catalog
-  canary, so the launcher in use stripped no catalog credential) and, in one of them, two
-  `test_diff_probe.py::TestHopDiffProbeUnit` tests (`files_changed == []`), on different xdist
-  workers. Looked at and ruled out: a test that rebinds a port (`jail_port` is bound once in
-  `tests/conftest.py`; `fake_jail`, `bind_launcher` and `landlock_host` scope it with `use`).
-  Not found: what makes the real launcher lose `catalog.credential_sources()` for a test.
-  Next: rerun `pytest -n auto --dist loadfile -vv` until it fails and read the tests that
-  worker ran before the file (the `[gwN]` lines). Trigger: the next failure.
-- **The serial no-sandbox run fails 7 tests that pass alone** (`scripts/maint/pytest-without-sandbox.sh
-  -q`, found at the Phase 48 close; the same 7 at `d6b16df5` in a clean worktree, so older than
-  Phase 48). They are `test_step__step_env.py::TestShape::test_a_secret_store_name_is_refused`, two
-  in `tests/integration/hops/test_diff_probe.py::TestHopDiffProbeUnit` and four in
-  `tests/integration/sandbox/test_task_credentials.py`; the parallel default suite never orders
-  them that way. Hypothesis: an earlier test in the same process leaves a process-wide binding
-  changed (a bound port, the credential catalog or the secret-store names). Next: bisect the
-  serial order with `-p no:randomly` and the file list before the first failure. Trigger: now,
-  since the `no-sandbox` CI job runs this script serially once the branch is pushed.
-
-- **Timing flakes seen once each:** `test_kernel_adoption.py` over its 2 s guard ceiling,
+- **Timing flakes seen once each:** `test_kernel_adoption.py` over its 2 s guard ceiling, three more
+  `tests/guards/` tests (`test_dead_code`, two in `test_suite_shape`) at 2.04-2.42 s on the `no-sandbox`
+  CI runner (PR 5),
   `test_retries_and_timeouts.py::TestRetryDoesNotTripStaleClaimSweep`, and the foreground approval
   deny test (its fake approval timeout was raised from 5 s to 60 s, `1a704359`). Trigger: a second
   failure of the same test. Then replace its wall-clock wait with an event.

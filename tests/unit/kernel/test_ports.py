@@ -27,6 +27,26 @@ def test_a_bound_adapter_is_the_default_and_a_block_overrides_it_then_restores_i
     assert binding.current() == "real"
 
 
+def test_blocks_closed_out_of_order_leave_no_override_behind() -> None:
+    """A fixture's block can outlive the block a test opened after it; the later close must not
+    bring back the earlier adapter, or every following test runs on a fake."""
+    binding: Binding[str] = Binding("text")
+    binding.bind("real")
+    outer, inner = binding.use("outer"), binding.use("inner")
+    outer.__enter__()
+    inner.__enter__()
+    outer.__exit__(None, None, None)
+    assert binding.current() == "inner"
+    inner.__exit__(None, None, None)
+    assert binding.current() == "real"
+
+
+def test_the_object_callers_import_refuses_an_assignment() -> None:
+    """``monkeypatch.setattr`` on it would leave the real adapter's method stuck on the proxy."""
+    with pytest.raises(AttributeError, match="swap the adapter"):
+        process.no_trace = lambda: True  # type: ignore[method-assign]
+
+
 def test_the_object_callers_import_forwards_to_the_adapter_of_the_moment() -> None:
     first, second = FakeProcess(env={"DOCKET_NO_TRACE": "1"}), FakeProcess()
     with process_port.use(first):

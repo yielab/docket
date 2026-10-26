@@ -28,11 +28,31 @@ class PortNotBound(RuntimeError):
     """A port was used before any entry bound an adapter to it."""
 
 
+class _Scope(Generic[T]):
+    """One ``use`` block: its adapter, the block it opened inside, and whether it is still open."""
+
+    __slots__ = ("adapter", "open", "parent")
+
+    def __init__(self, adapter: T, parent: _Scope[T] | None) -> None:
+        self.adapter = adapter
+        self.parent = parent
+        self.open = True
+
+    def live(self) -> _Scope[T] | None:
+        """This block, or the nearest enclosing one still open."""
+        scope: _Scope[T] | None = self
+        while scope is not None and not scope.open:
+            scope = scope.parent
+        return scope
+
+
 class Binding(Generic[T]):
     def __init__(self, name: str) -> None:
         self._name = name
         self._bound: T | None = None
-        self._override: ContextVar[T | None] = ContextVar(f"docket_{name}_port", default=None)
+        self._override: ContextVar[_Scope[T] | None] = ContextVar(
+            f"docket_{name}_port", default=None
+        )
 
     def bind(self, adapter: T) -> None:
         """Make *adapter* the process default; called by an entry point, never by a caller."""
@@ -40,15 +60,22 @@ class Binding(Generic[T]):
 
     @contextmanager
     def use(self, adapter: T) -> Iterator[T]:
-        """Make *adapter* the one of this block. Threads need ``kernel.threads`` to inherit it."""
-        token = self._override.set(adapter)
+        """Make *adapter* the one of this block. Threads need ``kernel.threads`` to inherit it.
+        Blocks may close in any order (a fixture's block outlives one a test opened after it): a
+        closed block is skipped, so none brings back an adapter whose block already ended."""
+        scope = _Scope(adapter, self._override.get())
+        self._override.set(scope)
         try:
             yield adapter
         finally:
-            self._override.reset(token)
+            scope.open = False
+            if self._override.get() is scope:
+                self._override.set(scope.live())
 
     def current(self) -> T:
-        adapter = self._override.get() or self._bound
+        scope = self._override.get()
+        live = scope.live() if scope is not None else None
+        adapter = live.adapter if live is not None else self._bound
         if adapter is None:
             raise PortNotBound(
                 f"the {self._name} port has no adapter: an entry point must call "
@@ -61,8 +88,16 @@ class Binding(Generic[T]):
 
 
 class _Proxy:
+    _binding: Binding[Any]
+
     def __init__(self, binding: Binding[Any]) -> None:
-        self._binding = binding
+        object.__setattr__(self, "_binding", binding)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(
+            f"cannot set {name!r} on a port: it forwards to the adapter of the moment; "
+            "swap the adapter with the port's use() instead"
+        )
 
     def __getattr__(self, name: str) -> object:
         return getattr(self._binding.current(), name)

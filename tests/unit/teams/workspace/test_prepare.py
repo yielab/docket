@@ -4,23 +4,40 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
 from docket.kernel import text as _text
 from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.ports import git_port
 from docket.tasks.domain.parts import Prepared
 from docket.teams.workspace import prepare as _prepare
 
 SUBJECT = "docket.teams.workspace.prepare"
 
 
+@contextmanager
+def _git_excluding(on_exclude: Callable[[str, tuple[str, ...]], None]) -> Iterator[None]:
+    """The real git, but ``.git/info/exclude`` is handed to *on_exclude* instead of written."""
+    real = git_port.current()
+
+    class _Git:
+        def __getattr__(self, name: str) -> object:
+            return getattr(real, name)
+
+        def git_info_exclude(self, common: str, patterns: tuple[str, ...]) -> None:
+            on_exclude(common, patterns)
+
+    with git_port.use(_Git()):  # type: ignore[arg-type]
+        yield
+
+
 @pytest.fixture(autouse=True)
-def _cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    monkeypatch.setattr(_prepare._git, "git_info_exclude", lambda common, patterns: None)
-    with use_home(Home(tmp_path)) as home:
+def _cache(tmp_path: Path) -> Iterator[Path]:
+    with _git_excluding(lambda common, patterns: None), use_home(Home(tmp_path)) as home:
         yield home.prepare_cache_dir
 
 
@@ -223,13 +240,9 @@ def test_linked_entries_of_a_plain_directory_is_empty(tmp_path: Path) -> None:
     assert _prepare.linked_entries(tmp_path) == ()
 
 
-def test_the_linked_names_are_excluded_from_the_repository(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_linked_names_are_excluded_from_the_repository(tmp_path: Path) -> None:
     seen: list[tuple[str, tuple[str, ...]]] = []
-    monkeypatch.setattr(
-        _prepare._git, "git_info_exclude", lambda common, patterns: seen.append((common, patterns))
-    )
     root = _tree(tmp_path / "wt")
-    _prepare.prepare_worktree(_spec(root), root, str(tmp_path / "repo"), "/common", _Run(root))
+    with _git_excluding(lambda common, patterns: seen.append((common, patterns))):
+        _prepare.prepare_worktree(_spec(root), root, str(tmp_path / "repo"), "/common", _Run(root))
     assert seen == [("/common", ("/node_modules",))]
