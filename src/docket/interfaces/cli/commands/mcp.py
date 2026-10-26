@@ -9,7 +9,9 @@ The lower half of this module configures the external MCP servers docket connect
 from __future__ import annotations
 
 import contextlib
+import functools
 import sys
+from collections.abc import Callable
 from typing import Any
 
 from docket.governance.audit import audit_log
@@ -55,7 +57,8 @@ _TOOL_NAMES: tuple[str, ...] = (
 class McpToolError(InvalidInput):
     """A tool's domain validation or lookup failed. Raised (never an inline
     ``{"ok": false}``) so success stays the bare shape in specs/api/mcp-server.spec.md;
-    the SDK turns the exception into an ``isError`` result carrying the message."""
+    ``_build_server`` re-raises it as the SDK's ``ToolError``, the one exception whose message
+    reaches the client in an ``isError`` result (any other is reported as a crash, text withheld)."""
 
 
 def _audit(tool: str, detail: str = "") -> None:
@@ -229,6 +232,17 @@ def _build_server() -> Any:
     ``serve_stdio()`` — importing ``mcp`` at module level would make the optional
     dependency mandatory just to import ``docket.cli``."""
     from mcp.server import MCPServer
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    def expected(fn: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(fn)
+        def call(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return fn(*args, **kwargs)
+            except McpToolError as exc:
+                raise ToolError(str(exc)) from exc
+
+        return call
 
     server = MCPServer(
         name="docket",
@@ -240,17 +254,17 @@ def _build_server() -> Any:
         ),
     )
 
-    server.add_tool(tool_status, name="status")
-    server.add_tool(tool_pods, name="pods")
-    server.add_tool(tool_queue, name="queue")
-    server.add_tool(tool_delegate, name="delegate")
-    server.add_tool(tool_dispatch, name="dispatch")
-    server.add_tool(tool_runs, name="runs")
-    server.add_tool(tool_resolve, name="resolve")
-    server.add_tool(tool_task_pregrant, name="task_pregrant")
-    server.add_tool(tool_inbox, name="inbox")
-    server.add_tool(tool_escalations, name="escalations")
-    server.add_tool(tool_cost, name="cost")
+    server.add_tool(expected(tool_status), name="status")
+    server.add_tool(expected(tool_pods), name="pods")
+    server.add_tool(expected(tool_queue), name="queue")
+    server.add_tool(expected(tool_delegate), name="delegate")
+    server.add_tool(expected(tool_dispatch), name="dispatch")
+    server.add_tool(expected(tool_runs), name="runs")
+    server.add_tool(expected(tool_resolve), name="resolve")
+    server.add_tool(expected(tool_task_pregrant), name="task_pregrant")
+    server.add_tool(expected(tool_inbox), name="inbox")
+    server.add_tool(expected(tool_escalations), name="escalations")
+    server.add_tool(expected(tool_cost), name="cost")
     return server
 
 
