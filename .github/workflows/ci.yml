@@ -193,7 +193,7 @@ jobs:
           uv venv .floorenv --python 3.11
           uv pip install --python .floorenv/bin/python -r floors.txt
           uv pip install --python .floorenv/bin/python -e . --no-deps
-          uv pip install --python .floorenv/bin/python pytest jsonschema
+          uv pip install --python .floorenv/bin/python pytest jsonschema grimp
 
       - name: Pytest at the dependency floor
         run: .floorenv/bin/python -m pytest -q
