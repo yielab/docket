@@ -584,9 +584,7 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 
 **Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
 
-- **Timing flakes seen once each:** `test_kernel_adoption.py` over its 2 s guard ceiling, three more
-  `tests/guards/` tests (`test_dead_code`, two in `test_suite_shape`) at 2.04-2.42 s on the `no-sandbox`
-  CI runner (PR 5),
+- **Timing flakes seen once each:**
   `test_retries_and_timeouts.py::TestRetryDoesNotTripStaleClaimSweep`, and the foreground approval
   deny test (its fake approval timeout was raised from 5 s to 60 s, `1a704359`). Trigger: a second
   failure of the same test. Then replace its wall-clock wait with an event.

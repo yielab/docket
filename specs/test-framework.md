@@ -134,7 +134,8 @@ Requirements:
 5. **A retired command name is an ordinary unknown command** (exit 2), pinned by the console-script
    entry-point test. Two guards keep docs, specs, templates, help examples and the source tree free
    of removed command names and of any `docket ...` invocation that is not live in the Click tree.
-6. **Duration ceilings** are stop conditions: 2 s per test in `unit/` and `guards/`, 10 s in
+6. **Duration ceilings** are stop conditions: 2 s per test in `unit/`, 5 s in `guards/` (each one
+   parses the whole tree: 0.9-1.4 s on the maintainer's machine, 2.2-2.8 s on a CI runner), 10 s in
    `integration/`, 60 s in `e2e/`. A test that passes but runs past its lane's ceiling is reported
    as failed by `tests/conftest.py`. `agent/` and the golden suite have no ceiling. No pytest marker is registered.
 7. **Docstrings and comments follow the repository comment policy**: a module docstring is at

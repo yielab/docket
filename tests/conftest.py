@@ -34,7 +34,7 @@ from tests.support.git import GitHost
 # fake asks for the ``fake_git``, ``fake_process`` or ``fake_jail`` fixture below.
 bootstrap.bind_adapters()
 
-_LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 2.0, "integration": 10.0, "e2e": 60.0}
+_LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 5.0, "integration": 10.0, "e2e": 60.0}
 
 
 def _lane_of(nodeid: str) -> str | None:
