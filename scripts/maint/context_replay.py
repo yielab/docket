@@ -25,11 +25,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from docket import config
-from docket.core import orchestrator, pipeline
-from docket.core.llm import ChatMessage, ToolCall
-from docket.core.session import condense_history
-from docket.edges.adapters.toolbox import read_file, text_outcome
+from docket.agent.ports import ChatMessage, ToolCall
+from docket.agent.session import condense_history
+from docket.agent.tools.builtins.toolbox import read_file, text_outcome
+from docket.kernel.home import current_home
+from docket.pipeline.domain import gates
+from docket.pipeline.domain import plan as orchestrator
 
 Messages = list[dict[str, Any]]
 Policy = Callable[[Messages], Messages]
@@ -111,7 +112,7 @@ POLICIES: dict[str, Policy] = {
 }
 
 VERDICT_PATTERN = r"^\s*(APPROVE|REJECT|REQUEST-CHANGES|PASS|FAIL)\b"
-_GATE = pipeline.VerdictGate(pattern=VERDICT_PATTERN, pass_values=["approve"])
+_GATE = gates.VerdictGate(pattern=VERDICT_PATTERN, pass_values=["approve"])
 _WORD = re.compile(r"[^\W_]+")
 _VERDICT_LINE = re.compile(VERDICT_PATTERN + r"(.*)$", re.IGNORECASE | re.DOTALL)
 DEFAULT_RESERVE = 4096
@@ -201,7 +202,7 @@ def overhead_tokens(step: Step) -> float:
     """Measured tokens of the first request that no message accounts for (system, tool schemas)."""
     if not step.calls:
         return 0.0
-    first = _bytes(request_messages(step, 0)) / config.CONTEXT_BYTES_PER_TOKEN
+    first = _bytes(request_messages(step, 0)) / current_home().context_bytes_per_token
     return max(0.0, _payload(step.calls[0], "inputTokens") - first)
 
 
@@ -221,7 +222,7 @@ def _status(counted: int, step: Step, budget: int, reserve: int) -> str:
     messages = step.messages
     mid_turn = bool(messages) and messages[-1].get("role") == "tool"
     if mid_turn and step.calls[-1].get("payload", {}).get("finishReason") != "stop":
-        estimate = overhead_tokens(step) + _bytes(messages) / config.CONTEXT_BYTES_PER_TOKEN
+        estimate = overhead_tokens(step) + _bytes(messages) / current_home().context_bytes_per_token
         if counted + estimate + reserve > budget:
             return "REFUSED-NEXT"
     return "ok"
@@ -229,7 +230,7 @@ def _status(counted: int, step: Step, budget: int, reserve: int) -> str:
 
 def measure(
     steps: list[Step],
-    budget: int = config.AGENT_LOOP_TOKEN_BUDGET,
+    budget: int = current_home().agent_loop_token_budget,
     reserve: int = DEFAULT_RESERVE,
 ) -> list[Row]:
     rows = []
@@ -291,7 +292,7 @@ def project(step: Step, policy: Policy) -> Projection:
             if projected[: len(previous)] == previous:
                 stable += 1
             shared = overhead + _common_prefix_bytes(previous, projected) / (
-                config.CONTEXT_BYTES_PER_TOKEN
+                current_home().context_bytes_per_token
             )
         prefix += round(scaled - min(scaled, shared)) + output
         previous = projected
@@ -453,7 +454,7 @@ def anonymize(directory: Path, out_dir: Path) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Replay recorded agent steps under a token rule.")
     ap.add_argument("directory", type=Path)
-    ap.add_argument("--budget", type=int, default=config.AGENT_LOOP_TOKEN_BUDGET)
+    ap.add_argument("--budget", type=int, default=current_home().agent_loop_token_budget)
     ap.add_argument("--reserve", type=int, default=DEFAULT_RESERVE)
     ap.add_argument("--policy", action="append", default=[], metavar="NAME")
     ap.add_argument("--json", action="store_true")

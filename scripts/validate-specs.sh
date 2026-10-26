@@ -20,11 +20,11 @@ ERRORS=0
 # script died before printing a single line.
 required_sections() {
     case "$1" in
-        functional) echo "Purpose Scope Requirements Interface Examples Validation Changelog" ;;
-        api) echo "Purpose Scope Syntax Arguments Options Output Return Validation Changelog" ;;
-        data) echo "Purpose Scope Structure Schema Validation Examples Changelog" ;;
-        acceptance) echo "Overview Stories Criteria Scenarios Metrics Changelog" ;;
-        validation) echo "Purpose Rules Functions Testing Performance Changelog" ;;
+        functional) echo "Purpose Scope Requirements Interface Examples Validation" ;;
+        api) echo "Purpose Scope Syntax Arguments Options Output Return Validation" ;;
+        data) echo "Purpose Scope Structure Schema Validation Examples" ;;
+        acceptance) echo "Overview Stories Criteria Scenarios Metrics" ;;
+        validation) echo "Purpose Rules Functions Testing Performance" ;;
         *) echo "" ;;
     esac
 }
@@ -54,6 +54,11 @@ validate_spec() {
             errors+=("Missing section: ## $section")
         fi
     done
+
+    # A spec states the current contract; its history is git log and CHANGELOG.md
+    if grep -q "^## Changelog" "$spec_file"; then
+        errors+=("A spec carries no ## Changelog (history is git log -- $spec_file)")
+    fi
 
     # Check for version
     if ! grep -q "^\*\*Version\*\*:" "$spec_file"; then

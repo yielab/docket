@@ -1,8 +1,31 @@
 kind: policy
 name: block-destructive
-description: Gate destructive shell commands behind explicit approval
+description: Gate destructive shell commands, and writes to .env and .ssh, behind explicit approval
 appliesTo: ["*"]
 when:
-  matches: '\brm\s+-[rf]|\bdrop\s+table|\btruncate\s+table|\bgit\s+push\s+--force|\bsystemctl\s+(stop|disable)|\bdd\s+if=|\bshred\b|\bmkfs\b|\bkillall\b|\brmdir\s+-p|chmod\s+[0-7]{3,4}\s+[/~]|chown\s+.*\s+[/~]|>>?\s*\\?[\x22\x27]?(?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|\b(?:tee|cp|mv)\b(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|\bsed\b(?=[^|;&]*?\s-(?:[a-zA-Z]*i|-in-place))(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|^(?:write|edit)\s+path=\x22(?:[^\s\x22\x27|;&<>\\]*/)?\.env\b|>>?\s*\\?[\x22\x27]?(?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/|\b(?:tee|cp|mv)\b(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/|\bsed\b(?=[^|;&]*?\s-(?:[a-zA-Z]*i|-in-place))(?:[^|;&\\]|\\(?!n))*?[\s\x22\x27](?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/|^(?:write|edit)\s+path=\x22(?:[^\s\x22\x27|;&<>\\]*/)?\.ssh/'
+  anyOf:
+    # Delete and wipe: recursive or forced rm, rmdir -p, and programs whose whole job is to destroy.
+    - command: {program: rm, args: [-r, -R, -f, --recursive, --force]}
+    - command: {program: rmdir, args: [-p, --parents]}
+    - command: {program: [shred, srm, wipe, wipefs, truncate, killall, pkill, dd, mkswap, mke2fs, "mkfs*"]}
+    - command: {program: find, args: [-delete]}
+    # Stop services; discard history or the working tree.
+    - command: {program: systemctl, verb: [stop, disable, mask, kill]}
+    - command: {program: service, verb: [stop]}
+    - command: {program: git, verb: [push], args: [-f, --force, --force-with-lease, --mirror, --delete, "+*", "*:*"]}
+    - command: {program: git, verb: [reset], args: [--hard]}
+    - command: {program: git, verb: [clean], args: [-f, --force]}
+    # Open up or hand over the filesystem root or a home directory.
+    - command: {program: [chmod, chown, chgrp], args: ["/", "/*", "~", "~/*"]}
+    # Empty a file with a bare redirect.
+    - command: {program: ":", writes: ["*"]}
+    # Write .env or .ssh, by redirect, by a program that writes, or with the file tools.
+    - command: {writes: ["*.env", "*.env.*", "*.ssh/*"]}
+    - tool: write
+      anyOf: [{path: "*.env"}, {path: "*.env.*"}, {path: "*.ssh/*"}]
+    - tool: edit
+      anyOf: [{path: "*.env"}, {path: "*.env.*"}, {path: "*.ssh/*"}]
+    # SQL travels as text inside some other program's argument, so no command structure to read.
+    - matches: '\bdrop(?:\s|/\*.*?\*/)+(?:table|database|schema)\b|\btruncate\s+table\b'
 then: ask
 message: Destructive command requires operator approval before execution.

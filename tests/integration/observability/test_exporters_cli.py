@@ -1,0 +1,484 @@
+"""`docket setup export` -- enable an observability destination by authenticating.
+
+The requested experience is "the YAML exists, I only put the key": `enable` prompts for a
+missing credential on a TTY, else names `docket setup provider add` and refuses without writing anything;
+a reachable endpoint activates the exporter with a minimal patch document, inheriting the rest
+from the built-in at read time (`observability.exporter._merge_with_builtin_raw`). See
+specs/functional/observability-export.spec.md "Activation".
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+from collections.abc import Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from threading import Thread
+
+import pytest
+from tests.support.cli import invoke_pod
+from tests.support.pods import build_pod
+from typer.testing import CliRunner
+
+from docket.governance import secrets as _secrets
+from docket.governance.audit import read_audit
+from docket.interfaces.cli.app import app as _app
+from docket.kernel.home import Home, current_home, use_home
+
+SUBJECT = "docket.observability.exporter"
+
+_runner = CliRunner()
+
+_PUBLIC_KEY = "pk-lf-testvalue00000000000000"
+_SECRET_KEY = "sk-lf-testvalue00000000000000"
+
+
+@contextmanager
+def _seed(
+    tmp_path: Path,
+) -> Iterator[Path]:
+    home = tmp_path / ".docket"
+    home.mkdir()
+    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    with use_home(Home(home)):
+        yield home
+
+
+def _store_langfuse_keys() -> None:
+    """Seed both Langfuse credentials in the secret store (not the environment), so a test can
+    assert `disable` leaves them alone."""
+    _secrets.save_secrets({"LANGFUSE_PUBLIC_KEY": _PUBLIC_KEY, "LANGFUSE_SECRET_KEY": _SECRET_KEY})
+
+
+@contextlib.contextmanager
+def _serve(status: int, body: bytes = b"{}") -> Iterator[str]:
+    """A real local HTTP server answering every POST with *status*/*body* -- the endpoint
+    `otlp_http.probe` sends its empty ``resourceSpans`` document to."""
+
+    class _Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args: object) -> None:  # quiet the test output
+            pass
+
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(length)
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{srv.server_address[1]}/v1/traces"
+    finally:
+        srv.shutdown()
+        thread.join(timeout=5)
+
+
+def _global_exporters(_home: Path) -> dict:
+    if not current_home().exporters_file.is_file():
+        return {}
+    cfg = json.loads(current_home().exporters_file.read_text())
+    exporters = cfg.get("exporters", {})
+    assert isinstance(exporters, dict)
+    return exporters
+
+
+class TestEnableWithoutCredentials:
+    def test_enable_without_tty_and_without_keys_exits_1_writing_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED on the base: `docket setup export` does not exist as a command. Once it does, a
+        non-TTY caller with no stored credential is refused, naming both missing names, with
+        `docket-exporters.json` never created (ADR 0014's fail-closed negative case)."""
+        with _seed(tmp_path):
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+            result = _runner.invoke(_app, ["setup", "export", "enable", "langfuse"])
+
+            assert result.exit_code == 1
+            combined = result.stdout + result.stderr
+            assert "LANGFUSE_PUBLIC_KEY" in combined
+            assert "LANGFUSE_SECRET_KEY" in combined
+            assert not current_home().exporters_file.exists()
+
+
+class TestEnableWithLocalServer:
+    def test_enable_writes_minimal_document_and_lists_enabled(self, tmp_path: Path) -> None:
+        with _seed(tmp_path) as home:
+            _store_langfuse_keys()
+
+            with _serve(200) as endpoint:
+                result = _runner.invoke(
+                    _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+                )
+            assert result.exit_code == 0, result.stdout + result.stderr
+
+            entries = _global_exporters(home)
+            assert entries["langfuse"] == {
+                "kind": "exporter",
+                "name": "langfuse",
+                "enabled": True,
+                "endpoint": endpoint,
+            }
+
+            list_result = _runner.invoke(_app, ["setup", "export", "list", "--json"])
+            assert list_result.exit_code == 0
+            rows = {row["name"]: row for row in json.loads(list_result.stdout)}
+            assert rows["langfuse"]["state"] == "enabled"
+
+            audit_entries = read_audit()
+            enabled_entries = [e for e in audit_entries if e["action"] == "exporter.enabled"]
+            assert len(enabled_entries) == 1
+            assert "privacy=minimal" in enabled_entries[0]["detail"]
+            assert _SECRET_KEY not in json.dumps(audit_entries)
+
+            show_result = _runner.invoke(_app, ["setup", "export", "show", "langfuse"])
+            assert show_result.exit_code == 0
+            assert "session.id" in show_result.stdout  # the built-in's inherited alias
+
+            disable_result = _runner.invoke(_app, ["setup", "export", "disable", "langfuse"])
+            assert disable_result.exit_code == 0
+            assert _global_exporters(home)["langfuse"]["enabled"] is False
+            assert _secrets.load_secrets()["LANGFUSE_SECRET_KEY"] == _SECRET_KEY
+
+    def test_enable_refuses_on_transport_failure_and_writes_nothing(self, tmp_path: Path) -> None:
+        """The kept negative case: a transport failure is the one outcome that still refuses
+        and leaves the catalog untouched, even once the missing-credential gate is past."""
+        with _seed(tmp_path) as home:
+            _store_langfuse_keys()
+
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "enable",
+                    "langfuse",
+                    "--endpoint",
+                    "http://127.0.0.1:1/v1/traces",
+                ],
+            )
+
+            assert result.exit_code == 1
+            assert _global_exporters(home) == {}
+            assert not current_home().exporters_file.exists()
+            assert "Could not reach" in result.stderr
+
+
+class TestRemoveBuiltin:
+    def test_remove_builtin_without_global_entry_exits_1_naming_it(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            result = _runner.invoke(_app, ["setup", "export", "remove", "jaeger"])
+            assert result.exit_code == 1
+            assert "built-in" in result.stderr
+            assert "jaeger" in result.stderr
+
+
+class TestPodShowExporters:
+    def test_pod_show_json_reports_enabled_state(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+
+        with _seed(tmp_path):
+            (current_home().root / "workspaces" / "projects").mkdir(parents=True)
+            build_pod("demo", ("lead",), codebase="/src/demo")
+            _store_langfuse_keys()
+
+            with _serve(200) as endpoint:
+                enable_result = _runner.invoke(
+                    _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+                )
+            assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
+
+            shown = invoke_pod(["show", "demo-lead", "--pod", "demo", "--json"])
+            assert shown.exit_code == 0, shown.output
+            report = json.loads(shown.stdout)
+            by_name = {e["name"]: e for e in report["exporters"]}
+            assert by_name["langfuse"]["state"] == "enabled"
+
+
+class TestPrivacyCommand:
+    def test_off_tty_widening_exits_1_naming_yes_and_writes_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED on the base: `docket setup export privacy` does not exist as an action. Once it
+        does, an off-TTY widening call must refuse without touching the global file or the
+        audit log (ADR 0015's fail-closed negative case, mirroring `enable`'s)."""
+        with _seed(tmp_path) as home:
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+            before_exists = current_home().exporters_file.exists()
+            before_audit = read_audit()
+
+            result = _runner.invoke(
+                _app, ["setup", "export", "privacy", "langfuse", "conversation"]
+            )
+
+            assert result.exit_code == 1
+            assert "--yes" in (result.stdout + result.stderr)
+            assert current_home().exporters_file.exists() == before_exists
+            assert _global_exporters(home) == {}
+            assert read_audit() == before_audit
+
+    def test_off_tty_with_yes_widens_and_audits_host_not_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _seed(tmp_path) as home:
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+            result = _runner.invoke(
+                _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
+            )
+
+            assert result.exit_code == 0, result.stdout + result.stderr
+            entry = _global_exporters(home)["langfuse"]
+            assert entry["privacy"] == "conversation"
+            assert "share" not in entry or entry["share"] is None
+
+            audit_entries = [e for e in read_audit() if e["action"] == "exporter.privacy"]
+            assert len(audit_entries) == 1
+            assert audit_entries[0]["detail"] == (
+                "name=langfuse from=minimal to=conversation host=cloud.langfuse.com"
+            )
+
+    def test_narrowing_never_asks_even_off_a_tty(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _seed(tmp_path) as home:
+            monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+            widen = _runner.invoke(
+                _app, ["setup", "export", "privacy", "langfuse", "conversation", "--yes"]
+            )
+            assert widen.exit_code == 0, widen.stdout + widen.stderr
+
+            narrow = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse", "minimal"])
+
+            assert narrow.exit_code == 0, narrow.stdout + narrow.stderr
+            assert _global_exporters(home)["langfuse"]["privacy"] == "minimal"
+
+    def test_no_argument_shows_leaves_this_host_and_writes_nothing(self, tmp_path: Path) -> None:
+        with _seed(tmp_path) as home:
+            result = _runner.invoke(_app, ["setup", "export", "privacy", "langfuse"])
+
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert "Leaves this host" in result.stdout
+            assert "never: credentials" in result.stdout
+            assert _global_exporters(home) == {}
+
+
+class TestDoctorExporterHealth:
+    def test_doctor_warns_naming_exporters_test_on_recorded_failures(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from docket.interfaces.cli.commands.setup_check import run_check
+
+        with _seed(tmp_path):
+            _store_langfuse_keys()
+            with _serve(200) as endpoint:
+                enable_result = _runner.invoke(
+                    _app, ["setup", "export", "enable", "langfuse", "--endpoint", endpoint]
+                )
+            assert enable_result.exit_code == 0, enable_result.stdout + enable_result.stderr
+
+            current_home().exporters_health_file.write_text(
+                json.dumps({"langfuse": {"failed": 3, "lastOk": ""}})
+            )
+
+            capsys.readouterr()
+            run_check()
+            out = capsys.readouterr().out
+            assert "langfuse" in out and "failed export" in out
+
+
+_CANARY = "rm -rf CANARY-TOOL-ARG-MARKER"
+
+
+def _seed_session(
+    home: Path, project: str = "docket-dev", session_id: str = "sess-preview-1"
+) -> str:
+    """Write one hand-built trace file with a canary in a tool call's arguments -- enough to
+    open and close a `gen_ai.chat` span with no content and an `execute_tool` span carrying a
+    `toolArguments`-class attribute. Returns *session_id*."""
+    pdir = home / "traces" / project
+    pdir.mkdir(parents=True)
+    records = [
+        {
+            "event_type": "session_start",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:00Z",
+            "project": project,
+            "agent_role": "implementer",
+            "payload": {},
+        },
+        {
+            "event_type": "llm_call",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:01Z",
+            "duration_ms": 100,
+            "payload": {"provider": "local", "model": "test-model", "ok": True, "iteration": 1},
+        },
+        {
+            "event_type": "tool_call",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:02Z",
+            "payload": {"tool": "bash", "callId": "c1", "arguments": _CANARY},
+        },
+        {
+            "event_type": "tool_result",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:03Z",
+            "payload": {"tool": "bash", "callId": "c1", "ok": True, "text": "done"},
+        },
+        {
+            "event_type": "session_end",
+            "session_id": session_id,
+            "ts": "2026-09-28T00:00:04Z",
+            "payload": {},
+        },
+    ]
+    text = "\n".join(json.dumps(r) for r in records) + "\n"
+    (pdir / f"{session_id}.jsonl").write_text(text, encoding="utf-8")
+    return session_id
+
+
+def _snapshot(home: Path) -> tuple[bytes | None, bytes | None, bytes | None]:
+    def _read(p: Path) -> bytes | None:
+        return p.read_bytes() if p.is_file() else None
+
+    return (
+        _read(current_home().exporters_file),
+        _read(current_home().exporters_health_file),
+        _read(current_home().audit_log),
+    )
+
+
+class TestPreview:
+    """`docket setup export preview` -- see what a destination would receive before sharing it
+    (ADR 0015 rule 10). RED on the base: `preview` is not a registered `exporters` action, so
+    every call here fails with 'Unknown exporters action'."""
+
+    def test_minimal_hides_the_canary_and_writes_nothing(self, tmp_path: Path) -> None:
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
+            before = _snapshot(home)
+
+            result = _runner.invoke(
+                _app, ["setup", "export", "preview", "langfuse", "--session", session_id]
+            )
+
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert _CANARY not in result.stdout
+            assert "toolArguments: 0" in result.stdout
+            assert _snapshot(home) == before
+
+    def test_actions_level_shows_the_canary_under_tool_call_arguments(self, tmp_path: Path) -> None:
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
+            before = _snapshot(home)
+
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "preview",
+                    "langfuse",
+                    "--session",
+                    session_id,
+                    "--level",
+                    "actions",
+                ],
+            )
+
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert _CANARY in result.stdout
+            assert "gen_ai.tool.call.arguments [toolArguments]" in result.stdout
+            assert "toolArguments: 1" in result.stdout
+            assert _snapshot(home) == before
+
+    def test_json_output_equals_otlp_http_encode_of_the_same_projection(
+        self, tmp_path: Path
+    ) -> None:
+        from docket.governance import privacy as _privacy
+        from docket.observability import exporter as _exp
+        from docket.observability import projection as _projection
+        from docket.observability import spans as _spans
+        from docket.observability import trace as _trace
+        from docket.observability.adapters import otlp_http as _otlp_http
+
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
+
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "preview",
+                    "langfuse",
+                    "--session",
+                    session_id,
+                    "--level",
+                    "actions",
+                    "--json",
+                ],
+            )
+            assert result.exit_code == 0, result.stdout + result.stderr
+
+            spec = _exp.load_catalog().get("langfuse")
+            assert spec is not None
+            _label, classes = _privacy.resolve("actions", None)
+            policy = _spans.ExportPolicy(
+                events=_projection.DEFAULT_EVENTS,
+                classes=classes,
+                label="actions",
+                content_max_chars=spec.content_max_chars,
+            )
+            state = _spans.ProjectionState()
+            spans = []
+            tracefile = _trace.find_trace(session_id)
+            assert tracefile is not None
+            for record in _trace.read_trace(tracefile):
+                admitted = policy.admit(record)
+                if admitted is None:
+                    continue
+                spans.extend(_projection.project(admitted, state, policy))
+            spans.extend(_projection.flush_open(state))
+            expected = _otlp_http.encode(spans, resource=spec.resource, aliases=spec.aliases)
+
+            assert json.loads(result.stdout) == expected
+            assert result.stdout.strip().encode() == json.dumps(expected).encode()
+
+    def test_footer_notes_when_the_level_grants_content_the_session_never_recorded(
+        self, tmp_path: Path
+    ) -> None:
+        """`llm_call` above never carried `inputMessages`/`outputMessages`/`systemInstructions`
+        (minimal was in effect when it was captured) -- previewing it at `conversation` must
+        say so instead of silently showing less than a later, wider-captured session would."""
+        with _seed(tmp_path) as home:
+            session_id = _seed_session(home)
+
+            result = _runner.invoke(
+                _app,
+                [
+                    "setup",
+                    "export",
+                    "preview",
+                    "langfuse",
+                    "--session",
+                    session_id,
+                    "--level",
+                    "conversation",
+                ],
+            )
+
+            assert result.exit_code == 0, result.stdout + result.stderr
+            assert "recorded no conversation content" in result.stdout
+            assert "captured only once an exporter grants it" in result.stdout

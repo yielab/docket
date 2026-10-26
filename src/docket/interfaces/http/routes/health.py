@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from docket.hops.application import usage
+from docket.hops.domain import gate_decisions as _decide
+from docket.interfaces.http.exchange import HttpExchange
+from docket.kernel import clock as _clock
+from docket.kernel.home import current_home
+from docket.platform import read_json
+from docket.tasks.domain.task import TaskRecord
+from docket.teams import fleet
+
+# Bumped on any breaking change to /status.json or /metrics contract, or to the
+# authenticated write/read-registry endpoints (/dispatch, /runs).
+# Pinned by tests/unit/test_serve__read_api.py (TestApiContract).
+SERVE_API_VERSION = "6"
+
+
+def _with_token_budget(task: TaskRecord) -> dict[str, Any]:
+    """*task*'s alias dump plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
+
+    left = _decide.tokens_left(task.max_tokens, [h.usage for h in task.hops])
+    return {
+        **task.model_dump(by_alias=True, mode="json"),
+        "tokenBudget": current_home().agent_loop_token_budget if left is None else max(0, left),
+    }
+
+
+def _last_activity_or_never(agent_id: str) -> str:
+    """Like utils.last_activity but returns 'never' (cmd_snapshot's sentinel)."""
+    val = usage.last_activity(agent_id)
+    return "never" if val == "—" else val
+
+
+def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
+    meta_path = current_home().meta_path(agent_id)
+    meta: dict[str, Any] = read_json(meta_path) if meta_path.exists() else {}
+    cost = round(usage.aggregate_cost(agent_id).cost_usd, 6)
+    budget_raw = meta.get("budgetUsd")
+    budget: float | None = (
+        float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
+    )
+    return {
+        "id": agent_id,
+        "name": str(meta.get("name", agent_id)),
+        "kind": kind,
+        "scope": str(meta.get("scope", "project")),
+        "model": str(meta.get("model", "")),
+        "registered": agent_id in registered,
+        "bindings": [{"channel": b["channel"]} for b in fleet.agent_bindings(agent_id)],
+        "lastActivity": _last_activity_or_never(agent_id),
+        "costUsd": cost,
+        "budgetUsd": budget,
+    }
+
+
+def build_status() -> dict[str, Any]:
+    """Build the /status.json payload. Schema, versioned by ``SERVE_API_VERSION``:
+    specs/data/serve-read-api.spec.md (GET /status.json).
+    """
+    channels = fleet.channel_names()
+    registered = {a.id for a in fleet.list_agents()}
+
+    agents: list[dict[str, Any]] = []
+    total_cost = 0.0
+
+    for pid in fleet.project_ids():
+        rec = _agent_record(pid, kind="project", registered=registered)
+        total_cost += float(rec["costUsd"])
+        agents.append(rec)
+
+    return {
+        "apiVersion": SERVE_API_VERSION,
+        "timestamp": _clock.stamp(),
+        "channels": channels,
+        "agents": agents,
+        "totalCostUsd": round(total_cost, 6),
+    }
+
+
+def render_status() -> str:
+    """Render the /status.json body (indent=2, matching cmd_snapshot)."""
+    return json.dumps(build_status(), indent=2)
+
+
+def get_status(h: HttpExchange, _arg: str) -> None:
+    h._send(render_status().encode("utf-8"), "application/json")
+
+
+def get_health(h: HttpExchange, _arg: str) -> None:
+    h._send(h._render_health().encode("utf-8"), "application/json")

@@ -1,7 +1,11 @@
-# Rich markup literals outside ui.py; shrink-only, regenerate with --write
-cli/_agents.py 1
+# Rich markup literals outside interfaces/cli/render/ui.py; shrink-only, regenerate with --write
+interfaces/cli/commands/agents.py 1
 cli/_channels.py 1
 cli/_conversations.py 4
-cli/_pod.py 3
-cli/_setup_check.py 17
-cli/_setup_notify.py 1
+interfaces/cli/commands/pod_settings.py 2
+interfaces/cli/commands/setup_check.py 6
+interfaces/cli/commands/setup_check_budget.py 3
+interfaces/cli/commands/setup_check_config.py 4
+interfaces/cli/commands/setup_check_providers.py 2
+interfaces/cli/commands/setup_check_services.py 1
+interfaces/cli/commands/setup_notify.py 1

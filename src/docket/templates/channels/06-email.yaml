@@ -4,8 +4,9 @@ dialect: email
 description: >-
   A plain SMTP notification. Notify only -- email can never decide or converse (a `From`
   header is forgeable, so it is never trusted with a token that grants or denies). Set
-  `config.to`/`config.from`/`config.smtpHost` and, if your server needs auth, `secret` to a
-  stored credential name before enabling.
+  `config.to`/`config.from`/`config.smtpHost` (and `config.port`, default 587) and, if your
+  server needs auth, `secret` to a stored credential name (the login is `config.user`, else
+  `config.from`) before enabling. A secret is only ever sent over STARTTLS.
 capabilities: [notify]
 on: [needs_you]
 content: minimal

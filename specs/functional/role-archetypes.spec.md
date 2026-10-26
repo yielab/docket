@@ -1,114 +1,60 @@
 # Role Archetypes Specification
 
-**Version**: 1.26.0
-**Status**: Implemented. **W116-4** tells the roles that write (implementer, writer) to create and change files with `write`/`edit` rather than `bash` — see "Per-role tool sets" requirement 8. **P35-1** (Wave 71) fixes two measured defects: `budget_for_role` now
-takes an optional `project` so a pod-scoped role's declared `tokenBudget` is honored (mirroring
-`resolve_role_model(..., project=)`'s Phase 30 fix) — see "Pod-scoped token budgets" below — and
-`core/dispatch.py`'s `guardrail_block` trace payload carries the tripped policy's `action`
-instead of duplicating its `policy` id. **P30-4** retired `editRights` (ADR 0012 §2 rule 7): the archetype schema has no such field, and
-`deniedTools` is its only capability statement — see "Archetype schema" requirement 5 and
-"Per-role tool sets" below. **P27-6** gives a recipe's own role YAML a second consumer,
-`docket pod update <dir>` (`core/pod_apply.py`), alongside `docket pod update <file>` —
-see "Shipped recipes" below for the updated one-command apply surface. **P27-5** closes the one
-remaining built-in exemption in "Hop
-instructions": the `lead` archetype now carries a real `hopInstruction` (the pre-existing
-hardcoded text, unchanged), served through `resolve_hop_instruction` like any custom role, and a
-pipeline step's own `instructions` now overrides the Lead's hop message too — see "Hop
-instructions" below. `templates/recipes/<name>/` (P26-20) ships pre-authored role/pipeline/
-policy bundles for common pod shapes — see "Shipped recipes" below. Applying one uses only the
-existing `docket pod roles`/`docket pod`/`docket pod policies` CLI surface; a recipe's own role YAML is
-data validated exactly like a hand-authored one, and none of the roles the shipped recipes
-target (`operator`, `researcher`, `analyst`, `writer`, `critic`) needed a new archetype field to
-support this. **P26-9** removed a live contradiction from the four built-in and six
-starter AGENTS.md templates: their Red Lines section instructed the model to write in-flight work
-to `HEARTBEAT.md`, directly opposite `core/identity.py`'s live runtime contract ("private state is
-read-only ... no private logging is required") composed into the same turn — see "Generated
-instructions agree with the runtime contract" below. `hopInstruction` (P26-7) is an open, optional field: a gated custom
-role's hop message now carries an instruction even without one declared, generated from
-`gateContract` — see "Hop instructions" below and `pod-dispatch.spec.md`'s hop-message builder.
-`gateContract` is now load-bearing (ROADMAP Phase 16 W-8): the dispatch
-executor (`core/orchestrator.py`) resolves it as a step's gate fallback — see
-`pod-dispatch.spec.md`'s "Generalized gate execution". Archetypes are also composed by name into
-pod blueprints (Phase 16 W-7; see `pod-blueprints.spec.md`). ROADMAP Phase 17's C-1 (the context
-compiler) added a `tokenBudget` field — see "Archetype schema" and "Context-compiler token
-budget" below. ROADMAP Phase 19's P19-12 added `deniedTools` — see "Archetype schema" and the new
-"Per-role tool sets" section — and, unlike the now-retired `editRights` (P30-4), it is genuinely
-*enforced*:
-`core.archetypes.registry_for_role` is called by `core/agent_loop.py` once per turn to remove
-those tool names from the registry the model is given, so a denied tool is unreachable, not just
-discouraged. **Wave 17** extended that enforcement to also key on `Tool.kind`, not only literal
-names (`registry_for_role`'s new requirement 6) — the reason: `core.mcp_tools.load_mcp_tools`
-gained a production caller this wave (see `mcp-client.spec.md`), so a registry `registry_for_role`
-narrows can now contain a namespaced MCP-adapted tool no `denied_tools` list could ever have named
-in advance. See `agent-loop.spec.md` for how the turn loop consumes it and `mcp-client.spec.md`
-for the wiring this requirement exists to keep safe.
-**Last Updated**: 2026-10-18
+**Version**: 4.1.0
+**Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
+adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
 This specification defines the **role archetype**: a versioned, declarative definition of a pod
-role (`core/archetypes.py`). Before ROADMAP Phase 16 W-6, a pod role was a closed 4-tuple
-(`lead`/`implementer`/`reviewer`/`tester`) hardcoded in `core/pod.py`, and every role's identity
-prose (SOUL.md/AGENTS.md) was hand-written Python string-building in `cli/_pod.py`. A fifth role
-was inexpressible without editing both files. This spec documents the registry that replaced
-that closed set: a role's name, scope, model class, identity prose, gate contract,
-and tool profile are now data — built-in archetypes reproduce the four legacy roles
-byte-identical, a starter library ships six more (`researcher`, `analyst`, `writer`, `critic`,
-`operator`, `monitor`), and a user can define or override an archetype via a YAML file
-(`docket pod update <file>`).
+role. A role's name, scope, model class, identity prose, gate contract, tool profile, tool
+denylist, token budget and hop instruction are data. Built-in archetypes define the four software
+roles (`lead`, `implementer`, `reviewer`, `tester`), a starter library ships six more
+(`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`), and an operator can define
+or override an archetype with a YAML file (`docket pod update <file>`).
 
 ## Scope
 
 This specification covers:
 
 - The archetype schema: `name`, `version`, `scope`, `modelClass`, `soulTemplate`,
-  `agentsTemplate`, `gateContract`, `toolProfile`, `deniedTools`, and the optional
-  `description`/`hopInstruction` fields — which are closed typed enums and which are
+  `agentsTemplate`, `gateContract`, `toolProfile`, `tokenBudget`, `deniedTools`, and the
+  optional `description`/`hopInstruction` fields; which are closed typed enums and which are
   open prose
-- The `deniedTools` field and `registry_for_role`, the one function that turns it into an
-  actually-narrowed `ToolRegistry` via the public `ToolRegistry.without()` API (ROADMAP Phase 19
-  P19-12) — this spec documents the data and that function's contract; `agent-loop.spec.md`
-  documents that `core/agent_loop.py` calls it once per turn
-- `hopInstruction` and `resolve_hop_instruction`, the function a custom role's hop message
-  resolves its instruction text through when a pipeline step declares none of its own — see
-  "Hop instructions" below; `pod-dispatch.spec.md` documents that `core/dispatch.py`'s
-  hop-message builder is the one caller
-- The built-in archetypes (lead/implementer/reviewer/tester) and their byte-identical-to-legacy
-  guarantee
+- `deniedTools` and `registry_for_role`, the function that turns it into a narrowed
+  `ToolRegistry` through the public `ToolRegistry.without()` API; the turn loop
+  calling it once per turn is `agent-loop.spec.md`'s
+- `hopInstruction` and `resolve_hop_instruction`, through which the Lead's and a custom role's
+  hop message resolves its instruction text when a pipeline step declares none of its own; the
+  hop-message builder is `pod-dispatch.spec.md`'s
+- The built-in archetypes (lead/implementer/reviewer/tester) and their byte-identity guarantee
 - The starter library (researcher/analyst/writer/critic/operator/monitor)
-- The template rendering contract (`${var}`-style substitution, the guaranteed variable set)
-- The user-overlay registry (`~/.docket/docket-roles.json`) and its merge/override semantics
-- How `modelClass` integrates with the existing role→model policy (`model-profiles.spec.md`)
-  without replacing it
-- How `core/pod.py`'s `normalize_role`/`member_id`/`pod_of`/`members_of`
+- The template rendering contract (`${var}` substitution, the guaranteed variable set)
+- The pod overlay (`<pod>/config/roles.json`) and its merge over the built-in and starter archetypes
+- How `modelClass` feeds the role→model policy (`model-profiles.spec.md`) without replacing it
+- How pod member ids and role names (`normalize_role`, `member_id`, `pod_of`, `members_of`)
   resolve against this registry instead of a hardcoded list
 - The `docket pod roles` CLI surface
-- Shipped recipe bundles (`templates/recipes/<name>/`, P26-20): pre-authored role YAML(s) for a
-  bundle's own custom role, validated by the same `docket pod validate` and installed by the same
-  `docket pod update <file>` this spec already documents — see "Shipped recipes" below for the bundle contract; a recipe's pipeline YAML is
-  `pipeline-format.spec.md`'s document shape, not this spec's, and an optional policy pack is
-  plain policy data (see `docket pod validate`), owned by neither spec
+- Shipped recipe bundles, as far as their role YAML is concerned: a recipe's role is an ordinary
+  archetype document; a recipe's pipeline is `pipeline-format.spec.md`'s, its manifest and apply
+  step are `pod-blueprints.spec.md`'s
 
 This specification does NOT cover:
 
-- Pod *composition* (which roles a given pod actually has, duplicate-role indexing, the
-  lean/full presets) — that remains `core/pod.py`'s `plan_pod`/`DEFAULT_POD_ROLES`/
-  `FULL_POD_ROLES`, unchanged by this spec; see `workspace-structure.spec.md` and
+- Pod *composition* (which roles a pod has, duplicate-role indexing, the lean/full presets
+  `DEFAULT_POD_ROLES`/`FULL_POD_ROLES`); see `workspace-structure.spec.md` and
   `docket-meta.spec.md`
-- Named pod *rosters/blueprints* (`docket init --blueprint`) that let `docket init` compose a
-  non-default set of archetypes for a whole pod in one step — shipped as ROADMAP Phase 16 W-7;
+- Pod blueprints (`docket init --blueprint`), which compose archetypes by name into a whole pod;
   see `pod-blueprints.spec.md`
-- The dispatch executor's actual gate *enforcement* — `core.orchestrator.resolve_gate`/
-  `parse_verdict` and the generic mechanical/verdict/approval evaluation loop are documented in
-  `pod-dispatch.spec.md`'s "Generalized gate execution" (ROADMAP Phase 16 W-8, shipped). This spec
-  covers only the `gateContract` *schema* itself (the closed `kind` enum, `regexes`) and that it
-  is validated to match `core/pipeline.py`'s `default_pipeline()` gates for the four legacy roles
-  — see Requirements — not how the executor consumes it
-- The role→model policy's resolution mechanics themselves (rank anchors, presets, pinning,
-  `docket setup model`) — see `model-profiles.spec.md`; this spec only covers how an archetype's
-  `modelClass` feeds into that existing system
-- The per-member runtime fields (`portRangeStart`, `scratchDir`, `verifyCmd`, …) written to
-  `.docket-meta.json` — see `docket-meta.spec.md`
+- Gate *enforcement*: `resolve_gate`/`parse_verdict` and the mechanical/verdict/approval
+  evaluation are `pod-dispatch.spec.md`'s "Generalized gate execution". This spec covers only the
+  `gateContract` schema (the closed `kind` enum, `regexes`) and its agreement with the default
+  pipeline's gates for the four built-in roles
+- The role→model policy's own mechanics (rank anchors, presets, pinning, `docket setup model`);
+  see `model-profiles.spec.md`
+- The per-member runtime fields (`portRangeStart`, `scratchDir`, `verifyCmd`, …) in
+  `.docket-meta.json`; see `docket-meta.spec.md`
 
 ## Requirements
 
@@ -116,422 +62,371 @@ This specification does NOT cover:
 
 1. A role archetype **MUST** carry: `name` (string), `version` (positive integer), `scope`,
    `modelClass`, `soulTemplate` (string), `agentsTemplate` (string), `gateContract`,
-   `toolProfile` (string), and `tokenBudget` (positive integer — ROADMAP Phase 17
-   C-1; see "Context-compiler token budget" below). `description`, `deniedTools`
-   (ROADMAP Phase 19 P19-12; see "Per-role tool sets" below), and `hopInstruction` (P26-7; see
-   "Hop instructions" below) **MAY** be present (empty/absent is valid for all four); `tokenBudget`
-   **MAY** be absent from a wire document (a pre-C-1 user overlay entry, or a hand-authored YAML
-   file that predates this field) and defaults to `6000` when omitted — never a parse error.
-   `deniedTools` absent/empty defaults to `()` — no narrower than whatever registry the caller
-   hands in. `hopInstruction` absent/empty means "no declared instruction", not "no instruction at
-   all" — see "Hop instructions". `from_wire` reads only the fields above; any other key on a
-   document is not read.
-2. `scope` **MUST** be one of exactly `"org"` | `"pod"` — a closed enum. Every built-in and
-   starter-library archetype shipped today is `"pod"`-scoped (org-scoped archetypes are a valid,
-   validated value in the type system, reserved for a future card; none ship yet).
-3. `modelClass` **MUST** be one of exactly `"cheap"` | `"strong"` — a closed enum, matching the
-   two classes `model-profiles.spec.md`'s `ROLE_CLASS` already uses.
+   `toolProfile` (string), and `tokenBudget` (positive integer; see "Context-compiler token
+   budget"). `description`, `deniedTools` (see "Per-role tool sets") and `hopInstruction` (see
+   "Hop instructions") **MAY** be present; empty or absent is valid for all three. `tokenBudget`
+   **MAY** be absent from a wire document and defaults to `6000`, never a parse error.
+   `deniedTools` absent or empty defaults to `()`: no narrower than the registry the caller hands
+   in. `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
+   all". `from_wire` reads only the fields above; it refuses a `kind:` other than `role` and a
+   `policyRole` key, and does not read any other key.
+2. `scope` **MUST** be exactly `"pod"`, a closed enum of one value; any other value is refused.
+   Every built-in and starter archetype is `"pod"`-scoped. Scope is shown by `docket pod roles`
+   and changes no behaviour.
+3. `modelClass` **MUST** be one of exactly `"cheap"` | `"strong"`, a closed enum, the same two
+   classes the role→model policy uses.
 4. `gateContract.kind` **MUST** be one of exactly `"none"` | `"verdict"` | `"mechanical"` |
-   `"approval"` — a closed enum. `regexes` (a list of strings, each a valid regular expression)
-   **MUST** be present only when `kind == "verdict"`; each entry is a marker alternative, and
-   `core.orchestrator.resolve_gate` joins them into one `^\s*(A|B)\b` case-insensitive pattern
-   whose first entry is the passing value. `core.orchestrator.parse_verdict` applies that pattern
-   at the start of every non-blank line of the complete reply and accepts exactly one distinct
-   marker (see `pipeline-format.spec.md` Gates requirement 3). See "Legacy archetype fidelity"
-   below for the exact values the reviewer/tester archetypes carry.
-5. There is no `editRights` field (retired by P30-4, ADR 0012 §2 rule 7). It was descriptive
-   metadata only — never mechanically derived into a tool denylist, because the mapping was not
-   one-to-one (the `tester` archetype was `"read-only"` yet kept `bash`, since observing
-   behaviour requires running it). `deniedTools` is the archetype schema's only capability
-   statement; nothing computes it from anything else. `editRights` gets no special handling
-   anywhere (`docket pod validate` prints no note for it).
+   `"approval"`, a closed enum. Each `regexes` entry **MUST** compile as a regular expression.
+   `regexes` is read only when `kind == "verdict"`; on another kind it is accepted and ignored.
+   Each entry is a marker alternative: `resolve_gate` joins them into one `^\s*(A|B)\b`
+   case-insensitive pattern whose first entry is the passing value, and a `verdict` contract
+   with no `regexes` resolves to no gate. `parse_verdict` applies that pattern at the start of
+   every non-blank line of the complete reply and accepts exactly one distinct marker (see
+   `pipeline-format.spec.md` "Gates" requirement 3). See "Built-in archetypes and legacy
+   fidelity" for the values the reviewer/tester archetypes carry.
+5. There is no `editRights` field (ADR 0012 §2 rule 7). `deniedTools` is the archetype schema's
+   only capability statement; nothing computes it from anything else. `editRights` gets no
+   special handling anywhere (`docket pod validate` prints no note for it).
 6. `name` **MUST** match `^[a-z][a-z0-9-]*$` (lowercase letters/digits/hyphens, starting with a
    letter). `version` **MUST** be a positive integer. `soulTemplate`/`agentsTemplate` **MUST NOT**
    be blank.
-7. `toolProfile`, `description`, and `deniedTools` are open — any non-empty (for `toolProfile`)
-   or any (for `description`, including empty) string is valid for the two prose fields; docket
-   does not validate `deniedTools`' entries against any live tool registry (a name that does not
-   exist in a given registry is simply a no-op removal — see "Per-role tool sets"). Per ROADMAP
-   Phase 16's explicit anti-overengineering rule: "archetype prose and rosters are
-   user-extensible, but gate contracts, edit rights, and scope stay closed typed sets docket can
-   reason about" — `scope`, `modelClass`, and `gateContract.kind` are the closed sets that rule
-   describes (`editRights` is retired, requirement 5); `name` (which roles exist),
-   `soulTemplate`, `agentsTemplate`, `toolProfile`, `description`, and `deniedTools` are open.
-8. An archetype definition that violates any of the above **MUST** be rejected with a clear error
-   naming the offending field (`ArchetypeError`) — never silently coerced or truncated to a valid
+7. `toolProfile`, `description`, `hopInstruction` and `deniedTools` are open: any string is
+   valid for the prose fields, and docket does not validate `deniedTools` entries against any
+   live tool registry (a name absent from a given registry is a no-op removal; see "Per-role tool
+   sets"). The closed sets are `scope`, `modelClass` and `gateContract.kind`, so docket can reason
+   about them; `name` (which roles exist) and the prose fields are open.
+8. An archetype definition that violates any of the above **MUST** be rejected with an error
+   naming the offending field (`ArchetypeError`), never silently coerced or truncated to a valid
    value.
 
 ### Template rendering
 
-1. `soulTemplate`/`agentsTemplate` **MUST** use `${identifier}`-style placeholders (Python's
+1. `soulTemplate`/`agentsTemplate` **MUST** use `${identifier}` placeholders (Python's
    `string.Template` syntax), substituted strictly: a template referencing a variable that is not
-   supplied at render time **MUST** raise a clear error rather than emit a literal
-   `${typo}`/silently drop text.
+   supplied at render time **MUST** raise `ArchetypeError` rather than emit a literal `${typo}` or
+   drop text. Extra unused variables are allowed.
 2. Every archetype **MUST** be able to rely on at least these variables at render time: `project`,
-   `objective`, `codebase` (may be an empty string when no codebase is configured — the schema's
-   "codebase?" optionality), and `workDir`. Docket's own built-in/starter archetypes additionally
-   rely on `role`, `memberId`, `sessionKey`, `stack`, `codebaseOrConfigured`, `codebaseOrIt`, and
-   `requiredStartupFile` — supplied by `core/pod_provisioning.py`'s `_render_context` for every
-   pod member, but not part of the publicly documented minimum a user archetype is guaranteed.
-3. `docket pod validate <file>` **MUST** dry-run render both templates against a representative sample
-   variable set and report any unknown-variable error, so an authoring mistake is caught before
-   `docket pod update` persists it.
+   `objective`, `codebase` (an empty string when no codebase is configured), and `workDir`.
+   Provisioning also supplies `role`, `memberId`, `sessionKey`, `stack`, `codebaseOrConfigured`,
+   `codebaseOrIt` and `requiredStartupFile` for every pod member; these are not part of the
+   documented minimum. The built-in and starter templates use `project`, `objective`, `role`,
+   `memberId`, `sessionKey` and `stack`.
+3. `docket pod validate <file>` and `docket pod update <file>` **MUST** check a role document's
+   structure (requirement 8 of "Archetype schema") and **MUST** render `soulTemplate` and
+   `agentsTemplate` once against a representative variable set (`validate_archetype_dict`, called
+   by `load_document` for every role file). An unknown variable fails both commands, naming the
+   template, before any member is provisioned from the archetype (requirement 1).
 
 ### Built-in archetypes and legacy fidelity
 
-1. The four legacy pod roles (`lead`, `implementer`, `reviewer`, `tester`) **MUST** ship as
-   built-in archetypes (`core/archetypes.py`'s `BUILTIN_ARCHETYPES`) whose rendered SOUL.md and
-   AGENTS.md are **byte-identical** to a frozen baseline, for any
-   project/codebase/stack/description input (the pre-W-6 generators, changed only by deliberate,
-   spec'd removals: P26-9 and P44-6). This is enforced by
-   `tests/integration/test_pod_role_workspace_parity.py`, which embeds a frozen, independent
-   copy of that baseline and diffs it against the live archetype-driven renderer.
-2. The four legacy archetypes resolve their model through their own name's row — see
-   "Role→model policy integration" below. Their `modelClass` **MUST** match that row's class
+1. The four software roles (`lead`, `implementer`, `reviewer`, `tester`) **MUST** ship as
+   built-in archetypes (`BUILTIN_ARCHETYPES`) whose rendered SOUL.md and AGENTS.md are
+   **byte-identical** to a frozen, independently written baseline for any
+   project/codebase/stack/description input. The parity test embeds that baseline and diffs it
+   against the live renderer; it moves only with a deliberate, spec'd template change.
+2. The four built-in archetypes resolve their model through their own name's row (see
+   "Role→model policy integration"). Their `modelClass` **MUST** match that row's class
    (`lead`/`reviewer`/`tester` = cheap, `implementer` = strong). There is no `policyRole` field;
    a document that carries one is refused naming the key.
-3. Their `gateContract` **MUST** match this role's real gate behavior: `lead` = `none`,
-   `implementer` = `mechanical` (the per-member `verifyCmd`, configured separately — see
+3. Their `gateContract` **MUST** match the role's real gate behaviour: `lead` = `none`,
+   `implementer` = `mechanical` (the per-member `verifyCmd`, configured separately; see
    `docket-meta.spec.md`), `reviewer` = `verdict` with regexes `["APPROVE", "REQUEST-CHANGES"]`,
-   `tester` = `verdict` with regexes `["PASS", "FAIL"]` — each byte-equal (case-insensitively; see
-   `pod-dispatch.spec.md`'s "Generalized gate execution") to the marker words
-   `core/pipeline.py`'s `default_pipeline()` declares for that role's step, and to what
-   `core.orchestrator.resolve_gate` resolves for a bare `role: reviewer`/`role: tester` step with
-   no gate of its own — all three (this registry, the pipeline format's hardcoded default, and
-   the executor's own fallback resolution) verified to agree by test
-   (`tests/integration/test_archetypes.py`, `tests/unit/core/test_pipeline__spec.py`). Before W-8,
-   this cross-check was against a now-deleted `core/dispatch.py`-private regex constant
-   (`_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`) — gate execution reads this registry (or the
-   pipeline format) directly now, so that private copy no longer exists to drift from.
-4. `core/pod.py`'s `normalize_role`, `member_id`, `pod_prefix`, `parse_member_id`, `pod_of`, and
-   `members_of` **MUST** produce identical results for the four legacy roles as before this
-   registry existed — same member-id shape (`<project>-<role>[-N]`), same sort order (Lead
-   first). `normalize_role` accepts only registered archetype names (case-insensitive); there is
-   no `programmer` → `implementer` input alias.
-5. A user-defined role name **MAY** itself end in another registered role's name (e.g.
-   `security-reviewer`, ending in the built-in `reviewer`) — the registry imposes no disjointness
-   constraint between names. `pod_of` **MUST** still resolve such a member to its real pod: it
-   reads the member's own recorded `.docket-meta.json` `pod` field first (see
-   `pod-dispatch.spec.md`'s "Pipeline order and participation" requirement 3), falling back to
-   id-string parsing only when that meta is absent. `parse_member_id`, which always receives an
-   explicit project and therefore only ever needs to strip that project's own prefix, is
-   unaffected by this ambiguity — the fix is confined to the id-guessing `pod_of` path.
+   `tester` = `verdict` with regexes `["PASS", "FAIL"]`. Each **MUST** equal (case-insensitively)
+   the marker words `default_pipeline()` declares for that role's step and what `resolve_gate`
+   resolves for a bare `role: reviewer`/`role: tester` step with no gate of its own; tests check
+   that the three agree.
+4. `normalize_role`, `member_id`, `pod_prefix`, `parse_member_id`, `pod_of` and `members_of`
+   **MUST** keep the member-id shape `<project>-<role>[-N]` and sort a pod's members Lead first.
+   `normalize_role` accepts only registered archetype names (case-insensitive, including the
+   pod's own overlay when given); there is no input alias such as `programmer`.
+5. A user-defined role name **MAY** end in another registered role's name (e.g.
+   `security-reviewer`, ending in `reviewer`); the registry imposes no disjointness constraint.
+   `pod_of` **MUST** still resolve such a member to its real pod: it reads the member's own
+   recorded `.docket-meta.json` `pod` field first (see `pod-dispatch.spec.md` "Pipeline order and
+   participation" requirement 3), falling back to id-string parsing only when that field is
+   absent. `parse_member_id` receives an explicit project and only strips that project's prefix,
+   so it is unaffected by the ambiguity.
 
-### Generated instructions agree with the runtime contract (P26-9)
+### Generated instructions agree with the runtime contract
 
 1. A built-in or starter archetype's `soulTemplate`/`agentsTemplate` **MUST NOT** instruct the
-   model to perform a private write it cannot actually make — specifically, telling it to write
-   to `HEARTBEAT.md` or a `memory/` log itself. `core/identity.py`'s live runtime contract (see
-   `agent-loop.spec.md` req. 30) tells the model every turn that private workspace state is
-   read-only and that "Docket owns turn durability and no private logging is required"; an
-   archetype's own generated prose telling the model to write that same state directly
-   contradicts the contract it is composed alongside in the same turn.
-2. This does not forbid an archetype from telling the model to *read* `HEARTBEAT.md`/`memory/`
-   (reading is consistent with "read-only"), nor does it apply to `WORKFLOW_AUTO.md`
-   (`core/memory.py`'s `seed_contract`): that file's own `cd`/write-HEARTBEAT instructions are its
-   documented **manual-path contract**, for an agent reading the file directly outside Docket's
-   turn loop — the live turn loop never sends this raw file to the model (`_runtime_startup_contract`
-   projects a small read-only summary instead), and the file itself says so under a "Manual-path
-   contract" header, immediately after its intro paragraph.
-3. `tests/unit/core/test_archetypes.py`'s `TestGeneratedInstructionsAgreeWithRuntimeContract`
-   renders every `BUILTIN_ARCHETYPES`/`STARTER_ARCHETYPES` entry's SOUL/AGENTS templates and
-   fails if any composed line both asks to "write" and names `HEARTBEAT.md` or `memory/` — a
-   structural check over the actual rendered prompt, not a grep over template source.
-4. `core/pod_provisioning.py`'s `POD_TEMPLATE_VERSION` **MUST** be bumped whenever a built-in or
-   starter template's generated text changes (as this requirement's own fix did, v2 → v3), so
-   `docket setup` can in principle detect a pod member provisioned from a stale template — see
-   workspace-structure.spec.md for what currently consumes that marker.
-5. **Prompt layers (P44-6, ADR 0028 section 1).** A built-in or starter `soulTemplate`/
-   `agentsTemplate` **MUST NOT** contain an absolute path (the codebase and working directory
-   reach the model in the task message), `HEARTBEAT`, `memory/` or `promise`: nothing reads a
-   completion promise, and a member's private files are read-only and off-limits to tools.
-   The shared `## Method` block in every `agentsTemplate` states the strategy in four short
-   lines: start from what the task message delivers (the working directory, the repository map,
-   the previous step's work), never re-read what it carries, find code with `grep` for a
-   concrete name and `read` by ranges, and never list the whole tree. A step prompt adds only its
-   own output contract. Both templates render to the same bytes for two tasks of one member, so
-   the system prompt carries no task data. `POD_TEMPLATE_VERSION` is 4. The same block ends
-   with one line naming the memory-section grammar (workspace-structure.spec.md "Pod memory",
-   requirement 3): end the reply with `## Memory` and lines `- <kind>: <path or command> -- <fact>`,
-   kind one of `generated`, `command`, `pitfall`, `convention`, facts only. It stays under 520
-   characters with the other four lines.
-6. **Known gap, out of this requirement's scope:** the standalone (non-pod) project-agent
-   AGENTS.md generator (`cli/_agents.py`) carries its own,
-   separately hand-written copy of the same instruction this requirement removes from
-   `core/archetypes.py`'s pod-member templates. They are a different code path (not archetype-
-   driven) and CLI-layer, so a card scoped to `core/archetypes.py`/`core/memory.py` does not touch
-   them; they still contradict the same runtime contract until a future card unifies or fixes them.
+   model to make a private write it cannot make: telling it to write to `HEARTBEAT.md` or a
+   `memory/` log. The live runtime contract (see `agent-loop.spec.md` requirement 30) tells the
+   model every turn that private workspace state is read-only and that "Docket owns turn
+   durability and no private logging is required"; generated prose asking for that write would
+   contradict the contract composed into the same turn.
+2. This does not apply to `WORKFLOW_AUTO.md`: its own `cd`/write-HEARTBEAT instructions are its
+   documented manual-path contract, for an agent reading the file directly outside docket's turn
+   loop. The turn loop never sends that raw file to the model (it projects a small read-only
+   summary instead), and the file says so in a "Manual-path contract" paragraph right after its
+   intro.
+3. A test renders every built-in and starter archetype's SOUL/AGENTS templates and fails if any
+   rendered line both asks to "write" and names `HEARTBEAT.md` or `memory/`: a check over the
+   rendered prompt, not a grep over template source.
+4. `POD_TEMPLATE_VERSION` **MUST** be bumped whenever a built-in or starter template's generated
+   text changes. Each provisioned member records it as `templateVersion`; `docket setup` reports
+   a member whose recorded version or rendered files differ from the current ones, and
+   `docket pod update` with no argument re-renders it (see `workspace-structure.spec.md`).
+5. **Prompt layers (ADR 0028 section 1).** A built-in or starter `soulTemplate`/`agentsTemplate`
+   **MUST NOT** contain an absolute path (the codebase and working directory reach the model in
+   the task message), `HEARTBEAT`, `memory/` or `promise`: nothing reads a completion promise,
+   and a member's private files are read-only and off-limits to tools. Every `agentsTemplate`
+   carries one shared `## Method` block of three bullets: start from what the task message
+   delivers (the working directory, a repository map, what the previous step produced) and never
+   re-read what it carries; find code with `grep` for a concrete name and `read` the lines needed,
+   never listing the whole tree; and, to leave a note for later tasks, end the reply with
+   `## Memory` and lines `- <kind>: <path or command> -- <fact>`, kind one of `generated`,
+   `command`, `pitfall`, `convention`, facts only (workspace-structure.spec.md "Pod memory",
+   requirement 3). The block stays under 520 characters. A step prompt adds only its own output
+   contract. Both templates render to the same bytes for two tasks of one member, so the system
+   prompt carries no task data. `POD_TEMPLATE_VERSION` is 5.
 
-### Per-role tool sets (ROADMAP Phase 19 P19-12)
+### Per-role tool sets
 
-1. `denied_tools` **MUST** be a tuple of built-in tool names (e.g. `"write"`, `"edit"`, `"bash"` —
-   `core.tools.builtin_registry()`'s names) an archetype's agent may never call. It defaults to
-   `()` for any archetype that does not declare one.
-2. `core.archetypes.registry_for_role(base, role)` **MUST** look *role* up in the live archetype
-   registry and, when found with a non-empty `denied_tools`, return `base.without(
-   *archetype.denied_tools)` — the public `ToolRegistry.without()` API, never a private/parallel
-   narrowing mechanism — further narrowed per requirement 6 below. An unrecognized *role* (empty
-   string, a bare project id, any name absent from the registry) or one whose `denied_tools` is
-   empty **MUST** return *base* unchanged.
+1. `deniedTools` (`denied_tools` on `RoleArchetype`) **MUST** be a tuple of built-in tool names
+   (e.g. `"write"`, `"edit"`, `"bash"`, the names `builtin_registry()` registers) an archetype's
+   agent may never call. It defaults to `()`.
+2. `registry_for_role(base, role, project="")` **MUST** look *role* up in the live archetype
+   registry (the pod's, when *project* is given) and return `base.without(*denied)`, the public
+   `ToolRegistry.without()` API, never a private or parallel narrowing mechanism, further
+   narrowed per requirement 6. An unrecognized *role* (empty string, a bare project id, any name
+   absent from the registry), or one whose `denied_tools` is empty, with no pod-level denial
+   (requirement 7) **MUST** return *base* unchanged.
 3. No caller **MUST** branch on a role's name (e.g. `if role == "reviewer"`) to decide what to
-   narrow — the denylist is data on the archetype; `registry_for_role` is the single, generic
+   narrow: the denylist is data on the archetype, and `registry_for_role` is the single generic
    function every caller uses.
-4. The four legacy archetypes' `denied_tools` **MUST** match their documented SOUL.md contract:
-   `lead` and `reviewer` = `("write", "edit", "bash")` ("never edits code, runs git, or executes
-   the build" / "read-only: no write/edit/exec"); `tester` = `("write", "edit")` (read-only, but
-   keeps `bash` — it must actually run the test suite it reports PASS/FAIL on); `implementer` =
-   `()` (full-repo). See "Built-in archetypes" below for the full table.
-5. `deniedTools` is the archetype schema's only capability statement (`editRights` is retired,
-   requirement 5 under "Archetype schema") — nothing else computes it or is computed from it.
-6. **`registry_for_role` MUST also narrow by capability, not only by literal name** (ROADMAP Phase
-   19/wave 17, P19-10's follow-up — see `mcp-client.spec.md`'s "Wired to the live turn path"). A
-   registry handed to `registry_for_role` may contain tools whose name was never known when
-   `denied_tools` was written (an MCP-adapted tool, namespaced `mcp__<server>__<tool>` by
-   `core.mcp_tools.load_mcp_tools`) — no denylist of literal names can ever anticipate one. After
-   the name-based removal in requirement 2, `registry_for_role` **MUST** compute the set of
-   `core.tools.Tool.kind` values implied by the denied names still present in *base* (e.g. `write`
-   for `write`/`edit`, `exec` for `bash`) and **MUST** remove every remaining tool of those kinds
-   via the public `ToolRegistry.without_kind()` API. This **MUST NOT** be a per-role branch, an MCP-
-   aware special case, or a second field on the archetype — it is a pure function of `denied_tools`
-   (already-declared data) and `Tool.kind` (already-declared data on every registered tool,
-   built-in or not). For every built-in/starter archetype shipped today this step removes nothing
-   beyond what requirement 2 already removed from a builtins-only registry — `write`/`edit`/`bash`
-   are already the only built-ins with kind `write`/`exec`, and every archetype that denies any of
-   them already names all three (or, for `tester`, both `write`-kind names) — so it only starts
-   mattering once a registry actually contains a non-built-in tool, which was impossible before
-   this requirement's own card wired `load_mcp_tools` into a live turn.
-7. **A pod also narrows every role's tools by its own `deniedTools` setting** (P27-4;
-   `core.pod.PodSettings`, `pod-dispatch.spec.md`'s "Pod dispatch settings" item 8).
-   `registry_for_role(base, role, project)` **MUST**, when *project* names a pod, union that
-   pod's `denied_tools` with *role*'s own `denied_tools` before requirement 2's name-based
-   removal and requirement 6's kind-based removal run — over the union, never over the role's
-   own list alone. A pod-level denial is therefore as strong as an archetype-declared one: a
-   `deniedTools` entry naming `fetch` **MUST** remove it from every role in that pod, not only
-   the ones whose own archetype already names it. An unreadable or malformed stored pod setting
-   **MUST NOT** raise out of `registry_for_role` — it **MUST** degrade to "no additional
-   pod-level denial" for that turn (mirroring `edges/adapters/docket_runtime.py`'s
-   `_resolve_allow_commands` fail-open pattern for a different pod setting), because this
-   function runs on every turn's live agent-loop path, which must never crash over a
-   hand-edited meta file; the write path (`PodSettings.coerce`) is what refuses a bad value
-   before it can ever reach here.
+4. The four built-in archetypes' `denied_tools` **MUST** match their SOUL.md contract: `lead` and
+   `reviewer` = `("write", "edit", "bash")` ("never edits code, runs git, or executes the build" /
+   "read-only: no write/edit/exec"); `tester` = `("write", "edit")` (read-only, but keeps `bash`
+   to run the suite it reports PASS/FAIL on); `implementer` = `()` (full-repo). See the
+   "Built-in archetypes" table below.
+5. `deniedTools` is the archetype schema's only capability statement ("Archetype schema"
+   requirement 5); nothing else computes it or is computed from it.
+6. **`registry_for_role` MUST also narrow by capability, not only by name, for tools that are not
+   built-ins.** A registry may contain tools whose name no `denied_tools` list can anticipate (an
+   MCP-adapted tool, namespaced `mcp__<server>__<tool>`; see `mcp-client.spec.md` "Live-turn
+   wiring"). After the name-based removal, `registry_for_role` **MUST** map every denied name
+   through the fixed table `BUILTIN_TOOL_KINDS` (`read`/`glob`/`grep`/`fetch`/`skill`/`consult` →
+   `read`, `write`/`edit` → `write`, `bash` → `exec`) and remove every remaining tool of those
+   kinds whose name is not a key of `BUILTIN_TOOL_KINDS`. A built-in is removed only by its own
+   name: denying `fetch` removes `fetch` and leaves `read`, `glob`, `grep`, `skill` and `consult`.
+   The table is static, not read from *base*, so the denial depends only on the role's and pod's
+   own data and survives a caller that already narrowed *base*. It **MUST NOT** be a per-role
+   branch, an MCP-aware special case, or a second field on the archetype. For the shipped
+   archetypes this step removes nothing from a builtins-only registry; it removes an MCP tool of
+   a denied kind.
+7. **A pod also narrows every role's tools by its own `deniedTools` setting** (`PodSettings`;
+   `pod-dispatch.spec.md` "Pod dispatch settings" item 8). `registry_for_role(base, role,
+   project)` **MUST**, when *project* names a pod, take the union of that pod's `denied_tools`
+   and *role*'s own before requirement 2's name-based removal and requirement 6's kind-based
+   removal run. A pod-level denial is therefore as strong as an archetype-declared one: a
+   `deniedTools` entry naming `fetch` **MUST** remove it from every role in that pod. An
+   unreadable or malformed stored pod setting **MUST NOT** raise out of `registry_for_role`; it
+   **MUST** degrade to "no additional pod-level denial" for that turn, because this function runs
+   on every turn's live path and must never crash over a hand-edited settings file. The write
+   path (`PodSettings.coerce`) refuses a bad value.
 8. The implementer's and the writer's rendered `SOUL.md`, and the `bash` tool's schema description
-   (`core.tools.builtin_registry()`), **MUST** carry one sentence: create or change files with
+   in `builtin_registry()`, **MUST** carry one sentence: create or change files with
    `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash`
    to run things. This is guidance, not enforcement: `bash` stays available to both roles and its
    classification is unchanged.
+9. The Lead's rendered `SOUL.md` **MUST** name one escalation channel: decide from the repository
+   and list every assumption at the top of the plan, and use the `consult` tool only for a
+   decision a person alone can make. It **MUST NOT** say the Lead cannot reach the human, and it
+   **MUST NOT** name a second channel such as a `NEEDS-INPUT` marker: that marker belongs to the
+   `intake` recipe's own step instructions, which replace the Lead's hop instruction.
 
-### Hop instructions (P26-7)
-
-Before this card, `core/dispatch.py`'s hop-message builder gave any role outside the four
-built-ins (`lead`/`implementer`/`reviewer`/`tester`) an empty instruction — a custom role
-depended entirely on its own SOUL template to know its marker convention or task framing.
-`hopInstruction` and the fallback below close that gap.
+### Hop instructions
 
 1. `hopInstruction` **MUST** be open prose (like `toolProfile`/`description`), never validated
-   against a template or the live tool registry. Empty/absent (the default) means "no declared
-   instruction" — a gated role still gets one, per requirement 2.
-2. `core.archetypes.resolve_hop_instruction(archetype)` **MUST** return *archetype*'s own
-   `hopInstruction` when non-empty; otherwise it **MUST** generate one from `gate_contract.kind`:
-   a `verdict` role gets a "start exactly one output line with `<marker1>` or `<marker2>` (or
-   more, joined by `or`)" instruction naming its own `regexes`; a `mechanical` role gets a
-   generic "your work is verified mechanically before the pipeline advances" instruction; an
-   `approval` role gets a generic "a human must approve before the pipeline advances"
-   instruction; a `none`-kind gate (or any kind this closed enum does not otherwise recognize)
-   generates no instruction at all (`""`), matching the Lead's own gate-free hop.
+   against a template or the live tool registry. Empty or absent (the default) means "no declared
+   instruction"; a gated role still gets one, per requirement 2.
+2. `resolve_hop_instruction(archetype)` **MUST** return *archetype*'s own `hopInstruction` when
+   non-empty; otherwise it **MUST** generate one from `gate_contract.kind`: a `verdict` role with
+   `regexes` gets "The LAST line of your FINAL message must be exactly `<marker1>` or `<marker2>`
+   (more joined by `or`), with nothing else on that line. Reasons go above it."; a `mechanical` role gets a generic "your work is verified
+   mechanically before the pipeline advances"; an `approval` role gets a generic "a human must
+   approve before the pipeline advances"; a `none` gate (or a `verdict` gate with no `regexes`)
+   generates no instruction (`""`).
 3. The `implementer`/`reviewer`/`tester` built-in archetypes' `hopInstruction` **MUST** remain
-   unset — `core/dispatch.py`'s hop-message builder never consults the registry for those three;
-   their hop messages are the pre-existing hardcoded text, byte-identical to base regardless of
-   this field (see "Built-in archetypes and legacy fidelity" above). The `lead` archetype is
-   different (P27-5): it **MUST** carry a `hopInstruction` equal to the pre-existing hardcoded
-   Lead text ("You are the pod Lead. Decompose this task into a concrete plan for the
-   Implementer (you never edit code yourself):"), and the hop-message builder's Lead branch
-   **MUST** resolve it through `resolve_hop_instruction` exactly like a custom role, so a global
-   or pod overlay of `lead` (see "User registry overlay") changes the Lead's hop message. A pod
-   with no `lead` overlay **MUST** see a byte-identical Lead hop message to before this
-   requirement. `resolve_hop_instruction` is reachable for `lead` and for any role the builder
-   does not otherwise special-case; it is never reachable for `implementer`/`reviewer`/`tester`.
-4. A pipeline step's own `instructions` (see `pipeline-format.spec.md`'s "Steps") **MUST** take
+   unset: the hop-message builder never consults the registry for those three, and their hop
+   messages are fixed built-in text regardless of this field. The `lead` archetype **MUST** carry
+   a `hopInstruction` equal to "You are the pod Lead. Decompose this task into a concrete plan for
+   the Implementer (you never edit code yourself):", and the builder's Lead branch **MUST**
+   resolve it through `resolve_hop_instruction` like a custom role, so a pod overlay of
+   `lead` changes the Lead's hop message. A pod with no `lead` overlay **MUST** see exactly that
+   text. `resolve_hop_instruction` is reachable for `lead` and for any role the builder does not
+   special-case; it is never reachable for `implementer`/`reviewer`/`tester`. A role absent from
+   the registry gets no instruction.
+4. A pipeline step's own `instructions` (see `pipeline-format.spec.md` "Steps") **MUST** take
    precedence over both an archetype's declared `hopInstruction` and the generated fallback, for
-   any role the step targets — the step is more specific than the role. This now includes
-   `role: lead` (P27-5): a step `{role: lead, instructions: "..."}` **MUST** replace the Lead's
-   own instruction text (the built-in hardcoded line, or an overlaid `lead` archetype's
-   `hopInstruction`) with the step's interpolated text, the same override mechanism every other
-   role already has. Before P27-5, a step `instructions` targeting `role: lead` had no effect;
-   that scope boundary is removed.
+   any role the step targets, including `role: lead`: a step `{role: lead, instructions: "..."}`
+   **MUST** replace the Lead's instruction text (built-in or overlaid) with the step's
+   interpolated text.
+5. An Implementer hop whose step has a verify command (a mechanical gate's own `command`, else the
+   Implementer's `verifyCmd`) **MUST** end its instruction text with one added paragraph: "Your work
+   is accepted only if `<verify command>` exits 0. Run it with the `verify` tool and fix what it
+   reports before you finish." It follows the built-in text, a rework hop's text and a step's own
+   `instructions` alike, and its token cost is reserved with the rest of the instruction. A hop
+   whose step has no verify command **MUST NOT** carry it, and no other role's instruction names
+   the command. The `verify` tool is "Verify tool" in `pod-dispatch.spec.md`.
 
 ### Starter library
 
 1. Six starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `critic`, `operator`,
-   `monitor` (`core/archetypes.py`'s `STARTER_ARCHETYPES`). Each **MUST** pass
-   `docket pod validate` (structural validation + a dry-run template render).
-2. Each starter archetype resolves through its own name as the model-policy key (see
-   "Role→model policy integration").
-3. Provisioning a starter role into a live pod (e.g. `docket pod add researcher`) works
-   because `normalize_role`/`resolve_member` resolve against this registry. A *preset roster*
-   composing several starter roles into one pod shape in a single command (e.g. a `research pod`
-   of Lead + Researcher + Analyst + Writer + Critic) is a **pod blueprint** — see the separate
-   `pod-blueprints.spec.md` (ROADMAP Phase 16 W-7), which this spec's registry is a building block
-   for but does not itself define.
+   `monitor` (`STARTER_ARCHETYPES`). Each **MUST** pass `docket pod validate` and render both
+   templates against a representative variable set without error.
+2. Each starter archetype's model-policy key is its own name (see "Role→model policy
+   integration").
+3. A starter role can be provisioned into a live pod (e.g. `docket pod add researcher`) because
+   `normalize_role`/`resolve_member` resolve against this registry. A preset roster composing
+   several starter roles into one pod shape (e.g. `docket init --blueprint research`) is a pod
+   blueprint; see `pod-blueprints.spec.md`, which uses this registry but is not defined here.
 
-### Shipped recipes (P26-20)
+### Shipped recipes
 
-Before this card, the wheel shipped baseline policy templates (`templates/policies/*.json`,
-installed by `docket init`) but no shipped pipeline or role — the 2026-09-25 E2E connection
-audit's first hand-rolled attempt at a governed pipeline tripped `core/pod.py::pod_of`'s
-id-string guessing (fixed by P26-18) before it ever reached a working dispatch. A recipe closes
-that gap by shipping a known-good, CI-validated starting point instead of leaving every operator
-to rediscover the same pitfalls.
-
-1. Each recipe **MUST** live at `templates/recipes/<name>/` (`docket.config.recipes_dir()`),
-   shipped in the wheel by the same git-tracked-file inclusion `templates/policies/` already
-   relies on — no separate packaging include list.
-2. A recipe **MUST** carry a `pipeline.yaml` (this registry's roles referenced by name), a
-   `README.md` naming its purpose and the one command that applies it, and a small `pod.yaml`
-   (`pod-blueprints.spec.md`'s "Pod manifests: apply") naming the roles `apply` should add as
-   members. A `roles/*.yaml` directory and a `policies/*.json` directory are both **optional** —
-   a recipe whose roster is entirely built-in/starter archetypes (e.g. `operator`, `critic`)
-   ships no role YAML at all, since one would just restate data this registry already has; an
-   optional policy pack **is** read and applied (`pod-blueprints.spec.md`'s "Pod manifests: apply"
-   requirement 3) — no manual copy into the fleet-wide policy directory remains.
-3. A recipe's own role YAML **MUST** pass `docket pod validate` unmodified — a recipe is not a
-   second archetype format; it is data consumed by the same `add_user_archetype`/`from_wire`
-   this spec already defines. Its `pipeline.yaml` **MUST** pass `docket pod validate`
-   (`pipeline-format.spec.md`) and, once the roster its README describes is provisioned, **MUST**
-   resolve with no skipped step (`core.orchestrator.resolve_plan`) — a recipe that targets a role
-   its own instructions never tell the operator to add is a defect in the recipe, not a caveat.
+1. Each shipped recipe **MUST** live in the wheel's recipe library (`templates/recipes/<name>/`
+   inside the package), shipped by the same git-tracked-file inclusion as the baseline policies,
+   with no separate packaging include list.
+2. A recipe **MUST** carry a `README.md` naming its purpose and the command that applies it, and
+   a `pod.yaml` (`pod-blueprints.spec.md` "Pod manifests: apply") naming the roles `apply` adds as
+   members. A `pipeline.yaml` (this registry's roles referenced by name), a `roles/` directory, a
+   `policies/` directory (`.yaml|yml|json`), a `skills/` directory and an `mcp-servers/` directory
+   are each **optional**: a policy-pack recipe ships no pipeline, and a recipe whose roster is
+   entirely built-in/starter archetypes ships no role YAML, since it would restate data this
+   registry already has. An optional policy pack is read and applied by the apply step
+   (`pod-blueprints.spec.md` "Pod manifests: apply" requirement 3).
+3. A recipe's own role YAML **MUST** pass `docket pod validate` unmodified: a recipe is not a
+   second archetype format; it is data consumed by the same `load_role_file`/`from_wire`/
+   `add_user_archetype` this spec defines. Its `pipeline.yaml`, when present, **MUST** pass
+   `docket pod validate` (`pipeline-format.spec.md`) and, once the roster its README describes is
+   provisioned, **MUST** resolve with no skipped step (`resolve_plan`): a recipe that targets a
+   role its own instructions never tell the operator to add is a defect in the recipe.
 4. Applying a shipped recipe **MUST** be one command, `docket pod update <name|dir>`
-   (`pod-blueprints.spec.md`, "Pod manifests: apply"), which composes the pre-existing role,
-   member and pipeline-binding writers (a recipe's own roles and its optional policy pack both
-   land in the pod's own pod-scoped directories, never a global one) rather than replacing them —
-   `docket pod update <file>` and `docket pod add <role>` remain valid for a partial or hand-tuned
-   application. `docket pod recipes` lists and shows the library (`pod-blueprints.spec.md`,
-   "Recipe listing").
-5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom
-   read-only reviewing role with a bounded rework cycle (`secure-build`), one over the research
-   archetypes with a critic veto (`research-review`), and one gating an `operator` step on a
-   human `approval` gate (`ops-approval`). Each **MUST** carry an integration or unit test that
-   loads it from `recipes_dir()` (not a hand-copied re-transcription) and validates it the same
-   way `docket pod validate` would.
+   (`pod-blueprints.spec.md` "Pod manifests: apply"), which composes the role, member and
+   pipeline-binding writers (a recipe's roles and policy pack land in the pod's own pod-scoped
+   directories, never a global one). `docket pod update <file>` and `docket pod add <role>` remain
+   valid for a partial or hand-tuned application. `docket pod recipes [<name>]` lists and shows
+   the library (`pod-blueprints.spec.md`).
+5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom read-only
+   reviewing role with a bounded rework cycle (`secure-build`), one over the research archetypes
+   with a critic veto (`research-review`), and one gating an `operator` step on a human `approval`
+   gate (`ops-approval`). Each **MUST** carry a test that loads it from the shipped library (not a
+   hand-copied transcription) and validates it the way `docket pod validate` would.
 
 ### Role→model policy integration
 
-1. An archetype's `modelClass` **MUST** slot into the *existing* role→model policy
-   (`model-profiles.spec.md`) rather than replace it. Resolution
-   (`models_policy.resolve_role_model`) **MUST** first check the named policy table
-   (`ALL_ROLES`/`role_models`, keyed by the archetype's own `name`); if the role is not a named entry there, it **MUST** fall back to
-   resolving via the archetype's own `modelClass` against the live rank anchors (`economy` for
-   `cheap`, `standard` for `strong`) rather than collapsing to the global default model
-   unconditionally.
-2. This fallback **MUST NOT** add a new hardcoded entry to `model-profiles.spec.md`'s
-   `ALL_ROLES`/`ROLE_CLASS` table per archetype — the archetype registry itself is the source of
-   truth for any role beyond the pre-existing named ones.
-3. A totally unknown role name (present in neither the named policy table nor the archetype
-   registry) **MUST** fall back to `cfg.DEFAULT_MODEL`, unchanged from pre-W-6 behavior.
+1. An archetype's `modelClass` **MUST** slot into the existing role→model policy
+   (`model-profiles.spec.md` "Roles and built-in policy") rather than replace it.
+   `resolve_role_model` **MUST** first check the named policy table (`ALL_ROLES`/`role_models`,
+   keyed by the archetype's own `name`); only when the role has no named entry there **MUST** it
+   resolve through the archetype's `modelClass`, looked up in the member's pod registry, against
+   the live rank anchors (`economy` for `cheap`, `standard` for `strong`). The named table holds
+   all ten built-in and starter names with their classes from `ROLE_CLASS`, so for those ten the
+   table decides and the archetype's `modelClass` is not read, including a pod overlay that
+   reuses one of those names with a different `modelClass`. `ROLE_CLASS` is built from the
+   `modelClass` of the four built-in and six starter archetypes, so each of the ten has one class.
+2. This fallback **MUST NOT** add a hardcoded entry to `ALL_ROLES`/`ROLE_CLASS` per archetype:
+   the archetype registry is the source of truth for any role beyond the ten named ones.
+3. A role name present in neither the named policy table nor the pod's archetype registry
+   **MUST** fall back to the model registry's own `default` (`docket-models.json` `default`,
+   equal to the compiled-in default on a fresh install), never to the compiled-in literal while an
+   operator has set another default.
 
-### Context-compiler token budget (ROADMAP Phase 17 C-1)
+### Context-compiler token budget
 
-1. Every archetype **MUST** carry a `tokenBudget` (positive integer) — the (approximate) number
-   of tokens of prior-hop carryover `core/context.py`'s compiler (`compile_artifact`/
-   `hop_share`) may thread into that role's hop prompt when the role is dispatched via
-   `core/dispatch.py`'s `_hop_message`. This lives on the archetype rather than in a second,
-   parallel registry: a role's resource budget is part of its declarative definition, the same as
-   its gate contract.
-2. `core/context.py`'s `budget_for_role(role)` **MUST** resolve *role* against the live archetype
-   registry (`core/archetypes.py.load_registry()`) and return its `tokenBudget`; a role absent
-   from the registry, or one whose `tokenBudget` is non-positive, **MUST** fall back to a fixed
-   default (`context.DEFAULT_TOKEN_BUDGET`, `6000`) rather than raise or silently return zero.
-3. A `tokenBudget` of zero or a negative value **MUST** be rejected by `RoleArchetype.__post_init__`
-   (`ArchetypeError`) for any archetype built through the normal constructor path or `from_wire` —
-   the same closed-validation treatment `version` already gets. This is orthogonal to the
-   scope/modelClass/gateContract closed *enums* (`tokenBudget` is an open positive
-   integer, not a member of a fixed value set) but follows the same "reject, never coerce" rule.
+1. Every archetype **MUST** carry a `tokenBudget` (positive integer): the approximate number of
+   tokens of prior-hop carryover the context compiler may thread into that role's hop prompt when
+   the role is dispatched. It lives on the archetype rather than in a second registry: a role's
+   resource budget is part of its declarative definition, like its gate contract.
+2. `budget_for_role(role)` **MUST** resolve *role* against the live archetype registry and return
+   its `tokenBudget`; a role absent from the registry **MUST** fall back to `DEFAULT_TOKEN_BUDGET`
+   (`6000`) rather than raise or return zero. When the caller passes a model window
+   (`context_window_tokens`, `max_output_tokens`), the fallback is the larger of `6000` and a
+   share of that window; the live callers pass none.
+3. A `tokenBudget` of zero or a negative value **MUST** be rejected by `RoleArchetype`'s own
+   validation (`ArchetypeError`) for any archetype built through the constructor or `from_wire`.
+   `tokenBudget` is an open positive integer, not a member of a closed set, but follows the same
+   "reject, never coerce" rule.
 4. `tokenBudget` **MUST NOT** be validated or interpreted as an exact token count from any real
-   model tokenizer — `core/context.py`'s own approximation (bytes ÷ `config.
-   CONTEXT_BYTES_PER_TOKEN`, default 4) is what actually consumes this value. See
-   `pod-dispatch.spec.md`'s "Bounded hop prompts" for how the budget is spent once resolved (the
-   task description and the role's own instruction footer are reserved first; what's left funds
-   the recency-weighted prior-hop carryover).
+   tokenizer: the context compiler's own approximation (bytes ÷ `CONTEXT_BYTES_PER_TOKEN`,
+   default 4) consumes it. See `pod-dispatch.spec.md` "Bounded hop prompts" for how the budget is
+   spent (the task description and the role's own instruction footer are reserved first; what is
+   left funds the recency-weighted prior-hop carryover). The Lead's hop message is not budgeted.
 
 ### Pod-scoped token budgets
 
-**Implemented and live.**
-
-1. `core/context.py`'s `budget_for_role(role, *, project="", ...)` **MUST** accept an optional
-   `project` parameter; when `project` is truthy, it **MUST** resolve the role against the
-   project-scoped registry via `core/archetypes.py.load_registry(project)` — the same nearest-wins
-   layering that role resolution already uses — and return the role's declared `tokenBudget`.
-2. When `project=""` (the default), behavior **MUST** remain byte-identical: `load_registry()` with
-   no argument is called, resolving only against built-ins and the global overlay, never the pod.
+1. `budget_for_role(role, *, project="", ...)` **MUST** accept an optional `project`; when it is
+   truthy, the role **MUST** resolve against that pod's registry (`load_registry(project)`, the
+   same nearest-wins layering role resolution uses) and return the role's declared
+   `tokenBudget`.
+2. When `project=""` (the default), `load_registry()` with no argument is used, resolving only
+   against built-ins and the starter library, never a pod.
 3. Every live caller that dispatches a hop or compacts a session **MUST** pass its own `project`
-   to `budget_for_role`; the two callers are:
-   - `core/dispatch.py`'s `_hop_message` (for each hop's token budget during pod dispatch)
-   - `core/session.py`'s `compact_session` (for session history summarization, when the caller
-     has a project context)
-   - `core/agent_loop.py`'s `_TurnState.run_compaction` **MUST** pass `self.project` to
-     `compact_session`, the only call site in the live code.
-4. A pod whose applied role archetype declares `tokenBudget: N` (via `docket pod update <file>`) **MUST** be honored when `budget_for_role(role, project=<p>)`
-   is called; a call without the project argument **MUST** return the built-in value, not the
-   pod-scoped override.
+   to `budget_for_role`. The two callers are the hop-message builder (each hop's budget during pod
+   dispatch) and `compact_session` (session-history summarization). The agent loop **MUST** pass
+   the turn's project to `compact_session`, its only call site on the live path.
+4. A pod whose applied role archetype declares `tokenBudget: N` (via `docket pod update <file>`)
+   **MUST** get `N` from `budget_for_role(role, project=<p>)`; a call without the project
+   argument **MUST** return the built-in value, not the pod-scoped override.
 
-### User registry overlay
+### Pod role overlay
 
-1. User archetypes **MUST** overlay built-ins and the starter library via
-   `~/.docket/docket-roles.json` — the same overlay pattern `model-profiles.spec.md`'s
-   `docket-models.json` uses: a top-level `roles:` map keyed by archetype name, read fresh on
-   every access (not cached), silently skipping a malformed entry (never crashing a live fleet)
-   rather than raising.
-5. Requirement 1's silent skip describes `load_registry` itself, which **MUST** keep resolving
-   without raising or warning. Read-only and separate from that path, `docket setup` **MUST**
-   run `core.archetypes.find_overlay_problems` and report every overlay entry `load_registry`
-   skipped — the role name and the specific `ArchetypeError` reason `from_wire` raised — or an
-   unreadable/malformed overlay file itself, naming the file. It never edits the overlay
-   (ROADMAP P26-12).
-2. A user archetype **MUST** be able to both add a brand-new role name and override an existing
-   built-in/starter archetype by reusing its name — "user wins" by name, exactly as
-   `docket-models.json`'s per-role model overrides work. Overriding a legacy archetype
-   (lead/implementer/reviewer/tester) is an explicit operator choice; the byte-identical
-   guarantee (see "Built-in archetypes and legacy fidelity") applies to the out-of-the-box state
-   with no user overlay present, not to a fleet a user has deliberately customized.
-3. The **authoring** format for a new archetype **MUST** be a standalone YAML file (`docket pod update
-   <file.yaml>`) — "a role becomes a versioned YAML definition." The file is parsed,
-   validated, and merged into the JSON-backed overlay via `edges/store.py`'s atomic
-   read-modify-write (docket's D-12 single-writer chokepoint for docket-owned JSON) — the same
+1. A pod's archetypes **MUST** overlay the built-ins and the starter library through that pod's
+   own `$DOCKET_HOME/workspaces/pods/<pod>/config/roles.json` (`pod_config_dir(project)`): a
+   top-level `roles:` map keyed by archetype name, read fresh on every access (not cached),
+   silently skipping a malformed entry (never crashing a live fleet) rather than raising. No file
+   outside a pod's own `config/` directory is read as a role overlay; a `docket-roles.json` under
+   `$DOCKET_HOME` is ignored.
+2. A pod archetype **MUST** be able to both add a new role name and override an existing
+   built-in/starter archetype by reusing its name (the pod wins by name). Overriding a built-in
+   archetype is an explicit operator choice; the byte-identity guarantee (see "Built-in
+   archetypes and legacy fidelity") applies to the out-of-the-box state with no overlay present.
+3. The **authoring** format for an archetype **MUST** be a standalone YAML file
+   (`docket pod update <file.yaml>`). The file is parsed, validated, and merged into the pod's
+   JSON overlay through docket's atomic read-modify-write for docket-owned JSON, the same
    boundary every other docket-owned registry file goes through.
-4. Docket's own built-in and starter archetypes **MUST NOT** be loaded from shipped template
-   files — they are Python literals in `core/archetypes.py`, matching this project's standing
-   convention that workspace prose is generated inline in Python (see `CLAUDE.md`'s `templates/`
-   note). Only a user-authored archetype's *source* is a YAML file on disk.
-6. A pod **MUST** be able to hold its own role overlay, layered above the global overlay for
-   that pod alone: `core.config.pod_config_dir(project)/roles.json`, the same wire shape as
-   `docket-roles.json`. `core.archetypes.load_registry(project)` **MUST** resolve nearest-wins —
-   the pod overlay above the global overlay, above the starter library, above built-ins — by
-   name; `load_registry()` with no project (or `project=""`) **MUST** stay byte-identical to a
-   fleet with no pod ever customizing a role. `registry_for_role`, and every workspace-prose
-   lookup (`core/pod_provisioning.py`'s SOUL.md/AGENTS.md rendering, the pipeline-plan role
-   check in `cli/_pod.py`, and the custom-role hop-instruction lookup in `core/dispatch.py`)
-   **MUST** resolve through the calling turn's or member's own project, so a pod-scoped override
-   is genuinely enforced end to end, not only visible to `docket pod roles`. `find_overlay_problems`
-   **MUST** accept the same `project` and cover the pod file too, for `docket setup`.
+4. docket's own built-in and starter archetypes **MUST NOT** be loaded from shipped template
+   files: they are Python literals, matching the convention that workspace prose is generated
+   inline. Only a user-authored archetype's *source* is a YAML file on disk.
+5. Requirement 1's silent skip describes `load_registry` itself, which **MUST** keep resolving
+   without raising or warning. Read-only and separate from that path, `docket setup` **MUST** run
+   `find_overlay_problems(project)` for each pod and report every overlay entry `load_registry`
+   skipped (the role name and the `ArchetypeError` reason `from_wire` raised), or an
+   unreadable/malformed overlay file itself, naming the file and the pod. It never edits the
+   overlay.
+6. `load_registry(project)` **MUST** resolve nearest-wins by name: the pod overlay above the
+   starter library, above built-ins; `load_registry()` with no project (or `project=""`) never
+   reads a pod overlay. `registry_for_role`, SOUL.md/AGENTS.md rendering at provisioning,
+   `normalize_role`, the role check `docket pod set pipeline <file>` and `docket pod update
+   <dir>` run on a pipeline against the pod's roster, the custom-role hop-instruction lookup,
+   `budget_for_role` and `resolve_role_model` **MUST** resolve through the calling turn's or
+   member's own project, so a pod-scoped override is enforced on those paths, not only visible to
+   `docket pod roles`. So is the gate fallback: dispatch, `docket run` and `docket pod plan`
+   resolve a step's missing gate against the pod's registry, so a pod-only role's `gateContract`
+   gates its step.
 
 ### CLI surface
 
 1. `docket pod roles [--json]` **MUST** show every registered archetype (built-in, starter, and
-   user — including a user override of a built-in/starter name) with its source, scope, model
-   class, gate contract kind, and one-line description. It **MUST NOT** show `editRights`
-   (retired, P30-4). `--json` prints a list of `{name, source, scope, modelClass, gate,
-   description}`.
+   and pod-defined, including a pod override of a built-in/starter name) with its source, scope, model
+   class, gate contract kind, and one-line description. It **MUST NOT** show `editRights`.
+   `--json` prints a list of `{name, source, scope, modelClass, gate, description}`.
 2. `docket pod roles <name> [--json]` **MUST** print one archetype's full definition (YAML when
-   PyYAML is available, JSON otherwise; `--json` adds `source` to the wire object) or fail with a
-   non-zero exit if `<name>` is not registered. Both forms resolve against the pod in scope
-   (`--pod <p>`, `DOCKET_POD`, the pod whose codebase contains the cwd) layered above the global
-   overlay, and report a pod-overlay-defined role's source as `pod:<p>`, distinct from `user`;
-   outside any pod they see the global registry.
+   PyYAML is available, JSON otherwise; `--json` adds `source` to the wire object) or exit 1 if
+   `<name>` is not registered. Both forms resolve against the pod in scope (`--pod <p>`,
+   `DOCKET_POD`, the pod whose codebase contains the cwd) layered above the built-ins, and
+   report a pod-overlay-defined role's source as `pod:<p>`; outside any pod they see the
+   built-ins and the starter library. Source is one of `built-in`, `starter`, `pod:<p>`.
 3. `docket pod update <file.yaml>` **MUST** validate the file's archetype definition (a `kind:
-   role` document, or one whose location names the kind) and, on success, merge it into that
-   pod's own overlay; on failure it **MUST** report the specific invalid field(s) and make no
-   change to the overlay file.
+   role` document, or a kind-less one whose location names the kind, such as a file under
+   `roles/`; a file whose location names no kind is refused with the `kind` error) and, on
+   success, merge it into that pod's own overlay and write a `pod.apply` audit entry; on failure
+   it **MUST** report the invalid field and make no change to the overlay file. A role file is
+   read in the short form only (see "Role file"); a canonical key in it is refused.
 4. `docket pod validate <file.yaml>` **MUST** validate that file's definition without persisting
-   it (a dry run ahead of `apply`).
+   it (a dry run ahead of `docket pod update`), with the same structural checks and no template
+   render (see "Template rendering" requirement 3).
 
 ## Interface Contracts
 
@@ -543,7 +438,19 @@ docket pod update <file.yaml>
 docket pod validate <file.yaml>
 ```
 
-### Wire format (a user archetype YAML file)
+### Wire format (the one authored role file, and the persisted wire object)
+
+A role is authored as the short form below, in `docket pod update <file>`, `docket pod validate`
+and `docket pod update <dir>`; `load_role_file` reads it and `normalize_role` turns it into the
+canonical wire object `from_wire` accepts. The canonical object is the in-memory model and the
+entry the pod overlay `<pod>/config/roles.json` persists, never an authored file: a role file
+carrying any canonical-only key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`,
+`agentsTemplate`) **MUST** be refused naming each canonical key and the short-form key to write
+instead (`model`, `cannot`, `verdict`/`verify`/`approval`, `instructions`); `canonical_key_refusal`
+is the one function that renders that message, shared by `load_role_file` and `load_document`; the
+refusal exits 2 (`config-format.spec.md`, "Files without `kind:`").
+`kind: role` is accepted and stripped. An unknown key is refused. The persisted wire object has
+this shape:
 
 ```yaml
 name: producer
@@ -568,23 +475,11 @@ soulTemplate: |
 agentsTemplate: |
   # AGENTS.md — ${project} · ${role}
 
-  ## Session Startup
-  Read ${requiredStartupFile}.
-
   ## Red Lines
   Stay within the `${project}` pod.
 ```
 
-A second, short form is also accepted, both by `docket pod update <file>`/`docket pod validate` and by
-`docket pod update <dir>` (`core.pod_apply._plan_roles`) — `core.archetypes.load_role_file` detects
-it (the presence of any of `cannot`/`verdict`/`verify`/`approval`/`instructions`/`model`, or an
-explicit `kind: role` with none of the canonical-only keys) and normalizes it into the canonical
-form above (`normalize_role`) before `from_wire` ever sees it. A document carrying any
-canonical-only key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`,
-`agentsTemplate`) is canonical and passes through unchanged whatever its `kind:` says — so a
-`docket pod roles` dump with `kind: role` added loads as written — and `kind: role` is accepted
-and stripped either way. A document mixing a short-form key with a canonical-only key **MUST** be
-refused naming both sets of keys, never normalized with the canonical keys silently dropped:
+The authored short form of a role:
 
 ```yaml
 kind: role
@@ -593,7 +488,6 @@ model: strong                        # cheap | strong -- a model id is rejected,
                                       # `docket setup model set security-vetter <id>` instead
 description: read-only security pass over the implementer's change
 cannot: [write, edit, bash]          # -> deniedTools; the sole capability statement
-                                      # (editRights is retired -- no such key to author)
 verdict: [APPROVE, REQUEST-CHANGES]  # or verify: true | approval: true | omitted (-> gateContract
                                       # kind none); more than one of the three is an error
 instructions: security-vetter.md     # optional; default "<name>.md" beside this YAML file
@@ -601,12 +495,13 @@ instructions: security-vetter.md     # optional; default "<name>.md" beside this
 
 `instructions` names a Markdown file (resolved relative to the short-form YAML's own directory)
 whose content up to an optional literal `## AGENTS` heading line becomes `soulTemplate`; the text
-after that heading becomes `agentsTemplate`, or the built-in starter-library agents prose when the
-heading is absent. The same `${variable}`-style substitution applies to both halves at render
-time. `scope` defaults to `"pod"`, `version` to `1`, `tokenBudget` to `6000` when the short form
-omits them — the same defaults `from_wire` already applies to the canonical form.
+after that heading becomes `agentsTemplate`, or the starter library's AGENTS prose when the
+heading is absent. The same `${variable}` substitution applies to both halves at render time.
+`scope`, `version`, `tokenBudget`, `toolProfile` and `hopInstruction` may be given; `scope`
+defaults to `"pod"`, `version` to `1`, `tokenBudget` to `6000`, the same defaults `from_wire`
+applies to the persisted wire object.
 
-### Built-in archetypes (byte-identical to pre-W-6)
+### Built-in archetypes
 
 | Name | Scope | modelClass | gateContract | tokenBudget | deniedTools |
 | --- | --- | --- | --- | --- | --- |
@@ -615,27 +510,31 @@ omits them — the same defaults `from_wire` already applies to the canonical fo
 | `reviewer` | pod | cheap | verdict (APPROVE\|REQUEST-CHANGES) | 6000 | write, edit, bash |
 | `tester` | pod | cheap | verdict (PASS\|FAIL) | 4000 | write, edit |
 
-### Starter library
+### Starter archetypes
+
+`modelClass` is the archetype's own value, and the class of the role's named policy row
+("Role→model policy integration" requirement 1) is built from it.
 
 | Name | Scope | modelClass | gateContract | tokenBudget | deniedTools |
 | --- | --- | --- | --- | --- | --- |
 | `researcher` | pod | strong | none | 8000 | *(none)* |
-| `analyst` | pod | strong | none | 8000 | *(none)* |
+| `analyst` | pod | cheap | none | 8000 | *(none)* |
 | `writer` | pod | cheap | none | 6000 | *(none)* |
-| `critic` | pod | cheap | verdict (APPROVE\|REJECT) | 6000 | write, edit, bash |
+| `critic` | pod | strong | verdict (APPROVE\|REJECT) | 6000 | write, edit, bash |
 | `operator` | pod | strong | mechanical | 8000 | *(none)* |
 | `monitor` | pod | cheap | approval | 4000 | write, edit, bash |
 
-### User overlay file
+### Overlay files
 
-- Path: `~/.docket/docket-roles.json`
+- Pod: `$DOCKET_HOME/workspaces/pods/<pod>/config/roles.json`
 - Shape: `{"roles": {"<name>": {<archetype fields, camelCase>}}}`
 
 ### Return Codes
 
 - `0`: success (listed/shown/applied/validated cleanly)
-- `1`: a `roles <name>`, `apply` or `validate` target not found or invalid, or a malformed
-  archetype definition
+- `1`: a `docket pod roles <name>`, `docket pod update` or `docket pod validate` target not
+  found or invalid, a malformed archetype definition, or no pod resolved for `docket pod update`
+- `2`: a usage error (unknown option, missing argument)
 
 ## Examples
 
@@ -663,350 +562,71 @@ docket pod validate ./producer.yaml
 
 ### Pre-conditions
 
-- `~/.docket/` exists (created lazily by the first `docket init`); `docket pod update` creates the
-  pod overlay file's parent directory if needed
+- `~/.docket/` exists (created by the first `docket init`); `docket pod update` creates the pod
+  overlay file's parent directory if needed
 
 ### Post-conditions
 
-- `docket pod update <file>` on a valid file leaves exactly one archetype added/overridden in the
-  pod's `roles.json` `roles:` map; no other key in that file is touched
-- The four legacy archetypes' rendered SOUL.md/AGENTS.md remain byte-identical to the pre-W-6
-  generators for any input, with no user overlay present
+- `docket pod update <file>` on a valid file leaves exactly one archetype added or overridden in
+  the pod's `roles.json` `roles:` map; no other key in that file is touched
+- The four built-in archetypes' rendered SOUL.md/AGENTS.md remain byte-identical to the frozen
+  baseline for any input, with no overlay present
 
 ### Invariants
 
-- `scope`, `modelClass`, and `gateContract.kind` are always one of their closed
-  enum's values for every archetype the registry returns — `load_registry()` never returns an
-  archetype that would fail its own `__post_init__` validation
-- A key outside the archetype schema never fails a `from_wire` load and never resurfaces from
-  `to_wire()`
-- A malformed user-overlay entry never prevents the rest of the registry (built-ins, starter
-  library, other user entries) from loading
-- A shipped recipe's role YAML carries no exemption from `from_wire`/`__post_init__`: a recipe
-  that could not pass `docket pod update` if hand-copied is a broken recipe, not a special case
+- `scope`, `modelClass` and `gateContract.kind` are always one of their closed enum's values for
+  every archetype the registry returns: `load_registry()` never returns an archetype that would
+  fail its own validation
+- A key outside the archetype schema never fails a canonical `from_wire` load (except `kind:`
+  other than `role` and `policyRole`) and never resurfaces from `to_wire()`
+- A malformed overlay entry never prevents the rest of the registry (built-ins, starter library,
+  other overlay entries) from loading
+- A shipped recipe's role YAML carries no exemption from `from_wire`: a recipe that could not pass
+  `docket pod update` if hand-copied is a broken recipe, not a special case
 
-## Changelog
+## Implementation
 
-### Version 1.26.0 (2026-10-18)
-
-- **W116-4: write with `write` and `edit`.** The implementer and writer SOUL bodies and the `bash`
-  tool description carry one sentence preferring `write`/`edit` for file changes and `bash` for
-  running things (measured: an implementer wrote files through bash heredocs four times, three
-  parked for approval). `POD_TEMPLATE_VERSION` 4 to 5, so `docket pod update` reports members
-  stamped 4 as stale.
-
-### Version 1.25.0 (2026-10-18)
-
-- The shared `## Method` block gains one line naming the memory-section grammar (requirement 5
-  of "Generated instructions agree with the runtime contract", P44-7). Members stamped
-  `templateVersion` 4 whose `AGENTS.md` lacks it show as stale to `docket pod update`, which
-  compares the text; `POD_TEMPLATE_VERSION` is left at 4 for the integrator to decide.
-
-### Version 1.24.0 (2026-10-18)
-
-- **Templates for the layered prompt (requirement 5 of "Generated instructions agree with the
-  runtime contract", ADR 0028 section 1, P44-6).** `SOUL.md` loses its `## Codebase` and
-  `## Working Directory` sections and the implementer's "know ${codebaseOrIt} deeply" line;
-  `AGENTS.md` loses `## Session Startup` (private-file reads the runtime already did) and gains the
-  shared `## Method` strategy block; the implementer and writer lose `<promise>DONE</promise>`,
-  which nothing reads; the reviewer is told to review the diff the message delivers.
-  `POD_TEMPLATE_VERSION` 3 to 4, so `docket pod update` regenerates members and never touches
-  `MEMORY.md`. The frozen baseline in `test_pod_role_workspace_parity.py` was updated by hand, as
-  in P26-9. The `${codebase*}`/`${workDir}` variables stay guaranteed for recipe roles.
-
-### Version 1.23.2 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 1.23.1 (2026-10-08)
-
-- The CLI surface is `docket pod roles [name] [--json]` (list and show; the pod in scope layers its overlay), `docket pod apply <file>` (installs into the pod's overlay) and `docket pod validate <file>`. Validating the whole live registry is gone.
-
-### Version 1.23.0 (2026-10-07)
-
-- **One role vocabulary.** `policyRole` (`policy_role`, `resolved_policy_role`, `core/pod.py`'s
-  `policy_role_for`) is removed: an archetype's model row is its own name, and a role document
-  carrying `policyRole` (or any key the short form does not define) is refused naming the key.
-  "Role→model policy integration" requirement 1 and the built-in table now read the ten-name
-  `ALL_ROLES` of model-profiles.spec.md 3.0.0.
-
-### Version 1.22.0 (2026-10-03)
-
-- Legacy compatibility removed (no users; maintainer decision 2026-10-03). `core/pod.py`'s
-  `normalize_role` no longer maps `programmer` to `implementer` ("Legacy archetype fidelity"
-  requirement 4 drops the alias). `editRights` loses its special handling: `docket validate` no
-  longer prints a `note:` for it and `from_wire`'s docstring no longer promises to accept and
-  drop it — the status paragraph, Scope, "Archetype schema" requirements 1 and 5 and the
-  Invariants now state only that the field does not exist and that `from_wire` reads only the
-  schema's fields. The `programmer` *policy* row (`policyRole`) is unchanged.
-
-### Version 1.21.0 (2026-09-29)
-
-- **P35-1: pod-scoped token budgets honored; `guardrail_block.action` carries the real action.**
-  New section "Pod-scoped token budgets". `budget_for_role` gained an optional `project` kwarg
-  (default `""`, byte-identical when omitted) resolving through `core.archetypes.load_registry
-  (project)`; `core/dispatch.py::_hop_message`, `core/session.py::compact_session`, and
-  `core/agent_loop.py::_TurnState.run_compaction` now pass it. Unrelated to this spec's own
-  contract but fixed in the same card: `guardrail_block`'s payload previously duplicated the
-  tripped policy's id into its `action` field instead of the policy's actual action.
-
-### Version 1.20.0 (2026-09-27)
-
-- **`kind: role` names the kind, not the form.** "Wire format", short form: `load_role_file`
-  treats a document carrying any canonical-only key (`modelClass`, `deniedTools`,
-  `gateContract`, `soulTemplate`, `agentsTemplate`) as canonical and passes it through even
-  when it says `kind: role`; a document mixing a short-form key with a canonical-only key is
-  refused naming both. Previously an explicit `kind: role` routed a canonical document through
-  `normalize_role`, which dropped its canonical fields and then failed on the missing
-  `<name>.md` (the `is_short` follow-up parked at the Phase 30 close).
-
-### Version 1.19.0 (2026-09-27)
-
-- **P30-4: one field says it -- `editRights` retired (ADR 0012 §2 rule 7).** The canonical wire
-  form no longer carries `editRights`: `RoleArchetype.edit_rights` and the `EDIT_RIGHTS` closed
-  enum are removed, `to_wire()` stops writing the key, and `from_wire` accepts and silently drops
-  it wherever it survives on an existing overlay, recipe role, or hand-authored YAML file, so
-  nothing that already loaded stops loading. `normalize_role` (the short form) stops deriving it
-  from `cannot` -- it never authored the key in the first place. `docket validate`
-  (`cli/_validate.py`) prints a `note:` naming the file when a role document still declares it,
-  alongside the pre-existing no-`kind:` note. `docket roles list` drops the `EDIT` column
-  ("Archetype schema" requirement 5, "CLI surface" requirement 1, "Invariants", built-in/starter
-  tables all corrected). `deniedTools` is now the schema's only capability statement.
-
-### Version 1.18.0 (2026-09-26)
-
-- **P28-4: a role file carries only what is enforced, and its prose lives in Markdown.** A
-  short form (`kind: role`, `cannot:`, one of `verdict:`/`verify:`/`approval:`, `model:
-  cheap|strong`, `instructions: <file.md>`) is now accepted alongside the canonical form
-  documented above (see "Wire format"): `core.archetypes.normalize_role` turns it into the
-  canonical wire dict `from_wire` already accepts, and `load_role_file` (the new entry point
-  `docket roles add`/`validate` and `docket pod <p> apply` use in place of the old direct
-  `parse_yaml_file` call) detects and normalizes it transparently. "Archetype schema"
-  requirement 5 is corrected: in the short form there is no `editRights` key to author at all —
-  it is derived from `cannot`, not independently declared. `from_wire` also now accepts and
-  strips an optional top-level `kind: role`, refusing any other `kind` value. The shipped
-  `secure-build` recipe's `security-vetter` role is rewritten in short form, with its prose
-  moved to a sibling `security-vetter.md`; its rendered `SOUL.md`/`AGENTS.md` are unchanged
-  (byte-identical to the prior canonical YAML). Printing the short form back (`roles show`,
-  `export`) is a separate, later card.
-
-### Version 1.17.0 (2026-09-26)
-
-- **P27-10: a recipe's policy pack is applied, not copied by hand.** "Shipped recipes"
-  requirement 2 corrects the P26-20 wording: an optional `policies/*.json` directory is now read
-  and written by `apply` (`pod-blueprints.spec.md` v1.9.0), into `<p>`'s own policy directory.
-  Requirement 4 drops the "copying a file into `POLICIES_DIR` is still manual" clause it is no
-  longer true of.
-
-### Version 1.16.0 (2026-09-26)
-
-- **P27-9: a recipe's roles apply into the pod's own overlay, not the global one.** "Shipped
-  recipes" requirement 4 corrects the P27-6 workaround: `apply` writes each role into `<p>`'s
-  pod-scoped overlay (`docket roles add --pod <p>`'s target), now that `core/pod.py`'s roster
-  helpers resolve it too — see `pod-blueprints.spec.md` v1.7.0.
-
-### Version 1.15.0 (2026-09-26)
-
-- **P27-6: shipped recipes gain `apply`.** "Shipped recipes" requirement 2 adds a `pod.yaml`
-  (`members`) to each recipe and clarifies an optional policy pack is not read by `apply`.
-  Requirement 4 replaces "no new CLI command" — now false — with `docket pod <p> apply <dir>`
-  (`pod-blueprints.spec.md`, "Pod manifests: apply") as the one-command surface, composing rather
-  than replacing the pre-existing manual writers.
-
-### Version 1.14.0 (2026-09-26)
-
-- **P27-5: the Lead's instruction is data.** "Hop instructions" requirements 3-4 rewritten: the
-  built-in `lead` archetype now carries `hopInstruction` equal to the pre-existing hardcoded Lead
-  text, resolved through `resolve_hop_instruction` like a custom role — so a global or pod `lead`
-  overlay changes the Lead's hop message, and `docket roles show lead` prints it. A pipeline
-  step's own `instructions` now overrides the Lead's hop message too; the prior "the Lead's hop
-  message has no separate instruction segment to override" scope boundary is removed. The
-  `implementer`/`reviewer`/`tester` built-ins are unaffected — their hop messages stay hardcoded.
-  A software or agentic-product pod with no `lead` overlay sees a byte-identical Lead hop message.
-
-### Version 1.13.0 (2026-09-26)
-
-- **P27-4: a pod's own `deniedTools` setting reaches every role in it.** "Per-role tool sets"
-  gains requirement 7: `registry_for_role(base, role, project)` unions *project*'s pod
-  `deniedTools` (`core.pod.PodSettings`, `pod-dispatch.spec.md`'s "Pod dispatch settings" item 8)
-  with *role*'s own `denied_tools` before the existing name-based (requirement 2) and kind-based
-  (requirement 6) removal run — a pod-level denial is as strong as an archetype-declared one. An
-  unreadable/malformed stored pod setting degrades to no additional denial rather than raising,
-  mirroring `_resolve_allow_commands`'s fail-open precedent for a different pod setting on the
-  same live-turn path. `project=""` (no pod) is byte-identical to before this requirement. See
-  `mcp-client.spec.md` v1.6.0 for the companion `mcpServers` reader this same card shipped.
-
-### Version 1.12.0 (2026-09-26)
-
-- **P27-1: a pod has its own role overlay.** "User registry overlay" gains requirement 6:
-  `core.config.pod_config_dir(project)/roles.json` resolves nearest-wins above the global
-  overlay, above the starter library, above built-ins, for that pod alone —
-  `core.archetypes.load_registry(project)`/`registry_for_role(base, role, project)` are the new
-  entry points; `project=""` stays byte-identical to before this requirement. Every workspace-
-  prose/hop-instruction lookup that already knew its own project
-  (`core/pod_provisioning.py`'s SOUL.md/AGENTS.md rendering, `cli/_pod.py`'s pipeline-plan role
-  check, `core/dispatch.py`'s custom-role hop-instruction lookup, and
-  `core/agent_loop.py`'s per-turn tool-registry narrowing) now passes it through, so the
-  override is enforced on the live turn path, not only visible to `docket roles`.
-  "CLI surface" gains `--pod <p>` on `list`/`show`/`add` (not `validate`) and the `pod:<p>`
-  source label. See `cli-interface.spec.md` v1.30.0 for the CLI-surface half.
-
-### Version 1.11.0 (2026-09-26)
-
-- **P26-20: shipped recipes.** Added the "Shipped recipes" section: `templates/recipes/<name>/`
-  bundles a role YAML (only where the roster needs one beyond the built-in/starter library), a
-  pipeline YAML, and an optional policy pack behind the existing `docket roles`/`docket pod`/
-  `docket policies` commands — no new CLI surface. Three ship: `secure-build` (a custom
-  `security-vetter` role, verdict-gated with one rework cycle), `research-review` (the research
-  archetypes, critic-vetoed), and `ops-approval` (`operator` gated on a human `approval` step).
-  Closes the gap the 2026-09-25 E2E audit found: nothing shipped demonstrated a working custom
-  role end to end, so the first real attempt tripped the `pod_of` id-guessing P26-18 later fixed.
-
-### Version 1.9.0 (2026-09-26)
-
-- **P26-9: generated instructions agree with the runtime contract.** The trigger: the AGENTS red
-  line "Before starting multi-step work, write it to HEARTBEAT.md" reached the model in every
-  built-in/starter role's Red Lines section, while `core/identity.py`'s live runtime contract
-  composed into the same turn says private state is read-only and "no private logging is
-  required" — a direct contradiction the model had to silently resolve every turn. Dropped that
-  bullet from `_LEGACY_AGENTS_TEMPLATE` and `_STARTER_AGENTS_TEMPLATE` (`core/archetypes.py`);
-  no other template content changed (see new "Generated instructions agree with the runtime
-  contract" section for the full requirement, its `WORKFLOW_AUTO.md` manual-path carve-out, and
-  the known gap in the non-pod/org-specialist AGENTS.md generators this card does not touch).
-  Bumped `core/pod_provisioning.py`'s `POD_TEMPLATE_VERSION` (2 → 3) since the generated text
-  changed. `tests/integration/test_pod_role_workspace_parity.py`'s frozen legacy-fidelity baseline
-  was updated to match (the point of that test — catching *unintended* drift — does not apply to
-  a deliberate, spec'd, test-covered removal like this one).
-
-### Version 1.10.0 (2026-09-26)
-
-- **P26-12: configuration errors are loud.** "User registry overlay" gains requirement 5:
-  `load_registry` itself keeps silently skipping a malformed `docket-roles.json` entry
-  (requirement 1 is unchanged), but `docket doctor` now runs a separate, read-only check
-  (`core.archetypes.find_overlay_problems`) naming the offending role and the specific
-  `ArchetypeError` reason, or an unreadable overlay file itself. See `pod-dispatch.spec.md`
-  v6.13.0 for the companion `docket-schedules.json` writer and `model-profiles.spec.md`
-  v2.9.0 for the matching `docket-models.json` check this same card added. Version 1.9.0 is
-  reserved for a neighboring card's hop-instruction/template work landing separately.
-
-### Version 1.8.0 (2026-09-26)
-
-- **P26-7: hop instructions for custom roles.** Added the optional `hopInstruction` field (see
-  "Archetype schema" and the new "Hop instructions" section) and
-  `core.archetypes.resolve_hop_instruction`, which a custom role's hop message now resolves
-  through: its own `hopInstruction` if declared, else one generated from `gateContract`
-  (verdict/mechanical/approval; `none` generates nothing). Before this, `core/dispatch.py` gave
-  any role outside the four built-ins an empty hop instruction — a custom verdict-gated role
-  depended entirely on its SOUL template to know its own marker convention. The four built-in
-  archetypes are unaffected: their hop messages stay the pre-existing hardcoded text, byte-
-  identical to base. See `pipeline-format.spec.md` v2.3.0 for the companion step-level
-  `instructions` override and `${var}` interpolation.
-
-### Version 1.7.0 (2026-09-25)
-
-- **P26-18: custom role names and pod membership.** Added "Built-in archetypes and legacy
-  fidelity" requirement 5: a user-defined role name may end in another registered role's name with
-  no disjointness constraint, and `core/pod.py::pod_of` must resolve such a member from its
-  recorded `.docket-meta.json` `pod` field rather than guessing from the id string, which
-  previously mis-split a member id like `<project>-security-reviewer` as role `reviewer` of a
-  truncated project. See `pod-dispatch.spec.md` v6.8.0 for the dispatch-side requirement this
-  closes.
-
-### Version 1.6.1 (2026-09-19)
-
-- Doc-truth pass, no behavior change. Dropped `POD_ROLES`/`POD_ROLE_POLICY` from the scope list:
-  commit a73a074 removed that compatibility shim, and `policy_role_for` is the live resolver.
-  Updated the `gateContract.regexes` description from the pre-W25-C11 "first non-blank line"
-  rule to the line-anchored, one-distinct-marker contract `parse_verdict` enforces, and named
-  `resolve_gate` as the function that turns regexes into a pattern. Moved the template-variable
-  renderer reference from `cli/_pod.py` to `core/pod_provisioning.py`'s `_render_context`.
-
-### Version 1.6.0 (2026-08-19)
-
-- Corrected every live archetype-overlay path to `$DOCKET_HOME`/`~/.docket`.
-
-### Version 1.5.0 (2026-08-05)
-
-- **ROADMAP Phase 19/wave 17, card P19-10's follow-up (MCP tools reachable in a live turn).**
-  `core.mcp_tools.load_mcp_tools` gained a production caller
-  (`edges/adapters/docket_runtime.py`'s `DocketDriver.run_turn`, see `mcp-client.spec.md`'s "Wired
-  to the live turn path"), which meant a registry `registry_for_role` narrows could, for the first
-  time, contain a tool whose name `denied_tools` could never have anticipated (an MCP-adapted
-  tool, namespaced `mcp__<server>__<tool>`). Added the new "Per-role tool sets" requirement 6:
-  `registry_for_role` also narrows by `core.tools.Tool.kind`, computed from the kinds the role's
-  own `denied_tools` already imply, via the new `ToolRegistry.without_kind()` API (documented in
-  this spec's requirement 6 above, the sibling of `without()`). No new archetype field, no
-  per-role branch — every adapted MCP
-  tool registers `kind="write"` unconditionally, so a role whose denied names imply kind `write`
-  (`lead`, `reviewer`, `tester`, `critic`, `monitor`) loses every MCP tool along with `write`/
-  `edit`; a role that denies nothing (`implementer` and the full-access starter archetypes) is
-  unaffected. Byte-identical for every registry this spec's requirement 4 table already covers
-  (builtins-only) — proven by keeping the pre-existing `TestRegistryForRole` tests passing
-  unmodified. **Honest limit, not a gap this version closes:** a read-only role now gets *zero*
-  MCP tools rather than a correctly-narrowed nonzero set, because nothing in `core/mcp_tools.py`
-  can currently tell a genuinely read-only remote tool from a write-capable one — see
-  `mcp-client.spec.md`'s changelog for the full reasoning and the named trigger for loosening this.
-
-### Version 1.4.0 (2026-08-02)
-
-- **ROADMAP Phase 19, card P19-12 (per-role tool sets + identity composition).** Added
-  `deniedTools` (open tuple of built-in tool names) to the archetype schema — see "Archetype
-  schema" requirements 1/7, the revised requirement 5 (clarifying it is independent of
-  `editRights`, not derived from it), and the new "Per-role tool sets" section. Added
-  `core.archetypes.registry_for_role(base, role)`, the one function that turns this data into an
-  actually-narrowed `ToolRegistry` via the public `ToolRegistry.without()` API — `core/agent_loop.py`
-  calls it once per turn (see `agent-loop.spec.md`'s Version 1.1.0). Set `deniedTools` on every
-  built-in/starter archetype matching its documented SOUL.md contract: `lead`/`reviewer`/`critic`/
-  `monitor` = `write, edit, bash`; `tester` = `write, edit` (keeps `bash` to run the test suite);
-  `implementer`/`researcher`/`analyst`/`writer`/`operator` = none (full access) — see the updated
-  "Built-in archetypes"/"Starter library" tables. Unlike `tokenBudget` or `toolProfile`, this
-  field is the first archetype field this spec claims is genuinely *enforced*, not merely
-  descriptive — proven at the dispatch level, not by inspecting the data (see
-  `agent-loop.spec.md`'s new Invariants). No change to rendered SOUL.md/AGENTS.md content
-  (`deniedTools` doesn't participate in template rendering), no change to the CLI surface
-  (`docket roles show` renders it as one more field in the existing YAML/JSON dump when
-  non-empty), no golden impact.
-
-### Version 1.3.0 (2026-07-30)
-
-- **ROADMAP Phase 17, card C-1 (context compiler).** Added `tokenBudget` (positive integer) to
-  the archetype schema — see "Archetype schema" requirement 1 and the new "Context-compiler token
-  budget" section. Every built-in and starter-library archetype now declares one (`lead`: 2000,
-  `implementer`: 8000, `reviewer`: 6000, `tester`: 4000, `researcher`/`analyst`/`operator`: 8000,
-  `writer`/`critic`: 6000, `monitor`: 4000) — see the updated "Built-in archetypes"/"Starter
-  library" tables. `from_wire` defaults a missing `tokenBudget` to `6000` rather than erroring, so
-  a pre-C-1 `docket-roles.json` overlay entry keeps loading unchanged.
-  `RoleArchetype.__post_init__` rejects a non-positive value the same way it already rejects a
-  non-positive `version`. `core/context.py`'s `budget_for_role` is the one consumer today
-  (`core/dispatch.py`'s `_hop_message`, via ROADMAP Phase 14 R-7's now-retired byte cap — see
-  `pod-dispatch.spec.md`'s "Bounded hop prompts", rewritten by this same card). No change to the
-  four legacy archetypes' rendered SOUL.md/AGENTS.md (`tokenBudget` doesn't participate in
-  template rendering), no change to the CLI surface (`docket roles show` renders it as one more
-  field in the existing YAML/JSON dump, not a new command or flag), no golden impact.
-
-### Version 1.2.0 (2026-07-30)
-
-- **ROADMAP Phase 16, card W-8 (generalized gates, shipped with W-2 per ROADMAP's sequencing
-  rule).** `gateContract` is no longer descriptive-only data — `core.orchestrator.resolve_gate`
-  consults it as a step's gate fallback whenever a pipeline step declares none of its own (see
-  `pod-dispatch.spec.md`'s "Generalized gate execution"). No change to this spec's own schema,
-  registry, or CLI surface; the "Legacy archetype fidelity" cross-check (requirement 3) is
-  reworded now that `core/dispatch.py`'s private `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`
-  constants it used to check against are deleted — the cross-check target is now
-  `core/pipeline.py`'s `default_pipeline()` and the executor's own resolution, both verified to
-  agree with this registry by test.
-
-### Version 1.1.0 (2026-07-30)
-
-- ROADMAP Phase 16 W-7 (pod blueprints) shipped: cross-referenced the new `pod-blueprints.spec.md`
-  from the two places this spec previously described blueprints/preset rosters as future work
-  ("tracked as ROADMAP Phase 16 W-7, not shipped"). No change to this spec's own schema, built-in
-  archetypes, or CLI surface — blueprints compose archetype names by reference, they don't alter
-  what an archetype is.
-
-### Version 1.0.0 (2026-07-30)
-
-- Initial specification (ROADMAP Phase 16 W-6): the archetype schema, the four built-in
-  archetypes (byte-identical to the pre-W-6 hand-written generators), the six-role starter
-  library, the `docket-roles.json` user-overlay pattern, the `modelClass` → role→model policy
-  fallback, and `docket roles list/show/add/validate`.
+- `src/docket/teams/roles.py`: `RoleArchetype`, `GateContract`, `ArchetypeError`,
+  `from_wire`, `to_wire`, `SCOPES`, `MODEL_CLASSES`, `GATE_KINDS`, `render`,
+  `resolve_hop_instruction`, `BUILTIN_ARCHETYPES`, `BUILTIN_ROLE_ORDER`, `STARTER_ARCHETYPES`,
+  `STARTER_ROLE_ORDER`, `ArchetypeRegistry` (`source_of`), `load_registry`,
+  `find_overlay_problems`, `BUILTIN_TOOL_KINDS`, `registry_for_role`, `validate_archetype_dict`,
+  `parse_yaml_file`, `normalize_role` (short form), `to_short_role`, `load_role_file`,
+  `add_user_archetype`
+- `src/docket/agent/tools/registry.py`: `ToolRegistry.without`, `Tool.kind`,
+  `builtin_registry` (the `bash` description sentence)
+- `src/docket/teams/pod.py`: `normalize_role`, `member_id`, `pod_prefix`, `pod_of`, `members_of`,
+  `parse_member_id`, `resolve_member`, `DEFAULT_POD_ROLES`, `FULL_POD_ROLES`, `PodSettings`
+  (`deniedTools`, `coerce`, `load_for`)
+- `src/docket/teams/pod_provisioning.py`: `POD_TEMPLATE_VERSION`, the member render context
+  (`_render_context`), SOUL.md/AGENTS.md rendering
+- `src/docket/pipeline/domain/plan.py`: `resolve_gate`, `parse_verdict`, `resolve_plan`
+- `src/docket/pipeline/domain/spec.py`: `default_pipeline`
+- `src/docket/hops/application/compose.py`: the hop-message builder (`_hop_message`,
+  `_resolve_hop_instructions`)
+- `src/docket/hops/application/executor.py`: plan resolution for dispatch
+  (`resolve_pipeline_steps`)
+- `src/docket/agent/context.py`: `budget_for_role`, `DEFAULT_TOKEN_BUDGET`
+- `src/docket/agent/session.py`: `compact_session`
+- `src/docket/agent/loop.py`: the per-turn `registry_for_role` call; the compaction call
+  passing the turn's project
+- `src/docket/teams/model_selection.py`: `resolve_role_model`, `ALL_ROLES`, `ROLE_CLASS`,
+  `rank_anchors`
+- `src/docket/teams/identity.py`: the live runtime startup contract
+- `src/docket/teams/agent_memory.py`: `seed_contract` (the `WORKFLOW_AUTO.md` manual-path paragraph),
+  `REQUIRED_STARTUP_FILE`
+- `src/docket/teams/config_docs.py`: `load_document` (role kind detection and validation)
+- `src/docket/teams/apply/plan.py`: directory and recipe apply
+- `src/docket/interfaces/cli/commands/pod_config.py`: `docket pod roles`, `docket pod update`, `docket pod validate`,
+  `docket pod recipes`, `docket pod plan`
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod add`, the `docket pod set pipeline` role check against the pod roster
+- `src/docket/interfaces/cli/commands/run.py`: `docket run` plan resolution
+- `src/docket/interfaces/cli/commands/setup_check.py`: overlay problem and stale-template reports for `docket setup`
+- `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`
+- `src/docket/kernel/templates.py`: `RECIPES_DIR`
+- `src/docket/templates/recipes/`: the shipped recipe library
+- Tests: `tests/integration/teams/test_pod_role_workspace_parity.py` (byte identity),
+  `tests/integration/teams/test_archetypes.py` and `tests/unit/pipeline/domain/test_spec__spec.py` (gate
+  agreement), `tests/unit/teams/test_roles.py` (runtime-contract and prompt-layer checks,
+  overlay problems, pod `deniedTools`), `tests/integration/agent/role_tools/test_denied_tools.py`
+  (`BUILTIN_TOOL_KINDS` pinned against `builtin_registry()`), `tests/integration/teams/test_recipes.py`

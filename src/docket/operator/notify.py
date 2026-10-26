@@ -1,0 +1,527 @@
+"""Operator events, derived from inbox transitions, and their delivery (ADR 0016 SS7).
+
+``diff_events``/``render_data``/``render_text`` are pure: no clock, no I/O, no vendor
+knowledge. ``flush`` is the one impure orchestrator -- it builds the current inbox, diffs it
+against the persisted dedupe snapshot, saves the new snapshot BEFORE delivering (a crash
+mid-delivery must never re-emit: at-most-once, not at-least-once), then hands each event to
+whatever ``sink_for`` returns for a channel's dialect. This module never imports
+``operator/adapters`` itself -- it receives a sink factory from its caller, the same seam
+``observability/telemetry.py``'s ``start(specs, sink_for)`` uses. A failed delivery is recorded in
+``channels-health.json`` and is never retried on a later flush -- only within the one flush
+call that discovered it.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from docket.governance import secrets as _secrets
+from docket.kernel import clock as _clock
+from docket.kernel import escalation_events as _events
+from docket.kernel.home import current_home
+from docket.kernel.operator_contract import (
+    CloudEvent,
+    EscalationView,
+    InboxView,
+    TaskView,
+    make_event,
+)
+from docket.operator import channel as _channel
+from docket.operator import inbox as _inbox
+from docket.operator import notify as _notify
+from docket.operator import render as _render
+from docket.platform import read_escalation, read_json, write_json
+
+__all__ = [
+    "Deliver",
+    "DeliveryOutcome",
+    "FlushReport",
+    "NotifyEvent",
+    "SinkFactory",
+    "build_test_event",
+    "diff_events",
+    "flush",
+    "read_state",
+    "render_data",
+    "render_text",
+    "resolve_secret",
+]
+
+# The `on:` values a "needs_you" subscription stands for -- every transition that puts an
+# item in the inbox's `needsYou` section, plus the one warning that fires while an item is
+# still there (`approval.expiring`). `task.failed`/`task.rejected`/`task.completed` are
+# deliberately excluded: a channel wants those only by naming them explicitly.
+_NEEDS_YOU_KINDS: frozenset[str] = frozenset(
+    {"task.input_required", "approval.requested", "task.blocked", "approval.expiring"}
+)
+
+# How much of an approval's life must have elapsed before `approval.expiring` fires, once,
+# per token (ADR 0016 SS7).
+_EXPIRING_FRACTION = 0.8
+
+_DELIVERY_TIMEOUT_S = 5.0
+_DELIVERY_ATTEMPTS = 3  # one try plus two retries, within this one flush call only
+_RETRY_SLEEP_S = 0.5
+
+
+@dataclass(frozen=True)
+class NotifyEvent:
+    """One derived transition, not yet rendered for a recipient. `flush` builds one
+    `CloudEvent` per channel from this, with a stable `id` but per-channel `data`."""
+
+    kind: str
+    pod: str
+    subject: str
+    version: str
+    time: str
+    item: TaskView | EscalationView
+
+
+@dataclass(frozen=True)
+class FlushReport:
+    """What one `flush` call did. `events` is the count of distinct transitions found;
+    `delivered`/`failed` count individual channel deliveries (one event to three matching
+    channels is three); `skipped` counts a match with no wired dialect. `error` names the
+    failure of the inbox, snapshot or health stores, which ended the flush early."""
+
+    events: int = 0
+    delivered: int = 0
+    failed: int = 0
+    skipped: int = 0
+    error: str = ""
+
+
+class DeliveryOutcome(Protocol):
+    """The shape `flush` reads off whatever a `Deliver` call returns. Matched structurally
+    against `operator/adapters/webhook.py::DeliveryResult`'s field names, never imported
+    by name -- this module never imports `operator/adapters` (see the module docstring)."""
+
+    @property
+    def ok(self) -> bool: ...
+    @property
+    def error(self) -> str: ...
+
+
+class Deliver(Protocol):
+    """What `sink_for(spec)` returns: one dialect's send function."""
+
+    def __call__(
+        self, spec: Any, event: CloudEvent, *, secret: str | None, timeout: float
+    ) -> DeliveryOutcome: ...
+
+
+SinkFactory = Callable[[Any], "Deliver | None"]
+
+
+# ── pure: item identity, diffing, rendering ──────────────────────────────────
+
+
+_APPROVAL_KINDS = frozenset({"approval", "gate", "check_changed"})
+
+
+def _item_key(item: TaskView | EscalationView) -> str:
+    if isinstance(item, EscalationView):
+        return f"escalation:{item.id}"
+    return f"task:{item.pod}:{item.id}"
+
+
+def _item_version(item: TaskView | EscalationView) -> str:
+    """The status plus the escalation the task waits on -- so a task re-asking a new question, or
+    a pause resolving, is always seen as a changed version even when the status string itself
+    repeats (e.g. two different questions both leave a task `waiting_input`)."""
+    if isinstance(item, EscalationView):
+        return item.state
+    return f"{item.status}:{item.escalation or ''}"
+
+
+def _needs_you_kind(item: TaskView | EscalationView) -> str:
+    if isinstance(item, EscalationView):
+        return "approval.requested" if item.kind in _APPROVAL_KINDS else "task.input_required"
+    if item.status == "waiting_approval":
+        return "approval.requested"
+    if item.status == "blocked":
+        return "task.blocked"
+    return "task.input_required"
+
+
+def _failed_kind(item: TaskView) -> str:
+    return "task.rejected" if item.a2a_state == "REJECTED" else "task.failed"
+
+
+def _expiring_events(inbox: InboxView, already_warned: set[str], now: str) -> list[NotifyEvent]:
+    now_dt = _clock.parse_iso(now)
+    if now_dt is None:
+        return []
+    events: list[NotifyEvent] = []
+    for item in inbox.needs_you:
+        if (
+            not isinstance(item, EscalationView)
+            or item.kind not in _APPROVAL_KINDS
+            or item.id in already_warned
+        ):
+            continue
+        created = _clock.parse_iso(item.asked_at)
+        expires = _clock.parse_iso(item.expires_at)
+        if created is None or expires is None:
+            continue
+        total = (expires - created).total_seconds()
+        if total <= 0:
+            continue
+        elapsed = (now_dt - created).total_seconds()
+        if elapsed / total < _EXPIRING_FRACTION:
+            continue
+        events.append(
+            NotifyEvent(
+                kind="approval.expiring",
+                pod=item.pod,
+                subject=f"escalation:{item.id}",
+                version=f"expiring:{item.id}",
+                time=now,
+                item=item,
+            )
+        )
+    return events
+
+
+def diff_events(
+    prev: dict[str, Any], inbox: InboxView, now: str
+) -> tuple[list[NotifyEvent], dict[str, Any]]:
+    """Which items in *inbox* are new or changed into a notifiable state since *prev*, plus
+    the snapshot to persist next. Pure; *now* is the caller's own reading, never the clock.
+    Also emits `approval.expiring` once per approval escalation at 80% of its life."""
+    raw_versions = prev.get("items")
+    versions: dict[str, str] = dict(raw_versions) if isinstance(raw_versions, dict) else {}
+    raw_expiring = prev.get("expiring")
+    expiring: set[str] = set(raw_expiring) if isinstance(raw_expiring, list) else set()
+
+    events: list[NotifyEvent] = []
+
+    def _consider(item: TaskView | EscalationView, kind: str) -> None:
+        key = _item_key(item)
+        version = _item_version(item)
+        if versions.get(key) != version:
+            events.append(
+                NotifyEvent(
+                    kind=kind, pod=item.pod, subject=key, version=version, time=now, item=item
+                )
+            )
+        versions[key] = version
+
+    for needs_you_item in inbox.needs_you:
+        _consider(needs_you_item, _needs_you_kind(needs_you_item))
+    for failed_item in inbox.failed:
+        _consider(failed_item, _failed_kind(failed_item))
+    for done_item in inbox.done_since:
+        _consider(done_item, "task.completed")
+    for decided_item in inbox.decided:
+        _consider(decided_item, "escalation.decided")
+
+    for expiring_event in _expiring_events(inbox, expiring, now):
+        events.append(expiring_event)
+        expiring.add(expiring_event.subject.removeprefix("escalation:"))
+
+    snapshot = {"items": versions, "expiring": sorted(expiring)}
+    return events, snapshot
+
+
+def render_data(
+    item: TaskView | EscalationView,
+    level: str,
+    escalation: EscalationView | None = None,
+) -> dict[str, Any]:
+    """The event payload for *item* at content *level* (`minimal < actions < conversation`):
+    `actions` adds an approval's `action`, `conversation` a question's `question` and a task's
+    `brief`. *escalation* is the pause a person is asked to settle behind *item* when it has one:
+    its id is `escalationId`, its option ids are at every level, and the exact way to answer is
+    `respond`. A decision the pod took alone carries only ids and the level, at every level."""
+    if isinstance(item, EscalationView) and item.state == "decided":
+        decision: dict[str, Any] = {"pod": item.pod}
+        if item.task:
+            decision["taskId"] = item.task
+        decision.update({"escalationId": item.id, "kind": item.kind})
+        if item.resolution is not None and item.resolution.option_id:
+            decision["optionId"] = item.resolution.option_id
+        if item.level:
+            decision["level"] = item.level
+        return decision
+
+    pending = item if isinstance(item, EscalationView) else escalation
+    data: dict[str, Any] = {"pod": item.pod}
+    if isinstance(item, TaskView):
+        data["taskId"] = item.id
+        if item.reason:
+            data["reasonCode"] = item.reason
+    elif item.task:
+        data["taskId"] = item.task
+    if pending is not None:
+        data["escalationId"] = pending.id
+        data["kind"] = pending.kind
+        if pending.role:
+            data["role"] = pending.role
+        if pending.expires_at:
+            data["expiresAt"] = pending.expires_at
+        data["respond"] = {
+            "cli": f"docket task answer {pending.id}",
+            "http": pending.affordances.resolve_url,
+        }
+    elif isinstance(item, TaskView):
+        data["respond"] = {"cli": "docket inbox", "http": f"/tasks/{item.id}"}
+    if pending is not None and level != "minimal" and pending.kind in _APPROVAL_KINDS:
+        data["action"] = pending.prompt
+    if pending is not None and level == "conversation" and pending.kind not in _APPROVAL_KINDS:
+        data["question"] = pending.prompt
+    if isinstance(item, TaskView) and level == "conversation" and item.brief is not None:
+        data["brief"] = item.brief.model_dump(by_alias=True, mode="json")
+    options, recommended = _options_of(pending, level)
+    if options:
+        data["options"] = [{"id": o.id, **({"label": o.label} if o.label else {})} for o in options]
+        if recommended:
+            data["recommendation"] = {"optionId": recommended}
+    return data
+
+
+def _options_of(
+    escalation: EscalationView | None, level: str
+) -> tuple[tuple[_render.RenderedOption, ...], str | None]:
+    """The options a pending *escalation* offers at *level* and the recommended id."""
+    if escalation is None:
+        return (), None
+    options = _render.render_escalation(escalation, level).options
+    return options, next((o.id for o in options if o.recommended), None)
+
+
+def render_text(event: CloudEvent) -> tuple[str, str]:
+    """(title, body) for a text-only dialect. Reads only what *event*'s own already-leveled
+    `data` carries, so a `minimal` event's text never surfaces what its data omitted."""
+    kind = event.type.removeprefix("dev.docket.")
+    pod = str(event.data.get("pod", ""))
+    title = f"docket: {kind} ({pod})" if pod else f"docket: {kind}"
+
+    parts: list[str] = []
+    task_id = event.data.get("taskId")
+    if task_id:
+        parts.append(f"task {task_id}")
+    if kind == "escalation.decided" and event.data.get("optionId"):
+        level = event.data.get("level")
+        parts.append(
+            f"{event.data.get('kind', 'pause')} decided {event.data['optionId']}"
+            + (f" at {level}" if level else "")
+        )
+    reason = event.data.get("reasonCode")
+    if reason:
+        parts.append(str(reason))
+    action = event.data.get("action")
+    if action:
+        parts.append(f"$ {action}")
+    question = event.data.get("question")
+    if question:
+        parts.append(str(question))
+    body = " -- ".join(parts) if parts else kind
+    options = event.data.get("options")
+    if isinstance(options, list) and options:
+        recommended = (event.data.get("recommendation") or {}).get("optionId")
+        lines = [
+            _render.clean_label(str(o["id"]))
+            + (f" - {o['label']}" if o.get("label") else "")
+            + (" (recommended)" if o["id"] == recommended else "")
+            for o in options
+        ]
+        lines.append(f"reply: /answer {event.data.get('escalationId') or task_id} <id>")
+        body = "\n".join([body, *lines])
+    return title, body
+
+
+def _pending_of(item: TaskView | EscalationView, inbox: InboxView) -> EscalationView | None:
+    """The pending escalation a person is asked to settle behind *item*: the item itself when it is
+    one, else the pending escalation of the task it is; ``None`` for anything else (a decision the
+    pod took alone, a task that waits on nothing)."""
+    if isinstance(item, EscalationView):
+        return item if item.state == "pending" else None
+    return next((e for e in inbox.escalations if (e.pod, e.task) == (item.pod, item.id)), None)
+
+
+def _trace_delivery(escalation_id: str, channel: str) -> None:
+    """Write `escalation_delivered` for *escalation_id*, delivered through *channel*; a record that
+    is gone traces nothing."""
+    record = read_escalation(escalation_id)
+    if record is not None:
+        _events.emit(_events.DELIVERED, record, channel=channel)
+
+
+def build_test_event(spec: Any, *, now: str) -> CloudEvent:
+    """A synthetic `channel.test` event for `docket setup notify test <name>` -- an operator
+    verifying one channel's delivery path before relying on it. Source pod is `cli`: a test
+    is triggered by an operator command, not by any real pod's state."""
+    data = {"pod": "cli", "channel": spec.name, "message": "docket channel test"}
+    return make_event("channel.test", "cli", f"channel:{spec.name}", data, time=now, version=now)
+
+
+# ── impure: state, secrets, delivery ─────────────────────────────────────────
+
+
+def read_state() -> dict[str, Any]:
+    """The persisted dedupe snapshot (`Home.notify_state_file`), through `platform/store.py`
+    like every other docket-owned JSON read. `{}` before the first flush."""
+    return read_json(current_home().notify_state_file)
+
+
+def _save_state(snapshot: dict[str, Any]) -> None:
+    write_json(current_home().notify_state_file, snapshot)
+
+
+def _load_health() -> dict[str, Any]:
+    raw = read_json(current_home().channels_health_file)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def resolve_secret(spec: Any) -> str | None:
+    """The credential *value* named by `spec.secret`, through `governance.secrets.secret_value` --
+    a channel document only ever stores a credential name."""
+    name = getattr(spec, "secret", None)
+    if not name:
+        return None
+
+    return _secrets.secret_value(name)
+
+
+def _matches_on(spec: Any, kind: str) -> bool:
+    on = getattr(spec, "on", None) or []
+    if kind in on:
+        return True
+    return "needs_you" in on and kind in _NEEDS_YOU_KINDS
+
+
+def _in_scope(spec: Any, item: TaskView | EscalationView) -> bool:
+    """Whether *spec* hears *item*: a channel scoped to one task (``config.scopeTask`` in
+    ``config.scopePod``) hears only that task's events, any other channel hears everything."""
+    config = getattr(spec, "config", None) or {}
+    task = config.get("scopeTask")
+    if not task:
+        return True
+    task_id = item.task if isinstance(item, EscalationView) else item.id
+    return (item.pod, task_id) == (config.get("scopePod"), task)
+
+
+def _deliver_with_retry(
+    deliver: Deliver,
+    spec: Any,
+    event: CloudEvent,
+    secret: str | None,
+    sleep: Callable[[float], None],
+) -> tuple[bool, str]:
+    error = ""
+    for attempt in range(_DELIVERY_ATTEMPTS):
+        try:
+            result = deliver(spec, event, secret=secret, timeout=_DELIVERY_TIMEOUT_S)
+        except Exception as exc:  # a dialect must never raise; flush never trusts that alone
+            error = str(exc)
+        else:
+            if result.ok:
+                return True, ""
+            error = result.error
+        if attempt < _DELIVERY_ATTEMPTS - 1:
+            sleep(_RETRY_SLEEP_S)
+    return False, error
+
+
+def _default_sleep(seconds: float) -> None:
+    import time
+
+    time.sleep(seconds)
+
+
+def flush(
+    specs: Sequence[Any],
+    sink_for: SinkFactory,
+    *,
+    now: str,
+    sleep: Callable[[float], None] = _default_sleep,
+) -> FlushReport:
+    """Diff the current inbox against the persisted snapshot, save the new snapshot BEFORE
+    delivering (so a crash mid-delivery never re-emits), then deliver each event to every
+    enabled channel with `notify` whose `on` matches. Never raises: a failing inbox or store
+    comes back as `FlushReport.error`, a failing channel as one `failed` delivery."""
+    try:
+        return _flush(specs, sink_for, now=now, sleep=sleep)
+    except Exception as exc:
+        return FlushReport(error=f"{type(exc).__name__}: {exc}")
+
+
+def _flush(
+    specs: Sequence[Any],
+    sink_for: SinkFactory,
+    *,
+    now: str,
+    sleep: Callable[[float], None],
+) -> FlushReport:
+    prev = read_state()
+    inbox_view = _inbox.build_inbox(now=now)
+    events, snapshot = diff_events(prev, inbox_view, now)
+    _save_state(snapshot)
+
+    if not events:
+        return FlushReport(events=0)
+
+    channels = [
+        spec
+        for spec in specs
+        if getattr(spec, "enabled", False)
+        and "notify" in (getattr(spec, "capabilities", None) or [])
+    ]
+    health = _load_health()
+    delivered = 0
+    failed = 0
+    skipped = 0
+
+    for notify_event in events:
+        matching = [
+            spec
+            for spec in channels
+            if _matches_on(spec, notify_event.kind) and _in_scope(spec, notify_event.item)
+        ]
+        for spec in matching:
+            try:
+                deliver = sink_for(spec)
+                if deliver is None:
+                    skipped += 1
+                    continue
+                pending = _pending_of(notify_event.item, inbox_view)
+                cloud_event = make_event(
+                    notify_event.kind,
+                    notify_event.pod,
+                    notify_event.subject,
+                    render_data(notify_event.item, getattr(spec, "content", "minimal"), pending),
+                    time=notify_event.time,
+                    version=notify_event.version,
+                )
+                secret = resolve_secret(spec)
+                ok, error = _deliver_with_retry(deliver, spec, cloud_event, secret, sleep)
+                if ok and pending is not None:
+                    _trace_delivery(pending.id, str(spec.name))
+            except Exception as exc:
+                ok, error = False, f"{type(exc).__name__}: {exc}"
+            entry = dict(health.get(spec.name) or {})
+            if ok:
+                delivered += 1
+                entry["delivered"] = int(entry.get("delivered", 0)) + 1
+                entry["lastOk"] = now
+            else:
+                failed += 1
+                entry["failed"] = int(entry.get("failed", 0)) + 1
+                entry["lastError"] = error
+                entry["lastErrorAt"] = now
+            health[spec.name] = entry
+
+    if channels:
+        write_json(current_home().channels_health_file, health)
+
+    return FlushReport(events=len(events), delivered=delivered, failed=failed, skipped=skipped)
+
+
+def flush_notify_channels(sink_for: SinkFactory) -> None:
+    """One `operator.notify.flush` call over every catalog channel through *sink_for* -- the
+    periodic half of delivery; `interfaces/cli/commands/run.py::_pod_dispatch` runs the other,
+    foreground half."""
+    _notify.flush(list(_channel.load_catalog().entries.values()), sink_for, now=_clock.stamp())

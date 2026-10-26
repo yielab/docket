@@ -24,7 +24,7 @@ Read this only when the task changes planning state.
 - Acceptance must include a representative fixture or state, the public action, observable result,
   durable side effects or rollback expectation, and the oracle that distinguishes pass from merely
   exercising a helper.
-- Closing a card requires its spec status/version/changelog to match what shipped. Do not mark broad
+- Closing a card requires its spec status/version to match what shipped. Do not mark broad
   capabilities complete when only machinery or an unused code path exists.
 - Central rollups should state the current truth once. Avoid duplicating detailed task prose between
   `TODO.md`, `ROADMAP.md`, specs, and implementation comments.

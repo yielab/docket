@@ -1,0 +1,5 @@
+# function-local `docket.*` imports under src/docket; shrink-only
+# lower it in the same commit that removes an import: edit this number to the new count
+# The one left is a real cycle: interfaces/cli/commands/setup_shell.py `_tree` builds the shell
+# completions from the CLI app, which registers `docket setup shell` and so imports this module.
+local_imports 1

@@ -2,8 +2,8 @@
 
 Two invariants pinned here: (1) **fleet.json has exactly one writer** --
 agent registration, channel bindings, and gates/isolation flags are
-docket-owned and read/written through `core/fleet.py`, which goes through
-`edges/store.py`; a second module reaching for `config.FLEET_FILE` directly
+docket-owned and read/written through `teams/fleet.py`, which goes through
+`platform/store.py`; a second module reaching for `Home.fleet_file` directly
 would reopen second-writer drift. (2) **The fleet registry does not
 duplicate what `.docket-meta.json` already owns** -- `FleetAgent` tracks
 only the bare `id`, no `model`/`sessionKey`; re-adding either would recreate
@@ -16,34 +16,29 @@ import ast
 from pathlib import Path
 from typing import ClassVar
 
-import pytest
-
-from docket.core.fleet import FleetAgent
+from docket.teams.fleet import FleetAgent
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKET_SRC = REPO_ROOT / "src" / "docket"
 
 
 class TestFleetSingleWriter:
-    """Only core/fleet.py (and config.py, which just defines the constant) may
-    reference FLEET_FILE. Mirrors test_tool_registry.py's
-    'only the chokepoint imports the handler module' guard."""
+    """Only teams/fleet.py (and kernel/home.py, which defines the path) may open fleet.json.
+    The two CLI modules below only name its path, to tighten its mode and to report it.
+    Mirrors test_tool_registry.py's 'only the chokepoint imports the handler module' guard."""
 
     ALLOWED_REFERRERS: ClassVar[set[str]] = {
-        "config.py",
-        "core/fleet.py",
+        "kernel/home.py",
+        "teams/fleet.py",
+        "interfaces/cli/commands/setup.py",
+        "interfaces/cli/commands/setup_check.py",
     }
 
     @staticmethod
     def _references_fleet_file(tree: ast.AST) -> bool:
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id == "FLEET_FILE":
-                return True
-            if isinstance(node, ast.ImportFrom) and any(
-                alias.name == "FLEET_FILE" for alias in node.names
-            ):
-                return True
-        return False
+        return any(
+            isinstance(node, ast.Attribute) and node.attr == "fleet_file" for node in ast.walk(tree)
+        )
 
     def test_only_the_acl_references_fleet_file(self) -> None:
         offenders = [
@@ -65,16 +60,3 @@ class TestFleetAgentSchemaMinimal:
         agent = FleetAgent(id="myshop")
         assert not hasattr(agent, "model")
         assert not hasattr(agent, "session_key")
-
-
-class TestDualSourceModulesDeleted:
-    """core/sync.py and core/oc_models.py are deleted, not ported — the
-    dual-source drift check they implemented has nothing left to compare."""
-
-    def test_core_sync_module_is_gone(self) -> None:
-        with pytest.raises(ModuleNotFoundError):
-            import docket.core.sync  # noqa: F401
-
-    def test_core_oc_models_module_is_gone(self) -> None:
-        with pytest.raises(ModuleNotFoundError):
-            import docket.core.oc_models  # noqa: F401

@@ -64,7 +64,7 @@ Card / owner / commit:
 Outcome: complete | partial | blocked
 User-visible behavior:
 Changed paths and owned functions:
-Spec version/status/changelog:
+Spec version/status:
 Acceptance oracles:
 Focused tests: <command> -> <compact result>
 Full gates: <command group> -> <compact result or not run>

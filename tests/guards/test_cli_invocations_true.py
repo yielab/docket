@@ -7,6 +7,7 @@ scripts/maint/lint_cli_invocations.py in process against the live Click tree.
 from __future__ import annotations
 
 import importlib.util
+import re
 import time
 from pathlib import Path
 
@@ -31,18 +32,15 @@ ROOTS: tuple[str, ...] = (
     "specs",
     "src/docket/templates",
 )
-# The spec index keeps the retirement notes of removed commands, as a record.
-RECORD_FILES: tuple[str, ...] = ("specs/README.md",)
 
 
 def findings(roots: tuple[str, ...] = ROOTS) -> list[str]:
     hits: list[str] = []
-    for path in rcn.iter_files(roots, RECORD_FILES):
+    for path in rcn.iter_files(roots):
         text = rcn.read_text(path)
         if text is None:
             continue
-        editable, _record = rcn.split_record(path, text)
-        hits += lint.lint_text(rcn._rel(path), editable)
+        hits += lint.lint_text(rcn._rel(path), text)
     return hits
 
 
@@ -66,17 +64,74 @@ class TestPlanted:
         doc.write_text("Run `docket task list --retry` to see.\n", encoding="utf-8")
         assert len(lint.lint([doc])) == 1
 
-    def test_a_spec_body_is_checked_and_its_changelog_is_not(self, tmp_path: Path) -> None:
-        spec = tmp_path / "specs" / "functional" / "x.spec.md"
-        spec.parent.mkdir(parents=True)
-        spec.write_text(
-            "# X\n\nUse `docket status <agent>`.\n\n## Changelog\n\n- `docket status <agent>`\n",
-            encoding="utf-8",
-        )
-        assert len(lint.lint([spec])) == 1
-
     def test_a_false_example_line_is_found(self, monkeypatch) -> None:
         monkeypatch.setattr(
             lint, "leaf_examples", lambda: iter([("docket x", "docket status <a>")])
         )
         assert len(lint.lint_examples()) == 1
+
+
+# Scripts drive the CLI as argv lists, which the text linter cannot see, so the verb after a
+# literal "task" is checked against the live group. Result trees are recorded evidence.
+DRIVER_ROOTS: tuple[str, ...] = ("scripts", "examples", "benchmarks")
+DRIVER_SKIP: tuple[str, ...] = ("benchmarks/results",)
+DRIVER_SUFFIXES = {".py", ".sh", ".md", ".yaml", ".yml"}
+# Yaml comments narrate retired dialects in prose, so only the field check reads them.
+INVOCATION_SUFFIXES = {".py", ".sh", ".md"}
+RETIRED_FIELDS = re.compile(r"approvalToken|consultAnswer|gateOverridePipelineIndex")
+TASK_ARGV = re.compile(r"""["']task["'],\s*["']([a-z][a-z-]*)["']""")
+# Prose naming a removed verb without the word docket, and a verb held in a variable the guard
+# cannot read: both hide a call the argv check would miss.
+RETIRED_PHRASE = re.compile(r"\btask (?:approve|deny)\b")
+VARIABLE_VERB = re.compile(r"""["']task["'],\s*[a-z_]\w*\s*[,)]""")
+AFTER_A_LITERAL = re.compile(r"""["']\s*,\s*$""")
+
+
+def argv_verbs(line: str) -> list[str]:
+    """Verbs after a literal "task" that starts an argv, not one more member of a list of names."""
+    return [
+        m.group(1)
+        for m in TASK_ARGV.finditer(line)
+        if not AFTER_A_LITERAL.search(line[: m.start()])
+    ]
+
+
+def driver_findings() -> list[str]:
+    task_verbs = set(lint.ROOT_CMD.commands["task"].commands)
+    hits: list[str] = []
+    for path in rcn.iter_files(DRIVER_ROOTS, skip=DRIVER_SKIP):
+        if path.suffix not in DRIVER_SUFFIXES:
+            continue
+        text = rcn.read_text(path)
+        if text is None:
+            continue
+        label = rcn._rel(path)
+        if path.suffix in INVOCATION_SUFFIXES:
+            hits += lint.lint_text(label, text)
+        for n, line in enumerate(text.splitlines(), 1):
+            if RETIRED_PHRASE.search(line) or VARIABLE_VERB.search(line):
+                hits.append(f"{label}:{n}: a removed or unreadable task verb: {line.strip()[:80]}")
+            if RETIRED_FIELDS.search(line):
+                hits.append(f"{label}:{n}: retired task field: {line.strip()[:80]}")
+            for verb in argv_verbs(line):
+                if verb not in task_verbs:
+                    hits.append(f"{label}:{n}: 'task {verb}' is not a verb of 'task'")
+    return hits
+
+
+class TestDrivers:
+    def test_scripts_examples_and_benchmarks_call_only_live_verbs_and_fields(self) -> None:
+        start = time.monotonic()
+        hits = driver_findings()
+        assert hits == [], "callers of removed commands or fields:\n" + "\n".join(hits)
+        assert time.monotonic() - start < 2.0
+
+    def test_a_removed_verb_and_a_retired_field_are_found(self, tmp_path: Path) -> None:
+        planted = tmp_path / "p.py"
+        planted.write_text('run("task", "approve", t)\nx = task["approvalToken"]\n')
+        text = planted.read_text()
+        assert argv_verbs(text.splitlines()[0]) == ["approve"]
+        assert argv_verbs('GROUPS = ["inbox", "task", "run"]') == []
+        assert RETIRED_FIELDS.search(text)
+        assert RETIRED_PHRASE.search("`task approve`, `task deny` and `task show`.")
+        assert VARIABLE_VERB.search('_public_cli(home, workspace, "task", command, token)')

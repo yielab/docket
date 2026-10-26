@@ -1,0 +1,104 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tasks/get",
+    "params": {
+      "id": "<task-id>"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "kind": "task",
+      "id": "<task-id>",
+      "contextId": "e2e",
+      "status": {
+        "state": "INPUT_REQUIRED",
+        "timestamp": "<time>",
+        "message": {
+          "kind": "message",
+          "role": "agent",
+          "messageId": "<escalation-id>",
+          "taskId": "<task-id>",
+          "contextId": "e2e",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "Which cache should the service use?"
+            },
+            {
+              "kind": "data",
+              "data": {
+                "message": "Which cache should the service use?",
+                "requestedSchema": {
+                  "type": "object",
+                  "properties": {
+                    "note": {
+                      "type": "string"
+                    },
+                    "optionId": {
+                      "type": "string",
+                      "enum": [
+                        "redis",
+                        "memcached"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "optionId"
+                  ]
+                },
+                "kind": "decision",
+                "options": [
+                  {
+                    "id": "redis",
+                    "label": "Redis",
+                    "description": "already deployed",
+                    "risks": [],
+                    "estimatedTokens": null
+                  },
+                  {
+                    "id": "memcached",
+                    "label": "Memcached",
+                    "description": "simpler",
+                    "risks": [],
+                    "estimatedTokens": null
+                  },
+                  {
+                    "id": "decline",
+                    "label": "Decline",
+                    "description": "Refuse without choosing an option.",
+                    "risks": [],
+                    "estimatedTokens": null
+                  }
+                ],
+                "escalationId": "<escalation-id>",
+                "escalationKind": "consult",
+                "expiresAt": "<time>",
+                "onExpiry": "block",
+                "policy": "person",
+                "recommendation": {
+                  "optionId": "redis",
+                  "rationale": "it is already deployed",
+                  "evidenceRefs": []
+                },
+                "level": "L3"
+              }
+            }
+          ],
+          "extensions": [
+            "https://docket.dev/schemas/operator-v1.1/question.schema.json"
+          ]
+        }
+      },
+      "metadata": {
+        "docket": {
+          "pod": "e2e",
+          "status": "waiting_input"
+        }
+      }
+    }
+  }
+}

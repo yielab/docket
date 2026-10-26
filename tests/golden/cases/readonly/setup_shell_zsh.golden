@@ -5,7 +5,7 @@ EXIT:0
 _docket_verbs() {
   case "$1" in
     "") echo "init status inbox run start stop task pod log setup" ;;
-    "task") echo "add list show diff trace prune approve deny answer retry cancel" ;;
+    "task") echo "add list show diff trace prune pregrant answer retry cancel" ;;
     "pod") echo "show add remove reset delete set unset update export validate plan check recipes roles policies memory" ;;
     "pod memory") echo "list approve refuse revert reset" ;;
     "log") echo "verify" ;;
@@ -30,15 +30,14 @@ _docket_options() {
     "start") echo "--port --bind --interval --dispatch --telegram --mcp --token-file --help" ;;
     "stop") echo "--wait --help" ;;
     "task") echo "--help" ;;
-    "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --pod --help" ;;
+    "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --autonomy --pod --help" ;;
     "task list") echo "--json --pod --help" ;;
     "task show") echo "--json --pod --help" ;;
     "task diff") echo "--pod --json --help" ;;
     "task trace") echo "--tail --export --json --pod --help" ;;
     "task prune") echo "--dry-run --force --yes --traces --days --pod --help" ;;
-    "task approve") echo "--reason --once --task --for --tool --pod --help" ;;
-    "task deny") echo "--reason --pod --help" ;;
-    "task answer") echo "--option --field --decline --pod --help" ;;
+    "task pregrant") echo "--tool --pod --help" ;;
+    "task answer") echo "--option --field --decline --reason --pod --help" ;;
     "task retry") echo "--pod --help" ;;
     "task cancel") echo "--pod --help" ;;
     "pod") echo "--help" ;;
@@ -123,13 +122,13 @@ _docket_options() {
 
 _docket_takes_pod() {
   case "$1" in
-    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task approve"|"task deny"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset") echo yes ;;
+    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task pregrant"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset") echo yes ;;
   esac
 }
 
 _docket_takes_task_id() {
   case "$1" in
-    "task show"|"task diff"|"task trace"|"task approve"|"task deny"|"task answer"|"task retry"|"task cancel") echo yes ;;
+    "task show"|"task diff"|"task trace"|"task pregrant"|"task answer"|"task retry"|"task cancel") echo yes ;;
   esac
 }
 

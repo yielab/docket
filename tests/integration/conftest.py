@@ -1,5 +1,5 @@
 """Fixtures shared by every integration test."""
 
-from tests.integration.llm_stub import llm_server
+from tests.support.model_server import fake_model
 
-__all__ = ["llm_server"]
+__all__ = ["fake_model"]

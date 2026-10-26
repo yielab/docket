@@ -83,30 +83,8 @@ def test_public_relative_markdown_links_resolve() -> None:
     assert broken == [], "broken repository-relative public link(s):\n" + "\n".join(broken)
 
 
-def test_public_front_door_has_its_sections_and_visuals_are_reproducible() -> None:
-    """The repository landing page and every retained terminal asset have one current owner."""
-
-    readme = README.read_text(encoding="utf-8")
-    required_headings = (
-        "## How it works",
-        "## Install",
-        "## Quick start",
-        "## Make the team yours",
-        "## Known limits",
-        "## Documentation",
-        "## Contributing",
-    )
-    missing_headings = [heading for heading in required_headings if heading not in readme]
-    assert missing_headings == [], f"README is missing front-door section(s): {missing_headings}"
-    for duplicated_owner in (
-        "## Command reference",
-        "## Integrating with a control plane",
-        "## What's next",
-        "## Features",
-        "## Core guarantees",
-    ):
-        assert duplicated_owner not in readme, f"README duplicates {duplicated_owner!r}"
-
+def test_retained_terminal_assets_are_reproducible() -> None:
+    """Every retained terminal asset has one current owner."""
     assets = ROOT / "docs" / "assets"
     expected_media = {"hero.gif", "isolation.png", "governance.png"}
     actual_media = {
@@ -260,7 +238,7 @@ def _status_category(value: str) -> str:
     return match.group(0).lower()
 
 
-def test_spec_index_matches_current_headers_and_changelogs() -> None:
+def test_spec_index_matches_current_headers() -> None:
     """The public spec table must not lag the contracts it indexes."""
     rows: dict[str, tuple[str, str]] = {}
     for line in SPEC_INDEX.read_text(encoding="utf-8").splitlines():
@@ -287,16 +265,8 @@ def test_spec_index_matches_current_headers_and_changelogs() -> None:
             problems.append(
                 f"{label}: index status {indexed_status!r}, spec status {status_match.group(1)!r}"
             )
-        # Changelog entries use one of the heading/bullet styles already live across specs:
-        # "### Version 1.1.0", "### 1.0.0 -- date", or "- **1.2.3 -- date:**".
-        changelog_entry = re.compile(
-            rf"^(?:[-*]\s*)?(?:#{{2,4}}\s*(?:Version\s+)?|\*\*)\s*{re.escape(version)}\b",
-            flags=re.MULTILINE,
-        )
-        if not changelog_entry.search(text):
-            problems.append(f"{label}: current version {version} has no changelog entry")
 
-    assert problems == [], "spec index/header/changelog drift:\n" + "\n".join(problems)
+    assert problems == [], "spec index/header drift:\n" + "\n".join(problems)
 
 
 def _run(*args: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:

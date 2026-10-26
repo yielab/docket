@@ -1,0 +1,447 @@
+"""Neutral span model, incremental projection and export policy (observability/telemetry.py)."""
+
+from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+import pytest
+from tests.support.trace import project_all as _project_all
+
+from docket.governance import privacy
+from docket.observability import projection, telemetry, trace
+from docket.observability import spans as observability_spans
+from docket.observability.adapters import otlp_http
+
+SUBJECT = "docket.observability.spans"
+
+
+class TestExportPolicy:
+    """``admit`` filters by event type only (ADR 0015 §2 rule 1) -- content reduction moved
+    to `project`'s allowlist, exercised below in ``TestPrivacyAllowlist``."""
+
+    def test_admit_never_rewrites_the_payload(self) -> None:
+        policy = observability_spans.ExportPolicy(classes=frozenset())
+        payload = {"tool": "read", "callId": "c1", "arguments": '{"path": "notes.md"}'}
+        record = {"event_type": "tool_call", "payload": payload}
+        admitted = policy.admit(record)
+        assert admitted is record
+        assert admitted["payload"] is payload
+
+    def test_admit_rejects_an_event_type_outside_events(self) -> None:
+        policy = observability_spans.ExportPolicy(events=frozenset({"tool_call"}))
+        record = {"event_type": "tool_result", "payload": {}}
+        assert policy.admit(record) is None
+
+    def test_prompt_composed_is_not_admitted_by_default(self) -> None:
+        policy = observability_spans.ExportPolicy(events=projection.DEFAULT_EVENTS)
+        record = {"event_type": "prompt_composed", "payload": {"prompt": "be helpful"}}
+        assert policy.admit(record) is None
+
+
+def _canary_records() -> list[dict[str, Any]]:
+    """One synthetic record per ``trace.EVENT_TYPES`` member: every content-eligible field
+    is seeded ``CANARY-<event>-<key>``; every other forwarded field gets a plain value, so a
+    leak of the wrong field is distinguishable from a leak of the right one."""
+    ts = "2026-09-28T00:00:00Z"
+    records: list[dict[str, Any]] = []
+    for event_type in sorted(trace.EVENT_TYPES):
+        base = {
+            "ts": ts,
+            "project": "p",
+            "session_id": f"s-{event_type}",
+            "agent_role": "lead",
+            "task_id": "t1",
+            "event_type": event_type,
+        }
+        if event_type == "tool_call":
+            payload: dict[str, Any] = {
+                "tool": "read",
+                "callId": "c1",
+                "arguments": f"CANARY-{event_type}-arguments",
+            }
+        elif event_type == "tool_result":
+            payload = {
+                "tool": "read",
+                "callId": "c1",
+                "decision": "allow",
+                "ok": True,
+                "executed": True,
+                "text": f"CANARY-{event_type}-text",
+            }
+        elif event_type == "llm_call":
+            payload = _llm_call_canary_payload()
+        else:
+            payload = {
+                key: f"struct-{event_type}-{key}"
+                for key in observability_spans._STRUCTURAL_KEYS.get(event_type, ())
+            }
+            content = observability_spans._GENERIC_CONTENT_ATTRS.get(event_type)
+            if content is not None:
+                payload_key, _attr_name, _cls = content
+                payload[payload_key] = f"CANARY-{event_type}-{payload_key}"
+        records.append({**base, "payload": payload})
+    # What an approval asks is a command line (toolArguments); what a question asks is a prompt.
+    records.append(
+        {
+            "ts": ts,
+            "project": "p",
+            "session_id": "s-approval-asked",
+            "agent_role": "lead",
+            "task_id": "t1",
+            "event_type": "escalation_asked",
+            "payload": {
+                "escalation": "esc-approval",
+                "kind": "approval",
+                "task": "t1",
+                "prompt": "CANARY-approval-action",
+            },
+        }
+    )
+    return records
+
+
+def _llm_call_canary_payload() -> dict[str, Any]:
+    return {
+        "model": "m",
+        "provider": "p",
+        "ok": True,
+        "finishReason": "stop",
+        "failureKind": None,
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "cachedTokens": 0,
+        "inputMessages": [
+            {"role": "system", "parts": [{"type": "text", "content": "CANARY-llm_call-system"}]},
+            {"role": "user", "parts": [{"type": "text", "content": "CANARY-llm_call-user"}]},
+            {
+                "role": "assistant",
+                "parts": [
+                    {"type": "text", "content": "CANARY-llm_call-assistant-text"},
+                    {
+                        "type": "tool_call",
+                        "id": "c1",
+                        "name": "read",
+                        "content": "CANARY-llm_call-assistant-toolcall",
+                    },
+                ],
+            },
+            {"role": "tool", "parts": [{"type": "text", "content": "CANARY-llm_call-tool"}]},
+        ],
+        "outputMessages": [
+            {
+                "role": "assistant",
+                "parts": [{"type": "text", "content": "CANARY-llm_call-completion"}],
+            }
+        ],
+        "systemInstructions": "CANARY-llm_call-instructions",
+        "systemInstructionsSha256": "deadbeef",
+    }
+
+
+# canary attribute -> the one class that must be granted for it to appear.
+_CANARY_CLASSES: dict[str, str] = {
+    "CANARY-approval-action": "toolArguments",
+    "CANARY-error-error": "errors",
+    "CANARY-escalation_asked-prompt": "prompts",
+    "CANARY-tool_call-arguments": "toolArguments",
+    "CANARY-tool_result-text": "toolResults",
+    "CANARY-llm_call-system": "instructions",
+    "CANARY-llm_call-instructions": "instructions",
+    "CANARY-llm_call-user": "prompts",
+    "CANARY-llm_call-assistant-text": "prompts",
+    "CANARY-llm_call-assistant-toolcall": "toolArguments",
+    "CANARY-llm_call-tool": "toolResults",
+    "CANARY-llm_call-completion": "completions",
+}
+
+
+def _encode_under(records: list[dict[str, Any]], policy: observability_spans.ExportPolicy) -> str:
+    state = observability_spans.ProjectionState()
+    spans: list[observability_spans.Span] = []
+    for record in records:
+        spans.extend(projection.project(record, state, policy))
+    spans.extend(projection.flush_open(state))
+    return json.dumps(otlp_http.encode(spans, resource={}, aliases={}))
+
+
+def _assert_shares_exactly(encoded: str, classes: frozenset[str]) -> None:
+    for canary, cls in _CANARY_CLASSES.items():
+        if cls in classes:
+            assert canary in encoded, f"{canary} missing though {cls} is granted"
+        else:
+            assert canary not in encoded, f"{canary} leaked though {cls} is not granted"
+
+
+class TestPrivacyAllowlist:
+    """The canary property (ADR 0015, "Test discipline"): under `minimal` nothing beyond
+    structure leaves; under any granted set, exactly its classes' canaries appear."""
+
+    def test_minimal_shares_no_canary(self) -> None:
+        encoded = _encode_under(_canary_records(), observability_spans.MINIMAL_POLICY)
+        assert "CANARY-" not in encoded
+        _assert_shares_exactly(encoded, frozenset())
+
+    @pytest.mark.parametrize("level", sorted(privacy.LEVELS))
+    def test_level_shares_exactly_its_granted_classes(self, level: str) -> None:
+        classes = privacy.LEVELS[level]
+        policy = observability_spans.ExportPolicy(classes=classes, label=level)
+        encoded = _encode_under(_canary_records(), policy)
+        _assert_shares_exactly(encoded, classes)
+
+    @pytest.mark.parametrize("cls", sorted(privacy.CONTENT_CLASSES))
+    def test_single_class_share_grants_only_that_class(self, cls: str) -> None:
+        policy = observability_spans.ExportPolicy(classes=frozenset({cls}), label="custom")
+        encoded = _encode_under(_canary_records(), policy)
+        _assert_shares_exactly(encoded, frozenset({cls}))
+
+    def test_nothing_granted_omits_the_input_messages_attribute(self) -> None:
+        llm_record = next(r for r in _canary_records() if r["event_type"] == "llm_call")
+        state = observability_spans.ProjectionState()
+        spans = projection.project(llm_record, state, observability_spans.MINIMAL_POLICY)
+        chat = next(s for s in spans if s.name == "gen_ai.chat")
+        assert "gen_ai.input.messages" not in chat.attributes
+
+    def test_share_prompts_withholds_the_tool_turn_as_a_marked_part(self) -> None:
+        policy = observability_spans.ExportPolicy(classes=frozenset({"prompts"}), label="custom")
+        llm_record = next(r for r in _canary_records() if r["event_type"] == "llm_call")
+        state = observability_spans.ProjectionState()
+        spans = projection.project(llm_record, state, policy)
+        spans += projection.flush_open(state)
+        chat = next(s for s in spans if s.name == "gen_ai.chat")
+        input_messages = json.loads(str(chat.attributes["gen_ai.input.messages"]))
+        tool_turn = next(m for m in input_messages if m["role"] == "tool")
+        assert tool_turn["parts"] == [{"type": "withheld", "class": "toolResults"}]
+        user_turn = next(m for m in input_messages if m["role"] == "user")
+        assert user_turn["parts"][0]["content"] == "CANARY-llm_call-user"
+        assert "gen_ai.output.messages" not in chat.attributes
+
+    def test_long_part_truncates_and_stays_valid_json(self) -> None:
+        policy = observability_spans.ExportPolicy(
+            classes=frozenset({"prompts"}), label="custom", content_max_chars=4000
+        )
+        record = {
+            "ts": "2026-09-28T00:00:00Z",
+            "project": "p",
+            "session_id": "s-trunc",
+            "agent_role": "lead",
+            "event_type": "llm_call",
+            "payload": {
+                "model": "m",
+                "provider": "p",
+                "ok": True,
+                "finishReason": "stop",
+                "inputTokens": 1,
+                "outputTokens": 1,
+                "cachedTokens": 0,
+                "inputMessages": [
+                    {"role": "user", "parts": [{"type": "text", "content": "x" * 10000}]}
+                ],
+            },
+        }
+        state = observability_spans.ProjectionState()
+        spans = projection.project(record, state, policy)
+        spans += projection.flush_open(state)
+        chat = next(s for s in spans if s.name == "gen_ai.chat")
+        input_messages = json.loads(str(chat.attributes["gen_ai.input.messages"]))
+        content = input_messages[0]["parts"][0]["content"]
+        assert content == "x" * 4000 + "…[truncated 6000 chars]"
+        json.dumps(content)  # still a valid string to re-encode
+
+
+def _hop_event_records(session_id: str = "s-hops") -> list[dict[str, Any]]:
+    """One pod dispatch in one session: a lead and an implementer hop, each restarting its
+    iteration count at 1, the way `core/dispatch.py` runs every hop under one trace key."""
+
+    def llm_call(ts: str, role: str, iteration: int, user: str, reply: str) -> dict[str, Any]:
+        return {
+            "ts": ts,
+            "project": "p",
+            "session_id": session_id,
+            "agent_role": role,
+            "event_type": "llm_call",
+            "duration_ms": 500,
+            "payload": {
+                **_llm_call_canary_payload(),
+                "iteration": iteration,
+                "inputMessages": [
+                    {"role": "user", "parts": [{"type": "text", "content": user}]},
+                ],
+                "outputMessages": [
+                    {"role": "assistant", "parts": [{"type": "text", "content": reply}]},
+                ],
+            },
+        }
+
+    start = {
+        "ts": "2026-09-28T00:00:00Z",
+        "project": "p",
+        "session_id": session_id,
+        "agent_role": "lead",
+        "event_type": "session_start",
+        "payload": {},
+    }
+    return [
+        start,
+        llm_call("2026-09-28T00:00:05Z", "lead", 1, "TASK-lead", "plan ready"),
+        llm_call("2026-09-28T00:00:09Z", "implementer", 1, "TASK-impl", "FINAL-impl"),
+    ]
+
+
+def _hop_markers(session_id: str = "s-hops") -> list[dict[str, Any]]:
+    """`_hop_event_records` with the callId-less tool records `core/dispatch.py` writes around each
+    hop, plus the implementer's verification result."""
+
+    def marker(ts: str, role: str, event: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ts": ts,
+            "project": "p",
+            "session_id": session_id,
+            "agent_role": role,
+            "event_type": event,
+            "payload": payload,
+        }
+
+    start, lead_call, impl_call = _hop_event_records(session_id)
+    return [
+        start,
+        marker("2026-09-28T00:00:01Z", "lead", "tool_call", {"hop": "lead", "agent": "p-lead"}),
+        lead_call,
+        marker("2026-09-28T00:00:06Z", "lead", "tool_result", {"text": "plan ready"}),
+        marker(
+            "2026-09-28T00:00:06Z",
+            "implementer",
+            "tool_call",
+            {"hop": "implementer", "agent": "p-implementer"},
+        ),
+        impl_call,
+        marker("2026-09-28T00:00:09Z", "implementer", "tool_result", {"text": "FINAL-impl"}),
+        marker(
+            "2026-09-28T00:00:09Z",
+            "implementer",
+            "tool_result",
+            {"verification": "passed", "cmd": "true"},
+        ),
+    ]
+
+
+def _session_end(session_id: str = "s-hops") -> dict[str, Any]:
+    return {
+        "ts": "2026-09-28T00:00:10Z",
+        "project": "p",
+        "session_id": session_id,
+        "agent_role": "lead",
+        "event_type": "session_end",
+        "payload": {"status": "done"},
+    }
+
+
+class TestOneSessionAcrossHops:
+    def test_two_hops_at_the_same_iteration_get_distinct_span_ids(self) -> None:
+        spans = _project_all(_hop_event_records())
+        chats = [s for s in spans if s.name == "gen_ai.chat"]
+        assert len(chats) == 2
+        assert len({s.span_id for s in chats}) == 2
+
+    def test_root_carries_the_session_input_and_final_output_when_granted(self) -> None:
+        policy = observability_spans.ExportPolicy(classes=privacy.LEVELS["conversation"], label="c")
+        state = observability_spans.ProjectionState()
+        spans: list[observability_spans.Span] = []
+        for record in [*_hop_event_records(), _session_end()]:
+            spans.extend(projection.project(record, state, policy))
+        root = next(s for s in spans if s.name == "docket.session")
+        assert root.attributes["docket.session.input"] == "TASK-lead"
+        assert root.attributes["docket.session.output"] == "FINAL-impl"
+
+    def test_hop_markers_without_a_call_id_get_one_span_each(self) -> None:
+        records = _hop_markers()
+        spans = _project_all(records)
+        tools = [s for s in spans if s.name == "execute_tool"]
+        assert len(tools) == 3
+        assert len({s.span_id for s in tools}) == 3
+        lead = next(s for s in tools if s.start_ts == "2026-09-28T00:00:01Z")
+        assert lead.end_ts == "2026-09-28T00:00:06Z"
+        assert [s.span_id for s in _project_all(records)] == [s.span_id for s in spans]
+
+    @pytest.mark.parametrize("level", ["minimal", "actions"])
+    def test_root_carries_no_session_content_below_conversation(self, level: str) -> None:
+        policy = observability_spans.ExportPolicy(classes=privacy.LEVELS[level], label=level)
+        state = observability_spans.ProjectionState()
+        spans: list[observability_spans.Span] = []
+        for record in [*_hop_event_records(), _session_end()]:
+            spans.extend(projection.project(record, state, policy))
+        root = next(s for s in spans if s.name == "docket.session")
+        assert "docket.session.input" not in root.attributes
+        assert "docket.session.output" not in root.attributes
+
+
+class _CollectingSink:
+    def __init__(self) -> None:
+        self.spans: list[observability_spans.Span] = []
+
+    def emit(self, spans: Any) -> Any:
+        self.spans.extend(spans)
+        return otlp_http.SinkResult(accepted=len(spans), status=200, error="")
+
+    def close(self) -> None:
+        return None
+
+
+class TestTurnEndFlushHoldsTheSessionRoot:
+    def test_the_root_is_sent_once_at_session_end_with_the_final_answer(self) -> None:
+        sink = _CollectingSink()
+        policy = observability_spans.ExportPolicy(classes=privacy.LEVELS["conversation"], label="c")
+        pipeline = telemetry.Pipeline(
+            sink, policy, queue_max=100, batch_wait_s=0.01, clock=time.monotonic
+        )
+        lead_start, lead_call, impl_call = _hop_event_records()
+        for record in (lead_start, lead_call):
+            pipeline.offer(record)
+        pipeline.flush(2.0)
+        assert [s.name for s in sink.spans] == ["gen_ai.chat"]
+        pipeline.offer(impl_call)
+        pipeline.offer(_session_end())
+        pipeline.close()
+        roots = [s for s in sink.spans if s.name == "docket.session"]
+        assert len(roots) == 1
+        assert roots[0].start_ts == "2026-09-28T00:00:00Z"
+        assert roots[0].end_ts == "2026-09-28T00:00:10Z"
+        assert roots[0].attributes["docket.session.output"] == "FINAL-impl"
+        assert len([s for s in sink.spans if s.name == "gen_ai.chat"]) == 2
+
+    def test_a_hop_span_outlives_the_turn_end_flush_inside_it(self) -> None:
+        sink = _CollectingSink()
+        policy = observability_spans.ExportPolicy(classes=privacy.LEVELS["conversation"], label="c")
+        pipeline = telemetry.Pipeline(
+            sink, policy, queue_max=100, batch_wait_s=0.01, clock=time.monotonic
+        )
+        start, lead_open, lead_call, lead_reply, *_ = _hop_markers()
+        for record in (start, lead_open, lead_call):
+            pipeline.offer(record)
+        pipeline.flush(2.0)
+        pipeline.offer(lead_reply)
+        pipeline.offer(_session_end())
+        pipeline.close()
+        hops = [s for s in sink.spans if s.name == "execute_tool"]
+        assert len(hops) == 1
+        assert (hops[0].start_ts, hops[0].end_ts) == (
+            "2026-09-28T00:00:01Z",
+            "2026-09-28T00:00:06Z",
+        )
+        assert hops[0].attributes["gen_ai.tool.call.result"] == "plan ready"
+
+    def test_a_session_that_never_ends_is_still_sent_at_close(self) -> None:
+        sink = _CollectingSink()
+        pipeline = telemetry.Pipeline(
+            sink,
+            observability_spans.ExportPolicy(),
+            queue_max=100,
+            batch_wait_s=0.01,
+            clock=time.monotonic,
+        )
+        for record in _hop_event_records("s-open"):
+            pipeline.offer(record)
+        pipeline.close()
+        roots = [s for s in sink.spans if s.name == "docket.session"]
+        assert roots and roots[-1].end_ts == "2026-09-28T00:00:09Z"

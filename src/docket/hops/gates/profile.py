@@ -1,0 +1,197 @@
+"""The ``lights-out`` profile: what a pod must have in place before its tasks run unattended.
+
+The decision is a pure function over ``Facts``; ``gather_facts`` fills them from the readers that
+already decide each thing (isolation, the sandbox probe, ``effective_network``, the planned
+pipeline, the secret store) and decides nothing itself. See security-gates.spec.md "Profiles".
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from docket.governance import secrets as _secrets
+from docket.kernel.ports import jail as _jail
+from docket.pipeline.domain import gates as _gates
+from docket.pipeline.domain import plan as _orch
+from docket.tasks.application import record as _record
+from docket.teams import autonomy as _autonomy
+from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import pod_settings as _pod_settings
+
+LIGHTS_OUT = "lights-out"
+
+
+@dataclass(frozen=True)
+class Violation:
+    """One unmet requirement and the operator command or edit that fixes it."""
+
+    requirement: str
+    detail: str
+    fix: str
+
+
+@dataclass(frozen=True)
+class Facts:
+    """Everything ``lights_out_violations`` decides on."""
+
+    isolation_on: bool
+    backend: str
+    network_mode: str
+    network_scope: str
+    ungated_implementers: tuple[str, ...]
+    injected_secrets: tuple[str, ...]
+    consult_mode: str
+
+
+def lights_out_violations(facts: Facts) -> list[Violation]:
+    """Every requirement *facts* leaves unmet, in a fixed order."""
+    out: list[Violation] = []
+    if not facts.isolation_on:
+        out.append(Violation("isolation", "isolation is off", "docket setup sandbox on"))
+    elif facts.backend == "none":
+        out.append(
+            Violation(
+                "isolation",
+                "isolation is on but no sandbox backend is usable",
+                "docket setup sandbox backend docker, or use Linux 5.13+ or macOS",
+            )
+        )
+    if facts.network_mode != "none" or facts.network_scope == "default":
+        out.append(
+            Violation(
+                "network",
+                "the jail's network is not cut by a recorded choice",
+                "docket setup sandbox network none, or docket pod set network none",
+            )
+        )
+    for step in facts.ungated_implementers:
+        out.append(
+            Violation(
+                "external-gate",
+                f"implementer step {step!r} has no external gate",
+                f"add 'gate: {{external: <verifier command>}}' to step {step!r}",
+            )
+        )
+    for name in facts.injected_secrets:
+        out.append(
+            Violation(
+                "secrets",
+                f"the pod injects {name}, which is named in the secret store",
+                f"remove {name} from the pod's MCP server env, or from the secret store",
+            )
+        )
+    if facts.consult_mode != "decide":
+        out.append(
+            Violation(
+                "consult",
+                "a consultation would wait for a person",
+                "docket pod set consultMode decide",
+            )
+        )
+    return out
+
+
+def effective_profile(project: str) -> str:
+    """``lights-out`` when the fleet or the pod says so (a pod only strengthens); unreadable pod
+    settings fail closed to ``lights-out``."""
+    if _fleet.get_profile() == LIGHTS_OUT:
+        return LIGHTS_OUT
+    try:
+        return _pod_settings.PodSettings.load_for(project).profile
+    except _pod_settings.PodSettingsError:
+        return LIGHTS_OUT
+
+
+def _walk(nodes: tuple[Any, ...]) -> list[_orch.PlannedUnit]:
+    units: list[_orch.PlannedUnit] = []
+    for node in nodes:
+        if isinstance(node, _orch.PlannedGroup):
+            units.extend(node.children)
+        else:
+            units.append(node)
+    return units
+
+
+def _is_implementer(unit: _orch.PlannedUnit) -> bool:
+    if unit.skipped or unit.member_id is None:
+        return False
+    role = unit.role or _fleet.meta_get(unit.member_id, "role", "")
+    return role == "implementer"
+
+
+def _injected_names(project: str, nodes: tuple[Any, ...]) -> set[str]:
+    names: set[str] = set()
+    for unit in _walk(nodes):
+        if _is_implementer(unit) and unit.member_id:
+            names.update(_record.hop_env(unit.member_id, "implementer") or {})
+    try:
+        selection = _pod_settings.PodSettings.load_for(project).mcp_servers
+    except _pod_settings.PodSettingsError:
+        selection = None
+    for server in _mcp_servers.load_mcp_servers(project):
+        if selection is None or server.name in selection:
+            names.update(server.env)
+    return names
+
+
+def _consult_mode(project: str) -> str:
+    """What a consult does at the pod's default level (``consultMode`` when set, else the
+    autonomy table); unreadable settings count as ``park``, which the profile refuses."""
+    try:
+        return _autonomy.consult_mode_for(project, _autonomy.default_level(project))
+    except _pod_settings.PodSettingsError:
+        return "park"
+
+
+def gather_facts(project: str, nodes: tuple[Any, ...]) -> Facts:
+    """Read the live state. *nodes* are the planned steps a dispatch is about to run (or, from
+    ``hops.application.report``, the pod's own planned pipeline)."""
+    mode, scope = _pod_settings.effective_network(project)
+    ungated = tuple(
+        unit.step_id
+        for unit in _walk(nodes)
+        if _is_implementer(unit) and not isinstance(unit.gate, _gates.ExternalGate)
+    )
+    stored = _secrets.secrets_keys()
+    return Facts(
+        isolation_on=_fleet.get_isolation_enabled(),
+        backend=_jail.sandbox_availability().backend,
+        network_mode=mode,
+        network_scope=scope,
+        ungated_implementers=ungated,
+        injected_secrets=tuple(sorted(_injected_names(project, nodes) & stored)),
+        consult_mode=_consult_mode(project),
+    )
+
+
+def project_violations(project: str, nodes: tuple[Any, ...]) -> list[Violation]:
+    """The pod's violations under ``lights-out``, ``[]`` when its effective profile is attended."""
+    if effective_profile(project) != LIGHTS_OUT:
+        return []
+    return lights_out_violations(gather_facts(project, nodes))
+
+
+def fleet_violations() -> list[Violation]:
+    """The requirements the fleet record alone decides (isolation, network), with no pod in view;
+    the per-pod ones are met by construction here and show under each pod."""
+    mode, scope = _pod_settings.effective_network(None)
+    facts = Facts(
+        isolation_on=_fleet.get_isolation_enabled(),
+        backend=_jail.sandbox_availability().backend,
+        network_mode=mode,
+        network_scope=scope,
+        ungated_implementers=(),
+        injected_secrets=(),
+        consult_mode="decide",
+    )
+    return lights_out_violations(facts)
+
+
+def as_json(violations: list[Violation]) -> dict[str, Any]:
+    """The ``profile`` block ``status --json`` and ``doctor --json`` carry under ``lights-out``."""
+    return {
+        "name": LIGHTS_OUT,
+        "violations": [{"requirement": v.requirement, "fix": v.fix} for v in violations],
+    }

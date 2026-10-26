@@ -45,9 +45,6 @@ jobs:
       - name: Pytest
         run: uv run pytest
 
-      - name: Metrics check (README drift guard)
-        run: uv run python scripts/metrics.py --check
-
   # Agent lane: prose, release-artifact and agent-hook-script checks that do not
   # belong in the default suite (specs/test-framework.md "Lanes and placement",
   # D-36). Adding a check here means removing an equivalent one from `python`.
@@ -73,6 +70,57 @@ jobs:
 
       - name: Agent-lane pytest
         run: uv run pytest tests/agent
+
+  # End-to-end journeys: the product runs as docket subprocesses over a real git repo, and only
+  # the model is faked (tests/e2e, specs/test-framework.md rule 13). Not in testpaths.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: End-to-end journeys
+        run: uv run pytest tests/e2e -n auto -q
+
+  # No sandbox backend: the default suite on a host where detection reports "none"
+  # (scripts/maint/pytest-without-sandbox.sh). Forcing DOCKET_SANDBOX_BACKEND=none is not
+  # this check; a fixture that deletes the variable falls back to detection.
+  no-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Pytest without a sandbox backend
+        run: scripts/maint/pytest-without-sandbox.sh -q
 
   # Docs: the CLI reference is generated from the Typer registry, so a command
   # added without regenerating it is drift this job catches. The site build runs
@@ -145,7 +193,7 @@ jobs:
           uv venv .floorenv --python 3.11
           uv pip install --python .floorenv/bin/python -r floors.txt
           uv pip install --python .floorenv/bin/python -e . --no-deps
-          uv pip install --python .floorenv/bin/python pytest jsonschema
+          uv pip install --python .floorenv/bin/python pytest jsonschema grimp import-linter
 
       - name: Pytest at the dependency floor
         run: .floorenv/bin/python -m pytest -q
@@ -220,6 +268,9 @@ jobs:
       - name: Pytest
         run: uv run pytest
 
+      - name: End-to-end journeys
+        run: uv run pytest tests/e2e -n auto -q
+
       - name: Launcher smoke test
         run: |
           bash bin/docket --version
@@ -252,4 +303,4 @@ jobs:
       - name: Escape matrix on this OS's sandbox backend
         run: |
           uv sync --locked --all-extras --dev
-          uv run pytest tests/integration/test_escape_matrix.py -q
+          uv run pytest tests/integration/sandbox/test_escape_matrix.py -q

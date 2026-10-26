@@ -51,8 +51,9 @@ unchanged and the first task becomes `approval_denied`. Enter `grant` at the sec
 resumes at the gated Implementer hop and its governed `write` tool changes only
 `starter-output.txt` to `docket starter approved` followed by one LF.
 
-The final output includes the exact target, task-list, trace, and audit paths. It also prints the
-installed public inspection commands it ran:
+The final output includes the exact target, task-list, trace, and audit paths. The starter runs the
+last three public inspection commands below itself and checks their output; the first, `task list`,
+it only prints for you to run:
 
 ```text
 docket task list --pod docket-starter --json

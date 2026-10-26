@@ -32,11 +32,11 @@ being actively exploited, please say so and I will prioritize it.
 
 ## Threat model: what runs with what privileges
 
-**docket runs the agent turn itself** (`core/agent_loop.py`) — it is not a thin wrapper around
+**docket runs the agent turn itself** (`agent/loop.py`) — it is not a thin wrapper around
 an external daemon. The thing that holds privilege is docket's own tool dispatcher
-(`core/tools.py`'s `dispatch_tool`, the single chokepoint every tool call passes through) and
-the handlers it calls into (`edges/adapters/toolbox.py`'s `bash`/`write`/`edit`/`read`/`glob`/
-`grep`, `edges/adapters/fetch.py`'s domain-allowlisted `fetch`, plus any MCP server an operator
+(`agent/tools/registry.py`'s `dispatch_tool`, the single chokepoint every tool call passes through) and
+the handlers it calls into (`agent/tools/builtins/toolbox.py`'s `bash`/`write`/`edit`/`read`/`glob`/
+`grep`, `platform/fetch.py`'s domain-allowlisted `fetch`, plus any MCP server an operator
 has added). docket:
 
 - writes its own config (`.docket-meta.json` per workspace, `~/.docket/fleet.json`, and the
@@ -54,22 +54,23 @@ audit, and dispatcher chokepoint. The adapter is not a sandbox around its host f
 native/provider tools, plugins/MCP, or an additional toolset beside Docket creates execution paths
 outside this proof and may bypass Docket policy entirely. See [Compatibility](COMPATIBILITY.md) for
 the exact configurations and exclusions. The [adoption evidence report](docs/ADOPTION-EVIDENCE.md)
-links the retained denial, malformed-handoff, and recovery records and states their measurement
-limits.
+links the retained denial, malformed-handoff, and recovery fixture records, which a driver wrote
+rather than a product run, and states their measurement limits.
 
 **The approval-gate model.** Agent-level safety constraints are *instruction-based* (written
 into each agent's `SOUL.md` prompt) — guidance, not enforcement, on their own. On top of that,
 docket **always enforces its tool-approval gate** — there is no switch that turns it off: a
 curated allowlist plus an approval step for dangerous operations not on it (e.g. `rm`, `dd`,
 `docker`), with a fail-closed default — a call gated `ask` blocks on docket's own approval
-store (`core/approval.py`) and times out to **denied**, never left pending. Approvals are
-answerable through **four channels** — `docket task approve`/`docket task deny` from any shell,
-`docket start`'s `POST /approvals/<token>` for CI/automation, MCP (a client like Claude Code or
-Codex answering through `docket start --mcp`), and Telegram (`docket setup notify`, then `docket
+store (`governance/approval.py`) and times out to **denied**, never left pending. Approvals are
+answerable through **four channels** — `docket task answer <escalation-id> --option
+approve_once|approve_task|deny` from any shell, `docket start`'s `POST /escalations/<id>` for
+CI/automation, MCP (a client like Claude Code or
+Codex answering through `docket start --mcp`, the `resolve` tool), and Telegram (`docket setup notify`, then `docket
 start --telegram`) — and every grant, deny, or timeout is audit-logged with the channel it came
 from
 (`channel="cli"|"http"|"mcp"|"telegram"|"timeout"`). The classifier behind this
-(`core/security.py`'s `classify_command`) is **argument-aware**: it reads the whole command
+(`governance/security.py`'s `classify_command`) is **argument-aware**: it reads the whole command
 line, including every segment behind a `;`, `&&`, `||`, or pipe, so `git status` is allowed
 while `git push origin production` asks — `git`/`npm` stay on the curated allowlist for
 usability, but that no longer means their dangerous invocations are unexamined.
@@ -112,7 +113,7 @@ bearer token, unlike `docket start`'s HTTP API). See
 
 **This is a server, and separately also a client.** `docket start --mcp` never executes another
 MCP server's tools inside an agent turn — that direction is a different feature, `docket setup mcp
-add/list/remove` (`core/mcp_tools.py`, `edges/adapters/mcp_client.py`), which adapts a configured
+add/list/remove` (`agent/tools/mcp_tools.py`, `agent/tools/mcp_client.py`), which adapts a configured
 external server's tools into ordinary registry entries so they are gated exactly like a built-in,
 namespaced `mcp__<server>__<tool>` so a remote server cannot shadow `bash`. A remote tool's
 name/description is screened through the `pre_input` policy hook before it is ever registered,
@@ -150,7 +151,7 @@ docket is honest about its limits. It does **not**:
 - **lock down network egress by default.** `fetch` is domain-allowlisted and refuses everything
   by default until you opt a domain in (`FETCH_ALLOWED_DOMAINS`) — but with isolation off (the
   default), `bash` can still reach the network through interpreters and package managers on the
-  curated allowlist (`SAFE_BINS` in `core/security.py`, e.g. `python3`, `pip`, `npm`, `git`).
+  curated allowlist (`SAFE_BINS` in `governance/security.py`, e.g. `python3`, `pip`, `npm`, `git`).
   With isolation on, the jail's network is `none` unless opened (`docket setup sandbox network`,
   or a pod's `network` setting), so `bash`, verify commands, `run:` steps and stdio MCP servers
   lose it and `fetch`, which runs in docket's own process, is the only, inspectable path.

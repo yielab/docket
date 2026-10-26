@@ -7,10 +7,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from docket_runtime._internal.docket.core.handoff import HandoffArtifact
-from docket_runtime._internal.docket.core.llm import TokenUsage, ToolCall
-from docket_runtime._internal.docket.core.tools import ToolContext, ToolResult
-from docket_runtime._internal.docket.core.trace import trace_event
+from docket_runtime._internal.docket.agent.ports import TokenUsage, ToolCall
+from docket_runtime._internal.docket.agent.tools.registry import ToolContext, ToolResult
+from docket_runtime._internal.docket.kernel.handoff import HandoffArtifact
+from docket_runtime._internal.docket.observability.trace import trace_event
 
 ExecutionStopReason = Literal["final_message", "token_budget", "max_tool_calls"]
 Dispatch = Callable[[ToolCall, ToolContext], ToolResult]
@@ -75,8 +75,9 @@ class GovernedExecution:
             input_tokens=self._usage.input_tokens + usage.input_tokens,
             output_tokens=self._usage.output_tokens + usage.output_tokens,
             cached_tokens=self._usage.cached_tokens + usage.cached_tokens,
+            cache_write_tokens=self._usage.cache_write_tokens + usage.cache_write_tokens,
         )
-        if self._usage.total_tokens > self._limits.token_budget:
+        if self._usage.counted_tokens > self._limits.token_budget:
             return self._stop("token_budget", "reported token budget exceeded")
         if self._tool_calls_executed + len(calls) > self._limits.max_tool_calls:
             return self._stop("max_tool_calls", "tool-call budget exceeded")

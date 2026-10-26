@@ -48,10 +48,13 @@ classifiers = [
 # first release that renders byte-identical to the committed schemas. Both were measured
 # with `pydantic-core` left to its own resolution (uv picks the newest compatible with
 # whichever pydantic is pinned), matching how `floors.txt` resolves it in CI.
+#
+# `pydantic>=2.12` (raised 2026-10-24, was `>=2.11`): the task record leaves a key out of its
+# dump with `Field(exclude_if=...)`, which pydantic added in 2.12.
 dependencies = [
     "typer>=0.17.5",
     "rich>=13",
-    "pydantic>=2.11",
+    "pydantic>=2.12",
     "pydantic-settings>=2",
     "filelock>=3.13",
     "pyyaml>=6",
@@ -71,7 +74,7 @@ Issues = "https://github.com/yielab/docket/issues"
 Source = "https://github.com/yielab/docket"
 
 # Optional extras: kept out of the base install so `pip install docket` stays
-# dependency-light. `docket mcp serve` (Phase 18 L-3/L-6) needs the official
+# dependency-light. `docket start --mcp` needs the official
 # MCP Python SDK's high-level, decorator/`add_tool`-based server
 # (`mcp.server.MCPServer`) — the direct successor to the 1.x line's
 # `mcp.server.fastmcp.FastMCP` (same ergonomics: `add_tool(fn, name=...)`,
@@ -83,8 +86,8 @@ Source = "https://github.com/yielab/docket"
 # 2.0 API was verified against the installed package. Install with
 # `pip install 'docket[mcp]'` (or `uv sync --extra mcp`); a missing SDK prints
 # an actionable hint instead of a bare ImportError traceback (see
-# `cli/_mcp.py`, following the existing PyYAML optional-dependency pattern in
-# `core/pipeline.py`/`cli/_agents.py`).
+# `interfaces/cli/commands/mcp.py`, following the existing PyYAML optional-dependency pattern in
+# `pipeline/domain/spec.py`/`interfaces/cli/commands/agents.py`).
 [project.optional-dependencies]
 mcp = ["mcp>=2.0.0"]
 
@@ -131,7 +134,7 @@ warn_required_dynamic_aliases = false
 
 # `mcp` (the optional MCP-server extra, see [project.optional-dependencies])
 # ships its own inline types when installed, so this override only matters in
-# an environment that skipped the extra — `cli/_mcp.py`'s lazy `from mcp...
+# an environment that skipped the extra — `interfaces/cli/commands/mcp.py`'s lazy `from mcp...
 # import ...` would otherwise fail mypy with "import-not-found". An inline
 # `# type: ignore` on that line would instead become a *new* strict-mode
 # failure ("unused ignore", via warn_unused_ignores) whenever the extra IS
@@ -146,17 +149,18 @@ ignore_missing_imports = true
 # (specs/test-framework.md "Lanes and placement", D-36) run by the separate
 # `agent-lane` CI job, never by the default suite.
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration", "tests/guards"]
+testpaths = ["tests/unit", "tests/integration", "tests/guards", "tests/architecture", "tests/contracts"]
 addopts = "-ra -q --import-mode=importlib"
-markers = [
-    "slow: builds or installs an artifact; agent-lane only, never the default suite",
-]
 
 [dependency-groups]
 dev = [
+    "grimp>=3.17",
+    "import-linter>=2.15",
     "jsonschema>=4.18",
     "mypy>=2.1.0",
     "pillow>=11.0",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.15.18",
 ]

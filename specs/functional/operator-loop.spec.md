@@ -1,60 +1,62 @@
 # Operator Loop Specification
 
-**Version**: 1.11.0
-**Status**: Implemented — every requirement area shipped across Phase 34's Waves 64-69.
-**Last Updated**: 2026-10-19
+**Version**: 3.0.1
+**Status**: Implemented. Every requirement area below is on the live path: the inbox, the
+outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
+**Last Updated**: 2026-10-25
 
 ## Purpose
 
 A docket operator who assigns work to a pod's Lead and walks away needs a way to learn that
 something needs them, be asked a question rather than only a permission, and trust that
-answering late never loses the work. This specification defines the shared `operator-v1`
-contract every later Phase-34 requirement, surface and channel builds through:
-`core/operator_contract.py`. It adopts existing standards rather than inventing docket-only
-vocabulary — A2A 1.0.0 task states, an MCP-elicitation-shaped question/answer, CloudEvents 1.0
-event envelopes — so any client that already understands one of those standards understands the
-matching part of docket's operator loop unchanged.
+answering late never loses the work. This specification defines the shared `operator-v2`
+contract every surface and channel builds through (one module, the operator contract).
+It adopts existing standards rather than inventing docket-only vocabulary — A2A 1.0.0 task
+states, an MCP-elicitation-shaped question/answer, CloudEvents 1.0 event envelopes — so a client
+that already understands one of those standards understands the matching part of docket's
+operator loop unchanged.
 
 ## Scope
 
 This specification covers:
 
-- The task lifecycle vocabulary and its mapping onto the A2A 1.0.0 `TaskState` enumeration
-- The typed intake brief a pod's Lead produces (`TaskBrief`)
+- The task lifecycle vocabulary and its mapping onto the A2A 1.0.0 `TaskState` names
+- The typed intake brief (`TaskBrief`) and the surfaces that accept one
 - A question posed to a human and its answer, shaped as an MCP elicitation request/result
-  (`Question`, `QuestionSchema`, `AnswerResult`, `validate_requested_schema`, `validate_answer`)
-- The read views every surface (HTTP, CLI, MCP, channels) renders (`ApprovalView`, `TaskView`,
-  `InboxView`)
+  (`Question`, `QuestionSchema`, `AnswerResult`, `validate_requested_schema`, `validate_answer`),
+  and the operator-v1.1 extension (`QuestionV11`, `AnswerResultV11`, `validate_answer_v11`)
+- The read views every surface renders (`TaskView`, `EscalationView`, `InboxView`) and the derived
+  inbox (`build_inbox`) behind `docket inbox`, `GET /inbox`, the MCP `inbox` tool, `GET /metrics`
+  and Telegram's `/status`
 - The CloudEvents 1.0 envelope every notification uses (`CloudEvent`, `make_event`,
   `EVENT_KINDS`)
+- Outbound channels: the `kind: channel` document and catalog, `docket setup notify`, the
+  diff/render/delivery framework and every delivery dialect, the outbound `telegram` dialect
+  included
+- Resolving an escalation (`resolve`), answering a parked question, question expiry, and the
+  `escalation_*` trace events that record every pause with one payload
 - The stable digest that matches a tool call to a single-use pre-grant
-  (`canonical_args_digest`)
-- The generated JSON Schema documents under `docs/contracts/operator-v1/`
-- How the derived inbox is assembled from live pod/approval state and exposed through every
-  surface (`core/inbox.py`, `cli/_inbox.py`, `docket start`'s `GET /inbox`, `docket start --mcp`'s
-  `inbox` tool, and Telegram's `/status`)
-- The interruption forecast and the CLI/HTTP/MCP pre-grant surface (`core/interruptions.py`,
-  `docket task show`'s forecast, `docket task approve --for`)
+  (`canonical_args_digest`), the interruption forecast and the pre-grant surfaces
+- The `consult` built-in tool, the corrections ledger, the `lights-out` profile lines and the
+  check-changed approval as the operator sees them
+- The generated JSON Schema documents under `docs/contracts/operator-v2/` and
+  `docs/contracts/operator-v1.1/`
 
-This specification does NOT cover (each is a distinct future requirement area below, owned by
-its own card):
+This specification does NOT cover:
 
-- How `POST /tasks` and `docket task add` accept a pre-brief end-to-end (the CLI/HTTP/MCP
-  surfaces); `core.dispatch.enqueue_task` itself gaining a `brief=` parameter is covered by
-  `pod-dispatch.spec.md`'s "Task brief" section, requirement area 3 above
-- The `ntfy`, `desktop`, `email` and `telegram` dialects' own wire formats — requirement area 6
-  below covers the diff/render/delivery framework and the `console`/`webhook`/`command`
-  dialects; the remaining four each add one more `edges/adapters/channels/` module and one more
-  `sink_for` entry in a later requirement area
-- How an answer actually resumes a parked `input` pipeline step (`core/answers.py`)
-- The Telegram channel amendment (`core/telegram.py`, `telegram-integration.spec.md`)
+- The inbound Telegram bot — its verbs (`/status`, `/delegate`, `/answer`), bindings and polling
+  are `telegram-integration.spec.md`'s
+- Dispatch mechanics behind parking and resuming (resume position, pre-grant matching inside a
+  hop, the input step's executor, the brief's resource pre-check): `pod-dispatch.spec.md`
+  ("Parked approvals", "Operator input steps and answers", "Task brief")
+- The HTTP routes' shared conventions (auth, error envelope, cursors): `operator-api.spec.md`
 
 ## Requirements
 
 ### 1. Task status and its A2A mapping
 
 1. `a2a_state(status, blocked_reason=None, failure_kind=None)` MUST return exactly one of the
-   eight `A2A_STATES` names for every docket task `status` this specification enumerates:
+   eight `A2AState` names for every docket task `status` this specification enumerates:
 
    | docket `status` | `blocked_reason` / `failure_kind` | `a2aState` |
    | --- | --- | --- |
@@ -71,524 +73,820 @@ its own card):
 
 2. `a2a_state` MUST raise `ValueError` for a `status` outside this table. It MUST NOT guess or
    fall back to a default state.
-3. `A2A_STATES` MUST list exactly the eight names above, in A2A 1.0.0's own order, and MUST be
-   the only place that vocabulary is enumerated (later requirement areas reference it, never
-   redeclare it).
+3. `A2AState` MUST be a `Literal` of exactly these eight names: `SUBMITTED`, `WORKING`,
+   `INPUT_REQUIRED`, `AUTH_REQUIRED`, `COMPLETED`, `FAILED`, `CANCELED`, `REJECTED`. It MUST be
+   the only place that vocabulary is enumerated; `a2a_state` is annotated with it.
 
 ### 2. Park, don't block
 
-**Status: Implemented.** The chokepoint half (`ToolContext.approval_mode: "park"`,
-`core/tools.py`'s `_park_call`, the `approval_parked` denial kind and stop reason) and the
-dispatch re-entry half (`core/dispatch.py`, `core/pod.py`) together answer requirement area 2's
-question with no live wait: an unattended pod's in-turn `ask` records the call and durably
-parks the task for a human, instead of blocking a thread for up to `TOOL_APPROVAL_TIMEOUT` or
-losing the call outright under `"refuse"`. Full dispatch-side mechanics (resume position,
-pre-grant matching, expiry) are `pod-dispatch.spec.md`'s "Parked approvals"; this area states the
-operator-loop-level contract that section's behaviour must satisfy.
+An unattended pod's in-turn `ask` records the exact call and durably parks the task for a human
+(`approvalMode: "park"`, the `approval_parked` denial kind and stop reason), instead of blocking
+a thread or losing the call. This area states the operator-level contract; the dispatch
+mechanics are `pod-dispatch.spec.md` "Parked approvals".
 
 1. A parked task's docket `status` MUST be `waiting_approval`, mapping to `INPUT_REQUIRED` via
    requirement area 1's table — the same `a2aState` a pre-hop `require_approval` gate's
-   `waiting_approval` already carries. A client reading `a2aState` alone cannot distinguish the
-   two triggers, and MUST NOT need to: both mean "nothing runs until a human decides."
-2. `core.operator_contract.canonical_args_digest(tool, args)` MUST be the one digest a parked
-   call's record, a `resolve_waiting_approval` pre-grant, and `docket task approve --for`'s
-   CLI-issued pre-grant (requirement area 9, deferred) all key against — so a CLI-issued
-   pre-grant and an in-turn parked approval are matched identically by `core/tools.py`'s single
-   matcher, never two independent digest implementations that could silently disagree.
+   `waiting_approval` carries. A client reading `a2aState` alone cannot distinguish the two
+   triggers, and MUST NOT need to: both mean "nothing runs until a human decides."
+2. `canonical_args_digest(tool, args)` MUST be the one digest a parked call's record, the
+   pre-grant a parked grant leaves, and the pre-grant `docket task pregrant` records (area 9
+   item 5) all key against, so a CLI-issued pre-grant and an in-turn parked approval are
+   matched identically by the tool-call gate's single matcher.
 3. An unset pod `approvalMode` MUST NOT resolve to a single fixed posture across every caller.
-   `serve --dispatch`'s sweep and a non-interactive foreground dispatch MUST resolve it to
-   `"park"`; an interactive foreground dispatch (a real TTY) MUST resolve it to `"wait"`. An
-   explicit stored `approvalMode` always overrides the caller's own default.
-4. A parked approval's own `expiresAt` MUST be honoured by the same fail-closed sweep that
-   already expires a pre-hop gate's pending approval, resolving to **denied** past deadline —
-   never a silent indefinite wait, and never a second expiry mechanism.
-5. Granting a parked approval MUST NOT reuse the pre-hop gate's `gateOverridePipelineIndex`
-   single-use override: that field exists to skip a gate at a position no hop ever ran, which
-   does not describe an already-attempted, parked hop. The re-entry MUST instead re-run that
-   exact hop, carrying a single-use pre-grant matched by `canonical_args_digest`, so the model's
-   identical next call passes once without asking again.
-5a. Granting a parked approval with the `approve_task` option (`docket task approve <task> --task`,
-   Telegram `/approve <token> task`; the option is recorded with
-   `approval_set_option` before the grant) MUST also record a task-wide grant
-   `{tool, argsDigest, role, token, grantedAt, actor, channel}` in the task's `taskGrants`, where
-   `role` is the parked approval's role, distinct from the single-use `pregrants`. `_compose_hop`
-   MUST mint one fresh single-use pre-grant per entry whose `role` is the hop's role
-   (`create_pregrant`, bound to the project and that role, task-scoped, expiring with the pod's
-   approval window) for every later hop of that role, so each use is consumed and audited as any
-   pre-grant; a hop of another role gets none. The match is exact on `(tool, argsDigest)`; the grant exists only on the `ask`
-   path (a `deny` or policy block never creates an approval, so is never widened); a task holds
-   at most 20 (the 21st is approved once only, audited as `approval.task_grant_refused` and
-   reported to the operator); `taskGrants` is dropped when the task reaches a terminal status
-   (done, failed, cancelled, or approval denied) and is never read by another task.
-6. Non-goal (deliberately out of scope, ADR 0016): resuming the live model-turn session with the
-   granted call's result injected in place of a hop re-run — deferred with a named trigger in
-   the ADR (a measured rate of the re-run hop not re-issuing the granted call).
+   The `docket start --dispatch` sweep and a non-interactive `docket run` MUST resolve it to
+   `"park"`; an interactive `docket run` (stdin is a TTY) MUST resolve it to `"wait"`. An
+   explicit stored `approvalMode` always overrides the caller's own default. `"wait"` applies to a
+   `consult` too: in pod dispatch the call waits in the turn for the person at the terminal
+   (Consult item 3) instead of parking the task.
+4. A parked approval MUST carry its own `expiresAt` (now plus the pod's `approvalExpiryHours`,
+   computed per hop) and MUST be expired by the same fail-closed sweep that expires every
+   pending approval, resolving to **denied** past deadline — never a silent indefinite wait,
+   and never a second expiry mechanism.
+5. Granting a parked approval MUST NOT hand the next claim a gate position to skip: a position
+   is skipped where no hop ever ran, which does not describe an already-attempted, parked hop. The
+   grant MUST instead reopen the task `pending` and leave the granted approval record as the
+   pre-grant `{token, tool, argsDigest}`; nothing is copied onto the task. Every hop of the task
+   is given the task's unspent pre-grants (the granted approval records of that task, whether
+   granted while it was parked or ahead of it), so the model's identical next call passes once
+   without asking again.
+5a. Granting a parked approval with the `approve_task` option (`docket task answer <esc-id>
+   --option approve_task`, `POST /escalations/<id>` with `optionId: "approve_task"`, the MCP
+   `resolve` tool's option, Telegram `/answer <esc-id> approve_task`; each records the option on
+   the approval before the grant) MUST also make that approval a task-wide grant `{tool,
+   argsDigest, role}`, read from the approval store (the record keeps who granted it and through
+   which channel), where `role` is the parked approval's role, audited as `approval.task_grant`.
+   An identical `(tool, argsDigest, role)` counts once.
+   Every later hop of that role MUST be given one freshly minted single-use pre-grant per
+   matching entry (`create_pregrant`, bound to the project and that role, task-scoped, expiring
+   after the pod's `approvalExpiryHours`), so each use is consumed and audited as any pre-grant;
+   a hop of another role gets none. The match is exact on `(tool, argsDigest)`; the grant
+   exists only on the `ask` path (a `deny` or policy block never creates an approval, so is
+   never widened). A task holds at most 20: the 21st is approved once only, audited as
+   `approval.task_grant_refused`, and `Resolved.note` reports it to the operator.
+   A task's grants MUST end when it reaches a terminal status (done, failed, cancelled,
+   approval denied): the records stop being grants and are never read for another task. Under `approvalMode: "wait"`
+   a granted in-turn approval that chose `approve_task` adds one single-use pre-grant for the
+   identical call to the rest of that turn.
+6. Non-goal (ADR 0016): resuming the live model-turn session with the granted call's result
+   injected in place of a hop re-run.
 
 ### 3. The Lead's intake
 
-**Status: Implemented.** `TaskBrief`, its field validation (a non-empty `objective`, and every
-`resources[]` entry prefixed `secret:`, `path:` or equal to `verify`) and the
-`expectedRiskyActions` alias exist in this module, unchanged by this area. `core.handoff
-.parse_brief`/`render_brief`, `HandoffArtifact.brief`, the recipe that produces a brief from a
-Lead's reply (`templates/recipes/intake/`), the deterministic resource pre-check
-(`core.dispatch._check_brief_resources`), the richer per-question schema derived from
-`TaskBrief.questions[]`, and the Implementer's `## Brief` view are all `pod-dispatch.spec.md`'s
-"Task brief" section — this area states the operator-loop-level contract that section's
-behaviour must satisfy, the same split "Park, don't block" (area 2) has with "Parked approvals".
+1. `TaskBrief` MUST require a non-empty `objective`, MUST accept only `resources[]` entries equal
+   to `verify` or prefixed `secret:` or `path:`, and MUST carry `expectedRiskyActions` as the wire
+   alias of `expected_risky_actions`. How a Lead's reply becomes a brief, the deterministic
+   resource pre-check, the per-question schema derived from `questions[]` and the Implementer's
+   `## Brief` view are `pod-dispatch.spec.md` "Task brief".
 
 ### 4. Task assignment in a standard shape
 
-**Status: Implemented.** `TaskBrief` is the pre-brief shape `POST /tasks/<project>` and
-`docket task add --brief FILE.json` accept, validate, and pass through to
-`core.dispatch.enqueue_task`'s own `brief=` parameter — see area 10, "Answer surfaces",
-requirements 3-4 for the exact CLI/HTTP contract.
+1. `TaskBrief` MUST be the pre-brief shape `docket task add --brief FILE.json` and
+   `POST /tasks/<project>`'s optional `brief` accept; area 10 items 12-13 state the exact contract.
 
 ### 5. One inbox, derived
 
-**Status: Implemented.** `core/inbox.py::build_inbox(*, now, since=None) -> InboxView` is pure:
-it takes the caller's current time and cursor as data and performs no writes and no clock reads
-of its own.
+`build_inbox(*, now, since=None) -> InboxView` is pure over state it reads: it takes the
+caller's current time and cursor as data and performs no writes and no clock reads of its own.
 
 1. `build_inbox` MUST enumerate every project that has at least one registered pod member —
-   every provisioned pod, paused included — not the narrower set `core.dispatch.dispatchable_pods`
-   exposes for dispatch eligibility.
-2. For every pod, `build_inbox` MUST read its task list through `core.dispatch.read_tasks` and
-   sort each task into exactly one of `needsYou`, `failed`, `doneSince` or `running` by its
-   `status`, or omit it (`pending`, `cancelled`):
-   - `needsYou`: any status starting `waiting_` (future-proof beyond today's `waiting_approval`),
-     plus `blocked`.
+   every provisioned pod, paused included — not only the pods eligible for dispatch.
+2. For every pod, `build_inbox` MUST read its task list and sort each task into exactly one of
+   `needsYou`, `failed`, `doneSince` or `running` by its `status`, or omit it (`pending`,
+   `cancelled`):
+   - `needsYou`: any status starting `waiting_`, plus `blocked`.
    - `failed`: `status == "failed"`.
    - `doneSince`: `status == "done"` and, when `since` is given, only a task whose timestamp
      (below) is strictly later than `since`; every `done` task when `since` is omitted.
    - `running`: `status == "running"`.
-3. `build_inbox` MUST read every pending approval through `core.approval.list_pending` and add
-   one `ApprovalView` to `needsYou` for each **unless** its `context.taskId` is present or a
-   task in `needsYou` holds its token as `approvalToken` — an approval already surfaced through
-   its task MUST NOT also appear standalone, so nothing needing a decision is ever shown (or
-   notified) twice. `core/tools.py::_park_call` MUST record `context.taskId` from
-   `ToolContext.task_id` when the turn serves a task, so a parked call's record names it too.
-4. Each item's `TaskView`/`ApprovalView` MUST carry its `a2aState` via
-   `operator_contract.a2a_state`, passing `blocked_reason`/`failure_kind` from the task's own
-   `blockedReason`/`failureKind` fields.
+3. `build_inbox` MUST read every pending escalation whose pause is still live (area 11 item 7)
+   and add one `EscalationView` to `needsYou` for each **unless** a task already in `needsYou`
+   waits on it — a pause already surfaced through its task MUST NOT also appear standalone, so
+   nothing needing a decision is shown (or notified) twice. A task that waits (`waiting_*`) MUST
+   carry the id of its newest pending escalation as `escalation`. A parked in-turn call MUST
+   record its task on the escalation when the turn serves a task.
+4. Each `TaskView` MUST carry its `a2aState` via `a2a_state`, passing the task's own
+   `blockedReason`/`failureKind` fields. An `EscalationView` carries none: it is not a task.
 5. A task's timestamp, for sorting into `doneSince` and for `InboxView.next`, MUST be
-   `completedAt`, else `startedAt`, else `created` (the caller's `now` only as a last-resort
-   fallback when none is set). An approval's timestamp is its `created` field. `next` MUST be the
-   maximum timestamp seen across every item considered (by parsed instant, not string order,
-   since a task's ISO-with-offset timestamp and an approval's `Z`-suffixed one are not
+   `completedAt`, else `startedAt`, else `created` (the caller's `now` only when none is set).
+   A standalone escalation's timestamp is its `askedAt`. `next` MUST be the maximum timestamp
+   across every task read and every standalone escalation added (compared by parsed instant, not
+   string order, since an ISO-with-offset timestamp and a `Z`-suffixed one are not
    lexicographically comparable), or `None` when nothing was seen.
-6. `docket inbox [--json] [--since <iso>] [--peek]` (`cli/_inbox.py`) MUST render the four
-   sections (`Needs you`, `Failed`, `Done`, `Running`), `Needs you` first. Without `--peek` and
-   without an explicit `--since`, it MUST advance a durable cursor (`config.INBOX_CURSOR_FILE`,
-   written through `edges/store.py`) to `InboxView.next` after rendering, so a later plain
-   call's `doneSince` only shows tasks that completed after the previous call. `--peek` and an
-   explicit `--since` MUST NOT write the cursor. An undeclared flag MUST exit 2. Every item MUST
-   print the exact command that moves it forward (`docket task approve|deny|answer <id>`,
-   `docket task retry <id>`, `docket run --pod <pod>`), a held command or question in full, never
-   truncated; every continuation line of a multi-line question, held command or label MUST be
-   indented to the column of its first line's text, so no line of an item starts at column 0.
-   A pending task whose approval was granted MUST appear under `Needs you` as
-   "approved, ready" (`state: "approved_ready"`) with the `docket run` command. `--json` MUST emit
-   `InboxView.model_dump(by_alias=True, mode="json")` with `state` and `command` added to each
-   item, and no escape codes.
-7. `GET /inbox?since=<iso>` (`serve.py`) MUST require the same `Authorization: Bearer <token>`
-   as `GET /approvals` and return the identical JSON shape `docket inbox --json` prints for the
-   same state. A task's `question` MUST carry `kind`, `options` and `recommendation` whenever the
-   stored question has a `kind`, so a client can offer the options without a second read.
-8. `docket start --mcp`'s `inbox(since=None)` tool MUST return the same shape as `GET /inbox`.
+6. `docket inbox [--json] [--since <iso>] [--peek]` MUST render the four sections (`Needs you`,
+   `Failed`, `Done`, `Running`), `Needs you` first, or `Nothing needs you.` when all are empty.
+   Without `--peek` and without an explicit `--since`, it MUST read its cursor from, and advance
+   it to `InboxView.next` in, `inbox-cursor.json` under `DOCKET_HOME`, so a later plain call's
+   `doneSince` only shows tasks that completed after the previous call. `--peek` and an explicit
+   `--since` MUST NOT write the cursor. An undeclared flag MUST exit 2. Every item MUST print the
+   exact command that moves it forward (`docket task answer <id> --option approve_once` for a
+   `waiting_approval` task or an approval escalation, `docket task answer <id>` for
+   `waiting_input`, `docket task retry <id>` for `blocked`/`failed`, `docket task show <id>` for
+   `done`/`running`, `docket run --pod <pod>` for an approved, ready task; a `waiting_input` task
+   that has a pending `consult` or `input` escalation (area 11) prints `docket task answer <id>
+   --option <recommended or first option id>` instead when the escalation offers options), and a
+   held command or question in full, never truncated; every continuation line of a multi-line
+   question, held command or label MUST be indented to the column of its first line's text, so
+   no line of an item starts at column 0.
+   A `pending` task with an unspent approved call, or an approval at a pipeline position that a
+   person granted and no claim has applied yet, MUST appear under `Needs you` as `approved ready`
+   (`state: "approved_ready"`) with the `docket run` command.
+   `--json` MUST emit `InboxView` (`by_alias`, JSON mode) with `state` and `command` added to
+   each item, those approved-ready tasks and the memory items of item 11 appended to `needsYou`,
+   and no escape codes. Each entry of its `escalations` also carries `command` (`docket task
+   answer <task>` for a `consult` or `input`, `docket task answer <esc-id> --option approve_once`
+   for the others); the key is the CLI's own, never part of `EscalationView`.
+7. `GET /inbox?since=<iso>` MUST require the same `Authorization: Bearer <token>` as every other
+   route and return the `InboxView` for the same state (`by_alias`, JSON mode): the view `docket
+   inbox --json` starts from, without the `state`/`command` keys, the approved-ready tasks or the
+   memory items that command adds. `needsYou` items are `TaskView`s (with the `escalation` they
+   wait on) or `EscalationView`s. `InboxView` MUST also carry `escalations`: the `EscalationView`
+   of every escalation whose joined `state` is `pending` (area 11 item 7), ordered by `seq`, `[]`
+   when none, so a client can offer the options without a second read.
+8. `docket start --mcp`'s `inbox(since=None)` tool MUST return the same shape as `GET /inbox`,
+   and `escalations(since=None)` the same document as `GET /escalations` (area 11 item 8).
 9. `GET /metrics` MUST expose `docket_inbox_items{section="needsYou"|"failed"|"doneSince"|
    "running"}` as a gauge, one line per section, computed from `build_inbox(now=..., since=None)`.
-10. Telegram's `/status` (`core/telegram.py`) MUST render from `build_inbox`, filtered to the
-    bound agent's own scope (`_approval_scope`, unchanged from `telegram-integration.spec.md`
-    requirement 3) by each item's `pod` field, `needsYou` first, then `failed`; it MUST NOT
-    change the channel's inbound-only or plain-text constraints.
-11. **Pending pod memory.** `core.inbox.pending_memory() -> list[MemoryItem]` MUST return one item
-    per `pending` entry of every pod's `memory.json` (`core.pod_memory.list_entries`), oldest
-    first within a pod, carrying `pod`, `id`, `kind`, `subject`, `note`, `reason` and `task`. It
-    is not part of `InboxView` and not of the operator-v1 contract: `build_inbox`, `GET /inbox`,
-    `GET /metrics`, notifications and Telegram `/status` are unchanged. `docket inbox` MUST list
-    each item under `Needs you` as `memory <id>  pod=<pod>  <kind>`, its subject and note, why it is
-    held, the command `docket pod memory approve <id> --pod <pod>` and the refusal
-    `docket pod memory refuse <id> --pod <pod> --reason "<why>"`; `--json` MUST add it to
-    `needsYou` as `{kind: "memory", pod, id, entryKind, subject, note, reason, task, state:
-    "needs_memory_approval", command}`. It does not move `InboxView.next` and does not advance
-    the cursor.
+10. Telegram's `/status` (an inbound verb owned by `telegram-integration.spec.md`) MUST render
+    from `build_inbox`, filtered by each item's `pod` to the bound agent's own pod, `needsYou`
+    first, then `failed`. Under a task that waits on a pending escalation, and for a pending
+    escalation of its own, it MUST print the prompt, `options: <ids> (recommended <id>)` and
+    `reply: /answer <esc-id> <option>` (area 11 item 9).
+11. **Pending pod memory.** `pending_memory() -> list[MemoryItem]` MUST return one item per
+    `pending` entry of every pod's memory, oldest first within a pod, carrying `pod`, `id`,
+    `kind`, `subject`, `note`, `reason` and `task`. It is not part of `InboxView` and not of the
+    operator-v2 contract: `build_inbox`, `GET /inbox`, `GET /metrics`, notifications and
+    Telegram `/status` do not carry it. `docket inbox` MUST list each item under `Needs you` as
+    `memory <id>  pod=<pod>  <kind>`, its subject and note, why it is held, the command `docket
+    pod memory approve <id> --pod <pod>` and the refusal `docket pod memory refuse <id> --pod
+    <pod> --reason "<why>"`; `--json` MUST add it to `needsYou` as `{kind: "memory", pod, id,
+    entryKind, subject, note, reason, task, state: "needs_memory_approval", command}`. It does
+    not move `InboxView.next` and does not advance the cursor.
 
 ### 6. Notifications
 
-**Status: Implemented.** Items 1-8 are the `kind: channel` document, catalog and CLI; items
-9-16 are the diff/render/delivery framework and every v1 dialect, `console`/`webhook`/`command`
-here and `ntfy`/`desktop`/`email`/`telegram` in area 6.1. `CloudEvent`, `make_event` and the
-closed `EVENT_KINDS` vocabulary are defined (requirement area 1's module) and satisfy the CloudEvents 1.0
-structured-mode shape. This area adds the destination side: what a channel document declares
-about itself, what docket refuses to write or activate, and — from item 9 — how a transition
-in the derived inbox becomes an event on the wire.
+Items 1-8 are the `kind: channel` document, catalog and CLI; items 9-17 are the
+diff/render/delivery framework, the `console`/`webhook`/`command` dialects and the warning when
+nothing delivers. `CloudEvent`, `make_event` and the closed `EVENT_KINDS` vocabulary satisfy the
+CloudEvents 1.0 structured-mode shape. Area 6.1 holds the remaining dialects.
 
-1. `core.channel.ChannelSpec` (`kind: channel`) MUST declare `dialect` (one of `console`,
-   `desktop`, `webhook`, `command`, `ntfy`, `email`, `telegram`), `capabilities` (a subset of
-   `{notify, converse, decide}`), `on` (event types this channel receives, from `EVENT_KINDS`
-   plus the `needs_you` shorthand), `content` (`minimal | actions | conversation`, default
-   `minimal` — never the export-only `full`; ADR 0016 §7), `actors` (identities allowed to
-   converse or decide through it), `config` (dialect-specific settings), and `secret` (a
-   credential **name**, never a value).
-2. Each dialect MUST have a closed maximum capability set (`core.channel.DIALECT_MAX`):
-   `console` and `telegram` may include `decide`; every other v1 dialect may only `notify`. A
+1. `ChannelSpec` (`kind: channel`) MUST declare `dialect` (one of `console`, `desktop`,
+   `webhook`, `command`, `ntfy`, `email`, `telegram`), `capabilities` (a subset of `{notify,
+   converse, decide}`), `on` (event types this channel receives, from `EVENT_KINDS` plus the
+   `needs_you` shorthand), `content` (`minimal | actions | conversation`, default `minimal` —
+   never the export-only `full`; ADR 0016), `actors` (identities allowed to converse or decide
+   through it), `config` (dialect-specific string settings), and `secret` (a credential
+   **name**, never a value; a value-shaped string is refused).
+2. Each dialect MUST have a closed maximum capability set (`DIALECT_MAX`): `console` and
+   `telegram` may include `decide` and `converse`; every other dialect may only `notify`. A
    document declaring a capability past its dialect's maximum MUST be refused, naming the
-   maximum, at parse time (unconditional — this is a structural property of the dialect, not
-   of whether the document is enabled).
+   maximum, at parse time, whether or not the document is enabled.
 3. A document whose `capabilities` include `decide` or `converse` and whose `actors` is empty
-   MUST be refused only once `enabled` is true, and never for `dialect: console` (the
-   operator's own terminal, trusted without an allow-list). A *dormant* document (`enabled:
-   false`, the default) MAY declare `decide`/`converse` with empty `actors` — this is the
-   shape the built-in `telegram` template ships, so it can be catalogued before an operator
-   names who may use it.
-4. The channel catalog (`core.channel.load_catalog`) MUST merge two scopes nearest-wins by
-   name: built-in documents under `config.CHANNEL_TEMPLATES_DIR` (seven shipped:
-   `console`, `desktop`, `webhook`, `command`, `ntfy`, `email`, `telegram`) and the operator's
-   own global entries in `config.CHANNELS_FILE`, through `edges/store.py`. Only `console` MUST
-   ship enabled. Every built-in subscribes to `needs_you`; `desktop` and `ntfy`, the two
-   dialects that reach an operator who walked away, MUST also subscribe to `task.failed`.
-   None subscribes to `task.completed` by default (the inbox's `doneSince` carries it).
+   MUST be refused only once `enabled` is true, and never for `dialect: console` (the operator's
+   own terminal, trusted without an allow-list). A dormant document (`enabled: false`, the
+   default) MAY declare `decide`/`converse` with empty `actors` — the shape the built-in
+   `telegram` document ships.
+4. The channel catalog (`load_catalog`) MUST merge two scopes nearest-wins by name: the seven
+   built-in documents shipped with docket (`console`, `desktop`, `webhook`, `command`, `ntfy`,
+   `email`, `telegram`) and the operator's own entries in `docket-channels.json` under
+   `DOCKET_HOME`; a global entry inherits every field it does not set from the built-in of the
+   same name. Only `console` MUST ship enabled. Every built-in subscribes to `needs_you`;
+   `desktop` and `ntfy`, the two that reach an operator who walked away, MUST also subscribe to
+   `task.failed`. None subscribes to `task.completed` by default (the inbox's `doneSince`
+   carries it).
 5. `enable_channel(name, overrides)` MUST refuse, without writing, a channel whose resulting
-   document fails a dialect-specific precondition: `ntfy` requires a non-empty
-   `config["topic"]`; `telegram` requires a non-empty `actors`. Every other built-in has no
-   such precondition in this area.
+   document fails a dialect precondition: `ntfy` requires a non-empty `config["topic"]`;
+   `telegram` requires a non-empty `actors`. No other built-in has an enable precondition.
+   Enabling and disabling are audited (`channel.enable`, `channel.disable`).
 6. `set_content(name, level)` MUST accept only `minimal`, `actions` or `conversation`, on the
-   closed order `minimal < actions < conversation`; `core.channel.is_widening(old, new)` MUST
-   return `True` exactly when `new` is strictly richer than `old`. The CLI (`docket setup notify
-   privacy <name> <level>`) MUST treat a widening change as a confirmed, audited command,
-   exactly as `docket setup export privacy` does: `--yes` proceeds immediately, a TTY is asked
-   `y/N`, and a non-TTY refuses naming `--yes` without asking. Narrowing never asks.
-7. `docket setup notify list|show|enable [--set k=v]|disable|add <file>|remove|export|privacy
-   <name> [<level>] [--yes]` (`cli/_setup_notify.py`) MUST cover exactly this document's fields;
-   it MUST NOT send anything to a dialect's actual destination — that is P34-11's `notify
-   test`, `enable --test` and the delivery adapters.
-8. `docket pod validate` MUST accept `kind: channel` (`core.config_docs.KINDS` gains `channel`;
-   `core.config_docs._MODEL_FOR_KIND["channel"] = core.channel.ChannelSpec`), and
-   `scripts/gen_config_schemas.py` MUST render `docs/contracts/config-v1/channel.schema.json`
-   (and its package copy) directly from `ChannelSpec`, the same shape as `exporter`.
-9. `core.notify.diff_events(prev, inbox, now) -> (events, snapshot)` MUST be pure (no clock, no
-   I/O) and MUST emit one `NotifyEvent` per item in `inbox.needsYou`/`failed`/`doneSince` whose
+   closed order `minimal < actions < conversation`, and audit `channel.content` with the old and
+   new level; `is_widening(old, new)` MUST return `True` exactly when `new` is strictly richer
+   than `old`. `docket setup notify privacy <name> <level>` MUST treat a widening change as a
+   confirmed command, with the same rule as `docket setup export privacy`: `--yes` proceeds, a
+   TTY is asked `y/N`, and a non-TTY refuses (exit 1) naming `--yes` without asking. Narrowing
+   never asks. Without `<level>` it prints the current level; an unknown level exits 1.
+7. `docket setup notify` MUST offer `list`, `show`, `enable <name> [--set k=v]... [--test]`,
+   `disable`, `add <file>`, `remove <name> [--yes]`, `export <name> [<file>]`, `privacy <name>
+   [<level>] [--yes]`, `test <name>` and `flush [--dry-run]`, plus the Telegram-specific
+   `enable telegram --chat <id> [--token]`, `bind` and `unbind` that `telegram-integration.spec.md`
+   owns. `--set content=...` MUST be refused (exit 1, naming `privacy`); `--chat`/`--token` on
+   any channel but `telegram` MUST be refused (exit 1). Only `test`, `enable --test` and `flush`
+   send anything to a dialect's destination.
+8. `docket pod validate` MUST accept `kind: channel`, validating it with the same loader as
+   `docket setup notify add`, and the generated `docs/contracts/config-v1/channel.schema.json`
+   (and its copy shipped in the package) MUST be rendered from `ChannelSpec`, the same way as
+   `exporter`.
+9. `diff_events(prev, inbox, now) -> (events, snapshot)` MUST be pure (no clock, no I/O) and
+   MUST emit one `NotifyEvent` per item in `inbox.needsYou`/`failed`/`doneSince`/`decided` whose
    dedupe key is new, or whose version has changed, since `prev`. The dedupe key MUST be
-   `task:<pod>:<id>` for a `TaskView` or `approval:<token>` for an `ApprovalView`; the version
-   MUST be the item's status (or state) plus its question id or approval token, so a task
-   re-asking a different question is treated as changed even when `status` itself repeats. The
-   event kind MUST be `task.input_required` (`waiting_input`), `approval.requested`
-   (`waiting_approval` or a standalone `ApprovalView`), `task.blocked`, `task.rejected` (a
-   failed task whose `a2aState` is `REJECTED`), `task.failed` (any other failed task), or
-   `task.completed`.
-10. `diff_events` MUST additionally emit `approval.expiring` at most once per approval token,
-    the first time 80% or more of the interval between its `createdAt` and `expiresAt` has
-    elapsed; a token already recorded in the returned `snapshot`'s `expiring` list MUST NOT
-    fire again.
-11. `core.notify.render_data(item, level)` MUST enforce the three content levels on the
-    `CloudEvent.data` it builds: `minimal` MUST NOT include an approval's rendered `action` or
-    a task's `question`/`brief`; `actions` MUST add `action` (approvals only); `conversation`
-    MUST add `question` and, when present, `brief` (tasks only). `core.notify.render_text(event)`
-    MUST derive `(title, body)` only from *event*'s own already-leveled `data`, never from the
-    source item, so a `minimal` event's text carries nothing a `minimal` event's data omitted.
-    When a task's question is a `QuestionV11` with options, `conversation` MUST also add
-    `options` (`[{id, label}]`, labels stripped of control characters and capped at 80
-    characters) and, when recommended, `recommendation` (`{optionId}` only -- never the rationale
-    or evidence); `minimal` and `actions` MUST carry neither. `render_text` MUST then add one
-    `<id> - <label>` line per option, `(recommended)` on the recommended one, and a final
-    `reply: /answer <task> <id>` line. The `TaskView` these read **MUST** carry the task's stored
-    `question` and `brief`: `core.inbox.task_view` (the one builder, used by the inbox and by
-    `POST /tasks/<id>/answer`) validates a stored question with `kind` as `QuestionV11`, so its
-    options reach `render_data`; the JSON view still serializes the operator-v1 `question` shape.
-12. `core.notify.flush(specs, sink_for, *, now) -> FlushReport` MUST load the persisted dedupe
-    snapshot (`config.NOTIFY_STATE_FILE`), compute `diff_events`, and save the new snapshot
-    **before** delivering anything, so a crash mid-delivery never re-emits an event on the next
-    flush — delivery in this module is at-most-once, not at-least-once, by construction. For
-    every event, `flush` MUST call `sink_for` once per enabled channel with `notify` in
-    `capabilities` whose `on` matches the event's kind (directly, or via the `needs_you`
-    shorthand for `task.input_required`/`approval.requested`/`task.blocked`/
-    `approval.expiring`), retry a failing delivery up to two further times within the same
-    call, and record the outcome in `config.CHANNELS_HEALTH_FILE` (`delivered`/`failed`
-    counters, `lastOk`/`lastError`/`lastErrorAt`). `flush` MUST NOT import
-    `edges/adapters/channels` itself — `sink_for` is supplied by its caller, the same seam
-    `core/telemetry.py::start(specs, sink_for)` uses. `flush` MUST NOT raise.
-13. The `webhook` dialect (`edges/adapters/channels/webhook.py::deliver`) MUST POST the
-    `CloudEvent` as `application/cloudevents+json` to `spec.config["url"]` with the Standard
-    Webhooks headers: `webhook-id` (the event's `id`), `webhook-timestamp` (Unix seconds), and,
-    when a secret is resolved, `webhook-signature: v1,<base64>` over
-    `hmac-sha256(base64-decode(secret.removeprefix("whsec_")), f"{id}.{ts}.{body}")`. A missing
-    `config.url`, a transport failure, or a non-2xx response MUST all report a failed
-    `DeliveryResult` without raising.
-14. The `command` dialect (`edges/adapters/channels/command.py::deliver`) MUST run
-    `spec.config["argv"]` (a JSON-encoded list of strings, since `config` is `dict[str, str]`)
-    — or, when `argv` is absent, a single-element argv built from `spec.config["command"]` (the
-    already-shipped built-in document's shape) — as `subprocess.run(argv, input=<event JSON>,
-    timeout=min(timeout, 10), check=False)`, never `shell=True`. A non-zero exit, a missing
-    binary, or a missing `argv`/`command` MUST all report a failed `DeliveryResult` without
+   `task:<pod>:<id>` for a `TaskView` or `escalation:<id>` for an `EscalationView`; the version
+   MUST be the task's status plus the id of the escalation it waits on (`<status>:<id>`), or the
+   escalation's `state`, so a task re-asking a different question is treated as changed even when
+   `status` itself repeats. The event kind MUST be `approval.requested` (a `waiting_approval`
+   task, or an `approval`, `gate` or `check_changed` escalation), `task.input_required` (any other
+   task in `needsYou` that is not `blocked`, or a `consult` or `input` escalation),
+   `task.blocked`, `task.rejected` (a failed task whose `a2aState` is `REJECTED`), `task.failed`
+   (any other failed task), `task.completed`, or `escalation.decided` (one per record of
+   `inbox.decided`, area 11 item 14).
+10. `diff_events` MUST additionally emit `approval.expiring` at most once per approval, gate or
+    changed-check escalation that is an item of `needsYou`, the first time 80% or more of the
+    interval between its `askedAt` and `expiresAt` has elapsed; an escalation id already recorded
+    in the returned `snapshot`'s `expiring` list MUST NOT fire again.
+11. `render_data(item, level, escalation=None)` MUST enforce the three content levels on the
+    `CloudEvent.data` it builds. At every level it carries `pod`, `taskId` and, for a task, its
+    `reasonCode`; when a person is asked to settle a pause behind the item (the item itself when
+    it is an `EscalationView`, else *escalation*, the task's pending one), also `escalationId`,
+    `kind`, `role` and `expiresAt` when set, and `respond` `{cli: "docket task answer <esc-id>",
+    http: <resolveUrl>}` (a task that waits on no escalation gets `respond` `{cli: "docket inbox",
+    http: "/tasks/<id>"}`). `minimal` MUST NOT include an approval's rendered `action`, a
+    question's `question` or a task's `brief`; `actions` and `conversation` MUST add `action`
+    (the prompt of an `approval`, `gate` or `check_changed` escalation); `conversation` MUST add
+    `question` (the prompt of a `consult` or `input` escalation) and, when present, a task's
+    `brief`. When the pause has options, every level MUST add `options` (`[{id}]`, and the
+    recommended option as `recommendation` `{optionId}` only — never the rationale or evidence):
+    an option id is what a reply names, so it is never withheld; each option's `label` is added
+    where `render_escalation` allows it (area 11 item 9: stripped of non-printable characters and
+    capped at 80 characters, withheld below `conversation` for a model-written label). A
+    decision the pod took alone carries only `pod`, `taskId`, `escalationId`, `kind`, `optionId`
+    and `level`, at every level. `render_text(event)` MUST derive `(title, body)` only from
+    *event*'s own already-leveled `data`, never from the source item, so a `minimal` event's text
+    carries nothing a `minimal` event's data omitted; it MUST then add one `<id>` line per option
+    (`<id> - <label>` when the label is present), `(recommended)` on the recommended one, and a
+    final `reply: /answer <escalation id, else task id> <id>` line. An event whose item is a
+    pending escalation, or a task waiting on one, carries that escalation's id as `escalationId`,
+    and `flush` MUST write `escalation_delivered` (area 11 item 11) for it, once per channel that
+    delivered it: the notification carries the id, so the delivery can say which pause a person was
+    told about. A delivery that failed writes none.
+12. `flush(specs, sink_for, *, now) -> FlushReport` MUST load the persisted dedupe snapshot
+    (`notify-state.json` under `DOCKET_HOME`), compute `diff_events` over `build_inbox(now=now)`,
+    and save the new snapshot **before** delivering anything, so a crash mid-delivery never
+    re-emits an event on the next flush — delivery is at-most-once by construction. For every
+    event, `flush` MUST call the dialect `sink_for` returns once per enabled channel with
+    `notify` in `capabilities` whose `on` matches the event's kind (directly, or via the
+    `needs_you` shorthand for `task.input_required`/`approval.requested`/`task.blocked`/
+    `approval.expiring`), building one `CloudEvent` per channel at that channel's `content`
+    level; retry a failing delivery up to two further times within the same call; count a
+    channel whose dialect has no `deliver` as `skipped`; and record the outcome in
+    `channels-health.json` under `DOCKET_HOME` (`delivered`/`failed` counters,
+    `lastOk`/`lastError`/`lastErrorAt`). `flush` MUST NOT import the delivery adapters itself —
+    `sink_for` is supplied by its caller. A dialect that raises MUST count as a failed attempt;
+    a sink factory or secret lookup that raises MUST count as one failed delivery without
+    stopping the other channels; a failing inbox build or store read or write MUST end the flush
+    with `FlushReport.error` set, and `flush` MUST NOT raise.
+13. The `webhook` dialect MUST POST the `CloudEvent` as `application/cloudevents+json` to
+    `config["url"]` with the Standard Webhooks headers: `webhook-id` (the event's `id`),
+    `webhook-timestamp` (Unix seconds), and, when a secret is resolved, `webhook-signature:
+    v1,<base64>` over `hmac-sha256(base64-decode(secret.removeprefix("whsec_")),
+    f"{id}.{ts}.{body}")`. A missing `config.url`, a transport failure, or a non-2xx response
+    MUST all report a failed `DeliveryResult` without raising.
+14. The `command` dialect MUST run `config["argv"]` (a JSON-encoded list of strings, since
+    `config` is `dict[str, str]`) — or, when `argv` is absent, a single-element argv from
+    `config["command"]` (the built-in document's shape) — with the event JSON on stdin, a
+    timeout of at most 10 seconds, never through a shell. A non-zero exit, a missing binary, a
+    timeout, or a missing `argv`/`command` MUST all report a failed `DeliveryResult` without
     raising.
-15. The `console` dialect (`edges/adapters/channels/console.py::deliver`) MUST always succeed
-    without sending anything — the console is already the inbox.
-16. Bare `docket setup notify` (and any action other than a declared one) MUST print usage or
-    exit 2 without calling `core.notify.flush`. `docket setup notify flush [--dry-run]` MUST call `core.notify.flush` over the full channel
-    catalog and print the delivered/failed/skipped counts; `--dry-run` MUST print the pending
-    events from `diff_events` without delivering or advancing the persisted snapshot. `docket
-    setup notify test <name>` MUST build one synthetic `channel.test` event
-    (`core.notify.build_test_event`) and deliver it once through that one channel's dialect,
-    regardless of the channel's `on` subscription, reporting success or failure — this and
-    `docket setup notify flush` and `enable --test` are the only things in this specification's CLI surface that ever
-    send anything to a real destination. `serve.py`'s periodic sweep and `docket run`'s
-    foreground summary MUST each call `core.notify.flush` once, after their own
-    work, with the CLI dispatch path printing nothing beyond one warning line naming the
-    failure count when a delivery failed and, when the flush found events and nothing
-    delivers (item 17), the one line `unreached_warning` renders.
-17. **Console alone tells nobody, and docket says so.** `core.channel.SILENT_DIALECTS` MUST
-    name every dialect whose `deliver` sends nothing (`console`, item 15).
-    `Catalog.delivering()` MUST return the sorted names of the enabled channels with `notify`
-    in `capabilities` whose dialect is not silent, and `core.channel.unreached_warning(
-    delivering)` MUST return `None` when that list is non-empty and otherwise the one warning
-    text every surface prints: that only `console` is on, that console sends nothing, that a
-    parked task waits unseen until `docket inbox`, and the two first-rung fixes `docket setup notify
-    enable desktop` and `docket setup notify enable ntfy --set topic=<topic>`. Four surfaces MUST
-    consume it, none MAY enable a channel on its own: `docket setup`'s `Notifications:` block
-    (counted as an issue when at least one project agent exists, informational otherwise;
-    `--json` carries `checks.notifications {ok, delivering}`), `docket start --dispatch` once
-    at startup, `docket init` after the created summary, and `docket run`'s
-    post-run flush when that flush found events. One offer is allowed: `docket init` on a
-    TTY where `edges.adapters.system.desktop_notifications_available()` holds MAY ask
-    `Enable desktop notifications now? [Y/n]` and, only on a yes (the default), enable `desktop`
-    and deliver one `channel.test` event through it so the operator sees it work; off a TTY
-    nothing is asked. A catalog where something delivers MUST print none of this beyond
-    `doctor`'s one success line naming the delivering channels.
+15. The `console` dialect MUST always succeed without sending anything — the console is already
+    the inbox.
+16. Bare `docket setup notify` MUST print usage without calling `flush`, and an undeclared
+    action MUST exit 2. `docket setup notify flush` MUST call `flush` over the full channel
+    catalog and print the event, delivered, failed and skipped counts (or `Nothing to send.`),
+    exiting 1 when a delivery failed or the flush reported an `error` (printed); `--dry-run`
+    MUST print each pending event's kind, pod and subject from `diff_events` without delivering
+    or saving the snapshot. `docket setup notify
+    test <name>` MUST build one synthetic `channel.test` event (`build_test_event`) and deliver
+    it once through that one channel's dialect, regardless of its `on` subscription or `enabled`
+    flag, reporting success or failure (exit 1). Every periodic sweep of `docket start` (with or
+    without `--dispatch`) and `docket run`, after its summary, MUST each call `flush` once;
+    `docket run` prints nothing beyond one warning line naming the failure count when a delivery
+    failed and, when the flush found events and nothing delivers (item 17), the text
+    `unreached_warning` returns.
+17. **Console alone tells nobody, and docket says so.** `SILENT_DIALECTS` MUST name every dialect
+    whose `deliver` sends nothing (`console`, item 15). `Catalog.delivering()` MUST return the
+    sorted names of the enabled channels with `notify` in `capabilities` whose dialect is not
+    silent, and `unreached_warning(delivering)` MUST return `None` when that list is non-empty
+    and otherwise the one warning text every surface prints: that only `console` is on, that
+    console sends nothing, that a parked task waits unseen until `docket inbox`, and the two
+    first-rung fixes `docket setup notify enable desktop` and `docket setup notify enable ntfy
+    --set topic=<topic>`. These surfaces MUST consume it: the health report (`docket setup
+    --fix`) prints a `Notifications:` block, counted as an issue when at least one project agent
+    exists and informational otherwise (`--json` carries `checks.notifications {ok,
+    delivering}`); bare `docket setup`'s report shows a `notifications` piece (`console only
+    (nobody is told)`, command `docket setup notify enable desktop`); `docket start --dispatch`
+    prints it once at startup; `docket init` prints it after the created summary; `docket run`
+    prints it after the post-run flush when that flush found events. No surface enables a
+    channel on its own. Two offers are allowed, each acting only on a yes: `docket init` on a
+    TTY where desktop notifications are available asks `Enable desktop notifications now?
+    [Y/n]` (yes is the default) and then enables `desktop` and delivers one `channel.test` event
+    through it; bare `docket setup` on a TTY, when nothing delivers, asks `Enable desktop
+    notifications?` (when desktop notifications are available) and `Set up Telegram?`, both
+    `[y/N]`. Off a TTY nothing is asked. A catalog where something delivers MUST print none of
+    this beyond the health report's one success line naming the delivering channels.
 
 ### 6.1 Dialects
 
-**Status: Implemented.** The `console`, `webhook`, and `command` dialects are delivered via
-requirement area 6 items 1-16. The three dialects described here, plus the `telegram` dialect
-area 8 owns, each add one more module under `edges/adapters/channels/` and one more entry to
-`sink_for`.
+The `ntfy`, `desktop`, `email` and `telegram` dialects. Each is one `deliver(spec, event, *,
+secret, timeout) -> DeliveryResult` reached through `sink_for`, and each MUST report every
+failure as a failed `DeliveryResult` without raising.
 
-1. The `ntfy` dialect (`edges/adapters/channels/ntfy.py::deliver`) MUST POST the event title and
-   body to an ntfy.sh server via HTTP. `spec.config["server"]` (default `https://ntfy.sh`,
-   `rstrip("/")` to normalize) and `spec.config["topic"]` are required; `config.topic` MUST be
-   validated non-empty at parse time (requirement area 6 item 5). The request MUST include
-   `Title` and `Priority` headers: `Title: <title>` from `render_text`, and
-   `Priority: high` if the event kind ends with `input_required` or `approval.requested`, else
-   `Priority: default`. When a secret is resolved, the request MUST include
-   `Authorization: Bearer <secret>`. A missing `topic`, a transport failure, or a non-2xx
-   response MUST all report a failed `DeliveryResult` without raising.
-
-2. The `desktop` dialect (`edges/adapters/channels/desktop.py::deliver`) MUST send a native OS
-   notification. On macOS, execute `osascript -e display\ notification …` with the title and
-   body from `render_text`; on all other platforms, execute `notify-send title body`. The binary
-   MUST be located via `shutil.which` first; if missing, return a failed `DeliveryResult` without
-   raising. Execution MUST use `subprocess.run`, never `shell=True`, and a non-zero exit MUST
-   report a failed `DeliveryResult` without raising.
-
-3. The `email` dialect (`edges/adapters/channels/email.py::deliver`) MUST send an SMTP email.
-   `spec.config` MUST contain `host` (non-empty), `port` (default `587`, parsed as integer),
-   `user`, and `to`; a missing field MUST report a failed `DeliveryResult`. The email `Subject`
-   MUST be `[docket] <title>` from `render_text`, and the body MUST be `<body>` unchanged. The
-   connection MUST call `smtplib.SMTP(host, int(port), timeout=timeout)`, followed by
-   `starttls()`, `login(user, secret)`, `send_message(msg)`, and `quit()`. Any exception in
-   this sequence MUST be caught and reported as a failed `DeliveryResult` without raising.
-
-4. All three new dialects MUST use stdlib only — `urllib.request`, `subprocess`, `shutil`,
-   `smtplib`, `email.message`, `json`, `sys`.
-
-5. Content privacy (requirement area 6 item 11) MUST be enforced upstream by `render_text`, not
-   by these modules themselves — they deliver only what they are given, applying no redaction of
+1. The `ntfy` dialect MUST POST the body from `render_text` to `<server>/<topic>`, where
+   `config["server"]` defaults to `https://ntfy.sh` (trailing `/` stripped) and
+   `config["topic"]` is required (also checked when the channel is enabled, area 6 item 5). The
+   request MUST include `Title: <title>` from `render_text` and `Priority: high` when the event
+   type ends with `input_required` or `approval.requested`, else `Priority: default`. When a
+   secret is resolved, it MUST include `Authorization: Bearer <secret>`. A missing `topic`, a
+   transport failure, or a non-2xx response MUST report a failed `DeliveryResult`.
+2. The `desktop` dialect MUST send a native OS notification with the title and body from
+   `render_text`: on macOS `osascript -e 'display notification <body> with title <title>'`
+   (both JSON-quoted), elsewhere `notify-send <title> <body>`. The binary MUST be located on
+   `PATH` first; a missing binary, a timeout or a non-zero exit MUST report a failed
+   `DeliveryResult`. It MUST never run through a shell.
+3. The `email` dialect MUST send one SMTP message. `config` MUST contain `smtpHost`, `from` and
+   `to` (non-empty, the keys of the built-in document) and MAY set `port` (default `587`, which
+   MUST parse as an integer) and `user`; any of these missing or malformed MUST report a failed
+   `DeliveryResult`. The `Subject` MUST be `[docket] <title>`, `From` the `from`, `To` the `to`,
+   and the body `<body>` unchanged, all from `render_text`. The connection MUST use STARTTLS
+   when the server offers it. A secret is needed only for a channel whose `secret` names one: the
+   dialect MUST log in as `user` (else `from`) with it, MUST report a failed `DeliveryResult`
+   when the named secret did not resolve, and MUST NOT send it over a connection that does not
+   offer STARTTLS. A channel with no `secret` sends without logging in. Any exception in the
+   sequence MUST report a failed `DeliveryResult`.
+4. The dialects in this area MUST use the Python standard library only (no third-party package).
+5. Content privacy (area 6 item 11) MUST be enforced upstream by `render_data`/`render_text`,
+   not by these dialects — they deliver only what they are given and apply no redaction of
    their own.
+6. The `telegram` dialect is the outbound half of Telegram (its `notify` capability). It MUST
+   send `<title>\n<body>` from `render_text` to every chat id in `spec.actors` and to no other
+   chat — never to every chat bound in `fleet.json` — using the resolved secret (the built-in
+   document names `TELEGRAM_BOT_TOKEN`) as the bot token. A missing secret, an empty `actors`
+   list, or a failed send to any chat MUST report a failed `DeliveryResult` naming the chat ids
+   that failed. It MUST NOT initiate a conversation or resolve an approval: a chat that wants
+   to act on the notification does so through the inbound verbs `telegram-integration.spec.md`
+   owns.
 
 ### 7. Answers
 
-**Status: Implemented.** `core/answers.py::answer_task(project,
-task_id, action, content, channel=, actor=)` resumes a parked `input` step: it builds an
-`AnswerResult`, validates *content* against the question's `requestedSchema` via
-`validate_answer`, screens every string value in *content* through
-`core.policy.policy_eval_detail("lead", "pre_input", value, trusted=False)` (a `block` raises
-`AnswerRejected` and writes nothing), appends the answer to the task's `answers[]`, and resolves
-the step's own `on:` route -- a terminal `fail`/`stop` target settles the task `failed`/`done`
-right here; any other target (or none) reopens it `pending`, carrying a synthetic
-`role="operator"` hop whose `nextStep` the resume builder follows on the next claim, with
-`route_counts` rebuilt from that same persisted field exactly as any other routed hop's.
-`core.answers.sweep_expired_questions`, run from every `serve --dispatch` sweep, moves an
-unanswered `waiting_input` task past its question's `expiresAt` to `blocked`/
-`blockedReason: "input_expired"` -- never `failed`. A question parked without its own
-`expiresAt` (a consultation) carries now plus the pod's `inputExpiryHours`. Full mechanics: pod-dispatch.spec.md,
-"Operator input steps and answers". An `input` step whose `from:` hop carries a Lead intake
-brief with its own `questions[]` asks those specific questions instead of the generic single
-free-text `answer` property (area 3, "The Lead's intake"); `answer_task` and this area's own
-mechanics are otherwise unchanged either way -- the richer schema only changes what
-`validate_answer` checks *content* against, never how an answer resolves or resumes.
+1. An answer to a parked question is the `resolution` of its `consult` or `input` escalation
+   (area 10): `resolve` validates it, reopens the task `pending` and audits `task.answer` (never the
+   content); the task keeps no copy of the question or the answer. `answers_of(task)` reads every
+   resolved `consult` and `input` escalation the task lists as the entries a hop's prompt renders
+   (question id, step, message, action, content, channel, actor, `answeredAt`, the question's
+   `kind` and `createdAt`, and `optionId` when given). `resolve` MUST refuse a question that is not
+   `pending`, whose task is not `waiting_input` on this record, whose option is not one the record
+   offers (a question with options needs one), whose content does not satisfy `requestedSchema`
+   (`validate_content`) or whose strings a `block` verdict of
+   the Lead's `pre_input` policy matches (as untrusted input; `EscalationRefused` naming the
+   policy, nothing written).
+2. Answering an `input` step MUST resolve that step's own `on:` route with the outcome label
+   `answered` (accept) or `declined`, applied by the next claim of the task (area 10 item 3a): a
+   terminal `fail`/`stop` target (or a backward route past its cap, or an unknown target) settles
+   the task `failed`/`done`; any other target, or no route, continues behind a synthetic
+   `role="operator"` hop whose `nextStep` the resume follows. Answering a consultation (a
+   question with `kind` `clarification` or `decision`) reopens the task `pending` and the re-run
+   hop of the same step ends its message with the operator's answer (see "Consult" item 5).
+   Mechanics: `pod-dispatch.spec.md` "Operator input steps and answers".
+3. An unanswered `waiting_input` task past its question's `expiresAt` MUST be moved by
+   `sweep_escalations`, run on every periodic sweep of `docket start`, to `blocked` with
+   `blockedReason: "input_expired"` — never `failed`; `docket task retry` reopens it. A question
+   parked without its own `expiresAt` (a consultation) carries now plus the pod's
+   `inputExpiryHours`.
+   For tests, `DOCKET_CLOCK_OFFSET_S` (float seconds, unset or invalid is 0) shifts the wall
+   clock `now()` that stamps and compares these deadlines; it never shifts the monotonic clock,
+   so measured durations stay real.
+4. An `input` step whose `from:` hop carries a Lead intake brief with its own `questions[]`
+   asks those questions instead of the generic single free-text `answer` property; this changes
+   only what the record's `requestedSchema` holds, and so what `resolve` checks *content*
+   against, never how an answer resolves or resumes.
+5. The trace carries no event that is specific to a question: the pause is opened by
+   `escalation_asked`, delivered by `escalation_delivered`, and settled by `escalation_resolved`,
+   `escalation_expired` or `escalation_decided` (area 11 item 11). An expired question's
+   `escalation_expired` is written by the expiry sweep that blocked its task; a consult the pod
+   decided alone (Consult item 7) writes `escalation_decided` with the `optionId` it applied.
 
-### 8. Telegram (the one amended boundary)
+### 8. Telegram
 
-**Status: Implemented.** No behaviour in this module is Telegram-specific; the amendment to
-`telegram-integration.spec.md` Command grammar 7, the fifth `/answer <task-id> <text>` verb
-(`core/telegram.py`), and the outbound `telegram` channel dialect
-(`edges/adapters/channels/telegram.py`) are that spec's own requirements.
+1. No behaviour in the operator-v2 contract is Telegram-specific. The inbound verbs (including
+   `/answer <id> <option|text>`, which calls `resolve` with `channel="telegram"`) are
+   `telegram-integration.spec.md`'s; the outbound `telegram` dialect is area 6.1 item 6.
 
 ### 9. Seeing it coming, and not being interrupted twice
 
-**Status: Implemented.** `core/interruptions.py::forecast(project, *, caller_default="wait") ->
-list[Interruption]` derives, from *project*'s own effective configuration, everything that could
-pause a task and wait on a human -- without ever running a live dispatch.
+`forecast(project, *, caller_default="wait") -> list[Interruption]` derives, from *project*'s
+own effective configuration, everything that could pause a task and wait on a human — without
+running a dispatch.
 
-1. `forecast` MUST derive its `Interruption` items from exactly these sources, matching what a
-   live dispatch would actually evaluate:
-   - this pod's own effective `require_approval` policies (`core.policy.policy_files(project)` +
-     `core.policy.read_policy` -- the identical loader `docket pod check --pod` uses), kind
-     `"policy"`, naming the policy id and its pattern (`match.pattern`, or `when.matches` when the
-     canonical document carries no top-level `match`);
-   - `core.security.HIGH_RISK_PATTERNS`, kind `"high_risk_class"` -- the same classes
-     `classify_command` enforces unconditionally on every bash call. Shown for visibility, never
-     counted toward "nothing will ask" (item 3 below): they are a docket-wide invariant, not this
-     pod's own configuration, and already have their own listing (`docket setup sandbox classes`);
-   - the resolved pipeline's (`core.dispatch.effective_pipeline(project, None)`) own
-     `ApprovalGate` and `input` steps, one level into a `parallel` group, kind `"pipeline_gate"`;
-   - the pod's `requireApprovalRoles` (Lead meta, comma-split, lower-cased), kind `"role_gate"`;
-   - the resolved `approvalMode` (`core.dispatch.pod_approval_mode(project,
-     caller_default=caller_default)`) and `approvalExpiryHours`
-     (`core.pod.PodSettings.load_for(project)`), kind `"mode"` -- context for how an ask would be
-     handled, never itself something that asks;
-   - every enabled `kind: channel` document (`core.channel.load_catalog()`) whose capabilities
-     include `notify`, kind `"channel"`.
-2. `docket task show <ref>` MUST render the forecast: the
-   `"policy"`/`"pipeline_gate"`/`"role_gate"` items (the ones that can actually pause a task) as
-   the headline list, the resolved `approvalMode`/expiry as one context line, and the high-risk
-   classes and enabled notifying channels each in their own labelled section, shown regardless of
-   whether the headline is empty. With `--json`, it MUST carry the same items as an `interruptions` list of
-   `{"kind", "description", "detail"}` objects beside the task's other fields.
-3. When the headline list (`"policy"`/`"pipeline_gate"`/`"role_gate"`) is empty, the forecast MUST print `Nothing in this pod will ask you.` in place of that list.
-4. `docket task add` MUST print one additional summary line after queuing:
-   `Nothing in this pod will ask you.` when the same headline list is empty, else `May ask you:
-   <n> <kind>, ... — see: docket task show <ref>` (kinds sorted, counts
-   grouped by kind with `_` rendered as a space and the noun pluralised by count: `1 policy`,
-   `2 policies`, `2 pipeline gates`). A `policy` interruption's description is
-   `policy '<id>' asks on: <words>`, naming the predicate kinds (`tool bash on path src/**`,
-   `commands matching its pattern`), never the pattern text.
-5. `docket task approve <ref> --for "<command>" [--tool bash]`, `POST /tasks/<id>/pregrants`
-   (body `{"pod", "command", "tool"?, "actor"?}`) and MCP `task_pregrant(project, task_id,
-   command, tool="bash")` MUST each call `core.interruptions.record_pregrant(project, task_id,
-   command, tool=tool, channel=<"cli"|"http"|"mcp">, actor=<...>)`, which:
+1. `forecast` MUST derive its `Interruption` items (`kind`, `description`, `detail`) from
+   exactly these sources:
+   - each of this pod's effective policies with hook `pre_tool_call` and action
+     `require_approval`, kind `"policy"`, described as `policy '<id>' asks on: <words>` naming
+     the predicate kinds (`tool bash on path src/**`, `commands matching its pattern`, `any of
+     several conditions`, else `a structured predicate`), never the pattern text;
+   - every class in `HIGH_RISK_PATTERNS`, kind `"high_risk_class"` — the classes the command
+     classifier enforces on every bash call. Shown for visibility, never counted toward
+     "nothing will ask" (item 3): they are a docket-wide invariant, listed on their own by
+     `docket setup sandbox classes`;
+   - the resolved pipeline's (`effective_pipeline(project, None)`) `ApprovalGate` and `input`
+     steps, one level into a `parallel` group, kind `"pipeline_gate"`;
+   - the resolved `approvalMode` (`pod_approval_mode(project, caller_default=caller_default)`)
+     and `approvalExpiryHours` (24 when the pod settings cannot be read), kind `"mode"` —
+     context for how an ask would be handled, never itself something that asks;
+   - every enabled `kind: channel` document whose capabilities include `notify`, kind
+     `"channel"`.
+2. `docket task show <ref>` MUST render the forecast under `May ask you`: the
+   `"policy"`/`"pipeline_gate"` items (the ones that can pause a task) as the
+   headline list, the resolved `approvalMode`/expiry as one context line, and the high-risk
+   classes (`Always enforced:`) and enabled notifying channels (`Will notify:`) each in their
+   own labelled section, shown regardless of whether the headline is empty. With `--json`, it
+   MUST carry the same items as an `interruptions` list of `{"kind", "description", "detail"}`
+   objects beside the task's other fields. The caller default is `wait` on a TTY, else `park`.
+3. When the headline list is empty, the forecast MUST print `Nothing in this pod will ask you.`
+   in place of that list.
+4. `docket task add` MUST print one additional summary line after queuing: `Nothing in this pod
+   will ask you.` when the same headline list is empty, else `May ask you: <n> <kind>, ... --
+   see: docket task show <short-id>` (kinds sorted, counts grouped by kind with `_` rendered as
+   a space and the noun pluralised by count: `1 policy`, `2 policies`, `2 pipeline gates`).
+5. `docket task pregrant <ref> "<command>" [--tool bash]`, `POST /tasks/<id>/pregrants` (body
+   `{"pod", "command", "tool"?, "actor"?}`) and MCP `task_pregrant(project, task_id, command,
+   tool="bash")` MUST each call `record_pregrant(project, task_id, command, tool=tool,
+   channel=<"cli"|"http"|"mcp">, actor=<...>)`, which:
    - refuses (raising `InterruptionsError`, rendered as CLI exit 1 / HTTP 404 / an MCP
-     `McpToolError`) when *task_id* is not present in *project*'s own `read_tasks` -- a pre-grant
-     never crosses pods;
+     `McpToolError`) when *task_id* is not in *project*'s own task list — a pre-grant never
+     crosses pods;
    - collapses internal whitespace in *command* before digesting it (`" ".join(command.split())`)
-     -- the honest limit ADR 0016 §10 states: a model that rephrases the command is asked again
-     regardless;
-   - computes `args_digest = core.operator_contract.canonical_args_digest(tool, {"command":
-     normalized})` -- the identical digest `core/tools.py`'s park/consume matcher computes for a
-     live `bash` call, so a CLI-issued pre-grant and an in-turn parked approval are matched
-     identically;
-   - calls `core.approval.create_pregrant(project, "implementer", tool, args_digest,
-     task_id=task_id, expires_at=<now + this pod's approvalExpiryHours, ISO UTC>,
-     channel=channel, actor=actor)` unchanged, then appends `{"token", "tool", "argsDigest":
-     args_digest}` to the task's own `pregrants` list (`edges.store.read_modify_write` on
-     `core.dispatch.pod_task_list_path(project)`) -- the exact shape
-     `resolve_waiting_approval`'s own parked-grant append already produces, so `_compose_hop`
-     serialises it into `DOCKET_PREGRANTS` on the task's very next hop, not only a re-run after a
-     park.
-Non-goals (ADR 0016 §10): fuzzy command matching -- the exact-after-whitespace-collapse limit in
-item 5 is the only normalisation applied, and a rephrased command is asked again regardless; a
-`--role` override for `create_pregrant`'s stored `role` field (fixed to `"implementer"`, since
-matching is by `(tool, argsDigest)` alone and never reads it).
+     — the honest limit ADR 0016 states: a model that rephrases the command is asked again;
+   - computes `canonical_args_digest(tool, {"command": normalized})`, the identical digest the
+     tool-call gate computes for a live `bash` call;
+   - calls `create_pregrant(project, "implementer", tool, args_digest, task_id=task_id,
+     expires_at=<now + this pod's approvalExpiryHours, ISO UTC>, channel=channel, actor=actor)`,
+     which is the unspent pre-grant the task's next hop is given, not only a re-run after a park.
 
-### 10. Answer surfaces
+   Non-goals (ADR 0016): fuzzy command matching; a role override for the stored `role` (always
+   `"implementer"`, since matching is by `(tool, argsDigest)` alone and never reads it).
 
-**Status: Implemented (CLI, HTTP, MCP; Telegram is area 8's own card).** Every
-surface below calls `core.answers.answer_task` directly (area 7) -- none re-implements schema
-validation, the `pre_input` screen, or the resume. ADR 0016 §8 names these as "two core
-functions, every surface is transport"; this area is that transport.
+### 10. Resolve
 
-1. `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline]
-   [--pod <p>]` (`cli/_task.py::_task_answer`) MUST resolve *ref* through
-   `core.task_ref.resolve_task` (full id, short id, prefix or run id; every pod unless `--pod`)
-   and call `answer_task(channel="cli", actor=<OS user via getpass.getuser()>)`. A task without a
-   pending question MUST be refused (exit 1, nothing sent). Bare `text` MUST fill the single
-   property of a one-property `requestedSchema`, read from the task's own parked `question`;
-   against a schema with more than one property it MUST be refused (exit 1, nothing sent)
-   naming `--field name=value`. `--field` MAY be repeated. `--option <id>` MUST put `optionId`
-   in `content`. `--decline` MUST set `action="decline"` and ignore `text`/`--field`/`--option`.
-2. With no `text`, `--field` or `--option`: on a TTY the command MUST print the question and each
+`resolve` is the one entry that settles an escalation. Every surface below calls it, after looking
+the escalation up by id (or, for a task reference, taking the task's newest pending escalation);
+none re-implements the option check, the schema check, the `pre_input` screen or the
+continuation, and no surface has a verb of its own for one kind of pause.
+
+1. `resolve(escalation_id, option_id, content=None, *, by, channel)` (`tasks/application/
+   escalations.py`) MUST be the only function that turns a person's answer into the escalation's
+   outcome. It returns `Resolved(escalation, note)`: the settled record and, for an approval, the
+   note a refused task-wide grant produces (empty otherwise). *by* is a label for the person
+   (an OS user, a body `actor`, a chat), *channel* is the surface (`cli`, `http`, `tack`, `mcp`,
+   `telegram`).
+2. **Checks.** Nothing is written until every check passes, in this order, each a distinct error
+   (item 5):
+   - the id names no record: `EscalationNotFound`;
+   - the stored `state` is not `pending`, or the pause the record names is no longer live (area
+     11 item 7: the approval is not `pending`, the task is not `waiting_input` on the question):
+     `EscalationNotPending`;
+   - *option_id* is not one of the record's `options`: `EscalationInvalid` naming the ids. `cancel`
+     is accepted as an alias of `decline` (the elicitation vocabulary has both, docket one
+     outcome) and is recorded as `decline`. *option_id* may be omitted only when the record
+     offers no option besides `decline` (an `input` step, a consult without options): that is
+     an `accept` carrying *content*. `decline` carries no content;
+   - *content* does not satisfy `requestedSchema` (a missing required property, a wrong type, a
+     value outside an `enum`, as `validate_content` states): `EscalationInvalid` naming the
+     property. An approval, gate or changed-check carries no schema; its *content* may hold only
+     `reason` (a string), which is what `--reason` and the body's `reason` become;
+   - a string in *content* matches a `block` verdict of the pod's `pre_input` policy:
+     `EscalationRefused` naming the policy id.
+3. **Outcome.** What `resolve` does is chosen by the record's `kind` and the option. It receives the
+   answer; a question's continuation (the consult note, the `on:` route) is applied by the next
+   claim of the task (item 3a):
+
+   | Kind | Option | What `resolve` does |
+   | --- | --- | --- |
+   | `approval`, `gate`, `check_changed` | `approve_once` | `approval_grant`, then the waiting task moves (`pending`; a changed check ends it `done`) |
+   | `approval` | `approve_task` | `approval_set_option(approve_task)`, then as `approve_once` |
+   | `approval`, `gate`, `check_changed` | `deny` | `approval_deny`, then the waiting task fails with the reason |
+   | `consult`, `input` | an option id, or omitted | the task, which must be `waiting_input` on this record, reopens `pending`; the answer is the record's `resolution` (`optionId`, `content`) |
+   | `consult`, `input` | `decline` | the same, recording a `decline`, with one `declined_answer` correction |
+   | `consult` waiting in the turn | an option id or `decline` | grants (or, for `decline`, denies) the approval record its wait polls; no task changes |
+
+   A `gate` and a `check_changed` offer no `approve_task`. A step that refuses (the approval or
+   the task moved first) raises `EscalationNotPending` and leaves the record `pending`; one that
+   fails validation raises `EscalationInvalid` or `EscalationRefused` the same way. A task-wide
+   grant refused for want of room (Security Gates "Approval tokens and approval packs") is
+   approved once only and `Resolved.note` says so.
+3a. **Receive here, apply at the claim.** For `consult`, `input` and a granted `approval` or
+   `gate` at a pipeline position (a parked task), `resolve` MUST NOT resolve a pipeline, append a
+   hop, settle a route, hand a gate position over or take the pod's task-list lock for anything
+   but the one status change; it writes the record (`state: "resolved"`, `resolution`), audits,
+   traces and returns. The record's `resolution` carries `appliedAt`, unset until the continuation
+   is applied. The claim of the task (`pod-dispatch.spec.md` "An escalation for every park" item
+   3) applies each resolved `input` record and each granted `approval` or `gate` record whose
+   `appliedAt` is unset exactly once (`apply_resolutions`), then stamps it
+   (`mark_escalation_applied`): an `input` answer persists the synthetic operator hop and follows
+   the step's `on:` route, and a granted position hands the claim the gate to skip once. The
+   answer to a `consult` needs no applying: the re-run hop reads it from the record
+   (`consult_note`) and the record is stamped once a hop of its step is persisted. A record that
+   is `expired`, `decided` or `pending` is never applied. A record of a parked call's approval
+   (its grant is read from the approval store by the hop that re-runs), a denial, a changed-check
+   and an in-turn wait is stamped when `resolve` writes it, because nothing is left to apply.
+   An answer that no longer fits the pipeline the task is parked in (the step it names is not the
+   one the task stopped at) fails the claim with a dispatch error naming the step.
+4. **Record.** After the continuation succeeds, `resolve` MUST write, in one store operation that
+   only moves a `pending` record, `resolution` (`{optionId, content, by, channel, at}`; `optionId`
+   is `decline` for a decline and absent for an omitted option) and `state: "resolved"`; audit
+   `escalation.resolve` with the escalation id, kind, pod, task, option id, channel and actor
+   (never *content* or the reason, as the consult audit never carries the question); and write
+   `escalation_resolved` (area 11 item 11) with `by: "person"`, `optionId` and `channel`.
+   The records of the continuation (`approval.grant`, `approval.deny`, `task.answer`,
+   `approval_granted`...) are written as the step writes them.
+5. **Errors.** One set, mapped once per surface:
+
+   | Error | Kind | HTTP | MCP | CLI |
+   | --- | --- | --- | --- | --- |
+   | `EscalationNotFound` | `NotFound` | `404` | `McpToolError` | exit 1 |
+   | `EscalationNotPending` | `Conflict` | `409` | `McpToolError` | a warning, exit 0, when the pause already ended the way asked; else exit 1 |
+   | `EscalationInvalid` | `InvalidInput` | `422` | `McpToolError` | exit 1 |
+   | `EscalationRefused` | `Refused` | `422` | `McpToolError` | exit 1 |
+
+   A refusal never carries an approval token.
+6. **One door per surface.** An approval token is not an address and a question is not answered
+   by task id and a free `action`: each surface has exactly one way to settle a pause, and it
+   calls `resolve` with an escalation id.
+
+   | Surface | The one way | Does not exist |
+   | --- | --- | --- |
+   | CLI | `docket task answer <ref> [--option <id>]` | `task approve`, `task deny` (no such verbs of `docket task`) |
+   | HTTP | `POST /escalations/<id>` | `POST /approvals/<token>`, `GET /approvals`, `POST /tasks/<id>/answer` |
+   | MCP | `resolve`, listed by `escalations` | `approvals_list`, `approvals_grant`, `approvals_deny`, `task_answer` |
+   | Telegram | `/answer <id> <option\|text>` | `/approve`, `/deny` |
+
+   A surface that is given a task looks up the task's newest `pending` escalation and calls
+   `resolve` with its id; with none, it answers that the task waits on nothing. Nothing else
+   describes a pause: the task keys `approvalToken`, `question`, `answers`, `consultAnswer`,
+   `pregrants`, `taskGrants` and `gateOverridePipelineIndex`, `ApprovalView`, and the trace
+   events `approval_requested`, `question_asked`, `input_requested`, `input_answered` and
+   `input_expired` do not exist; `TaskView.escalation`, `EscalationView` and the `escalation_*`
+   events replace them (`operator-api.spec.md` lists the same replacements for a client).
+7. `docket task answer <ref> [text...] [--option <id>] [--field name=value]... [--decline]
+   [--reason <why>] [--pod <p>]` MUST resolve *ref* as a full id, short id, prefix or run id
+   (every pod unless `--pod` or `DOCKET_POD` names one), or as an escalation id (`esc-...`), and
+   call `resolve` (`channel="cli"`, `by=<OS user>`). A task without a pending escalation MUST be
+   refused (exit 1, nothing sent). Bare `text` MUST fill the single property of a one-property
+   `requestedSchema`, read from the record; against a schema with more than one property it MUST
+   be refused (exit 1, nothing sent) naming `--field name=value`. `--field` MAY be repeated; one
+   without `=` exits 2. `--option <id>` names the option; `--decline` MUST resolve `decline` and
+   ignore `text`/`--field`/`--option`.
+8. With no `text`, `--field` or `--option`: on a TTY the command MUST print the question and each
    option as `<id> - <label>` (the recommended one marked, its description beneath), prompt for
    the option id when the question has options (Enter takes the recommended one), then once per
    `requestedSchema` property (a blank optional property is omitted from `content`; a blank
-   required one is passed through unchanged, so the schema check reports it -- never a
-   client-side retry loop) and call `answer_task(action="accept")`. Off a TTY it MUST exit 1
-   naming `--option <id>` (the ids listed) when the question has options, else the three
-   flags; it never prompts. When the question has options and the answer carries no `optionId`
-   (and is not a decline), the command MUST exit 1 naming the option ids instead of sending an
-   answer the contract would refuse. `docket inbox`'s human view MUST print a `waiting_input`
-   task's question, its option ids and labels (the recommended one marked `(recommended)`) and
-   the `docket task answer <task-id>` command beneath the task line, and a `waiting_approval`
-   task's held action (`asks: <approval.action>`) with the `docket task approve <id>` /
-   `docket task deny <id>` commands -- what the standalone approval line carried before inbox
-   item 3 folded it into its task.
-2a. `docket task approve <ref>` MUST resolve the task's pending approval from the task's own
-   `approvalToken` (a task not `waiting_approval` is refused, exit 1; an `apr-` token is accepted
-   as given, the one the progress view prints, and its pod is read from the approval record so
-   the run hint below still names it) and grant it with `channel="cli"`; `--task` MUST
-   set the `approve_task` option first, and `--once` (the default) conflicts with it (exit 2).
-   `docket task deny <ref>` MUST deny the same approval and hand `--reason` to
-   `resolve_waiting_approval` so the failed task's `reason` reads `approval denied: <reason>`
-   (pod-dispatch.spec.md). After a grant, an answer, a pre-grant or a retry, whichever form the
-   ref took, the command MUST end with the run hint: `docket is running and will pick it up` when
-   the service's pid check says `docket start` is running, else the single `Next: docket run
-   --pod <p>` line. A granted pending task is the "approved, ready" state `inbox` and `status`
-   render.
-3. `docket task add --brief FILE.json` (`cli/_task.py`) MUST parse the
-   file as JSON and validate it as a `TaskBrief`; a parse or validation failure MUST exit 1
-   and enqueue nothing. A well-formed brief MUST be passed through to
-   `core.dispatch.enqueue_task`'s own `brief=` parameter and actually enqueue.
-   `_pod._ENQUEUE_ACCEPTS_BRIEF` (checked once via `inspect.signature`) is a self-correcting
-   guard against a stale build whose `enqueue_task` predates the parameter -- present, but
-   never triggered against this module's own `core.dispatch`.
-4. `POST /tasks/<id>/answer` (`serve.py::_handle_post_task_answer`) MUST require the same
-   `Authorization: Bearer <token>` as every other write route, then a JSON object body naming
-   `pod` (string, required) and `action` (string, required); `content` (object, optional) and
-   `actor` (string, optional label -- the Bearer token remains the sole authority, and the
-   channel is always `"http"`) round out the elicitation-result shape. It MUST call
-   `answer_task(channel="http", actor=<body.actor or "http">)` and, on success, respond with
-   the answered task's `TaskView` (`by_alias`, `mode="json"`). Errors MUST map: an
-   `AnswerRejected` to `422` naming its `policy_id`; an `AnswerError` whose message contains
-   `"not found in pod"` to `404`; one containing `"is not waiting_input"` or `"is not parked at
-   step"` to `409`; any other `AnswerError` (a schema-validation `ValueError`, relayed
-   unchanged) to `422`. `POST /tasks/<project>` (task creation) gained an optional `brief`
-   field, validated the same way as `--brief` above and, once valid, passed through to
-   `enqueue_task`'s `brief=` parameter the identical way -- not a second guess at its shape.
-5. MCP `task_answer(project, task_id, action, content=None)` (`cli/_mcp.py::tool_task_answer`)
-   MUST call `answer_task(channel="mcp", actor="mcp")` and return `{"ok": true, "task":
-   task_id, "project": project, "action": result.action}` on success; an `AnswerRejected` or
-   `AnswerError` MUST become a raised `McpToolError` (the SDK's own `isError` convention),
-   naming the policy id or the underlying message respectively -- never an inline error field.
+   required one is passed through, so the schema check reports it, never a client-side retry
+   loop) and call `resolve`. Off a TTY it MUST exit 1 naming `--option <id>` (the ids listed)
+   when the question has options, else naming text, `--field` and `--option`; it never prompts.
+   When the question has options and the answer carries no option (and is not a decline), the
+   command MUST exit 1 naming the option ids instead of sending an answer the contract would
+   refuse.
+9. `docket task answer <ref> --option approve_once|approve_task|deny [--reason <why>]` MUST
+   resolve an approval, gate or changed-check escalation the same way. *ref* is its `esc-` id, or
+   a task (its newest pending escalation). Only those three options are accepted there; `text`,
+   `--field` and `--decline` are refused (exit 1), and `--reason` becomes the approval's reason,
+   so a denied task's `reason` reads `approval denied: <reason>` (`pod-dispatch.spec.md`). A
+   repeat on an escalation already settled that way is a warning, exit 0. After a grant (except a
+   changed-check approval, which completes the task), an answer, a pre-grant or a retry, the
+   command MUST end with the run hint: `docket is running and will pick it up` when `docket
+   start` is running, else the single `Next: docket run --pod <p>` line. A granted pending task
+   is the `approved ready` state `inbox` renders.
+10. `docket task pregrant <ref> "<command>" [--tool bash] [--pod <p>]` records a pre-grant for the
+    task (area 9 item 5) and resolves nothing; it ends with the same run hint.
+11. `docket inbox`'s human view MUST print a `waiting_input` task's question, its option ids and
+    labels (the recommended one marked `(recommended)`) and the `docket task answer <task-id>`
+    command (with `--option <id>`, item 5 of area 5) beneath the task line, and a
+    `waiting_approval` task's held action (`asks: <prompt>`) with the `docket task answer <id>
+    --option approve_once` and `--option deny` commands. The `command` of an `escalations[]` entry
+    of `inbox --json` and the lines under `Waiting on you` in `docket task show` name the
+    escalation: `docket task answer <esc-id> --option <id>` for an approval, gate or
+    changed-check (the approve and the deny line), the task command for a question.
+12. `docket task add --brief FILE.json` MUST parse the file as JSON and validate it as a
+    `TaskBrief`; an unreadable file or a parse or validation failure MUST exit 1 and enqueue
+    nothing. A well-formed brief MUST be stored on the enqueued task as its `brief`.
+13. `POST /escalations/<id>` MUST require the same `Authorization: Bearer <token>` as every other
+    write route, then a JSON object body `{"optionId"?, "content"?, "actor"?}` (`optionId` a
+    string, `content` an object, `actor` a label only; the channel is `"http"`). A malformed body
+    or an ill-typed field is `400`. It calls `resolve(channel="http", by=<actor or "http">)` and
+    answers `200` with the resolved `EscalationView`; errors map as item 5.
+    `POST /tasks/<project>` (task creation) MUST accept an optional `brief`: a non-object answers
+    `400`, one that fails `TaskBrief` validation `422`, and a valid one is stored on the enqueued
+    task exactly as `--brief` above.
+14. MCP `resolve(escalation_id, option_id=None, content=None)` MUST call `resolve(channel="mcp",
+    by="mcp")` and return `{"ok": true, "escalation": <id>, "state": "resolved"}` (plus `note` when
+    the resolution carries one); any error of item 5 MUST become a raised `McpToolError` (the
+    SDK's `isError` convention), and a repeat raises, never a warning. `escalations(since=None)`
+    lists the records (area 11 item 8) and `task_pregrant(project, task_id, command,
+    tool="bash")` is the pre-grant of area 9 item 5.
+15. Telegram `/answer <id> <option|text>` is `telegram-integration.spec.md`'s; it calls `resolve`
+    with `channel="telegram"`.
+
+### 11. Escalations
+
+An escalation is one pause: docket needs a decision from outside the task. One durable record per
+pause is written by the store (`docket-store.spec.md` "Escalation records") at the moment the pause
+is created, and the task lists its id. The record is the whole description of the pause: the task
+keeps no copy of it, and every surface prints from it.
+
+1. **Fields.** `Escalation` (operator contract module, camelCase on the wire, `extra="forbid"`):
+   `id` (`esc-<12 hex>`), `task`, `pod`, `step`, `role`, `kind`, `causedBy` (the tool call id of an
+   approval, otherwise the step id; empty for `check_changed`), `prompt` (redacted when the
+   record is created, with the same redaction approvals use), `options` (`Option` list), `recommendation`, `requestedSchema`
+   (`null` when the pause asks no structured answer), `askedAt`, `expiresAt`, `onExpiry`
+   (`deny | block`), `policy` (`person | recommendation | deny | fail`), `level` (`L3 | L4 | L5`,
+   the autonomy level of the record's task when the pause was created, item 12; absent for a
+   pause that names no queued task), `state`, `resolution`
+   (`{optionId, content, by, channel, at, appliedAt?}` or `null`; `appliedAt` is when the
+   continuation was applied, absent while it has not been) and `seq`.
+2. **Kinds, options, expiry.**
+
+   | Kind | Created when | Options | `onExpiry` |
+   | --- | --- | --- | --- |
+   | `approval` | a gated tool call parks or waits for a person | `approve_once`, `approve_task`, `deny` | `deny` |
+   | `consult` | a hop parks on a `consult` question | the question's options, then `decline`; its recommendation | `block` |
+   | `input` | an `input` step minted a question | `decline`; the question's `requestedSchema` | `block` |
+   | `gate` | a pipeline `approval` gate fires before a hop | `approve_once`, `deny` | `deny` |
+   | `check_changed` | a finished task's diff edits what checks it | `approve_once`, `deny` | `deny` |
+
+   `policy` and `onExpiry` are not fixed per kind: they are the autonomy table's row for the
+   kind at the task's level (item 12), so the `onExpiry` column above is the L3 value, which is
+   also what a pause with no queued task gets.
+3. **Task link.** `TaskRecord.escalations` lists, oldest first, the id of every escalation opened
+   for the task, and is absent while empty. It is the only trace of a pause the task keeps: a task
+   holds no question, no approval token and no answer, and reads them from the records it lists.
+   An escalation whose task is not in the pod's queue (an ad hoc `docket run` tool call) is stored
+   with that task id and listed nowhere.
+4. **Approval link.** An approval, gate or changed-check escalation is backed by an approval
+   record, which names the escalation it backs; `approval_of(<escalation id>)` finds it. A
+   `consult` waiting in the turn has one beside it (Consult item 3). No token is stored anywhere
+   else.
+5. **States.** A record is written `pending`. The one expiry sweep (`sweep_escalations`, item 13)
+   and the timeout of one in-turn wait move it to `expired`. `resolved` is written by `resolve`
+   (area 10 item 4) and `decided` is the state of a record the pod settled itself (a consult
+   answered by its recommendation, an approval denied by the level): it is written `decided`
+   with a `resolution` whose `by` is `policy`, never `pending`, and is listed on its task. A `pending`
+   record may still outlive its pause (an in-turn `wait` approval settled in place), so a reader
+   MUST join it to the task it names (item 7) rather than trust the state alone.
+6. **Inbox.** `build_inbox` reads every task and every `pending` record whose pause is live.
+   A task that waits (a `waiting_*` status) or is `blocked` is a `needsYou` item as a `TaskView`
+   whose `escalation` is the id of the pending record it waits on; a pending escalation that no
+   such task carries (an approval a running turn waits on, one whose task is outside the pod's
+   queue) is a `needsYou` item as an `EscalationView`, so a pause is listed once. `escalations`
+   holds every live pending record, and the scan of every task remains for `failed`, `doneSince`,
+   `running` and `next`.
+7. **The view.** `EscalationView` (operator contract, camelCase, `extra="forbid"`) is an
+   `Escalation` plus `affordances`: `{options: [<option id>], acceptsText: bool, resolveUrl:
+   "/escalations/<id>"}`. It holds no command string; each surface prints its own. Its `state` is
+   the record's joined with the pause it names (`pause_is_live`): a stored `pending` stays
+   `pending` only while the pause still waits, that is while the task it names is absent from the
+   pod's queue or is `waiting_approval`, `waiting_input` or `running`, else it reads `resolved`;
+   any other stored state is kept. `affordances.options` lists the ids of the record's options
+   and `acceptsText` is true when `requestedSchema` has a property, both only while `pending`
+   (else `[]` and `false`). `resolveUrl` names the route that answers it: `POST /escalations/<id>`
+   (area 10 item 13).
+8. **Where it is read.** `escalation_views(since_seq=None, pod=None, task=None)` (operator
+   context) returns the views of the stored records after `since_seq`, ordered by `seq`, whatever
+   their joined state; `build_inbox` fills `InboxView.escalations` with the pending ones (area 5
+   item 7). `GET /escalations?since=<seq>&pod=&task=` (Bearer, `operator-api.spec.md`) answers
+   `{"escalations": [EscalationView...], "next": <seq>}` and the MCP `escalations(since=None)` tool
+   the same document (`next` is the highest `seq` returned, else `since`, else `0`).
+9. **One render.** `render_escalation(view, level) -> RenderedEscalation(title, prompt | None,
+   options, expires_at)` (operator context, pure) is what every surface prints from.
+   `title` is fixed text per kind and never holds model or tool text. `prompt` is the view's
+   prompt, `None` below the level that allows it: for `approval`, `gate` and `check_changed` any
+   level above `minimal`, for `consult` and `input` `conversation` or `full` (the same lines
+   area 6 item 11 draws). `options` are `(id, label, recommended)` tuples: ids are present at
+   every level, a label only for the kinds whose labels docket wrote (`approval`, `gate`,
+   `check_changed`) or at `conversation` and above (stripped as in area 6 item 11), and the
+   synthetic `decline` of a question is left out because it is answered by `--decline`, not by an
+   option. An unknown level renders as `minimal`.
+10. **Surfaces.** `docket task show` prints a `Waiting on you` section for every pending
+    escalation of the task: the title, the prompt, the option ids with labels and the command
+    that answers it (`docket task answer <task> --option <id>` for a question, `docket task answer
+    <esc-id> --option approve_once` / `--option deny` otherwise). `docket run`'s progress view
+    prints one line for each pause a task opens during that run, read from the record when
+    `escalation_asked` is traced: for an approval, gate or changed check `⏸ <role> wants: <prompt>
+    · <esc-id> · denies in <time left> · docket task answer <esc-id> --option approve_once`; for a
+    question `⏸ <role> asks: <title>: <prompt> · options <ids> (recommended <id>) · docket task
+    answer <task> --option <id>`, the `options` part only when the pause offers any (a pause
+    already open before the run, or a consult the pod decided alone, prints none). On a TTY the
+    same view answers a pause in place: an approval (`[a]pprove  [d]eny  [Enter] keep waiting`) and
+    a consult waiting in the turn (`[1] <option>  [2] <option>  [d]ecline  [Enter] keep waiting`;
+    a digit resolves that option and `d` resolves `decline`); both go through `resolve`
+    (`channel="cli"`), so the record settles, and an answer that lost to a decision made elsewhere
+    prints `(already resolved elsewhere)`. Telegram `/status` and notifications render from the
+    same function (area 5 item 10, area 6 item 11).
+11. **Escalation events.** Five trace event types carry one payload for every kind of pause; no
+   other event describes a pause. Each is written to the task's session (`agent:<pod>:<task>`;
+   `<pod>-approval` when the pause names no task), with the record's `task` as the event's task id
+   and its `role` (`operator` when empty) as the agent role. The payload is always
+   `{escalation, kind, task, step, policy, askedAt}` (the record's `id`, `kind`, `task`, `step`,
+   `policy` and `askedAt`), plus:
+
+   | Event | Written when | Adds |
+   | --- | --- | --- |
+   | `escalation_asked` | the record is opened (item 1) | `causedBy`, `onExpiry`, `expiresAt` when set, `options` (the option ids), `prompt` (already redacted) |
+   | `escalation_delivered` | a channel delivered it to a person | `channel` |
+   | `escalation_resolved` | a person settled it | `by: "person"`, `optionId`, `channel` |
+   | `escalation_expired` | an expiry sweep settled it (item 5) | `by: "timeout"` |
+   | `escalation_decided` | the pod settled it without a person | `by: "policy"`, `optionId` |
+
+   Every payload also carries `level` (item 1) when the record has one.
+
+   `escalation_asked` is written by the store's opener after the record and the task link exist,
+   and its approval link (item 4) is already made, so a surface that sees the event can tell what
+   the pause waits on. `escalation_expired` is written by the expiry sweep only when it moved a
+   still-`pending` record. `escalation_decided` is written where a pod-decided consult applies its
+   recommendation (Consult item 7, `policy` `recommendation`) and where the level denies an
+   approval (item 12, `policy` `deny`, `optionId` `deny`): the record is stored `decided` and
+   listed on the task in the same call, so the pause is visible after the fact.
+   `escalation_resolved` is written by `resolve` (area 10 item 4). `escalation_delivered` is
+   written by `flush` (area 6 item 11) once per channel that delivered a notification naming the
+   escalation, with that channel's name; a delivery that failed writes none. The approval records
+   keep writing their own `approval_granted` and `approval_denied`, and a task moved by an
+   approval writes `approval_resumed` or `approval_task_denied`. `prompt` is in the trace for every
+   record and reaches an exporter only at a privacy level that grants `prompts`
+   (`observability-export.spec.md` requirement 114).
+
+12. **Autonomy levels (ADR 0032, `security-gates.spec.md` "Autonomy levels").** A level is a policy
+    over escalations. When a pause is created `teams/autonomy.py::policy_for(kind, level)` returns
+    its `(policy, onExpiry)` from the `kind: autonomy` document (`templates/autonomy/default.yaml`,
+    `config-format.spec.md`), and both are recorded on the record beside `level`:
+
+    | Kind | L3 | L4 | L5 |
+    | --- | --- | --- | --- |
+    | `approval` (a tool `ask`, a pipeline `approval` step) | `person`, `onExpiry` `deny` | `person`, `deny` | `deny`: no record waits |
+    | `consult` | `person`, `block` | `recommendation`, `block` | `recommendation`, `block` |
+    | `input` | `person`, `block` | `fail`, `block` | `fail`, `block` |
+    | `gate` | `person`, `deny` | `fail`, `deny` | `fail`, `deny` |
+    | `check_changed` | `person`, `deny` | `person`, `deny` | `person`, `deny` |
+
+    `person` is what every pause did before levels existed. `recommendation` applies the model's own
+    recommendation in the turn (Consult item 7). `deny` ends the call with the
+    `approval_unavailable` denial, fails the task `needs_human` and writes a `decided` record, so
+    nothing waits and a person is told. `fail` refuses what would ask a person: an `input` step is
+    refused when the task is claimed (`pipeline-format.spec.md` "Operator input steps" item 5).
+    An external gate's `needs_human` or `error` outcome reaches a person only through an `input`
+    step, so under `fail` it fails the task `gate_needs_human` or `gate_error` as an unrouted
+    outcome always did; a route to any other step is unchanged. A `check_changed` pause is `person` at every level: a check
+    the change itself defines cannot be satisfied by a machine. The pod settings stay and win where
+    set: `consultMode` is the alias of the `consult` row (`decide` is `recommendation`, `park` is
+    `person`) and `approvalMode` of the `approval` row (`refuse` is `deny`; `wait` and `park` are
+    `person`).
+13. **One expiry sweep.** `sweep_escalations()` (`tasks/application/escalation_sweep.py`) ends every
+    pause nobody answered by its deadline. For each `pending` record past its `expiresAt` it applies
+    the record's own `onExpiry`: `deny` denies the approval it names (the task fails
+    `approval_denied` through the follow-up the denial always ran) and `block` blocks the task
+    `input_expired`. A question never fails a task and an approval fails closed, so a `deny` that
+    names no approval blocks and a `block` that names one denies. A `pending` record whose pause
+    already ended (its task was cancelled) is settled `expired` with no side effect. Then it
+    expires any approval record past its deadline that no escalation names, and prunes unconsumed
+    pre-grants past their deadline. It returns how many pauses it ended, runs on the periodic sweep
+    of `docket start` and writes `escalation_expired` once per record it moved.
+14. **Humans are informed.** `escalation.decided` is a channel event kind (`EVENT_KINDS`; a channel
+    subscribes with `on: [escalation.decided]`, it is not part of `needs_you`). `diff_events`
+    emits one per `decided` record on the inbox's `decided` list the first time it sees it, with
+    the `pod`, `taskId`, the escalation `id`, `kind`, `optionId` and `level`. `build_inbox` lists
+    the most recent `decided` records (at most twenty, newest first) as `InboxView.decided`,
+    omitted from the document while empty; `docket inbox` prints them under `Done` and `docket
+    task show` prints a `Decided without you` section with each decision and its option.
+    `docket_escalations_total` carries `level` (`serve-read-api.spec.md`).
 
 ### Profile lines (ADR 0025 D2)
 
-1. When the effective profile (security-gates.spec.md "Profiles") is `lights-out`, the health report
-   (`docket setup`, "doctor") prints a `Profile:` section after its security gates with one line per
-   violation and its fix,
-   and `docket status` prints a `Profile` row on the pod block listing the same violations;
+1. When a dispatchable pod's effective profile (`security-gates.spec.md` "Profiles") is
+   `lights-out`, the health report (`docket setup --fix`) prints a `Profile:` section after its
+   security gates with one line per pod and one line per violation with its fix, and `docket
+   status` prints a `Profile` row on the pod block listing the same violations;
    `status --json` carries `profile {name, violations: [{requirement, fix}]}` and the health
-   report's JSON carries `checks.securityGates.profile {<pod>: {name, violations}}`, only then. Both call `core/profile.py::gather_facts` and `lights_out_violations`, the function
-   dispatch calls. With the effective profile `attended` the output is byte-identical to before.
+   report's JSON carries `checks.securityGates.profile {<pod>: {name, violations}}`, only then.
+   Both compute the violations with `project_violations` (`gather_facts` plus
+   `lights_out_violations`), the function dispatch refuses with. Under the `attended` profile
+   neither prints a profile line or key.
 
-### A task that edited its own check (P45-3, ADR 0029 point 3)
-
-1. A task whose finished diff touches a protected path parks `waiting_approval` with an approval
-   of context kind `check_changed` and `checkChanged` on the task (`pod-dispatch.spec.md` "A change
-   that edits its own check"), under every profile: `lights-out` does not skip it, because a
-   person is what a check the change defined cannot be.
-2. The task is an ordinary `needsYou` item: its `TaskView.reason` and the approval's `action` text
-   name the paths (at most 20, then a count of the rest), `a2aState` is `INPUT_REQUIRED`, and the
-   notification is `approval.requested` through the channels that already carry one. No new
-   event type, schema field or channel is introduced.
-3. The approval is answered like any other (`docket task approve|deny`, `POST /approvals/<token>`,
-   MCP, Telegram); a grant completes the task (`done`) instead of returning it to `pending`, a
-   denial fails it with `failureKind: "check_changed"`.
+### A task that edited its own check (ADR 0029 point 3)
+1. A task whose finished diff touches a protected path parks `waiting_approval` with a
+   `check_changed` escalation and `checkChanged` on the task (`pod-dispatch.spec.md` "A
+   change that edits its own check"), under every profile: `lights-out` does not skip it,
+   because a person is what a check the change defined cannot be.
+2. The task is an ordinary `needsYou` item: its `TaskView.reason` and the escalation's `prompt`
+   name the paths (at most 20, then a count of the rest), `a2aState` is `INPUT_REQUIRED`,
+   and the notification is `approval.requested` through the channels that already carry one. No
+   event type, schema field or channel exists for it alone.
+3. The escalation is answered like any other (`docket task answer <esc-id> --option
+   approve_once|deny`, `POST /escalations/<id>`, MCP `resolve`, Telegram `/answer`); a grant
+   completes the task (`done`) instead of returning it to `pending`, a denial fails it with
+   `failureKind: "check_changed"`.
 
 ## Interface Contracts
 
-### Module API (`docket.core.operator_contract`)
+### Module API (the operator contract)
 
 ```python
-A2A_STATES: tuple[str, ...]            # the eight A2A 1.0.0 TaskState names, in order
-EVENT_KINDS: tuple[str, ...]           # the closed vocabulary of dev.docket.<noun>.<verb> kinds
+A2AState = Literal[...]                # the eight A2A 1.0.0 TaskState names, in order
+EVENT_KINDS: tuple[str, ...]           # task.input_required, approval.requested,
+                                        # approval.expiring, task.blocked, task.failed,
+                                        # task.rejected, task.completed, channel.test
 
 def a2a_state(
     status: str, blocked_reason: str | None = None, failure_kind: str | None = None,
@@ -599,37 +897,52 @@ class TaskBrief(BaseModel): ...        # objective, acceptance/context/constrain
 def validate_requested_schema(d: dict[str, Any]) -> dict[str, Any]: ...  # raises ValueError
 class QuestionSchema(BaseModel): ...   # schema-generator wrapper for requestedSchema
 def new_question_id() -> str: ...      # "q-<12 hex chars>"
-class Question(BaseModel): ...         # id/taskId/pod/step/message/requestedSchema/created/expires
+class Question(BaseModel): ...         # id/taskId/pod/step/message/requestedSchema/createdAt/
+                                        # expiresAt
 class AnswerResult(BaseModel): ...     # action: accept|decline|cancel, content
 def validate_answer(question: Question, result: AnswerResult) -> AnswerResult: ...  # raises
 
-class ApprovalView(BaseModel): ...     # token/pod/taskId/role/tool/action/policy/state/…/a2aState
-class TaskView(BaseModel): ...         # id/pod/status/a2aState/…/question/approvalToken/brief
-class InboxView(BaseModel): ...        # needsYou/failed/doneSince/running/next
+class TaskView(BaseModel): ...         # id/pod/status/a2aState/reason/description/priority/
+                                        # createdAt/updatedAt/escalation/brief
+class InboxView(BaseModel): ...        # needsYou (TaskView | EscalationView)/failed/doneSince/
+                                        # running/next/escalations/decided
+
+EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed"]
+class Resolution(BaseModel): ...       # optionId/content/by/channel/at/appliedAt
+class Escalation(BaseModel): ...       # requirement area 11's fields
+class EscalationAffordances(BaseModel): ...  # options/acceptsText/resolveUrl
+class EscalationView(BaseModel): ...   # an Escalation plus affordances
+class EscalationPage(BaseModel): ...   # escalations/next
+def new_escalation_id() -> str: ...    # "esc-<12 hex chars>"
+def is_escalation_id(value: str) -> bool: ...
 
 class CloudEvent(BaseModel): ...       # CloudEvents 1.0 structured-mode envelope
 def make_event(
     kind: str, pod: str, subject: str, data: dict[str, Any], *, time: str, version: str,
-) -> CloudEvent: ...                   # raises ValueError if kind not in EVENT_KINDS
+) -> CloudEvent: ...                   # raises ValueError if kind not in EVENT_KINDS;
+                                        # type "dev.docket.<kind>", source "urn:docket:pod:<pod>"
 
 def canonical_args_digest(tool: str, args: dict[str, Any]) -> str: ...  # 16 hex chars
 ```
 
-### Generated schemas (`docs/contracts/operator-v1/`)
+### Generated schemas (`docs/contracts/operator-v2/`)
 
 `scripts/gen_operator_schemas.py` renders `task.schema.json`, `question.schema.json`,
-`answer.schema.json`, `approval.schema.json`, `inbox.schema.json`, `brief.schema.json` and
-`event.schema.json` from `TaskView`, `Question`, `AnswerResult`, `ApprovalView`, `InboxView`,
-`TaskBrief` and `CloudEvent` respectively. `question.schema.json`'s `requestedSchema` property is
-rendered from `QuestionSchema`, not the generic object the Python field carries, so the published
-document constrains it to the MCP elicitation subset. Every document carries `$id`
-`https://docket.dev/schemas/operator-v1/<name>.schema.json` and JSON Schema 2020-12's
+`answer.schema.json`, `inbox.schema.json`, `brief.schema.json` and `event.schema.json` from
+`TaskView`, `Question`, `AnswerResult`, `InboxView`, `TaskBrief` and `CloudEvent` respectively.
+`inbox.schema.json` carries `EscalationView` as a `$def`; there is no approval document, because
+an approval is an escalation. `question.schema.json`'s `requestedSchema` property is rendered from
+`QuestionSchema`, not the generic object the Python field carries, so the published document
+constrains it to the MCP elicitation subset. Every document carries `$id`
+`https://docket.dev/schemas/operator-v2/<name>.schema.json` and JSON Schema 2020-12's
 `$schema`. `--check` exits 1 when any file on disk is stale; there is no package copy (contrast
 `config-v1`, which ships one inside the wheel).
 
 ### Contract 1.1 (`docs/contracts/operator-v1.1/`)
 
-An additive extension in `docket.core.operator_contract`; v1 models and schemas are unchanged.
+An additive extension in the operator contract module; the `Question` and `AnswerResult` models
+are unchanged. The `consult` tool produces `QuestionV11`, and an escalation of kind `consult` or
+`input` is read as one through `Escalation.as_question()`.
 
 - `QuestionKind` = `approval | clarification | decision`.
 - `Option{id, label, description, risks: list[str], estimatedTokens: int | None}` and
@@ -640,67 +953,106 @@ An additive extension in `docket.core.operator_contract`; v1 models and schemas 
 - `validate_answer_v11(question, answer)`: when `action` is `accept` and the question has options,
   `optionId` is required and MUST name an option; `decline`/`cancel` need none. It then applies
   `validate_answer` to `content`.
+- `validate_answer_v11` is part of the module's API and its tests; `resolve` does its own option
+  and content checks and does not call it.
 - `scripts/gen_operator_schemas.py` also renders `question.schema.json` and `answer.schema.json`
   (with `Option` and `Recommendation` as `$defs`) there, `$id`
   `https://docket.dev/schemas/operator-v1.1/<name>.schema.json`; `--check` covers both directories.
-  No producer or consumer of these models exists yet.
 
-### Consult (P36-7)
+### Consult
 
-The `consult` built-in (`core/consult.py`, registered in `core/tools.py`, kind `read`, so
-`BUILTIN_TOOL_KINDS` keeps it for read-only roles such as the Reviewer) lets a model put a
-clarification or decision to its operator.
+The `consult` built-in tool (kind `read`, so it stays available to read-only roles such as the
+Reviewer) lets a model put a clarification or decision to its operator.
 
 1. **Arguments.** `kind` (`clarification` or `decision`), `message`, `options` (at least two,
    each `id`, `label`, `description`, optional `risks` and `estimatedTokens`) and
    `recommendation` (`optionId`, `rationale`, optional `evidenceRefs`). The call builds a
-   `QuestionV11` (minted `q-` id, `createdAt`, `taskId` = the session key, `pod` = the turn's
-   project, `step` = the role). A missing recommendation, fewer than two options, an unknown kind
-   or a recommendation naming no option is an ordinary error tool result naming the problem, never
-   an exception and never a question event.
+   `QuestionV11` (minted `q-` id, `createdAt`, `taskId` = the dispatch task id, else the session
+   key, `pod` = the turn's project, `step` = the role). The tool's JSON schema lists
+   `recommendation` as required, so the chokepoint refuses a call without one as an `invalid_call`
+   (`missing required argument(s): recommendation`) before the handler runs. Fewer than two
+   options, an unknown kind or a recommendation naming no option is an ordinary error tool
+   result (`invalid consultation: <problem>`). Neither is an exception, and neither opens an escalation.
 2. **Budget.** The pod setting `maxConsultationsPerTask` (integer `>= 0`, default 3; 0 disables)
-   reaches the turn as `ToolContext.max_consultations`: the driver pops the internal
-   `DOCKET_MAX_CONSULTATIONS` env key, else reads the agent's pod setting. Counting is per
-   `ToolContext`, i.e. per turn. In pod dispatch
-   the count is task-wide (item 5). A call past the cap is an error result "consultation budget exhausted; decide yourself" with no
-   `question_asked` event; an invalid call does not spend budget.
-3. **Wait (`approvalMode` `wait`, outside pod dispatch).** Nobody can answer a turn that is
-   not a dispatch hop, so the call returns "no answer; decide yourself" at once, without an
-   event.
-4. **Refuse.** The call traces `question_asked` and ends the turn with the
-   `approval_unavailable` stop an unanswerable approval uses. `park` outside pod dispatch (no `consult_park`) is
-   treated as `refuse`; under pod dispatch `approvalMode: refuse` also keeps this behaviour.
-5. **Park and re-entry (pod dispatch, P36-8).** A turn run for a dispatch hop (the driver is
-   given the task id) sets `ToolContext.consult_park` unless its approval mode is `refuse`
-   (`wait` included: a pod hop has nobody waiting in-turn). A consult from any role then traces `question_asked`, ends the hop
-   with the `approval_parked` stop and the hop is persisted `parked`. The stop's token is
-   `consult:<question id>`. `consult.park_token` persists the `QuestionV11` through
-   `edges/store.py` (`config.CONSULT_PARKED_DIR/<id>.json`, 0600) and `consult.parked_question`
-   takes it once (read, then removed); there is no in-process registry, so a restart or another
-   process still parks correctly, and the token never carries question text, so no stop error,
-   hop record or trace field holds it past redaction. A `consult:` token whose question
-   cannot be read fails the task with `consult_question_missing`; it never waits as an
-   approval. A question's `taskId` is `ToolContext.task_id` (the dispatch task id), falling back to the session key only when empty. The task becomes `waiting_input` with `question` set to the consult's `QuestionV11`
-   (`taskId` = the real task id, `step` = the hop's step id), so the inbox lists it under
-   `needsYou` and `docket task answer`, HTTP and MCP answers reach it through
-   `answer_task` unchanged; `optionId` travels in the answer `content`. `answer_task` validates a
-   v1.1 question with `validate_answer_v11` (accept needs a valid `optionId`; a refused answer
-   leaves the task `waiting_input`), records `answers[]`, and reopens the task `pending` with a
-   `consultAnswer` for the same step; the parked hop replays at its own index and its next
-   message ends with "Operator answered your consultation <id>: option <id> (<label>)" or
-   "... declined. Decide yourself." A decline records one `declined_answer` correction.
-   `maxConsultationsPerTask` counts task-wide: each parked consult increments the task's
-   `consultations`, and once it is non-zero dispatch passes `DOCKET_MAX_CONSULTATIONS` = the
-   setting minus that count as the hop's cap (a fourth consult after
-   three parked ones returns the budget-exhausted error). Intake `input` steps are unchanged.
+   reaches the turn as `ToolContext.max_consultations`: the driver takes the internal
+   `DOCKET_MAX_CONSULTATIONS` key from the hop's environment, else reads the agent's pod setting.
+   Counting is per turn; in pod dispatch the count is task-wide (item 5). A call past the cap is
+   the error result `consultation budget exhausted; decide yourself` and opens no escalation; an
+   invalid call does not spend budget.
+3. **Wait.** Outside pod dispatch nobody can answer a turn that is not a dispatch hop, so the
+   call returns `no answer; decide yourself` at once, without an event. In pod dispatch under
+   `approvalMode` `wait` (a `docket run` on a TTY, or a pod that set it) the call opens its
+   `consult` escalation with an approval record beside it (named by `approval_of`, a context of
+   `kind: "consult"` with the option ids and labels) and blocks on that record the way a gated
+   call does (`governance/gate.py`, the `approval_timeout` and the cancellation check included).
+   A person who resolves the escalation (the progress prompt, `docket task answer`, `POST
+   /escalations/<id>`, MCP `resolve`, Telegram) wakes the turn: the tool result is `Operator
+   answered your consultation <esc-id>: option <id> (<label>)` (plus any note) or `... declined.
+   Decide yourself.`, the task never leaves `running` and nothing is parked. A timeout or a
+   cancellation returns `no answer; decide yourself`. The record's `onExpiry` is `deny`.
+4. **Refuse.** The call ends the turn with the `approval_unavailable` stop an unanswerable
+   approval uses, and opens no escalation. `park` outside pod dispatch is treated as `refuse`;
+   under pod dispatch `approvalMode: refuse` also keeps this behaviour.
+5. **Park and re-entry (pod dispatch).** A turn run for a dispatch hop (the driver is given the
+   task id) parks consultations unless its approval mode is `refuse` or `wait` (item 3). A consult
+   from any role then ends the hop with the `approval_parked` stop, and the hop is persisted
+   `parked`. The stop's token is
+   `consult:<question id>`. `park_token` persists the `QuestionV11` (`consult-parked/<id>.json`
+   under `DOCKET_HOME`, mode 0600) and `parked_question` takes it once (read, then removed);
+   there is no in-process registry, so a restart or another process still parks correctly, and
+   the token never carries question text, so no stop error, hop record or trace field holds it
+   past redaction. A `consult:` token whose question cannot be read fails the task with
+   `consult_question_missing`; it never waits as an approval. The task becomes `waiting_input` and
+   lists the `consult` escalation opened for the consult's `QuestionV11` (`taskId` = the task id,
+   `step` = the hop's step id; the escalation id is the id the operator answers), so the inbox
+   lists it under `needsYou` and `docket task answer`, HTTP, MCP and Telegram answers reach it
+   through `resolve`. The answer is validated by `resolve` (accept needs an option id the
+   record offers; a refused answer leaves the task `waiting_input` and the record `pending`) and
+   becomes the record's `resolution`, and the task is reopened `pending`. No copy is kept on the
+   task: the parked hop replays at its own index and its next message ends with `Operator
+   answered your consultation <esc-id>: option <id> (<label>)` (plus any note) or `... declined.
+   Decide yourself.`, read from the resolved record by `consult_note` until a hop of that step has
+   been persisted (area 10 item 3a). A decline records one `declined_answer` correction. Every `consult` escalation listed on the task increments the
+   task's `consultations` as it is listed -- one parked, one a person answers in the turn under
+   `wait`, and one the pod decides alone (item 7) alike -- and an `input` step does not; once it is
+   non-zero dispatch passes `DOCKET_MAX_CONSULTATIONS` = the setting minus that count (never below
+   0) as the hop's cap, so a fourth consult after three on the task, whoever answered them,
+   returns the budget-exhausted error. Intake `input` steps are unchanged.
+6. **The description tells the truth.** The `consult` description the model reads **MUST** say
+   that asking ends the turn (in pod dispatch the task waits for a person and the answer arrives
+   in the role's next message; outside it the call returns `no answer; decide yourself` at once),
+   that the model should decide and state its assumption instead of asking when the repository
+   lets it recommend one option, that at least two options and a marked recommendation are
+   required, and how many consultations remain on the task. Each hop renders that number from
+   the hop's own cap (item 5), so it never exceeds what the handler will accept. The sentence
+   about the effect is derived from what the handler will do, never fixed: it is the parking
+   sentence above when the hop parks, the immediate `no answer; decide yourself` sentence when it
+   cannot park, when the pod decides (item 7), that asking returns at once with the model's own
+   recommendation applied and that it should prefer deciding in its reply without the tool, and,
+   when the hop waits for the person at the terminal (item 3), that the call returns their answer
+   in this turn or `no answer; decide yourself` if none comes. Deciding wins over waiting.
+7. **Decide (`consultMode`).** The pod setting `consultMode` (`park`, the default, or `decide`;
+   `docket pod set consultMode decide`) reaches the turn as `ToolContext.consult_mode`, read by the
+   driver from the agent's pod settings (an unreadable store is `park`). In pod dispatch (item 5)
+   with `decide`, a valid consult whose budget allows it does not park: it stores a `decided`
+   escalation (`policy` `recommendation`) and writes `escalation_decided` with the
+   recommendation's option, audits `consult.decided` (`project`, `task`, `role`, `escalation`,
+   `optionId`; never the message or the options), and returns the ordinary tool result `no operator on duty; your recommendation stands:
+   option <id> (<label>). Continue.`, so the turn continues. The call spends budget like any
+   consult and the task never becomes `waiting_input`, so the inbox lists nothing for it. The
+   recommendation is always present (item 1); a call that fails validation is still the item 1
+   error. `decide` changes nothing outside pod dispatch (items 3 and 4); inside it, it applies
+   whatever the approval mode. `consultMode` is the alias of the `consult` row of the autonomy
+   table (Escalations item 12): an unset `consultMode` takes the row at the task's level (`decide`
+   at L4 and L5, `park` at L3) and a set one wins. The `lights-out` profile requires that a
+   consultation at the pod's default level not wait for a person (security-gates.spec.md
+   "Profiles").
 
 ## Examples
 
 ### The A2A mapping
 
 ```python
-from docket.core.operator_contract import a2a_state
-
 a2a_state("waiting_approval")                       # "INPUT_REQUIRED"
 a2a_state("blocked", blocked_reason="resources")     # "AUTH_REQUIRED"
 a2a_state("blocked", blocked_reason="budget")        # "INPUT_REQUIRED"
@@ -711,8 +1063,6 @@ a2a_state("failed")                                  # "FAILED"
 ### A question and a validated answer
 
 ```python
-from docket.core.operator_contract import AnswerResult, Question, validate_answer
-
 q = Question(
     id="q-0123456789ab", task_id="t-1", pod="alpha", step="ask",
     message="Which environment?",
@@ -731,8 +1081,6 @@ validate_answer(q, AnswerResult(action="decline"))                             #
 ### An event's stable id
 
 ```python
-from docket.core.operator_contract import make_event
-
 first = make_event("approval.requested", "alpha", "apr-1", {}, time="t0", version="v1")
 again = make_event("approval.requested", "alpha", "apr-1", {}, time="t1", version="v1")
 first.id == again.id  # True: redelivering the same transition never mints a new id
@@ -741,8 +1089,6 @@ first.id == again.id  # True: redelivering the same transition never mints a new
 ### Matching a pre-grant
 
 ```python
-from docket.core.operator_contract import canonical_args_digest
-
 a = canonical_args_digest("bash", {"command": "git push origin main"})
 b = canonical_args_digest("bash", {"command": "git push origin main"})
 a == b  # True regardless of argument dict key order
@@ -752,14 +1098,15 @@ a == b  # True regardless of argument dict key order
 
 ### Pre-conditions
 
-- Every model in this module uses `populate_by_name=True` with `alias=...` for its `camelCase`
-  wire fields, mirroring `core/conversations.py`, so a caller may construct one by either the
-  Python name or the wire alias.
-- Every model uses `extra="forbid"`: an unknown key is rejected, never silently carried.
+- Every model in the operator contract module with a camelCase wire field uses
+  `populate_by_name=True` with `alias=...`, so a caller may construct it by either the Python
+  name or the wire alias.
+- Every model in that module uses `extra="forbid"`: an unknown key is rejected, never silently
+  carried.
 
 ### Post-conditions
 
-- `a2a_state` MUST return a value from `A2A_STATES` for every status/reason/kind combination
+- `a2a_state` MUST return an `A2AState` for every status/reason/kind combination
   requirement area 1's table lists, and MUST raise for every other status.
 - `validate_requested_schema` MUST return its input unchanged on success and MUST raise
   `ValueError` naming the offending key on failure; it MUST NOT mutate its argument.
@@ -774,18 +1121,19 @@ a == b  # True regardless of argument dict key order
 ### Invariants
 
 - `EVENT_KINDS` MUST remain the only place a `dev.docket.<noun>.<verb>` event kind is
-  enumerated; a future card adding a kind edits this module, never redeclares one elsewhere.
+  enumerated; adding a kind edits `EVENT_KINDS`, and the channel `on:` vocabulary extends it
+  with `needs_you` rather than redeclaring it.
 - No value this module rejects (an unknown A2A status, a malformed `requestedSchema`, an
   out-of-vocabulary event kind) MUST ever reach a schema document, an HTTP response or a channel
-  delivery — every producer of those surfaces MUST construct its value through this module's
-  functions, never by hand-building an equivalent dict.
+  delivery — every producer of an operator-v2 value on those surfaces MUST construct it through
+  this module's models and functions, never by hand-building an equivalent dict.
 
 ## Corrections
 
 Deny reasons, REQUEST-CHANGES review texts, and declined answers are appended to a per-pod
-append-only corrections ledger (`~/.docket/corrections/<project>.jsonl`) as a source of truth
-for operator decisions and rejections. The ledger is read back through `docket task show <ref>`, which lists
-the corrections recorded for that task (`corrections` under `--json`).
+append-only corrections ledger (`corrections/<project>.jsonl` under `DOCKET_HOME`) as a source of
+truth for operator decisions and rejections. `docket task show <ref>` lists the corrections
+recorded for that task (`corrections` under `--json`).
 
 ### Schema
 
@@ -802,176 +1150,107 @@ Each JSONL line is a JSON object with these fields:
 
 ### Writers
 
-1. **deny_reason**: recorded when `approval_deny()` is called with a non-empty `reason`
-   parameter (source: the approval's `channel`); `taskId` is the id the gate stored in the
-   record's `context` (dispatch's pre-hop and pipeline-step gates), so `task show` lists it under
-   its task. A parked in-turn call's record names no task and its correction is keyed empty
+1. **deny_reason**: recorded when an approval is denied with a non-empty reason in a project
+   other than `operator` (source: the approval's channel); `taskId` is the task the approval
+   record names (`taskId`, else `context.taskId` — set by dispatch's pre-hop and pipeline-step
+   gates and by a parked in-turn call that serves a task), so `task show` lists it under its
+   task. An approval that names no task is keyed empty.
 2. **request_changes**: recorded when a Reviewer hop's verdict is `REQUEST-CHANGES` and a rework
    is triggered (source: `"reviewer"`, text: the hop output)
-3. **declined_answer**: recorded when an answer to a parked input step has `action == "decline"`
-   (source: `"answer"`, text: always `"(declined)"`)
+3. **declined_answer**: recorded when an answer to a parked question has `action == "decline"`
+   (source: `"answer"`, role `"operator"`, text: always `"(declined)"`)
 
 ### Guarantees
 
 - Write failures (OSError) are caught and logged, never fail the caller.
 - File mode is 0600 on creation.
 - Text is redacted with the same function as trace payloads.
-- Read back in append order, optionally from a cursor: `corrections.read(project, since=)`
+- Read back in append order, optionally from a cursor: the ledger's `read(project, since=)`
   keeps records with `ts > since` (string compare on the ledger's UTC `isoformat()` form,
   `+00:00`; the caller normalises `since` into that form), and
   `GET /pods/<p>/corrections?since=` serves it (`operator-api.spec.md`).
 
-## Changelog
+## Implementation
 
-### Version 1.11.0 (2026-10-19)
-
-- New section "A task that edited its own check" (P45-3, ADR 0029 point 3): the `check_changed`
-  park is a `needsYou` item under every profile; its grant ends the task `done`, its denial
-  `failed`/`check_changed`.
-
-### Version 1.10.0 (2026-10-19)
-
-- Area 5 item 7: an inbox item's `question` carries the v1.1 fields (`kind`, `options`,
-  `recommendation`) when the stored question has them, on `GET /inbox`, the MCP `inbox` tool and
-  `docket inbox --json` alike; `TaskView.question` is typed `QuestionV11 | Question` and
-  `inbox.schema.json` describes both. Text output and notifications are unchanged.
-
-### Version 1.9.1 (2026-10-18)
-
-- Area 7: a parked consultation expires after the pod's `inputExpiryHours` (it parked with
-  `expiresAt: null` and waited forever); a step's `expiresHours` still wins.
-
-### Version 1.9.0 (2026-10-18)
-
-- Area 5 item 11 (P44-8): `docket inbox` lists a pod's pending memory entries under `Needs you`
-  with the approve and refuse commands; the operator-v1 contract and the HTTP, MCP and Telegram
-  surfaces are unchanged.
-
-### Version 1.8.1 (2026-10-17)
-
-- Consult item 3: with the harness stdin reader gone, a `wait`-mode consult outside pod dispatch
-  always returns "no answer; decide yourself" at once; `core.consult.submit`, `answer_reader` and
-  the in-process waiter are deleted. Items 2, 4 and 5 lose their harness clauses.
-
-### Version 1.8.0 (2026-10-17)
-
-- Wave 110 (P43-9): the corrections ledger has a `since` cursor (Guarantees), read by
-  `GET /pods/<p>/corrections`; the ledger's writers and schema are unchanged.
-
-### Version 1.7.0 (2026-10-13)
-
-- `docket inbox` indents every continuation line of a multi-line question, action and label
-  (requirement 5.6).
-
-### Version 1.6.0 (2026-10-13)
-
-- P42-4: the doctor and status profile lines ("Profile lines"), present only under `lights-out`.
-
-### Version 1.5.3 (2026-10-08)
-
-- The `task add` summary pluralises its counts, and a policy interruption is described in words
-  (its predicate kinds) instead of its raw regex. Requirement 4 says what now holds.
-
-### Version 1.5.2 (2026-10-08)
-
-- Found by the Phase 39 live run: `task approve <apr-token>` printed no run hint (the record's
-  `project` now supplies the pod), and a deny's reason never reached its task (`approval_deny`
-  keyed the `deny_reason` correction by a top-level `taskId` the record stores under `context`,
-  so `task show` never matched it; the task's own `reason` was the fixed `approval denied`).
-  Requirement 2a and the corrections writer say what now holds.
-
-### Version 1.5.1 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 1.5.0 (2026-10-08)
-
-- Phase 39 (P39-9): `docket task answer <ref>` absorbs `docket chat` and `docket pod <p> answer`; the pre-grant is `docket task approve <ref> --for "<command>"`; `docket task approve|deny <ref>` resolve the task's own pending approval and end with the run hint. The standalone `approve`, `deny`, `chat` and `pod <p> pregrant` commands, and `chat`'s `Pre-grant:` line under a brief's risky actions, are removed.
-
-### Version 1.4.0 (2026-10-07)
-
-- Phase 39 (P39-13): the channel and flush commands live under `docket setup notify` (`channels`
-  and `notify` are removed; `content` is `privacy`): `docket setup notify flush [--dry-run]` is the
-  manual flush, and `enable telegram`/`enable --test` join `test` as the only senders.
-- `inbox` prints the `docket task approve|deny|answer <id>` line on every item, never truncates a held command, exits 2 on an unknown flag and lists a granted pending task as "approved, ready" (`state: "approved_ready"`); `--json` items carry `state` and `command`.
-
-### Version 1.3.1 (2026-10-07)
-
-- Bare `docket notify` is usage (exit 2); only `flush` delivers.
-
-### Version 1.3.0 (2026-10-06)
-
-- Notifications item 17: `console` is a silent dialect (`SILENT_DIALECTS`), `Catalog.delivering()`
-  names the enabled channels that reach an operator away from the terminal, and
-  `unreached_warning` owns the one text `doctor`, `serve --dispatch`, `init` and the
-  post-dispatch flush print when that list is empty. Measured need: a fresh home runs
-  `serve --dispatch`, a task parks, and nothing anywhere said that only `console` was on.
-- Notifications item 16: the CLI dispatch flush may print that one line too.
-- Answer surfaces item 2: the CLI can pick a consult option (`pod answer --option <id>`,
-  `chat`'s option prompt with the recommended default) and `docket inbox` shows the question.
-  Found live: a Lead consult with two options could be answered from Telegram and HTTP but
-  not from the CLI, and the inbox showed only the task's description.
-- Notifications item 4: the built-in `desktop` document subscribes to `task.failed` like
-  `ntfy`; the default `on:` of every built-in is now stated.
-- Inbox item 3: a parked call's approval record carries `context.taskId`, and `build_inbox`
-  also folds an approval whose token a `needsYou` task holds. Found by the first real
-  park -> flush run: the same approval reached `desktop` and `ntfy` twice, once as the task
-  and once standalone.
-
-### Version 1.2.0 (2026-10-05)
-
-Waves 89-90 close (W89-10): the entries below were Unreleased and are now this version.
-
-- `approve_task` on a parked pod approval grants the same call for the rest of the task, through `taskGrants` (requirement 5a).
-- A parked consult's question is persisted under `CONSULT_PARKED_DIR` and named by the `consult:<id>` token (`consult.park_token`/`parked_question`); the in-process `_PARKED` registry and `take_parked` are deleted, and a consult token with no question fails the task `consult_question_missing` instead of waiting as an approval (Consult 5).
-- `core.inbox.task_view` populates `question` and `brief`; before, no inbox view or notification ever carried them (Notifications 11).
-- Notifications item 11: `conversation`-level events carry a consult question's `options` and
-  `recommendation.optionId`, and `render_text` lists them with a `/answer` reply hint.
-
-### Version 1.1.0 (2026-10-04)
-
-Phase 36 close (P36-10): the entries below were Unreleased and are now this version.
-
-- **P36-8.** Consult: park and re-entry in pod dispatch, task-wide `maxConsultationsPerTask` count
-  (requirement section "Consult", items 4-5).
-- **P36-7.** Consult: the `consult` built-in, `maxConsultationsPerTask`, the `question_asked` trace event
-  and its routing (requirement section "Consult").
-- **P36-5.** Corrections ledger: deny reasons, REQUEST-CHANGES texts and declined answers are appended
-  to a per-pod JSONL ledger under the D-12 exemption, accessible via `docket pod <p>
-  corrections [--json]`. Text is redacted and tail-bounded; write failures are logged, never
-  fail the caller.
-- **P36-1.** Contract 1.1: `QuestionV11`, `AnswerResultV11`, `Option`, `Recommendation`,
-  `validate_answer_v11` and the generated `operator-v1.1` schemas.
-
-### Version 1.0.0 (2026-09-29)
-
-- Every requirement area's stub replaced with its owning card's shipped behaviour (Waves
-  65-69): park/pre-grant (area 2), the Lead's intake (area 3), pre-brief task assignment
-  (area 4, corrected below), the derived inbox (area 5), notifications and every v1 channel
-  dialect including `telegram` (areas 6, 6.1), answers (area 7), the Telegram amendment
-  (area 8), interruption forecasting and pre-grants from intake (area 9), and every answer
-  surface (area 10) — closing Phase 34 (D-50, ADR 0016).
-- Corrected areas 4 and 10 (items 3-4): a post-close integration fix
-  (`Fix: delegate --brief and POST /tasks brief now actually enqueue`) wired
-  `core.dispatch.enqueue_task`'s `brief=` parameter through both surfaces in the same wave
-  they were built, so the refusal these areas originally documented never actually shipped to
-  an operator; the requirement text now describes the shipped, enqueuing behaviour.
-- **Two integration-pass regressions found by running the live product, not by reading it,
-  and fixed as part of this close**, unrelated to any single requirement area above but worth
-  recording here since both surfaced through this spec's own machinery:
-  - `scripts/smoke_workflow.py`'s own `--scenario operator-loop` measured `eventsDelivered` by
-    reading a `deliveries` key `core.notify.flush`'s health-file shape never had (the real
-    shape is one entry per channel name with its own `delivered` counter) — the counter had
-    silently read `0` since it was written.
-  - The same scenario's `--live-model` path registered the live provider *after* `docket
-    init`, the reverse of the working order the basic/memory scenarios use — `init`'s own
-    readiness check resolved the packaged Anthropic default and failed on a missing
-    `ANTHROPIC_API_KEY` before the live provider was ever registered, so `--live-model` had
-    never actually completed `init` for this scenario.
-
-### Version 0.1.0 (2026-09-28)
-
-- Initial specification: the `operator-v1` contract module (`core/operator_contract.py`), its
-  generated JSON Schema documents, and the nine requirement areas the rest of the operator loop
-  fills in. Only requirement area 1 (task status and its A2A mapping) is implemented; the other
-  eight are stubbed pending their owning cards.
+- `src/docket/kernel/operator_contract.py`: `A2AState`, `EVENT_KINDS`, `a2a_state`, `TaskBrief`,
+  `validate_requested_schema`, `QuestionSchema`, `new_question_id`, `Question`, `AnswerResult`,
+  `QuestionKind`, `Option`, `Recommendation`, `QuestionV11`, `AnswerResultV11`,
+  `validate_answer`, `validate_answer_v11`, `validate_content`, `TaskView`, `InboxView`,
+  `CloudEvent`, `make_event`, `canonical_args_digest`, `EscalationKind`, `Resolution`,
+  `Escalation`, `EscalationAffordances`, `EscalationView`, `EscalationPage`, `new_escalation_id`,
+  `is_escalation_id`
+- `src/docket/kernel/escalation_events.py`: the five event names, `payload`, `emit`
+- `src/docket/governance/escalation_expiry.py`: `expire` (settle the pending record and write
+  `escalation_expired`)
+- `src/docket/teams/autonomy.py`: `policy_for`, `effective_level`, `check_level`, `consult_mode_for`,
+  `approval_policy_for`; `src/docket/tasks/application/escalation_sweep.py`: `sweep_escalations`
+- `src/docket/tasks/application/escalations.py`: `open_for_approval`, `open_for_question`,
+  `attach`, `approval_opened`, `decided_consult`, `resolve` and the four `Escalation*` errors
+  (area 10, `src/docket/tasks/domain/resolution.py`); the pause sites are `governance/gate.py`
+  (through the governance port), `tasks/application/record.py`, `hops/application/steps.py` and
+  `hops/gates/pre_hop.py`
+- `src/docket/tasks/application/answers.py`: `answers_of`, `consult_note`, `consult_note_delivered`
+  (what a person told a task, read from the escalations it lists)
+- `src/docket/operator/inbox.py`: `build_inbox`, `task_view`, `pending_memory`, `MemoryItem`,
+  `escalation_views`, `escalation_page`, `escalation_view`, `pause_is_live`
+- `src/docket/operator/render.py`: `render_escalation`, `RenderedEscalation`, `RenderedOption`,
+  `clean_label`
+- `src/docket/operator/notify.py`: `diff_events`, `render_data`, `render_text`, `flush`,
+  `FlushReport`, `NotifyEvent`, `build_test_event`, `read_state`, `resolve_secret`
+- `src/docket/operator/channel.py`: `ChannelSpec`, `DIALECT_MAX`, `SILENT_DIALECTS`, `ON_KINDS`,
+  `Catalog`, `load_catalog`, `load_channel_document`, `enable_channel`, `disable_channel`,
+  `set_content`, `is_widening`, `export_channel`, `unreached_warning`
+- `src/docket/operator/adapters/__init__.py`: `sink_for`
+- `src/docket/operator/adapters/webhook.py`: `deliver`, `DeliveryResult`
+- `src/docket/operator/adapters/{console,command,ntfy,desktop,email,telegram}.py`: each
+  dialect's `deliver`
+- `src/docket/templates/channels/01-console.yaml` … `07-telegram.yaml`: the seven built-in
+  channel documents
+- `src/docket/hops/application/resolutions.py`: `apply_resolutions`, the claim-time application of
+  a resolved `input` escalation or a granted approval at a pipeline position
+- `src/docket/hops/application/interruptions.py`: `forecast`, `Interruption`, `ASK_KINDS`,
+  `NOTHING_WILL_ASK`, `record_pregrant`, `InterruptionsError`
+- `src/docket/tasks/application/consult.py`: the `consult` handler, `park_token`, `parked_question`,
+  `ConsultParked`, `ConsultUnavailable`, `DEFAULT_MAX_CONSULTATIONS`
+- `src/docket/tasks/application/corrections.py`: `record`, `read`, `utc_cursor`
+- `src/docket/agent/tools/registry.py`: `ToolContext` (`approval_mode`, `max_consultations`,
+  `consult_park`, `consult_mode`, `pregrants`); `src/docket/governance/gate.py`: the park path (`_park`,
+  `context.taskId`), the pre-grant matcher, the `approve_task` in-turn pre-grant
+- `src/docket/teams/settings.py`: `pod_approval_mode`
+- `src/docket/hops/application/steps.py`: `effective_pipeline`, `_run_input_step`
+- `src/docket/tasks/application/repository.py`: `TaskRepository.list`, read by the operator
+  through the `TaskReader` port (bound in `src/docket/bootstrap.py`)
+- `src/docket/tasks/application/actions.py`: `resolve_waiting_approval`, `check_task_grant`,
+  `approved_ready`, `pregrants_for`, `mint_task_grant_pregrants`, `TASK_GRANT_CAP`
+- `src/docket/hops/application/compose.py`: pre-grant and task-grant minting in `_compose_hop`
+- `src/docket/tasks/application/record.py`: consult park conversion
+- `src/docket/hops/gates/pre_hop.py`: `_park_if_check_changed`
+- `src/docket/governance/approval.py`: `approval_link`, `approval_of`, `approval_set_option`,
+  `expire_approval`, `prune_unconsumed_pregrants`, the `deny_reason` correction;
+  `src/docket/governance/approval_pregrant.py`: `create_pregrant`, `consume_pregrant`,
+  `granted_calls`, `pending_pregrants`, `task_grants`, `revoke_task_grants`
+- `src/docket/hops/gates/profile.py`: `project_violations`, `gather_facts`, `lights_out_violations`,
+  `lights_out_report`, `as_json`
+- `src/docket/interfaces/telegram/bot.py`: `/status` rendering from `build_inbox` and `render_escalation`
+- `src/docket/interfaces/http/routes/escalations.py`: `GET /escalations` and `POST /escalations/<id>`; `src/docket/interfaces/cli/commands/inbox.py`, `task_render.py` and `src/docket/interfaces/cli/render/progress.py`: the other surfaces of item 10
+- `src/docket/kernel/home.py`: the `Home` members `inbox_cursor_file`, `channels_file`,
+  `notify_state_file`, `channels_health_file`, `consult_parked_dir`, `corrections_dir`
+- `src/docket/kernel/templates.py`: `CHANNEL_TEMPLATES_DIR`
+- `src/docket/models/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
+- `src/docket/interfaces/cli/commands/inbox.py`: `docket inbox`
+- `src/docket/interfaces/cli/commands/setup_notify.py`: `docket setup notify`, `send_test`
+- `src/docket/interfaces/cli/commands/task.py`: `docket task add|show|answer|pregrant|retry|cancel`
+- `src/docket/interfaces/cli/commands/setup.py`, `src/docket/interfaces/cli/commands/setup_check.py`: the `notifications` piece, the
+  desktop/Telegram offers, the health report's `Notifications:` and `Profile:` blocks
+- `src/docket/interfaces/cli/commands/agents.py`: `docket init`'s warning and desktop offer
+- `src/docket/interfaces/cli/commands/run.py`: the post-run flush and the TTY approval default
+- `src/docket/interfaces/cli/commands/status.py`: the `Profile` row
+- `src/docket/interfaces/cli/commands/mcp.py`: MCP `inbox`, `escalations`, `resolve`, `task_pregrant`
+- `src/docket/interfaces/http/routes/inbox.py`: `GET /inbox`
+- `src/docket/interfaces/http/routes/metrics.py`: `GET /metrics`
+- `src/docket/interfaces/http/routes/task_control.py`: `POST /tasks/<id>/pregrants`,
+  `POST /tasks/<pod>/<id>/cancel|retry`
+- `src/docket/interfaces/http/routes/task_create.py`: `POST /tasks/<project>` `brief`
+- `src/docket/interfaces/http/server.py`: the periodic sweep
+  (`sweep_escalations`, `flush`), the startup warning
+- `scripts/gen_operator_schemas.py`, `scripts/gen_config_schemas.py`: the generated schemas

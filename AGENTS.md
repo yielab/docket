@@ -32,13 +32,19 @@ task; load only the referenced section or spec.
 1. Identify the measured need and the exact live call path.
 2. Read only the owning spec and neighboring tests.
 3. Update the spec, add a failing behavioral test, then implement the smallest coherent change.
-4. Preserve `cli -> core -> edges`, `core/tools.py::dispatch_tool` as the sole tool chokepoint,
-   and `edges/store.py` as the sole writer of docket-owned JSON.
-5. Nothing is kept for the past (ROADMAP D-57, ADR 0022): docket has no users. Delete a removed
-   or renamed command, flag, alias, route, persisted shape or behaviour in the same change,
-   with its tests, spec text and docs. No alias, notice, migration, hidden command or no-op
-   flag; a retired name is an ordinary unknown command. `CHANGELOG.md` is the only record.
-6. Run focused checks first; run the full required gates before handoff. Never regenerate a golden
+4. Preserve the import contracts of ADR 0030 (D-66), `dispatch_tool` as the sole tool chokepoint
+   and the store module as the sole writer of docket-owned JSON. The contracts, as the ADR's
+   table states them: `kernel` imports nothing in `docket`; `<context>/domain` imports `kernel`
+   and its own `domain`; `<context>/application` imports `kernel`, its own `domain` and `ports`,
+   and any module of a context below it in the layer order (`platform` < `governance` < `agent` <
+   `models` < `observability` < `pipeline` < `teams` < `sandbox` < `operator` < `tasks` < `hops`;
+   an import of a context above is the violation the baseline records); `<context>/adapters`, `platform` and `sandbox` import `kernel`,
+   `platform`'s `__init__` and the ports and domain types they implement; `agent` imports `kernel`, `platform`'s `__init__` and its own
+   packages (the turn engine; the ports it needs are in `agent/ports.py`); `interfaces` imports `kernel`, `bootstrap` and any context; `bootstrap`
+   imports everything. No function-local `docket.*` import; no module over 700 lines. The
+   contracts are enforced by `tests/architecture/`; `cli/`, `core/` and `edges/` no longer exist.
+   `dispatch_tool` is in `agent/tools/registry.py` and the store in `platform/store.py`.
+5. Run focused checks first; run the full required gates before handoff. Never regenerate a golden
    to hide an unintended change or edit a counting script to make a claim pass.
 
 Prefer compact evidence in handoffs: decision, files changed, tests run, unresolved risk, next

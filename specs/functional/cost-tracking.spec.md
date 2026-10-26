@@ -1,23 +1,22 @@
 # Cost Tracking Specification
 
-**Version**: 1.10.1
-**Status**: Implemented (reporting, caps, and auto-pause are all real; enforcement remains
-scoped to the pod-dispatch lane — see "Enforcement, warnings, and pause"). Cost reporting resolves
-Docket's own `DocketDriver` and session store. See requirements 2-4 below.
-**Last Updated**: 2026-10-18
+**Version**: 1.12.0
+**Status**: Implemented. Token usage is measured; docket records no dollar spend, so every dollar
+figure it shows is a labelled estimate. Caps and auto-pause act only on pod dispatch.
+**Last Updated**: 2026-10-23
 
 ## Purpose
 
-This specification defines how docket reports token usage and dollar cost per agent, stores
-per-agent budget caps, and where those caps are (and are not) enforced today.
+This specification defines how docket reports token usage and a labelled dollar estimate per pod,
+stores a per-pod budget cap, and where that cap is (and is not) enforced.
 
 ## Scope
 
 This specification covers:
 
-- Reporting usage and cost (`docket status`)
-- Per-agent budget caps (`docket pod set budgetUsd`)
-- Budget/runaway warnings (`docket setup`) and the pause contract
+- Reporting usage and the estimate (`docket status`)
+- The per-pod budget cap (`docket pod set budgetUsd`)
+- Budget warnings (`docket setup`), the pre-hop gate and the pause contract
 
 This specification does NOT cover the role→model policy or pricing table (see
 model-profiles.spec.md), nor the pod-dispatch pre-hop budget gate's mechanics (see
@@ -28,103 +27,94 @@ pod-dispatch.spec.md).
 ### Cost reporting (docket status)
 
 1. `docket status` **MUST** report the pod's measured token usage and its labelled dollar
-   estimate, per pod, beside the pod's success/failure/aborted counts and latency (read from
-   trace `session_end` events through `core.trace.terminal_outcomes`); `status --all --json`
-   **MUST** carry every agent's recorded `costUsd` and the fleet `totalCostUsd`.
-2. Costs **MUST** be derived from `DocketDriver`'s session data
-   (`core.utils.aggregate_cost`/`cost_history`, delegating to
-   `edges.adapters.docket_runtime.default_driver()`), reading `core/session.py`'s own storage
-   under `$DOCKET_HOME/sessions`, the only live session shape.
-3. Dollar figures are the resolved driver's **recorded** spend, never docket's own pricing math
-   substituted for it: when the driver records no cost, `docket status` **MUST** show only the token
-   counts and an estimate marked `est.`, never a computed figure as if recorded.
-   `DocketDriver` **never** reports a cost (`capabilities().reports_cost_usd` is always `False`
-   — see `core/runtime_driver.py`'s `TurnResult.cost_usd` docstring), so this branch is the
-   production case; the bundled pricing table powers comparative estimates only (see
-   model-profiles.spec.md).
+   estimate beside the pod's success/failure/aborted counts and latency (read from trace
+   `session_end` events); `status --json` carries them as `usage.input`, `usage.output` and
+   `usage.estimateUsd`. `status --all --json` **MUST** also carry every agent's recorded `costUsd`
+   and the fleet `totalCostUsd`.
+2. Token and cost totals **MUST** be derived from `DocketDriver`'s usage report, which reads the
+   session store under `$DOCKET_HOME/sessions`, the only live session shape.
+3. A dollar figure labelled as recorded is the driver's **recorded** spend, never docket's own
+   pricing math substituted for it: when the driver records no cost, `docket status` **MUST** show
+   only the token counts and an estimate marked `est.`, never a computed figure as if recorded.
+   `DocketDriver` **never** reports a cost (`capabilities().reports_cost_usd` is always `False`,
+   its `cost_usd` is always `0.0`), so this branch is the production case; the catalog's model
+   prices power estimates only (see model-profiles.spec.md).
 4. The session-format parsing behind requirement 2 **MUST** live entirely inside `DocketDriver`
-   (`edges/adapters/docket_runtime.py`, docket-native `core/session.py` storage) and **MUST
-   NOT** appear anywhere under `core/`. `core/utils.py`'s `aggregate_cost`/`cost_history` are
-   pure translations of whatever `edges.adapters.docket_runtime.default_driver()` resolves —
-   `DocketDriver`, unconditionally — into the legacy `CostTotals`/`DayRecord` shapes
-   `cli/_status.py`, `cli/_doctor.py`, and `core/dispatch.py` already depend on; they no longer
-   open a session file themselves. A guard test
-   (`test_no_external_daemon_coupling.py::test_product_code_has_no_retired_daemon_reference`)
-   fails the build if external-runtime coupling regresses into `src/`.
+   and **MUST NOT** appear in the domain layer. The domain's `aggregate_cost` and
+   `cost_history` return whatever the default driver (`DocketDriver`, unconditionally) reports, as
+   the `UsageTotals` and `UsageDay` shapes the driver port defines; they open no session file
+   themselves. A guard test (`test_product_code_has_no_retired_daemon_reference`) fails the build if
+   external-runtime coupling returns to `src/`.
+5. Wherever `docket run` shows a pod's cap, it **MUST** show it beside the labelled estimate the
+   gate uses (`estimate so far ~$X.XX, no cost recorded`) and **MUST NOT** print a `spent` figure,
+   because recorded spend is always `0`.
 
 ### Budget caps
 
-1. `docket pod set budgetUsd <USD>` **MUST** store a `budgetUsd` cap in `.docket-meta.json`.
-2. A cap of `0` **MUST** mean "no cap" and **MUST** clear any existing cap.
-3. Setting a non-zero budget **MUST** clear a prior `paused` state (and, when the target is a
-   pod's Lead, unblocks that pod's budget-blocked tasks — see pod-dispatch.spec.md).
-4. The budget value **MUST** be a non-negative number.
-5. Budget fields (`budgetUsd`, `paused`, `pausedReason`) are Docket-local (decision D-9).
-   Enforcement therefore exists only where Docket itself is in the execution path.
-6. `docket run --resume` **MUST** clear `paused`/`pausedReason` on *id* and **MUST**
-   write a `profile.resume` audit-log entry. When *id* is a pod's Lead, it additionally
-   unblocks that pod's budget-blocked tasks (mirroring the `--budget` behavior above) — a
-   resume that left the tasks queued up behind the pause permanently `blocked` would not
-   actually resume anything.
+1. `docket pod set budgetUsd <USD>` **MUST** store a `budgetUsd` cap in the pod Lead's
+   `.docket-meta.json`.
+2. A cap of `0` **MUST** mean "no cap": a stored `0` reads back as unset. `docket pod unset
+   budgetUsd` clears the cap too.
+3. Setting a budget, `0` included, or unsetting it **MUST** clear a prior `paused` state and
+   unblock the pod's blocked tasks (see pod-dispatch.spec.md), so no task is refused at claim by
+   a pause the cap no longer justifies.
+4. The budget value **MUST** be a non-negative number; anything else exits `1` naming the setting.
+5. Budget fields (`budgetUsd`, `paused`, `pausedReason`) are docket-local (decision D-9).
+   Enforcement therefore exists only where docket itself is in the execution path.
+6. `docket run --resume` **MUST** clear `paused`/`pausedReason` on the pod's Lead and **MUST**
+   write a `run.resume` audit-log entry when the Lead was paused. It also unblocks that pod's
+   blocked tasks whether or not the Lead was paused, then reclaims stale claims: a resume
+   that left the tasks queued up behind the pause permanently `blocked` would not actually resume
+   anything.
 
-### Enforcement, warnings, and pause (ROADMAP Phase 14 R-5)
+### Enforcement, warnings, and pause
 
-1. **Implemented — cap enforcement.** The pod-dispatch lane checks the pod's spend against
-   the Lead's `budgetUsd` before each hop and blocks the task when the cap is reached
-   (pod-dispatch.spec.md).
-2. **Implemented — auto-pause.** The same check that blocks a task also marks the pod's Lead
-   `paused = true`, `pausedReason = "budget"` (`core/dispatch.py`'s `_pause_lead_for_budget`,
-   through `edges/store.py`, per D-9). Once paused,
-   dispatch refuses **every** further claim for that pod outright — before a task is even
-   flipped to `running`, not merely re-blocked hop by hop — and emits a `paused_refused` trace
-   event each time. This is a claim-time check (`core/dispatch.py`'s `_claim_next_task`), so a
-   paused pod costs nothing further to not dispatch: no claim write, no wasted agent turn.
-3. **Implemented — resume.** `docket run --resume` clears both fields and writes an
-   audit entry (see "Budget caps" above); a fresh dispatch attempt can claim again.
-4. **Implemented — labelled estimate fallback for gating.** Recorded pod spend legitimately
-   reads `0` always now: `DocketDriver` never reports a cost at all
-   (`capabilities().reports_cost_usd` is unconditionally `False` — see requirement 3 above and
-   `core/runtime_driver.py`'s `TurnResult.cost_usd` docstring), so this is the **only** case in
-   production. The budget gate falls
-   back to a token-count × pricing-table estimate (`core/utils.estimate_cost_usd`) so a real
-   cap can still trip. The estimate prices `input_tokens - cache_read - cache_write` at the input
-   rate, `cache_read` at the cache-read rate and `cache_write` at the cache-write rate, because an
-   endpoint's input count already contains its cache reads and writes; a cached token is never
-   charged at two rates. `DocketDriver.usage` sums each session's `cacheWriteTokens`. This estimate is used **only** for gating and warning displays — it is
-   always rendered clearly labelled (`core/dispatch.py`'s literal label string is `~$X.XX
-   (estimated — no cost recorded)`) and **MUST NOT** be mixed into, or
-   presented as, recorded spend; `docket status --all --json`'s recorded `costUsd` fields are
-   completely unaffected by this fallback (see "Cost reporting" above).
-5. **Implemented — budget/runaway warnings read the same gating figure as the dispatch gate.**
-   `docket setup`'s per-agent budget check (`cli/_setup_check.py::_check_budget`) 
-   **MUST** warn/flag against the same recorded-or-estimated gating figure requirement 4
-   describes (`core/utils.gating_cost`: recorded spend if nonzero, else the
-   `estimate_cost_usd` token-count × pricing-table fallback), clearly labelled with the same
-   `estimated — no cost recorded` marker requirement 4 uses whenever it is an estimate,
-   at each check's own decimal precision — an estimate **MUST NOT** be
-   presented as, or mixed into, recorded spend. Because recorded spend is always `0` under
-   `DocketDriver` (requirement 4), in production both checks fire from the estimate: the ≥80%
-   warning / ≥100% flag in `docket setup`. These remain display-only, independent of the pause writer. The turn-count
-   runaway check is unaffected (it never depended on cost); so is `docket setup`'s `--json` per-agent `budget`/`runaway`
-   results, which still report only recorded spend (see "Cost reporting" above) — a known,
-   unfixed instance of the same blind spot this requirement closes for the two human-facing
-   warnings above.
-6. **Implemented — a model the estimate cannot price is named, not counted as $0.** A model
-   with no catalog price and no `local` provider adds nothing to requirement 4's estimate, so a
-   cap cannot stop its spend. Docket warns and does not refuse (the operator's choice,
-   2026-10-18): before each hop of a pod with a cap, a hop whose model (the step's own `model`,
-   else the member's) is unpriced emits a `budget_warning` trace event with `action:
-   "unpriced_model"`, `status: "unenforced"` and a `reason` naming the cap and the model, and the
-   hop runs. `core.dispatch.unpriced_budget_models(project)` lists such models across the pod's
-   members and its pipeline's steps (empty without a cap); `docket pod show [--json]`, `GET
-   /pods/<p>` (`budgetUnpriced`) and `docket status [--json]` (a `Budget` row, `budgetUnpriced`
-   only when non-empty) show it. Known gap: the estimate still prices every token of a member at
-   the member's own model, so a step `model:` override is checked here but not priced.
-7. **Known scope limit (unchanged by R-5):** enforcement exists only where docket itself is in
-   the execution path — the pod-dispatch lane. A budget cap set on a non-pod agent, or spend
-   from a Telegram session / any driver use outside dispatch, is still entirely ungated
-   (per D-9/the "docket orchestrates hops" principle in ROADMAP §4.5) — there is no code path
-   observing those turns to pause anything.
+1. **Cap enforcement.** The pod-dispatch lane checks the pod's spend against the Lead's
+   `budgetUsd` before each hop and blocks the task when the cap is reached
+   (pod-dispatch.spec.md). A `budget_exceeded` trace event records `spent`, `cap`, `role` and
+   `estimated`.
+2. **Auto-pause.** The same check that blocks a task also marks the pod's Lead
+   `paused = true`, `pausedReason = "budget"` (through the store chokepoint, per D-9). Once
+   paused, dispatch refuses **every** further claim for that pod outright, before a task is
+   flipped to `running`, and emits a `paused_refused` trace event each time. A paused pod costs
+   nothing further to not dispatch: no claim write, no wasted agent turn.
+3. **Resume.** `docket run --resume` clears both fields and writes an audit entry (see "Budget
+   caps" above); a fresh dispatch attempt can claim again.
+4. **Labelled estimate fallback for gating.** Recorded pod spend always reads `0`
+   (requirement 3 above), so the budget gate falls back to a token-count × catalog-price
+   estimate so a real cap can still trip. The estimate prices `input_tokens - cache_read -
+   cache_write` at the input rate, `cache_read` at the cache-read rate and `cache_write` at the
+   cache-write rate, because an endpoint's input count already contains its cache reads and
+   writes; a cached token is never charged at two rates. `DocketDriver`'s usage sums each
+   session's cache-write tokens. This estimate is used **only** for gating and warning displays;
+   it is always rendered clearly labelled (the gate's literal label is `~$X.XX (estimated — no
+   cost recorded)`) and **MUST NOT** be mixed into, or presented as, recorded spend;
+   `docket status --all --json`'s recorded `costUsd` fields are completely unaffected by this
+   fallback (see "Cost reporting" above).
+5. **Budget and runaway warnings read the same gating figure as the dispatch gate.**
+   `docket setup`'s per-agent budget check **MUST** warn/flag against the same recorded-or-
+   estimated gating figure requirement 4 describes (recorded spend if nonzero, else the
+   token-count × price estimate), clearly labelled with the same `estimated — no cost recorded`
+   marker whenever it is an estimate, at the check's own decimal precision. An estimate **MUST
+   NOT** be presented as, or mixed into, recorded spend. Because recorded spend is always `0`, in
+   production the check fires from the estimate: a warning at 80% or more of the cap, a flag at
+   100% or more. It is display-only, independent of the pause writer. The turn-count runaway
+   check never depended on cost. `docket setup --json`'s per-agent `budget` and `runaway` results
+   report only recorded spend (always `0`), so they cannot flag an over-budget agent.
+6. **A model the estimate cannot price is named, not counted as $0.** A model with no catalog
+   price and no `local` provider adds nothing to requirement 4's estimate, so a cap cannot stop
+   its spend. Docket warns and does not refuse: before each hop of a pod with a cap, a hop whose
+   model (the step's own `model`, else the member's) is unpriced emits a `budget_warning` trace
+   event with `action: "unpriced_model"`, `status: "unenforced"` and a `reason` naming the cap and
+   the model, and the hop runs. The list of such models across the pod's members and its
+   pipeline's steps is empty without a cap; `docket pod show [--json]`, `GET /pods/<p>`
+   (`budgetUnpriced`) and `docket status [--json]` (a `Budget` row, `budgetUnpriced` only when
+   non-empty) show it. Known gap: the estimate still prices every token of a member at the
+   member's own model, so a step `model:` override is checked here but not priced.
+7. **Scope limit.** Enforcement exists only where docket itself is in the execution path, the
+   pod-dispatch lane, the only place a turn runs. A `budgetUsd` stored on a non-pod agent is read
+   by the `docket setup` warning and nothing else; no code path pauses anything for it (per D-9
+   and the "docket orchestrates hops" principle).
 
 ## Interface Contracts
 
@@ -134,25 +124,26 @@ pod-dispatch.spec.md).
 docket status                     # Pod tokens, labelled estimate, outcomes (table)
 docket status --all --json        # Machine-readable (see cli-json-shapes.spec.md)
 docket status --history [--days N]  # Daily history (see "Known gap" below)
-docket pod set budgetUsd <USD>   # Set/clear a cap (0 = none)
-docket run --resume         # Clear an auto-pause; unblocks a paused pod's Lead
-docket run --resume                        # Same clear, then reclaims stale claims
-docket setup                     # Includes budget/runaway check (display only)
+docket pod set budgetUsd <USD>    # Set/clear a cap (0 = none)
+docket pod unset budgetUsd        # Clear the cap
+docket run --resume               # Clear an auto-pause, unblock blocked tasks, reclaim stale claims
+docket setup                      # Includes budget/runaway check (display only)
 ```
 
 ### Return Codes
 
 - `0`: Success
-- `1`: Any error (unknown agent, invalid budget value)
+- `1`: Any error (unknown pod, invalid budget value)
 
 ### Known gap: `--history` is always empty
 
-`DocketDriver.usage().by_day` is always `[]` — a session's stored usage
-(`core.session.MeasuredUsage`) is one running total for its whole lifetime, with no per-turn
-timestamp to bucket by day. `docket status --history` therefore returns an honest empty history
-against real production data, regardless of `--days`; `docket status` (non-history) is unaffected —
-totals still aggregate correctly. Adding a per-turn usage log to fabricate a daily breakdown is
-new scope for `core/session.py`, not part of P19-7a; this is a named capability gap, not a bug.
+`DocketDriver`'s usage report has no per-day breakdown (`by_day` is always `[]`): a session's
+stored usage is one running total for its whole lifetime, with no per-turn timestamp to bucket by
+day. `docket status --history` therefore returns an honest empty history (`{"history": []}` with
+`--json`, `No dated session data yet` otherwise) against real data, regardless of `--days`;
+`docket status` (non-history) is unaffected: totals still aggregate correctly. Adding a per-turn
+usage log to fabricate a daily breakdown is new scope for the session store; this is a named
+capability gap, not a bug.
 
 ## Examples
 
@@ -163,190 +154,66 @@ $ docket status --pod mywebsite
   Tokens:                   50.0K in / 25.0K out (~$0.12 est.)
 
 $ docket pod set budgetUsd 5
-✓ Budget cap set to $5 for 'mywebsite'.
+ok Set budgetUsd=5.0 for pod 'mywebsite'
 ```
 
 `DocketDriver` never reports a cost (requirement 3), so the dollar figure is always the
-labelled `est.` estimate in production; a recorded figure would require a driver that reports a
-real dollar amount, which none does.
+labelled `est.` estimate; a recorded figure would require a driver that reports a real dollar
+amount, which none does.
 
 ### A pod pausing at its cap, and resuming
 
-Recorded pod spend is always `0` in production (requirement 4), so the block reason always
-carries the labelled estimate; the unlabelled `($X.XX ≥ $Y.YY)` form only appears if a driver
-ever records a real cost.
+Recorded pod spend is always `0`, so the block reason always carries the labelled estimate; the
+unlabelled `($X.XX ≥ $Y.YY)` form only appears if a driver ever records a real cost.
 
 ```bash
 $ docket run --pod myproject
-⚠   [<task-id>] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
-
-$ docket pod show --pod myproject
-  ...
-  Status:           PAUSED (budget)
+! [<task-id>] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
 
 $ docket run --resume
-→   Unblocked 1 budget-blocked task(s) in pod 'myproject'.
-✓ Resumed 'myproject-lead' — auto-pause cleared.
+-> Unblocked 1 blocked task(s) in pod 'myproject'
 ```
 
 ## Validation
 
 ### Pre-conditions
 
-- For `--budget`, the value **MUST** parse as a non-negative number.
+- For `pod set budgetUsd`, the value **MUST** parse as a non-negative number.
 
 ### Post-conditions
 
-- After `--budget <n>` with n>0, `.docket-meta.json` **MUST** contain `budgetUsd = n` and no
-  `paused` flag.
-- After `--budget 0`, no active cap **MUST** remain.
+- After `pod set budgetUsd <n>` with n>0, the Lead's `.docket-meta.json` **MUST** contain
+  `budgetUsd = n` and no `paused` flag.
+- After `pod set budgetUsd 0`, no active cap **MUST** remain.
 - After a pod's spend (recorded, or estimated when none was recorded) reaches its Lead's
   `budgetUsd`, the Lead's `.docket-meta.json` **MUST** contain `paused = true`,
   `pausedReason = "budget"`, and a subsequent dispatch attempt for that pod **MUST** claim
   nothing.
-- After `--resume`, the target's `.docket-meta.json` **MUST** contain `paused = false`,
-  `pausedReason = ""`, and an audit-log entry with `action = "profile.resume"` **MUST** exist.
+- After `docket run --resume` on a paused pod, the Lead's `.docket-meta.json` **MUST** contain
+  `paused = false`, `pausedReason = ""`, and an audit-log entry with `action = "run.resume"`
+  **MUST** exist.
 
 ### Invariants
 
-- Reported recorded-spend figures (`docket status --all --json`) are the driver's own, never silently computed —
-  unaffected by the gating estimate fallback in any way.
+- Reported recorded-spend figures (`docket status --all --json`) are the driver's own, never
+  silently computed, and unaffected by the gating estimate fallback in any way.
 - A `paused` agent **MUST** always carry a `pausedReason`.
 - An estimate used for budget gating **MUST** always render clearly labelled as an estimate and
   **MUST NOT** be summed into, or presented as, recorded spend.
 
-## Changelog
+## Implementation
 
-### Version 1.10.1 (2026-10-18)
-
-- Cache writes are priced once too: `DocketDriver.usage` now sums `cacheWriteTokens` (it had a
-  writer and no reader), and the estimate removes them from the input-rate share.
-
-### Version 1.10.0 (2026-10-18)
-
-- `estimate_cost_usd` stopped charging cache reads twice: the pod estimate priced the whole
-  input count at the input rate and the cached part again at the cache-read rate. A call with
-  1M input tokens of which 900k were cached is now `0.1M x input + 0.9M x cache-read`.
-
-### Version 1.9.0 (2026-10-18)
-
-- New "Enforcement, warnings, and pause" requirement 6: a budgeted pod's unpriced model is named
-  (`budget_warning` `unpriced_model` per hop, `budgetUnpriced` in `pod show`, `GET /pods/<p>`
-  and `status`) instead of silently gating at $0. Found by a real run whose gateway models had
-  no price: 175k tokens reported $0 and a $3 cap stopped nothing. The scope limit is now 7.
-
-### Version 1.8.1 (2026-10-08)
-
-- Command names follow ADR 0022.
-
-### Version 1.8.0 (2026-10-07)
-
-- Cost and counts report through `docket status` (per pod: measured tokens, a labelled estimate, success/failure/aborted and latency); `docket cost`, `docket metrics` and `docket snapshot` are gone and `status --all --json` carries the inventory. The runaway-session warning stays in `docket doctor`.
-
-### Version 1.7.0 (2026-09-21)
-
-- Requirement 5 (Enforcement) now documents that `docket doctor`'s budget check and `docket cost`'s high-cost-session warning read the same recorded-or-estimated gating figure the dispatch gate uses (`core/utils.py::gating_cost`, which `pod_gating_cost` now calls per member), not raw recorded spend, which is always 0.0 under `DocketDriver` (W36-C10). `doctor --json`'s runaway list and `docket cost`'s all-agents table remain recorded-only, a named follow-up.
-
-### Version 1.6.1 (2026-09-19)
-
-- Doc-truth pass, no behavior change. Examples now show the real `ui` output (`✓`/`→`/`⚠`
-  prefixes, not `[SUCCESS]`) and the real dispatch block line (`cli/_pod.py`: `[<task-id>]
-  blocked — <reason>`), and the pause example uses the labelled-estimate reason — the only form
-  production can emit, since recorded spend is always `0`; the separate estimate example it
-  duplicated was folded in. Requirement 5 (Enforcement) now states that the ≥80%/≥100% cap
-  warnings and the cost-threshold runaway check read recorded spend and therefore never trip
-  under `DocketDriver`.
-
-### Version 1.6.0 (2026-08-19)
-
-- Removed retired-runtime migration detail from the current contract. Cost reporting now states
-  only the live Docket session source, recorded-spend semantics, and the distinct estimate used
-  for budget gating; older migration detail remains in changelog history.
-
-### Version 1.5.0 (2026-08-03)
-
-- **ROADMAP Phase 19 P19-7b — the OpenClaw daemon and `OpenClawDriver` are deleted outright.**
-  Completes the P19-7a cutover 1.4.0 documented: `DocketDriver` is no longer merely the
-  production default among two `RuntimeDriver` implementations, it is the *only* one this
-  codebase ships. Updated requirements 2 and 4 (Cost reporting) to drop the "`OpenClawDriver`
-  still reads daemon-format JSONL when directly constructed" carve-out — there is no such driver
-  left to construct — and to name the new guard test
-  (`test_no_external_daemon_coupling.py`, which replaced the retired
-  `test_ch2_openclaw_acl_guard.py`). Corrected the Enforcement section's estimate-fallback
-  reasoning (requirement 4): recorded pod spend reading `0` is not an occasional daemon quirk
-  ("may never write `usage.cost.total`") any more, it is the unconditional, only case in
-  production, since `DocketDriver.capabilities().reports_cost_usd` is always `False` by design.
-  Fixed the D-9 budget-fields note (there is no daemon left to sync `openclaw.json` to, not
-  merely "the daemon never reads them"). Corrected the Examples section: the single-agent
-  `docket cost` transcript now shows the real `cli/_cost.py` output ("Total cost: none recorded
-  for these sessions"), not the stale `$0.5300 (recorded by daemon)` shape that required a
-  daemon-reported dollar figure which no longer exists; the estimate-fallback example and its
-  heading now read "no cost recorded", matching `core/dispatch.py`'s corrected label string
-  (was the stale `daemon recorded no cost` wording). Fixed the matching Post-condition and
-  Invariants wording ("the driver's recorded spend", not "daemon-recorded spend").
-
-### Version 1.4.0 (2026-08-03)
-
-- **ROADMAP Phase 19, card P19-7a (the runtime cutover).** `core/utils.py`'s `aggregate_cost`/
-  `cost_history` now resolve `edges.adapters.docket_runtime.default_driver()` (`DocketDriver` in
-  production), not `edges.adapters.openclaw.default_driver()` (`OpenClawDriver`). Updated
-  requirements 2-4. Real behavior changes documented, not smoothed over:
-  - `docket cost`'s "none recorded" branch (requirement 3) is now the **normal** production case,
-    since `DocketDriver` never reports a cost at all — wording changed from "none recorded by the
-    daemon" to "none recorded", since there is no daemon in the loop for a `DocketDriver`-executed
-    turn.
-  - New "Known gap" section: `docket cost --history` always returns an empty history against the
-    production driver (`DocketDriver.usage().by_day` is unconditionally `[]`) — named explicitly,
-    not fixed by this version.
-  - `docket cost` (non-history) totals are unaffected — real recorded token counts still
-    aggregate correctly through `DocketDriver`'s own session storage.
-  - `OpenClawDriver`'s daemon-JSONL reading is untouched and still real when directly constructed
-    or explicitly resolved; only the production default moved.
-
-### Version 1.3.0 (2026-07-30)
-
-- ROADMAP Phase 18 L-1 (D-14): the session-JSONL parsing behind cost reporting (requirement 2)
-  moved from `core/utils.py` into `edges/adapters/openclaw.py`'s `OpenClawDriver` — the one
-  shipped implementation of the new `RuntimeDriver` port (`core/runtime_driver.py`). This closes
-  an ACL leak a 2026-07-29 platform audit found: `core/utils.py`'s `aggregate_cost`/
-  `cost_history` used to open `sessions/*.jsonl` and parse the daemon's `message.usage` record
-  shape directly. Both functions keep their exact names, signatures, and return shapes
-  (`CostTotals`/`DayRecord`) — every existing caller (`cli/_cost.py`, `cli/_doctor.py`,
-  `core/dispatch.py`'s `pod_recorded_cost`/`pod_gating_cost`) is unaffected — but they are now
-  pure translations of `OpenClawDriver.usage()`'s `UsageReport`, not parsers. Added requirement 4
-  naming the guard test that enforces this going forward. No behavior change to what `docket
-  cost` reports or how it's derived — this is a containment refactor, not a new capability.
-
-### Version 1.2.0 (2026-07-30)
-
-- ROADMAP Phase 14 R-5: implemented auto-pause for real. `core/dispatch.py`'s budget gate now
-  writes `paused = true, pausedReason = "budget"` on the pod's Lead the first time the cap is
-  reached (previously nothing ever did — the Phase 1 Bash-era claim had not survived the Python
-  port); `docket profile <id> --resume` clears it (with an audit entry) and unblocks the pod's
-  budget-blocked tasks when the target is a Lead. Dispatch now refuses every claim for a paused
-  pod outright at claim time (a `paused_refused` trace event), not merely re-blocking each task
-  hop by hop.
-- Added the labelled token-based estimate fallback for gating: when the daemon has recorded no
-  cost at all, the gate falls back to a `MODEL_PRICING`-derived estimate so the cap can still
-  trip — always clearly labelled, never contaminating `docket cost`'s recorded-spend figures.
-- Status raised from "Partially implemented" to "Implemented" (the enforcement-scope limit —
-  pod-dispatch lane only — remains and is now stated as a permanent, documented boundary rather
-  than a pending gap).
-- Added the `--resume` CLI signature, an example transcript for pause/resume and for the
-  estimate-labelled block reason, and post-conditions/invariants for the new behavior.
-
-### Version 1.1.0 (2026-07-30)
-
-- Truth pass (Platformization baseline): Status downgraded from Complete. Auto-pause is
-  explicitly marked unimplemented (no writer of `paused=true` exists; the Phase 1 claim
-  was Bash-era and did not survive the Python port) and tracked as ROADMAP Phase 14 R-5.
-  Cost provenance corrected: dollars are the daemon's recorded spend, not computed from
-  the pricing table. CLI signature corrected to the real flags
-  (`--json/--history/--days`; the spec'd `--period/--by-model/--csv` never existed).
-  Return codes corrected to the actual 0/1 convention. Added the D-9 note (budget fields
-  are docket-local) and the enforcement-scope note (dispatch lane only).
-
-### Version 1.0.0 (2026-06-09)
-
-- Initial cost-tracking specification
-- Defined reporting, budget caps, and runaway/pause behavior
+- `src/docket/teams/utils.py`: `aggregate_cost`, `cost_history`, `estimate_cost_usd`, `gating_cost`
+- `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`, the pre-hop budget gate, the Lead pause writer
+- `src/docket/teams/settings.py`: `pod_recorded_cost`, `pod_budget`
+- `src/docket/hops/application/steps.py`: `unpriced_budget_models`
+- `src/docket/tasks/application/lifecycle.py`: `unblock_pod`
+- `src/docket/tasks/application/queue.py`: the claim-time pause check
+- `src/docket/teams/model_selection.py`: `price_for`
+- `src/docket/observability/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `budget_warning`, `paused_refused`)
+- `src/docket/agent/ports.py`: `TurnResult.cost_usd`, `UsageReport`, `DriverCapabilities.reports_cost_usd`
+- `src/docket/hops/application/driver.py`: `DocketDriver.usage`, `DocketDriver.capabilities`
+- `src/docket/interfaces/cli/commands/status.py`: `docket status`, the per-pod usage summary, the fleet inventory, `cost_snapshot` (the MCP `cost` tool reads it)
+- `src/docket/interfaces/cli/commands/pod.py`: `docket pod set|unset budgetUsd`
+- `src/docket/interfaces/cli/commands/run.py`: `docket run --resume`, the cap header
+- `src/docket/interfaces/cli/commands/setup_check.py`: the `docket setup` budget and runaway checks

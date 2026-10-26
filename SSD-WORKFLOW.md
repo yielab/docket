@@ -33,7 +33,7 @@ docket/
 │       └── input-validation.spec.md
 ├── scripts/                     # SSD automation
 │   └── validate-specs.sh       # Validate spec structure (the real gate; CI-blocking)
-├── src/docket/                  # Python package (cli/ → core/ → edges/)
+├── src/docket/                  # Python package (one package per context; ADR 0030)
 └── tests/                       # Test implementation
     ├── unit/                   # Mirrors src/docket/; each file declares SUBJECT
     ├── integration/            # Cross-module integration tests
@@ -106,10 +106,10 @@ Before implementation:
 Write tests BEFORE implementation:
 
 ```python
-# tests/integration/test_new_feature.py
+# tests/integration/<context>/test_new_feature.py
 from typer.testing import CliRunner
 
-from docket.cli import app
+from docket.interfaces.cli.app import app
 
 runner = CliRunner()
 
@@ -126,35 +126,36 @@ def test_new_feature_must_requirement():
 
 ```bash
 # Run the test (should fail — red phase)
-uv run pytest tests/integration/test_new_feature.py
+uv run pytest tests/integration/<context>/test_new_feature.py
 # ✗ Test fails - this is expected!
 ```
 
 ### 4. Implementation Phase
 
-Now implement to make tests pass. Commands are Typer functions in `src/docket/cli/`; domain
-logic lives in `core/` and any I/O goes through `edges/` (`store.py` for docket JSON,
-`edges/adapters/llm.py` for the model endpoint, `edges/adapters/mcp_client.py` for MCP servers,
-`edges/adapters/system.py` for shell-outs to `docker`/`git`).
+Now implement to make tests pass. Commands are Typer functions in `src/docket/interfaces/cli/`;
+domain logic lives in the owning context and any I/O goes through that context's `adapters/` or
+`platform/` (`platform/store.py` for docket JSON, `models/adapters/openai_http.py` for the model
+endpoint, `agent/tools/mcp_client.py` for MCP servers, `platform/git.py` and `platform/process.py`
+for shell-outs).
 
 ```python
-# src/docket/cli/__init__.py  (or a cli/_<group>.py module for a larger group)
+# src/docket/interfaces/cli/commands/<group>.py  (registered in interfaces/cli/app/__init__.py)
 import typer
 
-from docket import ui
-from docket.cli import app
+from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.app import app
 
 
 @app.command("new-feature")
 def new_feature(value: str = typer.Argument(...)) -> None:
     """Implementation that satisfies the spec."""
-    # Pure logic lives in core/; I/O goes through edges/.
+    # Pure logic lives in the owning context; I/O goes through its adapters/ or platform/.
     ui.success("Feature executed successfully")
 ```
 
 ```bash
 # Run the tests again
-uv run pytest tests/integration/test_new_feature.py
+uv run pytest tests/integration/<context>/test_new_feature.py
 # ✓ Tests pass!
 ```
 
@@ -187,7 +188,7 @@ Update user-facing documentation:
 ```bash
 # Update README
 # Update CHANGELOG
-# Update help text in src/docket/cli/_help.py
+# Update help text in src/docket/interfaces/cli/render/help.py
 # Commit with spec reference
 
 git add .
@@ -310,8 +311,7 @@ Spec validation runs as one step inside the real CI pipeline, `.github/workflows
 has these jobs:
 
 - **`python`** — the primary gate: `uv sync --all-extras --dev`, then ruff lint, ruff format
-  check, `mypy src`, `uv run pytest`, and the README-number drift guard
-  (`scripts/metrics.py --check`).
+  check, `mypy src`, and `uv run pytest`.
 - **`agent-lane`** — runs `uv run pytest tests/agent`: the `truth` lane (prose and policy claims
   checked against the code) and the `release` lane (artifact and packaging journeys), neither of
   which belongs in the default suite (`specs/test-framework.md`, "Lanes and placement").
@@ -334,9 +334,9 @@ yourself — there is no hook that does it for you.
 ### Adding a New Command
 
 1. Create spec: `specs/functional/command-name.spec.md`
-2. Write tests: `tests/integration/test_command.py`
-3. Implement: a Typer command in `src/docket/cli/` (logic in `core/`, I/O via `edges/`)
-4. Update docs: README.md, `src/docket/cli/_help.py`
+2. Write tests: `tests/integration/<context>/test_command.py`
+3. Implement: a Typer command in `src/docket/interfaces/cli/` (logic in the owning context, I/O via its `adapters/` or `platform/`)
+4. Update docs: README.md, `src/docket/interfaces/cli/render/help.py`
 5. Validate: `./scripts/validate-specs.sh` + the CI gates
 
 ### Modifying Existing Feature
@@ -396,7 +396,7 @@ yourself — there is no hook that does it for you.
 grep "MUST\|SHALL" specs/functional/feature.spec.md
 
 # Ensure each MUST has a test
-grep "def test_" tests/integration/test_feature.py
+grep "def test_" tests/integration/<context>/test_feature.py
 
 # Update tests to match specs exactly
 ```

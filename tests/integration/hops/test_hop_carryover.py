@@ -1,0 +1,238 @@
+"""Bounded hop prompts.
+``core/dispatch.py``'s ``_hop_message`` does not concatenate every prior hop's full raw output
+into the next hop's prompt, nor cap total bytes with one process-wide constant and truncate
+blindly once a hop's share is exceeded. Instead, each rendered ``HandoffArtifact`` is fit to a
+per-role token budget via ``agent/context.py``'s ``compile_artifact``, which sheds the
+artifact's less-valuable fields (``DROP_ORDER``) before truncating ``summary`` itself; there is
+no byte-cap machinery left. Covers: TestHopMessageCap (``_hop_message`` against the
+token-budget compiler: small tasks unchanged, the task description never truncated, truncation
+kicks in once a prior hop's share is exceeded, newest-hop-least-truncated, aggregate carryover
+never exceeds the role's budget); and TestContextComposedTrace (the ``context_composed`` trace
+event emitted per hop by ``dispatch_task``, end to end through a real pod).
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+from tests.support import home as _support_home
+from tests.support.llm import hop as _hop
+from tests.support.pods import seed_pod as _seed_pod
+
+from docket.agent import context as _context
+from docket.agent import ports as _rd
+from docket.hops.application import compose as _compose
+from docket.hops.application import sweep as _sweep
+from docket.kernel.home import current_home
+from docket.tasks.application import queue as _queue
+from docket.tasks.domain.task import TaskRecord
+
+_hermetic = _support_home.trace_on_env
+
+SUBJECT = "docket.hops.application.compose"
+
+# ── hermetic environment (mirrors test_dispatch.py / test_verify_gate.py) ─────────
+
+
+# ── _hop_message: the composed prompt itself ──────────────────────────────────────
+
+
+class TestHopMessageCap:
+    def test_small_task_byte_identical_to_pre_cap_behaviour(self) -> None:
+        """Regression pin: below-budget content composes exactly as before
+        any cap/budget mechanism existed."""
+        task = TaskRecord(description="Fix the bug")
+        prior = [_hop("lead", "Plan: do X.")]
+        message, comp = _compose._hop_message(task, "implementer", prior)
+
+        expected = "\n".join(
+            [
+                "Task: Fix the bug",
+                "",
+                "--- lead output ---\nPlan: do X.\n",
+                "You are the Implementer. Implement the change in the workspace.",
+            ]
+        )
+        assert message == expected
+        assert comp.truncated is False
+        assert comp.sections == [
+            {
+                "role": "lead",
+                "original_bytes": len(b"Plan: do X."),
+                "sent_bytes": len(b"Plan: do X."),
+                "truncated": False,
+                "dropped_fields": [],
+            }
+        ]
+        assert comp.description_bytes == len(b"Fix the bug")
+        assert comp.total_bytes == len(message.encode("utf-8"))
+
+    def test_lead_hop_message_unaffected_by_cap(self) -> None:
+        """The lead hop has no prior output to cap — its message is untouched."""
+        task = TaskRecord(description="Ship it")
+        message, comp = _compose._hop_message(task, "lead", [])
+        assert message == (
+            "You are the pod Lead. Decompose this task into a concrete plan for "
+            "the Implementer (you never edit code yourself):\n\nShip it"
+        )
+        assert comp.sections == []
+        assert comp.truncated is False
+
+    def test_task_description_never_truncated_even_when_huge(self) -> None:
+        """The description is exempt from budgeting entirely — it costs tokens
+        out of the role's budget (leaving less for carryover) but is never
+        itself shed or cut, no matter how large."""
+        huge_desc = "D" * 500_000
+        task = TaskRecord(description=huge_desc)
+
+        lead_message, _lead_comp = _compose._hop_message(task, "lead", [])
+        assert huge_desc in lead_message
+
+        message, comp = _compose._hop_message(task, "implementer", [_hop("lead", "small plan")])
+        assert f"Task: {huge_desc}" in message
+        assert comp.description_bytes == len(huge_desc.encode("utf-8"))
+
+    def test_prior_output_over_budget_is_truncated_with_a_visible_marker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: 20)
+        task = TaskRecord(description="task")
+        prior = [_hop("lead", "L" * 5000)]
+        message, comp = _compose._hop_message(task, "implementer", prior)
+        assert "[... summary truncated" in message
+        assert comp.truncated is True
+        assert comp.sections[0]["truncated"] is True
+        assert comp.sections[0]["original_bytes"] == 5000
+        assert comp.sections[0]["sent_bytes"] < 5000
+
+    def test_newest_hop_is_truncated_least(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: 8192)
+        task = TaskRecord(description="task")
+        prior = [
+            _hop("lead", "A" * 20_000),
+            _hop("implementer", "B" * 20_000),
+            _hop("reviewer", "C" * 20_000),
+        ]
+        _message, comp = _compose._hop_message(task, "tester", prior)
+        assert [s["role"] for s in comp.sections] == ["lead", "implementer", "reviewer"]
+        sent = {s["role"]: s["sent_bytes"] for s in comp.sections}
+        # Chronological order is oldest -> newest; the most recent (reviewer)
+        # gets the biggest share, each older hop strictly less.
+        assert sent["lead"] < sent["implementer"] < sent["reviewer"]
+        assert all(s["truncated"] for s in comp.sections)
+
+    def test_pathological_many_large_prior_outputs_never_exceed_the_role_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Several large prior outputs (well beyond a normal 4-role pipeline) —
+        the aggregate carryover must still respect the role's token budget."""
+        cap_tokens = 8192
+        monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: cap_tokens)
+        task = TaskRecord(description="task")
+        prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
+        message, comp = _compose._hop_message(task, "tester", prior)
+
+        cap_bytes = cap_tokens * current_home().context_bytes_per_token
+        total_carryover = sum(s["sent_bytes"] for s in comp.sections)
+        assert total_carryover < cap_bytes
+        assert all(s["truncated"] for s in comp.sections)
+        # The description plus a small fixed per-hop wrapper overhead is all
+        # that's added on top of the bounded carryover.
+        assert len(message.encode("utf-8")) < cap_bytes + len(task.description) + 2000
+
+    def test_small_multi_hop_task_unchanged_no_truncation(self) -> None:
+        """No regression for the common (small-output) multi-hop case either."""
+        task = TaskRecord(description="Small task")
+        prior = [_hop("lead", "short plan"), _hop("implementer", "small diff")]
+        message, comp = _compose._hop_message(task, "reviewer", prior)
+        expected = "\n".join(
+            [
+                "Task: Small task",
+                "",
+                "--- lead output ---\nshort plan\n",
+                "--- implementer output ---\nsmall diff\n",
+                "You are the Reviewer. Review the diff (read-only). The LAST line of your "
+                "FINAL message must be exactly `APPROVE` or `REQUEST-CHANGES`, with nothing "
+                "else on that line. Reasons go above it.",
+            ]
+        )
+        assert message == expected
+        assert comp.truncated is False
+        assert all(not s["truncated"] for s in comp.sections)
+
+
+# ── integration: context_composed trace event ─────────────────────────────────────
+
+
+class _BigOutputRunner:
+    """Large fixed ``*`` output, to force carryover truncation without tripping
+    ``observability.trace.redact``'s secret-shaped patterns, which backtrack badly on a
+    single repeated letter or digit run this long."""
+
+    def __init__(self, size: int = 50_000) -> None:
+        self.size = size
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        return _rd.TurnResult(True, "*" * self.size, 0.0, {"output": "x"})
+
+
+class TestContextComposedTrace:
+    def test_context_composed_emitted_per_hop(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            _queue.enqueue_task_once("demo", "Trace the context", channel="cli")
+            _sweep.dispatch_pod("demo", runner=_BigOutputRunner())
+
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            assert len(trace_files) == 1
+            events: list[dict[str, Any]] = [
+                json.loads(line) for line in trace_files[0].read_text().splitlines()
+            ]
+            composed = [e for e in events if e["event_type"] == "context_composed"]
+            assert len(composed) == 2  # one per hop: lead, implementer
+
+            lead_payload = composed[0]["payload"]
+            assert lead_payload["hop"] == "lead"
+            assert lead_payload["sections"] == []
+            assert lead_payload["truncated"] is False
+
+            impl_payload = composed[1]["payload"]
+            assert impl_payload["hop"] == "implementer"
+            assert len(impl_payload["sections"]) == 1
+            section = impl_payload["sections"][0]
+            assert section["role"] == "lead"
+            assert section["original_bytes"] == 50_000
+            assert section["truncated"] is True
+            assert section["sent_bytes"] < 50_000
+            assert impl_payload["truncated"] is True
+
+    def test_context_composed_not_truncated_for_small_outputs(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            _queue.enqueue_task_once("demo", "Small trace", channel="cli")
+
+            class _SmallRunner:
+                def __call__(
+                    self,
+                    agent_id: str,
+                    session_key: str,
+                    message: str,
+                    timeout: int,
+                    env: dict[str, str] | None = None,
+                ) -> _rd.TurnResult:
+                    return _rd.TurnResult(True, "tiny output", 0.0, {})
+
+            _sweep.dispatch_pod("demo", runner=_SmallRunner())
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
+            composed = [e for e in events if e["event_type"] == "context_composed"]
+            assert len(composed) == 2
+            assert all(e["payload"]["truncated"] is False for e in composed)

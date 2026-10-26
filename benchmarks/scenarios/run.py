@@ -108,7 +108,6 @@ def _valid_hop(role: str = "lead") -> dict[str, Any]:
             "files_changed": [],
             "diff_ref": "fixture",
             "verdict": None,
-            "notes": "",
         },
     }
 
@@ -146,7 +145,30 @@ def _prepare_public_pipeline(home: Path, workspace: Path) -> None:
 
 def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
     token = "apr-00000000-0000-4000-8000-0000000000c4"
+    escalation_id = "esc-0000000000c4"
     approval_path = home / "approvals" / f"{token}.json"
+    # A person names the escalation; the approval record only points at the one it backs.
+    _write_json(
+        home / "escalations" / f"{escalation_id}.json",
+        {
+            "id": escalation_id,
+            "task": "task-one",
+            "pod": "demo",
+            "step": "lead",
+            "role": "lead",
+            "kind": "approval",
+            "causedBy": "call-one",
+            "prompt": "write deterministic target",
+            "options": [
+                {"id": option, "label": option, "description": option}
+                for option in ("approve_once", "approve_task", "deny")
+            ],
+            "askedAt": "2026-09-02T00:00:00Z",
+            "onExpiry": "deny",
+            "state": "pending",
+            "seq": 1,
+        },
+    )
     _write_json(
         approval_path,
         {
@@ -156,11 +178,14 @@ def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
             "action": "write deterministic target",
             "state": "pending",
             "created": "2026-09-02T00:00:00Z",
+            "escalation": escalation_id,
             "context": {"taskId": "task-one", "pipelineIndex": 0},
         },
     )
-    command = "approve" if state == "granted" else "deny"
-    _public_cli(home, workspace, "task", command, token)
+    option = "approve_once" if state == "granted" else "deny"
+    _public_cli(
+        home, workspace, "task", "answer", escalation_id, "--option", option, "--pod", "demo"
+    )
 
     audit = [
         json.loads(line)

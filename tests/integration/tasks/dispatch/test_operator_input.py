@@ -1,0 +1,440 @@
+"""Pod dispatch with operator input: asking steps, answers and the intake recipe."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+from tests.support.approvals import answer_question
+from tests.support.dispatch_harness import (
+    _ScriptedBackend,
+)
+from tests.support.fakes import FakeDriver
+from tests.support.llm import final_response as _final_response
+from tests.support.pods import bind_intake_pipeline as _bind_intake_pipeline
+from tests.support.pods import bind_pipeline as _bind_pipeline
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
+
+from docket.agent import ports as _rd
+from docket.governance import secrets as _secrets
+from docket.hops.application import driver as _dr
+from docket.hops.application import sweep as _sweep
+from docket.hops.application.driver import DocketDriver
+from docket.hops.gates import pre_hop as _pre_hop
+from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel import brief as _brief
+from docket.kernel import operator_contract as _oc
+from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
+from docket.platform import list_escalations
+from docket.tasks.application import queue as _queue
+from docket.tasks.application.answers import answers_of
+from docket.tasks.application.repository import TaskRepository
+from docket.teams import fleet as _fleet
+
+SUBJECT = "docket.tasks.application.queue"
+
+
+_ASK_PIPELINE_YAML = """\
+name: ask
+steps:
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+  - implementer: implementer
+"""
+
+
+_ASK_DECLINE_CAP_PIPELINE_YAML = """\
+name: ask-decline-cap
+steps:
+  - lead: lead
+  - ask:
+      input:
+        from: lead
+      on:
+        declined:
+          goto: lead
+          max: 1
+  - implementer: implementer
+"""
+
+
+def _ask_spec(on: dict[str, Any] | None = None) -> _pipeline.PipelineSpec:
+    """Lead, then an `input` step asking about the Lead's own output, then Implementer."""
+    return _pipeline.PipelineSpec(
+        name="ask",
+        steps=[
+            _step.Step(id="lead", role="lead"),
+            _step.Step(id="ask", input=_step.InputSpec(from_="lead"), on=on),
+            _step.Step(id="implementer", role="implementer"),
+        ],
+    )
+
+
+_LEAD_NEEDS_INPUT_SENTINEL = "SENTINEL_FIRST_LEAD_HOP"
+
+
+_LEAD_READY_SENTINEL = "SENTINEL_SECOND_LEAD_HOP"
+
+
+_LEAD_NEEDS_INPUT_REPLY = f"""{_LEAD_NEEDS_INPUT_SENTINEL}: I need two decisions before I can start.
+
+```json
+{{"objective": "add a widget", "acceptance": ["widget renders"], "questions": ["Which color?", "Which size?"]}}
+```
+NEEDS-INPUT"""
+
+
+_LEAD_READY_REPLY = f"""{_LEAD_READY_SENTINEL}: thanks, now I have everything I need.
+
+```json
+{{"objective": "add a widget", "acceptance": ["widget renders", "matches spec"]}}
+```
+READY"""
+
+
+_LEAD_READY_MISSING_SECRET_REPLY = """Needs one credential.
+
+```json
+{"objective": "call the API", "acceptance": ["call succeeds"], "resources": ["secret:MISSING_KEY"]}
+```
+READY"""
+
+
+_LEAD_READY_NO_BRIEF_REPLY = "Nothing fancy, just doing it.\nREADY"
+
+
+_LEAD_REJECT_REPLY = """This should not be attempted.
+
+```json
+{"objective": "delete production", "acceptance": []}
+```
+REJECT"""
+
+
+class _IntakeRunner:
+    """A scripted runner keyed by role, not call order -- the Lead may run more than once
+    (NEEDS-INPUT -> answered -> re-run), so its replies are consumed in order, one per call,
+    while every other role answers the same way every time."""
+
+    def __init__(self, lead_replies: list[str], reviewer_reply: str = "APPROVE") -> None:
+        self._lead_replies = list(lead_replies)
+        self._reviewer_reply = reviewer_reply
+        self.calls: list[tuple[str, str]] = []
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        role = agent_id.rsplit("-", 1)[-1]
+        self.calls.append((role, message))
+        if role == "lead":
+            reply = self._lead_replies.pop(0) if self._lead_replies else "READY"
+            return _rd.TurnResult(True, reply, 0.0, {})
+        if role == "reviewer":
+            return _rd.TurnResult(True, self._reviewer_reply, 0.0, {})
+        return _rd.TurnResult(True, "done", 0.0, {})
+
+
+class TestOperatorInputStepsPark:
+    def test_reaching_an_input_step_parks_with_no_hop_and_a_default_schema(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path) as oc_dir:
+            _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
+
+            results = _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
+
+            assert len(results) == 1
+            assert results[0].status == "waiting_input"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "waiting_input"
+            # Only the Lead's real hop is persisted -- the park itself leaves no hop, the same
+            # posture as the pre-hop require_approval gate's `waiting_approval`.
+            assert [h.role for h in task.hops] == ["lead"]
+            (question,) = list_escalations(state="pending")
+            assert (question.kind, question.step) == ("input", "ask")
+            assert question.id in task.escalations
+            assert (question.requested_schema or {})["properties"] == {"answer": {"type": "string"}}
+            assert (question.requested_schema or {})["required"] == ["answer"]
+
+            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            events = [
+                json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
+            ]
+            asked = [e for e in events if e["event_type"] == "escalation_asked"]
+            assert len(asked) == 1
+            assert asked[0]["payload"]["step"] == "ask"
+            assert asked[0]["payload"]["escalation"] == question.id
+
+    def test_a_waiting_input_task_is_never_reclaimed_by_a_plain_dispatch(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _queue.enqueue_task_once("demo", "needs a decision", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec())
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
+
+            for _ in range(3):
+                assert _sweep.dispatch_pod("demo", runner=FakeDriver(), spec=_ask_spec()) == []
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
+
+
+class TestAnswerTaskResumesDispatch:
+    """An answered `input` step's synthetic hop carries its own `nextStep`, so the resume
+    builder (and its `route_counts` rebuild) continues correctly across a resume boundary."""
+
+    def test_an_accepted_answer_resumes_straight_through_to_done(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            _bind_pipeline("demo", _ASK_PIPELINE_YAML)
+            task = _queue.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
+
+            answer_question("demo", task.id, "accept", {"answer": "go ahead"})
+
+            parked = TaskRepository.for_pod("demo").list()[0]
+            assert parked.status == "pending"
+            assert answers_of(parked)[0].content == {"answer": "go ahead"}
+            # Receiving the answer adds no hop: the claim applies it.
+            assert [h.role for h in parked.hops] == ["lead"]
+
+            # The crash/resume boundary: a fresh `dispatch_pod` call (as `serve --dispatch`'s
+            # next sweep would make) claims the re-opened task, applies the answer and must
+            # continue past `ask` straight to `implementer`, never re-asking.
+            final_results = _sweep.dispatch_pod("demo", runner=FakeDriver())
+            assert final_results[0].status == "done"
+            final = TaskRepository.for_pod("demo").list()[0]
+            assert [h.role for h in final.hops] == ["lead", "operator", "implementer"]
+            assert final.hops[1].next_step is None  # no `on:` route -- ordinary advance
+
+    def test_a_declined_answer_routes_backward_and_a_second_decline_exhausts_its_cap(
+        self, tmp_path: Path
+    ) -> None:
+        """`max: 1` -- proves `route_counts` is rebuilt from the persisted hop's `nextStep`
+        on resume: the second decline, a brand new answer, must still see it."""
+        with _seed_pod(tmp_path):
+            _bind_pipeline("demo", _ASK_DECLINE_CAP_PIPELINE_YAML)
+            task = _queue.enqueue_task_once("demo", "needs a decision", channel="cli")[0]
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            assert TaskRepository.for_pod("demo").list()[0].status == "waiting_input"
+
+            answer_question("demo", task.id, "decline")
+            after_first = TaskRepository.for_pod("demo").list()[0]
+            assert after_first.status == "pending"
+            assert [h.role for h in after_first.hops] == ["lead"]
+
+            # Resume: the claim applies the decline (an operator hop routed back to `lead`),
+            # replays to `lead`, re-runs it (a fresh hop), reaches `ask` again and parks with a
+            # brand new question -- `route_counts` for ("ask", "declined") is now 1, rebuilt
+            # purely from the first operator hop's own persisted `nextStep`.
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            reparked = TaskRepository.for_pod("demo").list()[0]
+            assert reparked.status == "waiting_input"
+            assert [h.role for h in reparked.hops] == ["lead", "operator", "lead"]
+            assert reparked.hops[1].next_step == "lead"
+
+            # A second decline exhausts the `max: 1` budget: the next claim applies it and
+            # settles the task `failed` before any hop runs.
+            answer_question("demo", task.id, "decline")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+            final = TaskRepository.for_pod("demo").list()[0]
+            assert final.status == "failed"
+            assert final.hops[-1].next_step is None
+            assert final.hops[-1].role == "operator"
+
+
+class TestCheckBriefResources:
+    """Direct, dispatch-free coverage of `_check_brief_resources`'s three resource kinds --
+    the intake-recipe integration tests above exercise `secret:` end to end through a real
+    pipeline; these isolate `path:` and `verify` (and `secret:` again, for symmetry)."""
+
+    def test_an_unconfigured_secret_is_missing(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            brief = _brief.TaskBrief(objective="x", resources=["secret:NOPE"])
+            assert _pre_hop._check_brief_resources("demo", brief) == ["secret:NOPE"]
+
+    def test_a_configured_secret_is_not_missing(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            _secrets.save_secrets({"YES": "shh"})
+            brief = _brief.TaskBrief(objective="x", resources=["secret:YES"])
+            assert _pre_hop._check_brief_resources("demo", brief) == []
+
+    def test_a_missing_path_is_reported(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            missing = str(tmp_path / "does-not-exist.txt")
+            brief = _brief.TaskBrief(objective="x", resources=[f"path:{missing}"])
+            assert _pre_hop._check_brief_resources("demo", brief) == [f"path:{missing}"]
+
+    def test_an_existing_path_is_not_missing(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            present = tmp_path / "exists.txt"
+            present.write_text("x")
+            brief = _brief.TaskBrief(objective="x", resources=[f"path:{present}"])
+            assert _pre_hop._check_brief_resources("demo", brief) == []
+
+    def test_verify_is_missing_with_no_configured_verify_cmd(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            brief = _brief.TaskBrief(objective="x", resources=["verify"])
+            assert _pre_hop._check_brief_resources("demo", brief) == ["verify"]
+
+    def test_verify_is_not_missing_once_the_implementer_has_a_verify_cmd(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _fleet.meta_set(_pod.pod.member_id("demo", "implementer"), "verifyCmd", "pytest -q")
+            brief = _brief.TaskBrief(objective="x", resources=["verify"])
+            assert _pre_hop._check_brief_resources("demo", brief) == []
+
+    def test_a_brief_with_no_resources_has_nothing_missing(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            assert _pre_hop._check_brief_resources("demo", _brief.TaskBrief(objective="x")) == []
+
+
+class TestRequireVerify:
+    def test_require_verify_true_fails_task_with_no_verify_cmd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When requireVerify is true, a task fails immediately if no verifyCmd is set."""
+        with _seed_pod(tmp_path):
+            _fleet.meta_set("demo-lead", "requireVerify", True)
+
+            backend = _ScriptedBackend(
+                [_final_response("lead plan"), _final_response("implementer done")]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+            _queue.enqueue_task_once("demo", "Should fail verification", channel="cli")
+            results = _sweep.dispatch_pod("demo")
+            assert results[0].status == "failed"
+            assert "verifyCmd required but not set" in results[0].reason
+
+    def test_require_verify_false_skips_missing_verify_cmd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When requireVerify is false (the default), a task with no verifyCmd reaches done."""
+        with _seed_pod(tmp_path):
+            # Explicitly set requireVerify to False (or just use default)
+            _fleet.meta_set("demo-lead", "requireVerify", False)
+
+            backend = _ScriptedBackend(
+                [_final_response("lead plan"), _final_response("implementer done")]
+            )
+            driver = DocketDriver(backend_factory=lambda model: backend)
+            monkeypatch.setattr(_dr, "default_driver", lambda: driver)
+
+            _queue.enqueue_task_once("demo", "Should skip verification", channel="cli")
+            results = _sweep.dispatch_pod("demo")
+            assert results[0].status == "done"
+
+
+class TestIntakeRecipeTaskBrief:
+    def test_needs_input_then_ready_reaches_the_implementer_with_a_brief_view(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            task = _queue.enqueue_task_once("demo", "build the widget", channel="cli")[0]
+            runner = _IntakeRunner([_LEAD_NEEDS_INPUT_REPLY, _LEAD_READY_REPLY])
+
+            first = _sweep.dispatch_pod("demo", runner=runner)
+            assert first[0].status == "waiting_input"
+            (question,) = list_escalations(state="pending")
+            schema = question.requested_schema or {}
+            assert schema["properties"]["q1"]["title"] == "Which color?"
+            assert schema["properties"]["q2"]["title"] == "Which size?"
+            assert schema["required"] == ["q1", "q2"]
+            assert question.prompt == "The Lead needs answers before starting: add a widget"
+
+            answer_question("demo", task.id, "accept", {"q1": "blue", "q2": "large"})
+
+            final = _sweep.dispatch_pod("demo", runner=runner)
+            assert final[0].status == "done"
+
+            implementer_messages = [msg for role, msg in runner.calls if role == "implementer"]
+            assert len(implementer_messages) == 1
+            implementer_message = implementer_messages[0]
+            assert "## Brief" in implementer_message
+            assert "widget renders" in implementer_message
+            assert "matches spec" in implementer_message
+            # The READY reply is the *latest* brief-bearing hop -- its own prose preamble is
+            # replaced by "## Brief" entirely. The earlier NEEDS-INPUT hop's prose is still
+            # carried forward as ordinary prior-hop context (unaffected by this feature).
+            assert _LEAD_READY_SENTINEL not in implementer_message
+
+    def test_a_brief_naming_a_missing_secret_blocks_with_resources(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            _queue.enqueue_task_once("demo", "call the API", channel="cli")
+            runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
+
+            results = _sweep.dispatch_pod("demo", runner=runner)
+
+            assert results[0].status == "blocked"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.status == "blocked"
+            assert task.blocked_reason == "resources"
+            assert "secret:MISSING_KEY" in task.reason
+            assert _oc.a2a_state("blocked", blocked_reason=task.blocked_reason) == "AUTH_REQUIRED"
+            # No Implementer hop was ever attempted -- the check happens before that turn.
+            assert [h.role for h in task.hops] == ["lead"]
+
+    def test_a_resources_block_does_not_stop_the_run_from_claiming_the_next_task(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            _queue.enqueue_task_once("demo", "call the API", channel="cli")
+            _queue.enqueue_task_once("demo", "do the plain thing", channel="cli")
+            runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY, _LEAD_READY_NO_BRIEF_REPLY])
+
+            results = _sweep.dispatch_pod("demo", runner=runner)
+
+            assert [r.status for r in results] == ["blocked", "done"]
+
+    def test_a_configured_secret_is_not_reported_missing(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            _secrets.save_secrets({"MISSING_KEY": "shh"})
+            _queue.enqueue_task_once("demo", "call the API", channel="cli")
+            runner = _IntakeRunner([_LEAD_READY_MISSING_SECRET_REPLY])
+
+            results = _sweep.dispatch_pod("demo", runner=runner)
+
+            assert results[0].status == "done"
+
+    def test_a_reply_with_no_parseable_brief_but_a_ready_marker_still_advances(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            _queue.enqueue_task_once("demo", "do the plain thing", channel="cli")
+            runner = _IntakeRunner([_LEAD_READY_NO_BRIEF_REPLY])
+
+            results = _sweep.dispatch_pod("demo", runner=runner)
+
+            assert results[0].status == "done"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert [h.role for h in task.hops] == ["lead", "implementer", "reviewer"]
+
+    def test_reject_fails_the_task_as_rejected(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, roles=("lead", "implementer", "reviewer")):
+            _bind_intake_pipeline("demo")
+            _queue.enqueue_task_once("demo", "delete production", channel="cli")
+            runner = _IntakeRunner([_LEAD_REJECT_REPLY])
+
+            results = _sweep.dispatch_pod("demo", runner=runner)
+
+            assert results[0].status == "failed"
+            task = TaskRepository.for_pod("demo").list()[0]
+            assert task.failure_kind == "rejected"
+            assert _oc.a2a_state("failed", failure_kind=task.failure_kind) == "REJECTED"

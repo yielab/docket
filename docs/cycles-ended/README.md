@@ -12,26 +12,36 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (68 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (78 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
+| [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
 | [handoffs/](handoffs/) | Superseded coordinator handoff packets |
 
 ## Index by date (newest first)
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-10-25 | ◇ PHASE 50 — closed 2026-10-25 — end-to-end tests that run the product (D-71) | `todo-waves.md` | 44,862 |
+| 2026-10-25 | ◇ PHASE 51 — closed 2026-10-25 — one escalation: ask, resolve, decide (D-72, ADR 0032) | `todo-waves.md` | 36,805 |
+| 2026-10-24 | ◇ PHASE 47 — CLOSE-OUT (closed 2026-10-24): meet the acceptance ADR 0030 states, take the moment, close | `todo-waves.md` | 33,369 |
+| 2026-10-24 | ◇ PHASE 48 — closed 2026-10-24: isolation where the machine can jail, a task keeps its pipeline | `todo-waves.md` | 1,387 |
+| 2026-10-24 | ◇ PHASE 49 — closed 2026-10-24 — the task as a typed record behind one store (D-70) | `todo-waves.md` | 32,201 |
+| 2026-10-23 | ◇ PHASE 46 — CLOSED 2026-10-23 — organize by context, refactor by tool (D-66, [ADR 0030](../adr/0030-organize-by-context-and-refactor-by-tool.md); planned 2026-10-20, started 2026-10-22 on `plan/phase-46-structure`) | `todo-waves.md` | 26,902 |
+| 2026-10-23 | ◇ Phase 46 closed 2026-10-23 | `todo-waves.md` | 941 |
+| 2026-10-23 | ☑ PHASE 47 WAVE 1 (2026-10-23) — P47-1..P47-9 executed: the seams, ports, functional core, tests by context, the layers contract | `todo-waves.md` | 31,387 |
 | 2026-10-19 | ☑ WAVE 116 COMPLETE — what a joint run through Tack found, CLOSED 2026-10-19 (no phase; opened 2026-10-18) | `todo-waves.md` | 21,195 |
+| 2026-10-19 | ◆ CLOSED — Phase 45: a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19, closed 2026-10-20) | `todo-waves.md` | 15,779 |
 | 2026-10-18 | ◇ Phase 44 closed 2026-10-18 | `todo-waves.md` | 712 |
 | 2026-10-14 | ◆ PHASE 43 — the team runtime behind an external plan of record (D-63, ADR 0027) — COMPLETE (opened 2026-10-14, closed 2026-10-17) | `todo-waves.md` | 28,325 |
 | 2026-10-13 | ☑ PHASE 41 COMPLETE — one execution envelope (D-60, ADR 0024): eight cards over Waves 100–103, closed 2026-10-13 | `todo-waves.md` | 12,885 |
 | 2026-10-13 | ☑ PHASE 42 COMPLETE — lights-out profile and external gate (D-61, ADR 0025): eight cards over Waves 104–107, closed 2026-10-13 | `todo-waves.md` | 15,354 |
 | 2026-10-13 | ☑ WAVE 108 COMPLETE — every carried item closed, CLOSED 2026-10-13 (no phase; opened 2026-10-13) | `todo-waves.md` | 2,239 |
 | 2026-10-12 | ☑ PHASE 40 COMPLETE — harden the agent boundary (D-58, ADR 0023): thirteen cards over Waves 98–100, closed 2026-10-12 | `todo-waves.md` | 21,431 |
-| 2026-10-08 | ☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07) | `todo-waves.md` | 65,803 |
+| 2026-10-08 | ☑ WAVE 95 COMPLETE — Phase 39 CLOSED 2026-10-08 — one CLI surface (D-57), Waves 91–95 (opened 2026-10-07) | `todo-waves.md` | 65,798 |
 | 2026-10-08 | ☑ WAVE 96 COMPLETE — the live-run triage card A, CLOSED 2026-10-08 (no phase; opened 2026-10-08) | `todo-waves.md` | 3,272 |
 | 2026-10-08 | ☑ WAVE 97 COMPLETE — the live-run triage cards B–E, CLOSED 2026-10-08 (no phase; opened 2026-10-08) | `todo-waves.md` | 10,834 |
-| 2026-10-08 | ◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/) | `todo-waves.md` | 1,346 |
+| 2026-10-08 | ◇ CARRIED — out of Phase 39 (closed 2026-10-08, archived in docs/cycles-ended/) | `todo-waves.md` | 1,341 |
 | 2026-10-05 | ☑ WAVE 88 COMPLETE — Phase 38 CLOSED 2026-10-05 — the execution envelope (D-55), Waves 85–88 (opened 2026-10-05) | `todo-waves.md` | 18,813 |
 | 2026-10-05 | ☑ WAVES 89–90 COMPLETE — the carried items, CLOSED 2026-10-05 (no phase; opened 2026-10-05) | `todo-waves.md` | 16,884 |
 | 2026-10-04 | ☑ WAVE 73 COMPLETE — Phase 35 CLOSED 2026-10-04 — docket in a harness-agnostic factory (D-51), Waves 71–75 (opened 2026-09-29) | `todo-waves.md` | 29,104 |
@@ -98,7 +108,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | Section | File | Bytes |
 |---|---|---|
 | Historical — Phase 19 waves 8-9 shipped; the daemon is unused | `todo-waves.md` | 5,308 |
-| Known-open gaps carried forward (do not let these get quietly re-claimed) | `todo-waves.md` | 4,275 |
+| Known-open gaps carried forward (do not let these get quietly re-claimed) | `todo-waves.md` | 25,665 |
 | 0. Completed initiatives (historical record) | `roadmap-phases.md` | 1,526 |
 | 5. Phase records (historical — every phase below is COMPLETE) | `roadmap-phases.md` | 15,596 |
 | PHASE 20 — Fleet observability  *(☑ COMPLETE at cut scope — D-24 cut ~half; P20-2 shipped, P20-4 was a phantom card)* | `roadmap-phases.md` | 8,962 |
@@ -121,6 +131,8 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | Tracked decisions (not yet scheduled) | `roadmap-phases.md` | 3,415 |
 | Build vs. wrap: ~~docket wraps OpenClaw, decisively~~ — **REVERSED by D-19** | `roadmap-phases.md` | 4,538 |
 | ◆ CLOSED — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028) | `todo-waves.md` | 21,773 |
+| ◇ WAVE 120 — the defects the specs truth pass found (before P46-6; stages 1-3 above) | `todo-waves.md` | 33,069 |
+| 6. Decisions (D-1…D-66) | `roadmap-decisions.md` | 61,528 |
 <!-- archive-index:end -->
 
 ## Handoffs

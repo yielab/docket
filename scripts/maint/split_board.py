@@ -59,7 +59,8 @@ def render_index(entries: list[dict[str, object]]) -> str:
     """The generated block: per-file counts, then sections by date (newest first), then undated."""
 
     def cell(text: str) -> str:
-        return text.replace("|", "\\|")
+        # A heading was authored in a root file; the index lives one level down in docs/.
+        return re.sub(r"\]\(docs/", "](../", text).replace("|", "\\|")
 
     counts: dict[str, int] = {}
     dated: list[tuple[str, dict[str, object]]] = []

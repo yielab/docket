@@ -5,11 +5,13 @@ Importing this module has no side effect; `main()` only runs under
 
 from __future__ import annotations
 
-from docket.cli import app
+from docket import bootstrap as _bootstrap
+from docket.interfaces.cli.app import app
+from docket.kernel.home import current_home
 
 
 def main() -> None:
-    app()
+    app(obj=_bootstrap.build_app(current_home()))
 
 
 if __name__ == "__main__":

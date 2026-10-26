@@ -1,0 +1,130 @@
+"""How ``dispatch_pod`` hands a claimed task to ``teams.workspace.prepare``: skips, the jail, the refusal."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+from tests.support.fakes import FakeJail
+from tests.support.tasks import task as _make_task
+
+from docket.hops.application import compose as _compose_c
+from docket.hops.application import steps as _steps_c
+from docket.hops.application import sweep as _sweep_c
+from docket.hops.gates import post_hop as _post_hop_c
+from docket.hops.gates import pre_hop as _pre_hop_c
+from docket.observability import trace as _trace
+from docket.tasks.application import actions as _actions_c
+from docket.tasks.application import queue as _queue
+from docket.tasks.domain.parts import Worktree
+from docket.tasks.domain.task import TaskRecord
+from docket.teams import fleet as _fleet
+from docket.teams import isolation_posture as _isolation_posture
+from docket.teams import settings as _settings
+from docket.teams.workspace import prepare as _prepare
+
+SUBJECT = "docket.tasks.application.queue"
+
+
+@pytest.fixture
+def worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = tmp_path / "wt"
+    root.mkdir()
+    (root / "package-lock.json").write_text("{}")
+    monkeypatch.setattr(_settings, "load_pod_settings", lambda project: SimpleNamespace(prepare=""))
+    monkeypatch.setattr(
+        _actions_c, "load_pod_settings", lambda project: SimpleNamespace(prepare="")
+    )
+    monkeypatch.setattr(_queue, "load_pod_settings", lambda project: SimpleNamespace(prepare=""))
+    monkeypatch.setattr(
+        _compose_c, "load_pod_settings", lambda project: SimpleNamespace(prepare="")
+    )
+    monkeypatch.setattr(
+        _pre_hop_c, "load_pod_settings", lambda project: SimpleNamespace(prepare="")
+    )
+    monkeypatch.setattr(
+        _post_hop_c, "load_pod_settings", lambda project: SimpleNamespace(prepare="")
+    )
+    monkeypatch.setattr(_steps_c, "load_pod_settings", lambda project: SimpleNamespace(prepare=""))
+    monkeypatch.setattr(_fleet, "meta_get", lambda *a, **k: str(tmp_path / "repo"))
+    return root
+
+
+def _task(root: Path, **extra: Any) -> TaskRecord:
+    worktree = Worktree(dir=str(root), branch="b", base_commit="", common_dir="/common")
+    return _make_task(id="t1", worktree=worktree, **extra)
+
+
+def test_a_task_that_runs_in_place_is_never_prepared(
+    worktree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        _prepare, "prepare_worktree", lambda *a: pytest.fail("prepared an in-place task")
+    )
+    in_place = Worktree(dir="", branch="", base_commit="")
+    task = _make_task(id="t1", worktree=in_place)
+    assert _queue.prepare_claimed_task("demo", task) is None
+    assert _queue.prepare_claimed_task("demo", _make_task(id="t1")) is None
+
+
+def test_a_task_already_prepared_for_this_lockfile_is_not_prepared_again(
+    worktree: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = _prepare.resolve(worktree, task_prepare=None, pod_prepare="")
+    assert spec is not None
+    prepared = _prepare.record(spec, _prepare.PrepareOutcome(True, False, 0, 0.0, ""))
+    monkeypatch.setattr(
+        _prepare, "prepare_worktree", lambda *a: pytest.fail("prepared a prepared task")
+    )
+    assert _queue.prepare_claimed_task("demo", _task(worktree, prepared=prepared)) is None
+
+
+def test_a_failed_install_refuses_the_task_with_the_command_status_and_tail(
+    worktree: Path, monkeypatch: pytest.MonkeyPatch, real_tracer_except: Callable[..., None]
+) -> None:
+    outcome = _prepare.PrepareOutcome(False, False, 1, 0.5, "x" * 5000 + "TAIL")
+    monkeypatch.setattr(_prepare, "prepare_worktree", lambda *a: outcome)
+    monkeypatch.setattr(_trace, "trace_event", lambda *a, **k: "written")
+    real_tracer_except(trace_event=lambda *a, **k: "written")
+    seen: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        _queue,
+        "refuse_claimed_task",
+        lambda project, task, kind, reason: seen.append((kind, reason)) or "refused",
+    )
+    monkeypatch.setattr(
+        _sweep_c,
+        "refuse_claimed_task",
+        lambda project, task, kind, reason: seen.append((kind, reason)) or "refused",
+    )
+    assert _queue.prepare_claimed_task("demo", _task(worktree)) == "refused"
+    ((kind, reason),) = seen
+    assert kind == "prepare" and reason.startswith("prepare failed: npm ci (exit 1): ")
+    assert reason.endswith("TAIL") and len(reason) < 4200
+
+
+def test_the_install_runs_on_the_host_when_isolation_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_jail: FakeJail,
+) -> None:
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (None, None)
+    )
+    calls: list[tuple[Any, ...]] = []
+    fake_jail.run_command = lambda *a, **k: calls.append((a, k)) or (0, "")
+    assert _queue._run_prepare_command("demo", "npm ci", "/wt") == (0, "")
+    ((args, kwargs),) = calls
+    assert args[:2] == ("npm ci", "/wt") and "jail" not in kwargs
+
+
+def test_a_refused_posture_is_reported_as_not_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        _isolation_posture, "resolve_command_jail", lambda project, label: (None, "no backend")
+    )
+    assert _queue._run_prepare_command("demo", "npm ci", "/wt") == (
+        None,
+        "[prepare not run: no backend]",
+    )

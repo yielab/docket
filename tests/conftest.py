@@ -1,21 +1,40 @@
 """Shared pytest fixtures for the docket Python suite.
 
-There is no external daemon or compatibility layer to isolate around. Every fixture below
-isolates Docket's own state
-instead (fleet.json, the `DOCKET_HOME`-derived registries, docket-owned
-secrets).
+There is no external daemon or compatibility layer to isolate around. The autouse fixture
+below isolates Docket's own state instead (fleet.json, the `DOCKET_HOME`-derived registries,
+docket-owned secrets) by running each test in a ``use_home`` block.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-import docket.config as _cfg
-from docket.core import secrets as _secrets
+from docket import bootstrap
+from docket.kernel.home import Home, reset_default, use_home
+from docket.kernel.ports import git_port, jail_port, process_port, tracer_port
+from docket.observability.adapters.local_tracer import LocalTracer
+from docket.platform import git as _git_adapter
+from docket.platform import process as _process_adapter
+from docket.sandbox.launch import Launcher
+from tests.support.fakes import (
+    FakeGit,
+    FakeJail,
+    FakeProcess,
+    RealExcept,
+    launcher_with,
+)
+from tests.support.git import GitHost
 
-_LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 2.0, "integration": 10.0}
+# The real git, process and jail adapters are the default of every test; a test that wants a
+# fake asks for the ``fake_git``, ``fake_process`` or ``fake_jail`` fixture below.
+bootstrap.bind_adapters()
+
+_LANE_DURATION_CEILING_S = {"unit": 2.0, "guards": 5.0, "integration": 10.0, "e2e": 60.0}
 
 
 def _lane_of(nodeid: str) -> str | None:
@@ -53,193 +72,102 @@ def _plain_typer_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_audit_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Safety net: default AUDIT_LOG to an ephemeral path for every test.
-
-    ``core/audit.py`` has no environment kill switch — best-effort recording
-    always happens — so a test that exercises
-    a mutating code path but forgets to repoint ``_cfg.AUDIT_LOG`` at its own
-    sandbox would otherwise append real entries to the developer's actual
-    ``~/.docket/audit.log``. This applies to every test by default; a test
-    that wants to inspect audit output still repoints ``_cfg.AUDIT_LOG`` to
-    its own fixture-managed directory, which simply overrides this default.
-    """
-    monkeypatch.setattr(_cfg, "AUDIT_LOG", tmp_path / "_autouse_audit.log", raising=True)
-
-
-@pytest.fixture(autouse=True)
-def _isolate_fleet_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Safety net: default FLEET_FILE to an ephemeral path for every test.
-
-    ``DOCKET_HOME`` (fleet.json's home) is not implicitly isolated by
-    repointing some other directory for hermeticity. The fleet read/write API
-    lives in ``core/fleet.py``, which reads ``_cfg.FLEET_FILE`` fresh on
-    every call, never a module-level rebound copy -- so patching
-    ``_cfg.FLEET_FILE`` alone is sufficient, there is no second module to
-    patch. A test that wants a specific fleet.json still repoints
-    ``_cfg.FLEET_FILE`` itself, which simply overrides this default.
-    """
-    monkeypatch.setattr(_cfg, "FLEET_FILE", tmp_path / "_autouse_fleet.json", raising=True)
-
-
-@pytest.fixture(autouse=True)
-def _isolate_secrets_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Safety net: default docket's secrets store to an ephemeral path.
-
-    ``core/secrets.py`` reads ``SECRETS_FILE``/``SECRETS_META_FILE`` as
-    module-level constants computed once at import (``DOCKET_HOME /
-    "secrets.json"`` etc.), not through ``_cfg`` at call time -- so isolating
-    them means patching the ``core.secrets`` module's own attributes
-    directly.
-    """
-    monkeypatch.setattr(_secrets, "SECRETS_FILE", tmp_path / "_autouse_secrets.json", raising=True)
-    monkeypatch.setattr(
-        _secrets, "SECRETS_META_FILE", tmp_path / "_autouse_secrets_meta.json", raising=True
-    )
-
-
-@pytest.fixture(autouse=True)
-def _keep_pytest_dumpable(monkeypatch: pytest.MonkeyPatch) -> None:
+def _keep_pytest_dumpable() -> Iterator[None]:
     """An in-process turn must not make the pytest process non-dumpable for every later test;
     the real flag is exercised in a subprocess (``test_process_non_dumpable.py``)."""
-    from docket.edges.adapters import system as _system
-
-    monkeypatch.setattr(_system, "make_non_dumpable", lambda: None, raising=True)
-
-
-# Every ``DOCKET_HOME``-derived path, and the config attribute each is read
-# through at call time. Nothing under ``src/docket/`` binds these at import
-# (no ``from docket.config import TRACES_DIR`` etc.), so patching the config
-# module alone is sufficient -- ``FLEET_FILE`` above is the one exception
-# noted in its own fixture's docstring.
-#
-# ``AUDIT_LOG`` already has its own dedicated ``_isolate_audit_log`` fixture
-# above; it is listed here too so ``test_docket_home_isolation.py``'s
-# source-scanning guard (which does not know about that separate fixture)
-# stays green. Both fixtures isolate it to a safe tmp path, so the
-# redundancy is harmless.
-_DOCKET_HOME_PATHS: tuple[tuple[str, str], ...] = (
-    ("TRACES_DIR", "traces"),
-    ("APPROVALS_DIR", "approvals"),
-    ("CORRECTIONS_DIR", "corrections"),
-    ("CONSULT_PARKED_DIR", "consult-parked"),
-    ("POLICIES_DIR", "policies"),
-    ("PLUGINS_DIR", "plugins"),
-    ("SKILLS_DIR", "skills"),
-    ("SESSIONS_DIR", "sessions"),
-    ("PORT_ALLOC_FILE", "port-allocations.json"),
-    ("CONVERSATIONS_FILE", "docket-conversations.json"),
-    ("SCHEDULE_FILE", "docket-schedules.json"),
-    ("RUNS_FILE", "docket-runs.json"),
-    ("SERVE_PID_FILE", "serve.pid"),
-    ("MCP_SERVERS_FILE", "docket-mcp-servers.json"),
-    ("PROVIDERS_FILE", "docket-providers.json"),
-    ("EXPORTERS_FILE", "docket-exporters.json"),
-    ("EXPORTERS_HEALTH_FILE", "exporters-health.json"),
-    ("CHANNELS_FILE", "docket-channels.json"),
-    ("NOTIFY_STATE_FILE", "notify-state.json"),
-    ("CHANNELS_HEALTH_FILE", "channels-health.json"),
-    ("TELEGRAM_OFFSET_FILE", "docket-telegram-offset.json"),
-    ("REVIEWED_REPOS_FILE", "reviewed-repos.json"),
-    ("INBOX_CURSOR_FILE", "inbox-cursor.json"),
-    ("MODEL_REGISTRY_FILE", "docket-models.json"),
-    ("ARCHETYPE_REGISTRY_FILE", "docket-roles.json"),
-    ("PROJECTS_DIR", "workspaces/projects"),
-    ("AUDIT_LOG", "audit.log"),
-    ("WORKSPACES_DIR", "workspaces"),
-    ("JAIL_TMP_DIR", "jail-tmp"),
-    ("PREPARE_CACHE_DIR", "cache/prepare"),
-    ("PODS_DIR", "workspaces/pods"),
-)
+    with process_port.use(RealExcept(_process_adapter, make_non_dumpable=lambda: None)):
+        yield
 
 
-# The single shared way for a test to isolate a *specific* home directory it
-# controls, instead of declaring its own partial copy of _DOCKET_HOME_PATHS --
-# a local subset silently stops tracking that tuple the moment a new constant
-# is added there, with nothing to fail. DOCKET_HOME and FLEET_FILE are set
-# explicitly because neither is in _DOCKET_HOME_PATHS (DOCKET_HOME is the
-# tuple's input, not a derived path, and FLEET_FILE has its own dedicated
-# _isolate_fleet_file fixture). core/secrets.py's SECRETS_FILE/SECRETS_META_FILE
-# are also named explicitly: they bind from DOCKET_HOME at import time, not
-# through config at call time, so patching DOCKET_HOME alone does not move
-# them. All four still need to move with the rest of the constants whenever a
-# test repoints to its own chosen home, or they would silently keep pointing
-# at the autouse fixtures' home instead -- a home split in two with nothing
-# to fail.
-def repoint_docket_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
-    """Point every DOCKET_HOME-derived constant at *home*."""
-    monkeypatch.setattr(_cfg, "DOCKET_HOME", home, raising=True)
-    monkeypatch.setattr(_cfg, "FLEET_FILE", home / "fleet.json", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_FILE", home / "secrets.json", raising=True)
-    monkeypatch.setattr(_secrets, "SECRETS_META_FILE", home / "secrets.meta.json", raising=True)
-    for attr, leaf in _DOCKET_HOME_PATHS:
-        monkeypatch.setattr(_cfg, attr, home / leaf, raising=True)
+@pytest.fixture
+def real_git_except() -> Iterator[Callable[..., None]]:
+    """``real_git_except(git_worktree_add=f)`` binds the real git adapter with those calls
+    replaced, for the rest of the test."""
+    with ExitStack() as stack:
+
+        def bind(**overrides: Callable[..., Any]) -> None:
+            stack.enter_context(git_port.use(RealExcept(_git_adapter, **overrides)))
+
+        yield bind
+
+
+@pytest.fixture
+def real_tracer_except() -> Iterator[Callable[..., None]]:
+    """``real_tracer_except(trace_event=f)`` binds the real tracer with those calls replaced, for
+    the rest of the test."""
+    with ExitStack() as stack:
+
+        def bind(**overrides: Callable[..., Any]) -> None:
+            stack.enter_context(tracer_port.use(RealExcept(LocalTracer(), **overrides)))
+
+        yield bind
+
+
+@pytest.fixture
+def git_host(monkeypatch: pytest.MonkeyPatch) -> GitHost:
+    """The operating system under ``platform.git``: git on PATH or not, and what running it answers."""
+    return GitHost(monkeypatch)
+
+
+@pytest.fixture
+def fake_git() -> Iterator[FakeGit]:
+    fake = FakeGit()
+    with git_port.use(fake):
+        yield fake
+
+
+@pytest.fixture
+def fake_process() -> Iterator[FakeProcess]:
+    fake = FakeProcess()
+    with process_port.use(fake):
+        yield fake
+
+
+@pytest.fixture
+def fake_jail() -> Iterator[FakeJail]:
+    fake = FakeJail()
+    with jail_port.use(fake):
+        yield fake
+
+
+@pytest.fixture
+def bind_launcher() -> Iterator[Callable[..., Launcher]]:
+    """``bind_launcher(landlock=True, docker=False)`` binds the real jail adapter on a host whose
+    backend probes answer so, for the rest of the test."""
+    with ExitStack() as stack:
+
+        def bind(**probes: bool) -> Launcher:
+            launcher = launcher_with(**probes)
+            stack.enter_context(jail_port.use(launcher))
+            return launcher
+
+        yield bind
 
 
 @pytest.fixture(autouse=True)
-def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Safety net: default every ``DOCKET_HOME``-derived path to a tmp dir.
+def _isolate_docket_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Run every test in a home of its own under ``tmp_path``.
 
-    Same reasoning as ``_isolate_fleet_file`` above, which covered exactly one
-    of the constants that changed meaning. **Measured, not assumed:** with
-    only ``FLEET_FILE`` isolated, a full ``uv run pytest`` wrote real approval
-    records, trace JSONL, ``docket-conversations.json`` and
-    ``port-allocations.json`` into the developer's actual ``~/.docket``
-    (verified by snapshotting the directory either side of a run).
+    **Measured, not assumed:** with only ``FLEET_FILE`` isolated, a full ``uv run pytest``
+    wrote real approval records, trace JSONL, ``docket-conversations.json`` and
+    ``port-allocations.json`` into the developer's actual ``~/.docket`` (verified by
+    snapshotting the directory either side of a run). ``audit.log`` has no environment kill
+    switch either, and some paths have no override at all, so a test cannot opt out of the real
+    path even deliberately; that is what makes this an autouse default rather than each test's
+    responsibility.
 
-    Two of these constants -- ``PORT_ALLOC_FILE`` and ``CONVERSATIONS_FILE``
-    -- have no environment override at all, so a test cannot opt out of the
-    real path even deliberately; that is what makes this an autouse default
-    rather than each test's responsibility.
-
-    A test wanting a specific location still repoints the constant itself
-    (see ``repoint_docket_home`` above), which simply overrides this default.
+    A test wanting a specific location wraps its body in ``use_home(Home(path))``, which
+    replaces this default for the block. The fleet file stays beside the home, at the leaf it
+    has always had here.
     """
-    home = tmp_path / "_autouse_docket_home"
-    for attr, leaf in _DOCKET_HOME_PATHS:
-        monkeypatch.setattr(_cfg, attr, home / leaf, raising=True)
-
-
-def register_local_provider(
-    home: Path,
-    name: str,
-    models: list[dict[str, object]],
-    base_url: str = "http://127.0.0.1:9999/v1",
-) -> None:
-    """Write a keyless loopback provider document into *home*'s global catalog."""
-    from docket.core import provider as _provider
-
-    with pytest.MonkeyPatch.context() as mp:
-        repoint_docket_home(mp, home)
-        _provider.save_provider(
-            _provider.ProviderSpec.model_validate(
-                {
-                    "name": name,
-                    "baseUrl": base_url,
-                    "auth": {"type": "none"},
-                    "local": True,
-                    "models": models,
-                }
-            )
-        )
-
-
-def record_isolation_off(home: Path) -> None:
-    """Record an explicit isolation off in *home*'s fleet.json, merging into any existing file."""
-    _record_isolation_mode(home, "off")
-
-
-def record_isolation_on(home: Path) -> None:
-    """Record `docket setup sandbox on` in *home*'s fleet.json, merging into any existing file."""
-    _record_isolation_mode(home, "non-main")
-
-
-def _record_isolation_mode(home: Path, mode: str) -> None:
-    import json
-
-    home.mkdir(parents=True, exist_ok=True)
-    path = home / "fleet.json"
-    data = json.loads(path.read_text()) if path.exists() else {}
-    data.setdefault("security", {})["isolationMode"] = mode
-    path.write_text(json.dumps(data))
-    path.chmod(0o600)
+    monkeypatch.setenv("DOCKET_SERVICE_MANAGER", "none")
+    home = Home(
+        tmp_path / "_autouse_docket_home", fleet_file_override=tmp_path / "_autouse_fleet.json"
+    )
+    # A thread started without this context, or a child process, falls back to the process
+    # default; it is this test's home too, never the developer's ~/.docket nor an earlier test's.
+    monkeypatch.setenv("DOCKET_HOME", str(home.root))
+    reset_default()
+    with use_home(home):
+        yield
+    reset_default()

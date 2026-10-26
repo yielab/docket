@@ -11,353 +11,675 @@
 >
 > ---
 >
-> **Scheduling rule:** schedule by **file contention**, not phase number, and state ownership at
-> **function** level when a file is hot (`core/tools.py` is the recurring hotspot: give one card a
-> single lambda, forbid the file to another, let a third import it unchanged). A conflict is
-> resolved by keeping both blocks and *importing the module* to assert nothing was lost, never by
-> reading the diff and assuming.
-
-## ▶ PHASE 45 — ACTIVE — a prepared checkout, models from the provider, and a check the change cannot define (D-65, ADR 0029; opened 2026-10-19)
-
-> **Evidence.** Fabulada's first code run through a team, through Tack, on 2026-10-19:
-> [ADR 0029](docs/adr/0029-a-prepared-checkout-models-from-the-provider-and-a-check-the-change-cannot-define.md)
-> "Evidence". It is also the trigger D-63 named for the deferred **warm workspace** (ADR 0027
-> point 10), so P45-1 consumes that follow-up. The per-step token limit needs no card: every run
-> Tack sends carries `maxTokens` (Tack ADR 0086 decision 5) and `core/dispatch.py::_gate_task_tokens`
-> already hands each hop what is left of it.
+> **Scheduling rule:** schedule by **file contention**, not phase number. Cards that edit the same
+> files run one after the other, and work that would touch the same files twice belongs to one card.
+> Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
+> finishing a card well matters more than running two at once.
 >
-> **Shape.** Four cards, one per ADR point, plus the real run. Items from the follow-ups list ride
-> along only where the card already edits that file or function; the rest stay in the follow-ups
-> section, untouched.
->
-> **Planning measurements (2026-10-19, `f2e9b956`).**
-> - Nothing on the dispatch path reads `core/reviewed_repos.py` (callers: `cli/_status.py`,
->   `cli/_run.py::_pick_up_repository`, `cli/_agents.py`, `core/pod_apply.py::review_decision` /
->   `apply_directory`). P45-3 therefore makes the files a reviewed command names protected paths,
->   so the agent's own edit to them parks for a person, instead of adding a claim-time check.
-> - The "4,096 output cap" is a reserve, not a request field:
->   `core/agent_loop.py::_resolve_request_limits` uses `config.DEFAULT_MAX_OUTPUT_TOKENS` for the
->   window and budget checks only and sends no `max_tokens` when the endpoint registers none. A
->   reply cut at 4,096 came from the provider's default; P45-2 reproduces it first.
-> - The local llama.cpp `/v1/models` publishes `meta.n_ctx` 32768 (served) and `meta.n_ctx_train`
->   262144 (training); the field map is per shape and pinned by recorded bodies.
-> - `jail_launch(..., network=)` takes the network per launch, and `dispatch_pod`'s
->   `claimRefusal` -> `_refuse_claimed_task` fails a task before any hop with a `failureKind`;
->   `prepare` reuses both.
->
-> **Interface for Tack (provisional until P45-1 lands; Tack builds against it, ADR 0086).**
-> `POST /tasks/<pod>` accepts `prepare` (string; `""` off; absent = the team's `prepare:`, else the
-> lockfile's command). New `failureKind` values `prepare` (before any hop, the command's output as
-> reason) and `check_changed` (on deny, `checkChanged: [paths]` on the task). Tack sends `prepare`
-> only when `apiVersion` is `"6"` or later.
->
-> **Before Wave 117 (operator steps, refused to agents by the permission classifier):** reinstall
-> the service venv, replace the installed `block-destructive.yaml` from the template, restart
-> `docket start`. Retired, not carried: the Phase 39 "Tack `harness run` -> `exec` string" item;
-> `exec` was deleted in Phase 43 and Tack sends work over HTTP.
->
-> **Worker packets** §0: `uv run --extra mcp` for `mypy src` and `scripts/gen_cli_docs.py --check`
-> (worker worktrees lack `click`/`anyio` otherwise; every Wave 116 worker hit it).
->
-> **Phase acceptance:** Fabulada's code task through Tack prepares its worktree from the lockfile
-> (the second task with the same lockfile prepares in seconds), runs eslint, vitest and the
-> project's own `tsc`, and finishes or parks on `check_changed`; `setup provider show` names every
-> limit it uses or says `unknown`; two teams on one codebase keep both approvals.
->
-> | Wave | Cards | Ownership (no two lanes share a function) | Depends on |
-> | --- | --- | --- | --- |
-> | 117 | P45-1 prepare · P45-2 limits from `/models` · P45-4 approvals as a set | P45-1: new `core/prepare.py`, `core/dispatch.py::dispatch_pod` claim loop, `core/task_options.py`, `serve.py` field map + `SERVE_API_VERSION`, a `prepare` RunItem in `core/pod_apply.py` (new function), `pod.schema.json`. P45-2: `edges/adapters/llm.py`, `core/provider.py`, `core/agent_loop.py::_resolve_request_limits`/`_trace_llm_call`, `templates/providers/`, `cli/_provider.py`. P45-4: `core/reviewed_repos.py` keying, `core/pod_apply.py::review_decision`/`apply_directory`/the two `lookup` readers, `cli/_status.py`, `cli/_run.py`, `cli/_agents.py` | — |
-> | 118 | P45-3 protected paths | `core/protected_paths.py` (new), `core/reviewed_repos.py::_digest`, `core/dispatch.py::_run_pipeline` done path/`_finalize_task`/`_pin_hop_tree`/`_run_group_node`/`_ensure_task_worktree`, `core/pod_apply.py::plan_apply`, `pod.schema.json` | 117 merged |
-> | 119 | P45-5 the real run and the close | board, ROADMAP, CHANGELOG | 118 merged |
+> **Active: none.** Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
+> ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. A new phase starts
+> from a measured trigger or a maintainer request. The integration branch is
+> `plan/phase-46-structure` until the maintainer merges it.
+> **Planned: Phase 52** (D-73, [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md);
+> D-74, [ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)), twelve cards cut by
+> file ownership over four waves.
 
-### P45-1 — docket prepares the worktree it makes
+## ○ PHASE 52 PLANNED — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033); the turn owns its processes and its time (D-74, ADR 0034)
 
-**Status:** DONE 2026-10-19 (merge 645fce80; Wave 117 gates green) · **Size:** M · **Model:** Sonnet
+> Planned 2026-10-25 by the maintainer from a code audit against a harness-engineering survey
+> ([ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) holds the findings and the
+> refusals). Cards are cut by **file ownership**, not by technique: everything one worker would
+> change in the same files is one card, so no file is edited twice in the same wave. Wave A may
+> start beside Phase 51's remaining cards: no Wave A or B card edits `hops/application/dispatch*`,
+> `tasks/`, `operator/` or `interfaces/http/` (P52-1 writes only `observability/`; `/metrics`
+> reads the fold). P52-9 to P52-12 were added the same day from a second reading
+> ([ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md): a tool's clock, background
+> processes, `fetch`, search, machine waits). They continue files Waves A and B own, so they run as
+> Waves C and D; the exception is P52-11, whose files nobody in Wave A touches. P52-12 (the fourth
+> proposal, search) is folded into P52-6: same owner, same files.
 
-- **Trigger:** ADR 0029 point 1: in a fresh Fabulada worktree `Cannot find package 'eslint'`,
-  `Cannot find module 'vitest/config'`, and the machine's `tsc` 7.0.2 against the project's 5.9.3.
-- **Goal:** after the claim checks, `dispatch_pod` prepares the task worktree. The command is the
-  task's `prepare`, else the team's `prepare:` in `pod.yaml`, else derived from the lockfile at the
-  worktree root (`package-lock.json` -> `npm ci`, `pnpm-lock.yaml` ->
-  `pnpm install --frozen-lockfile`, `yarn.lock` -> `yarn install --immutable`, `uv.lock` ->
-  `uv sync --frozen`, `poetry.lock` -> `poetry install`, `Cargo.lock` -> `cargo fetch`); `""` or
-  `prepare: none` turns it off; no lockfile and no command runs nothing. It runs through
-  `jail_launch(..., network=True)` when isolation is on (the hops keep the pod's network) and on
-  the host like `verifyCmd` when it is off. The install output is kept once per codebase and
-  lockfile hash under `DOCKET_HOME/cache/prepare/`, built under a file lock, linked into each
-  worktree, readable (not writable) by the hops' jail, three entries kept per codebase. A team's
-  or derived command is a reviewed item (kind `prepare`); a task's own `prepare` is on the task
-  record before it runs. A failure fails the task with `failureKind: "prepare"` and the output
-  tail, before any hop. A `prepare` trace event records command, source, cache hit, seconds,
-  exit. `SERVE_API_VERSION` becomes `"6"`.
-- **Non-goals:** guessing without a lockfile; container images per project.
-- **Acceptance:** a fixture repo with `package-lock.json` and one dev dependency: the implementer
-  hop finds `node_modules/.bin/<tool>`; the second task with the same lockfile is a cache hit; a
-  broken lockfile fails `prepare` with no hop and no tokens; `prepare: ""` skips it; with isolation
-  on, a hop cannot write the cache entry and its network is the pod's (escape-matrix rows).
-  Oracle: task record, trace, the hop's tool result.
-- **RED test:** the fixture repo has no `node_modules` after claim.
-- **Gates:** full default lanes, `pytest-without-sandbox.sh`, escape matrix, goldens,
-  `gen_cli_docs --check`.
-- **Spec:** `pod-dispatch.spec.md`, `operator-api.spec.md` (field, version 6, `failureKind`),
-  `pod-blueprints.spec.md` (`prepare:` reviewed), `trace-store.spec.md` (event), sandbox spec.
+### How a Phase 52 card runs (read before claiming one)
 
-### P45-2 — a model's limits come from the provider's `/models`
+- Spec → failing test → smallest change. Bump the owning spec (MINOR) with `Last Updated` and the
+  `specs/README.md` row in the same commit.
+- **Read bounded, to spend little:** `card_packet.py P52-<n>`, ADR 0033 §"Decision" (one screen),
+  the spec section the card names, the files it names. Nothing else: not the ADR's findings, not
+  another card, not a spec directory. A worktree has no `internal-docs/`.
+- **Measure with what exists, free first.** The replay bench
+  (`scripts/maint/context_replay.py tests/fixtures/context-replay --policy <name>`) costs nothing
+  and is the oracle for bytes and counted tokens; a card that changes what the model sees adds its
+  `--policy` and reports the table before/after. The live eval (`scripts/maint/live_eval.py -n 3`,
+  local endpoint, `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`) runs **once per wave by the integrator**, not
+  per card; the remote provider once at the phase close, after a go.
+- **Every card:** focused tests by path under `timeout 120`; before handoff `ruff`, `mypy src`,
+  `pytest --co -q`, `tests/architecture`, `comment_lint.py --check` on touched files. The e2e lane
+  only on cards that change a tool's output or the wire (P52-2, P52-3, P52-7, P52-8, P52-10,
+  P52-11).
+- **Spend by model.** Haiku runs the data card (P52-6) and, on any card, the spec and doc edits the
+  card spells out; Sonnet runs behaviour in `src/`; no Opus on this phase. A worker opens only the
+  files its card names (no card names more than eight) and the one spec section it names; a card
+  that turns out to need more parks with the missing locator instead of exploring. Every card's
+  trigger carries its line numbers so the worker greps, never reads a module whole.
+- **Integrator seams:** P52-2 and P52-3 both bump `agent-loop.spec.md`; the integrator renumbers at
+  merge (as in Phase 44). The full default suite runs once per merge, `--lf` after.
+- Workers in `.claude/worktrees/p52-<n>`, one card per worktree. **Model per card** is on the
+  card: Sonnet for behaviour in `src/`, Haiku for data-only cards. Delta-only handoff with the
+  end-of-work control summary.
 
-**Status:** BLOCKED on the maintainer's prices decision (below) · **Size:** M · **Model:** Sonnet
+**Waves (by file contention)**
 
-- **Trigger:** ADR 0029 point 2: an id outside the shipped rows gets no window and no output bound
-  (`edges/adapters/llm.py::endpoint_from_spec`); 49 of 49 `request_fit` events in the joint run
-  said `unknown_window` (gateway).
-- **First step:** reproduce the 4,096 cut on a model with no registered bound and cite where it
-  comes from.
-- **Goal:** `probe_models` returns each advertised id's window and output cap through one
-  per-shape field map (Anthropic `max_input_tokens`/`max_tokens`; llama.cpp `meta.n_ctx`, never
-  `n_ctx_train`; OpenRouter `context_length`/`top_provider.max_completion_tokens`; the gateway as
-  its recorded body shows; anything else unknown). Observed limits go to a docket-owned
-  `provider-models.json` (via `edges/store.py`, with the date) at `setup provider add` and once a
-  day in the `docket start --dispatch` sweep. `endpoint_from_spec` resolves operator-declared >
-  observed > unknown; a known output cap is sent as `max_tokens`. The shipped templates lose their
-  `contextWindow`/`maxTokens` rows. `setup provider show` and `pod report` print each limit's
-  source (`declared`, `observed <date>`, `unknown`).
-- **Rides along (same files):** `request_part_bytes` measures UTF-8 (18,037 B against 11,367 B
-  measured for a non-ASCII part); `llm_call` carries `cacheWrite` when reported.
-- **Decision needed before claim (maintainer):** ADR 0029 says templates keep "only connection
-  data", but prices feed the labelled estimate and budget auto-pause and `presets` feed the rank
-  anchors. Recommended: remove limits only; keep `price`/`pricesAsOf`/`presets`.
-- **Non-goals:** refusing an unadvertised step `model:`; prices from the provider.
-- **Acceptance:** recorded `/models` bodies (llama.cpp from `127.0.0.1:8081`, Anthropic,
-  OpenRouter, the gateway; scrubbed) yield the published limits, the llama.cpp window is 32768;
-  `rg 'contextWindow|maxTokens' src/docket/templates/providers` prints nothing; a never-observed
-  model shows `unknown`, never a filled-in number. Oracle: the recorded bodies.
-- **RED test:** the llama.cpp body parsed to `n_ctx`.
-- **Gates:** full default lanes, goldens, `scripts/metrics.py --check`.
-- **Spec:** `model-profiles.spec.md`, `agent-loop.spec.md` (reserve), `trace-store.spec.md`
-  (`llm_call`).
+| Wave | Cards | Why this order |
+| --- | --- | --- |
+| A | P52-1 ∥ P52-2 ∥ P52-3 ∥ P52-6 ∥ P52-11 (∥ P52-4 once unblocked) | disjoint owners: `observability/`+bench · `kernel/text.py`+toolbox+`session.py` · request/wire/catalog · recipes · `platform/fetch.py`+`_fetch_tool` · `governance/`; P52-4 and P52-11 share only `security-gates.spec.md` (integrator renumbers) |
+| B | P52-5 ∥ P52-7 ∥ P52-8 | P52-5 needs P52-1's re-read figure; P52-7 continues P52-3's files and P52-11's `builtin_tools.py`; P52-8 continues P52-2's files and covers `fetch` results |
+| C | P52-9 | continues P52-7's `builtin_tools.py` and `driver.py`; `lifecycle.py` after P51-9 |
+| D | P52-10 | continues P52-9's files, P52-8's `toolbox.py` and P52-4's `security.py` |
+| — | P52-12 | blocked on a recorded run and on P51-9; no wave until the trigger fires |
 
-### P45-3 — a change that edits its own check goes to a person
+### P52-1 — the numbers: cache hits, tokens per accepted task, re-reads
 
-**Status:** DONE 2026-10-19 (merge e6142b1c; Wave 118 gates green) · **Size:** M · **Model:** Sonnet
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** observability + script
 
-- **Trigger:** ADR 0029 point 3: a gate such as `npx eslint` reads configuration the agent edits;
-  `reviewed_repos.py` hashes only the command text.
-- **Goal:** protected paths are the defaults (lockfiles, `package.json`, `pyproject.toml`,
-  `Cargo.toml`, lint/type/test configuration, `.docket/`, `prill.yaml`, CI workflows), the team's
-  `protects:` in `pod.yaml` (adds only), and every tracked file a reviewed command names. When a
-  pipeline ends `done` and `git diff --name-only <baseCommit>..<branch>` touches one, the task
-  parks `waiting_approval` (approval kind `check_changed`, `checkChanged: [paths]`) whatever the
-  profile, lights-out included; grant -> `done`, deny -> `failed`/`check_changed`. The review digest
-  includes the blob id of each file a command names, so `pod update` and `docket run` ask again
-  after such a file changes.
-- **Rides along (same functions):** `_pin_hop_tree` cuts a subject at a word boundary;
-  `_run_group_node` keeps `failure_kind` (a budget stop in a group says `budget`); the dead
-  `inPlace` key in `_ensure_task_worktree`; the stale `.env\b.*write` paragraph in
-  `security-gates.spec.md`.
-- **Non-goals:** restoring files before a gate; a claim-time review check.
-- **Acceptance:** a stub task editing `package.json` under `lights-out` parks naming it;
-  `task approve` -> `done`, `task deny` -> `failed`/`check_changed`; a task editing `scripts/check.sh`
-  behind gate `bash scripts/check.sh` parks; a task editing only `src/` ends `done`. Oracle: task
-  record, audit entries with their channel.
-- **RED test:** the lights-out `package.json` case.
-- **Gates:** full default lanes, goldens, `validate-specs.sh`.
-- **Spec:** `pod-dispatch.spec.md`, `operator-api.spec.md`, `operator-loop.spec.md`,
-  `pod-blueprints.spec.md` (`protects:`, digest), `security-gates.spec.md`.
+- **Trigger:** maintainer request (ADR 0033 §Decision 5). No cache-hit ratio exists; `task show`
+  prints usage per model but not per accepted task; the Phase 44 follow-up "measure which calls
+  repeat before cutting anything" never ran because its measurement was framed as a paid live run.
+  The recorded traces already hold the answer.
+- **Goal:** three figures, read-only on data docket already records. (1) `cache_hit =
+  cachedTokens / inputTokens` on every `llm_call` event and folded per task and per role in the
+  metrics fold `observability/` keeps (the `/metrics` route reads it unchanged). (2) `tokens per
+  accepted task`: counted tokens of tasks that ended `done`, as a line of `docket log --summary`
+  and a metrics key. (3) `context_replay.py --repeats`: per step, the `read`/`grep`/`glob` calls
+  whose canonical arguments repeat; per task, the files the Implementer read that the Lead had
+  read.
+- **Non-goals:** dollars; alerting; any change to what the model sees.
+- **Spec:** `trace-store.spec.md` (3.2.0 → 3.3.0: `cache_hit` is derived, not stored);
+  `serve-read-api.spec.md` (4.2.0 → 4.3.0: the two metrics keys); `cost-tracking.spec.md` only if
+  a sentence there names the per-task figure.
+- **Change:** `observability/` metrics fold (one function per figure); `interfaces/cli/commands/log*`
+  renders the summary line; `scripts/maint/context_replay.py` gains `--repeats` (a table: step,
+  repeated calls, re-read files, bytes they cost at the measured ratio).
+- **Acceptance:** fixture `tests/fixtures/traces` (an `llm_call` with `cachedTokens` > 0) →
+  `GET /metrics` shows `cacheHit` for that task's role; a task record `done` with usage →
+  `docket log --summary` prints `tokens per accepted task`; `context_replay.py
+  tests/fixtures/context-replay --repeats` prints a non-empty table and the JSON form lists at least
+  one repeated `read` (the committed implementer fixture has one). Oracle: the numbers equal a
+  hand-computed value from the fixture, asserted in `tests/unit/observability/` and
+  `tests/integration/observability/`. The private replay copies are run by the integrator and the
+  figure recorded on P52-5's trigger line.
+- **Contention:** `observability/` and the bench script only. Serial with nothing.
 
-### P45-4 — approvals are kept per codebase and team, as a set
+### P52-2 — tool results the model can use
 
-**Status:** DONE 2026-10-19 (merge b5318e7c; Wave 117 gates green) · **Size:** S · **Model:** Haiku
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 
-- **Trigger:** ADR 0029 point 4: one entry per codebase, overwritten; two pods' approvals 0.3 s
-  apart in `audit.log`, the second replacing the first.
-- **Goal:** `reviewed-repos.json` keys by (resolved codebase, pod) and keeps every approved digest;
-  `is_reviewed` is true for any of them; `code_mismatch` diffs against the pair's latest approval;
-  `repo.allow` audits `pod=`. An old one-entry file is ignored and asked again once (D-57;
-  CHANGELOG says so).
-- **Rides along (same functions):** `POST /pods/<p>/apply` on a pod with no recorded codebase
-  refuses instead of reviewing against `directory.parent`; the `_changed_since_review` hint names
-  `teams/<pod>/` when the repository keeps teams.
-- **Acceptance:** two pods on one codebase approved in turn both answer `go`; returning to an
-  earlier approved set asks nothing; a third set asks with only its changed items. Oracle:
-  `review_decision` and the file.
-- **RED test:** the second pod's approval removing the first's.
-- **Gates:** full default lanes, goldens, `gen_cli_docs --check`.
-- **Spec:** `pod-blueprints.spec.md`, `operator-api.spec.md`, `cli-interface.spec.md`.
+- **Trigger:** ADR 0033 findings, verified 2026-10-25: `kernel/text.py::cut_output` keeps the head
+  only; `toolbox.py` merges stderr into stdout (`:419`) and hints only on exit 126 (`:472-473`);
+  `edit` says only "not found" (`:188-197`); no ANSI or repeated-line normalization anywhere; the
+  condensation window (`agent/session.py:65-69`) lets one 20 KB grep evict a 1.2 KB README that
+  is then re-read (Phase 44 close note).
+- **Goal, in order (a park leaves the rest visible):**
+  1. `cut_output` for `bash` and `verify` keeps head and tail (40/60) with the marker between
+     them; `read` keeps head-only (the head is right there).
+  2. Lossless normalization before the cut: strip ANSI escapes, resolve `\r` progress lines to
+     their last state, collapse consecutive identical lines to `line  [x N]`.
+  3. On exit ≠ 0, stderr first, then stdout; a fixed table of known causes: 126 (today's text),
+     127 (`not on PATH inside the jail or not in allowCommands`).
+  4. `edit` "not found" lists the three closest lines (`difflib`, ratio ≥ 0.6) with "the text
+     must match exactly; copy it from `read` without the line-number prefix". Never auto-apply.
+  5. Condensation: a tool result under 1,500 chars is never condensed while a larger one in the
+     same step is whole (monotone: never condenses more than today).
+- **Non-goals:** the artifact store (P52-8); timestamps or pids replaced; any change to `read`'s
+  window; a second normalization pass elsewhere.
+- **Spec:** `agent-loop.spec.md` (3.2.0 → 3.3.0, tool-output section: head+tail, normalization,
+  error order); `session-history.spec.md` (1.9.2 → 1.10.0, the small-results rule beside
+  requirement 31).
+- **Change:** `kernel/text.py` (`cut_output` gains a `tail` share; a new `normalize_output`),
+  `agent/tools/builtins/toolbox.py` (`bash`, `edit`), `hops/application/verify_tool.py`,
+  `agent/session.py::condense_history`.
+- **Acceptance:** a `bash` whose output is 20 lines of progress + a pytest summary at the tail →
+  the result shows the summary after the marker; an output with ANSI colour and 50 identical lines
+  → one line with `[x 50]`; `edit` with a near-miss `old_string` → the error names the closest
+  line; a step with one 20 KB grep then a 1 KB read → the read survives condensation. Oracles:
+  `tests/unit/kernel/test_text.py`, `tests/unit/agent/tools/builtins/`,
+  `tests/integration/agent/test_session_condensation*`; the bench `--policy p52-2` reports bytes
+  per step before/after on `tests/fixtures/context-replay` (no step worse). Lane e2e green.
+- **Contention:** the toolbox, `kernel/text.py`, `session.py`. P52-8 continues these files after
+  this merges.
 
-### P45-5 — the real run, and the phase close
+### P52-3 — one request shape: a stable prefix and sampling from the catalog
 
-**Status:** TODO after Wave 118 · **Size:** M · **Model:** integrator, maintainer-approved, paid
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
 
-- **Goal:** Fabulada's code task through Tack on the merged tree, against the operator's
-  `~/.docket`: per step sent/counted/largest request, prepare seconds and cache MB, every
-  `failureKind`. Write down, without acting on them, the observed values for the follow-up
-  triggers this run can see: a parked turn paid twice, the implementers' sent ratio, hop report
-  language, the W116-10 re-read count, `unknown_window` events. A trigger that fires becomes a
-  card afterwards, not inside this one.
-- **Acceptance:** the phase acceptance, met or stated as partly met with numbers; ROADMAP row 45
-  dated, CHANGELOG `[Unreleased]`, board archived with `split_board.py archive`.
-- **Gates:** every gate in CLAUDE.md "Running tests", in a clean worktree.
+- **Trigger:** `agent/loop_request.py:139-153` appends the finalization instruction to the system
+  message, so the turn's last (longest) request misses the cached prefix; `LoopConfig.temperature`
+  (`agent/loop_types.py:64`) has no writer (unwired machinery, the eighth); `top_p` does not exist;
+  the local endpoint reports 1.0 inherited while the model card asks 0.7/0.8 in non-thinking mode.
+- **Goal:** (1) finalization is a trailing `user` message, request-only as today, the system
+  message untouched; (2) a catalog row may declare `sampling: {temperature, topP}`; the driver
+  passes it into `LoopConfig` and the wire sends both only when declared; the trace's `llm_call`
+  records what was sent.
+- **Non-goals:** the profile (P52-7); `tool_choice`; reasoning; any default when the row declares
+  nothing (the endpoint's own stays).
+- **Spec:** `agent-loop.spec.md` (finalization shape; sampling passthrough);
+  `model-profiles.spec.md` (5.0.3 → 5.1.0, the `sampling` fields on a catalog row).
+- **Change:** `agent/loop_request.py::_finalization_messages`, `agent/loop_types.py` (`top_p`),
+  `models/catalog.py` (row fields), `models/adapters/openai_wire.py::build_payload`,
+  `hops/application/driver.py` (LoopConfig construction), `agent/loop_trace.py` (record).
+- **Acceptance:** a turn that exhausts its budget → the finalization request's first message is
+  byte-identical to the previous request's (oracle: `tests/integration/agent/test_loop_*` compares
+  the two captured payloads); a provider doc with `sampling` → the payload carries `temperature`
+  and `top_p`, and without it carries neither (`tests/unit/models/adapters/test_openai_wire.py`);
+  `docket status` or `task show` unchanged. Lane e2e green.
+- **Contention:** `agent-loop.spec.md` with P52-2 (integrator renumbers). Files disjoint from
+  every Wave A card.
 
-## ◇ FOLLOW-UPS WITH TRIGGERS — found in Phases 43-44 (not cards; triage when a trigger fires)
+### P52-4 — a command the lexer cannot parse is refused, not asked
 
-> Items a Phase 45 card absorbed moved into that card on 2026-10-19 (the gateway window, the
-> measurement gaps, the cut commit subject, the group `failure_kind`, the stale `security-gates`
-> paragraph, the `inPlace` key, the apply-without-codebase edge, the team-aware hint, the worker
-> packet note, the warm workspace, and "no `node_modules` is pod configuration", which ADR 0029
-> reversed).
+**Status:** BLOCKED (needs maintainer go: a parse failure stops being an `ask`) · **Size:** S ·
+**Model:** Sonnet · **Kind:** behaviour + spec
 
-- **Found integrating Wave 118 (P45-3, 2026-10-19).**
-  - **A file a check reaches only through `make` or `npm run` is protected only through the
-    default files it reads** (`Makefile` is not a default; `package.json` is). Stated in
-    `security-gates.spec.md`. Trigger: a real gate whose script lives behind a target.
-  - **A gitignored file is invisible to the check** (`git status` and `git diff` skip it), so a
-    tool configuration the repository ignores can be edited without a park. Trigger: a real
-    repository that ignores a file its gate reads.
-- **Found integrating Wave 117 (P45-1, 2026-10-19).**
-  - **Only `node_modules` is cached.** A `.venv` is not relocatable, so `uv sync`, `poetry
-    install` and `cargo fetch` run in each task worktree. Trigger: a measured Python or Rust
-    prepare that dominates a task's wall clock.
-  - **A tool that writes into `node_modules/.cache` fails with isolation on** (the entry is
-    read-only in the jail). Trigger: a real gate failing on it.
-  - **Eviction can break a running task's link** when a fourth lockfile of one codebase is
-    prepared while an older task still runs; resume detects the broken link and prepares again.
-    Trigger: a real run that hits it.
-  - **Prepare is not cancellable**, like `verifyCmd`; it is bounded by `PREPARE_TIMEOUT_S` (900 s).
-  - **A hop that makes its own `node_modules` symlink to another codebase's cache entry gets that
-    entry read-only in its jail** (`core/prepare.py::linked_entries` accepts any entry under the
-    cache). Installed packages, not secrets; restrict to the task's codebase when next touched.
-  - **The real `npm ci` inside the Landlock jail is unproven** (the tests use a fixture command);
-    P45-5's real run is the evidence.
-- **Found integrating Wave 116 batch A (2026-10-18).**
-  - **Shell keywords are classified as binaries when unjailed.** `for t in a; do ...; done` asks
-    with `'for' is not on the curated allowlist` (also `do`, `done`, `if`, `then`, `while`).
-    Jailed, the allowlist stands down and the loop runs. Pre-existing; the run's parked command
-    ends in such a loop, so it still asks without the sandbox. Trigger: an operator running
-    without isolation reports it.
-- **Found in the 2026-10-18 joint run (Wave 116 evidence).**
-  - **A parked turn is paid twice.**
-    - The development `red` step spent 100,573 input tokens before parking.
-    - Its `approve_task` grant went unused: the re-run hop never re-issued the call.
-    - The resume added a compaction call (9,065 in) and a cold first call.
-    - Trigger: after W116-1..4, a real run that still parks on a write.
-    - Then: weigh resuming the session over re-running the hop (operator-loop §2 item 6 keeps
-      this a non-goal today).
-  - **Hop language drift.** The resumed Sonnet `red` step wrote its final report in Chinese, and
-    that report became the `green` step's handoff. This happened once.
-    - Trigger: a second occurrence.
-    - Then: a pod `language` setting rendered into the handoff instruction.
-- **Found at the Phase 44 close.** The two implementer steps of the real rerun did not send under
-  half (0.77, 0.80): every request shrank to a fifth to a third, but the trajectories grew (12 and
-  20 calls against 8 and 5), partly from retrying a toolchain the jail could not load (now a grant
-  and a 126 message). Trigger: a real implementer run with the needed grants declared that still
-  sends over half of its 03:38 counterpart; then measure which calls repeat before cutting
-  anything. No grant is declared on this machine's live home (the operator's call). The rerun's
-  pod names are in already-pushed history (ADR 0027, the operator API spec, a test); the tree
-  no longer carries them, and rewriting public history is the maintainer's call.
+- **Trigger:** `governance/security.py:353-440` with `command_lexer.py:162-169`: a `shlex`
+  `ValueError` (an unclosed quote) yields `ask: command could not be parsed`, which parks the
+  task for a person. The model's syntax error becomes human waiting time; with `consultMode`
+  irrelevant here, a lights-out pod stalls on a typo.
+- **Goal:** the parse failure is `REFUSED [syntax]: <lexer message>; fix the quoting and call
+  again`. Nothing runs, as today. The opaque markers (`$(`, backticks, `${`, `eval`, `exec`) and
+  the unclosed heredoc keep asking: they are risk, not syntax.
+- **Non-goals:** `bash -n`; any change to SAFE_BINS or `allowCommands`; the denial counter (a
+  refusal still counts toward the three-denials stop).
+- **Spec:** `security-gates.spec.md` (1.7.0 → 1.8.0, the classifier table row; P52-11 bumps the same
+  spec in Wave A, the integrator renumbers).
+- **Change:** `governance/security.py::classify_command` (one branch), the policy corpus row.
+- **Acceptance:** `bash` with `echo "unclosed` → `REFUSED [syntax]` and no escalation record, no
+  audit `approval` entry (oracle: `tests/integration/governance/test_security*` plus the audit
+  oracle from `tests/support/e2e_oracles.py`); the 310-row corpus unchanged except the parse rows.
+- **Contention:** `governance/` only; P52-10 continues `security.py` and `command_lexer.py` in Wave D.
 
-- **Found in Wave 115 (Phase 44).** Pending memory entries show in `docket inbox` (text and
-  `--json`) but not in `GET /inbox`, MCP `inbox`, notifications or Telegram `/status`: that needs
-  an operator-v1 inbox contract bump and `notify.py`/`telegram.py` edits (operator-loop item 7's
-  "`GET /inbox` equals `inbox --json`" was already broken by approved-ready tasks).
-- **Found in Wave 114 (Phase 44).** `core/telemetry.py` has no structural key for
-  `memory_update` (the generic handler serves it); members stamped `POD_TEMPLATE_VERSION` 4 before
-  P44-7's method line show stale to `pod update` by text comparison (v4 never shipped);
-  `scripts/smoke_workflow.py`'s memory scenario now seeds MEMORY.md directly and needs a live run.
-- **Found in Wave 113 (Phase 44).** `_resolve_hop_instructions` still opens "You are the
-  Implementer..." (SOUL says it); recipe roles using `${codebaseOrConfigured}` (secure-build
-  security-vetter) still render a path; `cli/_agents._create_workspace` (standalone agents)
-  still writes HEARTBEAT/promise text; `repo_map.SKIPPED_DIRS` mirrors `toolbox.SKIPPED_DIRS`
-  (pinned by an equality test); a condensation notice carries the call's full path; pod read
-  routes do not carry `tokenBudget`.
-- **Found in Wave 112 (Phase 44).** The prospective budget check compares the whole calibrated
-  input estimate plus reserve against the counted budget, so a heavily cached step is refused
-  early; discount by the previous call's cache reads if a real run is refused with room left.
-  `glob`/`grep` still walk vendored trees before filtering (pathlib cannot prune); measure before
-  changing. In an in-place task on an already dirty tree, the first writing hop's `diff` carries
-  the operator's own changes once (task worktrees start clean). The bench scales cached tokens by
-  the sent ratio; P44-4 may need a cache-aware projection.
-- **The Lead plans with the codebase path, the Implementer is rooted in the task worktree**
-  (measurement 3: `tool.refused` on `read` of the codebase path, audit seq 6-7 of the throwaway
-  home). The Lead's hop should name the task worktree, or the handoff should rewrite the path.
-  Reproduce with any local-model dispatch in a worktree pod before scheduling.
-- **Parallel tasks in a pod** -- trigger in ADR 0027 point 10. The task record and the claim
-  are already per task; a card would add a `maxParallelTasks` pod setting and a bounded pool in
-  `dispatch_pod`.
-- **A task's `network: none` cuts the agent turn only** (P43-4): `verifyCmd` and `run:` steps keep
-  the pod's posture; the spec says so.
-- **Two enqueue entry points** (P43-1): `enqueue_task` returns the task, `enqueue_task_once`
-  returns `(task, created)`; fold into one when the remaining callers (`telegram.py`, `_mcp.py`)
-  are next touched. A raced duplicate `idempotencyKey` under `require_approval` can leave an
-  orphan approval token.
-- **`trace-store.spec.md` requirement 6 says "exactly"** but the code's `EVENT_TYPES` has members
-  the list never named (found by P43-2); re-derive the list from the frozenset.
-- **A team's skills** (P43-7): `core/skills.py` reads only `<codebase>/.docket/skills`; a repository
-  keeping `teams/<pod>/` has no per-team skills scope. `init --help` and `--name` do not mention
-  teams.
-- **Queue counts twice** (P43-6): `core/pod_report.py::task_counts` and the inline Counter in
-  `cli/_status.py` (~lines 138-164) compute the same mapping; point `status` at `task_counts`.
-  `pod_report._caller_default` reads `sys.stdin.isatty()`, so under `docket start` the report's
-  approval default depends on the daemon's stdin.
-- **`POST /pods/<p>/apply` edge** (P43-8): an all-skip apply writes no `pod.apply` audit entry
-  (pre-existing rule).
-- **Corrections cursor** (P43-9): a client must percent-encode `+` in `since` (a raw `+` decodes
-  to a space and is `400`); a pod whose Lead was removed but whose ledger remains answers `404`
-  (existence is `dispatchable_pods()`, the same rule as `GET /pods`).
-- **Dead after the harness deletion** (P43-12, proven by `rg`; the `inPlace` key rides P45-3):
-  the `verify["touched"]` key (`dispatch.py` around `_evaluate_mechanical_gate`,
-  `system.git_worktree_fingerprint`, `core/evidence.py`) only fed the harness `files`; evidence
-  1.0.0 (`task_evidence(..., "1.0.0")`, `EVIDENCE_V1`, `docs/contracts/evidence-v1`,
-  `scripts/gen_evidence_schema.py`) has no `src` caller. Delete under D-57 when the next card
-  touches `core/dispatch.py` or `core/evidence.py`.
-- **Cancel over HTTP reports `cancelled` once the stop is requested** (P43-10): the task stays
-  `running` in the store until the executor notices; a consumer polls `GET /tasks/<pod>/<id>`.
-  The slow-stub cancel path is not covered by a test (the test seeds a run record).
-- **`cli/_task.py::_pod_codebase`** is a second reader of the implementer's codebase beside
-  `core/pod_report._codebase` and `core/dispatch.task_diff`; one core helper when next touched.
-- **Real-Docker tests over their duration ceiling under load** (`test_network_lockdown.py`,
-  `test_sandboxed_exec.py`, `test_escape_matrix.py[docker]`): pass alone, fail when five suites
-  run at once. A flake, not a regression; measured 2026-10-14.
+### P52-5 — the Lead's locators: the code it found reaches the Implementer
 
-## How to use this board (read before claiming a task)
+**Status:** BLOCKED (needs P52-1's re-read figure on the private replay copies) · **Size:** L ·
+**Model:** Sonnet · **Kind:** behaviour + spec
 
-1. **Claim:** set Status → `IN-PROGRESS (@you)`. One agent per task.
-2. **Read first (bounded):** use `$docket-roadmap` to load the active card, its named ROADMAP
-   decision/section, the owning spec, and the card's own "Read" list. Do not ingest all of
-   `ROADMAP.md`, `TODO.md`, or local `CLAUDE.md` as startup context.
-3. **Layer rule (non-negotiable):** `cli/ → core/ → edges/`, inward only. docket-owned JSON goes
-   **only** through `edges/store.py` (JSONL append logs are the one D-12 exemption), external
-   protocols terminate in `edges/adapters/`, and there is no compatibility layer for the retired
-   daemon. Every shell-out goes through `edges/adapters/`. `core/`/`edges/` never import `ui.py` or
-   print (D-3 from Phase 12).
-4. **No-behavior-change rule, except where a card says otherwise:** the golden suite
-   (`bash tests/golden/run.sh verify-all`) must stay byte-identical unless a card explicitly adds new
-   CLI surface — those cards say so and require regenerated goldens with the diff explained.
-   **Regenerating a golden to paper over an unintended behaviour change is never acceptable**; W-6 in
-   particular must prove the four legacy roles still emit byte-identical workspaces.
-5. **Definition of done (per task):** acceptance criteria pass · a pytest covers it (add/refresh a
-   golden case if output changes) · `uv run ruff check . && uv run ruff format --check . && uv run
-   mypy src && uv run pytest` green · `bash tests/golden/run.sh verify-all` green ·
-   `bash scripts/validate-specs.sh` green · `uv run python scripts/gen_cli_docs.py --check` green
-   (regenerate `docs/commands.md` whenever a Typer docstring or help text changes) · `uv run pytest
-   tests/agent` green when prose or an artifact moved · the integrator re-measures
-   `scripts/metrics.py --check` per batch (card branches that add tests fail it by design) · the
-   card's own spec updated with a version bump + changelog entry (integrator-applied in a
-   multi-agent wave), **Status line matching what actually shipped** · committed `Type: description`
-   (no Claude/Co-Authored-By trailer) · public-repo privacy scrubbed (grep the diff for real names /
-   `/home/<user>` paths before committing).
-6. **Central files:** `ROADMAP.md`, `TODO.md` and `README.md`'s metric counts are maintained by the
-   integrator, **not** by card branches. Phase 14 lost time to roll-up checkboxes and README test
-   counts conflicting on nearly every merge; cards now report what they shipped instead of editing
-   the board.
+- **Trigger (to be filled by the integrator from P52-1):** source `context_replay.py --repeats`
+  on the recorded implementer steps; metric: share of the Implementer's `read` calls on files the
+  Lead had already read; window: the recorded steps; threshold: ≥ 30 %; observed: _pending_.
+  Context: Phase 44 closed with Implementers at 0.77/0.80 sent ratio "from longer trajectories";
+  `TaskBrief.context` is prose (`kernel/brief.py:24-38`), so the Lead's reads are lost.
+- **Goal:** the Lead may put locators `path:<file>#L<a>-<b>` in `context`; `_hop_message`
+  (`hops/application/compose.py:181`) reads each range from the task worktree, fresh, and renders
+  a `## Code the Lead located` section inside the Implementer's budget share
+  (`agent/context.py:148-157`); ranges that do not fit stay as bare locators; an invalid locator
+  is listed as such. The Lead's hop instruction asks for locators (`teams/builtin_roles.py:82-109`).
+- **Non-goals:** a viewer role; sub-agents; any model call in the composition; locators in
+  handoffs other than the Lead's.
+- **Spec:** `pod-dispatch.spec.md` (10.7.0 → 10.8.0, "Bounded hop prompts");
+  `role-archetypes.spec.md` (4.1.0 → 4.2.0, the Lead's instruction).
+- **Change:** `kernel/brief.py` (validate the locator form), `hops/application/compose.py`
+  (extraction + section), `agent/context.py` (share), `teams/builtin_roles.py` (instruction text).
+- **Acceptance:** a brief with two locators, one valid and one past EOF → the Implementer's
+  message holds the valid range's lines and names the invalid one; with a 200-token share → the
+  first range whole, the second as a bare locator (oracle: `tests/integration/hops/test_compose*`);
+  the starter example and `tests/agent/release/test_starter_journey.py` keep their field set
+  (locators live inside `context`, no new field). Bench: `--policy p52-5` on the implementer
+  fixtures reports re-reads before/after.
+- **Contention:** `compose.py` is shared with P51-6's continuation work if that card is still open;
+  claim after it merges.
 
-**Status legend:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs X)` · `DONE`
-**Size:** S ≈ ½ day · M ≈ 1–2 days · L ≈ 3–5 days (split before claiming if L)
-**Branch model (D-52, amending D-31):** **`develop`** is the integration branch. Every card
-branch or isolated worktree bases on `develop` and is integrated into `develop` without
-rewriting history. **`main`** stays the canonical public/default and release lineage: it moves
-only by a fast-forward (or a merge) from `develop`, when the maintainer cuts a release or
-decides `main` has fallen too far behind. Tags and release jobs still originate from `main`.
-`platform` may remain as a synchronized historical ref, but it is not a release source.
+### P52-6 — recipes for the pod as a viewer/editor team
 
----
+**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** data + tests
 
+- **Trigger:** ADR 0033 §Decision 4: the pod already separates exploration from editing; no recipe
+  shows the three shapes the survey's level matrix asks for. `researcher` is `strong` by default
+  (`teams/builtin_roles.py:243-247`), so a cheap exploration must say so.
+- **Goal:** three recipes under `templates/recipes/`, each with its `README.md` sentence and
+  validated by the existing recipe tests: (a) `explore-then-edit`: `researcher`
+  (`modelClass: cheap`, read-only) → `implementer` → `reviewer`; (b) `strong-plan-cheap-edit`:
+  `lead` on `strong`, `implementer` on `cheap`, `verifyCmd` gate with `on: {fail: {goto:
+  implementer, max: 1}}`; (c) `parallel-explore`: a `parallel` group of two cheap researchers
+  with disjoint instructions → join → implementer, plus `on: {fail: {goto: lead, max: 1}}` from
+  the implementer's step back to the Lead; (d) `web-research` (ADR 0034 decision 4): `lead` →
+  a `parallel` group of three `researcher` children (`modelClass: cheap`, read-only) with disjoint
+  instructions (two over the allowed hosts, one over the repository with `grep`/`read`) → `analyst`
+  → `writer`, the roles `research-review` already uses; the pages stay in the children's sessions
+  and only their replies reach the analyst as handoffs. Its `README.md` states the two
+  prerequisites verbatim and nothing else about the network: `FETCH_ALLOWED_DOMAINS=<hosts>` for
+  the pages the researchers may read, and `docket setup mcp add <name> --kind read -- <command>`
+  for a search server, because docket has no built-in search; the README's example is a
+  self-hosted SearXNG behind its MCP server (no vendor, no key, the operator's own host on the
+  allowlist), and it says a hosted search API works through the same command with its key in
+  the secret store.
+- **Non-goals:** code; a new role; a sub-agent tool; claims about savings in the README; an
+  `mcp-servers/` file naming a search server docket cannot validate at apply time.
+- **Spec:** none (recipes are data; `pipeline-format.spec.md` 4.1.0 already allows every field).
+- **Change:** `templates/recipes/<name>/pipeline.yaml` + `README.md` × 4; the recipe index test's
+  expected list.
+- **Acceptance:** `docket pod apply <recipe>` on a fresh home loads each without a validation
+  error (oracle: the recipe lane's existing parametrized test picks them up); the `parallel`
+  group validates (`pipeline/domain/step.py:90-193`); `web-research`'s README contains both
+  prerequisite commands (the recipe README test, `tests/integration/teams/test_recipes.py`).
+- **Contention:** `templates/recipes/` only.
 
+### P52-7 — `ModelProfile`: the contract varies with the model
+
+**Status:** TODO (after P52-3) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0033 §Decision 1. Today's single contract: an Implementer's schemas are about
+  5,800 chars on every request (`consult` 1,229, `bash` 1,285); `tool_choice` is always `"auto"`
+  (`openai_wire.py:110-112`); `budget_for_role` is unreachable on a 32k window without the manual
+  env var in CONFIGURATION.md; the local eval needed the verdict parser's tolerance because the
+  verdict was free text.
+- **Goal:** a `profile` on a catalog row with built-ins `hosted` (today) and `local` (default for
+  `local: true`): `toolSurface: full|minimal` (minimal = `bash`, `read`, `verify`, `verdict` when
+  gated), `descriptions: full|compact` (≤ 2 sentences per tool for compact), `toolChoice: auto|
+  forced-on-close` (the closing call of a verdict-gated step sends `tool_choice` for `verdict`),
+  `budgets: window-derived` (`READ_DEFAULT_CHARS` and the tool-output cap as shares of
+  `contextWindow`). The profile name is on every `llm_call` and in `docket status`.
+- **Non-goals:** reasoning (deferred, ADR 0033); a per-role profile; heuristics by model name;
+  changing `hosted` behaviour by one byte (goldens stay).
+- **Spec:** `model-profiles.spec.md` (5.1.0 → 6.0.0, the profile and its two built-ins);
+  `agent-loop.spec.md` (`tool_choice` on the chat port; window-derived budgets).
+- **Change:** `models/catalog.py` (profile fields + resolution), `agent/ports.py` (`tool_choice` on
+  the chat call), `agent/loop_types.py`, `models/adapters/openai_wire.py`,
+  `hops/application/driver.py` (surface and budgets from the profile), `teams/role_composer.py`
+  (surface), `hops/application/builtin_tools.py` (compact descriptions), `kernel/home.py` (derived
+  defaults).
+- **Acceptance:** a provider doc `local: true` without `profile` → `local`; its Implementer's
+  request carries only the minimal surface and compact descriptions, and the closing call of a
+  verdict step carries `tool_choice: {"type":"function","function":{"name":"verdict"}}` (oracle:
+  captured payloads in `tests/integration/hops/test_docket_driver*`); a `hosted` row → payloads
+  byte-identical to before (the CLI goldens and `tests/e2e` unchanged); `request_part_bytes["tools"]`
+  for the local Implementer under 2,500. Live eval by the integrator at the wave close.
+- **Contention:** continues P52-3's files; `builtin_tools.py` is not touched by P52-2 or P52-8.
+
+### P52-8 — a result over the cap is kept whole and readable
+
+**Status:** TODO (after P52-2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0033: what passes `DOCKET_TOOL_MAX_OUTPUT_CHARS` is gone (the trace keeps a
+  capped copy, `agent/loop_trace.py:219-220`, and no tool reads it); the condensation notice says
+  "call X again", which re-runs a command whose result may differ and costs a round. A lower cap
+  (the local endpoint needs 2,500) is only safe when the whole result stays reachable. `fetch`'s
+  result is cut in `kernel/tool_outcome.py::text_outcome`, not in the toolbox: the write must cover
+  that path too (P52-11 makes the text worth keeping).
+- **Goal:** a tool result over the cap is written whole to `<pod cache>/artifacts/<sha256>.txt`
+  (plain text, not docket-owned JSON; the jail's HOME is the pod cache, so it is readable without a
+  grant); the truncated result ends with `[full output: <path> — read it with read(path, offset,
+  limit)]`; the condensation notice points at the artifact when one exists instead of inviting a
+  re-run; retention follows the trace's. `read` and `grep` must accept that path: check
+  `toolbox.read`'s root containment first and, if it refuses, add the artifacts directory to the
+  readable roots in the same card (`grep` over a kept page is how the model finds one section of
+  it without reading it; the artifact is the one place a `fetch` result can be searched).
+- **Non-goals:** lifecycle condensation (deferred); indexing or search over artifacts; a new tool.
+- **Spec:** `session-history.spec.md` (1.10.0 → 1.11.0, the notice); `agent-loop.spec.md` (the
+  artifact line in the tool-output section); `workspace-structure.spec.md` (the directory).
+- **Change:** `agent/tools/builtins/toolbox.py` (write + marker, in the one place results are
+  cut), `agent/session.py` (notice), `agent/loop_trace.py` (record the artifact path), retention
+  in `observability/` where the trace's lives.
+- **Acceptance:** a `bash` with 50 KB output under a 2,500 cap → the result carries the marker, the
+  file exists with the full bytes, and a following `read(path, offset=2400, limit=50)` returns the
+  bytes past the cut (oracle: `tests/integration/agent/test_tool_artifacts.py`, jailed variant in
+  `tests/integration/sandbox/`); a `fetch` whose text exceeds the cap carries the same marker
+  (`tests/unit/platform/test_fetch.py`, fake opener); the notice for a condensed result names the
+  path; the e2e jailed journey stays green.
+- **Contention:** continues P52-2's files; P52-11 (Wave A) precedes it on `fetch`.
+
+### P52-9 — a tool's clock fits inside the turn's
+
+**Status:** TODO (after P52-7 and P52-8 merge; `lifecycle.py` after P51-9) · **Size:** M ·
+**Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** the 2026-10-24 run on `fab-dev` asked `bash` for `timeout: 600` and `timeout: 900`
+  inside a 300 s turn and `_bash_handler` (`hops/application/builtin_tools.py:272`) honoured both:
+  the argument has no ceiling. `agent/loop_budget.py:135` checks the wall clock only between
+  iterations, so a tool that overruns ends the turn with `failure_kind: timeout`, which
+  `runner.py:42` retries whole. `claimedAt` moves only at hop end and before a retry
+  (`tasks/application/record.py:585`, `queue.py:360`), while `sweep_stale_claims`
+  (`lifecycle.py:102`) fails a claim at a fixed `CLAIM_STALE_TIMEOUT` (1800 s), below the
+  turn + verify lease `reclaim_stale_running` (`lifecycle.py:159`) already computes.
+- **Goal, in order:** (1) `ToolContext.deadline` (monotonic seconds), set once by
+  `run_agent_turn` from the clock it checks the wall clock with; `_bash_handler` runs the command
+  for `min(requested or ctx.timeout, remaining)` with `remaining = max(1, deadline - now)`; a result
+  the clamp killed ends with `[killed at the turn's remaining time (N s); run it as a verify gate or
+  raise turnTimeoutS]`; the `timeout` argument's description names the ceiling. (2)
+  `_build_on_process` (`driver.py:370`) calls `touch_claim(project, task_id)` on `started` when the
+  turn has a task. (3) `sweep_stale_claims` fails a claim only past `max(CLAIM_STALE_TIMEOUT,
+  lease)`, the lease taken from the one helper `reclaim_stale_running` uses.
+- **Non-goals:** MCP timeouts (capped at 60 s already); a tool-caused timeout made non-retryable
+  (deferred, ADR 0034); `verify`'s own timeout; interrupting a running tool from the loop.
+- **Spec:** `agent-loop.spec.md` (requirement 9 gains the tool clamp; the `bash` tool's `timeout`
+  sentence); `pod-dispatch.spec.md` ("Per-hop incremental persistence and crash recovery": the
+  refresh on process start and the sweep floor).
+- **Change:** `agent/tools/registry.py` (`ToolContext.deadline`), `agent/loop.py` (set it),
+  `hops/application/builtin_tools.py` (`_bash_handler`, the `bash` schema text),
+  `hops/application/driver.py::_build_on_process`, `tasks/application/lifecycle.py` (the floor).
+- **Acceptance:** a fake clock 250 s into a 300 s turn and `bash` asking `timeout: 900` → the
+  recording `run_bash` receives 50 and the killed result carries the marker (oracle: the
+  `builtin_tools` unit module under `tests/unit/hops/`, new beside it if none; the deadline's
+  setting in `tests/integration/agent/loop/test_stop_conditions.py`); a `process_started` under a
+  dispatch run → the task's `claimedAt` moves (`tests/integration/tasks/test_retries_and_timeouts.py`,
+  beside `TestRetryDoesNotTripStaleClaimSweep`); a pod with `turnTimeoutS: 2400` and a claim
+  1,900 s old → the sweep leaves it `running` (same file). No bench: the model reads nothing new
+  but the marker.
+- **Contention:** continues P52-7's `builtin_tools.py` and `driver.py`; `lifecycle.py` after
+  P51-9; `loop.py` and `registry.py` are nobody else's in this phase.
+
+### P52-10 — a background process belongs to its turn
+
+**Status:** TODO (after P52-9; `security.py` after P52-4) · **Size:** L · **Model:** Sonnet ·
+**Kind:** behaviour + spec
+
+- **Trigger:** probe of 2026-10-25: `nohup sleep 47 > bg.log 2>&1 &` through `run_bash` returned
+  in 0.02 s and the child outlived the calling process; `classify_command` allows the shape jailed
+  or not, although the lexer already sees the trailing `&` (it stops `cd` placement,
+  security-gates "Redirects"). No handle, no exit event, nothing killed at turn end: the one shape
+  that escapes `dispatch_tool`'s reach today. Every peer harness has a background mode with a
+  handle (ADR 0034).
+- **Goal, in order:** (1) `bash` gains `background: true`: `run_bash` starts the process as today
+  (its own session), sends its output to `<ctx.cache_dir or the scratch dir>/processes/<pgid>.log`,
+  registers the pgid in `ctx.processes` and returns `started pgid=<n> log=<path>` at once;
+  `process_started` carries `background: true`. (2) two built-ins: `process_output(pgid, offset=0)`
+  (kind `read`: the log from `offset` with `read`'s footer form, and whether the process is alive)
+  and `process_stop(pgid)` (kind `write`: `_kill_group`, then `process_exited` with `signal`). (3)
+  `_run_turn_body`'s `finally` stops every live entry of `ctx.processes` and traces each exit with
+  `reason: turn_end`. (4) a trailing `&` (the control operator; not `&&`, `2>&1` or `&>`) joins the
+  opaque markers in `classify_command`: asks jailed or not, reason `background a process with
+  bash background=true`; the corpus gains its rows. (5) under the Docker backend `background` is
+  refused with that reason (deferred, ADR 0034).
+- **Non-goals:** stdin or a PTY; a process shared across hops or tasks; a new trace event type
+  (the two existing ones carry the fields); the cancel path (`add_hop_pid` already tracks the pgid).
+- **Spec:** `agent-loop.spec.md` (tool-output section: the argument and the two tools);
+  `security-gates.spec.md` (the opaque-marker row; "Exec sandbox" requirement 7 extends the
+  no-orphan rule to turn end); `trace-store.spec.md` (requirement 30: the optional fields).
+- **Change:** `agent/tools/builtins/toolbox.py` (`run_bash`'s background branch, `process_output`,
+  `process_stop`, the table type), `agent/tools/registry.py` (`ToolContext.processes`),
+  `hops/application/builtin_tools.py` (schema, two tools), `hops/application/driver.py::_run_turn_body`
+  (the `finally`), `governance/security.py` and `governance/command_lexer.py` (the marker), the
+  policy corpus.
+- **Acceptance:** `bash {command: "sleep 30", background: true}` → returns under 1 s with a pgid;
+  `process_output` shows the log and `alive: true`; the turn ends → no process of that group
+  remains and the trace holds `process_exited` with `reason: turn_end` (oracle:
+  `tests/integration/agent/test_bash_background.py`, built like `test_bash_cancellation.py`; the
+  landlock variant in `tests/integration/sandbox/`); `bash {command: "sleep 30 &"}` → `ask` with
+  the reason, jailed and not (`tests/unit/governance/`); `a && b` and `ls 2>&1` keep today's
+  verdict (the corpus changes only by the added rows). Lane e2e green.
+- **Contention:** continues P52-9's files and P52-8's `toolbox.py`; `security.py` after P52-4, or
+  beside it while P52-4 stays blocked (a different branch of `classify_command`; say so in the packet).
+
+### P52-11 — `fetch` returns text the model can read
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** `fetch_url` returns the raw body (`platform/fetch.py`, the `text_outcome` call) and
+  the cap keeps the head (`kernel/text.py:35`), so at `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` the model
+  reads a page's `<head>` element. Claude Code and Gemini CLI convert a page before the model sees
+  it (ADR 0034).
+- **Goal:** when `Content-Type` is `text/html` (or the body starts with `<!doctype html` or
+  `<html`), the body becomes plain text with the standard library's `html.parser`: `script`,
+  `style`, `noscript` and `svg` dropped; block elements and `br` as line breaks; `h1` to `h3` as
+  one to three `#` and a space; list items as a dash and a space; `pre` and `code` verbatim; a
+  link as `text (href)` when the text differs from the href; whitespace collapsed to at most one
+  blank line. Other content types pass as today. The header line reads `HTTP <status>
+  <content-type>; <n> chars of text`. The tool's description says the page arrives as text and
+  that a long page is kept whole and read back with `read` (P52-8).
+- **Non-goals:** JavaScript; a readability heuristic; wildcard domains; a cache between calls; any
+  change to the allowlist, the deadline, the size cap or the redirect guard.
+- **Spec:** `security-gates.spec.md` ("Network egress and the `fetch` tool", requirement 2: a fifth
+  bullet, the conversion; P52-4 bumps the same spec, the integrator renumbers).
+- **Change:** `platform/fetch.py` (`_html_to_text`, applied before `text_outcome`),
+  `hops/application/builtin_tools.py::_fetch_tool` (the description only).
+- **Acceptance:** a fixture page (`tests/fixtures/fetch/page.html`: title, nav, two headings, a
+  paragraph with a link, a `pre` block, a script) through a fake opener → the committed expected
+  text byte for byte, under 15 % of the HTML's length (oracle: `tests/unit/platform/test_fetch.py`,
+  a class beside `TestDomainAllowlist`); `application/json` → the body unchanged; the allowlist and
+  redirect tests untouched and green. No bench: the fixtures record no `fetch`.
+- **Contention:** `platform/fetch.py` is nobody else's; `builtin_tools.py` precedes P52-7, which
+  continues it in Wave B. Spec seam with P52-4.
+
+### P52-12 — a wait on a machine is an escalation
+
+**Status:** BLOCKED (needs a measured trigger, none recorded; and P51-9, which owns the record) ·
+**Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger (to be filled from a recorded run):** source: a task's trace and `escalations[]`;
+  metric: tasks that fail, re-poll or spend a hop waiting on CI, a deploy or a URL; window: the
+  first ten Tack-driven runs after Phase 51 closes; threshold: one; observed: _none_. Today's
+  estimate, labelled as such: Tack's pipelines end at a push, so the wait sits in Tack, not in
+  docket (ADR 0034 decision 5).
+- **Goal:** `EscalationKind` gains `wait` with `condition: {kind: http|command, target, everyS,
+  untilS}`; a pipeline step `wait: {...}` parks the task like a consult park; `sweep_escalations`
+  probes the condition on its interval and calls `resolve` with `met` or `timed_out`; `docket
+  inbox` lists it with the next probe time; `whenNobody[wait]` is `fail` at every level, since
+  nobody can answer it.
+- **Non-goals:** a wait inside a turn; webhooks from CI (the probe polls); a condition that makes a
+  model call.
+- **Spec:** `operator-api.spec.md` (the kind and the condition; a contract bump after P51-9's
+  `operator-v2`), `pod-dispatch.spec.md` (the step and the park), `security-gates.spec.md`
+  ("Autonomy levels": the `wait` row).
+- **Change:** `kernel/operator_contract.py` (`EscalationKind` at `:295`, the condition),
+  `pipeline/domain/step.py` (the step),
+  `hops/application/sweep.py` and `governance/escalation_expiry.py` (the probe),
+  `interfaces/cli/commands/inbox*` (the line), `teams/autonomy.py` (the row).
+- **Acceptance:** a pipeline with `wait: {kind: http, target: <fake server>, everyS: 1, untilS: 5}`
+  → the task parks with a `wait` escalation; the server starts answering 200 → the next sweep
+  resolves `met` and the following step runs; a server that never answers → `timed_out` and the
+  task fails with the reason (oracle: the harness of
+  `tests/integration/tasks/dispatch/test_operator_input.py`, in a new module beside it; the e2e
+  lane for the inbox line).
+- **Contention:** the escalation record and `sweep.py` after P51-9; `step.py` is nobody else's.
+
+## How work runs on this board (read before claiming a card)
+
+1. **One card is one worker run.** Its steps are ordered; each step ends green and committed. A run
+   that does not finish parks at its last green commit and the card's Status names what is left; the
+   next run continues the same card. A card is never split into sub-cards to make it fit.
+2. **Claim.** Set Status to `IN-PROGRESS (@who)`; one owner per card. The worker gets a worktree made
+   by hand from the integration branch's current head (`git worktree add -b <branch>
+   .claude/worktrees/<card> <sha>`), and its own `DOCKET_HOME` and temp directory in the scratchpad.
+3. **Read bounded.** `python3 .agents/skills/docket-roadmap/scripts/card_packet.py <CARD-ID>`, then
+   the card's own read list. Never all of `ROADMAP.md`, `TODO.md`, `CLAUDE.md` or a spec directory.
+   A task worktree has no `internal-docs/` (gitignored); a card needs only itself and tracked files.
+4. **The layer rule** is ADR 0030's table, enforced by `tests/architecture/`: the contexts are layered
+   `platform < governance < agent < models < observability < pipeline < teams < sandbox < operator <
+   tasks < hops` and a context imports only those below it; `kernel` imports nothing outside itself;
+   a `domain/` is pure; only `interfaces/` talks to the user; `bootstrap.py` is the only module that
+   names a concrete adapter. Two invariants never move: every tool call passes `dispatch_tool`
+   (`agent/tools/registry.py`), and docket-owned JSON is written only by `platform/store.py`.
+5. **The testing budget, the same for every card.**
+   1. Per commit: `uv run ruff check . && uv run ruff format --check . && uv run mypy src && uv run
+      pytest --co -q` (about 10 s). No test runs.
+   2. While iterating: only the tests of what the step changed, by path, each under `timeout 120`.
+   3. The card's gate, as the card names it, in a few minutes.
+   4. A pure move or rename adds no test: `pytest --co` and `tests/architecture` are its check. A
+      behaviour change adds a failing test first, placed by lane (`specs/test-framework.md`).
+   5. After each merge the integrator runs the default suite once, in parallel (`uv run pytest -n auto
+      --dist loadfile -q --tb=line -p no:cacheprovider > <file>`, about 40 s), reads only the `FAILED`
+      lines, fixes by cause and re-runs `--lf`. Never a second full run for the same merge.
+   6. Goldens, the agent lane, `scripts/maint/pytest-without-sandbox.sh`, the escape matrix,
+      `validate-specs.sh`, the generated-docs checks and the real run: once, at
+      the phase close.
+   7. **Stop rule:** a check that fails again after one fix stops the step. Park with the failing line
+      and the hypothesis. No third attempt, no "until green", no background process or polling, no
+      `git stash` (a WIP commit sets work aside).
+   8. **A script is a means, not a deliverable.** A one-shot script (planner, path rewriter,
+      converter) exists to save effort on the card's goal. Write it once, run it, review its output,
+      and finish by hand whatever it did not cover. If it is wrong after one fix, stop improving it
+      and do the remainder by bounded edits. Polishing, generalizing or testing a throwaway script is
+      out of scope; it is never committed unless the card says so.
+6. **Baselines only shrink.** A baseline file is rewritten (`--write`) only after the violations are
+   gone, and its diff is deletions only. A new guard is trusted only after it was seen failing on a
+   planted case.
+7. **No behaviour change** unless the card says so: the HTTP API 6 tests, the CLI goldens and the
+   `docket_runtime` facade stay byte for byte. **No re-export or shim:** a replaced name is
+   deleted in the same change, with no alias or compatibility reader.
+8. **Central files are integrator-owned:** `TODO.md`, `ROADMAP.md`, `README.md` metric counts and
+   `CHANGELOG.md`. A worker reports what shipped; it does not edit them.
+9. **Commits:** `Type: description`, ASCII only, a detailed body, no AI or assistant attribution.
+   Scrub `/home/<user>` paths and real names from every diff.
+
+**Status:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs X)` · `PARKED (left: X)` · `DONE`.
+**Size:** S ≈ one short run · M ≈ one run · L ≈ one long run that may park once.
+**Branch model (D-52):** card branches base on and merge into the integration branch (`develop`;
+Phases 46-47 run on `plan/phase-46-structure` until the maintainer integrates it). `main` moves only
+by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
+from `main`.
+
+## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
+
+> Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
+> dedup is persisted (`operator/notify.py`), the `kind:`-less canonical-document advisory is gone, and
+> `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
+
+**Toolchain read grants (dropped from Phase 48).** A sibling project's gates failed with exit 126 under the
+jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was granted by hand with
+`docket setup sandbox read add`. Trigger: a second pod whose first jailed gate fails that way. Next:
+`docket setup` proposes the grants for the toolchains it finds.
+
+**Fired, waiting for a maintainer go (the measurement spends hosted-model tokens).**
+
+- **The implementer sends 0.65 of what the backend counts** (Phase 45 real runs on `fab-dev`,
+  2026-10-20: 14 and 13 calls, largest request about 7,000 estimated tokens; reviewer 0.62, tester 0.80
+  and 0.90). The Phase 44 trigger ("a real implementer run with its grants declared that still sends
+  over half") fired. Next: P52-1 measures which calls repeat on the recorded traces (no live run
+  needed); P52-5 acts on the figure.
+
+**Model adaptation and context (ADR 0033, deferred with triggers; the cards are Phase 52).**
+
+- **Reasoning kept inside the turn** (`ChatMessage.reasoning`, resent only in the active tool
+  loop; `reasoning_content` is dropped today in `models/adapters/openai_wire.py::decode_response`).
+  Trigger: a profile that declares `reasoning: interleaved`.
+- **Lifecycle condensation** (a `read` superseded by a later `read` or an `edit` of the same file
+  is evicted first, in batches aligned to steps). Trigger: after P52-8, the bench `--repeats`
+  still shows re-reads on the recorded implementer steps.
+- **A bounded model escalation** on a step (`escalate: {on: [verify_failed, no_progress], model:
+  strong, max: 1}`), audited. Trigger: the `strong-plan-cheap-edit` recipe (P52-6) fails
+  `verifyCmd` on a measured share of real runs.
+- **A lazy MCP catalog** (`mcp_describe(server, tool)`, the tool list kept stable within a turn).
+  Trigger: a pod whose MCP schemas exceed its built-in ones (`request_part_bytes["tools"]`).
+- **A native Anthropic dialect** (1 h TTL, `cache_control` on tools, signed thinking blocks; the
+  provider note already defers it). Trigger: direct use without the gateway, which caches today.
+
+**Escalations (left at the Phase 51 close, 2026-10-25; ADR 0032).**
+
+- **Approval, gate and `check_changed` follow-ups still run inside `resolve`** (`approval_grant`
+  and the task-grant audit in `tasks/application/escalations.py`), not on the claim path; P51-6
+  stopped at PARTIAL because deferring them breaks `approved_ready`, which reads pregrants and
+  `gateOverridePipelineIndex`, and P51-9's "Also" list named the move. Trigger: a change to
+  `approved_ready` or to the claim path.
+- **Settled escalations written before P51-11 stay in the flat `escalations/` directory**; no
+  migration is written. A scan of the live directory still opens them (`platform/store.py::list_escalations`
+  reads the flat folder for `pending` and unfiltered scans). Trigger: an operator whose pre-P51-11
+  records slow the inbox; then move them under `settled/` once.
+- **`GET /escalations?since=` reads every settled file** (`operator/inbox.py::escalation_views`
+  calls `list_escalations(since_seq=...)` with no state, so `settled/` is scanned on each poll).
+  Trigger: a poller whose `settled/` directory is large; then index by `seq` or bound the scan.
+- **docket follows an enclosing git repository when a pod path is not itself one**
+  (`platform/git.py::git_is_repo` answers `rev-parse --git-dir`, true anywhere inside a work tree),
+  so it would prepare and branch the enclosing repository. Only the live-eval and smoke worlds
+  refuse that today (`specs/test-framework.md`). Trigger: a pod registered on a subdirectory or
+  a nested path that is not a repo.
+- **`scripts/render-doc-assets.py:275` prints a made-up approval token** (`token=apr-...`) and the
+  `waiting_approval` line, shapes Phase 51 removed. Trigger: the maintainer re-captures the README
+  assets (a classifier-refused step); then render the escalation id and `waiting_input`.
+
+**Test suite under load (found at the Phase 47 close, 2026-10-24; each passes alone).**
+
+- **Timing flakes seen once each:**
+  `test_retries_and_timeouts.py::TestRetryDoesNotTripStaleClaimSweep`, and the foreground approval
+  deny test (its fake approval timeout was raised from 5 s to 60 s, `1a704359`). Trigger: a second
+  failure of the same test. Then replace its wall-clock wait with an event.
+- **Docstring budget:** `comment_lint.py` counts 209 long definition docstrings at the close against 205
+  on `develop` (most moved or renamed code). Trigger: the next card that edits one of those modules
+  trims its own.
+
+**Runtime and dispatch (from real runs).**
+
+- **A refused task is resumed on every 30 s sweep tick** (`dispatch_refused` is in
+  `RESUMABLE_FAILURE_KINDS`, `tasks/domain/state.py`; operator-api §6 by design). Trigger: the audit log
+  fills with one task's refusals, or a second operator asks. Then resume only when the cause changed.
+- **A parked turn is paid twice**: the resumed hop re-sends the whole prompt (4,157 input tokens before
+  the park, 8,181 after; 100,573 in the 2026-10-18 joint run). Trigger: a third run that parks on the
+  same shape. Then weigh resuming the session over re-running the hop (operator-loop §2 item 6).
+- **A hop refused before any call records an empty model** (`hop_finished.model == ""`, a `""` key in
+  `usage.byModel`). Trigger: a reader of `byModel` that trips on it.
+- **Provider rows lag the models in use:** Anthropic advertises dated ids while the template rows use
+  aliases (limits stay `unknown`), and no row prices `claude-sonnet-5-5` or `claude-opus-5-5`
+  (`task show` prints `cost: -`). Trigger: a run on an alias id whose window matters, or an operator
+  asking for the estimate.
+- **Hop language drift:** a resumed step once wrote its report in another language, which became the
+  next handoff. Trigger: a second occurrence; then a pod `language` setting.
+- **The Lead plans with the codebase path while the Implementer is rooted in the task worktree**
+  (`tool.refused` on `read`). Trigger: reproduce with a local-model dispatch in a worktree pod.
+- **The prospective budget check ignores cache reads**, so a heavily cached step is refused early.
+  Trigger: a real run refused with room left. `glob`/`grep` walk vendored trees before filtering;
+  measure before changing.
+- **A task's `network: none` cuts the agent turn only**; `verifyCmd` and `run:` steps keep the pod's
+  posture (stated in the spec).
+- **Cancel over HTTP reports `cancelled` once the stop is requested**; the task stays `running` until
+  the executor notices. The slow-stub cancel path has no test.
+- **Not examined:** each Phase 45 run's trace carries two `approval_denied` events beside its park.
+- **Real-Docker tests exceed their duration ceiling under load** (`test_network_lockdown`,
+  `test_sandboxed_exec`, the escape matrix's docker cases): they pass alone. A flake, measured
+  2026-10-14.
+
+**Workspace and checks.**
+
+- **`docket setup` without `--fix` writes:** its report re-seeds `WORKFLOW_AUTO.md`
+  (`interfaces/cli/commands/setup_check.py`). A check that writes is a defect. Trigger: the next edit
+  of that file.
+- **A file a check reaches only through `make` or `npm run` is protected only through the default
+  files it reads**, and **a gitignored file is invisible to the check**. Trigger: a real gate whose
+  script lives behind a target, or a repository that ignores a file its gate reads.
+- **Prepare:** only `node_modules` is cached (`.venv` is not relocatable); `node_modules/.cache` is
+  read-only in the jail; eviction can break a running task's link (resume prepares again); prepare is
+  not cancellable (bounded by `PREPARE_TIMEOUT_S`); `hops/workspace/prepare.py::linked_entries` accepts
+  any cache entry, not only the task's codebase. Trigger: a real run that hits one of them.
+- **Shell keywords are classified as binaries when unjailed** (`for`, `do`, `done`, `if`, `then`,
+  `while` ask in `governance/security`). Trigger: an operator without isolation reports it.
+
+**Configuration.**
+
+- **Parallel tasks in a pod:** ADR 0027 point 10 holds the trigger; a card would add a
+  `maxParallelTasks` pod setting and a bounded pool in dispatch.
+- **A team's skills:** `hops/workspace/skills.py` reads only `<codebase>/.docket/skills`; a repository
+  keeping `teams/<pod>/` has no per-team skills scope.
+
+**Channels, inbox and the HTTP API.**
+
+- **`docket start`'s periodic notify flush ignores `FlushReport.error`** (`interfaces/http/server.py:200`).
+- **Enabling the `email` channel checks nothing**; with no `to`, `from` or `smtpHost`, every delivery
+  fails into the health record. Trigger: an operator enables it.
+- **Pending memory entries show in `docket inbox` but not in `GET /inbox`, MCP `inbox`, notifications or
+  Telegram `/status`.** Needs an operator-v1 inbox contract bump.
+- **`GET /pods` (the list) was not checked** for the invalid-settings failure fixed on `/pods/<p>`.
+- **`POST /pods/<p>/apply` with every item skipped writes no `pod.apply` audit entry.**
+- **The corrections cursor needs `+` percent-encoded in `since`**; a pod whose Lead was removed but
+  whose ledger remains answers `404`.
+- **The `openhands` and `pydantic_ai` adapters never pass `cache_write_tokens`**
+  (`packages/docket-runtime/src/docket_runtime/adapters/`). Trigger: someone reads that usage.
+
+**Prompts and pod state.**
+
+- `hops/application/compose.py::_resolve_hop_instructions` still opens "You are the Implementer..."
+  (SOUL says it); recipe roles using `${codebaseOrConfigured}` render a path; `repo_map.SKIPPED_DIRS`
+  mirrors `toolbox.SKIPPED_DIRS` (pinned by an equality test); pod read routes do not carry
+  `tokenBudget`; the condensation notice carries the call's full path.
+- **Every member of a pod shares the base session key `agent:<pod>:<key>`** (`teams/pod.py`); no turn
+  reads it today. Trigger: a turn that does.
+- **Three readers of the implementer's codebase** (`rg -n "def _pod_codebase|def _codebase|def
+  task_diff" src`); one helper when next touched.
+- **`memory_update` has no structural telemetry key**; members stamped `POD_TEMPLATE_VERSION` 4 show stale
+  to `pod update` by text comparison; `scripts/smoke_workflow.py`'s memory scenario needs a live run.
+
+**Architecture and packaging.**
+
+- **The runtime closure grows with any facade on a context the runtime imports** (measured in P47-8:
+  agent 52 -> 75, teams 52 -> 157, governance 52 -> 101, observability 52 -> 60 files). Trigger: a
+  proposed facade on one of them.
+- **`FailureKind` enumerates only the four kinds the task state writes**; hop and gate kinds stay plain
+  strings (pod-dispatch spec item 9). Trigger: the next change to those kinds.
+
+**Tests.**
+
+- A worker's `monkeypatch.undo()` once undid the autouse home isolation and wrote into the real
+  `~/.docket`; the fixture guards `setattr`, not `undo`. Trigger: a second leak.

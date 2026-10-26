@@ -24,9 +24,9 @@ LARGE_MODULE_LINES = 150
 # Predate the filename-mirrors-module convention: each checks an invariant that spans
 # multiple modules or a non-src contract, so its SUBJECT is asserted verbatim, not derived.
 _STRUCTURAL_EXEMPT = {
-    "test_cli_stubs.py": "docket.cli",
-    "test_registry.py": "docket.cli",
-    "test_store_writer.py": "docket.edges.store",
+    "interfaces/cli/test_cli_stubs.py": "docket.interfaces.cli.app",
+    "interfaces/cli/test_registry.py": "docket.interfaces.cli.app",
+    "test_store_writer.py": "docket.platform.store",
     "test_runtime_adapter_fixture_contract.py": "tests.fixtures.runtime_adapters.scenarios",
 }
 
@@ -72,7 +72,7 @@ def test_every_unit_file_declares_a_matching_subject() -> None:
         if subject is None:
             problems.append(f"{path}: no SUBJECT constant declared")
             continue
-        exempt = _STRUCTURAL_EXEMPT.get(path.name)
+        exempt = _STRUCTURAL_EXEMPT.get(path.relative_to(UNIT).as_posix())
         if exempt is not None:
             if subject != exempt:
                 problems.append(f"{path}: SUBJECT {subject!r} != exempt value {exempt!r}")
@@ -145,8 +145,9 @@ REGISTRY_EXEMPT = {"_default"}
 
 
 def test_cli_registry_functions_are_short() -> None:
-    """cli/__init__.py is the registry: the app, the callback and one registration per command."""
-    path = SRC / "cli" / "__init__.py"
+    """interfaces/cli/app/__init__.py is the registry: the app, the callback and one registration
+    per command."""
+    path = SRC / "interfaces" / "cli" / "app" / "__init__.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     long = [
         f"{node.name}: {(node.end_lineno or 0) - node.lineno + 1} lines"
@@ -156,5 +157,5 @@ def test_cli_registry_functions_are_short() -> None:
         and (node.end_lineno or 0) - node.lineno + 1 > REGISTRY_MAX_FUNCTION_LINES
     ]
     assert not long, (
-        f"cli/__init__.py holds functions over {REGISTRY_MAX_FUNCTION_LINES} lines: {long}"
+        f"interfaces/cli/app/__init__.py holds functions over {REGISTRY_MAX_FUNCTION_LINES} lines: {long}"
     )

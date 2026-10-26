@@ -1,0 +1,65 @@
+"""Neutral span model, incremental projection and export policy (observability/telemetry.py)."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from tests.support.trace import project_all as _project_all
+
+SUBJECT = "docket.observability.telemetry"
+
+_FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "traces" / "dispatch-3-hops.jsonl"
+
+
+def _load_fixture() -> list[dict[str, Any]]:
+    return [json.loads(line) for line in _FIXTURE.read_text().splitlines() if line.strip()]
+
+
+class TestFixtureProjection:
+    def test_one_root_session_span(self) -> None:
+        spans = _project_all(_load_fixture())
+        roots = [s for s in spans if s.name == "docket.session"]
+        assert len(roots) == 1
+        root = roots[0]
+        assert root.parent_id is None
+        assert root.attributes["docket.project"] == "demo-project"
+        assert root.attributes["docket.role"] == "lead"
+        assert root.attributes["docket.session_id"] == "s1"
+        assert root.attributes["session.id"] == "s1"
+
+    def test_two_llm_call_children_carry_measured_tokens(self) -> None:
+        spans = _project_all(_load_fixture())
+        chats = [s for s in spans if s.name == "gen_ai.chat"]
+        assert len(chats) == 2
+        input_tokens = {s.attributes["gen_ai.usage.input_tokens"] for s in chats}
+        assert input_tokens == {120, 180}
+        root_id = next(s.span_id for s in spans if s.name == "docket.session")
+        assert all(s.parent_id == root_id for s in chats)
+
+    def test_execute_tool_span_closes_with_ok(self) -> None:
+        spans = _project_all(_load_fixture())
+        tool_spans = [s for s in spans if s.name == "execute_tool read"]
+        assert len(tool_spans) == 1
+        assert tool_spans[0].attributes["docket.tool.ok"] is True
+
+    def test_guardrail_block_is_a_span_event_on_root(self) -> None:
+        spans = _project_all(_load_fixture())
+        root = next(s for s in spans if s.name == "docket.session")
+        event_names = [e.name for e in root.events]
+        assert "guardrail_block" in event_names
+
+    def test_every_parent_id_resolves_within_the_output(self) -> None:
+        spans = _project_all(_load_fixture())
+        span_ids = {s.span_id for s in spans}
+        for span in spans:
+            if span.parent_id is not None:
+                assert span.parent_id in span_ids
+
+    def test_ids_are_identical_on_a_second_run(self) -> None:
+        first = _project_all(_load_fixture())
+        second = _project_all(_load_fixture())
+        first_ids = sorted((s.trace_id, s.span_id) for s in first)
+        second_ids = sorted((s.trace_id, s.span_id) for s in second)
+        assert first_ids == second_ids

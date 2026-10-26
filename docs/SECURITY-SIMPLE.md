@@ -2,14 +2,14 @@
 
 **Philosophy:** Security comes from layered defaults — an always-on tool-call gate, agent instructions, an optional read-only reviewer role, and human git review — so that the common cases are covered without extra commands, and nothing about a run leaves the host until you choose what may.
 
-> **Status / honesty note.** docket runs the agent turn itself (`core/agent_loop.py`), and every
-> tool call an agent makes passes through one chokepoint (`core/tools.py`'s `dispatch_tool`) before
+> **Status / honesty note.** docket runs the agent turn itself (`agent/loop.py`), and every
+> tool call an agent makes passes through one chokepoint (`agent/tools/registry.py`'s `dispatch_tool`) before
 > it executes — there is no external daemon in the loop any more, and nothing to bypass it. That
 > chokepoint is **always active**: an argument-aware command classifier plus the `pre_tool_call`
 > policy hook decide `allow`/`ask`/`deny` for every call; no flag or command turns it off. With
 > isolation off (the default), a dangerous operation not on the curated allowlist (`rm`, `dd`, `docker`, `systemctl`, an unlisted
 > shell interpreter, ...) is routed to **docket's own approval store** and blocks the call until a
-> human answers — the same store a pod-dispatch hop held on a `requireApprovalRoles`/pipeline
+> human answers — the same store a pod-dispatch hop held on a pipeline
 > `approval` step, or a task a guardrail policy flagged at enqueue, also uses (see "Guardrail
 > Policies" below). `git`/`npm` stay on the curated allowlist for usability, so a plain `git push`
 > isn't gated by itself — see "High-Risk Actions" below for the argument-aware exception.
@@ -20,8 +20,8 @@
 > sandbox on when the agent's commands must not reach outside the project.
 >
 > **There is exactly one approval system, and it is answerable from four places** — all
-> audit-logged, tagged with the channel that answered: a CLI channel (`docket task approve`/
-> `docket task deny`), a headless HTTP endpoint (`docket start`'s `POST /approvals/<token>`), MCP, and
+> audit-logged, tagged with the channel that answered: a CLI channel (`docket task answer <escalation-id> --option ...`), a headless HTTP endpoint (`docket start`'s
+> `POST /escalations/<id>`), MCP (`resolve`), and
 > Telegram (docket's own bot, wired with `docket setup notify bind` — a decision there lands in the same audit
 > chain as a CLI one, tagged `channel="telegram"`). The headless channels mean CI jobs and
 > automation can vote without a chat account. **Approvals fail closed on timeout** — an in-turn
@@ -48,15 +48,15 @@
 > A gated call's approval now carries a `rationale` (the model's own preceding sentence, screened
 > and truncated, so a claim to weigh and not a verified fact) and the options `approve_once`,
 > `approve_task` (the identical call for the rest of the task, only for the role that asked) and
-> `deny`; `--reason` on approve/deny is
+> `deny`; `--reason` on an approval answer is
 > screened and audited with the answering channel.
 > **Workspace isolation** is a
-> separate layer on top, **opt-in** (`docket setup sandbox on`; `docket setup sandbox status` names
-> the backend this host offers) and consulted by the turn loop: when it's on, every real dispatch hop runs
+> separate layer on top, **turned on by `docket init` where this host has a backend** (`docket setup
+> sandbox status` names it; `docket setup sandbox on|off` records a choice) and consulted by the turn loop: when it's on, every real dispatch hop runs
 > sandboxed, and if no backend is usable the
 > turn **refuses to run rather than falling back unsandboxed** (an audited `isolation.refused`
 > entry — no LLM call, no tool executes). `docket setup sandbox status` reports which state applies.
-> Requirements and coverage: "Workspace isolation (opt-in)" below, and
+> Requirements and coverage: "Workspace isolation" below, and
 > [`specs/functional/security-gates.spec.md`](../specs/functional/security-gates.spec.md).
 
 ---
@@ -119,7 +119,7 @@ The default pod from `docket init` is lean — Lead + Implementer, **no Reviewer
 
 ### During Agent Work
 **Nothing.** The tool-call gate runs on every call; a Reviewer, if the pod has one, reviews
-automatically. Answer any pending approvals (`docket task approve`).
+automatically. Answer any pending approvals (`docket task answer <escalation-id> --option approve_once`, or `docket task answer <task-id> --option approve_once`).
 
 ### Before Committing
 ```bash
@@ -182,7 +182,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 - A small, built-in list of especially consequential command patterns: money-movement,
   prod-deploy, secret-access (`docket setup sandbox classes` prints all of them).
 - **Wired onto every `bash` call docket dispatches**, not just a pod's `verifyCmd`. Since docket
-  runs the turn loop itself, `core/tools.py`'s `dispatch_tool` classifies the *whole command
+  runs the turn loop itself, `agent/tools/registry.py`'s `dispatch_tool` classifies the *whole command
   line* — including every segment behind a `;`/`&&`/`||`/pipe — before a call is allowed to run.
   `git status` is allowed; `git push origin production` asks, because the classifier reads the
   arguments, not just the binary name. A pod's `verifyCmd` still refuses outright on a match
@@ -197,7 +197,7 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   open` grants it (with isolation on, verify commands and `run:` steps run in the same jail). It is also scoped to what docket itself dispatches: a
   process started outside docket's turn loop is outside this gate entirely.
 - **Only commands are jailed, and only with isolation on.** The command gate above applies to every
-  `bash` call; the opt-in isolation (next section) jails `bash`, stdio MCP servers, and a pod's
+  `bash` call; isolation (next section) jails `bash`, stdio MCP servers, and a pod's
   verify commands and pipeline `run:` steps.
   The jail protects the host from writes: only the workspace and the task's worktree are
   writable, and your home directory is not readable from inside (Landlock and seatbelt); Docker
@@ -205,6 +205,18 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   The other built-in tools are not jailed: `fetch` is domain-allowlisted, and
   `write`/`edit`/`read`/`glob`/`grep` are bounded by role denials, policy and path confinement,
   not by a sandbox.
+- **What no rule of the command gate can catch.** The gate reads the command line; it cannot read
+  what a program does once started. Code handed to an allowlisted interpreter (`python3 -c` with a
+  string built by concatenation, `node -e`, `perl -e`, a script written and then run,
+  `base64 -d | sh`), a command, flag or argument held in a shell variable (`$R -r build`,
+  `git push origin $B`) and a package script whose body docket cannot see (`npm run release`) pass
+  the policies unless the binary itself is off the allowlist. With isolation on, the jail contains
+  what such code can reach; with it off (the default), nothing does. The two text screens are
+  tripwires, not classifiers: `prompt-injection` warns on a few known phrases (a paraphrase, a
+  translation or an encoded payload passes), and `secret-pii-redact` masks fixed secret shapes
+  (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer`
+  credentials, email addresses), not a secret that is spelled out, reversed or encoded.
+  `specs/functional/security-gates.spec.md`, "Known limits of the command gate", is the list.
 - **A pod can widen its own allowlist** with `docket pod set allowCommands uv,tox`
   (comma-separated) for its own turns only — a high-risk-class binary like `git` or `npm` is
   refused at write time, and an allowlisted-by-pod binary is still redirect-sensitive, so
@@ -216,11 +228,12 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   fast with `approval_unavailable`, the one posture that never gives a human a chance to grant it
   later.
 
-### Workspace isolation (opt-in): the sandbox for the agents' shell
+### Workspace isolation (on where the machine can jail): the sandbox for the agents' shell
 
-**Off by default.** Without it, an agent's `bash` runs on your machine as you, bounded by the
-tool-call gate and the policies above but not by a sandbox. Turn it on when you want the shell
-contained as well as gated:
+**`docket init` turns it on when this machine has a backend** and nobody has chosen yet; with no
+backend, init says so and tools run on the host. Without it, an agent's `bash` runs on your machine
+as you, bounded by the tool-call gate and the policies above but not by a sandbox. To choose
+yourself:
 
 ```bash
 docket setup sandbox on      # needs a backend (below); exits 1 naming the fix if there is none
@@ -233,7 +246,7 @@ built into the operating system; nothing needs installing:
 
 | Host | Backend | What it needs |
 | --- | --- | --- |
-| Linux | Landlock + seccomp (`python -m docket.jail`) | a kernel with Landlock (>= 5.13) |
+| Linux | Landlock + seccomp (`python -m docket.sandbox.jail`) | a kernel with Landlock (>= 5.13) |
 | macOS | seatbelt (`sandbox-exec`) | nothing; it ships with macOS |
 | Linux or macOS | Docker, only when chosen with `docket setup sandbox backend docker` | a running Docker daemon (Docker Desktop, Colima or OrbStack on macOS) |
 
@@ -275,7 +288,7 @@ command, so the trace tells you which grant is missing.
   so nothing the jail writes runs later in your own git; host-side git in a task worktree,
   including `docket task diff`, uses the git dirs docket recorded and never reads the
   agent-writable `.git` or `commondir` file, so a planted `core.fsmonitor` or `hooksPath` never
-  runs. `tests/integration/test_escape_matrix.py` gates every release on Linux and macOS (the
+  runs. `tests/integration/sandbox/test_escape_matrix.py` gates every release on Linux and macOS (the
   macOS rows run in CI only).
 - **On Linux, a root holding a `.git` directory is refused.** Landlock cannot keep hooks and config
   read-only inside a main checkout, so a jailed command there (for example one rooted at a plain
@@ -356,7 +369,7 @@ docket status                          # Profile: lights-out, all requirements m
   restarts. A one-shot `docket run` picks it up at once. `DOCKET_NO_EXPORT=1`
   turns export off for one process.
 - **No new dependency, no vendor SDK.** The wire format is hand-rolled OTLP/HTTP JSON over the
-  stdlib (`edges/adapters/exporters/otlp_http.py`) — D-24's cut of the OpenTelemetry SDK stands
+  stdlib (`observability/adapters/otlp_http.py`) — D-24's cut of the OpenTelemetry SDK stands
   (D-48), and export stays a zero-dependency projection of docket's own trace events, never a
   second source of truth.
 - **Never blocks a turn.** The export pipeline is a bounded queue drained by a background
@@ -394,20 +407,20 @@ docket status                          # Profile: lights-out, all requirements m
   audited command shape as `docket setup export privacy`: `docket setup notify privacy <name> <level>`
   lists what starts showing up and asks, refusing off a TTY without `--yes`; narrowing never
   asks.
-- **Telegram's push is not the inbound bot talking to itself.** `core/telegram.py`'s bot is still
-  exactly what "It isn't a chat" above describes: inbound-only, five verbs now (`/approve`,
-  `/deny`, `/status`, `/delegate`, and `/answer <task-id> <text>` for a parked question), and it
+- **Telegram's push is not the inbound bot talking to itself.** `interfaces/telegram/bot.py`'s bot is still
+  exactly what "It isn't a chat" above describes: inbound-only, three verbs (`/status`,
+  `/delegate`, and `/answer <escalation-id> <option or text>` for any pause), and it
   never sends anything it wasn't asked to. The `telegram` *channel* (`docket setup notify enable
   telegram --set actors=<chat-id>`) is a second, independent mechanism: it can push a
   notification to a chat id you explicitly listed, and only that chat id — never every
   `fleet.json` binding, never triggered from inside the bot's own poll loop.
 - **Answering doesn't require re-running anything by hand.** A parked approval is answered like
-  any other (`docket task approve`/`docket task deny`, HTTP, MCP or Telegram) and re-runs the exact hop it
+  any other (`docket task answer <escalation-id> --option ...`, HTTP, MCP or Telegram) and re-runs the exact hop it
   parked in, carrying a single-use pre-grant so the model's identical next call passes without
   asking again. A parked *question* (`waiting_input`, from a pipeline `input` step or a Lead's
-  own intake brief) is answered with `docket task answer <task-id>` (interactive, prompts once per
-  field) or non-interactively with `docket task answer <task-id> [text] [--field k=v]...
-  [--decline]` — both call the same `answer_task` function HTTP and MCP use, so an answer is
+  own intake brief) is answered with `docket task answer <escalation-id>` (interactive, prompts once per
+  field) or non-interactively with `docket task answer <escalation-id> [text] [--field k=v]...
+  [--option <id>] [--decline]` (a task id works too) — both call the same `resolve` function HTTP, MCP and Telegram use, so an answer is
   screened through the same input policy as any other text reaching an agent.
 
 ---
@@ -490,7 +503,7 @@ deleting `audit.log` *and* `audit.log.1` together looks like a fresh install —
 evident, not prevented.
 
 **What it can't see.** The log only records what **docket** does. Since docket now owns the
-Telegram bot itself, a bound chat's `/approve`, `/deny`, `/status`, and `/delegate` all go through
+Telegram bot itself, a bound chat's `/answer`, `/status`, and `/delegate` all go through
 docket and land in this log, tagged `channel="telegram"`, the same as a CLI or HTTP decision. What
 it genuinely can't see: a human editing docket's own JSON files (`fleet.json`, `.docket-meta.json`,
 ...) directly with a text editor instead of a docket command, or any process a user starts entirely
@@ -508,7 +521,7 @@ quietly closes.
 2. **Reviewer verdict** (optional pod role, read-only) → Can send work back or fail it
 3. **Engineer review** (git diff) → Final human check
 
-**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation is opt-in with `docket setup sandbox on`, which needs a usable backend on the host (`docket setup sandbox status` names it), and `docket setup sandbox network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again ("The operator loop" above): every notification channel ships off except your own console, which sends nothing, so `docket setup` warns until you enable one that delivers, and widening what one shares is a confirmed, audited command too.
+**Hard enforcement (the tool-call gate) is unconditionally on — no flag or command disables it.** Workspace isolation is turned on by `docket init` where the host has a usable backend, and recorded with `docket setup sandbox on|off` (`docket setup sandbox status` names it), and `docket setup sandbox network none` is the opt-in network lockdown. On top of all three, two automatic layers run with no engineer action at all — guardrail policies and the high-risk action classes (above) — and every gate/approval change either layer makes lands in the tamper-evident audit log. What leaves the host is governed the same way (Layer 6): every exporter ships off and at `minimal`, and sharing more is a confirmed, audited command. An unattended pod's "ask" now parks instead of blocking a sweep, and how you find out is the same shape again ("The operator loop" above): every notification channel ships off except your own console, which sends nothing, so `docket setup` warns until you enable one that delivers, and widening what one shares is a confirmed, audited command too.
 
 ---
 
@@ -521,7 +534,6 @@ docket setup sandbox status       # gate always active; isolation mode
 docket setup sandbox classes      # the high-risk action classes, and exactly what's wired vs. not
 docket pod policies      # installed guardrail policies
 docket setup             # catches a broken policy file before a live turn does, and more
-docket task approve            # list pending approvals in docket's own store
 docket log verify       # walk the hash chain -- surfaces an edited/removed line, doesn't prove none happened
 docket setup export list     # every trace destination: on or off, and what it SHARES
 docket setup export preview <name>   # the exact spans it would receive, without sending them

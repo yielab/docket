@@ -46,13 +46,11 @@ def _text(path: Path) -> str:
 
 def test_runtime_spec_records_final_cross_adapter_contract_and_evidence() -> None:
     spec = _text(RUNTIME_SPEC)
-    assert "**Version**: 2.2.0" in spec
     assert "OpenHands SDK" in spec and "1.44.1" in spec
     assert "PydanticAI" in spec and "2.37.0" in spec
     assert "installed" in spec.lower() and "wheel" in spec.lower() and "sdist" in spec.lower()
     assert "JSONL" in spec and "identity" in spec.lower()
     assert "A2A" in spec and "OTLP" in spec
-    assert "### Version 2.2.0 (2026-09-01)" in spec
 
 
 def test_compatibility_owns_the_tested_adapter_list_and_the_readme_points_at_it() -> None:

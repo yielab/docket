@@ -7,8 +7,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **One escalation record, one `resolve` verb (D-72, ADR 0032, Phase 51).** Every pause (a gated
+  tool call, a consult, an `input` step, a gate, a changed check) is one durable `Escalation`
+  record written by `platform/store.py`. `docket task answer <escalation-id> --option <id>`, `POST
+  /escalations/<id>`, the MCP `resolve` tool, Telegram `/answer` and the A2A facade all call the
+  same `resolve`, and `GET /escalations?since=` and `docket inbox` list them. The trace carries one
+  event family (`escalation_asked`, `escalation_delivered`, `escalation_resolved`,
+  `escalation_expired`, `escalation_decided`) and one renderer serves the inbox, `task show`, the
+  progress view, Telegram and notifications, with option ids always present. Breaking for a client
+  of the retired shapes: contract `operator-v2`, operator API 7.0.0, MCP server 2.0.0, Telegram
+  integration 5.0.0, operator loop 3.0.x.
+- **Per-task autonomy (`L3|L4|L5`).** `docket task add --autonomy` and `autonomy` on `POST /tasks`
+  say what happens to a pause when nobody is there; the level only narrows and the pod profile is
+  the ceiling. `consultMode: decide` answers a consult in the turn with the model's recommendation;
+  `lights-out` requires it. The table is the `kind: autonomy` document.
+- **A2A facade.** `POST /a2a` and `GET /.well-known/agent.json` expose tasks and their pending
+  escalation to an A2A client, over the same records and `resolve`.
+- **The live smoke refuses a world inside a git work tree** and can run with the jail on.
+
+- **The task is one typed record behind one store (D-70, Phase 49).** `TaskRecord` and `HopResult`
+  are pydantic models; a pod's queue is read and written only through `TaskRepository` over
+  `JsonTaskStore`, and every CLI command, HTTP route, Telegram handler, MCP tool, hop and test reads
+  attributes instead of `dict.get`. The 19 closures that wrote the queue by hand are gone, as are
+  `read_tasks`, `_normalize_task`, `hop_record` and `hop_from_record`. The stored JSON is unchanged
+  except for the keys listed under Removed; a queue written before them still loads.
+- **Answers, consult answers, expired-question sweeps and pre-grants now re-sync the
+  `HEARTBEAT.md` ledger too, and `hops` reads and writes the task as a `TaskRecord`.** The
+  claim's gate override reaches `dispatch_task` as its `gate_override_index` argument instead of a
+  key put back on a copy of the task (pod-dispatch spec 10.1.1).
+- **Every write of a pod's queue re-syncs the `HEARTBEAT.md` dispatch ledger.** `retry_task`,
+  `unblock_pod`, the stale sweep and reclaim, enqueue and the stored worktree and prepare records
+  now go through `TaskRepository`, which regenerates the ledger after the write; before, only the
+  claim, hop persist, finalize, claim refresh and a few cancellations did, so a retry left a stale
+  entry until the next sync (pod-dispatch spec 10.1.0).
+- The `pydantic` floor is `>=2.12`: a task record leaves an unset key out of its stored JSON with
+  `Field(exclude_if=...)`, which 2.12 introduced.
+- **`docket init` turns workspace isolation on where the machine can jail (D-67).** When no
+  choice is recorded and Landlock or Seatbelt is detected, init records it on and audits
+  `gates.isolate` as `on (detected <backend>)`. Without a backend it records nothing and says so;
+  a recorded choice is never changed. `docket setup sandbox on|off` is unchanged.
+- **Workspace contract v5: no seed names a daily log.** `WORKFLOW_AUTO.md`, `MEMORY.md` and
+  `HEARTBEAT.md` told an agent to keep `memory/YYYY-MM-DD.md`, which docket never reads, writes or
+  composes. The instruction is gone and `CONTRACT_VERSION` is 5, so `docket setup --fix`
+  re-seeds a v4 `WORKFLOW_AUTO.md`; `memory/` stays an empty directory.
+- **The tree is organised by context (ADR 0030, D-66).** `src/docket/` is `kernel`, the context
+  packages and `interfaces/`; no module is over 700 lines. The oversized modules were split by
+  `scripts/maint/refactor/move.py`; the turn loop's state became budget, compaction and tool-step
+  collaborators (`agent/loop_*.py`); the HTTP handler became a route table over per-resource
+  modules with one bearer check (`interfaces/http/routes/`). `bootstrap.py` builds the store,
+  sandbox, driver, channels, app and server from a `Home`. Phase 47 then layered the contexts
+  (`platform < governance < agent < models < observability < pipeline < teams < sandbox <
+  operator < tasks < hops`): each module moved to the context whose data it reads, an upward
+  import is a violation, and other contexts are reached through public names and ports in
+  `kernel/ports.py` instead of private names. Function-local `docket.*` imports fell from 209 to
+  1 (a named cycle), and the import-contract baseline from 748 lines to 1 (the Telegram adapter).
+  The tests mirror the contexts (`tests/integration/<context>/`), each helper has one name, no
+  test file imports another or patches another module's private name, and every test file passes
+  run alone. The refactor tools (`scripts/maint/refactor/`, `refactor_gate.sh`, libcst) are
+  deleted; `tests/architecture/` is the record. Every golden is byte-identical.
+- **An authored configuration file has one form, the `kind:` short form.** A role, pipeline or
+  policy file written in the canonical form (`id:`/`role:` steps, `applies_to`/`match`/`action`
+  policies) is refused with exit 2 and a message naming the short key to write; the canonical
+  form is only what docket persists. The short form gained the spellings only the canonical form
+  had (`parallel:` groups, `archetype` and `when` on a step, `verify: {command, timeout}`,
+  `gate: {external, timeout, exitMap}`). A file without `kind:` still loads where its location
+  or the command names the kind.
+- **`maxReworkCycles` is refused beside a bound pipeline** instead of being accepted and ignored:
+  `pod set maxReworkCycles` on a pod with a pipeline, `pod set pipeline` on a pod that stores one,
+  and a `pod.yaml` that declares both exit 2. `pod show` reports the pipeline's own bounds.
+- **The baseline policies read the parsed command.** A rephrased command no longer slips past
+  them: options before the verb (`kubectl -n prod apply`), quoting (`"rm" -rf`), short and long
+  flags (`git push -f`), wrappers (`env`, `xargs`, `find -delete`) and write targets by any program
+  (`ln -sf`, `install`, `dd`, `tee -a`) are seen. Measured on a 310-row corpus
+  (`tests/fixtures/policy-corpus/corpus.yaml`): 82 tool calls that passed now ask, none is
+  weaker, and the rows still allowed carry one of five named limits in the security spec (opaque
+  code in an allowlisted interpreter with isolation off is the main one).
+
+### Fixed
+
+- **The MCP `queue` tool no longer says only a blocked task can be retried.** `retry_task_id`
+  re-queues a `blocked` or a `failed` task, as `docket task retry` does; the refusal now reads
+  "not a failed or blocked task" (mcp-server spec 1.9.6).
+- **A task run under `docket run --pipeline <file>` keeps that pipeline.** Its claim recorded
+  source `default` and nothing else, so answering a question the file's pipeline parked looked up
+  the step in the pod's pipeline and failed with "not parked at step", and the next claim ran the
+  pod's pipeline. The claim now records source `file` and keeps the spec as `pipelineSpec`; the
+  answer and a later claim with no file replay it, and a later claim under a file runs that file.
+- **An idle sweep tick writes no run record.** `docket start --dispatch` created one run per pod per
+  30 s tick whether or not it had anything to claim: 85,540 empty records and 47 MB in a week on a
+  real home, with rewrites that missed the 10 s store lock. A pod with nothing to claim is skipped.
+- **`docket stop` no longer advises `kill -9` for a service that is still exiting**: it now outwaits
+  the service's own wait for abandoned sweeps.
+- **Tests can no longer write into the developer's `~/.docket`**: a thread started without the
+  test's context fell back to the real home (eight test pods were found there).
+- **A verdict a step's `on:` map names is routed, a passing one included**, as pipeline-format
+  says; the mechanical and external gates already did, the verdict gate let a passing value
+  advance first. The `intake` recipe no longer needs a placeholder marker for it.
+- A resuming sweep (`docket start --dispatch`) re-claimed a task it had just refused, in a loop
+  with no pause, until the refusal was cleared: one `dispatch_refused` task (isolation off under a
+  `lights-out` profile) wrote 2,164 audit and trace entries in 3 seconds and held a core at 85%.
+  A task is now claimed at most once per dispatch run. Found by the Phase 46 real run; the loop
+  was already in `develop`.
+
 ### Added
 
+- **`when.command` in a policy** matches the parsed command: `program`, `verb` (found past
+  options), `args` (short and long spellings, globs) and `writes` (redirect targets and the
+  operands of the programs that write), on every segment after unwrapping. `matches` stays for
+  text with no structure. The classifier's high-risk classes are also found past options and
+  quoting, and name more deploy and secret tools (`tofu`, `podman`, `flyctl`, `vercel`, `gh
+  release`, `cargo publish`, `twine`, `aws ssm`/`secretsmanager` writes).
+- **Six more secret shapes are redacted** by `secret-pii-redact` and by the trace redactor:
+  GitHub `github_pat_`/`ghu_`/`ghr_` tokens, AWS `AKIA`/`ASIA` key ids, `*_PASSWORD=` assignments,
+  JWTs, private-key blocks and `Authorization` credentials.
+- `scripts/maint/live-dispatch-baseline.sh` records one real dispatch through the HTTP API (task,
+  trace, diff, raw trace files) so a phase's real run and a before/after comparison use one
+  command.
+- `scripts/maint/measure_dead_code.py` counts the definitions no file names, those only a test names
+  and the groups of identical function bodies under `src/docket`; `tests/guards/test_dead_code.py`
+  holds the three totals to `dead_code_baseline.txt`, which may only shrink.
+- **A model's limits come from the provider's `/models`.** `setup provider add` and, once a day,
+  the `docket start --dispatch` sweep read what each operator-registered provider publishes
+  (Anthropic `max_input_tokens`/`max_tokens`, the gateway's `context_window`/`max_tokens`,
+  llama.cpp `meta.n_ctx`, OpenRouter `context_length`/`top_provider.max_completion_tokens`) and
+  record it with the date in `provider-models.json`. A request's window and output cap resolve
+  per limit as declared (a document's row or `--ctx`/`--max-tokens`) > observed > unknown; a
+  value the provider does not publish (absent, null or 0) is `unknown`, never filled in.
+  `setup provider show` prints WINDOW/OUTPUT with each limit's source and `pod show --json`
+  carries `contextWindowSource`/`maxTokensSource`/`observedAt`. Found by the joint run: 49 of 49
+  `request_fit` events said `unknown_window` for gateway models.
 - **A change that edits its own check goes to a person.** When a task's pipeline ends `done` and
   its diff (committed, uncommitted and untracked) touches a protected path, the task parks
   `waiting_approval` with an approval of kind `check_changed` and `checkChanged: [paths]`, under
@@ -29,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into each worktree, read-only inside the jail. A failed install fails the task with
   `failureKind: "prepare"` and no hop; a `prepare` trace event records command, source, cache
   hit, seconds and exit. A team's or derived command is reviewed as kind `prepare`. Found by
-  Fabulada's first code run through a team: a fresh worktree had no `eslint` or `vitest`.
+  A sibling project's first code run through a team: a fresh worktree had no `eslint` or `vitest`.
 - **The sandbox can read the operator's toolchain.** `docket setup sandbox read add <path>`
   grants every jail read and execute (never write) on a path such as a version manager's Node
   or the system Python's user site; `read remove` drops it, and `docket setup sandbox --json`
@@ -113,6 +242,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The `completed` task count.** `status --json` (`tasks`) and `GET /pods` (`queue`) counted a
+  `completed` key that summed `done` with a status that does not exist. The counts are now one key
+  per task status (`pending`, `running`, `waitingInput`, `waitingApproval`, `blocked`, `failed`,
+  `done`, `cancelled`), so `completed` becomes `done` and `blocked` and `cancelled` appear
+  (cli-json-shapes spec 4.0.0). Breaking.
+- **The `claimId` and `source` keys of a task record, and the `in_progress` task status.** Nothing
+  read `claimId` (a stale claim is read from `claimPid` and `claimedAt`) or `source` (`channel`
+  says where a task came from), and nothing ever wrote `in_progress`. `GET /tasks/<pod>?status=
+  in_progress` is a `400` like any unknown value.
+- Four spent one-off maintenance scripts that nothing called: `remove_harness_mode.py`,
+  `split_cli_registry.py`, `move_pod_report.py` and `strip_spec_changelogs.py`.
 - **The `inPlace` meta key**, which nothing wrote; `_ensure_task_worktree` no longer reads it.
 - **The per-member daily-log pipeline (P44-7).** Daily logs under `memory/`, their seeding at
   provisioning and their distillation into MEMORY.md are gone: nothing wrote them in a pod task.
@@ -126,14 +266,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `docket start` banner lists every route the server answers, printed from the route table
+  (`interfaces/http/routes/table.py`), where it named 6 of them.
+- The shipped `anthropic` provider template no longer declares `contextWindow`/`maxTokens`
+  (prices, `pricesAsOf` and presets stay: no provider publishes them). `setup provider add
+  --ctx/--max-tokens` no longer default to 16384/8192; absent means observed, else unknown.
+  `pod show --json` `provider.model.source` is `declared | observed | unknown` (was `row | none`).
 - The serve API version is `5` (`GET /status.json` `apiVersion`); docket declares
   `0.2.0-beta.6`. The published install lines move when the release is cut.
 - A `POST /tasks/<pod>` that creates a task answers `201` (was `200`).
 - `docket task diff` shows the task branch's commits against its base, not the worktree's
   uncommitted changes (`_pin_implementer_tree` commits every real run).
+- `docket.config` is gone. Every setting is a field of `docket.kernel.home.Home`, read with
+  `current_home()` and built once from the environment by `Home.from_environ`; the templates that
+  ship in the wheel are found by `docket.kernel.templates`. No environment variable changed.
 
 ### Fixed
 
+- A `task retry` after a failed branch of a parallel review group re-runs the group instead of
+  ending the task `done` with the failed gate unmet: resume counted a group finished when every
+  child had any persisted hop, failed ones included. Found by the Phase 45 real run.
+- A known output cap larger than a hop's remaining token budget no longer refuses the hop before
+  any call: the budget reserve and the `max_tokens` sent are cut to what the budget leaves after
+  the estimated input (at least 256). Found by the Phase 45 real run: with Anthropic's observed
+  128,000 cap, the reviewer hop was refused with 127,735 tokens left and 2,861 of input.
+- The built-in `anthropic` provider sends `anthropic-version: 2023-06-01`, which Anthropic's
+  `/v1/models` requires (it answered 400 to the registration probe, so no limit was ever
+  observed for an Anthropic model). Found by the Phase 45 real run.
+- `llm_call` request bytes measured a JSON body with non-ASCII escaped to `\uXXXX`, inflating a
+  non-ASCII part by about 60% (18,037 B reported against 11,367 B); the request body is now sent
+  and measured as UTF-8. An `llm_call` record carries `cacheWriteTokens` when the backend reports
+  cache writes.
 - **Pin commit subjects are cut at a word boundary**, and a parallel group that fails keeps its
   failing child's `failureKind` (a budget stop inside a group now says `budget`).
 - **Approvals are kept per codebase and team, as a set.** `reviewed-repos.json` is keyed by

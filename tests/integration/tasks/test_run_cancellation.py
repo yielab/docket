@@ -1,0 +1,447 @@
+"""Cancellation — `docket task cancel <id>` actually kills the in-flight hop's process group.
+
+Covers ``platform.process.kill_process_group`` (a real process group leader + child both
+die; an already-dead pid is a harmless no-op) and ``tasks/application/runs.py``'s registry additions:
+``current_run_id()``/``add_hop_pid``/``remove_hop_pid`` (the pid-tracking side channel shared via
+contextvars) and ``cancel_run`` (unknown run, already-terminal run, a real kill, and a concurrent
+cancel never clobbered back to "succeeded" by normal completion).
+
+The production ``DocketDriver`` never fires ``on_spawn``, so cooperative checkpoints stop its turn
+at safe boundaries while already-running backend computation returns; PID signalling alone is not
+a truthful full-stop oracle. Full driver/dispatch coverage is in
+``test_cooperative_run_cancellation.py``."""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from tests.support.fakes import FakeProcess
+
+from docket.kernel.home import current_home, use_home
+from docket.kernel.threads import new_thread
+from docket.platform import process as _process
+from docket.platform import store as _store
+from docket.tasks.application import run_cancellation as _run_cancellation
+from docket.tasks.application import runs as _runs
+
+SUBJECT = "docket.tasks.application.runs"
+
+# ── platform.process.kill_process_group: raw OS mechanics ───────────────
+
+
+class TestKillProcessGroup:
+    def test_kills_the_leader_and_a_child_it_spawned(self, tmp_path: Path) -> None:
+        pid_file = tmp_path / "child.pid"
+        proc = subprocess.Popen(
+            ["bash", "-c", f"sleep 30 & echo $! > {pid_file}; wait"],
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 5
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        child_pid = int(pid_file.read_text().strip())
+
+        assert _process.kill_process_group(proc.pid) is True
+        proc.wait(timeout=5)
+        assert proc.returncode is not None and proc.returncode != 0
+
+        # The child ("sleep 30") must not survive as an orphan.
+        deadline = time.monotonic() + 3
+        child_alive = True
+        while time.monotonic() < deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                child_alive = False
+                break
+            time.sleep(0.05)
+        assert not child_alive, "the child process outlived the process-group kill"
+
+    def test_already_dead_pid_is_a_harmless_noop(self) -> None:
+        proc = subprocess.Popen(["true"], start_new_session=True)
+        proc.wait(timeout=5)
+        assert _process.kill_process_group(proc.pid) is False
+
+
+# ── tasks/application/runs.py: pid tracking + cancel_run ───────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_runs(tmp_path: Path) -> Iterator[None]:
+    with use_home(
+        dataclasses.replace(current_home(), runs_file_override=tmp_path / "docket-runs.json")
+    ):
+        yield
+
+
+class TestRunsPidTracking:
+    def test_current_run_id_is_none_outside_execute(self) -> None:
+        assert _runs.current_run_id() is None
+
+    def test_execute_publishes_current_run_id_for_the_duration_of_fn(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        seen: list[str | None] = []
+        signals: list[_runs.RunCancellationSignal | None] = []
+
+        class _Result:
+            task_id = "t1"
+
+        def _fn() -> list[Any]:
+            seen.append(_runs.current_run_id())
+            signals.append(_runs.current_cancellation_signal())
+            return [_Result()]
+
+        _runs.execute(record["id"], _fn)
+        assert seen == [record["id"]]
+        assert signals == [_runs.RunCancellationSignal(record["id"])]
+        assert signals[0] is not None and signals[0].observe() is False
+        assert _runs.current_run_id() is None  # reset after execute() returns
+        assert _runs.current_cancellation_signal() is None
+
+    def test_add_and_remove_hop_pid_round_trip(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.add_hop_pid(record["id"], 111)
+        _runs.add_hop_pid(record["id"], 222)
+        assert _runs.get_run(record["id"])["pids"] == [111, 222]
+
+        _runs.remove_hop_pid(record["id"], 111)
+        assert _runs.get_run(record["id"])["pids"] == [222]
+
+    def test_add_hop_pid_is_idempotent(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.add_hop_pid(record["id"], 111)
+        _runs.add_hop_pid(record["id"], 111)
+        assert _runs.get_run(record["id"])["pids"] == [111]
+
+    def test_add_remove_hop_pid_noop_for_unknown_run(self) -> None:
+        # Must not raise -- a stale/racing caller is harmless.
+        _runs.add_hop_pid("run-does-not-exist", 111)
+        _runs.remove_hop_pid("run-does-not-exist", 111)
+
+
+class TestCancelRun:
+    def test_the_servers_second_signal_records_the_server_as_the_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docket.interfaces.http import server as _server
+        from docket.interfaces.http import sweeps as _sweeps
+
+        record = _runs.create_run("sweep", "myapp")
+        monkeypatch.setattr(_sweeps, "sweep_run_ids", {"myapp": record["id"]})
+        monkeypatch.setattr(_sweeps, "sweep_inflight", {})
+        monkeypatch.setattr(_server, "sweep_pool", None)
+        _server._abandon_sweeps(wait_s=0.1)
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None and persisted["state"] == "cancelled"
+        assert persisted["cancellation"]["source"] == "serve"
+
+    def test_an_operator_cancel_still_records_the_cli(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        assert _runs.cancel_run(record["id"]).ok is True
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None and persisted["cancellation"]["source"] == "cli"
+
+    def test_unknown_run_is_an_error_result(self) -> None:
+        outcome = _runs.cancel_run("run-does-not-exist")
+        assert outcome.ok is False
+        assert "unknown run" in outcome.message
+
+    @pytest.mark.parametrize("terminal_state", ["succeeded", "failed", "cancelled"])
+    def test_already_terminal_run_is_a_noop(self, terminal_state: str) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.finish_run(
+            record["id"],
+            state=terminal_state,  # type: ignore[arg-type]
+            task_ids=[],
+        )
+        outcome = _runs.cancel_run(record["id"])
+        assert outcome.ok is False
+        assert f"already {terminal_state}" in outcome.message
+        # Not double-finished into "cancelled".
+        assert _runs.get_run(record["id"])["state"] == terminal_state
+
+    def test_queued_cancel_is_fully_stopped_in_one_persisted_transition(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+
+        def _add_unknown_field(doc: dict[str, Any]) -> dict[str, Any]:
+            doc["runs"][0]["futureField"] = {"preserve": True}
+            return doc
+
+        _store.read_modify_write(current_home().runs_file, _add_unknown_field)
+        outcome = _runs.cancel_run(record["id"])
+
+        assert outcome.ok is True
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "cancelled"
+        lifecycle = persisted["cancellation"]
+        assert lifecycle["requestedAt"] is not None
+        assert lifecycle["observedAt"] is not None
+        assert lifecycle["stoppedAt"] is not None
+        assert lifecycle["reason"] == "operator request"
+        assert lifecycle["source"] == "cli"
+        assert persisted["futureField"] == {"preserve": True}
+
+    def test_running_cancel_with_no_pids_remains_requested_not_stopped(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        outcome = _runs.cancel_run(record["id"])
+        assert outcome.ok is True
+        assert outcome.killed_pids == []
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "running"
+        assert persisted["finishedAt"] is None
+        assert persisted["cancellation"]["requestedAt"] is not None
+        assert persisted["cancellation"]["observedAt"] is None
+        assert persisted["cancellation"]["stoppedAt"] is None
+
+    def test_repeated_running_request_does_not_resignal_or_reaudit(
+        self, monkeypatch: pytest.MonkeyPatch, fake_process: FakeProcess
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        _runs.add_hop_pid(record["id"], 4242)
+        killed: list[int] = []
+        audited: list[tuple[str, str]] = []
+        fake_process.kill_process_group = lambda pid, grace_s=2.0: killed.append(pid) or True
+        monkeypatch.setattr(
+            _runs,
+            "audit_log",
+            lambda action, detail: audited.append((action, detail)),
+        )
+
+        first = _runs.cancel_run(record["id"])
+        after_first = _runs.get_run(record["id"])
+        second = _runs.cancel_run(record["id"])
+        after_second = _runs.get_run(record["id"])
+
+        assert first.ok is True
+        assert second.ok is False
+        assert killed == [4242]
+        assert len(audited) == 1
+        assert after_first == after_second
+        assert after_second is not None
+        assert after_second["state"] == "running"
+        assert after_second["cancellation"]["requestedAt"] is not None
+        assert after_second["cancellation"]["observedAt"] is None
+        assert after_second["cancellation"]["stoppedAt"] is None
+
+    def test_signal_observation_is_persisted_and_idempotent(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        assert _runs.cancel_run(record["id"]).ok is True
+        signal = _runs.RunCancellationSignal(record["id"])
+
+        assert signal.observe() is True
+        observed = _runs.get_run(record["id"])
+        assert observed is not None
+        assert observed["state"] == "running"
+        assert observed["cancellation"]["observedAt"] is not None
+        assert observed["cancellation"]["stoppedAt"] is None
+
+        assert signal.observe() is True
+        assert _runs.get_run(record["id"]) == observed
+
+    def test_observation_and_stop_emit_each_lifecycle_trace_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        events: list[str] = []
+        monkeypatch.setattr(
+            "docket.observability.trace.trace_event",
+            lambda _project, _session, _role, event, _payload: events.append(event) or "written",
+        )
+        assert _runs.cancel_run(record["id"]).ok is True
+        signal = _runs.RunCancellationSignal(record["id"])
+
+        assert signal.observe() is True
+        assert signal.observe() is True
+        assert _runs.finish_run(record["id"], state="succeeded") is False
+        assert _runs.finish_run(record["id"], state="succeeded") is False
+
+        assert events.count("run_cancellation_observed") == 1
+        assert events.count("run_cancelled") == 1
+
+    def test_terminal_finish_wins_when_it_commits_before_cancel_request(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        real_read_modify_write = _runs.read_modify_write
+        cancel_reached_transition = threading.Event()
+        release_cancel = threading.Event()
+        staged = False
+
+        def _stage_cancel_transition(path: Path, fn: Any) -> dict[str, Any]:
+            nonlocal staged
+            if threading.current_thread().name == "cancel-worker" and not staged:
+                staged = True
+                cancel_reached_transition.set()
+                assert release_cancel.wait(timeout=5)
+            return real_read_modify_write(path, fn)
+
+        monkeypatch.setattr(_runs, "read_modify_write", _stage_cancel_transition)
+        outcomes: list[_run_cancellation.CancelOutcome] = []
+        worker = new_thread(
+            target=lambda: outcomes.append(_runs.cancel_run(record["id"])),
+            name="cancel-worker",
+        )
+        worker.start()
+        try:
+            assert cancel_reached_transition.wait(timeout=5)
+            assert _runs.finish_run(record["id"], state="succeeded") is True
+        finally:
+            release_cancel.set()
+            worker.join(timeout=5)
+
+        assert not worker.is_alive()
+        assert len(outcomes) == 1
+        assert outcomes[0].ok is False
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "succeeded"
+        assert persisted.get("cancellation", {}).get("requestedAt") is None
+
+    def test_separate_process_request_stays_visible_until_execute_stops(
+        self, tmp_path: Path
+    ) -> None:
+        record = _runs.create_run("cli", "myapp")
+        body_started = threading.Event()
+        release_body = threading.Event()
+        body_observed: list[bool] = []
+
+        def _blocked_body() -> list[Any]:
+            signal = _runs.current_cancellation_signal()
+            assert signal is not None
+            body_started.set()
+            assert release_body.wait(timeout=10)
+            body_observed.append(signal.observe())
+            return []
+
+        executor = new_thread(
+            target=lambda: _runs.execute(record["id"], _blocked_body),
+            name="run-executor",
+        )
+        executor.start()
+        try:
+            assert body_started.wait(timeout=5)
+            env = os.environ.copy()
+            env["DOCKET_HOME"] = str(tmp_path)
+            env["RUNS_FILE"] = str(current_home().runs_file)
+            code = (
+                "import json; from dataclasses import asdict; "
+                "from docket.tasks.application.runs import cancel_run; "
+                f"print(json.dumps(asdict(cancel_run({record['id']!r}))))"
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", code],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=10,
+            )
+            assert json.loads(completed.stdout)["ok"] is True
+
+            requested = _runs.get_run(record["id"])
+            assert requested is not None
+            assert requested["state"] == "running"
+            assert requested["cancellation"]["requestedAt"] is not None
+            assert requested["cancellation"]["observedAt"] is None
+            assert requested["cancellation"]["stoppedAt"] is None
+        finally:
+            release_body.set()
+            executor.join(timeout=10)
+
+        assert not executor.is_alive()
+        assert body_observed == [True]
+        stopped = _runs.get_run(record["id"])
+        assert stopped is not None
+        assert stopped["state"] == "cancelled"
+        assert stopped["cancellation"]["observedAt"] is not None
+        assert stopped["cancellation"]["stoppedAt"] is not None
+
+    def test_malformed_lifecycle_fails_closed_without_a_stopped_claim(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        malformed = {
+            "requestedAt": ["not", "a", "timestamp"],
+            "observedAt": None,
+            "stoppedAt": None,
+            "reason": "operator request",
+            "source": "cli",
+        }
+
+        def _corrupt(doc: dict[str, Any]) -> dict[str, Any]:
+            doc["runs"][0]["cancellation"] = malformed
+            return doc
+
+        _store.read_modify_write(current_home().runs_file, _corrupt)
+        signal = _runs.RunCancellationSignal(record["id"])
+        assert signal.observe() is True
+        assert _runs.get_run(record["id"])["cancellation"] == malformed
+        outcome = _runs.cancel_run(record["id"])
+
+        assert outcome.ok is False
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert persisted["state"] == "running"
+        assert persisted["finishedAt"] is None
+        assert persisted["cancellation"] == malformed
+
+    def test_cancel_kills_a_real_recorded_process_group(self, tmp_path: Path) -> None:
+        record = _runs.create_run("cli", "myapp")
+        _runs.mark_running(record["id"])
+        proc = subprocess.Popen(["sleep", "30"], start_new_session=True)
+        _runs.add_hop_pid(record["id"], proc.pid)
+
+        outcome = _runs.cancel_run(record["id"])
+        assert outcome.ok is True
+        assert outcome.killed_pids == [proc.pid]
+
+        proc.wait(timeout=5)
+        assert proc.returncode is not None
+        requested = _runs.get_run(record["id"])
+        assert requested is not None
+        assert requested["state"] == "running"
+        assert requested["pids"] == []
+        assert requested["cancellation"]["requestedAt"] is not None
+        assert requested["cancellation"]["stoppedAt"] is None
+
+        # PID death is not the full-stop oracle; the owner records stop while
+        # folding its eventual return/exception.
+        assert _runs.finish_run(record["id"], state="failed") is False
+        stopped = _runs.get_run(record["id"])
+        assert stopped is not None
+        assert stopped["state"] == "cancelled"
+        assert stopped["cancellation"]["observedAt"] is not None
+        assert stopped["cancellation"]["stoppedAt"] is not None
+
+    def test_execute_does_not_clobber_a_concurrent_cancel(self) -> None:
+        """If `cancel_run` marks the run cancelled while `fn()` is still in
+        flight, `execute()`'s own normal completion must not flip it back to
+        "succeeded" -- the whole point of a cancel outliving the run."""
+        record = _runs.create_run("cli", "myapp")
+
+        class _Result:
+            task_id = "t1"
+
+        def _fn() -> list[Any]:
+            _runs.cancel_run(record["id"])  # simulates a concurrent cancel
+            return [_Result()]
+
+        results = _runs.execute(record["id"], _fn)
+        assert results is not None  # execute() still returns fn()'s results
+        assert _runs.get_run(record["id"])["state"] == "cancelled"

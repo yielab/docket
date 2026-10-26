@@ -2,7 +2,7 @@
 """gen_recipe_docs.py -- render docs/recipes.md from the shipped recipe library.
 
 Every recipe under ``src/docket/templates/recipes/<name>/`` is documented from what it ships:
-its ``pod.yaml`` description, the summary ``core.pod_apply.summarize_recipe`` derives from the
+its ``pod.yaml`` description, the summary ``teams.apply.plan.summarize_recipe`` derives from the
 directory, the two commands that apply it, and its own README body. Nothing is typed a second
 time, so a recipe cannot be documented differently from what the wheel carries.
 
@@ -22,8 +22,9 @@ RECIPES_MD = ROOT / "docs" / "recipes.md"
 
 sys.path.insert(0, str(SRC))
 
-from docket import config as _cfg  # noqa: E402
-from docket.core import pod_apply as _pod_apply  # noqa: E402
+from docket.bootstrap import bind_adapters  # noqa: E402
+from docket.kernel import templates as _templates  # noqa: E402
+from docket.teams.apply import recipes as _recipes  # noqa: E402
 
 HEADER = """# The recipe library
 
@@ -47,7 +48,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 """
 
 
-def _brings(summary: _pod_apply.RecipeSummary) -> str:
+def _brings(summary: _recipes.RecipeSummary) -> str:
     parts: list[str] = []
     for count, singular, plural in (
         (summary.roles, "role", "roles"),
@@ -84,8 +85,8 @@ def _readme_body(directory: Path) -> str:
 
 
 def render() -> str:
-    recipes = sorted(p for p in _cfg.recipes_dir().iterdir() if p.is_dir())
-    summaries = {p.name: _pod_apply.summarize_recipe(p) for p in recipes}
+    recipes = sorted(p for p in _templates.RECIPES_DIR.iterdir() if p.is_dir())
+    summaries = {p.name: _recipes.summarize_recipe(p) for p in recipes}
     lines = [HEADER, "| Recipe | Brings | Description |", "| --- | --- | --- |"]
     for p in recipes:
         s = summaries[p.name]
@@ -113,6 +114,7 @@ def render() -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    bind_adapters()
     content = render()
     if "--check" in args:
         current = RECIPES_MD.read_text(encoding="utf-8") if RECIPES_MD.is_file() else ""

@@ -48,7 +48,7 @@ def main() -> int:
     )
     parser.add_argument("card_id")
     parser.add_argument("--root", type=Path)
-    parser.add_argument("--max-bytes", type=int, default=12_000)
+    parser.add_argument("--max-bytes", type=int, default=16_000)
     args = parser.parse_args()
 
     root = args.root.resolve() if args.root is not None else _git_root(Path.cwd())

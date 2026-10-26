@@ -78,7 +78,7 @@ A pod has **exactly one Lead** (its single orchestrator); every other role may b
 
 A pod role is not a closed set wired into code, and adding a fifth role needs no code change.
 Every role — including the four built-in ones — is a **role archetype**
-(`core/archetypes.py`): a versioned, declarative record of its scope, model class, identity
+(`teams/roles.py`): a versioned, declarative record of its scope, model class, identity
 templates, gate contract, denied tools, and tool profile.
 
 ```bash
@@ -105,11 +105,11 @@ ships six more you can drop into any pod without writing a line of YAML:
 
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod add researcher`. A user-authored archetype (a standalone YAML file,
-`docket pod update`) can add a brand-new role name or override an existing one — merged into
-`~/.docket/docket-roles.json`, "user wins" by name; `--pod <p>` scopes it to one pod. A denied tool
-is absent from that role's turn, not merely discouraged: it is the only capability statement a role
-carries (`cannot:` in the short form), and denying a tool denies every tool of its kind, MCP tools
-included.
+`docket pod update`) can add a brand-new role name or override an existing one — merged into the
+pod's own `config/roles.json`, the pod wins by name. A denied tool is absent from that role's turn,
+not merely discouraged: it is the only capability statement a role carries (`cannot:` in the short
+form). Denying a built-in tool removes that tool alone; denying one also removes every MCP tool of
+its kind.
 
 A custom role's hop message is also data: an archetype can declare its own `hopInstruction` text;
 if it doesn't, one is generated from its `gateContract` (a verdict role, for example, is told its
@@ -125,7 +125,7 @@ next section.
 ## Pod blueprints — named pod shapes
 
 `docket init` doesn't have to produce a Lead+Implementer pod against a codebase. A **pod blueprint**
-(`core/blueprints.py`) is a named, versioned pod shape: a roster of archetypes, a default
+(`teams/blueprints.py`) is a named, versioned pod shape: a roster of archetypes, a default
 pipeline, a workspace kind, and an optional default budget cap — provisioned in one command.
 
 ```bash
@@ -199,7 +199,7 @@ Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
 That is the built-in order when no pipeline is bound; a `kind: pipeline` in `.docket/` (or a
 recipe) sets the order, the gates and the rework instead. Only the roles a pod actually has take
 part (a lean pod runs two hops). docket stays the
-orchestrator — it invokes each hop through its own turn loop (`core/agent_loop.py`), captures the
+orchestrator — it invokes each hop through its own turn loop (`agent/loop.py`), captures the
 result, and threads it to the next role. This is the **real fix for "delegation wasn't real."**
 
 ```bash
@@ -255,19 +255,18 @@ tool, or `docket start --dispatch`. `docket pod set approvalMode refuse` fails a
 fast instead of parking it. For an external orchestrator, the HTTP routes enqueue an addressable
 task and follow it (see [Architecture](DOCKET.md#one-door-for-a-program)).
 
-**A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step, a
-`requireApprovalRoles` gate, or a tool call an Implementer's own turn wants to `ask` about all
+**A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step or a tool call an Implementer's own turn wants to `ask` about all
 move the task to `waiting_approval` rather than failing it. Under `docket start --dispatch`'s sweep or a
 non-interactive `docket run`, that `ask` **parks** — it records the exact call and moves on to the
 next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that
 needs you, across every pod, shows up in one place (`docket inbox`), and a notification channel you
 enable (`docket setup notify enable desktop`, `ntfy` or `telegram`; the default `console` sends
-nothing, and `docket setup` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket task approve`/
-`docket task deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
+nothing, and `docket setup` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket task answer <escalation-id> --option approve_once`/
+`--option deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
 single-use pre-grant so the model's identical next call passes without asking twice. A pipeline
 can also pause a task to ask a genuine *question* rather than a permission — an `input` step, or
 the Lead's own typed intake brief when it decides it's missing something — which is `docket task answer
-<task-id>`'s job, not `docket task approve`'s. See
+<task-id>`'s job, with `--option` for an approval. See
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s "operator loop" section for the full mechanism.
 
 ---
@@ -297,7 +296,7 @@ inherit-the-parent-env behavior.
 A pod Lead's `HEARTBEAT.md` carries the same resume/durability contract every agent workspace
 has: in-flight work is written down before it starts, so a context reset can resume it. Dispatch
 maintains that ledger **mechanically**, so it is not only as honest as the agent's own compliance: a delimited, docket-owned region inside `## Active Tasks`
-(`core/memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
+(`teams/agent_memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
 every claim, every hop completion, and every retry — the entry for a task exists before its first
 hop ever runs, whether or not the agent would have written it down itself. Everything outside that
 region — an agent's own hand-written notes, every other heading in the file — is never touched by
@@ -418,7 +417,7 @@ docket start --dispatch                  # autonomous: drive every pod's queue
 docket inbox [--json] [--since <iso>] [--peek]           # everything across every pod that needs you
 docket task answer <task-id> [--pod <project>]                  # see + answer one task's parked question
 docket task answer <task-id> [text]                   # answer, non-interactively
-docket task approve <task-id> --for "<command>"         # pre-approve one exact call
+docket task pregrant <task-id> "<command>"             # pre-approve one exact call
 docket setup notify list                                # who gets notified, and how much they see
 docket setup notify flush                               # push pending notifications now
 
