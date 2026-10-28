@@ -50,6 +50,93 @@ class TestDomainAllowlist:
         assert "could not parse a host" in out.error
 
 
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "fetch"
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes, content_type: str, status: int = 200) -> None:
+        self.status = status
+        self.headers = {"Content-Type": content_type} if content_type else {}
+        self._body = body
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def read1(self, n: int) -> bytes:
+        chunk, self._body = self._body[:n], self._body[n:]
+        return chunk
+
+
+class _FakeOpener:
+    def __init__(self, response: _FakeResponse) -> None:
+        self._response = response
+
+    def open(self, _request: object, timeout: float = 0) -> _FakeResponse:
+        return self._response
+
+
+def _fetch_with(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, content_type: str, **home_changes: object
+) -> str:
+    monkeypatch.setattr(
+        _fetch.urllib.request,
+        "build_opener",
+        lambda *_handlers: _FakeOpener(_FakeResponse(body, content_type)),
+    )
+    home = dataclasses.replace(
+        current_home(),
+        fetch_allowed_domains=("pages.example.test",),
+        tool_max_output_chars=100_000,
+        **home_changes,
+    )
+    with use_home(home):
+        out = _fetch.fetch_url("http://pages.example.test/page")
+    assert out.ok, out.error
+    return out.content
+
+
+class TestHtmlArrivesAsText:
+    def test_a_page_becomes_the_committed_text_under_15_percent_of_its_length(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        html = (_FIXTURES / "page.html").read_bytes()
+        expected = (_FIXTURES / "page.txt").read_text()
+        content = _fetch_with(monkeypatch, html, "text/html; charset=utf-8")
+        header, _, text = content.partition("\n\n")
+        assert header == f"HTTP 200 text/html; charset=utf-8; {len(expected)} chars of text"
+        assert text == expected
+        assert len(text) < 0.15 * len(html)
+
+    def test_a_body_that_starts_like_html_is_converted_whatever_its_type(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        content = _fetch_with(monkeypatch, b"  <!DOCTYPE html><p>one</p><p>two</p>", "text/plain")
+        assert content.endswith("\n\none\n\ntwo")
+        assert content.startswith("HTTP 200 text/plain; 8 chars of text")
+
+    def test_json_and_plain_text_pass_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        body = b'{"a": "<p>not html</p>"}'
+        assert (
+            _fetch_with(monkeypatch, body, "application/json")
+            == 'HTTP 200 application/json\n\n{"a": "<p>not html</p>"}'
+        )
+        assert (
+            _fetch_with(monkeypatch, b"a  b\n\n\nc", "text/plain")
+            == "HTTP 200 text/plain\n\na  b\n\n\nc"
+        )
+
+    def test_a_truncated_page_is_converted_and_the_truncation_still_announced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        html = b"<html><body><p>" + b"word " * 100 + b"</p></body></html>"
+        content = _fetch_with(monkeypatch, html, "text/html", fetch_max_response_bytes=40)
+        assert "<" not in content
+        assert content.endswith("[truncated: response exceeded 40 bytes]")
+
+
 class TestGatedExactlyLikeABuiltin:
     """The registration itself must not create a second execution path."""
 
