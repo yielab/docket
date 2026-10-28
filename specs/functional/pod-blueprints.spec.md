@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Implemented
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -237,8 +237,9 @@ overlay, policies, members, pipeline binding, settings) into one command.
    An unrecognized top-level `pod.yaml` key, a `members`/`settings` value of the wrong type, a
    `description` that is not a string, or an `exporters` entry that is not a plain string naming a
    catalog exporter **MUST** be rejected before any other item is planned.
-2. A role in `roles/*.yaml|yml|json` **MUST** be written into *that pod's own* role overlay
-   (`$DOCKET_HOME/workspaces/pods/<pod>/config/roles.json`), the same target `docket pod update
+2. A role in `roles/*.yaml|yml|json` **MUST** be written, as its own file with the file its
+   `instructions` names beside it, into *that pod's own* role overlay
+   (`$DOCKET_HOME/config/pods/<pod>/roles/`), the same target `docket pod update
    <file>` writes to (requirement 15). The pod's roster resolution reads that pod's own overlay too, so
    a role written into it is both provisionable as a member and resolvable back out of the roster a
    pipeline dispatches against, and stays invisible to every other pod.
@@ -275,18 +276,21 @@ overlay, policies, members, pipeline binding, settings) into one command.
    `pod.apply` audit entry naming every planned item and its action (and the channel when applied
    over HTTP); an all-`skip` plan **MUST NOT** write a new audit entry. Every successful apply, an
    all-`skip` plan included, **MUST** also record this pod's configuration of record (ADR 0012,
-   amended by ADR 0013) in its settings: `configSource` (the absolute *dir*) and `configDigest` (a
-   sha256 hex digest over the sorted relative paths and bytes of every `roles/`, `policies/`,
-   `mcp-servers/` and `pipelines/` document, `pipeline.yaml` and `pod.yaml` in *dir*, plus any
-   `plugins/*.py` and any file under `skills/`, excluding the generated `.schemas/`), so composing
+   amended by ADR 0013) in its settings: `configSource` (the absolute *dir*) and `configDigest` (the sha256 of the
+   `applied.lock` that apply wrote, which names every `roles/`, `prompts/`, `policies/`,
+   `mcp-servers/` and `pipelines/` document, `pipeline.yaml` and `pod.yaml`, `plugins/*.py` and
+   skill of *dir* with its sha256, excluding the generated `.schemas/`; config-format.spec.md,
+   "Scopes, references and the lockfile"), so composing
    a second recipe onto an already-configured pod, even one whose every item plans `skip`, still
    moves the record to name the directory just applied. Both **MUST NEVER** be written by `docket
    pod set`, which **MUST** refuse both keys naming `docket pod update` as their writer; a
    `pod.yaml` `settings` mapping carrying either key is refused the same way any key outside the
    settable set is (requirement 1). `docket pod show` reports `configSource`, `configDigest`, and
-   `drift`: `"yes"` when recomputing the digest against the still-present `configSource` disagrees
-   with the recorded `configDigest`, `"no"` when it agrees, `""` when there is no recorded source
-   or its directory is gone (drift is then unknown, never asserted either way).
+   `drift`: `"yes"` when the lock recomputed from the still-present `configSource` disagrees
+   with the recorded `configDigest`, or when an applied overlay file no longer hashes to the
+   lock's `sha256` for it, `"no"` when both agree, `""` when there is no recorded source (drift
+   is then unknown, never asserted either way). A directory that is gone is compared by its
+   overlay files alone.
 7. Removing a role, policy, member, pipeline binding, or setting stays out of this command's
    scope: `docket pod remove <member-id>`, `docket pod unset <key>`, and manual file deletion are
    the explicit way to undo what a recipe added.
