@@ -95,24 +95,24 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.0 | Complete |
-| Agent Loop | 3.2.0 | Implemented and live |
+| Agent Loop | 3.4.0 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
 | Audit | 3.2.0 | Implemented |
 | Config Format | 2.2.0 | Implemented |
-| Cost Tracking | 1.12.0 | Implemented, recorded dollars unavailable |
+| Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 5.0.3 | Complete |
 | Observability Export | 3.0.0 | Implemented and live |
 | Pipeline Format | 4.2.0 | Implemented |
 | Pod Blueprints | 2.2.0 | Implemented |
 | Pod Dispatch | 11.0.0 | Implemented |
 | Role Archetypes | 4.2.0 | Implemented |
-| Security Gates | 2.0.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
-| Session History | 1.9.2 | Implemented and live |
+| Security Gates | 2.2.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
-| Trace Store | 4.0.0 | Implemented and live |
-| Workspace Structure | 2.2.0 | Complete |
-| CLI Interface | 5.1.0 | Complete |
+| Trace Store | 4.1.0 | Implemented and live |
+| Workspace Structure | 3.0.0 | Complete |
+| CLI Interface | 5.2.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 2.0.0 | Implemented |
@@ -121,7 +121,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Docket Store | 3.1.0 | Implemented |
 | Operator API | 7.0.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.2.0 | Implemented |
-| Serve Read API | 5.0.0 | Stable |
+| Serve Read API | 5.1.0 | Stable |
 | Adoption Benchmark | 2.2.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.4.0 | Active |
