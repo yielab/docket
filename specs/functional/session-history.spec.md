@@ -1,9 +1,9 @@
 # Session History Specification
 
-**Version**: 1.9.2
+**Version**: 1.10.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -171,7 +171,10 @@ This specification does NOT cover:
     characters (ending `...`), and is omitted when the call has none. Each message keeps its role, `tool_call_id` and `name`. A result beginning
     `ERROR:`, `REFUSED [` or `AWAITING APPROVAL:` stays whole up to 400 characters and is
     otherwise cut to its first 400 with a count of the rest. User and system messages are never
-    changed.
+    changed. A result that carries an artifact line (`agent-loop.spec.md` requirement 91) has its
+    notice end `the full output is in <path>: read it with read(path, offset, limit)` in place of
+    the invitation to call the tool again, because a second call may return something else; a cut
+    error result keeps the path on a final `[full output: <path>]` line.
 31. For a call whose result was condensed, the string arguments `content` (`write`),
     `new_string` and `old_string` (`edit`) **MUST** be replaced by `[wrote <path>: N characters]`
     (`[replaced <path>: N characters]` for `old_string`; without a `path` argument,
@@ -180,6 +183,10 @@ This specification does NOT cover:
     are. Between consecutive requests, every message before the newest assistant/tool pair is
     byte-identical, except when a batch boundary of requirement 30 is crossed; the prefix a
     provider caches therefore survives the calls between two boundaries.
+32. A result shorter than `HISTORY_SMALL_RESULT_CHARS` (1,500 characters) **MUST NOT** be
+    condensed while a longer result of the same history is whole: the cut of requirement 30 is
+    applied, and then each short result before it stays whole when the longest whole result is
+    longer than it. One large `grep` therefore never evicts the short `read` run beside it.
 
 ## Interface Contracts
 
@@ -195,10 +202,11 @@ class SessionRecord(BaseModel): ...           # sessionKey, created, updated, me
 # pure compaction planning
 def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage]]: ...
 
-# request projection (pure; requirements 29-31)
+# request projection (pure; requirements 29-32)
 HISTORY_KEEP_FULL_RESULTS = 2
 HISTORY_FULL_RESULTS_CHARS = 6_000
 HISTORY_LOW_WATER_CHARS = 3_000
+HISTORY_SMALL_RESULT_CHARS = 1_500
 def condense_history(
     messages: Sequence[ChatMessage], keep: int = HISTORY_KEEP_FULL_RESULTS,
     budget: int = HISTORY_FULL_RESULTS_CHARS,
@@ -374,7 +382,8 @@ result = sess.compact_session(
 - `src/docket/agent/session.py`: `load_session`, `load_messages`, `append_messages`,
   `group_atomic_units`, `find_orphaned_tool_messages`, `find_unanswered_tool_calls`,
   `plan_compaction`, `compact_session`, `condense_history`, `SessionSummaryRunner`,
-  `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_LOW_WATER_CHARS`
+  `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_LOW_WATER_CHARS`,
+  `HISTORY_SMALL_RESULT_CHARS`
 - `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
 - `src/docket/agent/loop_compaction.py`: the live caller (`run_compaction`,
   `summarize_without_reentry`, the request builder that applies `condense_history`)

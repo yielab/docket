@@ -193,6 +193,10 @@ whole pod and every member that reads it.
    enforce `700`/`600` on the managed workspace root, prompt/metadata/ledger files, and `memory/`.
 4. A pod's directory under `workspaces/pods/`, its `config/`, `.scratch` and `cache`
    directories, and `memory.json` follow the same `700` (directories) and `600` (files) rule.
+   So does `cache/artifacts/`, where a tool result over `DOCKET_TOOL_MAX_OUTPUT_CHARS` is stored
+   whole as `<sha256>.txt` plain text (`agent-loop.spec.md` requirement 91); `read` and `grep`
+   may open those files. An artifact is removed with the trace that names it, when
+   `expire_old_traces` deletes that trace.
 
 ### Shipped-data templates (package, not workspace)
 
