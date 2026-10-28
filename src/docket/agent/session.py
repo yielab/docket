@@ -33,12 +33,14 @@ from docket.agent.session_units import (
 from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel.home import current_home
+from docket.kernel.tool_outcome import artifact_path_in
 from docket.platform import read_json, read_modify_write
 
 __all__ = [
     "HISTORY_FULL_RESULTS_CHARS",
     "HISTORY_KEEP_FULL_RESULTS",
     "HISTORY_LOW_WATER_CHARS",
+    "HISTORY_SMALL_RESULT_CHARS",
     "MeasuredUsage",
     "SessionRecord",
     "SessionSummaryRunner",
@@ -65,6 +67,8 @@ SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], Tur
 HISTORY_KEEP_FULL_RESULTS = 2
 #: Older results also stay whole while all whole results fit in this many characters.
 HISTORY_FULL_RESULTS_CHARS = 6_000
+#: A result shorter than this is never condensed while a longer one is whole.
+HISTORY_SMALL_RESULT_CHARS = 1_500
 #: Once whole results exceed the budget, condensing leaves at most this many characters whole.
 HISTORY_LOW_WATER_CHARS = 3_000
 
@@ -267,6 +271,12 @@ def _result_notice(call: ToolCall | None, message: ChatMessage) -> str:
     target = _call_target(_call_arguments(call) if call else None)
     lines = message.content.count("\n") + 1 if message.content else 0
     head = f"{name} {target}" if target else name
+    artifact = artifact_path_in(message.content)
+    if artifact:
+        return (
+            f"[{head}: {lines} lines, {len(message.content):,} characters, already seen and "
+            f"omitted; the full output is in {artifact}: read it with read(path, offset, limit)]"
+        )
     return (
         f"[{head}: {lines} lines, {len(message.content):,} characters, already seen and "
         f"omitted; call {name} again only for exact text you still need]"
@@ -280,6 +290,9 @@ def _condense_result(call: ToolCall | None, message: ChatMessage) -> ChatMessage
             return message
         rest = len(content) - _ERROR_KEEP_CHARS
         content = f"{content[:_ERROR_KEEP_CHARS]}\n[{rest:,} more characters omitted]"
+        artifact = artifact_path_in(message.content)
+        if artifact:
+            content += f"\n[full output: {artifact}]"
         return ChatMessage(message.role, content, [], message.tool_call_id, message.name)
     notice = _result_notice(call, message)
     if len(notice) >= len(content):
@@ -328,6 +341,18 @@ def _batch_cut(sizes: Sequence[int], keep: int, budget: int) -> int:
     return cut
 
 
+def _small_results_kept(results: Sequence[ChatMessage], cut: int) -> set[str]:
+    """The ids before *cut* whose results stay whole: those under ``HISTORY_SMALL_RESULT_CHARS``
+    while a longer result is whole, so one big grep never evicts the short file read run beside
+    it. Their calls' large arguments are still condensed."""
+    largest_whole = max((len(m.content) for m in results[cut:]), default=0)
+    return {
+        m.tool_call_id
+        for m in results[:cut]
+        if len(m.content) < HISTORY_SMALL_RESULT_CHARS and len(m.content) < largest_whole
+    }
+
+
 def condense_history(
     messages: Sequence[ChatMessage],
     keep: int = HISTORY_KEEP_FULL_RESULTS,
@@ -340,10 +365,11 @@ def condense_history(
     results = [m for m in messages if m.role == "tool"]
     cut = _batch_cut([len(m.content) for m in results], max(1, keep), budget)
     old = {m.tool_call_id for m in results[:cut]}
+    kept = _small_results_kept(results, cut)
     calls = {c.id: c for m in messages for c in m.tool_calls}
     out: list[ChatMessage] = []
     for m in messages:
-        if m.role == "tool" and m.tool_call_id in old:
+        if m.role == "tool" and m.tool_call_id in old - kept:
             out.append(_condense_result(calls.get(m.tool_call_id), m))
         elif m.role == "assistant" and any(c.id in old for c in m.tool_calls):
             condensed = [_condense_call(c) if c.id in old else c for c in m.tool_calls]

@@ -211,3 +211,62 @@ class TestTaskPruneTraces:
         assert rc == 0
         assert "Deleted" in out
         assert not (pdir / "recent.jsonl").exists()
+
+
+class TestArtifactsExpireWithTheirTrace:
+    def _artifact(self, oc_dir: Path) -> Path:
+        directory = oc_dir / "workspaces" / "pods" / "myshop" / "cache" / "artifacts"
+        directory.mkdir(parents=True)
+        path = directory / ("a" * 64 + ".txt")
+        path.write_text("the whole result")
+        return path
+
+    def _trace(self, oc_dir: Path, artifact: Path, end: str) -> Path:
+        return _write_trace(
+            oc_dir / "traces" / "myshop",
+            "old",
+            [
+                {"ts": "2000-01-01T00:00:00Z", "event_type": "session_start"},
+                {
+                    "ts": "2000-01-01T00:01:00Z",
+                    "event_type": "tool_result",
+                    "payload": {"tool": "bash", "artifact": str(artifact)},
+                },
+                {"ts": end, "event_type": "session_end"},
+            ],
+        )
+
+    def test_an_expired_trace_takes_its_artifact_with_it(self, oc_dir: Path) -> None:
+        artifact = self._artifact(oc_dir)
+        trace = self._trace(oc_dir, artifact, "2000-01-01T00:05:00Z")
+
+        report = trace_core.expire_old_traces()
+
+        assert not trace.exists()
+        assert not artifact.exists()
+        assert report.bytes_reclaimed > len("the whole result")
+
+    def test_a_dry_run_keeps_the_artifact(self, oc_dir: Path) -> None:
+        artifact = self._artifact(oc_dir)
+        self._trace(oc_dir, artifact, "2000-01-01T00:05:00Z")
+
+        trace_core.expire_old_traces(dry_run=True)
+
+        assert artifact.exists()
+
+    def test_a_recent_trace_keeps_its_artifact(self, oc_dir: Path) -> None:
+        artifact = self._artifact(oc_dir)
+        self._trace(oc_dir, artifact, _clock.stamp())
+        # the first records are old, but the last event decides the age
+        trace_core.expire_old_traces()
+
+        assert artifact.exists()
+
+    def test_a_path_outside_a_pods_artifacts_directory_is_never_deleted(self, oc_dir: Path) -> None:
+        stray = oc_dir / "precious.txt"
+        stray.write_text("keep me")
+        self._trace(oc_dir, stray, "2000-01-01T00:05:00Z")
+
+        trace_core.expire_old_traces()
+
+        assert stray.exists()

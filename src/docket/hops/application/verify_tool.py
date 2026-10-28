@@ -20,7 +20,8 @@ from docket.hops.gates.post_hop import (
     run_verify_command,
     step_verify_command,
 )
-from docket.kernel.tool_outcome import ToolOutcome
+from docket.kernel import text as _text
+from docket.kernel.tool_outcome import VERDICT_TAIL, ToolOutcome, bounded_text
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application.record import UnitContext
@@ -68,7 +69,7 @@ def verify_tool(plan: VerifyPlan, project: str) -> Tool:
     def _handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         run = run_verify_command(project, plan.command, plan.cwd, plan.timeout)
         status = "none" if run.code is None else str(run.code)
-        output = run.redacted.strip()
+        output = bounded_text(_text.normalize_output(run.redacted.strip()), VERDICT_TAIL)
         return ToolOutcome(True, content=f"exit {status}\n{output}" if output else f"exit {status}")
 
     return Tool(

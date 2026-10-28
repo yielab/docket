@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from docket.kernel.text import cut_chars, cut_output, ellipsize, one_line
+from docket.kernel.text import cut_chars, cut_output, ellipsize, normalize_output, one_line
 
 SUBJECT = "docket.kernel.text"
 
@@ -54,3 +54,45 @@ def test_cut_output_at_the_limit_is_untouched() -> None:
 
 def test_cuts_count_characters_not_bytes() -> None:
     assert cut_chars("ñññññ", 3) == "ñññ…[truncated 2 chars]"
+
+
+def test_cut_output_with_a_tail_keeps_the_end_after_the_marker() -> None:
+    text = "".join(str(n % 10) for n in range(100))
+
+    cut = cut_output(text, 10, tail=0.6)
+
+    assert cut == f"{text[:4]}\n\n[truncated: 90 more characters]\n\n{text[-6:]}"
+
+
+def test_cut_output_with_a_tail_that_rounds_to_nothing_keeps_the_head() -> None:
+    assert cut_output("abcdef", 4, tail=0.1) == "abcd\n\n[truncated: 2 more characters]"
+
+
+def test_normalize_strips_ansi_colour_and_cursor_sequences() -> None:
+    raw = "\x1b[31mFAILED\x1b[0m test\n\x1b[2K\x1b]0;title\x07done"
+
+    assert normalize_output(raw) == "FAILED test\ndone"
+
+
+def test_normalize_keeps_the_last_state_of_a_carriage_return_line() -> None:
+    assert normalize_output("10%\r50%\r100%\nok") == "100%\nok"
+
+
+def test_normalize_treats_crlf_as_an_ordinary_newline() -> None:
+    assert normalize_output("a\r\nb\r\n") == "a\nb\n"
+
+
+def test_normalize_collapses_a_run_of_identical_lines() -> None:
+    raw = "\n".join(["start", *["retrying"] * 50, "end"])
+
+    assert normalize_output(raw) == "start\nretrying  [x 50]\nend"
+
+
+def test_normalize_collapses_a_run_at_the_end_and_leaves_blank_lines_alone() -> None:
+    assert normalize_output("a\na\n\n\nb\nb") == "a  [x 2]\n\n\nb  [x 2]"
+
+
+def test_normalize_leaves_distinct_text_byte_for_byte() -> None:
+    raw = "line one\n  indented\ttab\nlast without newline"
+
+    assert normalize_output(raw) == raw

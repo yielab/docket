@@ -31,6 +31,7 @@ from docket.kernel.gate import (
     ToolDenialKind,
 )
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
+from docket.kernel.tool_outcome import artifact_scope
 
 ToolKind = Literal["read", "write", "exec"]
 
@@ -280,7 +281,8 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         return result
 
     try:
-        outcome = tool.handler(args, ctx)
+        with artifact_scope(ctx.project):
+            outcome = tool.handler(args, ctx)
     except HandlerParked as ex:
         result.decision = "deny"
         result.denial_kind = "approval_parked"

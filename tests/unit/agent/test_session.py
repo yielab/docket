@@ -753,3 +753,100 @@ class TestCondenseHistoryBatches:
             return sum(1 for m in out if m.role == "tool" and m.content.startswith("[read"))
 
         assert [condensed(n) for n in range(5, 12)] == [0, 0, 4, 4, 4, 4, 8]
+
+
+class TestCondenseHistorySmallResults:
+    """A short result survives while a longer one is whole, and a notice names its artifact."""
+
+    @staticmethod
+    def _exchange(n: int, name: str, args: str, body: str) -> list[ChatMessage]:
+        call = ToolCall(id=f"c{n}", name=name, arguments=args)
+        return [assistant("", tool_calls=[call]), tool_result(call, body)]
+
+    def test_one_large_grep_never_evicts_the_short_read_before_it(self) -> None:
+        """The README read is 1.2 KB, the grep 20 KB: the next result must not push the read out."""
+        readme = "r" * 1_200
+        messages = [
+            user("t"),
+            *self._exchange(0, "read", '{"path":"README.md"}', readme),
+            *self._exchange(1, "grep", '{"pattern":"x"}', "g" * 20_000),
+            *self._exchange(2, "read", '{"path":"b.py"}', "b" * 100),
+        ]
+
+        out = _sess.condense_history(messages, keep=2, budget=0)
+
+        results = [m for m in out if m.role == "tool"]
+        assert results[0].content == readme
+        assert results[1].content == "g" * 20_000
+        assert results[2].content == "b" * 100
+
+    def test_a_short_result_is_condensed_once_no_longer_result_is_whole(self) -> None:
+        messages = [
+            user("t"),
+            *self._exchange(0, "read", '{"path":"a"}', "a" * 1_200),
+            *self._exchange(1, "read", '{"path":"b"}', "b" * 1_200),
+            *self._exchange(2, "read", '{"path":"c"}', "c" * 1_200),
+        ]
+
+        out = _sess.condense_history(messages, keep=1, budget=0)
+
+        results = [m for m in out if m.role == "tool"]
+        assert [m.content.startswith("[read") for m in results] == [True, True, False]
+
+    def test_a_result_at_the_small_limit_is_not_protected(self) -> None:
+        size = _sess.HISTORY_SMALL_RESULT_CHARS
+        messages = [
+            user("t"),
+            *self._exchange(0, "read", '{"path":"a"}', "a" * size),
+            *self._exchange(1, "grep", '{"pattern":"x"}', "g" * 20_000),
+        ]
+
+        out = _sess.condense_history(messages, keep=1, budget=0)
+
+        assert next(m for m in out if m.role == "tool").content.startswith("[read a:")
+
+    def test_a_kept_short_result_still_has_its_calls_large_arguments_condensed(self) -> None:
+        body = "w" * 5_000
+        call = ToolCall("w1", "write", f'{{"path":"x.md","content":"{body}"}}')
+        messages = [
+            user("t"),
+            assistant("", tool_calls=[call]),
+            tool_result(call, "wrote x.md: 5000 bytes"),
+            *self._exchange(1, "grep", '{"pattern":"x"}', "g" * 20_000),
+        ]
+
+        out = _sess.condense_history(messages, keep=1, budget=0)
+
+        assert out[2].content == "wrote x.md: 5000 bytes"
+        assert "[wrote x.md: 5,000 characters]" in out[1].tool_calls[0].arguments
+
+    def test_the_notice_for_a_result_with_an_artifact_names_it_instead_of_a_rerun(self) -> None:
+        line = "[full output: /pod/cache/artifacts/abc.txt \u2014 read it with read(path, offset, limit)]"
+        grep = "hit\n" * 600 + "\n[truncated: 9 more characters]\n\n" + line
+        messages = [
+            user("t"),
+            *self._exchange(0, "grep", '{"pattern":"hit"}', grep),
+            *self._exchange(1, "read", '{"path":"b"}', "b" * 3_000),
+        ]
+
+        out = _sess.condense_history(messages, keep=1, budget=0)
+
+        notice = next(m for m in out if m.role == "tool").content
+        assert "the full output is in /pod/cache/artifacts/abc.txt" in notice
+        assert "read it with read(path, offset, limit)" in notice
+        assert "call grep again" not in notice
+
+    def test_a_cut_error_result_keeps_the_artifact_path(self) -> None:
+        line = "[full output: /pod/cache/artifacts/abc.txt \u2014 read it with read(path, offset, limit)]"
+        failed = "ERROR: command exited 1\n" + "e" * 2_000 + "\n\n" + line
+        messages = [
+            user("t"),
+            *self._exchange(0, "bash", '{"command":"make"}', failed),
+            *self._exchange(1, "read", '{"path":"b"}', "b" * 3_000),
+        ]
+
+        out = _sess.condense_history(messages, keep=1, budget=0)
+
+        assert next(m for m in out if m.role == "tool").content.endswith(
+            "\n[full output: /pod/cache/artifacts/abc.txt]"
+        )

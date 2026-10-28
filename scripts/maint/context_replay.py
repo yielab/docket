@@ -29,6 +29,8 @@ from docket.agent.ports import ChatMessage, ToolCall
 from docket.agent.session import condense_history
 from docket.agent.tools.builtins.toolbox import read_file, text_outcome
 from docket.kernel.home import current_home
+from docket.kernel.text import normalize_output
+from docket.kernel.tool_outcome import VERDICT_TAIL, bounded_text
 from docket.pipeline.domain import gates
 from docket.pipeline.domain import plan as orchestrator
 
@@ -102,6 +104,19 @@ def condense_policy(keep: int) -> Policy:
     return policy
 
 
+def p52_2_policy(messages: Messages) -> Messages:
+    """Phase 52: ``phase44`` plus normalized ``bash`` output kept head and tail at the cap, and
+    the monotone small-result rule of ``condense_history``. The artifact line is not counted."""
+    out = []
+    for message in tool_output_policy(messages):
+        if message.get("role") == "tool" and message.get("name") == "bash":
+            normalized = normalize_output(str(message.get("content") or ""))
+            out.append({**message, "content": bounded_text(normalized, VERDICT_TAIL)})
+        else:
+            out.append(message)
+    return condense_policy(PHASE44_KEEP)(out)
+
+
 POLICIES: dict[str, Policy] = {
     "baseline": lambda messages: messages,
     "tool-output": tool_output_policy,
@@ -109,6 +124,7 @@ POLICIES: dict[str, Policy] = {
     "condense-k2": condense_policy(2),
     "condense-k3": condense_policy(3),
     "phase44": lambda messages: condense_policy(PHASE44_KEEP)(tool_output_policy(messages)),
+    "p52-2": p52_2_policy,
 }
 
 VERDICT_PATTERN = r"^\s*(APPROVE|REJECT|REQUEST-CHANGES|PASS|FAIL)\b"
