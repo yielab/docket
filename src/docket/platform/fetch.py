@@ -34,6 +34,7 @@ from __future__ import annotations
 import urllib.error
 import urllib.parse
 import urllib.request
+from html.parser import HTMLParser
 
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
@@ -43,6 +44,138 @@ _USER_AGENT = "docket-fetch/1"
 # A caller's per-call timeout is clamped to this multiple of FETCH_TIMEOUT_S.
 FETCH_CLAMP_MULTIPLE = 4
 _READ_CHUNK = 8192
+
+_DROPPED = frozenset({"script", "style", "noscript", "svg"})
+_PARAGRAPHS = frozenset(
+    {"p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "ul", "ol", "blockquote", "table", "hr"}
+)
+_LINES = frozenset(
+    {
+        "div", "section", "article", "header", "footer", "nav", "main", "aside", "li", "tr",
+        "br", "dl", "dt", "dd", "form", "fieldset", "figure", "figcaption", "address", "details",
+        "summary", "title",
+    }
+)  # fmt: skip
+_VERBATIM = frozenset({"pre", "code"})
+_CELLS = frozenset({"td", "th"})
+_HEADING_MARK = {"h1": "# ", "h2": "## ", "h3": "### "}
+
+
+class _TextExtractor(HTMLParser):
+    """Collects a page's readable text; the rules are security-gates.spec.md's `fetch` bullet."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._lines: list[str] = []
+        self._cur: list[str] = []
+        self._raw = False
+        self._fresh = True
+        self._dropped = 0
+        self._verbatim = 0
+        self._skip_newline = False
+        self._href = ""
+        self._link_text: list[str] = []
+
+    def _flush(self, keep_empty: bool = False) -> None:
+        line = "".join(self._cur)
+        self._cur, raw, self._raw, self._fresh = [], self._raw, False, True
+        line = line.rstrip() if raw else line.strip()
+        if line or (keep_empty and self._lines and self._lines[-1]):
+            self._lines.append(line)
+
+    def _break(self, blank: bool) -> None:
+        self._flush()
+        if blank and self._lines and self._lines[-1]:
+            self._lines.append("")
+
+    def _put(self, text: str) -> None:
+        if self._href:
+            self._link_text.append(text)
+        self._cur.append(text)
+        self._fresh = self._fresh and not text.strip()
+
+    def _mark(self, marker: str) -> None:
+        """A line's leading marker (`#`, `-`): the text after it is still the line's first."""
+        self._cur.append(marker)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in _DROPPED:
+            self._dropped += 1
+        if self._dropped:
+            return
+        if tag in _PARAGRAPHS or tag in _LINES:
+            self._break(tag in _PARAGRAPHS)
+        if tag in _HEADING_MARK:
+            self._mark(_HEADING_MARK[tag])
+        elif tag == "li":
+            self._mark("- ")
+        elif tag in _CELLS:
+            self._put(" ")
+        elif tag == "a":
+            self._href = dict(attrs).get("href") or ""
+            self._link_text = []
+        if tag in _VERBATIM:
+            self._verbatim += 1
+            self._skip_newline = tag == "pre"
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _DROPPED:
+            self._dropped = max(0, self._dropped - 1)
+            return
+        if self._dropped:
+            return
+        if tag in _VERBATIM:
+            self._verbatim = max(0, self._verbatim - 1)
+        if tag == "a" and self._href:
+            text = " ".join("".join(self._link_text).split())
+            if text and text != self._href:
+                self._cur.append(f" ({self._href})")
+            self._href = ""
+        if tag in _PARAGRAPHS or tag in _LINES:
+            self._break(tag in _PARAGRAPHS)
+
+    def handle_data(self, data: str) -> None:
+        if self._dropped:
+            return
+        if not self._verbatim:
+            data = " ".join(data.split()).join(
+                (" " if data[:1].isspace() else "", " " if data[-1:].isspace() else "")
+            )
+            if self._fresh or "".join(self._cur).endswith(" "):
+                data = data.lstrip()
+            if data:
+                self._put(data)
+            return
+        if self._skip_newline:
+            self._skip_newline = False
+            data = data.removeprefix("\n")
+        for i, piece in enumerate(data.split("\n")):
+            if i:
+                self._flush(keep_empty=True)
+            if piece:
+                self._raw = True
+                self._put(piece)
+
+    def text(self) -> str:
+        self._flush()
+        return "\n".join(self._lines).strip("\n")
+
+
+def _looks_like_html(content_type: str, body: str) -> bool:
+    head = body.lstrip()[:15].lower()
+    return (
+        "text/html" in content_type.lower()
+        or head.startswith("<!doctype html")
+        or head.startswith("<html")
+    )
+
+
+def _html_to_text(html: str) -> str:
+    """Plain text of an HTML page: what a reader sees, without markup, scripts or styles."""
+    extractor = _TextExtractor()
+    extractor.feed(html)
+    extractor.close()
+    return extractor.text()
 
 
 class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -168,9 +301,13 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     truncated = len(raw) > current_home().fetch_max_response_bytes
     body = raw[: current_home().fetch_max_response_bytes]
     text = body.decode("utf-8", errors="replace")
+    header = f"HTTP {status} {content_type}".rstrip()
+    converted = _looks_like_html(content_type, text)
+    if converted:
+        text = _html_to_text(text)
+        header = f"{header}; {len(text)} chars of text"
     if truncated:
         text += (
             f"\n\n[truncated: response exceeded {current_home().fetch_max_response_bytes} bytes]"
         )
-    header = f"HTTP {status} {content_type}".rstrip()
-    return text_outcome(f"{header}\n\n{text}" if content_type else text)
+    return text_outcome(f"{header}\n\n{text}" if content_type or converted else text)
