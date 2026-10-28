@@ -6,6 +6,7 @@ import threading
 from collections.abc import Sequence
 from typing import Any
 
+from docket.agent.loop_types import LoopConfig
 from docket.agent.ports import ChatMessage, ChatResponse, PromptSectionReport
 from docket.agent.session_compaction import CompactionResult
 from docket.kernel import text as _text
@@ -99,10 +100,13 @@ def _trace_llm_call(
     purpose: str = "",
     task_id: str = "",
     messages: Sequence[ChatMessage] | None = None,
+    cfg: LoopConfig | None = None,
+    tool_choice: str | None = None,
 ) -> None:
     """One backend chat-completions exchange, measured -- never a cost figure. ``request`` is the
     adapter's own byte count of the body it sent; the content of *messages* is captured only for
-    classes an enabled exporter asked for."""
+    classes an enabled exporter asked for. *cfg* adds the model profile's name and the sampling
+    it declares, *tool_choice* the tool a forced call named: each only when it was sent."""
     payload: dict[str, Any] = {
         "model": response.model,
         "provider": response.provider,
@@ -119,6 +123,15 @@ def _trace_llm_call(
         payload["iteration"] = iteration
     if purpose:
         payload["purpose"] = purpose
+    if cfg is not None:
+        if cfg.profile:
+            payload["profile"] = cfg.profile
+        if cfg.temperature is not None:
+            payload["temperature"] = cfg.temperature
+        if cfg.top_p is not None:
+            payload["topP"] = cfg.top_p
+    if tool_choice:
+        payload["toolChoice"] = tool_choice
     if response.request_bytes:
         payload["request"] = {
             part: {"bytes": size, "estTokens": size // current_home().context_bytes_per_token}

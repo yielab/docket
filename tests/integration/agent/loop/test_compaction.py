@@ -203,6 +203,8 @@ class TestLiveSessionCompaction:
                 tools: Sequence[ToolSpec] = (),
                 max_tokens: int | None = None,
                 temperature: float | None = None,
+                top_p: float | None = None,
+                tool_choice: str | None = None,
                 timeout: int = 120,
             ) -> ChatResponse:
                 self.calls.append(list(messages))
@@ -307,6 +309,8 @@ class TestLiveSessionCompaction:
                 tools: Sequence[ToolSpec] = (),
                 max_tokens: int | None = None,
                 temperature: float | None = None,
+                top_p: float | None = None,
+                tool_choice: str | None = None,
                 timeout: int = 120,
             ) -> ChatResponse:
                 self.calls.append(list(messages))
@@ -433,6 +437,8 @@ class TestLiveSessionCompaction:
                 tools: Sequence[ToolSpec] = (),
                 max_tokens: int | None = None,
                 temperature: float | None = None,
+                top_p: float | None = None,
+                tool_choice: str | None = None,
                 timeout: int = 120,
             ) -> ChatResponse:
                 self.calls.append(list(messages))

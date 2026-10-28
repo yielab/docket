@@ -122,6 +122,82 @@ class Preset(BaseModel):
         return value
 
 
+class Sampling(BaseModel):
+    """The sampling a row declares; a field left ``None`` is never sent (docket supplies no
+    default, so the endpoint's own applies)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    temperature: float | None = Field(None, ge=0, le=2)
+    top_p: float | None = Field(None, alias="topP", gt=0, le=1)
+
+
+class BudgetShares(BaseModel):
+    """The read window and the tool-output cap as shares of the context window, each in (0, 1]
+    or ``None`` for no share."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    read_window: float | None = Field(None, alias="readWindow", gt=0, le=1)
+    tool_output: float | None = Field(None, alias="toolOutput", gt=0, le=1)
+
+
+ProfileName = Literal["hosted", "local"]
+ToolSurface = Literal["full", "minimal"]
+DescriptionMode = Literal["full", "compact"]
+ToolChoiceMode = Literal["auto", "forced-on-close"]
+
+
+@dataclass(frozen=True)
+class ProfileBudgets:
+    """The read window and the tool-output cap, in characters, that a profile's shares make for
+    one model's context window; ``None`` where no share is declared or the window is unknown."""
+
+    read_window_chars: int | None = None
+    tool_output_chars: int | None = None
+
+
+@dataclass(frozen=True)
+class ModelProfile:
+    """How the harness adapts to a model, as data (model-profiles.spec.md "Model profiles").
+    ``tool_surface`` and ``budgets`` are resolved here and applied elsewhere; no field is ever
+    derived from a model id."""
+
+    name: ProfileName
+    sampling: Sampling
+    tool_surface: ToolSurface
+    descriptions: DescriptionMode
+    tool_choice: ToolChoiceMode
+    shares: BudgetShares
+    budgets: ProfileBudgets = ProfileBudgets()
+
+
+BUILTIN_PROFILES: dict[str, ModelProfile] = {
+    "hosted": ModelProfile("hosted", Sampling(), "full", "full", "auto", BudgetShares()),
+    "local": ModelProfile(
+        "local",
+        Sampling(),
+        "minimal",
+        "compact",
+        "forced-on-close",
+        BudgetShares(readWindow=0.05, toolOutput=0.02),
+    ),
+}
+
+
+def _budgets_of(shares: BudgetShares, context_window_tokens: int | None) -> ProfileBudgets:
+    """``floor(window * share * bytes-per-token)`` for each declared share; nothing for an
+    unknown window (never a guessed one)."""
+    if context_window_tokens is None:
+        return ProfileBudgets()
+    chars = current_home().context_bytes_per_token * context_window_tokens
+
+    def _chars(share: float | None) -> int | None:
+        return None if share is None else int(chars * share)
+
+    return ProfileBudgets(_chars(shares.read_window), _chars(shares.tool_output))
+
+
 class ProviderSpec(BaseModel):
     """A `kind: provider` document -- see specs/functional/model-profiles.spec.md
     ("Provider catalog"). ``kind`` itself is the document envelope's concern
@@ -141,6 +217,12 @@ class ProviderSpec(BaseModel):
     presets: list[Preset] = Field(default_factory=list)
     headers: dict[str, str] = Field(default_factory=dict)
     note: str = ""
+    profile: ProfileName | None = None
+    sampling: Sampling | None = None
+    tool_surface: ToolSurface | None = Field(None, alias="toolSurface")
+    descriptions: DescriptionMode | None = None
+    tool_choice: ToolChoiceMode | None = Field(None, alias="toolChoice")
+    budgets: BudgetShares | None = None
 
     @field_validator("headers")
     @classmethod
@@ -188,6 +270,24 @@ class ProviderSpec(BaseModel):
         if not self.prices_as_of and any(row.price is not None for row in self.models):
             raise InvalidInput("pricesAsOf is required when any model row carries a price")
         return self
+
+
+def profile_of(spec: ProviderSpec, model_id: str = "") -> ModelProfile:
+    """*spec*'s profile for *model_id*: the one it names, else ``local`` for a ``local: true`` row
+    and ``hosted`` for any other, with each field the row declares laid over it and the budgets
+    made from the model's resolved context window (none without a *model_id*)."""
+    base = BUILTIN_PROFILES[spec.profile or ("local" if spec.local else "hosted")]
+    shares = spec.budgets or base.shares
+    window = resolve_limits(spec, model_id).context_window if model_id else None
+    return ModelProfile(
+        name=base.name,
+        sampling=spec.sampling or base.sampling,
+        tool_surface=spec.tool_surface or base.tool_surface,
+        descriptions=spec.descriptions or base.descriptions,
+        tool_choice=spec.tool_choice or base.tool_choice,
+        shares=shares,
+        budgets=_budgets_of(shares, window),
+    )
 
 
 def _validation_to_provider_error(path: Path | str, exc: ValidationError) -> ProviderError:

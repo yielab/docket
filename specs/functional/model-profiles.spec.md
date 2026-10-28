@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 5.0.3
+**Version**: 6.0.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -27,6 +27,8 @@ This specification covers:
 - The provider catalog: `kind: provider` documents, the built-in and global scopes, and
   `~/.docket/docket-providers.json`
 - Endpoint and credential resolution, including the hosted OpenAI-compatible gateways
+- The model profile: how a catalog row declares sampling, the tool surface, tool descriptions,
+  tool choice and window-derived budgets, and the two built-in profiles
 - Rank-anchor names versus the model and role values a command accepts
 - Cost labels derived from the catalog, including local-provider and marketplace-provider
   (OpenRouter/Vercel AI Gateway) pricing honesty
@@ -386,6 +388,45 @@ directly — see "Provider catalog" below.
    `maxTokens`, `limitsSource` (`declared` when any limit is declared, else `observed` when any is
    observed, else `unknown`), `contextWindowSource`, `maxTokensSource` and `observedAt`.
 
+### Model profiles
+
+1. A provider document **MAY** declare `profile` (`hosted` or `local`, a closed set) and, as
+   overrides of the named profile, `sampling` (`temperature` in [0, 2], `topP` in (0, 1]),
+   `toolSurface` (`full` or `minimal`), `descriptions` (`full` or `compact`), `toolChoice` (`auto`
+   or `forced-on-close`) and `budgets` (`readWindow`, `toolOutput`: each a share of the context
+   window in (0, 1]). A document without `profile` **MUST** resolve to `local` when it declares
+   `local: true` and to `hosted` otherwise. `load_provider_document` **MUST** raise naming the
+   file and field on an unknown profile name or an out-of-range value. The profile comes from the
+   catalog row alone, never from the model id or the provider's name.
+2. The built-in profiles **MUST** be exactly these. `hosted`: `toolSurface: full`,
+   `descriptions: full`, `toolChoice: auto`, no sampling, no budgets. `local`: `toolSurface:
+   minimal`, `descriptions: compact`, `toolChoice: forced-on-close`, `budgets: {readWindow: 0.05,
+   toolOutput: 0.02}`, no sampling. No built-in declares `sampling`: a temperature or `topP`
+   exists only where a document declares it.
+3. `resolve_profile(model)` **MUST** return the profile of the catalog row the model names, found
+   the way `resolve_endpoint` finds its row; a provider absent from the catalog, and any model
+   while `DOCKET_LLM_BASE_URL` overrides the endpoint, resolve to `hosted`. A `hosted` row **MUST**
+   leave every request byte-identical to a provider that declares nothing.
+4. `sampling` reaches the turn as `LoopConfig.temperature` and `LoopConfig.top_p`; the chat wire
+   (`build_payload`) **MUST** carry `temperature` and `top_p` only when declared, and a row that
+   declares none **MUST** send neither key: docket never supplies a sampling default.
+5. A `compact` description **MUST** be at most two sentences for every built-in tool, `fetch`
+   included; a long page is kept whole and read back with `read`, so the description says that
+   instead of a long account of limits. The description of `bash` keeps the rules the classifier
+   applies this turn and that of `consult` keeps the effect of asking and the consultations left.
+6. `toolChoice: forced-on-close` **MUST** make a step that names its closing tool send
+   `tool_choice` for that tool on the closing call (agent-loop requirement 96). The wire carries
+   the name the caller gives; the adapter **MUST NOT** name any tool itself.
+7. `toolSurface` is declared and resolved here only; this requirement does not narrow any tool
+   list. The budgets are resolved here too, on the profile as `budgets` (`read_window_chars`,
+   `tool_output_chars`): each declared share becomes `floor(context_window_tokens * share *
+   Home.context_bytes_per_token)` for the model's context window as requirement 9 of "Provider
+   catalog" resolves it, and `None` where the profile declares no share or the window is unknown
+   (never a guessed window). Applying them to a tool is not part of this requirement.
+8. **Observability.** Every `llm_call` event carries the resolved profile's name as `profile`
+   (agent-loop requirement 71), and `docket status` **MUST** name each member's profile: `--json`
+   as `modelProfile` on every `members` row, and the human render as a `Model profiles` row.
+
 ### Pricing
 
 1. Each built-in direct-provider model whose price Docket claims **MUST** have a `price` on its
@@ -551,7 +592,8 @@ Where the names above live today (the only place paths appear):
   `find_registry_problems`, `write_registry`, `resolve_role_model`, `resolve_step_model`,
   `validate_model`, `role_why`, `reapply_role_policy`, `RoleRepoint`, `is_local_provider`,
   `is_marketplace`, `price_for`, `prices_as_of`, `pricing_label`
-- `src/docket/models/catalog.py`: `ProviderSpec`, `load_provider_document`, `load_catalog`,
+- `src/docket/models/catalog.py`: `ModelProfile`, `Sampling`, `BudgetShares`, `ProfileBudgets`,
+  `BUILTIN_PROFILES`, `profile_of`, `ProviderSpec`, `load_provider_document`, `load_catalog`,
   `Catalog`, `rank_anchors_of`, `check_rank_anchors`, `save_provider`, `delete_provider`, `remove_provider`, `export_provider`,
   `resolve_credential`, `resolve_limits`, `observed_limits`, `record_observed_models`,
   `refresh_observed_models_due`, `verify_endpoint`, `probe_spec`, `register_provider`,
@@ -564,7 +606,7 @@ Where the names above live today (the only place paths appear):
 - `src/docket/hops/application/report.py`: the `docket pod show <member> --json` report
 - `src/docket/hops/application/runner.py`, `src/docket/hops/gates/pre_hop.py`,
   `src/docket/teams/config_docs.py`: step-model resolution at a hop and in `docket pod validate`
-- `src/docket/models/application/endpoint.py`: `resolve_endpoint`, `endpoint_from_spec`;
+- `src/docket/models/application/endpoint.py`: `resolve_endpoint`, `endpoint_from_spec`, `resolve_profile`;
   `src/docket/models/application/probe.py`: `ProbeResult`
 - `src/docket/models/adapters/openai_http.py`: `client_for`,
   `build_payload`, `request_part_bytes`, `probe_models`, the chat client's header

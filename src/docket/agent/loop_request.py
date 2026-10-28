@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 
 from docket.agent import ports as _ports
-from docket.agent.ports import ChatBackend, ChatMessage, TokenUsage, ToolSpec, user
+from docket.agent.ports import ChatBackend, ChatMessage, TokenUsage, ToolSpec, assistant, user
 
 
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
@@ -147,3 +147,10 @@ def _finalization_messages(current: list[ChatMessage]) -> list[ChatMessage]:
     # A trailing user message keeps every earlier message byte-identical to the previous
     # request, so the cached prefix is reused. Request-only; never written to durable history.
     return [*current, user(_FINALIZATION_INSTRUCTION)]
+
+
+def _closing_messages(current: list[ChatMessage], reply: str, tool: str) -> list[ChatMessage]:
+    # Request-only, like the finalization instruction: the reply and the instruction trail the
+    # persisted history, so the closing call's own message is the one that is stored.
+    instruction = user(f"Record your outcome now by calling `{tool}`.")
+    return [*current, *([assistant(reply)] if reply else []), instruction]

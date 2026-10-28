@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import atexit
 import contextlib
-import json
 from collections.abc import Callable
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -32,9 +30,6 @@ from docket.agent.ports import (
     DOCKET_CONSULT_MODE,
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
-    DOCKET_TASK_DENIED_TOOLS,
-    DOCKET_TASK_NETWORK,
-    DOCKET_TASK_POLICIES,
     DOCKET_TURN_TOKEN_BUDGET,
     DOCKET_VERDICT_VALUES,
     DOCKET_VERIFY_PLAN,
@@ -46,36 +41,38 @@ from docket.agent.ports import (
     UsageReport,
     UsageTotals,
 )
-from docket.agent.tools import mcp_tools as _mcp
-from docket.agent.tools import mcp_types as _mcp_types
-from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
-from docket.governance import policy as _policy
+from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.hops.application import verify_tool as _verify
-from docket.hops.application.builtin_tools import (
-    builtin_registry,
-    describe_consult_for,
-    state_bash_rules,
+from docket.hops.application.builtin_tools import builtin_registry, describe_tools
+from docket.hops.application.driver_support import (
+    _approval_timeout,
+    _base_commit_view,
+    _build_on_process,
+    _consult_mode,
+    _load_agent_meta,
+    _load_mcp_tools,
+    _loop_config,
+    _max_consultations,
+    _parse_pregrants,
+    _resolve_allow_commands,
+    _resolve_roots,
+    _stdio_launch,
+    _task_scope,
+    _turn_result_from,
+    _turn_token_budget,
+    _validated_pipeline_worktree,
 )
-from docket.hops.application.verdict_tool import parse_values, verdict_tool
-from docket.kernel.errors import DispatchError
-from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
+from docket.hops.application.verdict_tool import VERDICT_TOOL, parse_values, verdict_tool
 from docket.kernel.home import current_home
-from docket.kernel.ports import git as _git
 from docket.kernel.ports import process as _process
 from docket.models.adapters import openai_http as _llm
+from docket.models.application.endpoint import resolve_profile
 from docket.observability import telemetry as _telemetry
-from docket.observability import trace as _trace
 from docket.observability.adapters import sinks as _exporters
-from docket.platform import read_json, write_json
+from docket.platform import write_json
 from docket.tasks.application import runs as _runs
-from docket.tasks.application.repository import TaskRepository
-from docket.teams import fleet as _fleet
-from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
-from docket.teams import pod_settings as _pod_settings
 from docket.teams.isolation_posture import hop_read_only, jail_cache_dir, resolve_posture
-from docket.teams.models import AgentMeta
-from docket.teams.roles import BUILTIN_TOOL_KINDS
 from docket.teams.workspace import repo_view as _repo_view
 
 __all__ = ["DocketDriver"]
@@ -94,316 +91,6 @@ def _close_telemetry() -> None:
 # ever started, so this is harmless in every test process and CLI invocation that never
 # enables an exporter.
 atexit.register(_close_telemetry)
-
-
-# Reads and validates *only* the mcpServers meta key, through `PodSettings.coerce` --
-# not `PodSettings.load_for`, which validates every stored key at once the way
-# `_resolve_allow_commands` above deliberately avoids for `allowCommands`. This
-# turn's live path must not refuse over an unrelated stored key (e.g. a hand-edited
-# `turnTimeoutS`); only a bad `mcpServers` value itself is this function's concern.
-# Unlike `allowCommands`'s fail-open pattern, a bad value here *is* re-raised as
-# `DispatchError`, never swallowed: `coerce`'s validator checks every stored name
-# against the live MCP catalog on every read, not only at `pod set` time, so a
-# selection valid when written but since renamed/removed surfaces here as this
-# pod's own stale configuration -- not an ordinary turn failure like an
-# unreachable/hung/malformed remote server (which `load_mcp_tools` already
-# degrades to "unavailable" for, never raising).
-def _pod_mcp_selection(project: str) -> tuple[str, ...] | None:
-    """*project*'s own `mcpServers` pod setting, or ``None`` (load every configured
-    server) for a non-pod caller or an unset setting."""
-    if not project:
-        return None
-    lead_id = _pod.member_id(project, "lead")
-    raw = _fleet.meta_get(lead_id, "mcpServers", "")
-    if not raw:
-        return None
-    try:
-        coerced = _pod_settings.PodSettings.coerce("mcpServers", raw, project=project)
-    except _pod_settings.PodSettingsError as exc:
-        raise DispatchError(str(exc)) from exc
-    return tuple(str(coerced).split(","))
-
-
-def _stdio_launch(ctx: ToolContext) -> _mcp_types.StdioLaunch:
-    """How this turn starts stdio servers: its root, and its jail when the turn is isolated."""
-    return _mcp_types.StdioLaunch(
-        cwd=str(ctx.roots[0]),
-        sandbox=ctx.sandbox,
-        network=ctx.network,
-        roots=ctx.roots,
-        read_only=ctx.read_only,
-    )
-
-
-# Filters the shared catalog by *project*'s pod `mcpServers` selection (see
-# `_pod_mcp_selection`, which is what actually raises `DispatchError` for a stale
-# selection) before handing the rest to `load_mcp_tools`. ``None`` (no selection
-# stored, or *project* names no pod) loads every configured server -- byte-for-byte
-# the pre-selection behavior, including the zero-server fast path.
-def _load_mcp_tools(
-    registry: ToolRegistry,
-    role: str,
-    project: str = "",
-    launch: _mcp_types.StdioLaunch | None = None,
-) -> list[Any]:
-    """Fold MCP servers' tools into *registry*; *launch* is how this turn starts stdio servers."""
-    servers = _mcp_servers.load_mcp_servers(project)
-    selection = _pod_mcp_selection(project)
-    if selection is not None:
-        servers = [s for s in servers if s.name in selection]
-    if launch is None:
-        return _mcp.load_mcp_tools(registry, servers=servers, role=role, project=project)
-    return _mcp.load_mcp_tools(registry, servers=servers, role=role, project=project, launch=launch)
-
-
-def _load_agent_meta(agent_id: str) -> AgentMeta | None:
-    """Read *agent_id*'s ``.docket-meta.json`` via ``platform/store.py``. Returns ``(None, "")`` for
-    a missing or malformed record rather than raising, per the Protocol's "never raises for an
-    ordinary failure" contract."""
-    raw = read_json(current_home().meta_path(agent_id))
-    if not raw:
-        return None
-    try:
-        return AgentMeta.model_validate(raw)
-    except Exception:
-        return None
-
-
-def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
-    """The containment boundary ``dispatch_tool`` enforces: codebase > work_dir > the agent's
-    own workspace (a dispatched task's worktree arrives as the pipeline root instead) --
-    mirrors ``teams.pod.resolve_member_cwd``, extended here (not there) to also cover a
-    ``workdir`` pod, which that helper's signature cannot express."""
-    if meta is not None and meta.codebase:
-        return (Path(meta.codebase),)
-    if meta is not None and meta.work_dir:
-        return (Path(meta.work_dir),)
-    return (current_home().workspace_dir(agent_id),)
-
-
-def _approval_timeout(raw: str | None) -> int | None:
-    """A positive whole number of seconds from the env coordinate, else ``None``."""
-    try:
-        seconds = int(raw) if raw else 0
-    except ValueError:
-        return None
-    return seconds if seconds > 0 else None
-
-
-def _validated_pipeline_worktree(agent_id: str, env: dict[str, str] | None) -> str:
-    """Accept a task root only when it is a directory under a same-pod Implementer's
-    ``tasks/`` worktree directory."""
-    candidate = str((env or {}).get(PIPELINE_WORKTREE_ENV, "")).strip()
-    project = _pod.pod_of(agent_id)
-    if not candidate or project is None:
-        return ""
-    candidate_path = Path(candidate).resolve()
-    for registered in _fleet.list_agents():
-        parsed = _pod.parse_member_id(registered.id, project)
-        if parsed is None or parsed[0] != "implementer":
-            continue
-        tasks_dir = (current_home().projects_dir / registered.id / "tasks").resolve()
-        if candidate_path.parent == tasks_dir and candidate_path.is_dir():
-            return str(candidate_path)
-    return ""
-
-
-def _base_commit_view(
-    pipeline_worktree: str, project: str, task_id: str
-) -> _repo_view.RepoView | None:
-    """The codebase's files at the task's recorded ``baseCommit``, or ``None`` (read the filesystem)
-    without a task worktree, a base commit or recorded git dirs: without those, host-side git
-    could not be kept off the worktree's own agent-writable ``.git`` file."""
-    if not pipeline_worktree or not task_id:
-        return None
-
-    try:
-        task = TaskRepository.for_pod(project).get(task_id)
-    except Exception:  # an unreadable queue file must not fail the turn
-        return None
-    if task is None or task.worktree is None:
-        return None
-    record = task.worktree
-    base, git_dir = record.base_commit, record.git_dir or ""
-    common_dir, recorded = record.common_dir or "", record.dir
-    if not (base and git_dir and common_dir and recorded):
-        return None
-    if Path(recorded).resolve() != Path(pipeline_worktree).resolve():
-        return None
-    _git.trust_worktree(pipeline_worktree, git_dir, common_dir)
-    return _repo_view.RepoView(
-        base,
-        lambda rel: _git.git_read_blob(pipeline_worktree, base, rel),
-        lambda rel: _git.git_list_tree_dirs(pipeline_worktree, base, rel),
-    )
-
-
-def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
-    """This pod's ``allowCommands`` setting, or empty for a non-pod agent or an
-    unreadable settings store -- fail closed, never grants more than SAFE_BINS."""
-    project = _pod.pod_of(agent_id)
-    if project is None:
-        return ()
-    try:
-        return _pod_settings.PodSettings.load_for(project).allow_commands
-    except _pod_settings.PodSettingsError:
-        return ()
-
-
-def _max_consultations(agent_id: str, raw: str | None) -> int:
-    """This turn's ``consult`` budget: the caller's env value, else the agent's pod setting
-    ``maxConsultationsPerTask``, else the default; a malformed value never raises."""
-    if raw is not None:
-        try:
-            return max(0, int(raw))
-        except ValueError:
-            pass
-    project = _pod.pod_of(agent_id)
-    if project is not None:
-        try:
-            return _pod_settings.PodSettings.load_for(project).max_consultations_per_task
-        except _pod_settings.PodSettingsError:
-            pass
-    return DEFAULT_MAX_CONSULTATIONS
-
-
-def _consult_mode(agent_id: str, raw: str | None = None) -> str:
-    """What a consult does: the mode the dispatch hop settled (*raw*) when it names one, else the
-    agent's pod setting ``consultMode``; an agent outside a pod, or an unreadable settings store,
-    parks -- the mode that waits for a person rather than deciding for one."""
-    if raw in ("park", "decide"):
-        return raw
-    project = _pod.pod_of(agent_id)
-    if project is None:
-        return "park"
-    try:
-        return _pod_settings.PodSettings.load_for(project).consult_mode
-    except _pod_settings.PodSettingsError:
-        return "park"
-
-
-def _turn_token_budget(raw: str | None) -> int:
-    """*raw* as a positive measured-token ceiling, else the configured loop default -- a
-    malformed value never raises here."""
-    try:
-        value = int(raw or "")
-    except ValueError:
-        return current_home().agent_loop_token_budget
-    return value if value > 0 else current_home().agent_loop_token_budget
-
-
-def _task_scope(registry: ToolRegistry, tool_env: dict[str, str]) -> AbstractContextManager[None]:
-    """The policy scope for the turn's task restrictions; pops their coordinates from *tool_env*
-    so no tool sees them (the network one was read by ``resolve_posture``)."""
-    tool_env.pop(DOCKET_TASK_NETWORK, None)
-    denied_raw = tool_env.pop(DOCKET_TASK_DENIED_TOOLS, None)
-    policies_raw = tool_env.pop(DOCKET_TASK_POLICIES, None)
-    return _policy.task_policies(_task_policy_documents(registry, denied_raw, policies_raw))
-
-
-def _loop_config(backend: ChatBackend, timeout: int, token_budget: int) -> _loop.LoopConfig:
-    """The turn loop's bounds: wall clock, measured-token budget and the endpoint's own windows."""
-    context_window = getattr(backend, "context_window_tokens", None)
-    max_output_tokens = getattr(backend, "max_output_tokens", None)
-    return _loop.LoopConfig(
-        wall_clock_timeout_s=float(timeout),
-        token_budget=token_budget,
-        context_window_tokens=(
-            context_window if isinstance(context_window, int) and context_window > 0 else None
-        ),
-        max_tokens=(
-            max_output_tokens
-            if isinstance(max_output_tokens, int) and max_output_tokens > 0
-            else None
-        ),
-    )
-
-
-def _task_policy_documents(
-    registry: ToolRegistry, denied_raw: str | None, policies_raw: str | None
-) -> list[dict[str, Any]]:
-    """The turn's task-restriction policy documents: one block document for the denied tools
-    (closed by kind, like ``registry_for_role``) plus the task's own, already-checked documents."""
-
-    documents: list[dict[str, Any]] = []
-    try:
-        denied = [str(n) for n in json.loads(denied_raw)] if denied_raw else []
-        if denied:
-            kinds = {kind for name in denied if (kind := BUILTIN_TOOL_KINDS.get(name))}
-            named = {
-                name
-                for name in registry.names()
-                if (tool := registry.get(name)) is not None and tool.kind in kinds
-            }
-            documents.append(_policy.denied_tools_document(sorted({*denied, *named})))
-        for doc in json.loads(policies_raw) if policies_raw else []:
-            documents.append(_policy.checked_task_document(doc))
-    except ValueError as exc:
-        raise DispatchError(f"task restrictions refused: {exc}") from exc
-    return documents
-
-
-def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
-    """Decode ``DOCKET_PREGRANTS``' JSON list into ``Pregrant`` tuples; malformed or
-    incomplete entries are dropped rather than raised, fail closed (a dropped entry
-    just asks again instead of granting)."""
-    if not raw:
-        return ()
-    try:
-        parsed = json.loads(raw)
-    except (TypeError, ValueError):
-        return ()
-    if not isinstance(parsed, list):
-        return ()
-    out: list[Pregrant] = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        token = str(item.get("token", ""))
-        tool = str(item.get("tool", ""))
-        args_digest = str(item.get("argsDigest", ""))
-        if token and tool and args_digest:
-            out.append(Pregrant(token=token, tool=tool, args_digest=args_digest))
-    return tuple(out)
-
-
-def _build_on_process(
-    project: str, session_key: str, role: str
-) -> Callable[[str, dict[str, Any]], None]:
-    """A `ToolContext.on_process` for one turn: trace a tool call's process lifecycle and,
-    while a dispatch run is current, register/clear its pgid against it so `docket task
-    cancel` reaches a live subprocess."""
-
-    def _on_process(kind: str, data: dict[str, Any]) -> None:
-        run_id = _runs.current_run_id()
-        pgid = data.get("pgid")
-        if run_id is not None and isinstance(pgid, int):
-            if kind == "started":
-                _runs.add_hop_pid(run_id, pgid)
-            elif kind == "exited":
-                _runs.remove_hop_pid(run_id, pgid)
-        _trace.trace_event(project, session_key, role, f"process_{kind}", json.dumps(data))
-
-    return _on_process
-
-
-def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:
-    """The loop outcome as the driver port's ``TurnResult``, field for field plus the loop's own
-    stop reason. ``cost_usd`` stays 0.0: tokens are measured, and turning them into dollars
-    here would silently convert an estimate into a billing claim."""
-    return TurnResult(
-        result.ok,
-        result.output,
-        0.0,
-        result.raw,
-        result.error,
-        failure_kind=result.failure_kind,
-        retry_after_s=result.retry_after_s,
-        usage=result.usage if result.usage.total_tokens else None,
-        stop_reason=result.stop_reason,
-        model=result.model,
-        provider=result.provider,
-    )
 
 
 @dataclass
@@ -494,6 +181,7 @@ class DocketDriver:
 
         want_sandbox, network_allowed = resolve_posture(agent_id, meta.role, env)
         effective_model = model or meta.model or current_home().default_model
+        profile = resolve_profile(effective_model)
         backend = self.backend_factory(effective_model)
         if backend is None:
             return TurnResult(
@@ -583,14 +271,15 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
-        describe_consult_for(registry, ctx)
-        state_bash_rules(registry, ctx)
+        describe_tools(registry, ctx, profile.descriptions)
         if verdict_gate is not None:
             registry.register(verdict_tool(*verdict_gate))
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
-        loop_config = _loop_config(backend, timeout, token_budget)
+        loop_config = _loop_config(
+            backend, timeout, token_budget, profile, VERDICT_TOOL if verdict_gate else ""
+        )
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None
         try:

@@ -123,6 +123,37 @@ class TestCurrentPod:
             assert runner.invoke(_app, ["status"]).exit_code == 1
 
 
+class TestModelProfiles:
+    def test_every_member_row_names_its_models_profile(self, tmp_path: Path) -> None:
+        from docket.teams import fleet as _fleet
+
+        with _seed(tmp_path):
+            _fleet.meta_set("demo-implementer", "model", "local/qwen")
+
+            body = _json("--pod", "demo")
+
+            profiles = {m["role"]: m["modelProfile"] for m in body["members"]}
+            assert profiles == {"lead": "hosted", "implementer": "local"}
+
+    def test_the_text_names_one_profile_when_every_member_shares_it(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+
+            line = next(ln for ln in out.splitlines() if ln.strip().startswith("Model profiles:"))
+            assert line.split(":", 1)[1].strip() == "hosted"
+
+    def test_the_text_names_each_role_when_they_differ(self, tmp_path: Path) -> None:
+        from docket.teams import fleet as _fleet
+
+        with _seed(tmp_path):
+            _fleet.meta_set("demo-implementer", "model", "local/qwen")
+
+            out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+
+            line = next(ln for ln in out.splitlines() if ln.strip().startswith("Model profiles:"))
+            assert "lead hosted" in line and "implementer local" in line
+
+
 class TestPaused:
     def test_a_budget_paused_pod_says_so_in_json_and_text(self, tmp_path: Path) -> None:
         from docket.teams import fleet as _fleet

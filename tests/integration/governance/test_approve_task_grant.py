@@ -23,7 +23,7 @@ from docket.governance import approval_pregrant as _pregrants
 from docket.governance import audit as _audit
 from docket.governance.gate import consume_matching_pregrant as _consume_matching_pregrant
 from docket.hops.application import compose as _compose
-from docket.hops.application.driver import _parse_pregrants
+from docket.hops.application.driver_support import _parse_pregrants
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg

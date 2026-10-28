@@ -27,6 +27,8 @@ class _Backend:
         tools: Sequence[ToolSpec] = (),
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        tool_choice: str | None = None,
         timeout: int = 120,
     ) -> ChatResponse:
         self.tools_seen.append(list(tools))
