@@ -109,7 +109,7 @@ class TestTerminalResponseReservation:
         assert backend.tool_specs[0]
         assert backend.tool_specs[1] == []
         assert any(
-            message.role == "system" and "terminal response" in message.content.lower()
+            message.role == "user" and "terminal response" in message.content.lower()
             for message in backend.calls[1]
         )
         stored = load_session(session_key)
@@ -147,6 +147,37 @@ class TestTerminalResponseReservation:
         ]
         assert len(task_fits) == 3  # first normal, second normal, one finalization; no duplicate
 
+    def test_finalization_request_keeps_the_prefix_and_trails_a_user_message(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = self._backend(
+            _tool_call_response(
+                "c1",
+                "echo",
+                '{"text": "tests passed"}',
+                TokenUsage(input_tokens=65, output_tokens=5),
+            ),
+            _final("implemented and validated", TokenUsage(input_tokens=8, output_tokens=2)),
+            normal_estimate=65,
+        )
+
+        result = _loop.run_agent_turn(
+            backend,
+            registry,
+            ctx,
+            "agent:budget-prefix:default",
+            "repair the defect",
+            config=_loop.LoopConfig(token_budget=100, max_tokens=10),
+        )
+
+        assert result.ok
+        previous, finalization = backend.calls
+        assert finalization[: len(previous)] == previous
+        assert finalization[0] == previous[0]
+        assert finalization[-1].role == "user"
+        assert "terminal response" in finalization[-1].content.lower()
+        assert not any("terminal response" in message.content.lower() for message in previous)
+
     def test_finalization_after_window_compaction_uses_exact_durable_summary(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:
@@ -171,7 +202,7 @@ class TestTerminalResponseReservation:
                 if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
                     return 60
                 if any(
-                    message.role == "system" and "terminal response" in message.content.lower()
+                    message.role == "user" and "terminal response" in message.content.lower()
                     for message in messages
                 ):
                     return 5
@@ -212,7 +243,7 @@ class TestTerminalResponseReservation:
                         TokenUsage(input_tokens=60, output_tokens=10),
                     )
                 assert any(
-                    message.role == "system" and "terminal response" in message.content.lower()
+                    message.role == "user" and "terminal response" in message.content.lower()
                     for message in messages
                 )
                 return _final(

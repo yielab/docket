@@ -127,7 +127,7 @@ class TestRunTurn:
         assert backend.tools_seen[0] and backend.tools_seen[1]
         assert backend.tools_seen[2] == []
         assert any(
-            message.role == "system" and "terminal response" in message.content.lower()
+            message.role == "user" and "terminal response" in message.content.lower()
             for message in backend.calls[2]
         )
         record = load_session(session_key)
@@ -178,7 +178,7 @@ class TestRunTurn:
                 if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
                     return 5_000
                 if any(
-                    message.role == "system" and "terminal response" in message.content.lower()
+                    message.role == "user" and "terminal response" in message.content.lower()
                     for message in messages
                 ):
                     return 5_000
@@ -210,7 +210,7 @@ class TestRunTurn:
                 if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
                     return _final_response("bounded summary", TokenUsage(4_000, 1_000))
                 assert any(
-                    message.role == "system" and "terminal response" in message.content.lower()
+                    message.role == "user" and "terminal response" in message.content.lower()
                     for message in messages
                 )
                 return _final_response("truthful terminal response", TokenUsage(4_000, 1_000))

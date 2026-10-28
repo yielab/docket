@@ -256,3 +256,13 @@ def test_the_tool_output_policy_sends_less_on_every_recorded_step() -> None:
         ratios[step.name] = BENCH.project(step, BENCH.POLICIES["tool-output"]).sent / row.sent
     assert all(ratio < 1.0 for ratio in ratios.values()), ratios
     assert ratios["implementer-a"] < 0.5
+
+
+def test_the_finalization_policy_shares_the_whole_last_request_only_when_it_trails() -> None:
+    """The modelled finalization request reuses the previous request's bytes as a trailing message."""
+    steps = BENCH.load_steps(FIXTURES)
+    for step in steps:
+        last, _final, before, after = BENCH.finalization_prefix(step)
+        assert before == 0
+        assert after == last
+    assert "shared after" in BENCH.render_projection(steps, [BENCH.FINALIZATION_POLICY])
