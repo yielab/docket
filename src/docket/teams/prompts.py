@@ -113,6 +113,10 @@ class LoadedPrompt:
     scope: str
     text: str
     sha256: str
+    for_role: str = ""
+    model_class: str = "any"
+    tests: Path | None = None
+    output: str | None = None
 
 
 def _sha256(text: str) -> str:
@@ -228,9 +232,7 @@ def shipped_prompt(layer: str, name: str) -> LoadedPrompt:
         raise PromptError(
             f"declares {prompt.layer}/{prompt.name} but ships as {layer}/{name}", path=path, line=2
         )
-    return LoadedPrompt(
-        prompt.name, prompt.version, layer, SHIPPED, prompt.text, _sha256(prompt.text)
-    )
+    return _loaded(prompt, SHIPPED, path)
 
 
 def role_prompt(role: str, layer: str, text: str, version: int) -> LoadedPrompt:
@@ -307,50 +309,78 @@ def _version_key(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
-def _scope_candidates(directory: Path, layer: str, name: str, major: int | None) -> list[Path]:
-    """The files of *directory*/*layer* named ``<name>.md`` or ``<name>@<version>.md`` that parse
-    and declare this layer and name, at *major* when given, newest version first."""
+def _class_rank(declared: str, wanted: str | None) -> int | None:
+    """How well a file declaring *declared* fits a model of class *wanted*: 2 for its own class,
+    1 for ``any``, ``None`` for another class (never offered)."""
+    if wanted is not None and declared == wanted:
+        return 2
+    return 1 if declared == "any" else None
+
+
+def _scope_candidates(
+    directory: Path, layer: str, name: str, major: int | None, model_class: str | None
+) -> list[Path]:
+    """The files of *directory*/*layer* named ``<name>.md``, ``<name>@<version>.md`` or a variant
+    ``<name>.<class>.md`` that parse and declare this layer and name, at *major* when given, and
+    fit *model_class*: the model's own class first, then ``any``, newest version first."""
     layer_dir = directory / layer
     if not layer_dir.is_dir():
         return []
-    found: list[tuple[tuple[int, ...], Path]] = []
-    for path in (*layer_dir.glob(f"{name}.md"), *layer_dir.glob(f"{name}@*.md")):
+    patterns = (f"{name}.md", f"{name}@*.md", f"{name}.*.md")
+    found: list[tuple[tuple[int, tuple[int, ...]], Path]] = []
+    for path in (p for pattern in patterns for p in layer_dir.glob(pattern)):
         try:
             prompt = load_prompt_file(path)
         except PromptError:
             continue
         if prompt.layer != layer or prompt.name != name:
             continue
+        rank = _class_rank(prompt.model_class, model_class)
         key = _version_key(prompt.version)
-        if major is None or key[0] == major:
-            found.append((key, path))
+        if rank is not None and (major is None or key[0] == major):
+            found.append(((rank, key), path))
     return [path for _key, path in sorted(found, reverse=True)]
 
 
-def _loaded(prompt: Prompt, scope: str) -> LoadedPrompt:
+def _loaded(prompt: Prompt, scope: str, source: Path | None = None) -> LoadedPrompt:
+    tests = source.parent / prompt.tests if source is not None and prompt.tests else None
     return LoadedPrompt(
-        prompt.name, prompt.version, prompt.layer, scope, prompt.text, _sha256(prompt.text)
+        prompt.name,
+        prompt.version,
+        prompt.layer,
+        scope,
+        prompt.text,
+        _sha256(prompt.text),
+        prompt.for_role,
+        prompt.model_class,
+        tests,
+        prompt.output,
     )
 
 
 def _repository_prompt(
-    view: RepoView, layer: str, name: str, major: int | None
+    view: RepoView, layer: str, name: str, major: int | None, model_class: str | None
 ) -> LoadedPrompt | None:
-    """The prompt ``.docket/prompts/<layer>/<name>.md`` at the view's commit; a view lists
-    directories only, so a versioned sibling is not offered."""
-    rel = f".docket/prompts/{layer}/{name}.md"
-    text = view.read_text(rel)
-    if text is None:
-        return None
-    try:
-        prompt = parse_prompt(text, rel)
-    except PromptError:
-        return None
-    if prompt.layer != layer or prompt.name != name:
-        return None
-    if major is not None and _version_key(prompt.version)[0] != major:
-        return None
-    return _loaded(prompt, REPOSITORY)
+    """The prompt ``.docket/prompts/<layer>/<name>.md`` at the view's commit, its
+    ``<name>.<class>.md`` variant first; a view lists directories only, so a versioned sibling is
+    not offered."""
+    files = [f"{name}.md"] if model_class is None else [f"{name}.{model_class}.md", f"{name}.md"]
+    for file in files:
+        rel = f".docket/prompts/{layer}/{file}"
+        text = view.read_text(rel)
+        if text is None:
+            continue
+        try:
+            prompt = parse_prompt(text, rel)
+        except PromptError:
+            continue
+        if prompt.layer != layer or prompt.name != name:
+            continue
+        if major is not None and _version_key(prompt.version)[0] != major:
+            continue
+        if _class_rank(prompt.model_class, model_class) is not None:
+            return _loaded(prompt, REPOSITORY)
+    return None
 
 
 def resolve_prompt(
@@ -360,18 +390,21 @@ def resolve_prompt(
     project: str = "",
     view: RepoView | None = None,
     major: int | None = None,
+    model_class: str | None = None,
 ) -> LoadedPrompt:
     """The prompt *name* of *layer* from the first scope that holds it, its newest file of *major*:
     the repository at *view*'s base commit (skipped without a view), the pod overlay, the
-    operator's ``config/prompts``, then ``templates/prompts``. ``PromptError`` when none does."""
+    operator's ``config/prompts``, then ``templates/prompts``. Within a scope the file declaring
+    *model_class* beats one declaring ``any``; a file of another class is never offered.
+    ``PromptError`` when no scope holds one."""
     if view is not None:
-        found = _repository_prompt(view, layer, name, major)
+        found = _repository_prompt(view, layer, name, major, model_class)
         if found is not None:
             return found
     directories = current_home().scopes("prompts", project)
     labels = ([POD] if project else []) + [OPERATOR, SHIPPED]
     for label, directory in zip(labels, directories, strict=True):
-        files = _scope_candidates(directory, layer, name, major)
+        files = _scope_candidates(directory, layer, name, major, model_class)
         if files:
-            return _loaded(load_prompt_file(files[0]), label)
+            return _loaded(load_prompt_file(files[0]), label, files[0])
     raise PromptError(f"no prompt {Reference('prompt', name, layer, major)}")

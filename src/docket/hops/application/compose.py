@@ -30,6 +30,7 @@ from docket.tasks.application.record import (
 from docket.tasks.domain.parts import Answer
 from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
+from docket.teams import model_selection as _models
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
@@ -62,9 +63,10 @@ def _resolve_hop_instructions(
     step_instructions: str,
     verify_cmd: str = "",
     view: RepoView | None = None,
+    model_class: str | None = None,
 ) -> str:
     """This role's hop instruction text; an Implementer whose step has *verify_cmd* is told it."""
-    text = _role_instructions(role, project, rework_hop, step_instructions, view)
+    text = _role_instructions(role, project, rework_hop, step_instructions, view, model_class)
     if verify_cmd and role == "implementer":
         return "\n\n".join(p for p in (text, _VERIFY_SENTENCE.format(verify_cmd)) if p)
     return text
@@ -76,17 +78,23 @@ def _role_instructions(
     rework_hop: HopResult | None,
     step_instructions: str,
     view: RepoView | None = None,
+    model_class: str | None = None,
 ) -> str:
     """The role's own text: the step's own override, else a built-in role's hop prompt (the
     first of the task's base commit, the pod overlay, the operator and what ships that holds
-    it), else a custom role's registry-resolved ``hopInstruction``."""
+    it, the file of the hop's *model_class* before an ``any`` one), else a custom role's
+    registry-resolved ``hopInstruction``."""
     if step_instructions:
         return step_instructions
     if role == "implementer":
         name = "implementer" if rework_hop is None else "implementer-rework"
-        return _prompts.resolve_prompt("hop", name, project=project, view=view).text
+        return _prompts.resolve_prompt(
+            "hop", name, project=project, view=view, model_class=model_class
+        ).text
     if role in ("reviewer", "tester"):
-        return _prompts.resolve_prompt("hop", role, project=project, view=view).text
+        return _prompts.resolve_prompt(
+            "hop", role, project=project, view=view, model_class=model_class
+        ).text
     # A custom role: its own archetype's `hopInstruction`, or one generated
     # from its `gateContract` (e.g. a verdict role's marker convention) --
     # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
@@ -184,6 +192,7 @@ def _hop_message(
     step_instructions: str = "",
     project: str = "",
     verify_cmd: str = "",
+    model_class: str | None = None,
 ) -> tuple[str, _HopComposition]:
     """Build one role's message via ``agent/context.py``'s token-budget compiler (see
     pod-dispatch.spec.md, "Bounded hop prompts"). The task description is never truncated;
@@ -198,7 +207,6 @@ def _hop_message(
     target role would otherwise carry, for every role including the Lead (a built-in's own
     instruction text, or a custom role's own ``hopInstruction``/generated fallback, see
     role-archetypes.spec.md). *verify_cmd* is named in the Implementer's instruction."""
-
     desc = task.description.strip()
     worktree = "" if role == "lead" else claimed_worktree_dir(task)
     root_block = _repo_map.task_root_block(worktree, project, role)
@@ -228,6 +236,7 @@ def _hop_message(
         step_instructions,
         verify_cmd,
         base_commit_view(task.worktree, worktree),
+        model_class,
     )
 
     # The role's total token budget, minus what the immutable task
@@ -383,6 +392,7 @@ def _compose_hop(
         step_instructions=step_override,
         project=ctx.project,
         verify_cmd=verify_plan.command if verify_plan is not None else "",
+        model_class=_models.model_class_of(_hop_model(node, member_id)),
     )
     message += consult_note(ctx.task, node.step_id)
     pipeline_worktree = ""

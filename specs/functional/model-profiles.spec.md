@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 6.0.0
+**Version**: 6.1.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-10-28
@@ -427,6 +427,35 @@ directly — see "Provider catalog" below.
    (agent-loop requirement 71), and `docket status` **MUST** name each member's profile: `--json`
    as `modelProfile` on every `members` row, and the human render as a `Model profiles` row.
 
+### Prompt variants and the floor
+
+1. `model_class_of(model)` **MUST** return `cheap` for the `economy` rank anchor, `strong` for the
+   `standard` and `premium` anchors, and `None` for any other model. The class is read from the
+   live rank anchors only, never from a model id or a provider name, so a model that is no anchor
+   resolves every prompt to its `any` file (config-format.spec.md, "The `prompt` kind" requirement
+   7). A hop's instruction **MUST** be resolved with the class of the model that hop runs on.
+2. A role **MAY** declare a `floor`: a list of prompt references `<layer>/<name>` whose `tests`
+   files a model must pass to run that role (role-archetypes.spec.md). `docket pod test
+   <layer>/<name> [--model <model>] [--pod <pod>] [--force]` **MUST** resolve the prompt for the
+   model's class, run its `tests` file against the model through the same chat backend a hop uses
+   (`client_for`), print one line per case, and exit `0` on `pass`, `1` on `fail` and `2` when the
+   prompt has no `tests` file or no backend can be built for the model. Without `--model` the model
+   is the prompt's `for` role's own model (`resolve_role_model`). The command never edits a file
+   other than the record below.
+3. The result **MUST** be recorded once per model and prompt `sha256`, in `state/prompt-tests.json`
+   (`Home.prompt_tests_file`), written by `platform/store.py`: `{"results": {<model>: {<sha256>:
+   {"prompt": <ref>, "result": "pass" | "fail", "cases": <n>, "failed": [<case names>]}}}}`. A run
+   whose model and hash already have a record **MUST** read it, print it as recorded and call no
+   model; `--force` runs again and replaces the record. A changed prompt text is a new hash and so a
+   new run.
+4. Before a role's hop, `floor_refusal(role, project, model)` **MUST** return a reason when the
+   role declares a `floor` and the record of any referenced prompt, resolved for `model`'s class,
+   holds `fail` for `model`: the fixed text `model <model> failed the floor test of prompt <ref>
+   (sha256 <first 12 characters>); run docket pod test <ref> --force after a fix, or change the
+   role's model`. A model with no record, or with `pass`, is not refused. The dispatch **MUST**
+   refuse the hop with that reason (a `DispatchError`, so the task settles as `dispatch_refused`)
+   and **MUST NOT** fall back to another model.
+
 ### Pricing
 
 1. Each built-in direct-provider model whose price Docket claims **MUST** have a `price` on its
@@ -590,7 +619,8 @@ Where the names above live today (the only place paths appear):
 - `src/docket/teams/model_selection.py`: `ALL_ROLES`, `ROLE_CLASS`, `REPO_AGENT_ROLE`,
   `rank_anchors`, `presets`, `preset_table`, `known_presets`, `load_registry`,
   `find_registry_problems`, `write_registry`, `resolve_role_model`, `resolve_step_model`,
-  `validate_model`, `role_why`, `reapply_role_policy`, `RoleRepoint`, `is_local_provider`,
+  `validate_model`, `role_why`, `reapply_role_policy`, `RoleRepoint`, `model_class_of`,
+  `floor_refusal`, `is_local_provider`,
   `is_marketplace`, `price_for`, `prices_as_of`, `pricing_label`
 - `src/docket/models/catalog.py`: `ModelProfile`, `Sampling`, `BudgetShares`, `ProfileBudgets`,
   `BUILTIN_PROFILES`, `profile_of`, `ProviderSpec`, `load_provider_document`, `load_catalog`,

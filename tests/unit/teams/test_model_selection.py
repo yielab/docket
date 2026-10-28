@@ -261,3 +261,21 @@ class TestRankAnchorsFailLoudly:
 
             assert missing in str(excinfo.value)
             assert str(current_home().providers_file) in str(excinfo.value)
+
+
+class TestModelClassOf:
+    def test_the_rank_anchors_name_the_classes(self, tmp_path: Path) -> None:
+        with _point_at(tmp_path):
+            anchors = _mp.rank_anchors()
+
+            assert _mp.model_class_of(anchors["economy"]) == "cheap"
+            assert _mp.model_class_of(anchors["standard"]) == "strong"
+            assert _mp.model_class_of(anchors["premium"]) == "strong"
+
+    def test_a_model_that_is_no_anchor_has_no_class(self, tmp_path: Path) -> None:
+        with _point_at(tmp_path):
+            assert _mp.model_class_of("local/some-model") is None
+
+    def test_a_role_with_no_floor_refuses_nothing(self, tmp_path: Path) -> None:
+        with _point_at(tmp_path):
+            assert _mp.floor_refusal("reviewer", "", "local/some-model") is None

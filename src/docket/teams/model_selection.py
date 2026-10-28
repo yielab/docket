@@ -13,6 +13,8 @@ from docket.platform import write_json
 from docket.teams import builtin_roles as _builtin_roles
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import prompt_tests as _prompt_tests
+from docket.teams import prompts as _prompts
 from docket.teams import roles as _arch
 from docket.teams.fleet import project_ids
 
@@ -249,6 +251,41 @@ def _resolve_via_archetype_class(role: str, project: str = "") -> str:
     if arch is None:
         return default_model
     return tiers["economy"] if arch.model_class == "cheap" else tiers["standard"]
+
+
+def model_class_of(model: str) -> str | None:
+    """The prompt class of *model*: ``cheap`` for the ``economy`` rank anchor, ``strong`` for the
+    ``standard`` and ``premium`` anchors, ``None`` for any other model (never guessed from the id).
+    See model-profiles.spec.md "Prompt variants and the floor" requirement 1."""
+    _, tiers, _ = load_registry()
+    if model == tiers["economy"]:
+        return "cheap"
+    return "strong" if model in (tiers["standard"], tiers["premium"]) else None
+
+
+def floor_refusal(role: str, project: str, model: str) -> str | None:
+    """Why *role* refuses *model*: it declares a ``floor`` prompt whose recorded test for *model*
+    (on the prompt text *model*'s class resolves) is ``fail``; ``None`` when it does not. There is
+    no fallback model. See model-profiles.spec.md "Prompt variants and the floor" requirement 4."""
+    arch = _arch.load_registry(project).get(role)
+    if arch is None:
+        return None
+    for ref in arch.floor:
+        layer, _, name = ref.partition("/")
+        try:
+            loaded = _prompts.resolve_prompt(
+                layer, name, project=project, model_class=model_class_of(model)
+            )
+        except _prompts.PromptError:
+            continue
+        found = _prompt_tests.recorded(model, loaded.sha256)
+        if found is not None and found.get("result") == _prompt_tests.FAIL:
+            return (
+                f"model {model} failed the floor test of prompt {ref} "
+                f"(sha256 {loaded.sha256[:12]}); run docket pod test {ref} --force after a fix, "
+                "or change the role's model"
+            )
+    return None
 
 
 def resolve_step_model(model: str) -> str:
