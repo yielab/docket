@@ -66,6 +66,10 @@ awk '/^[0-9.]+s (call|setup|teardown)/{sub(/s$/,"",$1);split($3,a,"::");f[a[1]]+
 - **Stop rule.** A check that fails again after one fix stops the step: park with the failing line
   and a hypothesis. No third attempt and no polling loop.
 - **Pre-existing failures** are proven in a clean worktree (`git worktree add`), never by stashing.
+- **A fresh worktree's `.venv` has no `mcp` extra**, so `uv run mypy src` there reports three
+  errors in `agent/tools/mcp_client.py` (`anyio` not found) that the main tree does not have. Run
+  `uv run --extra mcp mypy src` in a worktree (273 files clean, measured 2026-10-28), not a fix to
+  `mcp_client.py`.
 
 Always use hermetic temporary state for product tests. No test may read or mutate the real Docket
 home or a tracked file (a store opened on a `tests/fixtures/` path drops a `.docket.lock` there: copy
