@@ -755,6 +755,15 @@ This specification does NOT cover:
     still alive and record each one's `process_exited` with `reason: turn_end`; a process that
     had already ended is recorded with its `exitCode` once, never twice.
 
+102. `ToolContext` **MUST** carry the turn's tool-output cap (`output_cap`) and `read` window
+    (`read_window`), and `dispatch_tool` **MUST** hold them for every handler it runs, so a
+    built-in's `bounded_text` cut (requirements 82 and 91), an MCP tool's result and `read`'s
+    default window use them instead of one value per home. `DocketDriver` **MUST** set each from
+    the turn's model profile (model-profiles "Model profiles"): the profile's budget in
+    characters where it declares a share, never above `DOCKET_TOOL_MAX_OUTPUT_CHARS`, and today's
+    values (that cap, and `READ_DEFAULT_CHARS`) where it does not, so a `hosted` row behaves as it
+    always has. A context that sets neither keeps today's values.
+
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
 ## Interface Contracts

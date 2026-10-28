@@ -35,6 +35,7 @@ from docket.kernel.tool_outcome import (
     ToolOutcome,
     artifact_dir,
     bounded_text,
+    read_window_chars,
     text_outcome,
 )
 
@@ -123,7 +124,7 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
         for n, line in enumerate(lines[start : start + (limit or READ_DEFAULT_LINES)], start + 1)
     ]
     if not limit:
-        rows = _within_chars(rows, READ_DEFAULT_CHARS)
+        rows = _within_chars(rows, read_window_chars(READ_DEFAULT_CHARS))
     body = "\n".join(rows)
     shown_end = start + len(rows)
     if shown_end < len(lines):
@@ -400,10 +401,9 @@ def start_process(
     *,
     log: Path | None = None,
 ) -> StartedProcess | ToolOutcome:
-    """Launch *command* in its own session, jailed as *sandbox* asks, or say why it did not run.
-
-    With *log* the process is a background one: stdin is closed, stdout and stderr append to
-    *log*, and the docker backend is refused, because a container outlives a signalled CLI group."""
+    """Launch *command* in its own session as *sandbox* asks, or say why it did not run. With *log*
+    it is a background process: stdin closed, output appended to *log*, docker refused (a
+    container outlives a signalled CLI group)."""
     if not roots:
         return ToolOutcome(False, error="no working directory configured")
     cwd = roots[0].resolve()

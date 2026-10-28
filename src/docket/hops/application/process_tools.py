@@ -30,7 +30,11 @@ def _process_output(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     if pgid is None:
         return ToolOutcome(False, error="pgid must be the integer `bash` returned")
     return background.output(
-        ctx.processes, pgid, _offset(args), current_home().tool_max_output_chars, ctx.on_process
+        ctx.processes,
+        pgid,
+        _offset(args),
+        ctx.output_cap or current_home().tool_max_output_chars,
+        ctx.on_process,
     )
 
 

@@ -60,6 +60,7 @@ from docket.hops.application.driver_support import (
     _resolve_roots,
     _stdio_launch,
     _task_scope,
+    _turn_budgets,
     _turn_result_from,
     _turn_token_budget,
     _validated_pipeline_worktree,
@@ -225,12 +226,15 @@ class DocketDriver:
         ctx_roots = (
             (Path(pipeline_worktree),) if pipeline_worktree else _resolve_roots(meta, agent_id)
         )
+        output_cap, read_window = _turn_budgets(profile)
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
             trace_session_key=trace_session_key or "",
             roots=ctx_roots,
             timeout=timeout,
+            output_cap=output_cap,
+            read_window=read_window,
             env=tool_env,
             role=meta.role,
             # trace_project (the pod, when a dispatch hop supplies one) is what an
