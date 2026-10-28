@@ -995,7 +995,7 @@ spec
       each check costs, measured, is in `.agents/skills/docket-spec-work/references/validation.md`.
    6. Goldens, the agent lane, `scripts/maint/pytest-without-sandbox.sh`, the escape matrix,
       `validate-specs.sh`, the generated-docs checks and the real run: once, at
-      the phase close. The agent lane (about 3.5 min) runs on a committed tree: its release check
+      the phase close. The agent lane (about 5 min) runs on a committed tree: its release check
       refuses any uncommitted path.
    7. **Stop rule:** a check that fails again after one fix stops the step. Park with the failing line
       and the hypothesis. No third attempt, no "until green", no background process or polling, no
