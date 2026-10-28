@@ -17,6 +17,7 @@ from tests.support.home import record_isolation_off
 from tests.support.llm import final_response as _final_response
 from tests.support.pods import build_pod
 from tests.support.pods import seed_pod_isolation_off as _seed_pod
+from tests.support.tasks import claims_gone_stale
 
 from docket.agent import ports as _rd
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
@@ -198,7 +199,7 @@ class TestCrashRecovery:
             assert [h.role for h in tasks[0].hops] == ["lead", "implementer"]
 
             # Force the claim stale — simulate enough wall-clock time having passed.
-            with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            with claims_gone_stale():
                 resumer = _VerdictAwareRunner()
                 results = _sweep.dispatch_pod("demo", runner=resumer, resume=True)
                 assert len(results) == 1
@@ -226,7 +227,7 @@ class TestCrashRecovery:
             with pytest.raises(RuntimeError):
                 _sweep.dispatch_pod("demo", runner=crasher)
 
-            with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            with claims_gone_stale():
                 runner = FakeDriver()
                 results = _sweep.dispatch_pod("demo", runner=runner)  # resume defaults to False
                 assert results == []  # nothing eligible without --resume
@@ -242,7 +243,7 @@ class TestCrashRecovery:
             with pytest.raises(RuntimeError):
                 _sweep.dispatch_pod("demo", runner=crasher)
 
-            with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            with claims_gone_stale():
                 _sweep.dispatch_pod("demo", runner=FakeDriver())
 
                 trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
@@ -397,7 +398,7 @@ class TestResumeGateCountsRunningTasksTowardRecovery:
             assert tasks_before[0].status == "running"
             assert not any(t.status == "pending" for t in tasks_before)
 
-            with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+            with claims_gone_stale():
                 monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver())
 
                 _endpoint_ready(monkeypatch)
