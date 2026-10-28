@@ -297,3 +297,67 @@ def test_a_repository_prompt_of_another_major_falls_through() -> None:
     view = RepoView("a" * 40, served.get, lambda _rel: [])
 
     assert prompts.resolve_prompt("hop", "reviewer", view=view, major=1).scope == "shipped"
+
+
+_VARIANT = (
+    "---\nkind: prompt\nname: implementer\nversion: {version}\nlayer: hop\nfor: implementer\n"
+    "modelClass: {klass}\n---\n{text}\n"
+)
+
+
+def _variant(directory: Path, file: str, klass: str, text: str, version: str = "1.0.0") -> str:
+    path = directory / "hop" / file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_VARIANT.format(version=version, klass=klass, text=text), encoding="utf-8")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_a_cheap_model_gets_the_cheap_file_and_a_strong_one_the_any_file() -> None:
+    directory = current_home().prompts_dir
+    cheap = _variant(directory, "implementer.cheap.md", "cheap", "SHORT")
+    anyone = _variant(directory, "implementer.md", "any", "FULL", version="2.0.0")
+
+    for_cheap = prompts.resolve_prompt("hop", "implementer", model_class="cheap")
+    for_strong = prompts.resolve_prompt("hop", "implementer", model_class="strong")
+    for_unknown = prompts.resolve_prompt("hop", "implementer")
+
+    assert (for_cheap.text, for_cheap.sha256) == ("SHORT", cheap)
+    assert (for_strong.text, for_strong.sha256) == ("FULL", anyone)
+    assert for_unknown.sha256 == anyone
+
+
+def test_a_file_of_another_class_is_never_offered() -> None:
+    _variant(current_home().prompts_dir, "implementer.strong.md", "strong", "BIG")
+
+    assert prompts.resolve_prompt("hop", "implementer", model_class="cheap").scope == "shipped"
+    assert prompts.resolve_prompt("hop", "implementer").scope == "shipped"
+    assert prompts.resolve_prompt("hop", "implementer", model_class="strong").text == "BIG"
+
+
+def test_the_nearest_scope_wins_before_the_class_does() -> None:
+    home = current_home()
+    _variant(home.prompts_dir, "implementer.cheap.md", "cheap", "OPERATOR-CHEAP")
+    _variant(home.pod_config_dir("acme") / "prompts", "implementer.md", "any", "POD-ANY")
+
+    loaded = prompts.resolve_prompt("hop", "implementer", project="acme", model_class="cheap")
+
+    assert (loaded.text, loaded.scope) == ("POD-ANY", "pod")
+
+
+def test_a_repository_variant_is_read_before_its_plain_file() -> None:
+    served = {
+        ".docket/prompts/hop/implementer.md": _VARIANT.format(
+            version="1.0.0", klass="any", text="PLAIN"
+        ).encode(),
+        ".docket/prompts/hop/implementer.cheap.md": _VARIANT.format(
+            version="1.0.0", klass="cheap", text="CHEAP"
+        ).encode(),
+    }
+    view = RepoView("a" * 40, served.get, lambda _rel: [])
+
+    assert prompts.resolve_prompt("hop", "implementer", view=view, model_class="cheap").text == (
+        "CHEAP"
+    )
+    assert prompts.resolve_prompt("hop", "implementer", view=view, model_class="strong").text == (
+        "PLAIN"
+    )

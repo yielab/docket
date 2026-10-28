@@ -6,7 +6,7 @@ _docket_verbs() {
   case "$1" in
     "") echo "init status inbox run start stop task pod log setup" ;;
     "task") echo "add list show diff trace prune pregrant answer retry cancel" ;;
-    "pod") echo "show add remove reset delete set unset update export validate plan check recipes roles policies memory" ;;
+    "pod") echo "show add remove reset delete set unset update export validate plan check recipes roles policies test memory" ;;
     "pod memory") echo "list approve refuse revert reset" ;;
     "log") echo "verify" ;;
     "setup") echo "profile shell provider model sandbox notify export mcp" ;;
@@ -56,6 +56,7 @@ _docket_options() {
     "pod recipes") echo "--json --help" ;;
     "pod roles") echo "--pod --json --help" ;;
     "pod policies") echo "--pod --json --plugins --help" ;;
+    "pod test") echo "--model --pod --force --help" ;;
     "pod memory") echo "--help" ;;
     "pod memory list") echo "--status --json --pod --help" ;;
     "pod memory approve") echo "--pod --help" ;;
@@ -122,7 +123,7 @@ _docket_options() {
 
 _docket_takes_pod() {
   case "$1" in
-    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task pregrant"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset") echo yes ;;
+    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task pregrant"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod test"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset") echo yes ;;
   esac
 }
 

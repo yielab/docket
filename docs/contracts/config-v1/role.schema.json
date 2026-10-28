@@ -167,6 +167,21 @@
       ],
       "default": null,
       "title": "Hopinstruction"
+    },
+    "floor": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Floor"
     }
   },
   "required": [

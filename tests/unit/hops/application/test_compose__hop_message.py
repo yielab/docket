@@ -10,6 +10,7 @@ specs/functional/pipeline-format.spec.md ("Variables").
 from __future__ import annotations
 
 from docket.hops.application import compose as _compose
+from docket.kernel.home import current_home
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import roles as _arch
 
@@ -188,3 +189,29 @@ class TestImplementerNamesItsVerifyCommand:
         for role in ("reviewer", "tester", "lead"):
             message, _ = _compose._hop_message(_TASK, role, [], verify_cmd="sh checks/verify.sh")
             assert "sh checks/verify.sh" not in message, role
+
+
+class TestHopInstructionByModelClass:
+    def _reviewer_variant(self) -> None:
+        directory = current_home().prompts_dir / "hop"
+        directory.mkdir(parents=True)
+        (directory / "reviewer.cheap.md").write_text(
+            "---\nkind: prompt\nname: reviewer\nversion: 1.0.0\nlayer: hop\nfor: reviewer\n"
+            "modelClass: cheap\n---\nSHORT REVIEW\n",
+            encoding="utf-8",
+        )
+
+    def test_a_cheap_hop_reads_the_cheap_file(self) -> None:
+        self._reviewer_variant()
+
+        message, _ = _compose._hop_message(_TASK, "reviewer", [], model_class="cheap")
+
+        assert "SHORT REVIEW" in message
+
+    def test_any_other_hop_keeps_the_shipped_text(self) -> None:
+        self._reviewer_variant()
+
+        message, _ = _compose._hop_message(_TASK, "reviewer", [], model_class="strong")
+
+        assert "SHORT REVIEW" not in message
+        assert "You are the Reviewer." in message

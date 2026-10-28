@@ -454,6 +454,11 @@ class Home:
     def provider_models_file(self) -> Path:
         return self.state_dir / "provider-models.json"
 
+    # What each model scored on a prompt's tests, per prompt hash.
+    @property
+    def prompt_tests_file(self) -> Path:
+        return self.state_dir / "prompt-tests.json"
+
     # The operator's exporter documents, merged nearest-wins over the ones in the wheel.
     @property
     def exporters_file(self) -> Path:

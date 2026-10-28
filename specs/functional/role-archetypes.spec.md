@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 4.3.0
+**Version**: 4.4.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-28
@@ -67,7 +67,9 @@ This specification does NOT cover:
    "Hop instructions") **MAY** be present; empty or absent is valid for all three. `tokenBudget`
    **MAY** be absent from a wire document and defaults to `6000`, never a parse error.
    `deniedTools` absent or empty defaults to `()`: no narrower than the registry the caller hands
-   in. `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
+   in. `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
+   variants and the floor") **MAY** be present and defaults to `()`; an entry that is not a
+   `<layer>/<name>` with `layer` one of `identity`, `task`, `hop` is refused naming the field. `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
    all". `from_wire` reads only the fields above; it refuses a `kind:` other than `role` and a
    `policyRole` key, and does not read any other key.
 2. `scope` **MUST** be exactly `"pod"`, a closed enum of one value; any other value is refused.
@@ -478,6 +480,7 @@ description: coordinates content production across writer/critic
 tokenBudget: 6000
 deniedTools: []   # optional; e.g. ["write", "edit", "bash"] for a read-only role
 hopInstruction: ""   # optional; unset + a gated role -> generated from gateContract
+floor: []   # optional; e.g. ["hop/reviewer"]: prompts whose tests a model must not fail
 gateContract:
   kind: none
 soulTemplate: |
@@ -513,7 +516,7 @@ instructions: security-vetter.md     # optional; default "<name>.md" beside this
 whose content up to an optional literal `## AGENTS` heading line becomes `soulTemplate`; the text
 after that heading becomes `agentsTemplate`, or the starter library's AGENTS prose when the
 heading is absent. The same `${variable}` substitution applies to both halves at render time.
-`scope`, `version`, `tokenBudget`, `toolProfile` and `hopInstruction` may be given; `scope`
+`scope`, `version`, `tokenBudget`, `toolProfile`, `hopInstruction` and `floor` may be given; `scope`
 defaults to `"pod"`, `version` to `1`, `tokenBudget` to `6000`, the same defaults `from_wire`
 applies to the persisted wire object.
 
