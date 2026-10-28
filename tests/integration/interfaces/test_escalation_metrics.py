@@ -16,6 +16,7 @@ from contextlib import AbstractContextManager
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from tests.support.http import metric_sample
 from tests.support.pods import seed_parked_task
 
 from docket.interfaces.http.routes import metrics
@@ -85,11 +86,6 @@ def _scrape(url: str) -> list[str]:
         return response.read().decode().splitlines()
 
 
-def _sample(lines: list[str], prefix: str) -> float:
-    (line,) = [ln for ln in lines if ln.startswith(prefix)]
-    return float(line.rsplit(" ", 1)[1])
-
-
 def test_a_parked_then_answered_task_is_counted_with_its_wait(metrics_url: str) -> None:
     parked = seed_parked_task()
     (escalation,) = list_escalations(state="pending")
@@ -104,14 +100,14 @@ def test_a_parked_then_answered_task_is_counted_with_its_wait(metrics_url: str) 
 
     answered = _scrape(metrics_url)
     assert (
-        _sample(
+        metric_sample(
             answered,
             'docket_escalations_total{kind="input",outcome="resolved",by="person",level="L3"}',
         )
         == 1
     )
-    assert _sample(answered, 'docket_escalation_wait_seconds_count{kind="input"}') == 1
-    assert 89 <= _sample(answered, 'docket_escalation_wait_seconds_sum{kind="input"}') < 120
+    assert metric_sample(answered, 'docket_escalation_wait_seconds_count{kind="input"}') == 1
+    assert 89 <= metric_sample(answered, 'docket_escalation_wait_seconds_sum{kind="input"}') < 120
 
 
 def test_a_pod_decided_consult_is_counted_apart_from_a_human_one(metrics_url: str) -> None:
@@ -121,7 +117,7 @@ def test_a_pod_decided_consult_is_counted_apart_from_a_human_one(metrics_url: st
     lines = _scrape(metrics_url)
 
     assert (
-        _sample(
+        metric_sample(
             lines,
             'docket_escalations_total{kind="consult",outcome="decided",by="policy",level="none"}',
         )
@@ -169,7 +165,7 @@ class TestFold:
         lines = metrics.render_metrics().splitlines()
 
         def total(kind: str, outcome: str, by: str) -> float:
-            return _sample(
+            return metric_sample(
                 lines,
                 f'docket_escalations_total{{kind="{kind}",outcome="{outcome}",by="{by}",level="none"}}',
             )
@@ -188,7 +184,7 @@ class TestFold:
         lines = metrics.render_metrics().splitlines()
 
         def total(kind: str, outcome: str, by: str, level: str) -> float:
-            return _sample(
+            return metric_sample(
                 lines,
                 "docket_escalations_total{"
                 f'kind="{kind}",outcome="{outcome}",by="{by}",level="{level}"' + "}",
@@ -204,8 +200,8 @@ class TestFold:
 
         lines = metrics.render_metrics().splitlines()
 
-        assert _sample(lines, 'docket_escalation_wait_seconds_count{kind="consult"}') == 2
-        wait = _sample(lines, 'docket_escalation_wait_seconds_sum{kind="consult"}')
+        assert metric_sample(lines, 'docket_escalation_wait_seconds_count{kind="consult"}') == 2
+        wait = metric_sample(lines, 'docket_escalation_wait_seconds_sum{kind="consult"}')
         assert 3659 <= wait < 3700
 
     def test_a_settlement_dated_before_its_ask_adds_no_wait(self) -> None:
@@ -214,7 +210,7 @@ class TestFold:
         lines = metrics.render_metrics().splitlines()
 
         assert (
-            _sample(
+            metric_sample(
                 lines,
                 'docket_escalations_total{kind="consult",outcome="resolved",by="person",level="none"}',
             )
@@ -243,4 +239,6 @@ class TestFold:
             "demo", "run-1", "lead", "session_start", json.dumps({"source": "cli", "task": "t-2"})
         )
 
-        assert _sample(metrics.render_metrics().splitlines(), "docket_tasks_started_total") == 1
+        assert (
+            metric_sample(metrics.render_metrics().splitlines(), "docket_tasks_started_total") == 1
+        )

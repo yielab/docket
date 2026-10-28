@@ -98,3 +98,9 @@ def live_server_in_tmp_home(tmp_path: Path):
         t.start()
         yield f"http://127.0.0.1:{port}", _TEST_TOKEN
         srv.shutdown()
+
+
+def metric_sample(lines: list[str], prefix: str) -> float:
+    """The value of the one metric line that starts with *prefix*."""
+    (line,) = [ln for ln in lines if ln.startswith(prefix)]
+    return float(line.rsplit(" ", 1)[1])

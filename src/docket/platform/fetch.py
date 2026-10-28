@@ -38,6 +38,7 @@ from html.parser import HTMLParser
 
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.text import one_line
 from docket.kernel.tool_outcome import ToolOutcome, text_outcome
 
 _USER_AGENT = "docket-fetch/1"
@@ -127,7 +128,7 @@ class _TextExtractor(HTMLParser):
         if tag in _VERBATIM:
             self._verbatim = max(0, self._verbatim - 1)
         if tag == "a" and self._href:
-            text = " ".join("".join(self._link_text).split())
+            text = one_line("".join(self._link_text))
             if text and text != self._href:
                 self._cur.append(f" ({self._href})")
             self._href = ""
@@ -138,7 +139,7 @@ class _TextExtractor(HTMLParser):
         if self._dropped:
             return
         if not self._verbatim:
-            data = " ".join(data.split()).join(
+            data = one_line(data).join(
                 (" " if data[:1].isspace() else "", " " if data[-1:].isspace() else "")
             )
             if self._fresh or "".join(self._cur).endswith(" "):

@@ -502,26 +502,7 @@ def run_bash(
                 return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
 
         exit_payload["exitCode"] = proc.returncode
-        failed = proc.returncode != 0
-        # A failing command shows stderr first: the reason is there, and the cut keeps the end.
-        stdout, stderr = _decode(out), _decode(err)
-        raw = _join_streams(stderr, stdout) if failed else _join_streams(stdout, stderr)
-        body = _text.normalize_output(raw.strip())
-        if body and not raw.endswith("\n"):
-            body += "\n[output had no trailing newline]"
-        body = bounded_text(body, VERDICT_TAIL)
-        if failed:
-            message = f"command exited {proc.returncode}"
-            cause = _KNOWN_EXIT_CAUSES.get(proc.returncode, "")
-            if cause and (tag or proc.returncode != _CANNOT_EXECUTE):
-                message += cause
-            return ToolOutcome(
-                False,
-                content=body,
-                error=f"{message} [{tag}]" if tag else message,
-            )
-        content = body or "(no output)"
-        return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
+        return _completed_outcome(proc.returncode, out, err, tag)
     except Exception as ex:
         _settle_unreadable(proc, container_name, exit_payload)
         message = f"command output could not be read: {ex}"
@@ -529,6 +510,32 @@ def run_bash(
     finally:
         if on_process is not None:
             on_process("exited", exit_payload)
+
+
+def _completed_outcome(
+    returncode: int, out: bytes | None, err: bytes | None, tag: str
+) -> ToolOutcome:
+    """The outcome of a command that ran to completion: a failure shows stderr first, because the
+    reason is there and the cut keeps the end."""
+    failed = returncode != 0
+    stdout, stderr = _decode(out), _decode(err)
+    raw = _join_streams(stderr, stdout) if failed else _join_streams(stdout, stderr)
+    body = _text.normalize_output(raw.strip())
+    if body and not raw.endswith("\n"):
+        body += "\n[output had no trailing newline]"
+    body = bounded_text(body, VERDICT_TAIL)
+    if failed:
+        message = f"command exited {returncode}"
+        cause = _KNOWN_EXIT_CAUSES.get(returncode, "")
+        if cause and (tag or returncode != _CANNOT_EXECUTE):
+            message += cause
+        return ToolOutcome(
+            False,
+            content=body,
+            error=f"{message} [{tag}]" if tag else message,
+        )
+    content = body or "(no output)"
+    return ToolOutcome(True, content=f"{content}\n\n[{tag}]" if tag else content)
 
 
 def _decode(data: bytes | None) -> str:

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 from string import Template
-from typing import Any, Literal, get_args
+from typing import Any, Literal
 
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -30,8 +30,6 @@ Layer = Literal["identity", "task", "hop"]
 OutputSchema = Literal["handoff/v1"]
 InputType = Literal["string", "text", "int", "bool", "list"]
 
-LAYERS: tuple[str, ...] = get_args(Layer)
-OUTPUT_SCHEMAS: tuple[str, ...] = get_args(OutputSchema)
 
 SHIPPED = "shipped"
 POD = "pod"
@@ -79,7 +77,7 @@ class PromptDocument(BaseModel):
     @classmethod
     def _beside_the_prompt(cls, value: str | None) -> str | None:
         if value is not None and (value.startswith("/") or ".." in Path(value).parts):
-            raise ValueError("must be a relative path beside the prompt")
+            raise InvalidInput("must be a relative path beside the prompt")
         return value
 
 
