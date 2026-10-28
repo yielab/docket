@@ -38,7 +38,7 @@ def _status_kind(body: str) -> str:
     if status.startswith(("IN PROGRESS", "IN-PROGRESS")):
         return "in_progress"
     if status.startswith(("TODO", "READY")):
-        return "ready"
+        return "blocked" if "(" in status else "ready"
     if status.startswith("BLOCKED"):
         return "blocked"
     return "unknown"
@@ -121,10 +121,14 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
         if re.search(r"^### .+$", text[candidate.end() : candidate_end], flags=re.MULTILINE):
             active = candidate
 
-    next_heading = re.search(r"^(?:>\s*)?## .+$", text[active.end() :], flags=re.MULTILINE)
-    end = active.end() + next_heading.start() if next_heading is not None else len(text)
+    # One schedule may span several consecutive ``▶ … ACTIVE`` sections (Phases 52 and 53).
+    end = len(text)
+    for following in re.finditer(r"^(?:>\s*)?## .+$", text[active.end() :], flags=re.MULTILINE):
+        if not re.match(r"(?:>\s*)?## ▶ .*\bACTIVE\b", following.group(0)):
+            end = active.end() + following.start()
+            break
     section = text[active.end() : end]
-    card_headings = list(re.finditer(r"^### (.+)$", section, flags=re.MULTILINE))
+    card_headings = list(re.finditer(r"^### (?!How )(.+)$", section, flags=re.MULTILINE))
     cards: dict[str, list[str]] = {
         "in_progress": [],
         "ready": [],
@@ -140,7 +144,7 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
         if kind == "closed":
             closed += 1
         else:
-            cards[kind].append(heading.group(1).strip())
+            cards[kind].append(heading.group(1).split(" — ")[0].strip())
     label = re.sub(r"^(?:>\s*)?##\s+", "", active.group(0)).strip()
     return label, cards, closed
 
@@ -281,7 +285,7 @@ def snapshot(root: Path, max_files: int, max_chars: int) -> str:
     )
     for kind, label in labels:
         if cards.get(kind):
-            optional.append(f"{label}: " + " | ".join(cards[kind][:4]))
+            optional.append(f"{label}: " + " ".join(cards[kind][:12]))
     if not any(cards.values()) and not planned:
         optional.append("open cards: none in current board section")
     if closed:

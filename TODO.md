@@ -16,18 +16,20 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **Active: none.** Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
+> **Active: Wave 1 of Phases 52 and 53 (opened 2026-10-28).** Seven cards, one worker each, in
+> `.claude/worktrees/<card>` from the commit that carries this banner; the table is in Phase 52's
+> run block. Before this, Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
 > ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. A new phase starts
 > from a measured trigger or a maintainer request. The integration branch is `develop`
 > (`plan/phase-46-structure` merged as PR #5, `52c22f89`).
-> **Planned: Phases 52 and 53, one schedule.** Phase 52 (D-73,
+> **One schedule: Phases 52 and 53.** Phase 52 (D-73,
 > [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md); D-74,
 > [ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)) keeps nine cards after the
 > 2026-10-28 consolidation; Phase 53 (D-75,
 > [ADR 0035](docs/adr/0035-prompts-are-versioned-configuration.md)) has nine. Both run on the one
 > wave table in Phase 52's run block.
 
-## ○ PHASE 52 PLANNED — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033); the turn owns its processes and its time (D-74, ADR 0034)
+## ▶ PHASE 52 ACTIVE — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033); the turn owns its processes and its time (D-74, ADR 0034)
 
 > Planned 2026-10-25 by the maintainer from a code audit against a harness-engineering survey
 > ([ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) holds the findings and the
@@ -104,7 +106,7 @@ wave is free.
 
 ### P52-1 — the numbers: cache hits, tokens per accepted task, re-reads
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** observability + script
+**Status:** IN-PROGRESS (@sonnet-p52-1) · **Size:** M · **Model:** Sonnet · **Kind:** observability + script
 
 - **Trigger:** maintainer request (ADR 0033 §Decision 5). No cache-hit ratio exists; `task show`
   prints usage per model but not per accepted task; the Phase 44 follow-up "measure which calls
@@ -138,7 +140,7 @@ wave is free.
 
 ### P52-2 — tool results the model can use, kept whole past the cap (absorbs P52-8)
 
-**Status:** TODO · **Size:** XL (two cards' scope, one pass over the files) · **Model:** Sonnet ·
+**Status:** IN-PROGRESS (@sonnet-p52-2) · **Size:** XL (two cards' scope, one pass over the files) · **Model:** Sonnet ·
 **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0033 findings, verified 2026-10-25 and re-located 2026-10-28:
@@ -202,7 +204,7 @@ wave is free.
 
 ### P52-3 — finalization is a trailing message: the turn's last request keeps the cached prefix
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** IN-PROGRESS (@sonnet-p52-3) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** `agent/loop_request.py:139-153` appends the finalization instruction to the system
   message, so the turn's last (longest) request misses the cached prefix (ADR 0033 decision 2).
@@ -258,7 +260,7 @@ behaviour + spec
 
 ### P52-6 — recipes for the pod as a viewer/editor team
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** data + tests
+**Status:** IN-PROGRESS (@haiku-p52-6) · **Size:** S · **Model:** Haiku · **Kind:** data + tests
 
 - **Trigger:** ADR 0033 §Decision 4: the pod already separates exploration from editing; no recipe
   shows the three shapes the survey's level matrix asks for. `researcher` is `strong` by default
@@ -415,7 +417,7 @@ spec
 
 ### P52-11 — `fetch` returns text the model can read
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** IN-PROGRESS (@sonnet-p52-11) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** `fetch_url` returns the raw body (`platform/fetch.py`, the `text_outcome` call) and
   the cap keeps the head (`kernel/text.py:35`), so at `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` the model
@@ -478,7 +480,7 @@ spec
 - **Contention:** the escalation record and `sweep.py`; `step.py` is nobody else's. If its trigger
   fires while P53-8 is open, it waits for P53-8 (`operator-api.spec.md`).
 
-## ○ PHASE 53 PLANNED — prompts are versioned configuration, and the harness is one a small model can use (D-75, ADR 0035)
+## ▶ PHASE 53 ACTIVE — prompts are versioned configuration, and the harness is one a small model can use (D-75, ADR 0035)
 
 > Planned 2026-10-28 from the maintainer's scoped request (an audit of Tack's prompts through
 > docket to a local model, private document "Auditoría de prompts"). The request asks for four
@@ -533,7 +535,7 @@ spec
 
 ### P53-1 — the `prompt` kind, one loader, and the built-in prompts as files
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet (Haiku for the prompt files) · **Kind:**
+**Status:** IN-PROGRESS (@sonnet-p53-1) · **Size:** L · **Model:** Sonnet (Haiku for the prompt files) · **Kind:**
 behaviour + spec + data
 
 - **Trigger:** the maintainer's request of 2026-10-28 (ADR 0035 decision 1). Found:
@@ -596,7 +598,7 @@ behaviour + spec + data
 
 ### P53-2 — authored configuration beside state, and one scope order in `Home`
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + migration
+**Status:** IN-PROGRESS (@sonnet-p53-2) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + migration
 
 - **Trigger:** the request (ADR 0035 decision 2). Found:
   - `kernel/home.py` mixes authored configuration with state at one level, and a pod's authored
