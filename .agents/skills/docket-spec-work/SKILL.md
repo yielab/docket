@@ -42,7 +42,7 @@ Start from the behavior boundary, not from a broad repository tour.
 7. Test by cost, as [references/validation.md](references/validation.md) measures it: per commit the
    static gates and `pytest --co -q` (~4 s, no tests); while iterating only the unit file whose
    `SUBJECT` is the changed module, by path under `timeout 120`; before handoff the gate the card
-   names. A worker never runs the full suite (84 s) or the agent lane (3.5 min); the integrator does,
+   names. A worker never runs the full suite (84 s) or the agent lane (~5 min); the integrator does,
    once per merge or phase close. Don't rerun a test that passed unless its subject changed since.
 
 Fit the work to the model running it and its context window. A card names its model (`**Model:**`):

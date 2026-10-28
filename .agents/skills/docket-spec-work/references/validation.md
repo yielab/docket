@@ -33,7 +33,7 @@ are working figures for choosing a check, not claims for README or ROADMAP.
 | `tests/e2e -n auto` | 42 s | cards that change a tool's output, the wire, the home layout or the HTTP API |
 | `tests/golden/run.sh verify-all` | 4 s | CLI text changes; phase close |
 | `validate-specs.sh`, `gen_cli_docs.py --check`, `split_board.py check` | under 2 s each | spec or CLI changes; phase close |
-| `tests/agent` (serial) | ~210 s | phase close only, on a **committed** tree: `test_adoption_evidence.py` refuses any uncommitted path |
+| `tests/agent` (serial) | ~290 s | phase close only, on a **committed** tree: `test_adoption_evidence.py` refuses any uncommitted path |
 
 The slowest files: run these only when your step changes their subject. Their cost is per-test
 fixture setup, not assertions:
