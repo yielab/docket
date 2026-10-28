@@ -11,9 +11,11 @@ from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import clock as _clock
 from docket.kernel import escalation_events as _escalation_events
 from docket.kernel.home import current_home
+from docket.observability import figures as _figures
 from docket.observability import trace as _trace
 from docket.operator import build_inbox
 from docket.platform import read_json
+from docket.tasks.application.accepted import accepted_counted_tokens
 from docket.teams import fleet
 
 
@@ -250,6 +252,28 @@ def _escalation_metrics_lines(loop: LoopMetrics) -> list[str]:
     return lines
 
 
+def _figure_lines() -> list[str]:
+    """Render the cache-hit ratio per role and tokens per accepted task as Prometheus lines."""
+    lines = [
+        "# HELP docket_cache_hit_ratio Summed cachedTokens over summed inputTokens of llm_call"
+        " trace events, by agent role (0 also means the endpoint reports no cache);"
+        " lifetime-of-storage figure, resets on trace expiry",
+        "# TYPE docket_cache_hit_ratio gauge",
+    ]
+    for role, totals in sorted(_figures.recorded_cache_figures().by_role.items()):
+        if totals.ratio is not None:
+            lines.append('docket_cache_hit_ratio{role="' + _esc(role) + '"} ' + str(totals.ratio))
+    lines += [
+        "# HELP docket_tokens_per_accepted_task Counted tokens (input minus cache reads, plus"
+        " output) per task that ended done and carries usage; no sample when none did",
+        "# TYPE docket_tokens_per_accepted_task gauge",
+    ]
+    mean = _figures.tokens_per_accepted_task(accepted_counted_tokens())
+    if mean is not None:
+        lines.append("docket_tokens_per_accepted_task " + str(mean))
+    return lines
+
+
 def render_metrics() -> str:
     """Render Prometheus-format metrics (no trailing newline; callers append it)."""
     d = _cost_json()
@@ -374,6 +398,7 @@ def render_metrics() -> str:
     ]
 
     lines += _escalation_metrics_lines(loop)
+    lines += _figure_lines()
 
     return "\n".join(lines)
 

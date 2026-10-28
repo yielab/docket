@@ -1,9 +1,9 @@
 # Cost Tracking Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Implemented. Token usage is measured; docket records no dollar spend, so every dollar
 figure it shows is a labelled estimate. Caps and auto-pause act only on pod dispatch.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -48,6 +48,16 @@ pod-dispatch.spec.md).
 5. Wherever `docket run` shows a pod's cap, it **MUST** show it beside the labelled estimate the
    gate uses (`estimate so far ~$X.XX, no cost recorded`) and **MUST NOT** print a `spent` figure,
    because recorded spend is always `0`.
+
+6. **Tokens per accepted task** is the counted tokens (input minus cache reads, plus output) of
+   every task whose status is `done` and that carries a `usage` block, summed across the
+   dispatchable pods and divided by their number; a task that did not end `done`, or that has no
+   `usage`, is not in it, so a failed attempt's tokens never lower the figure. `docket log
+   --summary` **MUST** print it as `tokens per accepted task: N counted (K done tasks)` (rounded
+   to a whole token; `no done task with usage yet` when there is none), followed by the cache-hit
+   ratio of every recorded `llm_call` (`trace-store.spec.md` requirements 39-40). The same figure
+   is the `docket_tokens_per_accepted_task` metric (`serve-read-api.spec.md`). Both are measured
+   tokens read from records docket already keeps; neither is a dollar figure or a projection.
 
 ### Budget caps
 
@@ -124,6 +134,7 @@ pod-dispatch.spec.md).
 docket status                     # Pod tokens, labelled estimate, outcomes (table)
 docket status --all --json        # Machine-readable (see cli-json-shapes.spec.md)
 docket status --history [--days N]  # Daily history (see "Known gap" below)
+docket log --summary              # Tokens per accepted task and cache-hit ratio (not with --json)
 docket pod set budgetUsd <USD>    # Set/clear a cap (0 = none)
 docket pod unset budgetUsd        # Clear the cap
 docket run --resume               # Clear an auto-pause, unblock blocked tasks, reclaim stale claims
