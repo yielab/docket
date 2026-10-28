@@ -568,9 +568,13 @@ class ChatBackend(Protocol):
         tools: Sequence[ToolSpec] = (),
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        tool_choice: str | None = None,
         timeout: int = 120,
     ) -> ChatResponse:
-        """Send *messages* (plus any advertised *tools*) and return the reply."""
+        """Send *messages* (plus any advertised *tools*) and return the reply. *top_p* and
+        *temperature* are sent only when given; a *tool_choice* names the one tool the model must
+        call, and ``None`` leaves the choice to the model."""
         ...
 
 

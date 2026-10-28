@@ -26,6 +26,7 @@ from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
+from docket.models.application.endpoint import resolve_profile
 from docket.observability import trace as _trace
 from docket.platform import read_json
 from docket.tasks.application import runs as _runs
@@ -126,8 +127,14 @@ def _project_summary(project: str) -> dict[str, Any]:
         workspace = current_home().workspace_dir(member_id)
         healthy = workspace.is_dir() and (workspace / current_home().meta_file).is_file()
         degraded = degraded or not healthy
+        model = str(raw.get("model") or current_home().default_model)
         member_rows.append(
-            {"id": member_id, "role": role, "status": "ready" if healthy else "missing"}
+            {
+                "id": member_id,
+                "role": role,
+                "status": "ready" if healthy else "missing",
+                "modelProfile": resolve_profile(model).name,
+            }
         )
 
     queue = _pod_report.task_counts(project)
@@ -277,6 +284,14 @@ def _command_rows(commands: dict[str, Any] | None) -> list[tuple[str, str]]:
     return rows
 
 
+def _profiles_text(members: list[dict[str, str]]) -> str:
+    """The one profile every member shares, else each role beside its own."""
+    names = {member["modelProfile"] for member in members}
+    if len(names) == 1:
+        return names.pop()
+    return " · ".join(f"{m['role']} {m['modelProfile']}" for m in members)
+
+
 def _render_current(summary: dict[str, Any]) -> None:
     tasks = summary["tasks"]
     usage = summary["usage"]
@@ -298,6 +313,7 @@ def _render_current(summary: dict[str, Any]) -> None:
             else []
         ),
         ("Members", f"{summary['memberCount']} ({roles})"),
+        *([("Model profiles", _profiles_text(summary["members"]))] if summary["members"] else []),
         (
             "Tasks",
             f"{tasks['pending']} pending · {tasks['running']} running · "

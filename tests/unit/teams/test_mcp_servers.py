@@ -18,7 +18,7 @@ from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.registry import ToolRegistry
-from docket.hops.application.driver import _load_mcp_tools
+from docket.hops.application.driver_support import _load_mcp_tools
 from docket.kernel import mcp as _mcp
 from docket.tasks.domain.task import DispatchError
 from docket.teams import mcp_servers as _mcp_servers

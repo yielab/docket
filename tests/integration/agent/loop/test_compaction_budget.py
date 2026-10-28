@@ -77,6 +77,8 @@ class TestLiveSessionCompaction:
                 tools: Sequence[ToolSpec] = (),
                 max_tokens: int | None = None,
                 temperature: float | None = None,
+                top_p: float | None = None,
+                tool_choice: str | None = None,
                 timeout: int = 120,
             ) -> ChatResponse:
                 self.complete_calls += 1
@@ -219,6 +221,8 @@ class TestLiveSessionCompaction:
                 tools: Sequence[ToolSpec] = (),
                 max_tokens: int | None = None,
                 temperature: float | None = None,
+                top_p: float | None = None,
+                tool_choice: str | None = None,
                 timeout: int = 120,
             ) -> ChatResponse:
                 if len(messages) == 1 and "compacting durable turn history" in messages[0].content:
@@ -293,6 +297,8 @@ class TestLiveSessionCompaction:
                 tools: Sequence[ToolSpec] = (),
                 max_tokens: int | None = None,
                 temperature: float | None = None,
+                top_p: float | None = None,
+                tool_choice: str | None = None,
                 timeout: int = 120,
             ) -> ChatResponse:
                 assert not tools

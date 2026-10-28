@@ -137,7 +137,7 @@ class PodSettings(BaseModel):
     # (agent/tools/mcp_tools.py::load_mcp_servers()). ``None`` (the default, and every
     # pod before this field existed) means "every configured server" -- today's
     # behavior, unchanged. A non-empty tuple names the exhaustive subset this
-    # pod's turns load; hops/application/driver.py::_load_mcp_tools is the
+    # pod's turns load; hops/application/driver_support.py::_load_mcp_tools is the
     # sole reader (see its docstring for the live-turn refusal this feeds).
     # Validated against the *live* catalog at `set` time (below) -- not merely
     # syntactically -- because an unconfigured server name here is always a

@@ -37,9 +37,12 @@ class LoopConfig:
     ``agent_loop_*`` fields, read when the config is built, so every tunable here
     is env-overridable the same way every other docket tunable is.
 
-    ``max_tokens``/``temperature`` are passed straight through to
-    ``ChatBackend.complete`` — ``None`` (the default for both) means "let the
-    endpoint decide," never a docket-side guess at a model's defaults. A
+    ``max_tokens``/``temperature``/``top_p`` are passed straight through to
+    ``ChatBackend.complete`` — ``None`` (the default for each) means "let the
+    endpoint decide," never a docket-side guess at a model's defaults. ``tool_choice``,
+    ``closing_tool`` and ``profile`` carry the model profile (model-profiles.spec.md): under
+    ``forced-on-close`` a reply that asks for no tool is followed by one call forcing
+    ``closing_tool``; ``profile`` is only the name recorded on the trace. A
     positive ``max_tokens`` also supplies the output reserve for cumulative
     request preflight; without one the loop keeps its measured-response guard
     rather than inventing an output bound.
@@ -62,6 +65,10 @@ class LoopConfig:
     )
     max_tokens: int | None = None
     temperature: float | None = None
+    top_p: float | None = None
+    tool_choice: Literal["auto", "forced-on-close"] = "auto"
+    closing_tool: str = ""
+    profile: str = ""
     history_budget_tokens: int | None = None
     summary_input_budget_tokens: int | None = None
     context_window_tokens: int | None = None

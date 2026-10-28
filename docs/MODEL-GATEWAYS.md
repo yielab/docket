@@ -84,6 +84,16 @@ the same name). `docket setup provider export <name> [<file>]` prints (or writes
 built-in or your own — back out as that same document, which doubles as a starting point for a
 gateway close to an existing one, or as a way to version-control your own catalog.
 
+A document may also declare a model profile, which says how docket talks to the models behind it.
+`profile: hosted` (the default) changes nothing. `profile: local`, the default for a document with
+`local: true`, sends shorter tool descriptions, and when a step names a closing tool (the verdict of
+a gated step) makes the reply that asks for no tool one more call that must use that tool. The
+document can override `toolSurface` (`full` or `minimal`), `descriptions` (`full` or `compact`),
+`toolChoice` (`auto` or `forced-on-close`) and `budgets` (`readWindow`, `toolOutput`: shares of the
+context window), and declare `sampling: {temperature, topP}`; sampling is sent only when declared,
+so an endpoint's own defaults apply otherwise. `docket status` names each member's profile.
+`toolSurface` and `budgets` are resolved but not yet applied to any tool.
+
 Compatibility does not mean feature parity. Docket currently:
 
 - sends non-streaming Chat Completions and ordinary function tools;

@@ -94,9 +94,12 @@ def build_payload(
     tools: Sequence[ToolSpec] = (),
     max_tokens: int | None = None,
     temperature: float | None = None,
+    top_p: float | None = None,
+    tool_choice: str | None = None,
 ) -> dict[str, Any]:
     """Build the request body. Split out from the POST so tests can assert on
-    the exact wire shape without a socket."""
+    the exact wire shape without a socket. ``temperature`` and ``top_p`` are sent only when
+    given; a *tool_choice* names the one function the model must call, and ``auto`` otherwise."""
     encoded = [_encode_message(m) for m in messages]
     if _is_anthropic(endpoint.model_id) and encoded:
         if encoded[0]["role"] == "system":
@@ -109,11 +112,15 @@ def build_payload(
     }
     if tools:
         payload["tools"] = [_encode_tool(t) for t in tools]
-        payload["tool_choice"] = "auto"
+        payload["tool_choice"] = (
+            {"type": "function", "function": {"name": tool_choice}} if tool_choice else "auto"
+        )
     if max_tokens is not None:
         payload["max_tokens"] = int(max_tokens)
     if temperature is not None:
         payload["temperature"] = float(temperature)
+    if top_p is not None:
+        payload["top_p"] = float(top_p)
     return payload
 
 

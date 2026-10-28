@@ -16,6 +16,7 @@ from tests.support import home as _support_home
 from tests.support import llm as _support_llm
 from tests.support import pods as _support_pods
 from tests.support.cli import call as _call
+from tests.support.prose import sentence_count
 
 from docket.agent.tools.registry import (
     ToolContext,
@@ -210,6 +211,81 @@ class TestBashStatesItsRules:
         registry.register(custom)
 
         builtin_tools.state_bash_rules(registry, ToolContext(allow_commands=("tox",)))
+
+        tool = registry.get("bash")
+        assert tool is not None and tool.description == "mine"
+
+
+class TestCompactDescriptions:
+    """`describe_tools` leaves `full` byte-identical and shortens every built-in under `compact`."""
+
+    @pytest.fixture(autouse=True)
+    def _fetch_allowlisted(self) -> Iterator[None]:
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            yield
+
+    @staticmethod
+    def _described(mode: str, **context: object) -> dict[str, str]:
+        registry = builtin_registry()
+        builtin_tools.describe_tools(registry, ToolContext(**context), mode)  # type: ignore[arg-type]
+        return {spec.name: spec.description for spec in registry.specs()}
+
+    @staticmethod
+    def _today(**context: object) -> dict[str, str]:
+        registry = builtin_registry()
+        builtin_tools.describe_consult_for(registry, ToolContext(**context))  # type: ignore[arg-type]
+        builtin_tools.state_bash_rules(registry, ToolContext(**context))  # type: ignore[arg-type]
+        return {spec.name: spec.description for spec in registry.specs()}
+
+    def test_full_is_what_a_turn_stated_before_profiles(self) -> None:
+        assert self._described("full", allow_commands=("tox",)) == self._today(
+            allow_commands=("tox",)
+        )
+
+    def test_every_built_in_is_at_most_two_sentences_and_shorter(self) -> None:
+        full = self._described("full")
+        compact = self._described("compact")
+
+        assert compact.keys() == full.keys() and "fetch" in compact
+        for name, text in compact.items():
+            assert 1 <= sentence_count(text) <= 2, name
+            assert len(text) < len(full[name]), name
+
+    def test_fetch_says_a_long_page_is_read_back_with_read(self) -> None:
+        text = self._described("compact")["fetch"]
+
+        assert "read" in text and "kept whole" in text
+
+    def test_bash_keeps_the_rules_of_this_turn(self) -> None:
+        unjailed = self._described("compact", allow_commands=("tox",))["bash"]
+        jailed = self._described("compact", sandbox="auto")["bash"]
+
+        assert "tox" in unjailed and "git" in unjailed and "approval" in unjailed
+        assert "any program" in jailed and "approval" in jailed
+
+    @pytest.mark.parametrize(
+        ("context", "words"),
+        [
+            ({"consult_park": True, "approval_mode": "park"}, ("ends your turn", "3 left")),
+            ({"consult_park": True, "approval_mode": "wait"}, ("waits", "3 left")),
+            ({"consult_park": True, "consult_mode": "decide"}, ("applied", "3 left")),
+            ({"consult_park": False}, ("no answer", "3 left")),
+        ],
+    )
+    def test_consult_keeps_its_effect_and_the_count(
+        self, context: dict[str, object], words: tuple[str, ...]
+    ) -> None:
+        text = self._described("compact", max_consultations=3, **context)["consult"]
+
+        assert all(word in text for word in words), text
+
+    def test_a_bash_the_caller_made_is_left_alone(self) -> None:
+        registry = builtin_registry()
+        registry.register(dataclasses.replace(registry.get("bash"), description="mine"))  # type: ignore[type-var]
+
+        builtin_tools.describe_tools(registry, ToolContext(), "compact")
 
         tool = registry.get("bash")
         assert tool is not None and tool.description == "mine"
