@@ -23,6 +23,7 @@ from tests.support.fakes import FakeGit
 
 from docket.agent.tools.builtins import toolbox
 from docket.kernel.home import current_home, use_home
+from docket.kernel.tool_outcome import artifact_path_in, artifact_scope
 from docket.sandbox import landlock as _landlock
 from docket.sandbox.launch import Launcher
 
@@ -406,3 +407,126 @@ class TestFileStateIsVisible:
         self, workspace: Path, command: str, expected: str
     ) -> None:
         assert toolbox.run_bash((workspace,), command, timeout=5).content == expected
+
+
+class TestBashOutputForTheModel:
+    def test_a_failure_shows_stderr_before_stdout_and_a_success_the_reverse(
+        self, workspace: Path
+    ) -> None:
+        command = "echo to-stdout; echo to-stderr >&2; exit {code}"
+
+        failed = toolbox.run_bash((workspace,), command.format(code=3), timeout=5)
+        passed = toolbox.run_bash((workspace,), command.format(code=0), timeout=5)
+
+        assert failed.content == "to-stderr\nto-stdout"
+        assert failed.error == "command exited 3"
+        assert passed.content == "to-stdout\nto-stderr"
+
+    def test_exit_127_names_the_known_cause(self, workspace: Path) -> None:
+        out = toolbox.run_bash((workspace,), "no-such-docket-binary", timeout=5)
+
+        assert not out.ok
+        assert out.error == (
+            "command exited 127; not on PATH inside the jail or not in allowCommands"
+        )
+
+    def test_another_exit_status_adds_no_cause(self, workspace: Path) -> None:
+        assert toolbox.run_bash((workspace,), "exit 2", timeout=5).error == "command exited 2"
+
+    def test_progress_lines_and_colour_are_normalized_before_the_cut(self, workspace: Path) -> None:
+        command = "printf '\\033[32mok\\033[0m\\n1%%\\r50%%\\r100%%\\n'; yes retry | head -n 50"
+
+        out = toolbox.run_bash((workspace,), command, timeout=5)
+
+        assert out.content == "ok\n100%\nretry  [x 50]"
+
+    def test_a_cut_result_keeps_the_tail_where_the_verdict_is(self, workspace: Path) -> None:
+        command = "seq 1 400; echo '== 3 failed, 9 passed =='"
+
+        with use_home(dataclasses.replace(current_home(), tool_max_output_chars=200)):
+            out = toolbox.run_bash((workspace,), command, timeout=5)
+
+        head, marker, _tail = out.content.partition("\n\n[truncated:")
+        assert head.startswith("1\n2\n3")
+        assert marker
+        assert out.content.endswith("== 3 failed, 9 passed ==")
+
+    def test_a_result_cut_in_a_pod_names_its_whole_and_read_returns_the_rest(
+        self, workspace: Path
+    ) -> None:
+        (current_home().pods_dir / "pod").mkdir(parents=True)
+
+        with (
+            use_home(dataclasses.replace(current_home(), tool_max_output_chars=300)),
+            artifact_scope("pod"),
+        ):
+            out = toolbox.run_bash((workspace,), "seq 1 2000", timeout=5)
+            path = artifact_path_in(out.content)
+            assert path is not None
+            window = toolbox.read_file((workspace,), path, offset=1500, limit=3)
+            found = toolbox.grep_files((workspace,), r"^1999$", path)
+
+        assert Path(path).read_text() == "\n".join(str(n) for n in range(1, 2001))
+        assert window.content.splitlines()[:3] == ["1500\t1500", "1501\t1501", "1502\t1502"]
+        assert ":1999:1999" in found.content
+
+    def test_a_path_outside_the_roots_and_the_artifacts_stays_refused(
+        self, workspace: Path, tmp_path: Path
+    ) -> None:
+        (current_home().pods_dir / "pod").mkdir(parents=True)
+        outside = tmp_path / "outside.txt"
+        outside.write_text("secret\n")
+        artifacts = current_home().pod_cache_dir("pod") / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "link.txt").symlink_to(outside)
+
+        with artifact_scope("pod"):
+            direct = toolbox.read_file((workspace,), str(outside))
+            via_link = toolbox.read_file((workspace,), str(artifacts / "link.txt"))
+
+        assert direct.refusal == "path_escape"
+        assert via_link.refusal == "path_escape"
+
+    def test_without_a_pod_scope_read_does_not_open_artifacts(self, workspace: Path) -> None:
+        artifacts = current_home().pod_cache_dir("pod") / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "a.txt").write_text("x\n")
+
+        assert toolbox.read_file((workspace,), str(artifacts / "a.txt")).refusal == "path_escape"
+
+
+class TestEditNotFound:
+    def _file(self, workspace: Path) -> None:
+        (workspace / "f.py").write_text(
+            "def alpha():\n    return 1\n\n\ndef beta(value):\n    return value + 1\n"
+        )
+
+    def test_a_near_miss_lists_the_closest_lines_and_changes_nothing(self, workspace: Path) -> None:
+        self._file(workspace)
+
+        out = toolbox.edit_file((workspace,), "f.py", "def beta(values):", "def gamma():")
+
+        assert not out.ok
+        assert out.error.startswith("old_string not found in f.py")
+        assert "5\tdef beta(value):" in out.error
+        assert out.error.endswith(
+            "the text must match exactly; copy it from read without the line-number prefix"
+        )
+        assert (workspace / "f.py").read_text().count("def beta(value):") == 1
+
+    def test_at_most_three_lines_are_offered_best_first(self, workspace: Path) -> None:
+        (workspace / "g.txt").write_text(
+            "total = 10\ntotal = 11\ntotal = 12\ntotal = 13\nunrelated words here\n"
+        )
+
+        out = toolbox.edit_file((workspace,), "g.txt", "total = 14", "x")
+
+        shown = [line for line in out.error.splitlines() if line[:1].isdigit()]
+        assert len(shown) == 3
+
+    def test_text_with_nothing_close_says_only_that_it_was_not_found(self, workspace: Path) -> None:
+        self._file(workspace)
+
+        out = toolbox.edit_file((workspace,), "f.py", "zzzzzzzzzzzzzzzz", "x")
+
+        assert out.error == "old_string not found in f.py"

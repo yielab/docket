@@ -38,12 +38,10 @@ from typing import Any
 
 from docket.agent.tools.mcp_types import McpListResult, McpRemoteTool, StdioLaunch
 from docket.kernel import ids as _ids
-from docket.kernel import text as _text
 from docket.kernel.errors import Refused, Unavailable
-from docket.kernel.home import current_home
 from docket.kernel.mcp import McpServerConfig
 from docket.kernel.ports import jail as _jail
-from docket.kernel.tool_outcome import ToolOutcome
+from docket.kernel.tool_outcome import ToolOutcome, bounded_text
 
 MISSING_SDK_HINT = (
     "The 'mcp' package is not installed -- an MCP tool server needs the optional MCP extra.\n"
@@ -63,9 +61,9 @@ def _sdk_available() -> bool:
 
 
 def _truncate(text: str) -> str:
-    # Resolve per call, matching toolbox.py: operators tune this to the active
-    # endpoint's window, and tests may change it after this module is imported.
-    return _text.cut_output(text, current_home().tool_max_output_chars)
+    # Resolved per call (in `bounded_text`): operators tune the cap to the active endpoint's
+    # window, and tests may change it after this module is imported.
+    return bounded_text(text)
 
 
 def _stdio_params(config: McpServerConfig, launch: StdioLaunch | None = None) -> Any:
