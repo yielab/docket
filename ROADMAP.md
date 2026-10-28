@@ -9,14 +9,20 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-25.** Phases 0–51 are complete; none is active. Phase 51 (D-72,
+**Last updated: 2026-10-28.** Phases 0–51 are complete; none is active. Phase 51 (D-72,
 [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)) made every pause that waits on
 someone outside the task one `Escalation` record with one `resolve` verb; its loose ends are on
 `TODO.md` under "Escalations". **Phase 52 is planned** (D-73,
 [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)): the harness adapts to the
 model by data from the provider catalog and pays for context once; with D-74
 ([ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)) the turn owns its processes
-and its time and `fetch` returns text; twelve cards cut by file ownership over four waves. Phase 50 (D-71,
+and its time and `fetch` returns text; nine cards after the 2026-10-28 consolidation. **Phase 53 is
+planned** (D-75, [ADR 0035](docs/adr/0035-prompts-are-versioned-configuration.md)): a prompt is a
+versioned configuration document (one authored form, one loader, one scope order, a lockfile and a
+hash on every hop), and the harness removes what most hurts a small model: mixed layers, the whole
+repository map in every hop, and a verdict read from a last line. Its nine cards share one wave
+table with Phase 52, merged by file ownership so that no file is opened twice for one pass of
+work. Phase 50 (D-71,
 [ADR 0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)): end-to-end tests that run the
 product the way an operator or Tack does, in `tests/e2e/`, with one fake model and shared oracles. Phase 49 (D-70) made the task one typed record behind one
 store, with the same JSON on disk. A new phase starts from a measured trigger or a maintainer
@@ -235,7 +241,7 @@ address exactly those.
 
 ## 6. Decisions
 
-Every decision D-1…D-74 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
+Every decision D-1…D-75 is answered; D-1…D-66 are archived. The table, with each question and answer, is archived verbatim
 in [docs/cycles-ended/roadmap-decisions.md](docs/cycles-ended/roadmap-decisions.md); from D-35 on,
 the reasoning is the ADR in [docs/adr/](docs/adr/) the row names. That file is byte-preserved, so a
 new decision gets its ADR and a row in the table below. The decisions that act as standing rules
@@ -259,6 +265,7 @@ today:
 | D-72 | A pause that waits on someone outside the task is one `Escalation` record behind `platform/store.py`, resolved by one `resolve` verb, applied by dispatch on claim, with a policy table for when nobody is there; the name is `Escalation` (2026-10-25). The maintainer approved the A2A facade and the per-task level too (2026-10-25: `autonomy: L3|L4|L5` on `POST /tasks`, narrowing only, the pod profile as the ceiling; the table as a `kind: autonomy` document) ([0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)) |
 | D-73 | The harness adapts to the model by data (2026-10-25): a `ModelProfile` on the provider catalog row, two built-ins (`hosted` = today, `local` for `local: true`), no heuristic by model name, the profile recorded on the trace. Context is paid for once: the turn's prefix stays byte-identical except at condensation batch boundaries, results are normalized losslessly and cut head+tail, a result over the cap is kept whole under the pod cache and named to the model. The model's error returns to the model (a parse failure is a refusal with a hint, not an approval). The Lead is the viewer: locators in the brief, read by docket into the Implementer's message. Refused: keepalive pings, a bash grammar of our own, sub-agents inside a turn, placeholder scrubbing of timestamps, quoting a survey's savings. Deferred with triggers: kept reasoning, lifecycle condensation, bounded model escalation, a lazy MCP catalog, a native Anthropic dialect ([0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)) |
 | D-74 | The turn owns its processes and its time; the network stays a tool (2026-10-25). A tool's `timeout` is clamped to the turn's remaining wall clock and the model is told when the clamp cut a command; a running tool refreshes the claim and the stale sweep never fires below the resume lease. A background process belongs to the turn that started it: `bash background=true` returns a handle, `process_output`/`process_stop` go through `dispatch_tool`, every live process is killed and traced at turn end, a bare trailing `&` asks jailed or not. `fetch` converts HTML to text in docket's process; allowlist, deadline, cap and redirect guard unchanged. Search is an MCP server the operator declares read-only, shown by a recipe. A wait on a machine is a `wait` escalation, built when a recorded run needs it. Refused: larger default timeouts, an open network by default, a PTY or stdin, a process shared across hops, wildcard allowlist entries, a native search tool ([0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)) |
+| D-75 | Prompts are versioned configuration (2026-10-28): a `kind: prompt` file (front matter + Markdown, declared `${var}` inputs), one loader, four scopes in one order (repository > pod overlay > operator `config/` > shipped; only text read from a repository at turn time; policies and plugins stay a union), `applied.lock` and a per-hop prompt manifest with sha256; three layers in a fixed order; the handoff is a tool call; a repository map bounded by relevance; `~/.docket` split into `config/` and `state/` ([0035](docs/adr/0035-prompts-are-versioned-configuration.md)) |
 
 ---
 
