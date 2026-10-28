@@ -9,15 +9,15 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-28.** Phases 0–51 are complete; none is active. Phase 51 (D-72,
+**Last updated: 2026-10-28.** Phases 0–51 are complete. Phases 52 and 53 run as one schedule; Wave 1 (seven cards) closed 2026-10-28 and Wave 2 waits for a go. Phase 51 (D-72,
 [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)) made every pause that waits on
 someone outside the task one `Escalation` record with one `resolve` verb; its loose ends are on
-`TODO.md` under "Escalations". **Phase 52 is planned** (D-73,
+`TODO.md` under "Escalations". **Phase 52 is active** (D-73,
 [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md)): the harness adapts to the
 model by data from the provider catalog and pays for context once; with D-74
 ([ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)) the turn owns its processes
 and its time and `fetch` returns text; nine cards after the 2026-10-28 consolidation. **Phase 53 is
-planned** (D-75, [ADR 0035](docs/adr/0035-prompts-are-versioned-configuration.md)): a prompt is a
+active** (D-75, [ADR 0035](docs/adr/0035-prompts-are-versioned-configuration.md)): a prompt is a
 versioned configuration document (one authored form, one loader, one scope order, a lockfile and a
 hash on every hop), and the harness removes what most hurts a small model: mixed layers, the whole
 repository map in every hop, and a verdict read from a last line. Its nine cards share one wave
