@@ -160,7 +160,7 @@ def point_config_at(
 
 
 def global_providers(home: Path) -> dict[str, dict[str, object]]:
-    path = home / "docket-providers.json"
+    path = Home(home).providers_file
     if not path.exists():
         return {}
     providers: dict[str, dict[str, object]] = json.loads(path.read_text())["providers"]

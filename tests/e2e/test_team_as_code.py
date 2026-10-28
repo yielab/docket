@@ -73,7 +73,7 @@ def test_a_team_exported_to_the_repo_rebuilds_in_a_fresh_home_and_runs(
     kept = world(model)
     _keep_the_team_in_the_repo(kept)
     fresh = _a_fresh_home_on_a_clone(kept, model, tmp_path / "fresh")
-    assert fresh.home != kept.home and not (fresh.home / "fleet.json").exists()
+    assert fresh.home != kept.home and not (fresh.home / "state" / "fleet.json").exists()
 
     refused = fresh.docket("init", "e2e", "--json", check=False)
     review = refused.json()
@@ -111,7 +111,9 @@ def test_a_team_exported_to_the_repo_rebuilds_in_a_fresh_home_and_runs(
     ]
     assert fresh.task(task_id)["task"]["status"] == "done"
     assert "+fixed" in fresh.docket("task", "diff", task_id).out
-    assert not (kept.home / "workspaces" / "projects" / "e2e-implementer" / "tasks").exists()
+    assert not (
+        kept.home / "state" / "workspaces" / "projects" / "e2e-implementer" / "tasks"
+    ).exists()
     oracles.assert_checkout_untouched(fresh, head_before)
     oracles.assert_sentinel_untouched(fresh)
     oracles.assert_audit_covers_tool_calls(fresh, fresh.pod, task_id)

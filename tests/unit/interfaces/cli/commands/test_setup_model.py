@@ -22,7 +22,7 @@ from typer.testing import CliRunner
 
 from docket.governance import secrets as _secrets
 from docket.interfaces.cli.app import app
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home
 from docket.models import catalog as _prov
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.teams import model_selection as _mp
@@ -114,8 +114,8 @@ class TestProviderAdd:
             )
 
             assert result.exit_code == 0, result.stdout + result.stderr
-            assert "x" in json.loads((home / "docket-providers.json").read_text())["providers"]
-            assert not (home / "docket-models.json").exists()
+            assert "x" in json.loads(Home(home).providers_file.read_text())["providers"]
+            assert not Home(home).model_registry_file.exists()
 
     def test_a_hosted_provider_off_a_terminal_without_a_credential_fails_naming_the_flag(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -127,7 +127,7 @@ class TestProviderAdd:
 
             assert result.exit_code == 1
             assert "--credential" in result.stderr
-            assert not (home / "docket-providers.json").exists()
+            assert not Home(home).providers_file.exists()
 
     def test_piped_remove_without_yes_fails_naming_the_flag(self, tmp_path: Path) -> None:
         with _home(tmp_path):

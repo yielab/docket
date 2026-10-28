@@ -125,7 +125,7 @@ class TestScheduleConfig:
     ) -> None:
         home = tmp_path / ".docket"
         with _point_config_at(home):
-            home.mkdir(parents=True, exist_ok=True)
+            current_home().schedule_file.parent.mkdir(parents=True, exist_ok=True)
             current_home().schedule_file.write_text(
                 json.dumps({"schedules": {"shop": "@every 3x"}})
             )
@@ -140,7 +140,7 @@ class TestScheduleConfig:
     ) -> None:
         home = tmp_path / ".docket"
         with _point_config_at(home):
-            home.mkdir(parents=True, exist_ok=True)
+            current_home().schedule_file.parent.mkdir(parents=True, exist_ok=True)
             current_home().schedule_file.write_text(
                 json.dumps({"schedules": {"shop": "@every 30m"}})
             )
@@ -317,7 +317,7 @@ class TestModelRegistryEntries:
     ) -> None:
         home = tmp_path / ".docket"
         with _point_config_at(home):
-            home.mkdir(parents=True, exist_ok=True)
+            current_home().model_registry_file.parent.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
             issues = _setup_check._check_model_registry_entries()
             out = capsys.readouterr().out

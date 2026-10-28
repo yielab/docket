@@ -421,8 +421,10 @@ where it applies to commands docket itself launches.
    policies alone.
 9. **A pod has its own policies, and they only add.** `policy_files`, `policy_eval`,
    `policy_eval_detail` and `policy_test` **MUST** accept a `project` parameter (default `""`).
-   When set, the files in that pod's own policy directory (the pod's `config/policies/`) **MUST**
-   join the global `$POLICIES_DIR` set in the same most-restrictive-wins evaluation; concatenation
+   When set, the files in that pod's own policy directory (`config/pods/<pod>/policies/`) **MUST**
+   join the operator's `$POLICIES_DIR` set in the same most-restrictive-wins evaluation; both
+   directories are read through `Home.scopes("policies", project)`, which has no repository entry,
+   so a deny in any scope stands and a repository file is never read; concatenation
    is the whole mechanism, since the winner is decided by rank, not read order. A pod file
    **MUST NOT** be able to override a global `block` or `require_approval`: it can only add a more
    restrictive verdict, or agree. `project=""` **MUST** see the global set only. A pod policy file
@@ -444,7 +446,7 @@ in-memory model the evaluator runs and is never read from a file: a canonical ke
 policy is refused. A policy can test structured facts of a tool call beside its rendered text.
 
 1. `policy_files` **MUST** glob `*.json`, `*.yaml` and `*.yml` in every policy directory it reads
-   (the global `$POLICIES_DIR`, then a pod's own `config/policies/`), each directory sorted by name
+   (the global `$POLICIES_DIR`, then a pod's own `config/pods/<pod>/policies/`), each directory sorted by name
    across all three extensions together. `install_policies` **MUST** copy a shipped template
    whatever its extension.
 2. `normalize_policy(short: dict) -> dict` **MUST** be a pure function mapping a short-form document
@@ -549,8 +551,9 @@ rewrite its own gate for the next turn.
    types a predicate receives. It **MUST NOT** import anything else from docket, since a plugin
    is operator code loaded by convention, not part of the policy engine.
 2. The plugin loader's `discover(project: str = "") -> dict[str, LoadedPredicate]` **MUST** search
-   only `$PLUGINS_DIR` (global, default `$DOCKET_HOME/plugins`) and, when *project* is given, that
-   pod's own `config/plugins/`, **never** a codebase path. Each `*.py` file **MUST** be imported
+   only `$PLUGINS_DIR` (global, default `$DOCKET_HOME/config/plugins`) and, when *project* is given,
+   that pod's own `config/pods/<pod>/plugins/`, both through `Home.scopes("plugins", project)`,
+   **never** a codebase path. Each `*.py` file **MUST** be imported
    from its file location, draining `docket.governance.plugin_api.REGISTRY` after each file; a duplicate
    predicate name across files **MUST** raise `PluginError` naming both files. A cache keyed by a
    file's `(mtime_ns, size)` **MUST** skip re-importing an unchanged file, so a live turn does not

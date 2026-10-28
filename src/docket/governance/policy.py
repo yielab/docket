@@ -356,13 +356,6 @@ def task_policies(documents: Sequence[dict[str, Any]]) -> Iterator[None]:
         _TASK_POLICIES.reset(token)
 
 
-def _pod_policies_dir(project: str) -> Path | None:
-    """This pod's own policy directory under ``pod_config_dir``, or ``None`` for no pod."""
-    if not project:
-        return None
-    return current_home().pod_config_dir(project) / "policies"
-
-
 def _glob_policy_files(directory: Path) -> list[Path]:
     """Every policy file directly under *directory* -- JSON or YAML -- sorted by name."""
     files: list[Path] = []
@@ -372,16 +365,15 @@ def _glob_policy_files(directory: Path) -> list[Path]:
 
 
 def policy_files(project: str = "") -> list[Path]:
-    """Installed policy files (JSON or YAML): the global set, then *project*'s own pod
-    directory when given, each sorted -- a pod file only ever adds to the combined evaluation."""
+    """Installed policy files (JSON or YAML): the operator's set, then *project*'s pod overlay
+    when given, each sorted -- a pod file only ever adds to the combined evaluation. The scopes
+    are a union, so a deny in any of them stands; a repository is never one of them."""
     files: list[Path] = []
     # Each directory is checked independently -- an operator with no fleet-wide policies
     # installed must still get their pod's own.
-    if current_home().policies_dir.is_dir():
-        files.extend(_glob_policy_files(current_home().policies_dir))
-    pod_dir = _pod_policies_dir(project)
-    if pod_dir is not None and pod_dir.is_dir():
-        files.extend(_glob_policy_files(pod_dir))
+    for directory in reversed(current_home().scopes("policies", project)):
+        if directory.is_dir():
+            files.extend(_glob_policy_files(directory))
     return files
 
 

@@ -10,6 +10,7 @@ from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
+from docket.platform import mkdir_private
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import member_workspace as _member_workspace
@@ -221,12 +222,7 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
 
     if plan._policy_writes:
         policies_dir = current_home().pod_config_dir(plan.project) / "policies"
-        policies_dir.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            current_home().pods_dir.chmod(0o700)
-            policies_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
-            policies_dir.parent.chmod(0o700)  # pod_config_dir(project)
-            policies_dir.chmod(0o700)
+        mkdir_private(policies_dir)
         for policy_write in plan._policy_writes:
             dest = policies_dir / policy_write.name
             dest.write_text(policy_write.text, encoding="utf-8")
@@ -234,12 +230,7 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
 
     if plan._plugin_writes:
         plugins_dir = current_home().pod_config_dir(plan.project) / "plugins"
-        plugins_dir.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            current_home().pods_dir.chmod(0o700)
-            plugins_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
-            plugins_dir.parent.chmod(0o700)  # pod_config_dir(project)
-            plugins_dir.chmod(0o700)
+        mkdir_private(plugins_dir)
         for plugin_write in plan._plugin_writes:
             dest = plugins_dir / plugin_write.name
             dest.write_bytes(plugin_write.source)
@@ -247,12 +238,7 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
 
     if plan._named_pipeline_writes:
         pipelines_dir = current_home().pod_config_dir(plan.project) / "pipelines"
-        pipelines_dir.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            current_home().pods_dir.chmod(0o700)
-            pipelines_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
-            pipelines_dir.parent.chmod(0o700)  # pod_config_dir(project)
-            pipelines_dir.chmod(0o700)
+        mkdir_private(pipelines_dir)
         for named_write in plan._named_pipeline_writes:
             dest = pipelines_dir / named_write.name
             dest.write_bytes(named_write.source)
@@ -260,12 +246,7 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
 
     if plan._skill_writes:
         skills_dir = current_home().pod_config_dir(plan.project) / "skills"
-        skills_dir.mkdir(parents=True, exist_ok=True)
-        with contextlib.suppress(OSError):
-            current_home().pods_dir.chmod(0o700)
-            skills_dir.parent.parent.chmod(0o700)  # PODS_DIR/<project>
-            skills_dir.parent.chmod(0o700)  # pod_config_dir(project)
-            skills_dir.chmod(0o700)
+        mkdir_private(skills_dir)
         for skill_write in plan._skill_writes:
             dest = skills_dir / skill_write.name
             dest.mkdir(parents=True, exist_ok=True)

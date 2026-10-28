@@ -36,8 +36,8 @@ class TestFindRegistryProblems:
             assert _mp.find_registry_problems() == []
 
     def test_well_formed_registry_has_no_problems(self, tmp_path: Path) -> None:
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
                 json.dumps(
                     {
@@ -50,8 +50,8 @@ class TestFindRegistryProblems:
             assert _mp.find_registry_problems() == []
 
     def test_unknown_rank_anchor_is_named(self, tmp_path: Path) -> None:
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
                 json.dumps({"rankAnchors": {"deluxe": "anthropic/claude-sonnet-4-6"}})
             )
@@ -59,8 +59,8 @@ class TestFindRegistryProblems:
             assert problems == [("rankAnchors.deluxe", "unknown rank anchor")]
 
     def test_bad_model_id_in_default_is_named(self, tmp_path: Path) -> None:
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(json.dumps({"default": "not-a-model-id"}))
             problems = _mp.find_registry_problems()
             assert len(problems) == 1
@@ -68,8 +68,8 @@ class TestFindRegistryProblems:
             assert "not-a-model-id" in problems[0][1]
 
     def test_unknown_role_is_named(self, tmp_path: Path) -> None:
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
                 json.dumps({"roles": {"astrologer": "anthropic/claude-haiku-4-5"}})
             )
@@ -77,8 +77,8 @@ class TestFindRegistryProblems:
             assert problems == [("roles.astrologer", "unknown role")]
 
     def test_malformed_json_is_reported_by_file(self, tmp_path: Path) -> None:
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text("{not json")
             problems = _mp.find_registry_problems()
             assert len(problems) == 1
@@ -105,7 +105,7 @@ class TestResolveRoleModelInPodScope:
     an unknown role falls back to the registry's own default, never the compiled-in literal."""
 
     def _registry_on_local(self, home: Path) -> None:
-        home.mkdir(parents=True, exist_ok=True)
+        current_home().config_dir.mkdir(parents=True, exist_ok=True)
         current_home().model_registry_file.write_text(
             json.dumps(
                 {
@@ -165,16 +165,16 @@ class TestOneRoleVocabulary:
                 assert _mp.ROLE_CLASS[role] == declared[role].model_class, role
 
     def test_implementer_reads_its_own_row(self, tmp_path: Path) -> None:
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
                 json.dumps({"roles": {"implementer": "openai/gpt-4.1"}}), encoding="utf-8"
             )
             assert _mp.resolve_role_model("implementer") == "openai/gpt-4.1"
 
     def test_a_retired_role_key_is_ignored_and_reported(self, tmp_path: Path) -> None:
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
                 json.dumps({"roles": {"programmer": "openai/gpt-4.1"}}), encoding="utf-8"
             )
@@ -195,8 +195,8 @@ class TestReapplyRolePolicy:
         from docket.platform import store as _store
         from docket.teams import fleet as _fleet
 
-        with _point_at(tmp_path) as home:
-            home.mkdir(parents=True, exist_ok=True)
+        with _point_at(tmp_path):
+            current_home().config_dir.mkdir(parents=True, exist_ok=True)
             current_home().model_registry_file.write_text(
                 json.dumps({"default": "local/local-model"}), encoding="utf-8"
             )

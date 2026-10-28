@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import setup as _setup
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home
 from docket.models.adapters import openai_http as _llm
 from docket.models.application import probe as _probe
 
@@ -131,8 +131,8 @@ class TestScriptedTerminal:
 
             assert result.exit_code == 0, result.stdout + result.stderr
             assert "ran: docket setup provider add local" in result.stdout
-            assert "local" in json.loads((home / "docket-providers.json").read_text())["providers"]
-            assert (home / "docket-models.json").is_file()
+            assert "local" in json.loads(Home(home).providers_file.read_text())["providers"]
+            assert Home(home).model_registry_file.is_file()
             assert "Ready" in result.stdout
             assert _setup.readiness().endpoint.ok
 
@@ -168,7 +168,7 @@ class TestScriptedTerminal:
             result = _runner.invoke(app, ["setup"], input="local\n")
 
             assert result.exit_code == 1
-            assert not (home / "docket-providers.json").exists()
+            assert not Home(home).providers_file.exists()
 
 
 class TestTelegramStep:

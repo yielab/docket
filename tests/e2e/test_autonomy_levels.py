@@ -80,7 +80,7 @@ def _events(w: World, task_id: str, event_type: str) -> list[dict[str, Any]]:
 
 def _the_task(w: World, task_id: str) -> dict[str, Any]:
     """The task's record as the pod's queue file holds it."""
-    queue = w.home / "workspaces" / "projects" / f"{w.pod}-lead" / "TASK_LIST.json"
+    queue = w.home / "state" / "workspaces" / "projects" / f"{w.pod}-lead" / "TASK_LIST.json"
     records = json.loads(queue.read_text(encoding="utf-8"))
     tasks = records["tasks"] if isinstance(records, dict) else records
     return next(t for t in tasks if t["id"] == task_id)

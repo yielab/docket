@@ -28,7 +28,7 @@ from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup_check as _setup_check
-from docket.kernel.home import current_home
+from docket.kernel.home import Home, current_home
 from docket.teams import blueprints as _bp
 from docket.teams import pod as _pod_core
 
@@ -38,7 +38,7 @@ SUBJECT = "docket.teams.blueprints"
 
 
 def _ws(home: Path, member_id: str) -> Path:
-    return home / "workspaces" / "projects" / member_id
+    return Home(home).projects_dir / member_id
 
 
 # ── every built-in blueprint provisions ─────────────────────────────────────
