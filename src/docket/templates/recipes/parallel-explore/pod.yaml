@@ -1,0 +1,4 @@
+kind: pod
+name: parallel-explore
+description: Two cheap-tier Researchers mapping disjoint parts of the code in parallel, then an Implementer gated on its verify command, with one retry back to the Lead.
+members: [researcher, implementer]

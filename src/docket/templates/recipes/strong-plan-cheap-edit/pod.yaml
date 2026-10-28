@@ -1,0 +1,4 @@
+kind: pod
+name: strong-plan-cheap-edit
+description: Implementer as the cheap-tier editor of a strong-tier plan, gated on its verify command with one retry.
+members: [implementer]
