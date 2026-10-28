@@ -28,7 +28,8 @@ operator, not by this recipe.
    docket setup mcp add searxng --kind read -- <searxng-mcp-server-command>
    ```
 
-   A hosted search API works through the same command, with its key in the secret store.
+   A hosted search API works through the same command: pass its key with `--env KEY=VALUE`
+   (`docket setup mcp list` shows the value as `****`).
 
 ## Apply it
 
