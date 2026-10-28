@@ -12,6 +12,7 @@ from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
 
 from docket.kernel.home import current_home
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import roles as _arch
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import recipes as _recipes
@@ -47,10 +48,8 @@ class TestRolesInEveryConfigFormat:
                 "from-yml",
             ]
             _write.apply(plan)
-            roles = json.loads((current_home().pod_config_dir(project) / "roles.json").read_text())[
-                "roles"
-            ]
-            assert {"from-yml", "from-json"} <= set(roles)
+            registry = _arch.load_registry(project)
+            assert {"from-yml", "from-json"} <= set(registry.role_names())
 
     def test_a_json_role_that_drops_a_builtin_denial_is_a_run_item(self, tmp_path: Path) -> None:
         root = _repo_dir(

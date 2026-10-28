@@ -134,12 +134,14 @@ def effective_pipeline(project: str, spec: _pipeline.PipelineSpec | None) -> _pi
 
 
 def _task_pipeline_file(project: str, name: str) -> tuple[Path, str] | None:
-    """The file and source label *name* resolves to: the pod's ``pipelines/`` directory, then a
-    recipe (the operator's before the shipped ones) holding a ``pipeline.yaml``."""
-    pod_dir = current_home().pod_config_dir(project) / "pipelines"
-    for suffix in (".yaml", ".yml"):
-        if (pod_dir / f"{name}{suffix}").is_file():
-            return pod_dir / f"{name}{suffix}", f"pod:{name}"
+    """The file and source label *name* resolves to: the first of ``Home.scopes("pipelines")``
+    (the pod overlay, then the operator's ``config/pipelines``) holding it, then a recipe (the
+    operator's before the shipped ones) holding a ``pipeline.yaml``."""
+    labels = ("pod", "operator", "shipped")
+    for label, directory in zip(labels, current_home().scopes("pipelines", project), strict=False):
+        for suffix in (".yaml", ".yml"):
+            if (directory / f"{name}{suffix}").is_file():
+                return directory / f"{name}{suffix}", f"{label}:{name}"
     for root in (current_home().user_recipes_dir, _templates.RECIPES_DIR):
         if (root / name / "pipeline.yaml").is_file():
             return root / name / "pipeline.yaml", f"recipe:{name}"

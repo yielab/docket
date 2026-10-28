@@ -27,12 +27,12 @@ SUBJECT = "docket.teams.role_composer"
 
 
 class TestPodRoleOverlay:
-    """A pod's own role overlay (`pod_config_dir(project)/roles.json`) narrows that pod's
+    """A pod's own role overlay (`pod_config_dir(project)/roles/`) narrows that pod's
     roles, exercised via `registry_for_role`'s `project` parameter."""
 
     def test_pod_overlay_narrows_the_role_it_defines(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
-            write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json", ["write"])
+            write_vetter_overlay("acme", ["write"])
 
             narrowed = registry_for_role(builtin_registry(), "vetter", project="acme")
 
@@ -40,7 +40,7 @@ class TestPodRoleOverlay:
 
     def test_no_project_does_not_see_the_pod_overlay(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
-            write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json", ["write"])
+            write_vetter_overlay("acme", ["write"])
 
             narrowed = registry_for_role(builtin_registry(), "vetter", project="")
 

@@ -29,10 +29,11 @@ tokens of prior-hop carryover `agent/context.py` may thread into that role's
 hop prompt. It lives on the archetype, not a second registry, so identity and
 resource budget cannot drift apart; defaults to 6000 when unset.
 
-A pod's own archetypes overlay the built-ins through `<pod>/config/roles.json`,
-tolerant on load (a malformed entry is skipped, never crashes a live fleet;
-`docket pod validate` explains why). The authoring format is a standalone YAML
-file (`docket pod update <file.yaml>`), merged into that JSON overlay. Built-in/starter
+A pod's own archetypes overlay the built-ins through the role files of `Home.scopes("roles",
+project)`: the pod overlay's `roles/` above the operator's `config/roles/`. Each is the authored
+short-form file plus its instructions file, tolerant on load (a malformed file is skipped, never
+crashes a live fleet; `docket pod validate` explains why). The authoring format is a standalone
+YAML file (`docket pod update <file.yaml>`), written into the overlay as it is. Built-in/starter
 `soulTemplate`s and built-in hop instructions are shipped prompt files (`templates/prompts/`,
 `teams/prompts.py`); the rest of each archetype is a literal in `teams/builtin_roles.py`.
 
@@ -47,10 +48,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml  # type: ignore[import-untyped]
+
 from docket.agent.tools.registry import ToolKind
 from docket.kernel.errors import CanonicalFormRefused
 from docket.kernel.home import current_home
-from docket.platform import mkdir_private, read_json, read_modify_write
+from docket.platform import mkdir_private
 from docket.teams.builtin_roles import (
     _STARTER_AGENTS_TEMPLATE,
     BUILTIN_ARCHETYPES,
@@ -65,8 +68,7 @@ from docket.teams.role_schema import (
 )
 
 # Keys only the canonical wire form carries, each with the short-form key to write instead: a role
-# file that has one is refused (the canonical form is the in-memory model and the persisted
-# `roles.json`, never an authored file).
+# file that has one is refused (the canonical form is the in-memory model, never an authored file).
 _ROLE_CANONICAL_ONLY_KEYS: dict[str, str] = {
     "modelClass": "model",
     "deniedTools": "cannot",
@@ -79,12 +81,14 @@ _AGENTS_HEADING_RE = re.compile(r"(?m)^## AGENTS[ \t]*$\n?")
 
 @dataclass(frozen=True)
 class ArchetypeRegistry:
-    """Built-ins + starter library + the pod overlay, merged (the pod wins by name).
-    ``project`` records which pod's overlay this was resolved with, so ``source_of``
-    can report ``pod:<project>``."""
+    """Built-ins + starter library + the operator's and the pod's role files, merged (the nearest
+    scope wins by name). ``project`` records which pod's overlay this was resolved with, so
+    ``source_of`` can report ``pod:<project>``; ``sources`` names the scope of each role a role
+    file defined."""
 
     archetypes: dict[str, RoleArchetype] = field(default_factory=dict)
     project: str = ""
+    sources: dict[str, str] = field(default_factory=dict)
 
     def get(self, name: str) -> RoleArchetype | None:
         return self.archetypes.get(name)
@@ -99,15 +103,13 @@ class ArchetypeRegistry:
         return list(self.archetypes.items())
 
     def source_of(self, name: str) -> str:
-        """'built-in' | 'starter' | 'pod:<project>' | '' (unknown) -- for
-        `docket pod roles`. A role the pod overlay defines is reported as the pod's,
-        even when it shadows a built-in or starter name."""
+        """'built-in' | 'starter' | 'operator' | 'pod:<project>' | '' (unknown) -- for
+        `docket pod roles`. A role a role file defines is reported as that file's scope, even
+        when it shadows a built-in or starter name."""
         if name not in self.archetypes:
             return ""
-        if self.project:
-            raw_pod = _read_overlay_raw(_pod_roles_file(self.project))
-            if name in raw_pod.get("roles", {}):
-                return f"pod:{self.project}"
+        if name in self.sources:
+            return self.sources[name]
         if name in BUILTIN_ARCHETYPES:
             return "built-in"
         if name in STARTER_ARCHETYPES:
@@ -115,63 +117,73 @@ class ArchetypeRegistry:
         return ""
 
 
-def _pod_roles_file(project: str) -> Path:
-    """The role overlay this ``project``'s pod resolves above the built-ins --
-    ``pod_config_dir(project)/roles.json``, shape ``{"roles": {name: archetype}}``."""
-    return current_home().pod_config_dir(project) / "roles.json"
+_ROLE_FILE_PATTERNS = ("*.yaml", "*.yml", "*.json")
+_ROLE_FILE_NAME = re.compile(r"[A-Za-z0-9_-]+")
 
 
-def _read_overlay_raw(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        return read_json(path)
-    except Exception:
-        return {}
-
-
-def _overlay_problems(path: Path) -> list[tuple[str, str]]:
-    """Return ``(role, reason)`` pairs for a malformed overlay entry at ``path`` (the
-    file path itself for an unreadable file)."""
-    if not path.exists():
+def role_files(directory: Path) -> list[Path]:
+    """The role documents directly under *directory* (``*.yaml|yml|json``), sorted by name; the
+    instructions Markdown files beside them are not roles."""
+    if not directory.is_dir():
         return []
-    try:
-        raw = read_json(path)
-    except Exception as exc:
-        return [(str(path), f"unreadable/malformed: {exc}")]
-    roles = raw.get("roles", {})
-    if not isinstance(roles, dict):
-        return [(str(path), "'roles' is not an object")]
+    return sorted(p for pattern in _ROLE_FILE_PATTERNS for p in directory.glob(pattern))
+
+
+def role_overlay_files(role_file: Path) -> dict[str, bytes]:
+    """What applying *role_file* writes under a pod's ``roles/``, as source bytes by relative
+    path: ``<name><suffix>``, then its `instructions` file. ``ArchetypeError`` for an unreadable
+    document, a bad name, or an `instructions` path that is absolute or leaves the directory."""
+    doc = parse_yaml_file(str(role_file))
+    name = str(doc.get("name", ""))
+    if not _ROLE_FILE_NAME.fullmatch(name):
+        raise ArchetypeError(f"{role_file}: invalid archetype name {name!r}")
+    instructions = Path(str(doc.get("instructions", f"{name}.md")))
+    if instructions.is_absolute() or ".." in instructions.parts:
+        raise ArchetypeError(f"{role_file}: instructions must be a path inside its directory")
+    files = {f"{name}{role_file.suffix}": role_file.read_bytes()}
+    instructions_file = role_file.parent / instructions
+    if instructions_file.is_file():
+        files[instructions.as_posix()] = instructions_file.read_bytes()
+    return files
+
+
+def _read_role_dir(directory: Path) -> tuple[dict[str, RoleArchetype], list[tuple[str, str]]]:
+    """The archetypes the role files of *directory* define, and ``(file, reason)`` for each file
+    that is not a valid role."""
+    found: dict[str, RoleArchetype] = {}
     problems: list[tuple[str, str]] = []
-    for name, doc in roles.items():
+    for path in role_files(directory):
         try:
-            from_wire(str(name), doc)
+            doc = load_role_file(str(path))
+            found[str(doc["name"])] = from_wire(str(doc["name"]), doc)
         except ArchetypeError as exc:
-            problems.append((str(name), str(exc)))
-    return problems
+            problems.append((str(path), str(exc)))
+    return found, problems
 
 
 def load_registry(project: str = "") -> ArchetypeRegistry:
-    """Built-ins + starter library, overlaid -- when *project* is given -- by that pod's own
-    overlay (nearest wins: pod > starter > built-in). Not cached; a malformed entry in the
-    overlay is skipped."""
+    """Built-ins + starter library, overlaid by the role files of ``Home.scopes("roles",
+    project)`` (nearest wins: pod > operator > starter > built-in). Not cached; a malformed
+    file is skipped."""
     archetypes: dict[str, RoleArchetype] = dict(BUILTIN_ARCHETYPES)
     archetypes.update(STARTER_ARCHETYPES)
+    sources: dict[str, str] = {}
 
-    if project:
-        for name, doc in _read_overlay_raw(_pod_roles_file(project)).get("roles", {}).items():
-            try:
-                archetypes[name] = from_wire(name, doc)
-            except ArchetypeError:
-                continue
+    labels = ([f"pod:{project}"] if project else []) + ["operator"]
+    scopes = current_home().scopes("roles", project)
+    for label, directory in reversed(list(zip(labels, scopes, strict=True))):
+        found, _problems = _read_role_dir(directory)
+        archetypes.update(found)
+        sources.update(dict.fromkeys(found, label))
 
-    return ArchetypeRegistry(archetypes, project=project)
+    return ArchetypeRegistry(archetypes, project=project, sources=sources)
 
 
 def find_overlay_problems(project: str) -> list[tuple[str, str]]:
-    """Return ``(role, reason)`` pairs for a malformed entry in *project*'s overlay that
+    """Return ``(file, reason)`` pairs for a role file in *project*'s overlay that
     ``load_registry`` silently skips -- for ``docket setup --fix``. Read-only."""
-    return _overlay_problems(_pod_roles_file(project))
+    _found, problems = _read_role_dir(current_home().pod_config_dir(project) / "roles")
+    return problems
 
 
 # The capability each built-in tool name represents. `registry_for_role` maps a
@@ -239,17 +251,11 @@ def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
 
 def parse_yaml_file(path: str) -> dict[str, Any]:
     """Parse a standalone archetype YAML file (the `docket pod update <file>` input)."""
-    try:
-        import yaml as _yaml  # type: ignore[import-untyped]
-    except ImportError:
-        raise ArchetypeError("PyYAML not installed — run: pip install pyyaml") from None
-    from pathlib import Path as _Path
-
-    p = _Path(path)
+    p = Path(path)
     if not p.is_file():
         raise ArchetypeError(f"file not found: {path}")
     try:
-        doc = _yaml.safe_load(p.read_text(encoding="utf-8"))
+        doc = yaml.safe_load(p.read_text(encoding="utf-8"))
     except Exception as exc:
         raise ArchetypeError(f"YAML parse error: {exc}") from exc
     if not isinstance(doc, dict):
@@ -408,21 +414,33 @@ def load_role_file(path: str) -> dict[str, Any]:
     return normalize_role(doc, Path(path).parent)
 
 
+def write_role_files(project: str, files: dict[str, bytes]) -> None:
+    """Write one role into *project*'s overlay: *files* maps each path under ``roles/`` (the role
+    document and its instructions file) to its bytes. Every directory this creates is 0700 and
+    every file 0600."""
+    roles_dir = current_home().pod_config_dir(project) / "roles"
+    mkdir_private(roles_dir)
+    for rel, data in files.items():
+        dest = roles_dir / rel
+        mkdir_private(dest.parent)
+        dest.write_bytes(data)
+        dest.chmod(0o600)
+
+
 def add_user_archetype(doc: dict[str, Any], project: str) -> RoleArchetype:
-    """Validate `doc` and merge it into *project*'s own overlay. `doc` must carry a
-    top-level `name`; naming an existing archetype overrides it."""
+    """Validate the canonical `doc` and write it into *project*'s overlay as its short-form role
+    file and instructions file. `doc` must carry a top-level `name`; naming an existing
+    archetype overrides it."""
     name = str(doc.get("name", "")).strip()
     if not name:
         raise ArchetypeError("archetype definition must have a top-level 'name'")
     arch = from_wire(name, doc)  # raises ArchetypeError on any invalid field
-
-    path = _pod_roles_file(project)
-
-    def _fn(current: dict[str, Any]) -> dict[str, Any]:
-        current.setdefault("roles", {})[name] = arch.to_wire()
-        return current
-
-    # path.parent is pod_config_dir(project); every directory this creates is 0700.
-    mkdir_private(path.parent)
-    read_modify_write(path, _fn)
+    short, markdown = to_short_role(arch)
+    write_role_files(
+        project,
+        {
+            f"{name}.yaml": yaml.safe_dump(short, sort_keys=False).encode("utf-8"),
+            f"{name}.md": markdown.encode("utf-8"),
+        },
+    )
     return arch

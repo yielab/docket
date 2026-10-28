@@ -567,3 +567,33 @@ class TestTaskGate:
         )
 
         assert _steps._task_gate_step_id(plan.runnable_nodes()) == "a"
+
+
+class TestTaskPipelineScopes:
+    """`_task_pipeline_file` reads `Home.scopes("pipelines", project)`, then the recipes."""
+
+    def _put(self, directory: Path, name: str) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{name}.yaml").write_text("name: x\n")
+
+    def test_the_operators_pipeline_resolves_with_its_scope_in_the_label(self) -> None:
+        self._put(current_home().pipelines_dir, "fast")
+
+        found = _steps._task_pipeline_file("demo", "fast")
+
+        assert found is not None and found[1] == "operator:fast"
+
+    def test_the_pod_overlay_beats_the_operator(self) -> None:
+        self._put(current_home().pipelines_dir, "fast")
+        self._put(current_home().pod_config_dir("demo") / "pipelines", "fast")
+
+        found = _steps._task_pipeline_file("demo", "fast")
+
+        assert found is not None and found[1] == "pod:fast"
+        other = _steps._task_pipeline_file("other", "fast")
+        assert other is not None and other[1] == "operator:fast"
+
+    def test_a_recipe_still_resolves_after_the_scopes(self) -> None:
+        found = _steps._task_pipeline_file("demo", "secure-build")
+
+        assert found is not None and found[1] == "recipe:secure-build"

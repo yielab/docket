@@ -13,9 +13,10 @@ import pytest
 
 from docket.governance import audit as _audit
 from docket.interfaces.http.server import _DocketHandler
-from docket.kernel.home import Home, current_home, use_home
+from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.teams import fleet as _fleet
+from docket.teams import roles as _arch
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -75,9 +76,8 @@ _ROLE = {
 _RUNS = {"pod.yaml": "kind: pod\nname: x\nsettings:\n  allowCommands: [make]\n"}
 
 
-def _roles(project: str) -> dict[str, Any]:
-    path = current_home().pod_config_dir(project) / "roles.json"
-    return json.loads(path.read_text()).get("roles", {}) if path.is_file() else {}
+def _roles(project: str) -> set[str]:
+    return set(_arch.load_registry(project).role_names())
 
 
 def test_apply_over_http_needs_the_review_code_for_run_items(server: str, tmp_path: Path) -> None:

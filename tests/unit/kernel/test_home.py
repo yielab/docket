@@ -86,7 +86,7 @@ def test_a_scope_without_a_pod_or_repository_leaves_those_entries_out(tmp_path: 
     ]
 
 
-@pytest.mark.parametrize("kind", ["policies", "plugins", "pipelines"])
+@pytest.mark.parametrize("kind", ["roles", "policies", "plugins", "pipelines"])
 def test_a_kind_that_grants_or_runs_something_has_no_repository_entry(
     tmp_path: Path, kind: str
 ) -> None:
@@ -104,9 +104,18 @@ def test_policies_and_plugins_scopes_are_the_pod_then_the_operator(tmp_path: Pat
     assert home.scopes("plugins") == [tmp_path / "config" / "plugins"]
 
 
+def test_roles_scopes_are_the_pod_then_the_operator(tmp_path: Path) -> None:
+    home = Home(root=tmp_path)
+    assert home.scopes("roles", "p") == [
+        tmp_path / "config" / "pods" / "p" / "roles",
+        tmp_path / "config" / "roles",
+    ]
+    assert home.scopes("roles") == [home.roles_dir]
+
+
 def test_an_unknown_scope_kind_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
-        Home(root=tmp_path).scopes("roles")
+        Home(root=tmp_path).scopes("recipes")
 
 
 def test_a_home_is_hashable(tmp_path: Path) -> None:
