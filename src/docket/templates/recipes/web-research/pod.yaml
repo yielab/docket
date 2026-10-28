@@ -1,0 +1,4 @@
+kind: pod
+name: web-research
+description: Three cheap-tier Researchers in parallel (two over the web through a search server and fetch, one over the repository), then Analyst and Writer.
+members: [researcher, analyst, writer]

@@ -1,0 +1,13 @@
+kind: pipeline
+name: explore-then-edit
+description: >-
+  A cheap-tier Researcher maps the code the task touches, the Implementer edits it with the
+  Researcher's findings as its handoff, and the Reviewer's APPROVE/REQUEST-CHANGES verdict is
+  the last gate, with one bounded rework cycle back to the Implementer.
+steps:
+  - explore: researcher
+    model: cheap
+  - build: implementer
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 1}}

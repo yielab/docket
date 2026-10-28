@@ -1,0 +1,4 @@
+kind: pod
+name: explore-then-edit
+description: Researcher, Implementer and Reviewer as a pipeline, with the Researcher on a cheap model and one bounded rework cycle back to the Implementer.
+members: [researcher, implementer, reviewer]

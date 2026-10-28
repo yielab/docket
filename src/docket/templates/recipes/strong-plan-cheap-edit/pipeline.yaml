@@ -1,0 +1,13 @@
+kind: pipeline
+name: strong-plan-cheap-edit
+description: >-
+  The Lead plans on a strong-tier model, the Implementer edits on a cheap-tier model and its
+  change is gated on its own verify command, and a failed gate sends the edit back to the
+  Implementer once.
+steps:
+  - plan: lead
+    model: strong
+  - build: implementer
+    model: cheap
+    verify: true
+    on: {fail: {goto: build, max: 1}}
