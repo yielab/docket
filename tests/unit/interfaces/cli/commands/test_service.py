@@ -22,7 +22,7 @@ runner = CliRunner()
 @pytest.fixture
 def home(tmp_path: Path) -> Iterator[Path]:
     with use_home(Home(tmp_path / "home")):
-        (tmp_path / "home").mkdir()
+        current_home().serve_pid_file.parent.mkdir(parents=True)
         yield tmp_path / "home"
 
 
