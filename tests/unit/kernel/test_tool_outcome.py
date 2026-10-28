@@ -119,3 +119,16 @@ def test_artifact_path_in_finds_only_the_closing_line() -> None:
     assert artifact_path_in("no marker here") is None
     text = "x\n\n[full output: /a b/c.txt \u2014 read it with read(path, offset, limit)]"
     assert artifact_path_in(text) == "/a b/c.txt"
+
+
+def test_the_artifact_line_counts_against_the_cap(capped: None) -> None:
+    big = "x" * 9_000
+
+    with (
+        use_home(dataclasses.replace(current_home(), tool_max_output_chars=2_000)),
+        artifact_scope("pod"),
+    ):
+        out = text_outcome(big)
+
+    assert artifact_path_in(out.content) is not None
+    assert len(out.content) <= 2_000 + len("\n\n[truncated: 7000 more characters]") + 2

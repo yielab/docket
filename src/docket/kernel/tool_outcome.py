@@ -84,16 +84,18 @@ def _store_artifact(text: str) -> Path | None:
 
 
 def bounded_text(text: str, tail: float = 0.0) -> str:
-    """*text* as a model should read it: whole when it fits the cap, else cut (keeping *tail* of
-    the cap from the end) and, where the whole can be stored, ending with its artifact line."""
+    """*text* whole when it fits the cap, else cut (keeping *tail* of the cap from the end) and,
+    where the whole can be stored, ending with its artifact line, which counts against the cap."""
     limit = current_home().tool_max_output_chars
     if len(text) <= limit:
         return text
     path = _store_artifact(text)
-    cut = _text.cut_output(text, limit, tail)
     if path is None:
-        return cut
-    return f"{cut}\n\n[full output: {path} — read it with read(path, offset, limit)]"
+        return _text.cut_output(text, limit, tail)
+    line = f"[full output: {path} — read it with read(path, offset, limit)]"
+    # The line counts against the cap, so a capped result stays about as long as it was.
+    cut = _text.cut_output(text, max(limit - len(line), limit // 2), tail)
+    return f"{cut}\n\n{line}"
 
 
 def text_outcome(text: str, tail: float = 0.0) -> ToolOutcome:
