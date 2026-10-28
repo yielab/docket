@@ -11,7 +11,7 @@ from docket_runtime import Runtime, Tool, ToolCall, ToolContext, ToolOutcome
 
 def main() -> None:
     home = Path(os.environ["DOCKET_HOME"])
-    policies = home / "policies"
+    policies = home / "config" / "policies"
     policies.mkdir(parents=True, exist_ok=True)
     (policies / "embedding-approval.json").write_text(
         json.dumps(
