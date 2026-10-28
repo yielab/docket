@@ -1026,6 +1026,17 @@ material, may be read as saying otherwise.
      or the allowlist would be decorative. `urllib`'s redirect-following is intercepted at its
      extension point (`HTTPRedirectHandler.redirect_request`) before a connection to the new host
      opens.
+   - **A page arrives as text.** When the response `Content-Type` is `text/html`, or the body
+     starts with `<!doctype html` or `<html`, the body **MUST** be converted to plain text in
+     docket's own process with the standard library's `html.parser` before the output cap applies:
+     `script`, `style`, `noscript` and `svg` are dropped; block elements and `br` are line breaks;
+     `h1` to `h3` are one to three `#` and a space; a list item is a dash and a space; `pre` and
+     `code` are kept verbatim; a link is `text (href)` when the text differs from the href;
+     whitespace is collapsed to at most one blank line. The header line of a converted page reads
+     `HTTP <status> <content-type>; <n> chars of text`. Any other content type is returned
+     unchanged under the header line above. The conversion changes none of the other bullets: the
+     allowlist, the deadline, the size cap (applied to the bytes read, before conversion) and the
+     redirect guard stand as written.
 3. **Gated like every other built-in, no second execution path.** `fetch` is registered like
    `read`, `write` and `bash`, and every call passes `dispatch_tool` → `evaluate_tool_call`: a
    `pre_tool_call` policy can `block`, `require_approval`, `warn` or `redact` a `fetch` call,
@@ -1538,6 +1549,12 @@ refused rather than followed:
 # FETCH_ALLOWED_DOMAINS=api.example.com
 >>> fetch_url("https://api.example.com/status")
 ToolOutcome(ok=True, content='HTTP 200 application/json\n\n{"status": "ok"}', error='')
+
+>>> fetch_url("https://api.example.com/guide")   # an HTML page, 4.5 KB of markup
+ToolOutcome(ok=True,
+            content='HTTP 200 text/html; 211 chars of text\n\n# Widget Guide\n\nInstall the widget '
+                    'with the install guide (https://api.example.com/install), then ...',
+            error='')
 
 >>> fetch_url("https://api.example.com/huge-report")   # FETCH_MAX_RESPONSE_BYTES=200000
 ToolOutcome(ok=True,
