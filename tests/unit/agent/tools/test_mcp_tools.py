@@ -28,7 +28,8 @@ from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import ToolRegistry
 from docket.hops.application.builtin_tools import builtin_registry
-from docket.hops.application.driver import DocketDriver, _load_mcp_tools
+from docket.hops.application.driver import DocketDriver
+from docket.hops.application.driver_support import _load_mcp_tools
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.teams.role_composer import registry_for_role

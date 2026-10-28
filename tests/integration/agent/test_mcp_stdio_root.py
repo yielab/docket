@@ -17,7 +17,8 @@ import docket.agent.tools.mcp_tools as _mt
 from docket.agent.tools import mcp_client as _client
 from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import ToolContext, ToolOutcome, ToolRegistry
-from docket.hops.application.driver import DocketDriver, _load_mcp_tools
+from docket.hops.application.driver import DocketDriver
+from docket.hops.application.driver_support import _load_mcp_tools
 from docket.kernel import mcp as _mcp
 from docket.teams import fleet as _fleet
 
