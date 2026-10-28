@@ -18,7 +18,7 @@ import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import unquote as _url_unquote
 
 from docket.agent import loop as _loop
@@ -41,10 +41,12 @@ from docket.agent.ports import (
     UsageReport,
     UsageTotals,
 )
+from docket.agent.tools.builtins import background
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.hops.application import verify_tool as _verify
 from docket.hops.application.builtin_tools import builtin_registry, describe_tools
 from docket.hops.application.driver_support import (
+    _approval_mode,
     _approval_timeout,
     _base_commit_view,
     _build_on_process,
@@ -201,13 +203,7 @@ class DocketDriver:
         # tool_env reaches ToolContext.env. An unset or unrecognized value
         # keeps today's default ("wait") byte for byte.
         approval_mode_raw = tool_env.pop(DOCKET_APPROVAL_MODE, None)
-        approval_mode: Literal["wait", "park", "refuse"] = (
-            "refuse"
-            if approval_mode_raw == "refuse"
-            else "park"
-            if approval_mode_raw == "park"
-            else "wait"
-        )
+        approval_mode = _approval_mode(approval_mode_raw)
         consult_mode_raw = tool_env.pop(DOCKET_CONSULT_MODE, None)
         approval_timeout = _approval_timeout(tool_env.pop(DOCKET_APPROVAL_TIMEOUT, None))
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
@@ -298,6 +294,7 @@ class DocketDriver:
                     trace_task_id=trace_task_id or "",
                 )
         finally:
+            background.stop_all(ctx.processes, ctx.on_process, reason="turn_end")
             if view_token is not None:
                 _repo_view.unregister(view_token)
 

@@ -21,6 +21,7 @@ from docket.agent.ports import ToolCall, ToolCallArgumentsError, ToolSpec, tool_
 
 # ToolOutcome is re-exported: callers outside the chokepoint build one without importing the
 # handler module, which only this module may import.
+from docket.agent.tools.builtins import background
 from docket.agent.tools.builtins.toolbox import SandboxMode
 from docket.kernel.gate import (
     DEFAULT_MAX_CONSULTATIONS,
@@ -80,6 +81,8 @@ class ToolContext:
     # The operator's read-only jail grants (the toolchain); only a jailed bash reads them.
     read_only: tuple[Path, ...] = ()
     on_process: Callable[[str, dict[str, Any]], None] | None = None
+    # The turn's background `bash` processes by pgid; the driver stops the live ones at turn end.
+    processes: background.Processes = field(default_factory=dict)
     # The assistant text of the message making the current call(s); the agent loop sets it
     # per batch. Raw: ``_approval.screen_rationale`` screens it when an approval is made.
     rationale: str = ""

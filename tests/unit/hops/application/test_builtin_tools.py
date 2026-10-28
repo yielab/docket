@@ -55,6 +55,8 @@ class TestRegistry:
             "fetch",
             "glob",
             "grep",
+            "process_output",
+            "process_stop",
             "read",
             "skill",
             "write",
@@ -68,7 +70,7 @@ class TestRegistry:
     def test_without_narrows_the_set(self) -> None:
         readonly = builtin_registry().without("write", "edit", "bash")
         assert "write" not in readonly and "read" in readonly
-        assert len(readonly) == 6
+        assert len(readonly) == 8
 
     def test_a_narrowed_registry_denies_the_removed_tool(self, ctx: ToolContext) -> None:
         readonly = builtin_registry().without("write")
@@ -332,6 +334,14 @@ class TestBashRunsWithinTheTurnsClock:
         )
 
         assert seen == [900]
+
+    def test_bash_offers_background_and_the_process_tools_have_a_kind(self) -> None:
+        registry = builtin_registry()
+
+        bash = registry.get("bash")
+        assert bash is not None and bash.parameters["properties"]["background"]["type"] == "boolean"
+        kinds = {name: registry.get(name).kind for name in ("process_output", "process_stop")}  # type: ignore[union-attr]
+        assert kinds == {"process_output": "read", "process_stop": "write"}
 
     def test_the_timeout_description_names_the_ceiling(self) -> None:
         tool = builtin_registry().get("bash")

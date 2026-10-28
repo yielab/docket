@@ -738,6 +738,23 @@ This specification does NOT cover:
     verify gate or raise turnTimeoutS]` (N the seconds it ran for), and the `timeout` argument's
     description **MUST** say the turn's remaining time is the ceiling.
 
+99. `bash` **MAY** be called with `background: true`: the command **MUST** start in its own session,
+    its stdout and stderr **MUST** go to `<ToolContext.cache_dir, else $DOCKET_SCRATCH_DIR from
+    ToolContext.env>/processes/<pgid>.log`, its pgid **MUST** be registered in
+    `ToolContext.processes`, and the call **MUST** return at once with `started pgid=<n>
+    log=<path>`. No timeout applies to it. With neither directory, and under the docker backend,
+    the call **MUST** be refused with a reason and start nothing. The `process_started` event
+    **MUST** carry `background: true`.
+100. `process_output(pgid, offset=0)` (kind `read`) **MUST** answer `alive: true|false` (with
+    `exit: <code>` once the process has ended), the `offset` to continue from and the log's text
+    from the byte offset; an unknown pgid is a failed call. `process_stop(pgid)` (kind `write`)
+    **MUST** kill the process group, record `process_exited` with `signal` and answer
+    `stopped pgid=<n>`; stopping an ended process kills nothing. Both act only on pgids this
+    turn's `ToolContext.processes` holds.
+101. When the turn ends, by any return path, `DocketDriver` **MUST** stop every background process
+    still alive and record each one's `process_exited` with `reason: turn_end`; a process that
+    had already ended is recorded with its `exitCode` once, never twice.
+
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
 ## Interface Contracts
