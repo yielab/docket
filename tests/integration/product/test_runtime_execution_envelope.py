@@ -92,8 +92,9 @@ def _consumer(body: str) -> str:
             ToolContext,
             ToolOutcome,
         )
+        from docket_runtime._internal.docket.kernel.home import Home
 
-        home = Path(os.environ["DOCKET_HOME"])
+        home = Home(Path(os.environ["DOCKET_HOME"]))
         workspace = Path(os.environ["W28_WORKSPACE"])
         workspace.mkdir(parents=True, exist_ok=True)
         state = workspace / "state.txt"
@@ -246,7 +247,7 @@ def test_every_decision_emits_one_paired_trace_with_execution_identity(
 ) -> None:
     source = _consumer(
         """
-        policies = home / "policies"
+        policies = home.policies_dir
         policies.mkdir(parents=True, exist_ok=True)
         (policies / "deny.json").write_text(json.dumps({
             "kind": "policy",
@@ -292,7 +293,7 @@ def test_every_decision_emits_one_paired_trace_with_execution_identity(
             assert result.ok is expected_ok
             execution.finish(label)
 
-            trace_file = home / "traces" / "portable-proof" / f"case-{index}.jsonl"
+            trace_file = home.traces_dir / "portable-proof" / f"case-{index}.jsonl"
             records = [json.loads(line) for line in trace_file.read_text(encoding="utf-8").splitlines()]
             tool_records = [record for record in records if record["event_type"] in {"tool_call", "tool_result"}]
             assert [record["event_type"] for record in tool_records] == ["tool_call", "tool_result"]
@@ -301,7 +302,7 @@ def test_every_decision_emits_one_paired_trace_with_execution_identity(
             assert all(record["agent_role"] == "implementer" for record in tool_records)
             assert all(record["payload"]["callId"] == f"call-{index}" for record in tool_records)
 
-        audit = (home / "audit.log").read_text(encoding="utf-8")
+        audit = home.audit_log.read_text(encoding="utf-8")
         assert "tool.deny" in audit
         assert "approval.deny" in audit
         assert "approval.grant" in audit
@@ -344,7 +345,7 @@ def test_malformed_and_unknown_calls_remain_dispatcher_denials(
         assert terminal.tool_calls_executed == 2
         assert state.read_text(encoding="utf-8") == "initial"
 
-        trace_file = home / "traces" / "portable-proof" / "w28-execution.jsonl"
+        trace_file = home.traces_dir / "portable-proof" / "w28-execution.jsonl"
         records = [json.loads(line) for line in trace_file.read_text(encoding="utf-8").splitlines()]
         pairs = [record for record in records if record["event_type"] in {"tool_call", "tool_result"}]
         assert [record["event_type"] for record in pairs] == [
@@ -421,9 +422,10 @@ def test_concurrent_runtime_approval_stubs_never_cross_answer(
         from pathlib import Path
 
         from docket_runtime import Runtime, Tool, ToolCall, ToolContext, ToolOutcome
+        from docket_runtime._internal.docket.kernel.home import Home
 
-        home = Path(os.environ["DOCKET_HOME"])
-        policies = home / "policies"
+        home = Home(Path(os.environ["DOCKET_HOME"]))
+        policies = home.policies_dir
         policies.mkdir(parents=True, exist_ok=True)
         (policies / "race.json").write_text(json.dumps({
             "kind": "policy",

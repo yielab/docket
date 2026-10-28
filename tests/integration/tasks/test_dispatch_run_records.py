@@ -552,7 +552,7 @@ class TestScheduleDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with use_home(Home(tmp_path / ".docket")):
-            (tmp_path / ".docket").mkdir(exist_ok=True)
+            current_home().schedule_file.parent.mkdir(parents=True, exist_ok=True)
             current_home().schedule_file.write_text(
                 json.dumps({"schedules": {"projA": "@every 1s"}})
             )
@@ -580,7 +580,7 @@ class TestScheduleDispatchPath:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with use_home(Home(tmp_path / ".docket")):
-            (tmp_path / ".docket").mkdir(exist_ok=True)
+            current_home().schedule_file.parent.mkdir(parents=True, exist_ok=True)
             current_home().schedule_file.write_text(
                 json.dumps({"schedules": {"projB": "@every 1s"}})
             )

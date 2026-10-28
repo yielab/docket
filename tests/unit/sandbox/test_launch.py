@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeGit, launcher_with
 
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.ports import JailPolicy
 from docket.sandbox import landlock as _landlock
 from docket.sandbox import seatbelt as _seatbelt
@@ -202,7 +202,7 @@ class TestPrivateJailTmp:
         with use_home(Home(tmp_path / "home")):
             a = launcher_with().jail_tmp_dir((tmp_path / "a",), None)
             b = launcher_with().jail_tmp_dir((tmp_path / "b",), None)
-            assert a != b and a.parent == tmp_path / "home" / "jail-tmp"
+            assert a != b and a.parent == current_home().jail_tmp_dir
             assert a.stat().st_mode & 0o777 == 0o700
             assert launcher_with().jail_tmp_dir((tmp_path / "a",), None) == a
 
