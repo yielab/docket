@@ -26,6 +26,7 @@ from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
+from docket.models.catalog import ModelProfile
 from docket.observability import trace as _trace
 from docket.platform import read_json
 from docket.tasks.application import runs as _runs
@@ -244,8 +245,15 @@ def _task_scope(registry: ToolRegistry, tool_env: dict[str, str]) -> AbstractCon
     return _policy.task_policies(_task_policy_documents(registry, denied_raw, policies_raw))
 
 
-def _loop_config(backend: ChatBackend, timeout: int, token_budget: int) -> _loop.LoopConfig:
-    """The turn loop's bounds: wall clock, measured-token budget and the endpoint's own windows."""
+def _loop_config(
+    backend: ChatBackend,
+    timeout: int,
+    token_budget: int,
+    profile: ModelProfile,
+    closing_tool: str,
+) -> _loop.LoopConfig:
+    """The turn loop's bounds: wall clock, measured-token budget and the endpoint's own windows,
+    with the sampling and tool choice the model's profile declares."""
     context_window = getattr(backend, "context_window_tokens", None)
     max_output_tokens = getattr(backend, "max_output_tokens", None)
     return _loop.LoopConfig(
@@ -259,6 +267,11 @@ def _loop_config(backend: ChatBackend, timeout: int, token_budget: int) -> _loop
             if isinstance(max_output_tokens, int) and max_output_tokens > 0
             else None
         ),
+        temperature=profile.sampling.temperature,
+        top_p=profile.sampling.top_p,
+        tool_choice=profile.tool_choice,
+        closing_tool=closing_tool,
+        profile=profile.name,
     )
 
 

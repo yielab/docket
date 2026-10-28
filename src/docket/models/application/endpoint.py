@@ -5,7 +5,7 @@ import os
 from docket.agent.ports import Endpoint
 from docket.governance import secrets as _secrets
 from docket.models import catalog as _prov
-from docket.models.catalog import ProviderSpec
+from docket.models.catalog import ModelProfile, ProviderSpec
 
 # ── endpoint resolution ───────────────────────────────────────────────────────
 
@@ -36,12 +36,10 @@ def resolve_endpoint(model: str) -> Endpoint | None:
     if not model_id:
         provider, model_id = "", model
 
-    env_base = os.environ.get("DOCKET_LLM_BASE_URL", "").strip()
+    env_base = _endpoint_override()
     env_key = os.environ.get("DOCKET_LLM_API_KEY", "").strip()
 
-    spec = None
-    if provider and not env_base:
-        spec = _prov.load_catalog().get(provider)
+    spec = _catalog_row(provider)
 
     if spec is not None:
         api_key, _source = _prov.resolve_credential(spec)
@@ -68,6 +66,26 @@ def resolve_endpoint(model: str) -> Endpoint | None:
         context_window_tokens=None,
         max_output_tokens=None,
     )
+
+
+def resolve_profile(model: str) -> ModelProfile:
+    """The model profile of the catalog row *model* (``provider/model-id``) names. A provider
+    absent from the catalog, and every model while ``DOCKET_LLM_BASE_URL`` overrides the endpoint,
+    is ``hosted``: the same lookup ``resolve_endpoint`` makes."""
+    provider, _, model_id = model.partition("/")
+    spec = _catalog_row(provider) if model_id else None
+    return _prov.profile_of(spec, model_id) if spec else _prov.BUILTIN_PROFILES["hosted"]
+
+
+def _catalog_row(provider: str) -> ProviderSpec | None:
+    """*provider*'s catalog row, unless ``DOCKET_LLM_BASE_URL`` overrides every endpoint."""
+    if not provider or _endpoint_override():
+        return None
+    return _prov.load_catalog().get(provider)
+
+
+def _endpoint_override() -> str:
+    return os.environ.get("DOCKET_LLM_BASE_URL", "").strip()
 
 
 def endpoint_from_spec(spec: ProviderSpec, provider: str, model_id: str, api_key: str) -> Endpoint:

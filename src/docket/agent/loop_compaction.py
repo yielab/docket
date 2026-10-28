@@ -110,6 +110,7 @@ class TurnCompaction:
             tools=(),
             max_tokens=self.state.call_max_tokens,
             temperature=self.state.cfg.temperature,
+            top_p=self.state.cfg.top_p,
             timeout=min(timeout, remaining),
         )
         _trace_llm_call(
@@ -120,6 +121,7 @@ class TurnCompaction:
             purpose="compaction",
             task_id=self.state.trace_task_id,
             messages=summary_messages,
+            cfg=self.state.cfg,
         )
         self.state.last_raw = response.raw
         self.state.last_model, self.state.last_provider = response.model, response.provider

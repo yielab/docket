@@ -68,6 +68,8 @@ class _ScriptedBackend:
         tools: Sequence[ToolSpec] = (),
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        tool_choice: str | None = None,
         timeout: int = 120,
     ) -> ChatResponse:
         return self._responses.pop(0)

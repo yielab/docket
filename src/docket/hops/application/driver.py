@@ -43,11 +43,7 @@ from docket.agent.ports import (
 )
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.hops.application import verify_tool as _verify
-from docket.hops.application.builtin_tools import (
-    builtin_registry,
-    describe_consult_for,
-    state_bash_rules,
-)
+from docket.hops.application.builtin_tools import builtin_registry, describe_tools
 from docket.hops.application.driver_support import (
     _approval_timeout,
     _base_commit_view,
@@ -66,10 +62,11 @@ from docket.hops.application.driver_support import (
     _turn_token_budget,
     _validated_pipeline_worktree,
 )
-from docket.hops.application.verdict_tool import parse_values, verdict_tool
+from docket.hops.application.verdict_tool import VERDICT_TOOL, parse_values, verdict_tool
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
 from docket.models.adapters import openai_http as _llm
+from docket.models.application.endpoint import resolve_profile
 from docket.observability import telemetry as _telemetry
 from docket.observability.adapters import sinks as _exporters
 from docket.platform import write_json
@@ -184,6 +181,7 @@ class DocketDriver:
 
         want_sandbox, network_allowed = resolve_posture(agent_id, meta.role, env)
         effective_model = model or meta.model or current_home().default_model
+        profile = resolve_profile(effective_model)
         backend = self.backend_factory(effective_model)
         if backend is None:
             return TurnResult(
@@ -273,14 +271,15 @@ class DocketDriver:
         # (already resolved above) is also this turn's pod for `mcpServers`
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
-        describe_consult_for(registry, ctx)
-        state_bash_rules(registry, ctx)
+        describe_tools(registry, ctx, profile.descriptions)
         if verdict_gate is not None:
             registry.register(verdict_tool(*verdict_gate))
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
-        loop_config = _loop_config(backend, timeout, token_budget)
+        loop_config = _loop_config(
+            backend, timeout, token_budget, profile, VERDICT_TOOL if verdict_gate else ""
+        )
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None
         try:

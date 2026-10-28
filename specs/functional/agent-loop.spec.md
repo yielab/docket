@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -43,7 +43,8 @@ This specification covers:
 
 This specification does NOT cover:
 
-- The chat-completion wire protocol or the `ChatBackend` port
+- The chat-completion wire protocol or the `ChatBackend` port (its `top_p` and `tool_choice`
+  arguments are covered by requirement 96)
 - The tool registry, the gate, or the chokepoint itself; this spec depends only on
   `dispatch_tool`'s documented contract (`security-gates.spec.md`)
 - The archetype schema, `deniedTools` data, and `registry_for_role`'s own contract — see
@@ -697,6 +698,25 @@ This specification does NOT cover:
     raw output did not end with a newline, so a command such as `tail -c1 file | xxd` or `cat
     file` shows the state of the last line.
 
+### The model profile in the loop
+
+96. `LoopConfig` **MUST** carry the sampling and tool choice a catalog profile declares
+    (model-profiles "Model profiles"): `temperature` and `top_p` (each `None` when undeclared),
+    `tool_choice` (`auto` or `forced-on-close`), `closing_tool` (the name of the tool the step
+    closes with, empty when it has none) and `profile` (the profile's name). Every task and
+    summarizer `ChatBackend.complete` call **MUST** pass `temperature` and `top_p` through
+    unchanged. With `tool_choice: forced-on-close`, a closing tool that is offered this turn and a
+    reply that asks for no tool, the loop **MUST** make exactly one more request, the closing
+    call, whose messages are the turn's followed by that reply and a request-only user message
+    naming the tool, and which passes `tool_choice=<closing tool>`; that reply is not persisted on
+    its own, its text leads the closing call's assistant text, and the turn then ends by
+    requirement 89. A closing call that again asks for no tool ends the turn as an ordinary final
+    message (its text led by the first reply's). With `auto`, or no closing tool, the loop **MUST**
+    pass `tool_choice=None` on every call, which the adapter sends as `auto`.
+97. The `llm_call` event of requirement 71 **MUST** also carry `profile` (the name, omitted when
+    `LoopConfig.profile` is empty), `temperature` and `topP` (each only when it was sent) and
+    `toolChoice` (the forced tool's name, only on a forced call).
+
 ### A tool that ends the turn
 
 89. A `Tool` **MAY** be declared `ends_turn`. After a batch in which such a tool's call executed and
@@ -732,6 +752,10 @@ class LoopConfig:                              # frozen
     request_timeout_s: int      # default AGENT_LOOP_REQUEST_TIMEOUT_S
     max_tokens: int | None = None
     temperature: float | None = None
+    top_p: float | None = None
+    tool_choice: Literal["auto", "forced-on-close"] = "auto"
+    closing_tool: str = ""
+    profile: str = ""
     history_budget_tokens: int | None = None # None resolves through budget_for_role
     summary_input_budget_tokens: int | None = None # None follows resolved history budget
     context_window_tokens: int | None = None # selected endpoint's registered input+output window

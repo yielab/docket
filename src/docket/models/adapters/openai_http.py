@@ -106,6 +106,8 @@ class OpenAIChatClient:
         tools: Sequence[ToolSpec] = (),
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        tool_choice: str | None = None,
         timeout: int = 120,
     ) -> ChatResponse:
         """Send one exchange. Never raises for an endpoint or transport failure."""
@@ -123,7 +125,9 @@ class OpenAIChatClient:
                 provider=self.endpoint.provider,
                 latency_ms=_elapsed_ms(),
             )
-        payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
+        payload = build_payload(
+            self.endpoint, messages, tools, max_tokens, temperature, top_p, tool_choice
+        )
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8", errors="replace")
         request = urllib.request.Request(
             self.url, data=body, headers=self._headers(), method="POST"

@@ -338,6 +338,86 @@ def state_bash_rules(registry: ToolRegistry, ctx: ToolContext) -> None:
     )
 
 
+_COMPACT_DESCRIPTIONS = {
+    "read": (
+        "Read a text file as numbered lines, 400 at a time; pass offset and limit, or follow "
+        "the footer, for more."
+    ),
+    "write": "Create or overwrite a text file with the given content.",
+    "edit": "Replace an exact string in a file; fails if it is not unique unless replace_all is set.",
+    "glob": "List files matching a glob pattern as sorted workspace-relative paths, skipping vendored directories.",
+    "grep": "Search file contents for a regular expression; hits are sorted workspace-relative paths.",
+    "skill": "Read a discovered skill's SKILL.md, or a file inside its directory given by path.",
+    "fetch": (
+        "Fetch an http(s) URL on the fetch allowlist and return the page as text. "
+        "A long page is kept whole and read back with `read`."
+    ),
+}
+_COMPACT_ASKING = (
+    "`$(`, `eval`, `sed -i`, writes outside the workspace, publishing and pushing need approval."
+)
+
+
+def _compact_consult_description(remaining: int, parks: bool, decides: bool, waits: bool) -> str:
+    """The `consult` description for a ``compact`` profile: the same four effects and the count
+    left as ``consult_description``, in two sentences."""
+    if parks and decides:
+        effect = "Your recommendation is applied at once, so prefer deciding in your reply"
+    elif parks and waits:
+        effect = "Asking waits for the person at this terminal and returns their answer, or 'no answer; decide yourself'"
+    elif parks:
+        effect = "Asking ends your turn and the answer arrives in your next message"
+    else:
+        effect = "The call returns 'no answer; decide yourself' at once and your turn continues"
+    left = "no consultations left" if remaining <= 0 else f"{remaining} left"
+    return (
+        "Ask a person only when the repository cannot settle the decision, giving two options "
+        f"and marking your recommendation. {effect}; {left}."
+    )
+
+
+def _compact_bash_description(allow_commands: tuple[str, ...], *, jailed: bool) -> str:
+    """The `bash` description for a ``compact`` profile: this turn's rules, without the jail
+    paragraph and the advice the tool names already give."""
+    if jailed:
+        return (
+            "Run a shell command in the workspace; any program runs without approval inside "
+            f"the jail. {_COMPACT_ASKING}"
+        )
+    shown = list(allow_commands[:_EXTRA_BINS_SHOWN])
+    names = ", ".join(sorted({*SAFE_BINS, *shown} - {"["}))
+    more = "..." if len(allow_commands) > _EXTRA_BINS_SHOWN else ""
+    return (
+        f"Run a shell command in the workspace; these run without approval: {names}{more}. "
+        f"Anything else, {_COMPACT_ASKING}"
+    )
+
+
+def describe_tools(registry: ToolRegistry, ctx: ToolContext, descriptions: str) -> None:
+    """State this turn's `consult` budget and `bash` rules, and under ``compact`` shorten every
+    built-in's description to at most two sentences. A `bash` the caller registered itself is left
+    as made."""
+    describe_consult_for(registry, ctx)
+    state_bash_rules(registry, ctx)
+    if descriptions != "compact":
+        return
+    jailed = ctx.sandbox == "auto"
+    bash = registry.get("bash")
+    stated_bash = bash is not None and bash.description == _bash_description(
+        ctx.allow_commands, jailed=jailed
+    )
+    texts = dict(_COMPACT_DESCRIPTIONS)
+    texts["consult"] = _compact_consult_description(
+        ctx.max_consultations, ctx.consult_park, ctx.consult_decides, _consult.waits_in_turn(ctx)
+    )
+    if stated_bash:
+        texts["bash"] = _compact_bash_description(ctx.allow_commands, jailed=jailed)
+    for name, text in texts.items():
+        tool = registry.get(name)
+        if tool is not None:
+            registry.register(dataclasses.replace(tool, description=text))
+
+
 def _offered_fetch() -> list[Tool]:
     """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
 
