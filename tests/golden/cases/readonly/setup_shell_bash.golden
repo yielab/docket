@@ -61,7 +61,7 @@ _docket_options() {
     "pod memory refuse") echo "--reason --pod --help" ;;
     "pod memory revert") echo "--pod --help" ;;
     "pod memory reset") echo "--yes --pod --help" ;;
-    "log") echo "--json --help" ;;
+    "log") echo "--json --summary --help" ;;
     "log verify") echo "--help" ;;
     "setup") echo "--json --fix --help" ;;
     "setup profile") echo "--help" ;;
