@@ -23,7 +23,16 @@ Build a small task packet instead of loading the planning corpus.
 
 For a new card, record the measured trigger, goal, non-goals, exact live-path owner, files/functions,
 acceptance criteria, focused tests, full gates, and any file-contention dependency. Prefer one
-independently shippable behavior over a phase-sized bundle.
+independently shippable behavior over a phase-sized bundle. Cut cards by file ownership, so no file
+is opened twice in one wave.
+
+Size each card for the model that will run it. The card names `**Model:**` (Haiku for data, docs
+and spec text it spells out; Sonnet for behavior in `src/`; Opus plans, integrates and reviews, it
+is not a worker) and `**Size:**`. It names at most eight files, with line locators so the worker
+greps instead of reading modules whole. Its gate names the checks and what they cost, from the
+measured table in `docket-spec-work`'s `references/validation.md`: the e2e lane (42 s) only when
+the card changes a tool's output, the wire, the home layout or the HTTP API; never the full suite
+or the agent lane, which belong to the integrator.
 
 For a quantitative or deferred scheduling trigger, evidence names a source/locator, metric,
 observation window, threshold, and observed value. An estimate may justify bounded measurement; it
