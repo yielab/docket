@@ -270,3 +270,13 @@ class TestArtifactsExpireWithTheirTrace:
         trace_core.expire_old_traces()
 
         assert stray.exists()
+
+    def test_an_artifacts_directory_outside_the_pods_is_never_deleted(self, oc_dir: Path) -> None:
+        stray = oc_dir / "elsewhere" / "artifacts" / "precious.txt"
+        stray.parent.mkdir(parents=True)
+        stray.write_text("keep me")
+        self._trace(oc_dir, stray, "2000-01-01T00:05:00Z")
+
+        trace_core.expire_old_traces()
+
+        assert stray.exists()
