@@ -36,8 +36,10 @@ def _allowed(record: dict[str, Any]) -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
-def loaded() -> list[Any]:
-    return JsonTaskStore(QUEUE).load()
+def loaded(tmp_path_factory: pytest.TempPathFactory) -> list[Any]:
+    copy = tmp_path_factory.mktemp("queue") / "TASK_LIST.json"
+    copy.write_bytes(QUEUE.read_bytes())
+    return JsonTaskStore(copy).load()
 
 
 def test_every_record_of_the_queue_loads(loaded: list[Any]) -> None:

@@ -28,8 +28,9 @@ product the way an operator or Tack does, in `tests/e2e/`, with one fake model a
 store, with the same JSON on disk. A new phase starts from a measured trigger or a maintainer
 request, never from this file.
 
-**The last three phases** closed on branch `plan/phase-46-structure`, not yet merged into `develop`
-nor pushed (§7.1). Phases 46-47 are D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
+**Phases 46-51** closed on branch `plan/phase-46-structure`, merged into `develop` as PR #5
+(`52c22f89`, 2026-10-26) and pushed; CI is green on it, the `no-sandbox` job included. Phases 46-47
+are D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
 - **Phase 46** moved `src/docket/` into `kernel`, eleven context packages, `interfaces/` and
   `bootstrap.py`, with no module over 700 lines.
 - **Phase 47** layered the contexts (an import of a context above is a test failure), and put each
@@ -301,8 +302,6 @@ today:
 > Engineering follow-ups with triggers live on `TODO.md` §"FOLLOW-UPS WITH TRIGGERS". These entries
 > need a decision, not a trigger.
 
-- **Integrate `plan/phase-46-structure` (Phases 46-51) into `develop` and push.** Until then the
-  `no-sandbox` CI job (`scripts/maint/pytest-without-sandbox.sh`) has never run on CI. Asked at the Phase 47 close (2026-10-24).
 - **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters (no consumer;
   last changed 2026-09-01) and the adoption benchmark (`docs/ADOPTION-EVIDENCE.md`: fixture data a
   driver writes, no policy hook runs) stay public claims. Recommended: keep `docket-runtime`, delete

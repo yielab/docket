@@ -990,11 +990,13 @@ spec
    4. A pure move or rename adds no test: `pytest --co` and `tests/architecture` are its check. A
       behaviour change adds a failing test first, placed by lane (`specs/test-framework.md`).
    5. After each merge the integrator runs the default suite once, in parallel (`uv run pytest -n auto
-      --dist loadfile -q --tb=line -p no:cacheprovider > <file>`, about 40 s), reads only the `FAILED`
-      lines, fixes by cause and re-runs `--lf`. Never a second full run for the same merge.
+      --dist loadfile -q --tb=line -p no:cacheprovider > <file>`, about 85 s), reads only the `FAILED`
+      lines, fixes by cause and re-runs `--lf`. Never a second full run for the same merge. What
+      each check costs, measured, is in `.agents/skills/docket-spec-work/references/validation.md`.
    6. Goldens, the agent lane, `scripts/maint/pytest-without-sandbox.sh`, the escape matrix,
       `validate-specs.sh`, the generated-docs checks and the real run: once, at
-      the phase close.
+      the phase close. The agent lane (about 3.5 min) runs on a committed tree: its release check
+      refuses any uncommitted path.
    7. **Stop rule:** a check that fails again after one fix stops the step. Park with the failing line
       and the hypothesis. No third attempt, no "until green", no background process or polling, no
       `git stash` (a WIP commit sets work aside).
@@ -1015,9 +1017,10 @@ spec
    Scrub `/home/<user>` paths and real names from every diff.
 
 **Status:** `TODO` · `IN-PROGRESS (@who)` · `BLOCKED (needs X)` · `PARKED (left: X)` · `DONE`.
-**Size:** S ≈ one short run · M ≈ one run · L ≈ one long run that may park once.
-**Branch model (D-52):** card branches base on and merge into the integration branch (`develop`;
-Phases 46-47 run on `plan/phase-46-structure` until the maintainer integrates it). `main` moves only
+**Size:** S ≈ one short run · M ≈ one run · L ≈ one long run that may park once · XL ≈ two cards'
+scope in one pass over the same files, parks at least once.
+**Branch model (D-52):** card branches base on and merge into the integration branch (`develop`).
+`main` moves only
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
@@ -1088,6 +1091,12 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 - **Docstring budget:** `comment_lint.py` counts 209 long definition docstrings at the close against 205
   on `develop` (most moved or renamed code). Trigger: the next card that edits one of those modules
   trims its own.
+- **Two contract files set the merge run's floor** (measured 2026-10-28, `--durations=0`):
+  `tests/contracts/test_a2a_http.py` 60 s and `test_escalation_http.py` 35 s of the 84 s run. Each
+  test's function-scoped `parked` fixture runs a real `docket run` and starts a service (about 3 s
+  of setup per test), and `--dist loadfile` keeps a file on one worker. Trigger: the merge run
+  passes 120 s, or a card adds a test to either file. Then share one parked world per module for
+  the read-only tests.
 
 **Runtime and dispatch (from real runs).**
 

@@ -34,9 +34,22 @@ Start from the behavior boundary, not from a broad repository tour.
    prose, artifacts or the agent's own scripts goes to the agent lane with its header and counts
    against that lane's budget; it never enters the default suite. One-line test docstrings, no
    card ids or dates anywhere in the file.
-6. Implement the smallest coherent change, keeping `cli -> core -> edges` inward-only boundaries.
-7. Run the focused test and static check while iterating. Before handoff, run the gates required by
-   the affected surface.
+6. Implement the smallest coherent change inside ADR 0030's layers (`platform < governance < agent <
+   models < observability < pipeline < teams < sandbox < operator < tasks < hops`; a context imports
+   only those below it, no function-local `docket.*` import, no module over 700 lines). The two
+   invariants hold: every tool call passes `dispatch_tool`, and docket-owned JSON is written only by
+   `platform/store.py`. `tests/architecture/` (3 s) is the check.
+7. Test by cost, as [references/validation.md](references/validation.md) measures it: per commit the
+   static gates and `pytest --co -q` (~4 s, no tests); while iterating only the unit file whose
+   `SUBJECT` is the changed module, by path under `timeout 120`; before handoff the gate the card
+   names. A worker never runs the full suite (84 s) or the agent lane (3.5 min); the integrator does,
+   once per merge or phase close. Don't rerun a test that passed unless its subject changed since.
+
+Fit the work to the model running it and its context window. A card names its model (`**Model:**`):
+Haiku edits data, docs and spec text the card spells out; Sonnet changes behavior in `src/`. Spend
+tokens on the change, not the tour: grep the card's line locators instead of reading a module whole,
+open only the files the card names, and when the card turns out to need more, park with the
+missing locator rather than exploring.
 
 When executing one card in a coordinated wave, the card packet is the scope boundary. Work in its
 assigned worktree/state, edit only declared files/functions plus the owning behavior spec/tests,
@@ -48,8 +61,8 @@ If acceptance requires a forbidden/shared file, or the selected card contradicts
 stop before writing the RED test. Return the exact ambiguity and locators to the integrator so scope
 and ownership can be reconciled once instead of letting workers implement competing contracts.
 
-Read [references/validation.md](references/validation.md) when selecting final gates or when CLI,
-packaging, specs, documentation claims, or dependency bounds are affected.
+Read [references/validation.md](references/validation.md) before the first test run of a card: it
+routes each surface to its check and gives each check's measured cost.
 
 Read [references/real-world-tests.md](references/real-world-tests.md) when designing realistic
 product fixtures. Skill maintainers use
@@ -60,8 +73,8 @@ When a persisted shape changes, exercise the real reader and sole writer with an
 and every prior shape the contract promises to support. Assert semantic round-trip behavior,
 preservation of unknown/unaffected data, and failure atomicity when migration can write.
 
-Keep test output out of the conversation unless it explains a failure. Report command + outcome,
-not full logs. Never change a golden or metrics/spec validator merely to turn a gate green.
+Keep test output out of the conversation unless it explains a failure: send it to a file and read
+the `FAILED` lines. Report command + outcome, not full logs. Never change a golden or metrics/spec validator merely to turn a gate green.
 
 Before the final handoff, compare the delivered behavior against every acceptance criterion and use
 `AGENTS.md`'s end-of-work control. Explain the feature at product level, then state what actually

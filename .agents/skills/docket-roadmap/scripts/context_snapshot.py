@@ -145,6 +145,36 @@ def _board_summary(root: Path) -> tuple[str, dict[str, list[str]], int]:
     return label, cards, closed
 
 
+def _planned_summary(root: Path) -> tuple[str, list[str], list[str]]:
+    """Name the ``○ … PLANNED`` sections, their unblocked cards and the rest."""
+
+    path = root / "TODO.md"
+    if not path.is_file():
+        return "", [], []
+    text = path.read_text(encoding="utf-8")
+    headings = list(re.finditer(r"^## .+$", text, flags=re.MULTILINE))
+    labels: list[str] = []
+    unblocked: list[str] = []
+    waiting: list[str] = []
+    for index, heading in enumerate(headings):
+        title = heading.group(0)[3:].strip()
+        if not (title.startswith("○") and "PLANNED" in title.upper()):
+            continue
+        labels.append(_clip(title.split("—")[0].strip("○ ").strip(), 40))
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        for body in re.split(r"^### ", text[heading.end() : end], flags=re.MULTILINE)[1:]:
+            card_id = re.match(r"([A-Z]+\d+-\d+)\b", body)
+            status = re.search(r"^\*\*Status:\*\*\s*([^·\n]*)", body, flags=re.MULTILINE)
+            if card_id is None or status is None:
+                continue
+            kind = _status_kind(body)
+            if kind == "ready" and "(" not in status.group(1):
+                unblocked.append(card_id.group(1))
+            elif kind != "closed":
+                waiting.append(card_id.group(1))
+    return ", ".join(labels), unblocked, waiting
+
+
 def _clip(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
@@ -235,7 +265,14 @@ def snapshot(root: Path, max_files: int, max_chars: int) -> str:
     git_status = _git(root, "status", "--short")
     dirty = [line.strip() for line in git_status.splitlines() if line.strip()] if git_status else []
     board, cards, closed = _board_summary(root)
+    planned, unblocked, waiting = ("", [], [])
+    if not any(cards.values()) and not closed:
+        planned, unblocked, waiting = _planned_summary(root)
+    if planned:
+        board = f"active: none; planned: {planned}"
     optional: list[str] = []
+    if planned:
+        optional.append(f"planned cards: {len(unblocked)} unblocked, {len(waiting)} waiting")
     labels = (
         ("in_progress", "in progress"),
         ("ready", "ready"),
@@ -245,7 +282,7 @@ def snapshot(root: Path, max_files: int, max_chars: int) -> str:
     for kind, label in labels:
         if cards.get(kind):
             optional.append(f"{label}: " + " | ".join(cards[kind][:4]))
-    if not any(cards.values()):
+    if not any(cards.values()) and not planned:
         optional.append("open cards: none in current board section")
     if closed:
         optional.append(f"closed cards in section: {closed}")
@@ -273,6 +310,11 @@ def snapshot(root: Path, max_files: int, max_chars: int) -> str:
         next_selection = f"resume {cards['in_progress'][0]}"
     elif cards.get("ready"):
         next_selection = f"inspect {cards['ready'][0]} dependencies/contention before claim"
+    elif planned:
+        next_selection = (
+            f"no active phase; first wave of the planned schedule: {' '.join(unblocked) or 'none'}"
+            " (start on the maintainer's go; card_packet.py <ID>)"
+        )
     else:
         next_selection = "no ready card; run bounded triage/measurement before scheduling"
 

@@ -16,7 +16,8 @@ Read this only when the task changes planning state.
   lane across owning spec, files/functions, persisted state, and mutable environment. If the status
   probe is unavailable or clipped, resolve it first; unknown is not clean.
 - A card must name: measured trigger, goal, non-goals, exact functions/files, acceptance criteria,
-  RED test, full validation gates, and documentation/spec updates.
+  RED test, its gate (checks named, sized by their measured cost), documentation/spec updates,
+  `**Model:**` and `**Size:**` (S, M, L, XL as the board's legend defines them).
 - A quantitative or deferred trigger must name its source/locator, metric, observation window,
   threshold, and observed value. Label an estimate as such and schedule measurement rather than
   treating it as fired. For an explicit scoped request or deterministic bug, cite that request or

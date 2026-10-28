@@ -28,6 +28,12 @@ estimate marker. Do not invent ordinal or transport-count trace fields without a
 Do not claim one budget bounds another. Avoid sending both raw cross-role history and a typed handoff
 unless the contract explicitly requires both.
 
+The contract does not yet vary by model: `ModelProfile` (P52-7) and prompt variants by model class
+(P53-7) are planned, not shipped. Until they ship, prove a context change against the smallest
+window in use, the local endpoint (32k, `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`), first through the free
+replay bench (`scripts/maint/context_replay.py tests/fixtures/context-replay --policy <name>`);
+the live eval is the integrator's, once per wave.
+
 Read [references/live-path.md](references/live-path.md) before editing session compaction, loop
 composition, handoff/session keys, MCP output, or memory injection. It contains the non-obvious
 atomicity, recursion, trace, and small-context validation requirements.
