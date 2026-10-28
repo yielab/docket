@@ -63,7 +63,7 @@ class TestLog:
     def test_summary_and_json_cannot_be_combined(self, home: Path) -> None:
         result = runner.invoke(app, ["log", "--summary", "--json"])
         assert result.exit_code == 2
-        assert "cannot be combined" in result.output
+        assert "cannot be combined" in result.stderr
 
     def test_the_empty_log_message_names_what_is_recorded_without_scope(self, home: Path) -> None:
         result = runner.invoke(app, ["log"])

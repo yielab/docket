@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from tests.support.http import metric_sample
 from tests.support.pods import seed_pod
 from typer.testing import CliRunner
 
@@ -46,11 +47,6 @@ def _scrape() -> list[str]:
         server.shutdown()
 
 
-def _sample(lines: list[str], prefix: str) -> float:
-    (line,) = [ln for ln in lines if ln.startswith(prefix)]
-    return float(line.rsplit(" ", 1)[1])
-
-
 def _seed_trace() -> None:
     target = current_home().traces_dir / "demo-project"
     target.mkdir(parents=True)
@@ -83,7 +79,9 @@ def test_metrics_shows_the_cache_hit_of_the_recording_role(tmp_path: Path) -> No
         lines = _scrape()
 
     # Two implementer calls in the fixture: (0 + 20) cached over (120 + 180) input.
-    assert _sample(lines, 'docket_cache_hit_ratio{role="implementer"}') == pytest.approx(20 / 300)
+    assert metric_sample(lines, 'docket_cache_hit_ratio{role="implementer"}') == pytest.approx(
+        20 / 300
+    )
     assert not any("docket_tokens_per_accepted_task" in ln for ln in lines if ln[0] != "#")
 
 
@@ -93,7 +91,7 @@ def test_metrics_shows_the_counted_tokens_of_done_tasks_only(tmp_path: Path) -> 
 
         lines = _scrape()
 
-    assert _sample(lines, "docket_tokens_per_accepted_task ") == (650 + 300) / 2
+    assert metric_sample(lines, "docket_tokens_per_accepted_task ") == (650 + 300) / 2
 
 
 def test_log_summary_prints_tokens_per_accepted_task_and_cache_hit(tmp_path: Path) -> None:
