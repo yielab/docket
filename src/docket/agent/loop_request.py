@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 
 from docket.agent import ports as _ports
-from docket.agent.ports import ChatBackend, ChatMessage, TokenUsage, ToolSpec, system
+from docket.agent.ports import ChatBackend, ChatMessage, TokenUsage, ToolSpec, user
 
 
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
@@ -144,10 +144,6 @@ _FINALIZATION_INSTRUCTION = (
 
 
 def _finalization_messages(current: list[ChatMessage]) -> list[ChatMessage]:
-    # Keep the instruction in the leading system slot for adapters/models
-    # that require system messages before conversation history. This copy
-    # is request-only and is never written to durable history.
-    if current and current[0].role == "system":
-        terminal_system = system(f"{current[0].content}\n\n{_FINALIZATION_INSTRUCTION}")
-        return [terminal_system, *current[1:]]
-    return [system(_FINALIZATION_INSTRUCTION), *current]
+    # A trailing user message keeps every earlier message byte-identical to the previous
+    # request, so the cached prefix is reused. Request-only; never written to durable history.
+    return [*current, user(_FINALIZATION_INSTRUCTION)]

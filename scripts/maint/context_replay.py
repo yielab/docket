@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from docket.agent.loop_request import _FINALIZATION_INSTRUCTION
 from docket.agent.ports import ChatMessage, ToolCall
 from docket.agent.session import condense_history
 from docket.agent.tools.builtins.toolbox import read_file, text_outcome
@@ -326,10 +327,41 @@ def render_table(rows: list[Row], budget: int) -> str:
     return "\n".join(lines)
 
 
+FINALIZATION_POLICY = "p52-3"
+
+
+def finalization_prefix(step: Step) -> tuple[int, int, int, int]:
+    """Bytes of a step's last request, of the finalization request after it, and the bytes the two
+    share when the instruction rewrites the system message (before) or trails as a user message
+    (after). The system message itself is not recorded, so a stand-in marks its slot."""
+    previous = request_messages(step, max(0, len(step.calls) - 1))
+    instruction = {"role": "user", "content": _FINALIZATION_INSTRUCTION}
+    system = {"role": "system", "content": "SYSTEM"}
+    rewritten = {"role": "system", "content": f"SYSTEM\n\n{_FINALIZATION_INSTRUCTION}"}
+    trailing = [*step.messages, instruction]
+    before = _common_prefix_bytes([system, *previous], [rewritten, *step.messages])
+    after = _common_prefix_bytes([system, *previous], [system, *trailing]) - _bytes([system])
+    return _bytes(previous), _bytes(trailing), before, after
+
+
+def render_finalization(steps: list[Step]) -> list[str]:
+    lines = [
+        f"policy {FINALIZATION_POLICY} (modelled finalization request, not measured)",
+        f"{'step':<15}{'last request':>14}{'finalization':>14}{'shared before':>15}{'shared after':>14}",
+    ]
+    for step in steps:
+        last, final, before, after = finalization_prefix(step)
+        lines.append(f"{step.name:<15}{last:>14,}{final:>14,}{before:>15,}{after:>14,}")
+    return lines
+
+
 def render_projection(steps: list[Step], names: list[str]) -> str:
     base = measure(steps)
     lines = []
     for name in names:
+        if name == FINALIZATION_POLICY:
+            lines.extend(render_finalization(steps))
+            continue
         if name not in POLICIES:
             raise SystemExit(f"unknown policy {name!r}; known: {', '.join(sorted(POLICIES))}")
         lines.append(f"policy {name} (estimate, not measured)")
