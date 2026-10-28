@@ -145,11 +145,11 @@ budget/estimate evidence only, never messages or model/tool content.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
 from docket.agent.loop_compaction import TurnCompaction
-from docket.agent.loop_request import _accumulate, _finalization_messages
+from docket.agent.loop_request import _accumulate, _closing_messages, _finalization_messages
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_steps import ToolStep, approval_parked_error, approval_unavailable_error
 from docket.agent.loop_trace import (
@@ -247,6 +247,9 @@ class _TurnState(TurnState):
     compaction and request fit, the tool step), and the request/response phase between them."""
 
     finalization_attempted: bool = False
+    close_attempted: bool = False
+    close_forced: bool = False
+    close_reply: str = ""
     budget: TurnBudget = field(init=False, repr=False)
     compaction: TurnCompaction = field(init=False, repr=False)
     steps: ToolStep = field(init=False, repr=False)
@@ -419,7 +422,9 @@ class _TurnState(TurnState):
     # Returns the assistant message to dispatch tools for, or None with a
     # populated AgentLoopResult when the turn must stop here -- including the
     # ordinary final_message success exit, which is itself a response shape
-    # (no tool calls requested), not a separate kind of ending.
+    # (no tool calls requested), not a separate kind of ending. A None message
+    # with no result means a reply that asked for no tool is to be followed by
+    # the forced closing call (see closing_call_due).
     def call_backend_and_handle_response(
         self,
         messages: list[ChatMessage],
@@ -430,11 +435,17 @@ class _TurnState(TurnState):
         """One backend exchange and every response-shaped stop condition."""
         if self.cancellation_requested():
             return None, TokenUsage(), self.cancelled()
+        forced = self.cfg.closing_tool if self.close_forced else None
+        carried, self.close_forced, self.close_reply = self.close_reply, False, ""
+        if forced:
+            messages = _closing_messages(messages, carried, forced)
         response = self.backend.complete(
             messages,
             tools=request_tools,
             max_tokens=self.call_max_tokens,
             temperature=self.cfg.temperature,
+            top_p=self.cfg.top_p,
+            tool_choice=forced,
             timeout=request_timeout,
         )
         _trace_llm_call(
@@ -445,6 +456,8 @@ class _TurnState(TurnState):
             self.iteration,
             task_id=self.trace_task_id,
             messages=messages,
+            cfg=self.cfg,
+            tool_choice=forced,
         )
         self.last_raw = response.raw
         self.last_model, self.last_provider = response.model, response.provider
@@ -524,6 +537,18 @@ class _TurnState(TurnState):
                     failure_kind="invalid_output",
                 ),
             )
+        if not assistant_msg.tool_calls and self.closing_call_due(finalizing):
+            # The reply asks for no tool: keep its text for the closing call and persist only
+            # that call's own message, so the stored history has one assistant turn.
+            self.close_attempted = self.close_forced = True
+            self.close_reply = assistant_msg.content
+            append_messages(self.session_key, [], usage=response.usage)
+            return None, response.usage, None
+        if carried:
+            assistant_msg = replace(
+                assistant_msg,
+                content="\n".join(p for p in (carried, assistant_msg.content) if p),
+            )
         if not assistant_msg.tool_calls:
             append_messages(self.session_key, [assistant_msg], usage=response.usage)
             return (
@@ -532,6 +557,17 @@ class _TurnState(TurnState):
                 self.done(ok=True, stop_reason="final_message", output=assistant_msg.content),
             )
         return assistant_msg, response.usage, None
+
+    def closing_call_due(self, finalizing: bool) -> bool:
+        """Whether a reply with no tool call is to be followed by the forced closing call: the
+        profile forces it, the step's closing tool is offered, and it has not been forced yet."""
+        return (
+            self.cfg.tool_choice == "forced-on-close"
+            and bool(self.cfg.closing_tool)
+            and not self.close_attempted
+            and not finalizing
+            and any(spec.name == self.cfg.closing_tool for spec in self.tool_specs)
+        )
 
     # Returns None to keep looping.
     def run_iteration(self) -> AgentLoopResult | None:
@@ -547,7 +583,8 @@ class _TurnState(TurnState):
         )
         if stop is not None:
             return stop
-        assert assistant_msg is not None  # only None alongside a non-None stop
+        if assistant_msg is None:  # a reply that asked for no tool: the closing call follows
+            return None
         return self.steps.dispatch_tool_batch(messages, assistant_msg, response_usage)
 
 

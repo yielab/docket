@@ -56,6 +56,8 @@ class InfiniteToolBackend:
         tools: Sequence[ToolSpec] = (),
         max_tokens: int | None = None,
         temperature: float | None = None,
+        top_p: float | None = None,
+        tool_choice: str | None = None,
         timeout: int = 120,
     ) -> ChatResponse:
         self.call_count += 1
@@ -551,7 +553,15 @@ class TestDurability:
                 self.n = 0
 
             def complete(
-                self, messages, *, tools=(), max_tokens=None, temperature=None, timeout=120
+                self,
+                messages,
+                *,
+                tools=(),
+                max_tokens=None,
+                temperature=None,
+                top_p=None,
+                tool_choice=None,
+                timeout=120,
             ):
                 self.n += 1
                 if self.n == 3:
