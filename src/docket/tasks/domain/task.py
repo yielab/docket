@@ -40,11 +40,15 @@ class TaskRestrictionError(DispatchError):
     """An enqueue asked for a restriction that would widen the pod's limits."""
 
 
+def _is_empty(value: object) -> bool:
+    return not value
+
+
 class HopResult(BaseModel):
     """One agent turn within a task's pipeline; its alias dump is the persisted hop."""
 
-    # A partly invalid stored hop degrades each of artifact, verify, evidence, usage, trace and
-    # repo_files alone to its default, so one old bad hop never refuses its task
+    # A partly invalid stored hop degrades each of artifact, verify, evidence, usage, trace,
+    # repo_files and prompt_manifest alone to its default, so one old bad hop never refuses its task
     # (pod-dispatch.spec.md, "Structured handoff artifacts" and "Hop evidence").
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
@@ -100,6 +104,12 @@ class HopResult(BaseModel):
     # runtime driver reports no served model (pod-dispatch.spec.md, "Hop events and task usage").
     model: str = ""
     provider: str = ""
+    # Which prompts this hop's turn was composed from (``hops/application/manifest.py``): per
+    # layer ``{layer, name, version, sha256, scope, tokens}``, then ``model``, ``family``,
+    # ``class`` and ``profile``. Empty for a hop recorded before the manifest existed.
+    prompt_manifest: dict[str, Any] = Field(
+        default_factory=dict, alias="promptManifest", exclude_if=_is_empty
+    )
 
     @field_validator("artifact", mode="before")
     @classmethod
@@ -109,7 +119,16 @@ class HopResult(BaseModel):
             return {k: v for k, v in value.items() if k in _handoff.HandoffArtifact.model_fields}
         return value
 
-    @field_validator("artifact", "verify", "evidence", "usage", "trace", "repo_files", mode="wrap")
+    @field_validator(
+        "artifact",
+        "verify",
+        "evidence",
+        "usage",
+        "trace",
+        "repo_files",
+        "prompt_manifest",
+        mode="wrap",
+    )
     @classmethod
     def _degrade_alone(
         cls, value: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
@@ -173,10 +192,6 @@ class TaskResult:
     @property
     def cost_usd(self) -> float:
         return round(sum(h.cost_usd for h in self.hops), 6)
-
-
-def _is_empty(value: object) -> bool:
-    return not value
 
 
 class TaskRecord(BaseModel):

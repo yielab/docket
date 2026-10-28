@@ -56,6 +56,7 @@ class TurnState:
         error: str = "",
         failure_kind: FailureKind | None = None,
         retry_after_s: float | None = None,
+        closing_args: dict[str, Any] | None = None,
     ) -> AgentLoopResult:
         return AgentLoopResult(
             ok=ok,
@@ -70,6 +71,7 @@ class TurnState:
             retry_after_s=retry_after_s,
             model=self.last_model,
             provider=self.last_provider,
+            closing_args=closing_args,
         )
 
     def cancellation_requested(self) -> bool:

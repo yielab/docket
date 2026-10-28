@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.5.0
+**Version**: 3.6.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -299,7 +299,11 @@ This specification does NOT cover:
     per composition that yields a system prompt, listing every section attempted — `SOUL.md`,
     `INSTRUCTIONS.md`, `AGENTS.md`, `projectInstructions`, `skills`, `MEMORY.md` when it holds
     content, and `podMemory` — with the bytes included and a `full`/`truncated`/`omitted` status
-    per section, plus the resolved `budgetTokens` and its `budgetSource` (`env`/`window`/`default`).
+    per section, plus the resolved `budgetTokens` and its `budgetSource` (`env`/`window`/`default`),
+    the `sha256` of the composed text as UTF-8 and the `sources` (the names of the parts that fed
+    it: `SOUL.md`, `runtimeContract`, `runtimeContext`, `INSTRUCTIONS.md`, `projectInstructions`,
+    `skills`, `AGENTS.md`, `podMemory`, each only when it held content), carried by
+    `PromptComposition.sha256` and `.sources`.
     A composition holding only the runtime contract lists no sections. An agent with no identity,
     startup or private files composes no system message and emits no `prompt_composed` event. This
     budget is an estimate like every other bytes-per-token figure — never a measured token count,
@@ -725,7 +729,9 @@ This specification does NOT cover:
     `output` **MUST** be the batch's assistant text (when it has any) followed by a newline and the
     successful result text of the last such call. A call that failed or was refused does not end
     the turn. Every call still passes `dispatch_tool`; the approval and denial stops of the same
-    round take precedence.
+    round take precedence. The arguments of that last call **MUST** be returned with the result
+    (`AgentLoopResult.closing_args`, carried to `TurnResult.closing_args`; `None` for a turn that
+    closed on text), so a caller reads the structured outcome the tool recorded.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
