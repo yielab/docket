@@ -22,10 +22,10 @@ from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
+from docket.hops.application.base_view import base_commit_view
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
-from docket.kernel.ports import git as _git
 from docket.models.catalog import ModelProfile
 from docket.observability import trace as _trace
 from docket.platform import read_json
@@ -165,21 +165,9 @@ def _base_commit_view(
         task = TaskRepository.for_pod(project).get(task_id)
     except Exception:  # an unreadable queue file must not fail the turn
         return None
-    if task is None or task.worktree is None:
+    if task is None:
         return None
-    record = task.worktree
-    base, git_dir = record.base_commit, record.git_dir or ""
-    common_dir, recorded = record.common_dir or "", record.dir
-    if not (base and git_dir and common_dir and recorded):
-        return None
-    if Path(recorded).resolve() != Path(pipeline_worktree).resolve():
-        return None
-    _git.trust_worktree(pipeline_worktree, git_dir, common_dir)
-    return _repo_view.RepoView(
-        base,
-        lambda rel: _git.git_read_blob(pipeline_worktree, base, rel),
-        lambda rel: _git.git_list_tree_dirs(pipeline_worktree, base, rel),
-    )
+    return base_commit_view(task.worktree, pipeline_worktree)
 
 
 def _resolve_allow_commands(agent_id: str) -> tuple[str, ...]:
