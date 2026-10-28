@@ -604,11 +604,13 @@ policies only ever add), or one policy's JSON; `--json` prints a list of
 #### docket log
 **Purpose**: Show recent recorded operator events, or verify the log's tamper-evidence chain
 (see audit.spec.md for the exact recorded families and the coverage gap)
-**Syntax**: `docket log [N] [--json]` · `docket log verify`
+**Syntax**: `docket log [N] [--json|--summary]` · `docket log verify`
 **Arguments**:
 - `N` (optional): Number of recent entries to show (default: 20)
 **Options/Actions**:
 - `--json`: Emit the raw JSONL passthrough instead of a formatted table
+- `--summary`: Print the measured figures instead of the entries: `tokens per accepted task` and
+  the cache-hit ratio (cost-tracking.spec.md requirement 6); refused (exit 2) together with `--json`
 - `verify`: Walk the current log's `seq`/`prev_hash` hash chain and report the first broken link,
   instead of listing entries
 **Output**: Timestamped log of mutating operations, or a chain-verification result

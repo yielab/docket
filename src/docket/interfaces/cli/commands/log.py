@@ -10,6 +10,8 @@ from typer.core import TyperGroup
 from docket.governance import audit as _audit
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
+from docket.observability import figures as _figures
+from docket.tasks.application.accepted import accepted_counted_tokens
 
 _COUNT_KEY = "docket.log.count"
 _DEFAULT_COUNT = 20
@@ -68,6 +70,32 @@ def show_log(limit: int | None = None, json_out: bool = False) -> int:
     return 0
 
 
+def show_summary() -> int:
+    """Print tokens per accepted task and the cache-hit ratio, both measured, read-only."""
+    counted = accepted_counted_tokens()
+    mean = _figures.tokens_per_accepted_task(counted)
+    ui.header("log", "summary")
+    ui.console.print()
+    if mean is None:
+        ui.console.print("  tokens per accepted task: no done task with usage yet")
+    else:
+        ui.console.print(
+            f"  tokens per accepted task: {round(mean)} counted ({len(counted)} done tasks)"
+        )
+    total = _figures.recorded_cache_figures().total
+    if total.ratio is None:
+        ui.console.print("  cache hit: no llm_call recorded yet")
+    else:
+        ui.console.print(
+            f"  cache hit: {total.ratio:.1%} ({total.cached_tokens} of {total.input_tokens} "
+            "input tokens)"
+        )
+    ui.console.print()
+    ui.dim("Counted tokens are input minus cache reads, plus output; a cache of 0 may mean the")
+    ui.dim("endpoint reports none. Measured tokens, never dollars.")
+    return 0
+
+
 def verify_log() -> int:
     """Check the hash chain: 0 when clean or absent, 1 at the first broken link."""
     result = _audit.verify_chain()
@@ -103,6 +131,9 @@ def verify_log() -> int:
 def log(
     ctx: typer.Context,
     json_out: bool = typer.Option(False, "--json", help="Print the raw JSONL file verbatim"),
+    summary: bool = typer.Option(
+        False, "--summary", help="Print tokens per accepted task and the cache-hit ratio instead"
+    ),
 ) -> None:
     """Show the record of what was authorized and done: keys, gates, pods, approvals.
 
@@ -110,10 +141,17 @@ def log(
     previous one by SHA-256, so a hand-edited line is detectable with `docket log verify`.
     Secret values are never recorded.
 
+    `docket log --summary` prints the measured tokens per accepted task and the cache-hit
+    ratio of every recorded model call instead of the entries.
+
     Example: docket log 50
     """
     if ctx.invoked_subcommand is not None:
         return
+    if summary:
+        if json_out:
+            raise typer.BadParameter("--summary and --json cannot be combined")
+        raise typer.Exit(show_summary())
     raise typer.Exit(show_log(ctx.meta.get(_COUNT_KEY), json_out))
 
 
