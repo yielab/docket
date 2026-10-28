@@ -30,6 +30,7 @@ from docket.tasks.domain.parts import Answer
 from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.settings import load_pod_settings, pod_approval_mode
@@ -69,29 +70,16 @@ def _resolve_hop_instructions(
 def _role_instructions(
     role: str, project: str, rework_hop: HopResult | None, step_instructions: str
 ) -> str:
-    """The role's own text: the step's own override, else a built-in role's fixed text, else a
-    custom role's registry-resolved ``hopInstruction``."""
+    """The role's own text: the step's own override, else a built-in role's shipped hop prompt,
+    else a custom role's registry-resolved ``hopInstruction``."""
     if step_instructions:
         return step_instructions
     if role == "implementer":
-        return (
-            "You are the Implementer. Address the reviewer's REQUEST-CHANGES "
-            "above, then implement the change in the workspace."
-            if rework_hop is not None
-            else "You are the Implementer. Implement the change in the workspace."
-        )
-    if role == "reviewer":
-        return (
-            "You are the Reviewer. Review the diff (read-only). The LAST line of your "
-            "FINAL message must be exactly `APPROVE` or `REQUEST-CHANGES`, with nothing "
-            "else on that line. Reasons go above it."
-        )
-    if role == "tester":
-        return (
-            "You are the Tester. Validate behaviour only. The LAST line of your FINAL "
-            "message must be exactly `PASS` or `FAIL`, with nothing else on that line. "
-            "Evidence goes above it."
-        )
+        return _prompts.shipped_prompt(
+            "hop", "implementer" if rework_hop is None else "implementer-rework"
+        ).text
+    if role in ("reviewer", "tester"):
+        return _prompts.shipped_prompt("hop", role).text
     # A custom role: its own archetype's `hopInstruction`, or one generated
     # from its `gateContract` (e.g. a verdict role's marker convention) --
     # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
