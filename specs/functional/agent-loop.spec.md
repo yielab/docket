@@ -643,7 +643,8 @@ This specification does NOT cover:
     `dispatch_tool` for a pod, **MUST** be written whole as plain text to
     `<pod cache>/artifacts/<sha256 of the text>.txt` (the pod cache is `Home.pod_cache_dir`), and
     the cut result **MUST** end with the line
-    `[full output: <path> — read it with read(path, offset, limit)]`. Equal text is stored once. A
+    `[full output: <path> — read it with read(path, offset, limit)]`, a line that counts against the cap
+    (the cut keeps the cap minus its length, but at least half of the cap). Equal text is stored once. A
     result that is not cut writes nothing. Where the artifact cannot be written (no pod, or a
     filesystem error) the result is cut as before and carries no such line.
 92. `read` and `grep` **MUST** accept the path of an artifact of the calling pod, as well as paths

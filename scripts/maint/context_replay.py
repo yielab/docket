@@ -105,7 +105,7 @@ def condense_policy(keep: int) -> Policy:
 
 
 def p52_2_policy(messages: Messages) -> Messages:
-    """Phase 52: ``phase44`` plus normalized ``bash`` output kept head and tail at the cap, and
+    """``phase44`` plus normalized ``bash`` output kept head and tail at the cap, and
     the monotone small-result rule of ``condense_history``. The artifact line is not counted."""
     out = []
     for message in tool_output_policy(messages):
