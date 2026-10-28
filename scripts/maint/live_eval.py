@@ -2,7 +2,7 @@
 """Repeat a live scenario of ``scripts/smoke_workflow.py`` N times and compare the runs by skeleton.
 
 Each run is one smoke subprocess with ``--workdir`` inside ``--out``; its trace is read from the
-JSONL files docket wrote under ``<world>/.docket/traces/``, and
+JSONL files docket wrote under ``Home(<world>/.docket).traces_dir``, and
 ``tests/support/e2e_oracles.py::skeleton_of`` gives the skeleton. Tokens are the endpoint's measured
 counts from ``hop_finished``; there is no cost figure. A turn that hit a bound is read from the
 hop's error text. Writes ``run-NN.json``, ``run-NN.log``, ``summary.json``, ``summary.md`` and
@@ -38,6 +38,8 @@ sys.path.insert(0, str(REPO / "scripts"))
 import live_credentials  # noqa: E402
 import smoke_workflow  # noqa: E402
 from tests.support.e2e_oracles import skeleton_of  # noqa: E402
+
+from docket.kernel.home import Home  # noqa: E402
 
 Skeleton = tuple[tuple[str, ...], ...]
 
@@ -319,7 +321,7 @@ def run_once(args: argparse.Namespace, index: int, key: str | None = None) -> di
         live_credentials.scrub_tree(run_dir, key)
         live_credentials.scrub_file(log_path, key)
     output = log_path.read_text(encoding="utf-8", errors="replace")
-    events = load_events(world / ".docket" / "traces") if world.is_dir() else []
+    events = load_events(Home(world / ".docket").traces_dir) if world.is_dir() else []
     record = evaluate_run(index, code, output, events)
     record["seconds"] = round(time.monotonic() - started, 1)
     if not args.keep_worlds:

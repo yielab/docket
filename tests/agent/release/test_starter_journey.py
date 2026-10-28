@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from docket.kernel.home import Home
+
 LANE = "release"
 REASON = "Prevents the extractable ten-minute starter from breaking once installed from a built artifact rather than run from the source checkout."
 RETIRE_WHEN = "the starter is retired as a public onboarding artifact."
@@ -321,7 +323,7 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
     endpoint_match = re.search(r"^STARTER LOOPBACK http://127\.0\.0\.1:(\d+)/v1$", output, re.M)
     assert endpoint_match is not None, output
     assert int(endpoint_match.group(1)) != 8081
-    for locator in (target, run_home / "audit.log"):
+    for locator in (target, Home(run_home).audit_log):
         assert str(locator) in output
 
     after = _workspace_bytes(workspace)
@@ -329,7 +331,7 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
     assert {name for name in after if after[name] != before[name]} == {"starter-output.txt"}
     assert target.read_bytes() == APPROVED_BYTES
 
-    task_lists = list((run_home / "workspaces" / "projects").glob("*/TASK_LIST.json"))
+    task_lists = list(Home(run_home).projects_dir.glob("*/TASK_LIST.json"))
     assert len(task_lists) == 1, task_lists
     tasks_payload = _load_object(task_lists[0])
     tasks = tasks_payload.get("tasks", [])
@@ -379,7 +381,7 @@ def test_artifact_installed_starter_journey(tmp_path: Path) -> None:
     assert set(artifact) == HANDOFF_FIELDS
     assert artifact["summary"] == TERMINAL_SUMMARY
     assert final_hop.get("output") == TERMINAL_SUMMARY
-    for locator in (task_lists[0], run_home / "traces" / PROJECT):
+    for locator in (task_lists[0], Home(run_home).traces_dir / PROJECT):
         assert str(locator) in output
 
     records: list[dict[str, Any]] = []
