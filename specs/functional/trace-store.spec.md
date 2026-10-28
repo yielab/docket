@@ -148,7 +148,9 @@ This specification does NOT cover:
     necessarily the `session_end`) is older than the retention window (`TRACE_RETENTION_DAYS`,
     30 days by default, unless the caller passes `retention_s`); a trace with no `session_end`, or with no parseable `ts`, **MUST** be
     kept regardless of age. It runs on every periodic sweep of `docket start`, and on demand,
-    scoped to one pod, through `docket task prune --traces` (`--days` sets the window).
+    scoped to one pod, through `docket task prune --traces` (`--days` sets the window). When it
+    deletes a trace it also deletes the stored tool results (artifacts) that trace names, only
+    files directly inside a pod's `cache/artifacts` directory, and counts their bytes as reclaimed.
 17. `expire_old_traces(dry_run=True)` **MUST** report exactly what a real run would delete
     (`TraceExpiryReport.expired`) without deleting anything.
 
