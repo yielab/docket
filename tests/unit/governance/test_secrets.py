@@ -24,9 +24,11 @@ def test_the_store_follows_the_current_home(tmp_path: Path) -> None:
         assert _secrets.load_secrets() == {}
         assert _secrets.load_secrets_meta() == {}
         _secrets.save_secrets({"B_KEY": "two"})
-    assert (first / "secrets.json").exists() and (first / "secrets.meta.json").exists()
-    assert (second / "secrets.json").exists() and not (second / "secrets.meta.json").exists()
-    with use_home(dataclasses.replace(current_home(), root=first)):
+    one = dataclasses.replace(current_home(), root=first)
+    two = dataclasses.replace(current_home(), root=second)
+    assert one.secrets_file.exists() and one.secrets_meta_file.exists()
+    assert two.secrets_file.exists() and not two.secrets_meta_file.exists()
+    with use_home(one):
         assert _secrets.secret_value("A_KEY") == "one"
 
 

@@ -40,7 +40,7 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 class TestAudit:
     def test_append_creates_log_0600(self, oc_dir: Path) -> None:
         audit_core.audit_log("keys.add", "ANTHROPIC_API_KEY")
-        logf = oc_dir / "audit.log"
+        logf = Home(oc_dir).audit_log
         assert logf.is_file()
         assert (logf.stat().st_mode & 0o777) == 0o600
         entries = audit_core.read_audit()
@@ -65,7 +65,7 @@ class TestAudit:
         silently switched off by an unauthenticated env var."""
         monkeypatch.setenv("DOCKET_NO_AUDIT", "1")
         audit_core.audit_log("keys.add", "X")
-        assert (oc_dir / "audit.log").exists()
+        assert (Home(oc_dir).audit_log).exists()
         entries = audit_core.read_audit()
         assert len(entries) == 1
         assert entries[0]["action"] == "keys.add"
@@ -76,7 +76,7 @@ class TestAudit:
         parent directory, or the log would silently lose its first entry on a fresh ~/.docket."""
         with use_home(Home(tmp_path / "fresh")):
             audit_core.audit_log("keys.add", "X")  # must not raise
-            logf = tmp_path / "fresh" / "audit.log"
+            logf = Home(tmp_path / "fresh").audit_log
             assert logf.is_file()
             assert audit_core.read_audit()[0]["action"] == "keys.add"
 
@@ -119,7 +119,7 @@ class TestTraceRecord:
             "myshop", "sess1", "programmer", "tool_call", '{"action": "edit"}'
         )
         assert ok == "written"
-        tf = oc_dir / "traces" / "myshop" / "sess1.jsonl"
+        tf = Home(oc_dir).traces_dir / "myshop" / "sess1.jsonl"
         assert tf.is_file()
         assert (tf.stat().st_mode & 0o777) == 0o600
         records = trace_core.read_trace(tf)
@@ -131,18 +131,18 @@ class TestTraceRecord:
     def test_record_invalid_event_rejected(self, oc_dir: Path) -> None:
         ok = trace_core.trace_event("myshop", "s", "r", "not_a_type", "{}")
         assert ok == "rejected"
-        assert not (oc_dir / "traces" / "myshop").exists()
+        assert not (Home(oc_dir).traces_dir / "myshop").exists()
 
     def test_record_non_json_payload_wrapped(self, oc_dir: Path) -> None:
         trace_core.trace_event("p", "s", "r", "error", "boom happened")
-        rec = trace_core.read_trace(oc_dir / "traces" / "p" / "s.jsonl")[0]
+        rec = trace_core.read_trace(Home(oc_dir).traces_dir / "p" / "s.jsonl")[0]
         assert rec["payload"] == {"text": "boom happened"}
 
     def test_record_redacts_secret_shapes(self, oc_dir: Path) -> None:
         trace_core.trace_event(
             "p", "s", "r", "tool_call", "api_key=sk-ant-abcdefghijklmnopqrstuvwxyz0123"
         )
-        rec = trace_core.read_trace(oc_dir / "traces" / "p" / "s.jsonl")[0]
+        rec = trace_core.read_trace(Home(oc_dir).traces_dir / "p" / "s.jsonl")[0]
         assert "[REDACTED]" in rec["payload"]["text"]
         assert "sk-ant-abcdefghijklmnopqrstuvwxyz0123" not in rec["payload"]["text"]
 
@@ -150,7 +150,7 @@ class TestTraceRecord:
         trace_core.trace_event(
             "p", "s", "r", "cost_charged", "{}", cost_usd="0.5", duration_ms="120"
         )
-        rec = trace_core.read_trace(oc_dir / "traces" / "p" / "s.jsonl")[0]
+        rec = trace_core.read_trace(Home(oc_dir).traces_dir / "p" / "s.jsonl")[0]
         assert rec["cost_usd"] == 0.5
         assert rec["duration_ms"] == 120
 
@@ -158,7 +158,7 @@ class TestTraceRecord:
         """A suppressed write is now distinguishable from a real one."""
         monkeypatch.setenv("DOCKET_NO_TRACE", "1")
         assert trace_core.trace_event("p", "s", "r", "tool_call", "{}") == "suppressed"
-        assert not (oc_dir / "traces").exists()
+        assert not (Home(oc_dir).traces_dir).exists()
 
 
 # ── trace: sweep ──────────────────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ class TestTraceRecord:
 class TestTraceSweep:
     def test_sweep_closes_stale_open_trace(self, oc_dir: Path) -> None:
         with use_home(dataclasses.replace(current_home(), session_timeout=1)):
-            pdir = oc_dir / "traces" / "myshop"
+            pdir = Home(oc_dir).traces_dir / "myshop"
             pdir.mkdir(parents=True)
             (pdir / "stale.jsonl").write_text(
                 json.dumps(
@@ -181,7 +181,7 @@ class TestTraceSweep:
 
     def test_sweep_leaves_closed_trace(self, oc_dir: Path) -> None:
         with use_home(dataclasses.replace(current_home(), session_timeout=1)):
-            pdir = oc_dir / "traces" / "myshop"
+            pdir = Home(oc_dir).traces_dir / "myshop"
             pdir.mkdir(parents=True)
             (pdir / "done.jsonl").write_text(
                 json.dumps({"ts": "2000-01-01T00:00:00Z", "event_type": "session_end"}) + "\n"
@@ -191,7 +191,7 @@ class TestTraceSweep:
             assert types == ["session_end"]
 
     def test_sweep_leaves_fresh_trace(self, oc_dir: Path) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = Home(oc_dir).traces_dir / "myshop"
         pdir.mkdir(parents=True)
         recent = _clock.stamp()
         (pdir / "fresh.jsonl").write_text(
