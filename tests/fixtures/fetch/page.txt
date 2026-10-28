@@ -1,0 +1,13 @@
+Widget Guide
+
+- Home (/)
+- Docs (/docs)
+
+# Widget Guide
+
+Install the widget with the install guide (https://example.test/install), then read the https://example.test/ref page.
+
+## Usage
+
+widget --run
+  --verbose
