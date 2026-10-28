@@ -35,6 +35,7 @@ from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _np
 from docket.teams import pod as _pod
+from docket.teams.apply import lock as _apply_lock
 from docket.teams.apply import review as _review
 from docket.teams.fleet import project_ids
 from docket.teams.models import AgentMeta
@@ -182,6 +183,7 @@ def _project_summary(project: str) -> dict[str, Any]:
             else {}
         ),
         **({"budgetUnpriced": u} if (u := _unpriced_models(project)) else {}),
+        **({"needsUpdate": n} if (n := _apply_lock.needs_update(project)) else {}),
     }
 
 
@@ -322,6 +324,7 @@ def _render_current(summary: dict[str, Any]) -> None:
         ),
         *_command_rows(summary.get("commands")),
         *_profile_rows(summary.get("profile")),
+        *([("Needs update", summary["needsUpdate"])] if summary.get("needsUpdate") else []),
         ("Approved, ready", str(tasks["approvedReady"])),
         ("Tokens", tokens),
         *(

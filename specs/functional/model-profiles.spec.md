@@ -67,7 +67,7 @@ directly — see "Provider catalog" below.
    if the role is a registered archetype (a role a recipe applied into a pod's overlay) whose `modelClass` this table has no named row for, it **MUST** resolve via that
    `modelClass` against the live rank anchors instead (`economy` for `cheap`, `standard` for
    `strong`) — see role-archetypes.spec.md. The archetype **MUST** be looked up in the registry of
-   the pod the member belongs to (the pod's `config/roles.json` layered over the built-ins and the
+   the pod the member belongs to (the pod's applied role files layered over the built-ins and the
    starter library), never the built-in registry alone, so a role a recipe applied into one pod
    resolves through its own `modelClass`
    (`resolve_role_model(role, role_models, project=<pod>)`). Only a role that is neither a named
@@ -348,7 +348,7 @@ directly — see "Provider catalog" below.
    **MUST** show the same provider name, scope and credential source under the model line.
    `docket setup` **MUST** report each global provider document in `docket-providers.json` that
    fails the validation `ProviderSpec` applies — naming the file, the provider's name and the
-   failing field — the same way a malformed pod `roles.json` overlay entry is named, and carry
+   failing field — the same way a malformed pod role overlay entry is named, and carry
    the same list under `--json` (`providerCatalog`).
 8. **Prompt-cache markers.** For a model whose id, after any `<vendor>/` prefix, starts with
    `claude` (the `anthropic` provider and `anthropic/...` through a gateway),
