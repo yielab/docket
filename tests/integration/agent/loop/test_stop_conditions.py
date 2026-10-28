@@ -369,6 +369,23 @@ class TestStopConditions:
         assert result.stop_reason == "timeout"
         assert result.failure_kind == "timeout"
 
+    def test_the_turn_sets_the_tools_deadline_from_the_clock_it_checks(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        config = _loop.LoopConfig(max_iterations=1, wall_clock_timeout_s=300.0)
+
+        _loop.run_agent_turn(
+            InfiniteToolBackend(),
+            registry,
+            ctx,
+            "agent:demo:default",
+            "go",
+            config=config,
+            clock=lambda: 1000.0,
+        )
+
+        assert ctx.deadline == 1300.0
+
     def test_token_budget_stops_a_turn_that_keeps_spending(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:

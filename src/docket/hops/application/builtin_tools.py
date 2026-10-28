@@ -14,6 +14,7 @@ from docket.agent.tools.registry import (
 )
 from docket.agent.tools.screening import screen_tool_result
 from docket.governance.security import SAFE_BINS
+from docket.kernel import clock as _clock
 from docket.kernel.gate import CONSULT_TOOL, DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
@@ -266,10 +267,14 @@ def _register_all(registry: ToolRegistry, *tools: Tool) -> None:
 
 
 def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
-    return toolbox.run_bash(
+    requested = _int_arg(args, "timeout", ctx.timeout) or ctx.timeout
+    run_for = requested
+    if ctx.deadline is not None:
+        run_for = min(requested, max(1, int(ctx.deadline - _clock.monotonic())))
+    outcome = toolbox.run_bash(
         ctx.roots,
         str_arg(args, "command"),
-        _int_arg(args, "timeout", ctx.timeout) or ctx.timeout,
+        run_for,
         ctx.env,
         ctx.sandbox,
         ctx.cancellation_check,
@@ -277,6 +282,16 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         ctx.network,
         ctx.cache_dir,
         ctx.read_only,
+    )
+    if run_for < requested and outcome.error.startswith("command timed out after"):
+        return dataclasses.replace(outcome, error=f"{outcome.error} {_clamp_marker(run_for)}")
+    return outcome
+
+
+def _clamp_marker(seconds: int) -> str:
+    return (
+        f"[killed at the turn's remaining time ({seconds} s); run it as a verify gate or "
+        "raise turnTimeoutS]"
     )
 
 
@@ -555,7 +570,13 @@ def builtin_registry() -> ToolRegistry:
                 "type": "object",
                 "properties": {
                     "command": {"type": "string", "description": "Shell command to run."},
-                    "timeout": {"type": "integer", "description": "Seconds before it is killed."},
+                    "timeout": {
+                        "type": "integer",
+                        "description": (
+                            "Seconds before it is killed; the turn's remaining time is the "
+                            "ceiling, whatever you ask."
+                        ),
+                    },
                 },
                 "required": ["command"],
             },
