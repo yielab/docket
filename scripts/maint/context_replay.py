@@ -2,6 +2,7 @@
 """Replay bench: measure recorded agent steps under the current and the proposed token rule.
 
     context_replay.py DIR [--budget N] [--reserve N] [--policy NAME ...] [--json]
+    context_replay.py DIR --repeats [--json]
     context_replay.py DIR --anonymize OUT
 
 DIR holds ``<step>.session.json`` (the durable messages) beside ``<step>.llm_calls.jsonl`` (the
@@ -451,6 +452,155 @@ def anonymize(directory: Path, out_dir: Path) -> list[str]:
     return sorted(names.values())
 
 
+REPEAT_TOOLS = ("read", "grep", "glob")
+
+
+@dataclass
+class _Call:
+    tool: str
+    path: str  # worktree-relative when the path runs through the task's own directory
+    rest: str  # the other arguments, canonical JSON
+    size: int  # bytes of the recorded result
+
+
+def _relative_path(path: str, task: str) -> str:
+    """*path* below the task's worktree (the directory named by the task id), else unchanged."""
+    parts = path.split("/")
+    return "/".join(parts[parts.index(task) + 1 :]) if task and task in parts else path
+
+
+def _same_path(a: str, b: str) -> bool:
+    """One file: equal paths, or a worktree-relative path that ends another, absolute one."""
+    if a == b:
+        return True
+    return any(
+        rel and not rel.startswith("/") and other.startswith("/") and other.endswith("/" + rel)
+        for rel, other in ((a, b), (b, a))
+    )
+
+
+def _tool_calls(step: Step) -> list[_Call]:
+    task = str(step.calls[0].get("task_id", "")) if step.calls else ""
+    sizes = {
+        m.get("toolCallId"): len(str(m.get("content", "")).encode())
+        for m in step.messages
+        if m.get("role") == "tool"
+    }
+    calls = []
+    for message in step.messages:
+        for call in message.get("toolCalls") or []:
+            if call.get("name") not in REPEAT_TOOLS:
+                continue
+            try:
+                args = json.loads(call.get("arguments") or "{}")
+            except ValueError:
+                continue
+            if not isinstance(args, dict):
+                continue
+            path = _relative_path(str(args.pop("path", "")), task)
+            rest = json.dumps(args, sort_keys=True, separators=(",", ":"))
+            calls.append(_Call(call["name"], path, rest, sizes.get(call.get("id"), 0)))
+    return calls
+
+
+def _step_repeats(step: Step) -> dict[str, Any]:
+    groups: list[dict[str, Any]] = []
+    calls = _tool_calls(step)
+    for call in calls:
+        for group in groups:
+            first: _Call = group["first"]
+            if (call.tool, call.rest) == (first.tool, first.rest) and _same_path(
+                call.path, first.path
+            ):
+                group["count"] += 1
+                group["bytes"] += call.size
+                break
+        else:
+            groups.append({"first": call, "count": 1, "bytes": 0})
+    repeated = [g for g in groups if g["count"] > 1]
+    total = sum(g["bytes"] for g in repeated)
+    return {
+        "step": step.name,
+        "role": step.role,
+        "calls": len(calls),
+        "repeats": [
+            {
+                "tool": g["first"].tool,
+                "arguments": json.dumps(
+                    {"path": g["first"].path, **json.loads(g["first"].rest)}, sort_keys=True
+                ),
+                "count": g["count"],
+                "bytes": g["bytes"],
+            }
+            for g in repeated
+        ],
+        "repeatedCalls": sum(g["count"] - 1 for g in repeated),
+        "rereadFiles": len({g["first"].path for g in repeated if g["first"].tool == "read"}),
+        "bytes": total,
+        "estTokens": total // current_home().context_bytes_per_token,
+    }
+
+
+def _reads(steps: list[Step], role: str) -> list[_Call]:
+    return [c for s in steps if s.role == role for c in _tool_calls(s) if c.tool == "read"]
+
+
+def _task_overlaps(steps: list[Step]) -> list[dict[str, Any]]:
+    by_task: dict[str, list[Step]] = {}
+    for step in steps:
+        by_task.setdefault(str(step.calls[0].get("task_id", "")) if step.calls else "", []).append(
+            step
+        )
+    tasks = []
+    for task, members in sorted(by_task.items()):
+        lead = _reads(members, "lead")
+        mine = _reads(members, "implementer")
+        shared = [c for c in mine if any(_same_path(c.path, r.path) for r in lead)]
+        tasks.append(
+            {
+                "task": task,
+                "leadReads": len(lead),
+                "implementerReads": len(mine),
+                "overlap": sorted({c.path for c in shared}),
+                "bytes": sum(c.size for c in shared),
+            }
+        )
+    return tasks
+
+
+def repeats_report(steps: list[Step]) -> dict[str, Any]:
+    """Per step the read/grep/glob calls whose canonical arguments repeat, and per task the files
+    the Implementer read that the Lead had read. Bytes are the recorded results of the repeats;
+    tokens divide them by ``Home.context_bytes_per_token`` (an estimate)."""
+    return {
+        "bytesPerToken": current_home().context_bytes_per_token,
+        "steps": [_step_repeats(s) for s in steps],
+        "tasks": _task_overlaps(steps),
+    }
+
+
+def render_repeats(report: dict[str, Any]) -> str:
+    lines = [
+        f"repeated read/grep/glob calls per step (estimated tokens at "
+        f"{report['bytesPerToken']} bytes per token)",
+        f"{'step':<15}{'role':<13}{'calls':>6}{'repeated':>9}{'re-read files':>14}"
+        f"{'bytes':>9}{'est tokens':>11}",
+    ]
+    for s in report["steps"]:
+        lines.append(
+            f"{s['step']:<15}{s['role']:<13}{s['calls']:>6}{s['repeatedCalls']:>9}"
+            f"{s['rereadFiles']:>14}{s['bytes']:>9,}{s['estTokens']:>11,}"
+        )
+        lines += [f"  {r['count']}x {r['tool']} {r['arguments'][:100]}" for r in s["repeats"]]
+    lines += ["", "files the implementer read that the lead had read, per task"]
+    for task in report["tasks"]:
+        lines.append(
+            f"  {task['task'] or '(no task id)'}: lead read {task['leadReads']}, implementer read "
+            f"{task['implementerReads']}, shared {len(task['overlap'])} ({task['bytes']:,} bytes)"
+        )
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Replay recorded agent steps under a token rule.")
     ap.add_argument("directory", type=Path)
@@ -458,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reserve", type=int, default=DEFAULT_RESERVE)
     ap.add_argument("--policy", action="append", default=[], metavar="NAME")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--repeats", action="store_true")
     ap.add_argument("--anonymize", type=Path, metavar="OUT")
     args = ap.parse_args(argv)
     if args.anonymize:
@@ -467,6 +618,10 @@ def main(argv: list[str] | None = None) -> int:
     if not steps:
         print(f"no *.session.json in {args.directory}", file=sys.stderr)
         return 2
+    if args.repeats:
+        report = repeats_report(steps)
+        print(json.dumps(report, indent=1) if args.json else render_repeats(report))
+        return 0
     rows = measure(steps, args.budget, args.reserve)
     if args.json:
         print(json.dumps([r.__dict__ for r in rows], indent=1))

@@ -1,10 +1,10 @@
 # Trace Store Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -264,6 +264,21 @@ This store owns only the shape and firing rule of these events, not a consumer's
     `ts` to its `session_end` `ts`, in milliseconds, when both parse. `docket status` reads it
     with `METRICS_WINDOW` (50 by default).
 
+### Derived figures
+
+39. The cache-hit ratio of an `llm_call` record **MUST** be derived on read as
+    `payload.cachedTokens / payload.inputTokens` and **MUST NOT** be stored on the record: no
+    `cacheHit` key appears in any payload, so a trace written before this requirement reads the
+    same as one written after. `cache_hit(payload)` returns `None` when `inputTokens` is missing,
+    not an integer or not positive. A `cachedTokens` of 0 means "not reported" as much as "no
+    hit" (`agent/ports.py::TokenUsage`), so a backend that reports no cache reads 0.0.
+40. `fold_cache_hits(records)` **MUST** fold the `llm_call` records it is given into the summed
+    `inputTokens` and `cachedTokens` per `task_id`, per `agent_role` and over all of them
+    (`total`); its ratio is the sums'
+    quotient (never a mean of ratios). A record with no `task_id` counts toward its role only;
+    one with no role counts toward its task only; a record that is not an `llm_call`, or whose
+    payload is not an object, is skipped. It **MUST** only read.
+
 ### Lines that are not records
 
 38. `read_trace`, `export_lines`, `sweep_all`, `expire_old_traces` and `terminal_outcomes`
@@ -302,6 +317,15 @@ def find_trace(session_id: str) -> Path | None: ...
 def project_trace_dir(project: str) -> Path: ...
 def export_lines(project: str, since: str = "") -> list[str]: ...
 def terminal_outcomes(project: str, *, window: int) -> TerminalOutcomes: ...
+
+# observability/figures.py
+def cache_hit(payload: Mapping[str, Any]) -> float | None: ...
+def fold_cache_hits(records: Iterable[Mapping[str, Any]]) -> CacheFigures: ...
+def tokens_per_accepted_task(counted: Sequence[int]) -> float | None: ...
+
+class CacheTotals:                  # input_tokens: int; cached_tokens: int; ratio: float | None
+class CacheFigures:                 # total: CacheTotals; by_task, by_role: dict[str, CacheTotals]
+def recorded_cache_figures() -> CacheFigures: ...   # the fold over every project's trace files
 
 class ExpiredTrace:                 # one file the retention sweep deleted (or would)
     project: str; session_id: str; path: Path; last_event_ts: str; age_days: float; bytes: int
@@ -396,6 +420,8 @@ store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
   `subscribe`, `add_subscriber`, `redact`, `sweep_all`, `expire_old_traces`,
   `ExpiredTrace`, `TraceExpiryReport`, `read_trace`, `find_trace`, `project_trace_dir`,
   `export_lines`, `terminal_outcomes`, `TerminalOutcomes`
+- `src/docket/observability/figures.py`: `cache_hit`, `fold_cache_hits`, `CacheFigures`,
+  `CacheTotals`, `recorded_cache_figures`, `tokens_per_accepted_task` (requirements 39-40)
 - `src/docket/kernel/home.py`: the `Home` members `traces_dir`, `trace_retention_days`,
   `trace_retention_s`, `session_timeout`, `context_bytes_per_token`, `metrics_window`
 - `src/docket/platform/process.py`: `no_trace` (`DOCKET_NO_TRACE`, read live)
