@@ -60,6 +60,8 @@ class ToolContext:
     trace_session_key: str = ""
     roots: tuple[Path, ...] = ()
     timeout: int = 120
+    # The turn's end in monotonic seconds, set once by `run_agent_turn`; None applies no clamp.
+    deadline: float | None = None
     env: dict[str, str] = field(default_factory=dict)
     role: str = ""
     project: str = ""

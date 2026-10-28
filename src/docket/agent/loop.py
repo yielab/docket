@@ -276,6 +276,7 @@ class _TurnState(TurnState):
         """Resolve every per-turn constant, in the order the loop always has."""
         context_window, output_reserve, request_max_tokens = _resolve_context_bounds(backend, cfg)
         started = clock()
+        ctx.deadline = started + cfg.wall_clock_timeout_s
         project, trace_key = _resolve_trace_coordinates(
             ctx, session_key, trace_project, trace_session_key
         )

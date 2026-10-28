@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.5.0
+**Version**: 3.6.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -95,7 +95,8 @@ This specification does NOT cover:
    total over the cap is refused in full before any call in it runs.
 9. The loop **MUST** stop with `stop_reason="timeout"` once the configured wall-clock budget for
    the whole turn has elapsed, checked between iterations. Each request's own timeout is the
-   smaller of `request_timeout_s` and the wall-clock budget left.
+   smaller of `request_timeout_s` and the wall-clock budget left. The tool clamp of requirement
+   98 keeps a tool from running past that budget.
 10. The loop **MUST** stop with `stop_reason="token_budget"` once the turn's cumulative *counted*
     token usage exceeds the configured budget. Counted tokens are `TokenUsage.counted_tokens`:
     `input_tokens - cached_tokens + output_tokens` (a cache read is never counted; a cache write is
@@ -726,6 +727,16 @@ This specification does NOT cover:
     successful result text of the last such call. A call that failed or was refused does not end
     the turn. Every call still passes `dispatch_tool`; the approval and denial stops of the same
     round take precedence.
+
+### The turn's clock, processes and budgets over its tools (ADR 0034, ADR 0035)
+
+98. `run_agent_turn` **MUST** set `ToolContext.deadline` once, at the turn's start, to its clock's
+    reading plus `wall_clock_timeout_s` (monotonic seconds). `bash` **MUST** run for the smaller of
+    the `timeout` it asked for (the context's `timeout` when it asked for none) and the time
+    left, `max(1, deadline - now)`; a context with no deadline applies no clamp. A `bash` result
+    the clamp ended **MUST** end with `[killed at the turn's remaining time (N s); run it as a
+    verify gate or raise turnTimeoutS]` (N the seconds it ran for), and the `timeout` argument's
+    description **MUST** say the turn's remaining time is the ceiling.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
