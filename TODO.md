@@ -16,13 +16,12 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **Active: Wave 1 of Phases 52 and 53 (opened 2026-10-28).** Seven cards, one worker each, in
-> `.claude/worktrees/<card>` from the commit that carries this banner; the table is in Phase 52's
-> run block. Before this, Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
-> ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. A new phase starts
-> from a measured trigger or a maintainer request. The integration branch is `develop`
-> (`plan/phase-46-structure` merged as PR #5, `52c22f89`).
-> **One schedule: Phases 52 and 53.** Phase 52 (D-73,
+> **Active: Phases 52 and 53, one schedule. Wave 1 closed 2026-10-28** (seven cards merged into
+> `develop`, unpushed). **Wave 2 (P52-7 ∥ P53-3) is unblocked and waits for a go.** Phase 51
+> closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
+> ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. The integration
+> branch is `develop`.
+> Phase 52 (D-73,
 > [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md); D-74,
 > [ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)) keeps nine cards after the
 > 2026-10-28 consolidation; Phase 53 (D-75,
@@ -104,9 +103,28 @@ wave is free.
 | close | P53-9 | docs | every card |
 | — | P52-12 | blocked on a recorded run; no wave until its trigger fires | |
 
+**Wave 1 closed 2026-10-28.** Merge order P52-6, P52-11, P53-1, P52-3, P52-1, P52-2, P53-2. What the
+close leaves open:
+
+- **P52-2's bench oracle** ("no step worse") fails on 3 of 4 fixture steps, by +0.3 % to +3.0 %
+  estimated bytes: goal 6 keeps small results whole on purpose. Prefix stability improves
+  (implementer-b 5/7 against 4/7). The maintainer decides: keep the rule and relax the oracle, or drop
+  goal 6.
+- **P52-1:** the committed implementer fixture has a repeated read only after path normalization (the
+  same file under the main-checkout path and under the worktree path), a heuristic over one sample. The
+  private replay figure for P53-4's trigger is not recorded yet. The metrics are
+  `docket_cache_hit_ratio` and `docket_tokens_per_accepted_task` (Prometheus names, not `cacheHit`).
+- **ADR 0034 decision 4's "read-only researchers" is not true:** the built-in researcher can write and no
+  step field narrows tools. P52-6's recipes say a cheap model and nothing about read-only. Its card
+  names were corrected: `docket pod update`, step `model:`, `verify: true` (`verifyCmd` is a pod
+  setting), recipes in `src/docket/templates/recipes/` with a `pod.yaml` each.
+- **P53-1:** `prompts.role_prompt` and `LoadedPrompt.scope`/`sha256` have no consumer until P53-3 and P53-5.
+- **Operator step, needs a go:** back up `~/.docket`, reinstall, run `docket init` once (it moves the home
+  to `config/` and `state/`), restart the service on :7399. The live eval once per wave has not run.
+
 ### P52-1 — the numbers: cache hits, tokens per accepted task, re-reads
 
-**Status:** IN-PROGRESS (@sonnet-p52-1) · **Size:** M · **Model:** Sonnet · **Kind:** observability + script
+**Status:** DONE (2026-10-28, merge 2ae00045) · **Size:** M · **Model:** Sonnet · **Kind:** observability + script
 
 - **Trigger:** maintainer request (ADR 0033 §Decision 5). No cache-hit ratio exists; `task show`
   prints usage per model but not per accepted task; the Phase 44 follow-up "measure which calls
@@ -140,7 +158,7 @@ wave is free.
 
 ### P52-2 — tool results the model can use, kept whole past the cap (absorbs P52-8)
 
-**Status:** IN-PROGRESS (@sonnet-p52-2) · **Size:** XL (two cards' scope, one pass over the files) · **Model:** Sonnet ·
+**Status:** DONE (2026-10-28, merge 7c7843c9) · **Size:** XL (two cards' scope, one pass over the files) · **Model:** Sonnet ·
 **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0033 findings, verified 2026-10-25 and re-located 2026-10-28:
@@ -204,7 +222,7 @@ wave is free.
 
 ### P52-3 — finalization is a trailing message: the turn's last request keeps the cached prefix
 
-**Status:** IN-PROGRESS (@sonnet-p52-3) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (2026-10-28, merge 88a18708) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** `agent/loop_request.py:139-153` appends the finalization instruction to the system
   message, so the turn's last (longest) request misses the cached prefix (ADR 0033 decision 2).
@@ -260,7 +278,7 @@ behaviour + spec
 
 ### P52-6 — recipes for the pod as a viewer/editor team
 
-**Status:** IN-PROGRESS (@haiku-p52-6) · **Size:** S · **Model:** Haiku · **Kind:** data + tests
+**Status:** DONE (2026-10-28, merge e6e6abef) · **Size:** S · **Model:** Haiku · **Kind:** data + tests
 
 - **Trigger:** ADR 0033 §Decision 4: the pod already separates exploration from editing; no recipe
   shows the three shapes the survey's level matrix asks for. `researcher` is `strong` by default
@@ -296,7 +314,7 @@ behaviour + spec
 
 ### P52-7 — `ModelProfile`: the contract varies with the model (absorbs P52-3's sampling)
 
-**Status:** TODO (after P52-2 and P53-2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** ADR 0033 §Decision 1. Today's single contract: an Implementer's schemas are about
@@ -417,7 +435,7 @@ spec
 
 ### P52-11 — `fetch` returns text the model can read
 
-**Status:** IN-PROGRESS (@sonnet-p52-11) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (2026-10-28, merge 9b8b5703) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** `fetch_url` returns the raw body (`platform/fetch.py`, the `text_outcome` call) and
   the cap keeps the head (`kernel/text.py:35`), so at `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500` the model
@@ -535,7 +553,7 @@ spec
 
 ### P53-1 — the `prompt` kind, one loader, and the built-in prompts as files
 
-**Status:** IN-PROGRESS (@sonnet-p53-1) · **Size:** L · **Model:** Sonnet (Haiku for the prompt files) · **Kind:**
+**Status:** DONE (2026-10-28, merge 3100bd5a) · **Size:** L · **Model:** Sonnet (Haiku for the prompt files) · **Kind:**
 behaviour + spec + data
 
 - **Trigger:** the maintainer's request of 2026-10-28 (ADR 0035 decision 1). Found:
@@ -598,7 +616,7 @@ behaviour + spec + data
 
 ### P53-2 — authored configuration beside state, and one scope order in `Home`
 
-**Status:** IN-PROGRESS (@sonnet-p53-2) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + migration
+**Status:** DONE (2026-10-28, merge 01e3f748, follow-up 571f4864) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + migration
 
 - **Trigger:** the request (ADR 0035 decision 2). Found:
   - `kernel/home.py` mixes authored configuration with state at one level, and a pod's authored
@@ -649,7 +667,7 @@ behaviour + spec + data
 
 ### P53-3 — one resolution order for the team's kinds, and `applied.lock`
 
-**Status:** TODO (after P53-1 and P53-2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request (ADR 0035 decisions 2 and 3). Found:
@@ -1147,6 +1165,13 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 
 **Configuration.**
 
+- **A tool deny per team member** (a read-only researcher): `tool_profile` is prose, the only denial is
+  the pod-wide `deniedTools`. Trigger: a recipe or pod that needs one member without write tools.
+- **Delete the old-layout reader** (`kernel/layout.py::is_legacy` and the legacy branches of `Home`).
+  Trigger: the next minor release. First move what still seeds or reads an old-layout home:
+  `tests/support/home.py` and `pods.py`, `benchmarks/harness.py`, `benchmarks/scenarios/run.py`, the
+  adoption benchmark tests, and the old paths named in `scripts/gen_cli_docs.py`,
+  `scripts/render-doc-assets.py` and `docs/commands.md`.
 - **Parallel tasks in a pod:** ADR 0027 point 10 holds the trigger; a card would add a
   `maxParallelTasks` pod setting and a bounded pool in dispatch.
 - **A team's skills:** `hops/workspace/skills.py` reads only `<codebase>/.docket/skills`; a repository
