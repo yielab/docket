@@ -17,8 +17,7 @@
 > finishing a card well matters more than running two at once.
 >
 > **Active: Phases 52 and 53, one schedule. Wave 1 closed 2026-10-28** (seven cards merged into
-> `develop`, unpushed). **Wave 2 (P52-7 ∥ P53-3) opened 2026-10-28:** one Sonnet worker each, in
-> `.claude/worktrees/<card>` from the commit that carries this banner. Phase 51
+> `develop`, unpushed). **Wave 2 (P52-7 ∥ P53-3) closed 2026-10-28.** Wave 3 is next. Phase 51
 > closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
 > ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. The integration
 > branch is `develop`.
@@ -103,6 +102,34 @@ wave is free.
 | 5 | P53-8 | `task_create.py`, `task.py`, `queue.py`, `compose.py` (task layer) | P53-4, P53-5 |
 | close | P53-9 | docs | every card |
 | — | P52-12 | blocked on a recorded run; no wave until its trigger fires | |
+
+**Wave 2 closed 2026-10-28.** Merge order P52-7, P53-3 (`6aafabb3`, `a2a8e7b1`), then two integrator
+fixes (`8d6b0141`, `edff6bc6`). Gates: suite rc=1 on three tests only, fixed (below), e2e lane rc=0.
+What the close leaves open:
+
+- **A text-only reply from a verdict step costs one more request on a `local` row** (P52-7's reading of
+  "the closing call": one forced `verdict` request after a reply that asked for no tool; `loop.py`
+  `closing_call_due`). The three tests in `test_hop_handoff_diff.py` scripted that reply as text and
+  failed on the extra request; they now script the `verdict` call. The nudge text ("Record your outcome
+  now by calling ...") is a fixed string in `loop_request.py`: a P53 prompt-layer item (P53-7). Live,
+  against the local Qwen (3 runs, `DOCKET_TOOL_MAX_OUTPUT_CHARS=2500`): every reviewer and tester closed
+  with a forced `verdict` call, `profile: local` on every `llm_call`. The eval still fails 3 of 3, none
+  of them from this wave: one run's tester `cd`'d into a worktree path the model had mangled, and two
+  were `smoke_workflow.py::_shell_path_candidates` returning "opaque" for `VAR=x cmd` (the same result at
+  `52c22f89`). **Follow-up:** the smoke's shell classifier, a means to judge local runs; and the 0/3
+  pass rate is not a before/after comparison (no matched baseline run).
+- **P52-7 loose ends:** `profile.tool_surface` and `profile.budgets` have no consumer until P53-6 and
+  P52-9; `estimate_input_tokens` ignores `top_p` and `tool_choice` (about 70 bytes a request); no unit
+  test pins "`DOCKET_LLM_BASE_URL` makes any model `hosted`" (e2e covers it; the `setenv` ratchet
+  forbids a new `monkeypatch.setenv`).
+- **P53-3 loose ends:** only the hop layer of prompts has a consumer (identity and task layers and
+  `prompt:<layer>/<name>@N` references wait for P53-4 and P53-7); MCP servers are not in `Home.scopes`
+  (the operator scope is a JSON file), only their read order changed; the repository base-commit view
+  lists directories only, so a repository prompt is `<name>.md`, not a versioned sibling.
+- **Operator step, still needs a go, and now with a consequence:** `roles.json` has no reader, so the
+  live pod `fab-dev` loses its applied roles until `docket pod update <its blueprint>` runs, and
+  `docket status` says so. Order: back up `~/.docket`, reinstall (`./install.sh`), `docket init` once,
+  `docket pod update`, restart the service on :7399.
 
 **Wave 1 closed 2026-10-28.** Merge order P52-6, P52-11, P53-1, P52-3, P52-1, P52-2, P53-2. What the
 close leaves open:
@@ -315,7 +342,7 @@ behaviour + spec
 
 ### P52-7 — `ModelProfile`: the contract varies with the model (absorbs P52-3's sampling)
 
-**Status:** IN-PROGRESS (@sonnet-p52-7) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** DONE (2026-10-28, merge 6aafabb3) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** ADR 0033 §Decision 1. Today's single contract: an Implementer's schemas are about
@@ -363,7 +390,7 @@ spec
 
 ### P52-9 — the turn owns its tools' clock, processes and output budgets (absorbs P52-10)
 
-**Status:** TODO (after P52-2 and P52-7) · **Size:** XL (two cards' scope, one pass over
+**Status:** TODO · **Size:** XL (two cards' scope, one pass over
 `ToolContext`) · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** (a) the 2026-10-24 run on `fab-dev` asked `bash` for `timeout: 600` and `timeout:
@@ -668,7 +695,7 @@ behaviour + spec + data
 
 ### P53-3 — one resolution order for the team's kinds, and `applied.lock`
 
-**Status:** IN-PROGRESS (@sonnet-p53-3) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** DONE (2026-10-28, merge a2a8e7b1) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request (ADR 0035 decisions 2 and 3). Found:
@@ -791,7 +818,7 @@ Sonnet · **Kind:** behaviour + spec
 
 ### P53-5 — the hop's record: the handoff is a tool call, and a prompt manifest per hop
 
-**Status:** TODO (after P52-7) · **Size:** XL (two decisions that change what a hop records, one
+**Status:** TODO · **Size:** XL (two decisions that change what a hop records, one
 pass over `record.py` and `task.py`) · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** the request (ADR 0035 decisions 5 and 6). Found:
@@ -853,7 +880,7 @@ pass over `record.py` and `task.py`) · **Model:** Sonnet · **Kind:** behaviour
 
 ### P53-6 — tools and calls per hop: one place decides what a hop sees (absorbs P52-7's surface)
 
-**Status:** TODO (after P52-7 and P53-1) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:**
@@ -897,7 +924,7 @@ spec
 
 ### P53-7 — prompt variants by model class, and a floor a model must pass
 
-**Status:** TODO (after P52-7 and P53-3) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
 spec + CLI
 
 - **Trigger:** the request (ADR 0035 decision 7). `model_class` is read only by
