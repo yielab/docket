@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
