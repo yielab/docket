@@ -204,9 +204,9 @@ class TestJsonCoversEveryTextCheck:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._pod_home(tmp_path, monkeypatch):
-            roles = current_home().pod_config_dir("demo") / "roles.json"
-            roles.parent.mkdir(parents=True, exist_ok=True)
-            roles.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
+            broken = current_home().pod_config_dir("demo") / "roles" / "broken-role.yaml"
+            broken.parent.mkdir(parents=True, exist_ok=True)
+            broken.write_text("kind: role\nname: broken-role\nmodel: huge\n")
             data = self._json(capsys)
             assert data["healthy"] is False
             overlays = data["checks"]["podConfigOverlays"]

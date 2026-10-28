@@ -31,13 +31,15 @@ def load_pod_mcp_servers(project: str) -> list[McpServerConfig]:
 
 def load_mcp_servers(project: str = "") -> list[McpServerConfig]:
     """The configured MCP servers, in on-disk order; empty when unconfigured. With *project*,
-    the pod's own pod-scoped servers follow the global ones (a global name wins a collision)."""
+    the pod's own pod-scoped servers come first and win a name collision, then the operator's
+    (the one scope order every kind resolves in, config-format.spec.md)."""
     data = read_json(current_home().mcp_servers_file)
     servers = McpServerRegistry.model_validate(data).servers
     if not project:
         return servers
-    taken = {s.name for s in servers}
-    return [*servers, *(s for s in load_pod_mcp_servers(project) if s.name not in taken)]
+    own = load_pod_mcp_servers(project)
+    taken = {s.name for s in own}
+    return [*own, *(s for s in servers if s.name not in taken)]
 
 
 def write_pod_mcp_servers(project: str, servers: list[McpServerConfig]) -> None:

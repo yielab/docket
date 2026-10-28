@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 import docket.kernel.templates as _templates
+from docket.kernel.home import current_home
 from docket.teams import prompts
+from docket.teams.workspace.repo_view import RepoView
 
 SUBJECT = "docket.teams.prompts"
 
@@ -198,3 +200,100 @@ def test_a_role_text_that_differs_resolves_to_a_pod_override_with_its_own_hash()
 
 def test_a_role_with_no_shipped_prompt_of_that_name_is_a_pod_override() -> None:
     assert prompts.role_prompt("custom-role", "hop", "text", 1).scope == "pod"
+
+
+_REVIEWER = "---\nkind: prompt\nname: reviewer\nversion: {version}\nlayer: hop\nfor: reviewer\n---\n{text}\n"
+
+
+def _put(directory: Path, file: str, version: str, text: str) -> None:
+    path = directory / "hop" / file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_REVIEWER.format(version=version, text=text), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("text", "kind", "layer", "name", "major"),
+    [
+        ("implementer", "role", "", "implementer", None),
+        ("implementer@2", "role", "", "implementer", 2),
+        ("prompt:hop/implementer", "prompt", "hop", "implementer", None),
+        ("prompt:hop/implementer@12", "prompt", "hop", "implementer", 12),
+    ],
+)
+def test_a_reference_names_its_kind_name_and_major(
+    text: str, kind: str, layer: str, name: str, major: int | None
+) -> None:
+    ref = prompts.parse_reference(text)
+
+    assert (ref.kind, ref.layer, ref.name, ref.major) == (kind, layer, name, major)
+    assert str(ref) == text
+
+
+@pytest.mark.parametrize("text", ["", "Implementer", "role:implementer", "implementer@x", "a b"])
+def test_a_malformed_reference_is_refused(text: str) -> None:
+    with pytest.raises(prompts.PromptError, match="not a reference"):
+        prompts.parse_reference(text)
+
+
+def test_with_no_other_scope_a_prompt_resolves_to_the_shipped_one() -> None:
+    loaded = prompts.resolve_prompt("hop", "reviewer", project="acme")
+
+    assert loaded == prompts.shipped_prompt("hop", "reviewer")
+    assert loaded.scope == "shipped"
+
+
+def test_the_pod_overlay_beats_the_operator_which_beats_what_ships() -> None:
+    home = current_home()
+    _put(home.prompts_dir, "reviewer.md", "1.1.0", "OPERATOR")
+    assert prompts.resolve_prompt("hop", "reviewer", project="acme").text == "OPERATOR"
+    assert prompts.resolve_prompt("hop", "reviewer", project="acme").scope == "operator"
+
+    _put(home.pod_config_dir("acme") / "prompts", "reviewer.md", "1.2.0", "POD")
+
+    loaded = prompts.resolve_prompt("hop", "reviewer", project="acme")
+    assert (loaded.text, loaded.scope) == ("POD", "pod")
+    assert prompts.resolve_prompt("hop", "reviewer", project="other").text == "OPERATOR"
+
+
+def test_a_reference_takes_the_newest_file_of_its_major() -> None:
+    directory = current_home().prompts_dir
+    _put(directory, "reviewer.md", "1.4.0", "ONE-FOUR")
+    _put(directory, "reviewer@1.5.0.md", "1.5.0", "ONE-FIVE")
+    _put(directory, "reviewer@2.0.0.md", "2.0.0", "TWO")
+
+    assert prompts.resolve_prompt("hop", "reviewer", major=1).text == "ONE-FIVE"
+    assert prompts.resolve_prompt("hop", "reviewer", major=2).text == "TWO"
+    assert prompts.resolve_prompt("hop", "reviewer").text == "TWO"
+
+
+def test_a_major_no_file_holds_is_refused_naming_the_reference() -> None:
+    with pytest.raises(prompts.PromptError, match=r"no prompt prompt:hop/reviewer@3"):
+        prompts.resolve_prompt("hop", "reviewer", major=3)
+
+
+def test_a_file_that_does_not_parse_is_skipped_for_the_next_scope() -> None:
+    home = current_home()
+    (home.prompts_dir / "hop").mkdir(parents=True)
+    (home.prompts_dir / "hop" / "reviewer.md").write_text("no front matter")
+
+    assert prompts.resolve_prompt("hop", "reviewer").scope == "shipped"
+
+
+def test_the_repository_is_read_through_the_view_and_only_with_one() -> None:
+    text = _REVIEWER.format(version="1.3.0", text="REPOSITORY")
+    served = {".docket/prompts/hop/reviewer.md": text.encode()}
+    view = RepoView("a" * 40, served.get, lambda _rel: [])
+
+    loaded = prompts.resolve_prompt("hop", "reviewer", view=view)
+
+    assert (loaded.text, loaded.scope) == ("REPOSITORY", "repository")
+    assert prompts.resolve_prompt("hop", "reviewer").scope == "shipped"
+
+
+def test_a_repository_prompt_of_another_major_falls_through() -> None:
+    served = {
+        ".docket/prompts/hop/reviewer.md": _REVIEWER.format(version="2.0.0", text="TWO").encode()
+    }
+    view = RepoView("a" * 40, served.get, lambda _rel: [])
+
+    assert prompts.resolve_prompt("hop", "reviewer", view=view, major=1).scope == "shipped"

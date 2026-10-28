@@ -11,6 +11,7 @@ from docket.governance.audit import audit_log
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
 from docket.platform import mkdir_private
+from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import member_workspace as _member_workspace
@@ -18,8 +19,9 @@ from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
+from docket.teams.apply import lock as _lock
 from docket.teams.apply.model import ApplyPlan, ApplyResult, PodApplyError
-from docket.teams.apply.recipes import _directory_files, _named_pipeline_files, directory_digest
+from docket.teams.apply.recipes import _directory_files, _named_pipeline_files
 
 
 def _dump_yaml_file(path: Path, doc: dict[str, Any], *, schema_header: str = "") -> None:
@@ -60,6 +62,15 @@ def _export_roles(project: str, directory: Path) -> None:
         role_path = roles_dir / f"{name}.yaml"
         _dump_yaml_file(role_path, doc, schema_header=_schema_header(directory, role_path, "role"))
         (roles_dir / f"{name}.md").write_text(markdown, encoding="utf-8")
+
+
+def _export_prompts(project: str, directory: Path) -> None:
+    """Copy *project*'s own ``config/prompts/`` files byte-for-byte as ``prompts/<layer>/<file>``."""
+    overlay = current_home().pod_config_dir(project)
+    for f in _config_docs.prompt_files(overlay):
+        dest = directory / "prompts" / f.relative_to(overlay / "prompts")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(f.read_bytes())
 
 
 def _export_policies(project: str, directory: Path) -> None:
@@ -201,6 +212,7 @@ def export_pod(project: str, directory: Path) -> None:
         raise PodApplyError(f"no pod found for '{project}'")
     directory.mkdir(parents=True, exist_ok=True)
     _export_roles(project, directory)
+    _export_prompts(project, directory)
     _export_policies(project, directory)
     _export_plugins(project, directory)
     _export_named_pipelines(project, directory)
@@ -218,7 +230,15 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
     lead_id = pod.member_id(plan.project, "lead")
 
     for role_write in plan._role_writes:
-        _arch.add_user_archetype(role_write.doc, plan.project)
+        _arch.write_role_files(plan.project, dict(role_write.files))
+
+    if plan._prompt_writes:
+        prompts_dir = current_home().pod_config_dir(plan.project) / "prompts"
+        for prompt_write in plan._prompt_writes:
+            dest = prompts_dir / prompt_write.rel
+            mkdir_private(dest.parent)
+            dest.write_bytes(prompt_write.source)
+            dest.chmod(0o600)
 
     if plan._policy_writes:
         policies_dir = current_home().pod_config_dir(plan.project) / "policies"
@@ -299,7 +319,10 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
     # (see `pod.PodSettings.RECORDED_KEYS`). The audit entry above keeps its own,
     # narrower "only when something changed" rule.
     _fleet.meta_set(lead_id, "configSource", str(plan.directory.resolve()))
-    _fleet.meta_set(lead_id, "configDigest", directory_digest(plan.directory))
+    _fleet.meta_set(
+        lead_id, "configDigest", _lock.write_lock(plan.project, _lock.source_items(plan.directory))
+    )
+    (current_home().pod_config_dir(plan.project) / _lock.LEGACY_ROLES_FILE).unlink(missing_ok=True)
 
     # Recorded the same way, every apply, `exporters` included -- never merged with what a
     # prior apply named: an empty list here clears a previous recipe's destinations, matching

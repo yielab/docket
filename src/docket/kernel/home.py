@@ -17,6 +17,7 @@ _RETRY_ROLES = ("lead", "implementer", "reviewer", "tester")
 
 # Kind -> the Home property holding the operator's directory for it.
 _OPERATOR_DIRS = {
+    "roles": "roles_dir",
     "prompts": "prompts_dir",
     "pipelines": "pipelines_dir",
     "skills": "skills_dir",
@@ -357,6 +358,11 @@ class Home:
         if self.skills_dir_override is not None:
             return self.skills_dir_override
         return self.config_dir / "skills"
+
+    # The operator's role files, read beneath a pod overlay's and above the built-in archetypes.
+    @property
+    def roles_dir(self) -> Path:
+        return self.config_dir / "roles"
 
     @property
     def prompts_dir(self) -> Path:

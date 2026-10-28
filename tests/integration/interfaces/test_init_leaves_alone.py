@@ -68,14 +68,14 @@ class TestRemovingTheLastImplementerKeepsThePodsOwnData:
         memory.write_text("{}")
         config = current_home().pod_config_dir("demo")
         config.mkdir(parents=True)
-        (config / "roles.json").write_text("{}")
+        (config / "applied.lock").write_text("{}")
         scratch = current_home().pod_scratch_dir("demo")
         assert scratch.is_dir()
 
         _pod_members.remove_member("demo", "demo-implementer", yes=True)
 
         assert memory.is_file()
-        assert (config / "roles.json").is_file()
+        assert (config / "applied.lock").is_file()
         assert not scratch.exists()
         assert not current_home().pod_cache_dir("demo").exists()
 

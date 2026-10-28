@@ -271,26 +271,3 @@ def _skill_digest(files: tuple[tuple[str, bytes], ...]) -> bytes:
         digest.update(data)
         digest.update(b"\0")
     return digest.digest()
-
-
-def directory_digest(directory: Path) -> str:
-    """Sha256 hex digest over the sorted relative paths and bytes of every file
-    `discover_config_paths` returns, plus any `plugins/*.py` and any `skills/**` file
-    (never the generated `.schemas/`); `apply` records it as `configDigest`."""
-
-    paths = list(_config_docs.discover_config_paths(directory))
-    plugins_dir = directory / "plugins"
-    if plugins_dir.is_dir():
-        paths.extend(sorted(plugins_dir.glob("*.py")))
-    skills_dir = directory / "skills"
-    if skills_dir.is_dir():
-        paths.extend(sorted(p for p in skills_dir.rglob("*") if p.is_file()))
-    ordered = sorted(paths, key=lambda p: p.relative_to(directory).as_posix())
-
-    digest = hashlib.sha256()
-    for path in ordered:
-        digest.update(path.relative_to(directory).as_posix().encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
