@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.kernel.mcp import McpServerConfig, McpServerRegistry
-from docket.platform import read_json, read_modify_write, write_json
+from docket.platform import mkdir_private, read_json, read_modify_write, write_json
 
 # A configured server's *local* name is docket-owned config, not remote input,
 # but it still ends up as a path-like fragment in a tool name shown to a
@@ -43,7 +43,7 @@ def load_mcp_servers(project: str = "") -> list[McpServerConfig]:
 def write_pod_mcp_servers(project: str, servers: list[McpServerConfig]) -> None:
     """Replace *project*'s pod-scoped server file with *servers*, through ``platform/store.py``."""
     path = pod_mcp_servers_file(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    mkdir_private(path.parent)
     write_json(path, McpServerRegistry(servers=servers))
 
 

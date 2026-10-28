@@ -22,6 +22,9 @@ out="${2:?out-dir}"
 mode="${3:?description-file or --wait}"
 url="${DOCKET_SERVE_URL:-http://127.0.0.1:7399}"
 home_dir="${DOCKET_HOME:-$HOME/.docket}"
+# State sits under state/ in the current layout and at the top of an old-layout home.
+state_dir="$home_dir"
+[ -d "$home_dir/state" ] && state_dir="$home_dir/state"
 token_file="${DOCKET_TOKEN_FILE:-$home_dir/token}"
 bin="${DOCKET_BIN:-docket}"
 poll="${POLL_S:-15}"
@@ -74,9 +77,9 @@ done
 api "$url/traces/$pod" >"$out/traces-page.json"
 mkdir -p "$out/trace-files"
 if [ -f "$out/started-at" ]; then
-    find "$home_dir/traces/$pod" -name '*.jsonl' -newermt "$(cat "$out/started-at")" -exec cp {} "$out/trace-files/" \;
+    find "$state_dir/traces/$pod" -name '*.jsonl' -newermt "$(cat "$out/started-at")" -exec cp {} "$out/trace-files/" \;
 else
-    cp "$home_dir/traces/$pod"/*.jsonl "$out/trace-files/" 2>/dev/null || true
+    cp "$state_dir/traces/$pod"/*.jsonl "$out/trace-files/" 2>/dev/null || true
 fi
 echo "task $task_id ended polling at status $status; recorded in $out"
 if [ "$status" = "waiting_approval" ] || [ "$status" = "waiting_input" ]; then

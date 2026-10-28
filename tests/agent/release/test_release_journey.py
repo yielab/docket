@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+from docket.kernel.home import Home
+
 LANE = "release"
 REASON = "Prevents the installed artifact from losing its one-command path to an inspectable governed turn, or from leaving a half-provisioned project behind when the model endpoint is unreachable."
 RETIRE_WHEN = "the release-journey CI matrix proves this on every push, making the local artifact-installed rerun redundant."
@@ -80,22 +82,22 @@ def test_installed_artifact_reaches_one_inspectable_governed_turn(tmp_path: Path
     }
     assert int(evidence["requestCount"]) >= 2
 
-    home = world / ".docket"
-    runs = _json(home / "docket-runs.json")
+    home = Home(world / ".docket")
+    runs = _json(home.runs_file)
     assert isinstance(runs, dict)
     assert any(run.get("state") == "succeeded" for run in runs.get("runs", []))
-    task_lists = list((home / "workspaces" / "projects").glob("*/TASK_LIST.json"))
+    task_lists = list(home.projects_dir.glob("*/TASK_LIST.json"))
     assert task_lists
     tasks = _json(task_lists[0])
     assert isinstance(tasks, dict)
     assert any(task.get("status") == "done" for task in tasks.get("tasks", []))
-    assert list((home / "sessions").glob("*/session.json"))
+    assert list(home.sessions_dir.glob("*/session.json"))
     trace_text = "\n".join(
-        path.read_text(encoding="utf-8") for path in home.glob("traces/**/*.jsonl")
+        path.read_text(encoding="utf-8") for path in home.traces_dir.glob("**/*.jsonl")
     )
     assert '"event_type": "tool_call"' in trace_text
     assert '"event_type": "tool_result"' in trace_text
-    assert (home / "audit.log").read_text(encoding="utf-8").strip()
+    assert home.audit_log.read_text(encoding="utf-8").strip()
     assert not (tmp_path / "forbidden-real-home").exists()
 
 
@@ -117,11 +119,11 @@ def test_unreachable_endpoint_leaves_no_half_ready_project(tmp_path: Path) -> No
     assert len(output.encode("utf-8")) <= 8_192
     assert not (world / "journey-evidence.json").exists()
     assert not (world / "codebase" / "release-journey.txt").exists()
-    assert not (world / ".docket" / "workspaces" / "projects" / PROJECT).exists()
-    assert not list((world / ".docket").glob("traces/**/*.jsonl"))
-    audit = world / ".docket" / "audit.log"
-    assert not audit.exists() or not audit.read_text(encoding="utf-8").strip()
-    fleet = world / ".docket" / "fleet.json"
+    home = Home(world / ".docket")
+    assert not (home.projects_dir / PROJECT).exists()
+    assert not list(home.traces_dir.glob("**/*.jsonl"))
+    assert not home.audit_log.exists() or not home.audit_log.read_text(encoding="utf-8").strip()
+    fleet = home.fleet_file
     assert not fleet.exists() or "release-local" not in fleet.read_text(encoding="utf-8")
 
 

@@ -400,25 +400,58 @@ def _configure_provider(
         )
 
 
+_HOME_PATHS = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "from docket.kernel.home import Home\n"
+    "h = Home(Path(sys.argv[1]))\n"
+    "print(json.dumps({k: str(getattr(h, k)) for k in sys.argv[2:]}))\n"
+)
+
+
+def _installed_home_paths(
+    executable: Path, home: Path, env: dict[str, str], *names: str
+) -> dict[str, Path]:
+    """Where the installed docket keeps *names* (`Home` attributes) under *home*, asked of the
+    installed package so the harness never guesses the layout."""
+    done = _command(
+        [str(executable.parent / "python"), "-c", _HOME_PATHS, str(home), *names],
+        cwd=home.parent,
+        env=env,
+        label="installed home layout",
+    )
+    return {key: Path(value) for key, value in json.loads(done.stdout).items()}
+
+
 def _verify_state(world: Path, executable: Path, env: dict[str, str]) -> None:
     home = world / ".docket"
+    where = _installed_home_paths(
+        executable,
+        home,
+        env,
+        "runs_file",
+        "projects_dir",
+        "sessions_dir",
+        "traces_dir",
+        "audit_log",
+    )
     artifact = world / "codebase" / "release-journey.txt"
     _require(
         artifact.read_bytes() == ARTIFACT_CONTENT.encode(), "tool side effect was not byte-exact"
     )
-    runs = _load_json(home / "docket-runs.json").get("runs")
+    runs = _load_json(where["runs_file"]).get("runs")
     _require(
         isinstance(runs, list) and any(run.get("state") == "succeeded" for run in runs),
         "release journey has no successful run record",
     )
-    task_files = list((home / "workspaces" / "projects").glob("*/TASK_LIST.json"))
+    task_files = list(where["projects_dir"].glob("*/TASK_LIST.json"))
     _require(bool(task_files), "release journey did not persist its task list")
     tasks = _load_json(task_files[0]).get("tasks")
     _require(
         isinstance(tasks, list) and any(task.get("status") == "done" for task in tasks),
         "release journey task did not reach done",
     )
-    sessions = sorted((home / "sessions").glob("*/session.json"))
+    sessions = sorted(where["sessions_dir"].glob("*/session.json"))
     _require(bool(sessions), "release journey retained no durable session")
     atomic_unit = False
     measured_usage = False
@@ -447,11 +480,11 @@ def _verify_state(world: Path, executable: Path, env: dict[str, str]) -> None:
                 atomic_unit = True
     _require(atomic_unit, "session did not retain an atomic tool call/result unit")
     _require(measured_usage, "session did not retain measured endpoint usage")
-    traces = list(home.glob("traces/**/*.jsonl"))
+    traces = list(where["traces_dir"].glob("**/*.jsonl"))
     trace_text = "\n".join(path.read_text(encoding="utf-8") for path in traces)
     _require('"event_type": "tool_call"' in trace_text, "trace omitted the tool call")
     _require('"event_type": "tool_result"' in trace_text, "trace omitted the tool result")
-    _require((home / "audit.log").read_text(encoding="utf-8").strip() != "", "audit is empty")
+    _require(where["audit_log"].read_text(encoding="utf-8").strip() != "", "audit is empty")
     _run_cli(executable, ["log", "verify"], cwd=world / "codebase", env=env, label="log verify")
     _run_cli(
         executable,
@@ -460,7 +493,7 @@ def _verify_state(world: Path, executable: Path, env: dict[str, str]) -> None:
         env=env,
         label="public task inspection",
     )
-    task_lists = sorted((home / "workspaces" / "projects").glob("*/TASK_LIST.json"))
+    task_lists = sorted(where["projects_dir"].glob("*/TASK_LIST.json"))
     _require(bool(task_lists), "no task list was written")
     done_ids = [
         str(task.get("id"))

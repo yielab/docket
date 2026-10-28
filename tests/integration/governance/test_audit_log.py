@@ -69,11 +69,11 @@ def _hold_audit_lock(
 
 @pytest.fixture()
 def audit_home(tmp_path: Path) -> Iterator[Path]:
-    """A bare DOCKET_HOME for exercising governance/audit.py directly."""
-    d = tmp_path / ".docket"
-    d.mkdir()
-    with use_home(Home(d)):
-        yield d
+    """The state directory of a bare DOCKET_HOME, for exercising governance/audit.py directly."""
+    home = Home(tmp_path / ".docket")
+    home.state_dir.mkdir(parents=True)
+    with use_home(home):
+        yield home.state_dir
 
 
 # ── hash chain: governance/audit.py ───────────────────────────────────────────────

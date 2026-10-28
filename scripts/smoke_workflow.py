@@ -37,6 +37,8 @@ from urllib.parse import urlsplit, urlunsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import live_credentials
 
+from docket.kernel.home import Home
+
 
 class SmokeFailure(RuntimeError):
     """A smoke assertion or subprocess failed."""
@@ -570,7 +572,7 @@ def _traced_tool_arguments(
     role: str,
 ) -> tuple[bool, object]:
     latest: tuple[tuple[int, str, int], object] | None = None
-    for path in sorted((home / "traces" / "smoke").glob("*.jsonl")):
+    for path in sorted((Home(home).traces_dir / "smoke").glob("*.jsonl")):
         modified = path.stat().st_mtime_ns
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
@@ -824,7 +826,7 @@ def _tool_verdict_diagnostic(
 
 
 def _cancel_active_smoke_run(repo: Path, env: dict[str, str]) -> str:
-    payload = _load_json(Path(env["DOCKET_HOME"]) / "docket-runs.json")
+    payload = _load_json(Home(Path(env["DOCKET_HOME"])).runs_file)
     runs = [r for r in payload.get("runs") or [] if r.get("project") == "smoke"]
     active = next(
         (
@@ -858,7 +860,7 @@ def _approve_live_tool_calls(
     _smoke_allowed_project_roots(home)
 
     def monitor() -> None:
-        approvals_dir = home / "approvals"
+        approvals_dir = Home(home).approvals_dir
         while not stop.wait(0.1):
             try:
                 allowed_project_roots = _smoke_allowed_project_roots(home)
@@ -1170,7 +1172,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 def _recorded_task_worktree(home: Path) -> str | None:
     """The worktree dir recorded on the smoke task at claim, or None before a claim or for a
     task that runs in place."""
-    path = home / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+    path = Home(home).projects_dir / "smoke-lead" / "TASK_LIST.json"
     if not path.is_file():
         return None
     tasks = _load_json(path).get("tasks")
@@ -1182,7 +1184,7 @@ def _recorded_task_worktree(home: Path) -> str | None:
     if not directory:
         return None
     expected = (
-        home / "workspaces" / "projects" / "smoke-implementer" / "tasks" / str(task.get("id", ""))
+        Home(home).projects_dir / "smoke-implementer" / "tasks" / str(task.get("id", ""))
     ).resolve(strict=False)
     _require(
         isinstance(directory, str) and Path(directory).resolve(strict=False) == expected,
@@ -1194,7 +1196,7 @@ def _recorded_task_worktree(home: Path) -> str | None:
 def _smoke_allowed_project_roots(home: Path) -> tuple[Path, ...]:
     expected_codebase = (home.parent / "codebase").resolve(strict=False)
     implementer_meta = _load_json(
-        home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
+        Home(home).projects_dir / "smoke-implementer" / ".docket-meta.json"
     )
     codebase = implementer_meta.get("codebase")
     _require(
@@ -1246,7 +1248,7 @@ def _raise_private_tool_violation(
 
 def _verify_private_tool_boundary(home: Path) -> None:
     allowed_project_roots = _smoke_allowed_project_roots(home)
-    trace_files = sorted((home / "traces" / "smoke").glob("*.jsonl"))
+    trace_files = sorted((Home(home).traces_dir / "smoke").glob("*.jsonl"))
     for path in trace_files:
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
@@ -1271,7 +1273,7 @@ def _verify_private_tool_boundary(home: Path) -> None:
                 allowed_project_roots=allowed_project_roots,
             )
 
-    for path in sorted((home / "sessions").glob("*/session.json")):
+    for path in sorted(Home(home).sessions_dir.glob("*/session.json")):
         record = _load_json(path)
         messages = record.get("messages")
         if not isinstance(messages, list):
@@ -1296,7 +1298,7 @@ def _verify_private_tool_boundary(home: Path) -> None:
 
 
 def _task(home: Path) -> dict[str, Any]:
-    path = home / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+    path = Home(home).projects_dir / "smoke-lead" / "TASK_LIST.json"
     tasks = _load_json(path).get("tasks")
     if not isinstance(tasks, list) or len(tasks) != 1:
         raise SmokeFailure("expected one persisted smoke task")
@@ -1307,7 +1309,7 @@ def _task(home: Path) -> dict[str, Any]:
 
 
 def _verify_sessions(home: Path, *, memory_scenario: bool) -> None:
-    session_files = sorted((home / "sessions").glob("*/session.json"))
+    session_files = sorted(Home(home).sessions_dir.glob("*/session.json"))
     expected = 5
     _require(
         len(session_files) == expected, f"expected {expected} sessions, found {len(session_files)}"
@@ -1375,7 +1377,7 @@ def _normalized_fact_text(text: str) -> str:
 
 
 def _seed_operator_memory(home: Path) -> None:
-    lead_ws = home / "workspaces" / "projects" / "smoke-lead"
+    lead_ws = Home(home).projects_dir / "smoke-lead"
     (lead_ws / "MEMORY.md").write_text(
         """# MEMORY.md
 
@@ -1398,7 +1400,7 @@ def _verify_memory_maintenance(world: Path, home: Path, task: dict[str, Any]) ->
         _require(expected_fact in lead_facts, f"Lead handoff lost {expected_fact!r}")
 
     implementer_meta = _load_json(
-        home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
+        Home(home).projects_dir / "smoke-implementer" / ".docket-meta.json"
     )
     recorded = task.get("worktree")
     task_worktree = recorded.get("dir") if isinstance(recorded, dict) else None
@@ -1447,7 +1449,7 @@ def _verify_final_state(
     if memory_scenario:
         _verify_memory_maintenance(world, home, task)
 
-    trace_files = sorted((home / "traces" / "smoke").glob("*.jsonl"))
+    trace_files = sorted((Home(home).traces_dir / "smoke").glob("*.jsonl"))
     _require(bool(trace_files), "no trace files were persisted")
     event_types = {
         json.loads(line).get("event_type")
@@ -1465,7 +1467,7 @@ def _verify_final_state(
     ):
         _require(expected in event_types, f"trace is missing {expected!r}")
 
-    runs_raw = _load_json(home / "docket-runs.json").get("runs")
+    runs_raw = _load_json(Home(home).runs_file).get("runs")
     if not isinstance(runs_raw, list) or not all(isinstance(run, dict) for run in runs_raw):
         raise SmokeFailure("dispatch run registry is malformed")
     runs = cast(list[dict[str, Any]], runs_raw)
@@ -1474,7 +1476,7 @@ def _verify_final_state(
         [run.get("state") for run in runs] == ["waiting_approval", "succeeded"],
         "expected one parked dispatch run, then one that succeeded",
     )
-    _require((home / "audit.log").is_file(), "audit log was not created")
+    _require(Home(home).audit_log.is_file(), "audit log was not created")
 
 
 def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> None:
@@ -1554,7 +1556,7 @@ def _run(
     run_cli("setup", "sandbox", sandbox)
     if consult_mode != "park":
         run_cli("pod", "set", "consultMode", consult_mode, "--pod", "smoke")
-    fleet = _load_json(home / "fleet.json")
+    fleet = _load_json(Home(home).fleet_file)
     project_agents = [
         agent for agent in fleet.get("agents", []) if str(agent.get("id", "")).startswith("smoke-")
     ]

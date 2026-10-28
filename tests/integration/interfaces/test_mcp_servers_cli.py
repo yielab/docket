@@ -30,7 +30,7 @@ from docket.agent.tools import mcp_tools as _mt
 from docket.governance import audit as _audit
 from docket.interfaces.cli.app import app
 from docket.kernel import mcp as _mcp
-from docket.kernel.home import current_home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.teams import mcp_servers as _mcp_servers
 
 SUBJECT = "docket.interfaces.cli.commands.setup_mcp"
@@ -316,7 +316,7 @@ class TestServersAddThroughTheRealEntryPoint:
             env,
         )
         assert result.returncode == 0, result.stderr
-        stored = json.loads((home / ".docket" / "docket-mcp-servers.json").read_text())["servers"]
+        stored = json.loads(Home(home / ".docket").mcp_servers_file.read_text())["servers"]
         assert stored[0]["command"] == "npx"
         assert stored[0]["args"] == ["-y", "@playwright/mcp@latest"]
 
@@ -344,7 +344,7 @@ class TestServersAddThroughTheRealEntryPoint:
             env,
         )
         assert result.returncode == 0, result.stderr
-        stored = json.loads((home / ".docket" / "docket-mcp-servers.json").read_text())["servers"]
+        stored = json.loads(Home(home / ".docket").mcp_servers_file.read_text())["servers"]
         assert stored[0]["env"] == {"K": "V"}
         assert stored[0]["timeout"] == 5.0
         assert stored[0]["command"] == "cmd"
@@ -355,4 +355,4 @@ class TestServersAddThroughTheRealEntryPoint:
         (home / ".docket").mkdir(parents=True)
         result = _run_docket(["setup", "mcp", "add", "s", "--"], _child_env(home))
         assert result.returncode != 0
-        assert not (home / ".docket" / "docket-mcp-servers.json").exists()
+        assert not Home(home / ".docket").mcp_servers_file.exists()

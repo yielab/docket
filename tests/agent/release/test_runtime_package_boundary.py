@@ -38,12 +38,13 @@ import sys
 from pathlib import Path
 
 from docket_runtime import Runtime, Tool, ToolCall, ToolContext, ToolOutcome, __version__
+from docket_runtime._internal.docket.kernel.home import Home
 
 assert __version__ == "0.3.0"
 assert not any(name == "docket" or name.startswith("docket.cli") for name in sys.modules)
-home = Path(os.environ["DOCKET_HOME"])
-(home / "policies").mkdir(parents=True, exist_ok=True)
-(home / "policies" / "approval.json").write_text(json.dumps({
+home = Home(Path(os.environ["DOCKET_HOME"]))
+home.policies_dir.mkdir(parents=True, exist_ok=True)
+(home.policies_dir / "approval.json").write_text(json.dumps({
     "kind": "policy", "name": "approve-fake", "appliesTo": ["*"], "on": "toolCall",
     "when": {"matches": "fake"}, "then": "ask",
     "message": "external approval",
@@ -52,16 +53,16 @@ runtime = Runtime(approval_stub=lambda token: token.startswith("apr-"))
 runtime.register(Tool("fake", "external fake", {"type": "object"}, lambda args, ctx: ToolOutcome(True, "ran")))
 result = runtime.dispatch(ToolCall("call-1", "fake", "{}"), ToolContext(agent_id="embed", project="demo"))
 assert result.ok and result.content == "ran"
-assert (home / "audit.log").is_file()
-assert list((home / "traces").rglob("*.jsonl"))
-assert "approval.grant" in (home / "audit.log").read_text()
+assert home.audit_log.is_file()
+assert list(home.traces_dir.rglob("*.jsonl"))
+assert "approval.grant" in home.audit_log.read_text()
 
 denied_runtime = Runtime(approval_stub=lambda token: False)
 denied_runtime.register(Tool("deny-fake", "external fake", {"type": "object"}, lambda args, ctx: ToolOutcome(True, "ran")))
 denied = denied_runtime.dispatch(ToolCall("call-2", "deny-fake", "{}"), ToolContext(agent_id="embed", project="demo"))
 assert not denied.ok and denied.denial_kind == "approval_denied"
-assert "approval.deny" in (home / "audit.log").read_text()
-assert any("approval_denied" in path.read_text() for path in (home / "traces").rglob("*.jsonl"))
+assert "approval.deny" in home.audit_log.read_text()
+assert any("approval_denied" in path.read_text() for path in home.traces_dir.rglob("*.jsonl"))
 """
 
 

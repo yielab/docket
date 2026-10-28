@@ -137,7 +137,7 @@ class TestCmdAdd:
         )
         rc, _out, _err = _run(["init", "--from", str(spec)], home)
         assert rc == 0
-        ws = home / "workspaces" / "projects" / "myshop-lead"
+        ws = Home(home).projects_dir / "myshop-lead"
         assert ws.is_dir()
         assert (ws / "SOUL.md").is_file()
         assert (ws / "AGENTS.md").is_file()
@@ -184,8 +184,8 @@ class TestCmdAdd:
         rc, out, err = _run(["init"], home, cwd=repo)
 
         assert rc == 0, out + err
-        assert (home / "workspaces" / "projects" / "my-project-lead").is_dir()
-        assert (home / "workspaces" / "projects" / "my-project-implementer").is_dir()
+        assert (Home(home).projects_dir / "my-project-lead").is_dir()
+        assert (Home(home).projects_dir / "my-project-implementer").is_dir()
 
     def test_first_init_bootstraps_global_foundation_and_project(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
@@ -199,7 +199,7 @@ class TestCmdAdd:
         rc, out, err = _run(["init"], home, cwd=repo, env=env)
 
         assert rc == 0, out + err
-        fleet = json.loads((home / "fleet.json").read_text())
+        fleet = json.loads(Home(home).fleet_file.read_text())
         ids = {agent["id"] for agent in fleet["agents"]}
         assert ids == {"fresh-project-lead", "fresh-project-implementer"}
 
@@ -213,7 +213,7 @@ class TestCmdAdd:
         rc, out, err = _run(["add", "reviewer"], home, cwd=repo, target=_pod.pod_app)
 
         assert rc == 0, out + err
-        assert (home / "workspaces" / "projects" / "current-project-reviewer").is_dir()
+        assert (Home(home).projects_dir / "current-project-reviewer").is_dir()
 
     def test_bare_docket_prints_only_a_compact_command_guide(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
@@ -296,8 +296,8 @@ class TestCmdAdd:
         spec = self._spec_file(tmp_path, json.dumps(entries))
         rc, _out, _err = _run(["init", "--from", str(spec)], home)
         assert rc == 0
-        assert (home / "workspaces" / "projects" / "pod-a-lead").is_dir()
-        assert (home / "workspaces" / "projects" / "pod-b-lead").is_dir()
+        assert (Home(home).projects_dir / "pod-a-lead").is_dir()
+        assert (Home(home).projects_dir / "pod-b-lead").is_dir()
 
 
 # ---------------------------------------------------------------------------

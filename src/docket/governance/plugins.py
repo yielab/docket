@@ -75,10 +75,13 @@ def _load_file(path: Path, scope: str) -> dict[str, LoadedPredicate]:
 
 
 def _scoped_dirs(project: str) -> list[tuple[Path, str]]:
-    dirs = [(current_home().plugins_dir, "global")]
-    if project:
-        dirs.append((current_home().pod_config_dir(project) / "plugins", f"pod:{project}"))
-    return dirs
+    """The operator's directory, then the pod's: the same scopes, in the reverse of
+    ``Home.scopes``' nearest-first order, that policies are read from."""
+    operator = current_home().plugins_dir
+    return [
+        (directory, "global" if directory == operator else f"pod:{project}")
+        for directory in reversed(current_home().scopes("plugins", project))
+    ]
 
 
 def discover(project: str = "") -> dict[str, LoadedPredicate]:

@@ -29,7 +29,7 @@ def pydantic_scenario_source(scenario: GovernanceScenario, *, parity: bool = Fal
     policy_setup = ""
     if scenario.policy != "none":
         policy_setup = f"""
-        policies = home / "policies"
+        policies = home.policies_dir
         policies.mkdir(parents=True, exist_ok=True)
         (policies / "scenario.json").write_text(json.dumps({{
             "kind": "policy",
@@ -73,6 +73,7 @@ def pydantic_scenario_source(scenario: GovernanceScenario, *, parity: bool = Fal
         )
         from docket_runtime.adapters.pydantic_ai import DocketToolset
         from docket_runtime._internal.docket.governance.audit import verify_chain
+        from docket_runtime._internal.docket.kernel.home import Home
         from pydantic_ai import Agent
         from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
         from pydantic_ai.models.function import FunctionModel
@@ -81,7 +82,7 @@ def pydantic_scenario_source(scenario: GovernanceScenario, *, parity: bool = Fal
 
         assert importlib.metadata.version("pydantic-ai") == {PYDANTIC_AI_VERSION!r}
 
-        home = Path(os.environ["DOCKET_HOME"])
+        home = Home(Path(os.environ["DOCKET_HOME"]))
         workspace = Path(os.environ["W28_WORKSPACE"])
         workspace.mkdir(parents=True, exist_ok=True)
         state = workspace / "state.txt"
@@ -179,7 +180,7 @@ def pydantic_scenario_source(scenario: GovernanceScenario, *, parity: bool = Fal
         )
         assert len(handler_calls) == {scenario.expected_mutations or (1 if scenario.name == "allow_read" else 0)}
 
-        trace_path = home / "traces" / "portable-proof" / {f"{session_key}.jsonl"!r}
+        trace_path = home.traces_dir / "portable-proof" / {f"{session_key}.jsonl"!r}
         records = []
         if {scenario.expected_stop!r} == "token_budget":
             assert not trace_path.exists()
@@ -199,7 +200,7 @@ def pydantic_scenario_source(scenario: GovernanceScenario, *, parity: bool = Fal
             else:
                 assert pair[-1]["payload"]["decision"] == expected_decision
 
-        audit_path = home / "audit.log"
+        audit_path = home.audit_log
         audit = audit_path.read_text(encoding="utf-8") if audit_path.exists() else ""
         if {scenario.expected_decision!r} == "gate_denied":
             assert "tool.deny" in audit
@@ -390,10 +391,11 @@ try:
         from docket_runtime import ExecutionLimits, Runtime, Tool, ToolContext, ToolOutcome
         from docket_runtime.adapters.openhands import OpenHandsAdapter
         from docket_runtime._internal.docket.governance.audit import verify_chain
+        from docket_runtime._internal.docket.kernel.home import Home
 
-        home = Path(os.environ["DOCKET_HOME"])
+        home = Home(Path(os.environ["DOCKET_HOME"]))
         if scenario["policy"] != "none":
-            policies = home / "policies"
+            policies = home.policies_dir
             policies.mkdir(parents=True, exist_ok=True)
             (policies / "scenario.json").write_text(json.dumps({
                 "kind": "policy",
@@ -478,7 +480,7 @@ try:
         assert not requested_names & {"bash", "terminal", "file_editor", "native_bash", "native_file_editor"}
         assert len(mutations) == scenario["expected_mutations"]
 
-        trace_file = home / "traces" / "portable-proof" / f"w28-{scenario['name']}.jsonl"
+        trace_file = home.traces_dir / "portable-proof" / f"w28-{scenario['name']}.jsonl"
         trace = (
             [json.loads(line) for line in trace_file.read_text(encoding="utf-8").splitlines()]
             if trace_file.exists()
@@ -521,7 +523,7 @@ try:
             assert state.read_text(encoding="utf-8") == "approval granted"
         else:
             assert state.read_bytes() == b"initial"
-        audit_path = home / "audit.log"
+        audit_path = home.audit_log
         audit = audit_path.read_text(encoding="utf-8") if audit_path.exists() else ""
         if scenario["expected_decision"] == "gate_denied":
             assert "tool.deny" in audit
