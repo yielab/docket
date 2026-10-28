@@ -39,7 +39,7 @@ from docket.teams import pod_settings as _pod_settings
 from docket.teams import role_composer as _role_composer
 from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
-from docket.teams.apply import recipes as _recipes
+from docket.teams.apply import lock as _lock
 from docket.teams.apply import review as _review
 from docket.teams.models import AgentKind, AgentMeta
 from docket.teams.workspace import skills as _skills
@@ -65,12 +65,16 @@ def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
     return (current_home().workspace_dir(agent_id),)
 
 
-_SOURCE_SCOPE: dict[str, str] = {"built-in": "built-in", "starter": "built-in"}
+_SOURCE_SCOPE: dict[str, str] = {
+    "built-in": "built-in",
+    "starter": "built-in",
+    "operator": "operator",
+}
 
 
 def _scope_label(source: str) -> str:
-    """Map ``ArchetypeRegistry.source_of``'s ``built-in | starter | pod:<p>``
-    onto this report's ``built-in | pod`` role provenance."""
+    """Map ``ArchetypeRegistry.source_of``'s ``built-in | starter | operator | pod:<p>``
+    onto this report's ``built-in | operator | pod`` role provenance."""
     if source.startswith("pod:"):
         return "pod"
     return _SOURCE_SCOPE.get(source, "")
@@ -166,22 +170,20 @@ def _bound_rework_maxes(project: str) -> str:
     return ",".join(found) or "none"
 
 
-def _config_of_record_report(settings: _pod_settings.PodSettings | None) -> dict[str, str]:
-    """``configSource``/``configDigest`` (ADR 0012) plus ``drift``: ``"yes"``/``"no"`` when the
-    source directory is still present and its digest is recomputed, ``""`` when there is no
-    recorded source or the directory is gone (drift is then simply unknown, not asserted)."""
-    if settings is None or not settings.config_source:
-        return {"configSource": "", "configDigest": "", "drift": ""}
-    source_dir = Path(settings.config_source)
-    drift = ""
-    if source_dir.is_dir():
-        current = _recipes.directory_digest(source_dir)
-        drift = "yes" if current != settings.config_digest else "no"
-    return {
-        "configSource": settings.config_source,
-        "configDigest": settings.config_digest,
-        "drift": drift,
-    }
+def _config_of_record_report(
+    settings: _pod_settings.PodSettings | None, project: str
+) -> dict[str, str]:
+    """``configSource``/``configDigest`` and ``drift`` (``applied.lock``: the source's lock or an
+    applied overlay file no longer matches), plus ``needsUpdate`` for a pod with a ``roles.json``."""
+    report = {"configSource": "", "configDigest": "", "drift": ""}
+    if settings is not None and settings.config_source:
+        report = {
+            "configSource": settings.config_source,
+            "configDigest": settings.config_digest,
+            "drift": _lock.drift(project, settings.config_source, settings.config_digest),
+        }
+    needs_update = _lock.needs_update(project) if project else ""
+    return {**report, "needsUpdate": needs_update} if needs_update else report
 
 
 def _provider_report(model: str) -> dict[str, Any]:
@@ -318,7 +320,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
 
     pod_settings_report = _pod_settings_report(pod_settings, project) if pod_settings else None
     pipeline = {"source": _steps.effective_pipeline_source(project)} if project else None
-    config_of_record = _config_of_record_report(pod_settings)
+    config_of_record = _config_of_record_report(pod_settings, project)
     if pod_settings is not None and roots:
         pi_files, pi_source = _identity.project_instruction_files(pod_settings, roots[0])
     else:
@@ -361,9 +363,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
         "projectInstructions": {"files": list(pi_files), "source": pi_source},
         "skills": skills_report,
         "exporters": _exporters_report(),
-        "configSource": config_of_record["configSource"],
-        "configDigest": config_of_record["configDigest"],
-        "drift": config_of_record["drift"],
+        **config_of_record,
     }
 
 
@@ -401,7 +401,7 @@ def pod_report(project: str) -> dict[str, Any]:
     ]
     caller = caller_default()
     approval = _settings.pod_approval_mode(project, caller_default=caller)
-    record = _config_of_record_report(settings)
+    record = _config_of_record_report(settings, project)
     return {
         "pod": project,
         "members": members,

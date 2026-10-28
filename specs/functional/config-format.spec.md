@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Implemented
 **Last Updated**: 2026-10-28
 
@@ -200,6 +200,12 @@ This specification does NOT cover:
    names a provider absent from the catalog **MUST** be invalid there, naming the step, exactly
    as a pipeline structure error is. `kind` is the fallback for a document with no `kind:` key
    and no location that names one (`pod plan --pipeline` passes `pipeline`).
+5. Given a directory it **MUST** also check its references and its inputs: every role named
+   in `pod.yaml`'s `members` with a major (`implementer@3`) **MUST** resolve to a role of that major
+   among the directory's own roles or the pod's registry, and every `${name}` input a prompt
+   declares **MUST** be one its layer's consumer supplies (`identity`: the template variables a
+   role's identity text is rendered with; `task` and `hop`: none). Each failure is one line
+   naming the file and the reference or input, and the exit code is `1`.
 
 ### Published schemas
 
@@ -267,6 +273,43 @@ This specification does NOT cover:
    raises `PromptError`, never a literal `${typo}`. `role_schema.render` is this function with its
    error mapped to `ArchetypeError`.
 
+### Scopes, references and the lockfile
+
+1. Roles, prompts, pipelines, skills and MCP servers **MUST** resolve through one order, nearest
+   first, and the first scope that holds a name wins: the repository's `.docket/`, the pod overlay
+   (`Home.pod_config_dir`), the operator's `config/`, then what ships (`Home.scopes`). Roles read the
+   pod overlay's `roles/` and the operator's `config/roles/`, then the built-in and starter
+   archetypes; an MCP server read for a pod is the pod's before the operator's. The repository
+   entry is read at turn time only for the text kinds: a prompt (and a skill) is read from the
+   task's base commit through `teams/workspace/repo_view.py` and never from the writable
+   worktree, and with no base commit the repository entry is skipped. Roles, pipelines and MCP
+   servers enter from a repository only through `docket pod update`, an operator command.
+2. A reference is `<name>[@<major>]` for a role, or `prompt:<layer>/<name>[@<major>]` for a prompt.
+   The loader **MUST** resolve a prompt reference to the newest file of that major across the
+   scopes' files named `<name>.md` or `<name>@<version>.md` (a repository, read from a base commit,
+   offers `<name>.md` only), and **MUST** refuse a reference no file satisfies naming the
+   reference. Without a major the newest file wins. A role's `version` is an integer and is
+   the major a role reference names.
+3. `docket pod update <directory>` **MUST** write the directory's authored files into the pod
+   overlay: each role as `roles/<name>.<ext>` with the file its `instructions` names beside it
+   (a copy of the source bytes, never a regenerated document), each prompt as
+   `prompts/<layer>/<file>`, and the pipelines, skills, policies and plugins as before. There is
+   no applied `roles.json`; an `update` **MUST** leave none behind.
+4. The same update **MUST** write `applied.lock`, a JSON object `{"items": [...]}` in the overlay
+   directory, one item per file it applied, sorted by `kind` then `name`, each `{kind, name,
+   version, scope, path, applied, sha256}`: `path` is the source file's absolute path, `scope` is
+   `repository` for a directory named `.docket`, `shipped` for a shipped recipe and `operator`
+   otherwise, `applied` is the overlay file relative to the overlay (empty for an item with no
+   copy there: the manifest, the bound pipeline and an MCP server), and `sha256` is the hex
+   digest of the item's bytes (a role's file followed by its instructions file; a skill's
+   files in path order). The recorded `configDigest` **MUST** be the sha256 of the lock file's
+   bytes, so one source answers drift.
+5. `docket pod show` **MUST** report drift `yes` when the recorded source directory still
+   exists and its lock differs from the recorded digest, or when any applied overlay file no
+   longer hashes to its item's `sha256`; `no` otherwise, and unknown when there is nothing to compare.
+   A pod whose overlay still holds a `roles.json` from an earlier release and no lock **MUST** be
+   reported as needing `docket pod update`.
+
 ### Short-form export
 
 1. Every role, policy, or pod-manifest YAML file `docket pod export` writes **MUST** start with
@@ -313,6 +356,12 @@ RoleDocument | PipelineDocument | PolicyDocument | PodDocument  # pydantic
 ExporterSpec        # pydantic; exporter's own canonical model, also its schema source
 ChannelSpec         # pydantic; channel's own canonical model, also its schema source
 McpServerDocument   # pydantic; mcp-server's own canonical model, also its schema source
+
+parse_reference(text) -> Reference                      # teams/prompts.py: name, kind, layer, major
+resolve_prompt(layer, name, *, project="", view=None, major=None) -> LoadedPrompt
+                              # teams/prompts.py: the first scope that holds it, newest of major
+source_items(directory) -> tuple[LockItem, ...]         # teams/apply/lock.py: the lock to write
+source_digest(directory) -> str                         # what `configDigest` records
 
 render(kind: str) -> str      # schema generator: one schema.json's rendered content
 main(argv=None) -> int        # schema generator: writes, or --check exits 1 if stale

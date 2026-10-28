@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from docket.kernel import mcp as _mcp
 from docket.kernel.errors import InvalidInput
@@ -32,7 +32,7 @@ class ApplyItem:
     named, and whether applying it would add, replace, or skip (already matches disk)."""
 
     kind: Literal[
-        "role", "policy", "plugin", "skill", "mcp-server", "member", "pipeline", "setting"
+        "role", "prompt", "policy", "plugin", "skill", "mcp-server", "member", "pipeline", "setting"
     ]
     name: str
     action: ApplyAction
@@ -41,7 +41,18 @@ class ApplyItem:
 
 @dataclass(frozen=True)
 class _RoleWrite:
-    doc: dict[str, Any]
+    """One role's files for the pod overlay's ``roles/``: each relative path with its source
+    bytes, the role document first (``teams.roles.role_overlay_files``)."""
+
+    files: tuple[tuple[str, bytes], ...]
+
+
+@dataclass(frozen=True)
+class _PromptWrite:
+    """One prompt file for the pod overlay: its path under ``prompts/`` and its source bytes."""
+
+    rel: str
+    source: bytes
 
 
 @dataclass(frozen=True)
@@ -113,6 +124,7 @@ class ApplyPlan:
     items: tuple[ApplyItem, ...]
     exporters: tuple[str, ...] = field(default=())
     _role_writes: tuple[_RoleWrite, ...] = field(default=())
+    _prompt_writes: tuple[_PromptWrite, ...] = field(default=())
     _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
     _plugin_writes: tuple[_PluginWrite, ...] = field(default=())
     _named_pipeline_writes: tuple[_NamedPipelineWrite, ...] = field(default=())

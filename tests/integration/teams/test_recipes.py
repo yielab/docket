@@ -38,6 +38,7 @@ from docket.tasks.application import queue as _queue
 from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
+from docket.teams.apply import lock as _lock
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import recipes as _recipes
@@ -506,10 +507,10 @@ def test_export_then_apply_round_trip_matches_pod_show(
             # the target pod from `export_dir` -- different directories, each still `drift: no`
             # since neither was edited after its own `apply`.
             assert source_report["configSource"] == str(recipe_dir.resolve())
-            assert source_report["configDigest"] == _recipes.directory_digest(recipe_dir)
+            assert source_report["configDigest"] == _lock.source_digest(recipe_dir)
             assert source_report["drift"] == "no"
             assert target_report["configSource"] == str(export_dir.resolve())
-            assert target_report["configDigest"] == _recipes.directory_digest(export_dir)
+            assert target_report["configDigest"] == _lock.source_digest(export_dir)
             assert target_report["drift"] == "no"
 
             assert _normalized(source_report, source_project) == _normalized(
@@ -593,7 +594,7 @@ def test_apply_records_config_source_and_digest_and_explain_reports_drift(
 
         settings = _pod_settings.PodSettings.load_for(project)
         assert settings.config_source == str(recipe_copy.resolve())
-        assert settings.config_digest == _recipes.directory_digest(recipe_copy)
+        assert settings.config_digest == _lock.source_digest(recipe_copy)
 
         lead_id = pod.member_id(project, "lead")
         report = _explain_json(lead_id, capsys)
@@ -651,7 +652,7 @@ def test_apply_records_config_source_from_every_validated_apply_all_skip_include
 
         settings = _pod_settings.PodSettings.load_for(project)
         assert settings.config_source == str(dir_b.resolve())
-        assert settings.config_digest == _recipes.directory_digest(dir_b)
+        assert settings.config_digest == _lock.source_digest(dir_b)
 
 
 def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(

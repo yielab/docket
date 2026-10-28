@@ -25,7 +25,6 @@ from docket.kernel.errors import CanonicalFormRefused, DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
-from docket.platform import read_json
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
@@ -34,6 +33,7 @@ from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
+from docket.teams.apply import check as _check
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import recipes as _recipes
@@ -166,8 +166,7 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _model.
     except _config_docs.ConfigDocError as exc:
         _fail(str(exc), code=2 if isinstance(exc, CanonicalFormRefused) else 1)
     if document.kind == "role":
-        roles = read_json(current_home().pod_config_dir(project) / "roles.json").get("roles", {})
-        exists = document.name in roles
+        exists = _arch.load_registry(project).source_of(document.name) == f"pod:{project}"
     elif document.kind == "policy":
         exists = (current_home().pod_config_dir(project) / "policies" / path.name).is_file()
     else:
@@ -265,13 +264,31 @@ def cmd_validate(
         assert result.document is not None
         doc = result.document
         ui.success(f"{result.path} ({doc.kind} {doc.name})")
+    problems = [] if target.is_file() else _reference_problems(target)
+    for problem in problems:
+        ui.fail(problem)
     if not target.is_file():
         summary = _recipes.summarize_recipe(target)
         ui.dim(f"  {summary.render()}")
         if summary.description:
             ui.dim(f"  {summary.description}")
-    if any(r.error is not None for r in results):
+    if problems or any(r.error is not None for r in results):
         raise typer.Exit(1)
+
+
+def _reference_problems(directory: Path) -> list[str]:
+    """What the directory's references and prompt inputs get wrong, resolved against the pod
+    inferred from the current directory (else the built-ins)."""
+    manifest = next(
+        (p for p in (directory / "pod.yaml", directory / "pod.yml") if p.is_file()), None
+    )
+    members: object = []
+    if manifest is not None:
+        try:
+            members = _config_docs.load_document(manifest, kind="pod").doc.get("members", [])
+        except _config_docs.ConfigDocError:
+            members = []  # the kind validator above already reported the manifest
+    return _check.directory_problems(directory, _scope_pod(None), members)
 
 
 def _validate_default() -> Path:

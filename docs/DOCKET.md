@@ -700,7 +700,7 @@ Tester:      ✓ Behavior-only validation
   (see [One door for a program](#one-door-for-a-program) above)
 - [x] The configuration contract: `docket pod show` names each effective value and the
   scope it came from (built-in, global, pod), and `docket setup` names every entry a loader
-  skipped; per-pod `roles.json` and `policies/` resolve above the global layer (`--pod`)
+  skipped; per-pod `roles/` and `policies/` resolve above the global layer (`--pod`)
 - [x] Configuration format v1: every YAML document declares `kind:`, `docket pod validate` checks it,
   short forms normalize to the canonical one, pipelines route with `on:` and skip with `when`
 - [x] The provider catalog: model endpoints are `kind: provider` documents, fourteen built in

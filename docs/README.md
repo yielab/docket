@@ -136,7 +136,7 @@ in your repository:
 ├── audit.log                         # hash-chained audit log (docket log verify)
 ├── traces/  sessions/  approvals/    # per-session traces, durable history, pending approvals
 └── workspaces/
-    ├── pods/<project>/config/        # this pod's own overlay: roles.json, policies/, plugins/, skills/
+    ├── pods/<project>/config/        # this pod's own overlay: roles/, prompts/, policies/, plugins/, skills/, applied.lock
     └── projects/<project>-<role>/    # one isolated workspace per pod member
         ├── SOUL.md  AGENTS.md  TOOLS.md  HEARTBEAT.md  MEMORY.md
         ├── INSTRUCTIONS.md           # yours; docket never writes it

@@ -55,9 +55,9 @@ class TestPodConfigOverlays:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._build_pod(tmp_path):
-            pod_roles = current_home().pod_config_dir("demo") / "roles.json"
-            pod_roles.parent.mkdir(parents=True, exist_ok=True)
-            pod_roles.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
+            broken = current_home().pod_config_dir("demo") / "roles" / "broken-role.yaml"
+            broken.parent.mkdir(parents=True, exist_ok=True)
+            broken.write_text("kind: role\nname: broken-role\nmodel: huge\n")
             issues = _setup_check_config._check_pod_config_overlays()
             out = capsys.readouterr().out
             assert issues == 1

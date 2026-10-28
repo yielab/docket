@@ -8,6 +8,7 @@ from typing import Any
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
 from docket.hops.application import verify_tool as _verify
+from docket.hops.application.base_view import base_commit_view
 from docket.hops.application.verdict_tool import encode_values
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
 from docket.kernel import brief as _brief
@@ -35,6 +36,7 @@ from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.settings import load_pod_settings, pod_approval_mode
 from docket.teams.workspace import repo_map as _repo_map
+from docket.teams.workspace.repo_view import RepoView
 
 
 @dataclass
@@ -59,27 +61,32 @@ def _resolve_hop_instructions(
     rework_hop: HopResult | None,
     step_instructions: str,
     verify_cmd: str = "",
+    view: RepoView | None = None,
 ) -> str:
     """This role's hop instruction text; an Implementer whose step has *verify_cmd* is told it."""
-    text = _role_instructions(role, project, rework_hop, step_instructions)
+    text = _role_instructions(role, project, rework_hop, step_instructions, view)
     if verify_cmd and role == "implementer":
         return "\n\n".join(p for p in (text, _VERIFY_SENTENCE.format(verify_cmd)) if p)
     return text
 
 
 def _role_instructions(
-    role: str, project: str, rework_hop: HopResult | None, step_instructions: str
+    role: str,
+    project: str,
+    rework_hop: HopResult | None,
+    step_instructions: str,
+    view: RepoView | None = None,
 ) -> str:
-    """The role's own text: the step's own override, else a built-in role's shipped hop prompt,
-    else a custom role's registry-resolved ``hopInstruction``."""
+    """The role's own text: the step's own override, else a built-in role's hop prompt (the
+    first of the task's base commit, the pod overlay, the operator and what ships that holds
+    it), else a custom role's registry-resolved ``hopInstruction``."""
     if step_instructions:
         return step_instructions
     if role == "implementer":
-        return _prompts.shipped_prompt(
-            "hop", "implementer" if rework_hop is None else "implementer-rework"
-        ).text
+        name = "implementer" if rework_hop is None else "implementer-rework"
+        return _prompts.resolve_prompt("hop", name, project=project, view=view).text
     if role in ("reviewer", "tester"):
-        return _prompts.shipped_prompt("hop", role).text
+        return _prompts.resolve_prompt("hop", role, project=project, view=view).text
     # A custom role: its own archetype's `hopInstruction`, or one generated
     # from its `gateContract` (e.g. a verdict role's marker convention) --
     # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
@@ -220,6 +227,7 @@ def _hop_message(
         None if is_gate_failure_carryover(rework_hop) else rework_hop,
         step_instructions,
         verify_cmd,
+        base_commit_view(task.worktree, worktree),
     )
 
     # The role's total token budget, minus what the immutable task
