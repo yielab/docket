@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from docket.governance.approval_pregrant import create_pregrant
+from docket.kernel.clock import use_clock
 from docket.tasks.application.json_store import JsonTaskStore
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import TaskRecord
@@ -51,3 +56,24 @@ def pregrant(project: str, task_id: str, *, tool: str = "bash", digest: str = "d
     """Record a single-use pre-grant for *task_id* of *project*, as `task pregrant` does; its
     token."""
     return create_pregrant(project, "implementer", tool, digest, task_id=task_id, channel="cli")
+
+
+class SkewedClock:
+    """The system clock plus an offset: a claim written before the skew reads as that much older."""
+
+    def __init__(self, offset_s: float) -> None:
+        self.offset_s = offset_s
+
+    def now(self) -> datetime:
+        return datetime.now(UTC) + timedelta(seconds=self.offset_s)
+
+    def monotonic(self) -> float:
+        return time.monotonic() + self.offset_s
+
+
+@contextmanager
+def claims_gone_stale(hours: float = 2) -> Iterator[SkewedClock]:
+    """Run the block with the clock *hours* ahead, so every claim made before it is stale."""
+    with use_clock(SkewedClock(hours * 3600)) as clock:
+        assert isinstance(clock, SkewedClock)
+        yield clock

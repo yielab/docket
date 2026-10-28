@@ -260,7 +260,9 @@ class DocketDriver:
             approval_timeout=approval_timeout,
             cache_dir=jail_cache_dir(agent_id, want_sandbox),
             read_only=hop_read_only(resolved_project, ctx_roots[0]) if want_sandbox else (),
-            on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
+            on_process=_build_on_process(
+                resolved_project, resolved_session_key, meta.role, trace_task_id or ""
+            ),
         )
         # Folded in before the turn loop narrows by role
         # (teams.roles.registry_for_role, called once inside

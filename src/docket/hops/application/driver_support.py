@@ -30,6 +30,7 @@ from docket.models.catalog import ModelProfile
 from docket.observability import trace as _trace
 from docket.platform import read_json
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.queue import touch_claim
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
@@ -312,15 +313,18 @@ def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
 
 
 def _build_on_process(
-    project: str, session_key: str, role: str
+    project: str, session_key: str, role: str, task_id: str = ""
 ) -> Callable[[str, dict[str, Any]], None]:
     """A `ToolContext.on_process` for one turn: trace a tool call's process lifecycle and,
     while a dispatch run is current, register/clear its pgid against it so `docket task
-    cancel` reaches a live subprocess."""
+    cancel` reaches a live subprocess. A started process of a turn that serves *task_id*
+    refreshes the task's claim."""
 
     def _on_process(kind: str, data: dict[str, Any]) -> None:
         run_id = _runs.current_run_id()
         pgid = data.get("pgid")
+        if kind == "started" and task_id:
+            touch_claim(project, task_id)
         if run_id is not None and isinstance(pgid, int):
             if kind == "started":
                 _runs.add_hop_pid(run_id, pgid)

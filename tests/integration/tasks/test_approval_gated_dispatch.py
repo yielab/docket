@@ -44,6 +44,7 @@ from tests.support import home as _support_home
 from tests.support.approvals import escalation_of, pending_token, resolve_token
 from tests.support.pods import GATED_IMPLEMENTER_PIPELINE_YAML
 from tests.support.pods import write_meta as _write_meta
+from tests.support.tasks import claims_gone_stale
 from tests.support.trace import trace_events as _trace_events
 from typer.testing import CliRunner
 
@@ -296,7 +297,7 @@ class TestNotClaimableConcurrently:
         # Even if the stale-claim clock were somehow tripped, a
         # waiting_approval task has no claimedAt to go stale against — the
         # sweep only ever looks at status == "running".
-        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+        with claims_gone_stale():
             _lifecycle.sweep_stale_claims("myapp")
             assert TaskRepository.for_pod("myapp").list()[0].status == "waiting_approval"
 
