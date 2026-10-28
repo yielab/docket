@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -17,8 +17,8 @@ kind of file in a directory in one pass.
 This specification covers:
 
 - The envelope: every configuration document starts with `kind:` (one of `role`, `pipeline`,
-  `policy`, `pod`, `provider`, `exporter`, `channel`, `mcp-server`, `autonomy`) and `name:`;
-  `load_document(path)` reads the file, resolves its kind, and dispatches to the existing
+  `policy`, `pod`, `provider`, `exporter`, `channel`, `mcp-server`, `autonomy`, `prompt`) and
+  `name:`; `load_document(path)` reads the file, resolves its kind, and dispatches to the existing
   parser for that kind
 - One authored form per kind (`role`, `pipeline`, `policy`, `pod`): the short form. A file with a
   canonical key (a role's `modelClass`, a policy's `applies_to`, a pipeline step's `id:`) is
@@ -30,16 +30,18 @@ This specification covers:
   and its `<file>:<line> <field>: <message> (valid: ...; did you mean "...")` rendering
 - `docket pod validate [dir|file]`: validates every document under a directory (or one file),
   printing one line per file, invalid files first, exit 1 when any file is invalid
-- The nine parsers this dispatches to unchanged: `from_wire` (with the role file loader) for
+- The `prompt` kind: a Markdown file (YAML front matter, then the body) read by
+  `teams/prompts.py`, the one place a prompt is parsed
+- The ten parsers this dispatches to unchanged: `from_wire` (with the role file loader) for
   `role`, `load_pipeline` for `pipeline`, `validate_policy` for `policy`, the pod manifest key
   set for `pod`, `load_provider_document` for `provider`, `load_exporter_document` for
   `exporter`, `load_channel_document` for `channel` and `load_mcp_server_document` for
-  `mcp-server`, `load_autonomy_document` for `autonomy`. `provider` and `autonomy` have no published
+  `mcp-server`, `load_autonomy_document` for `autonomy`, `load_prompt_file` for `prompt`. `provider` and `autonomy` have no published
   schema (canonical form only); `exporter`,
-  `channel` and `mcp-server` each have a published schema generated directly from their own
-  canonical model, since none has a separate short form to refine against
-- The published `docs/contracts/config-v1/{role,pipeline,policy,pod,exporter,channel,mcp-server}.
-  schema.json` JSON Schemas, generated from the short-form models that also refine a short-form
+  `channel`, `mcp-server` and `prompt` each have a published schema generated directly from
+  their own canonical model, since none has a separate short form to refine against
+- The published `docs/contracts/config-v1/{role,pipeline,policy,pod,exporter,channel,mcp-server,
+  prompt}.schema.json` JSON Schemas, generated from the short-form models that also refine a short-form
   document's `ConfigDocError`, and the `# yaml-language-server:`/`.schemas/` convention
   `docket pod export` writes its short-form output with (see "Published schemas", "Short-form
   export")
@@ -64,7 +66,7 @@ This specification does NOT cover:
 ### The envelope
 
 1. `KINDS` **MUST** be the closed tuple `("role", "pipeline", "policy", "pod", "provider",
-   "exporter", "channel", "mcp-server", "autonomy")`, in that order. An `autonomy` document is
+   "exporter", "channel", "mcp-server", "autonomy", "prompt")`, in that order. An `autonomy` document is
    `name`, an optional `description` and `rows`: a mapping from each escalation kind (`approval`,
    `consult`, `input`, `gate`, `check_changed`) to a mapping from each level (`L3`, `L4`, `L5`) to
    `{policy, onExpiry}`, where `policy` is `person`, `recommendation`, `deny` or `fail` and
@@ -76,7 +78,8 @@ This specification does NOT cover:
    the key is not `kind` because `kind:` is the envelope) and `tools`; any other key (an
    `isolate:` key, for instance) is an unknown-key error, because every stdio server starts in
    the turn's jail. It lives under a recipe's `mcp-servers/`, which `discover_config_paths`
-   lists after `policies/`.
+   lists after `policies/`. A `prompt` document is a Markdown file, not YAML (the `prompt`
+   requirements below), and lives under a repository's `prompts/<layer>/`.
 2. A document's `kind:` key, when present, **MUST** be one of `KINDS`; any other value **MUST**
    raise `ConfigDocError` naming every value in `KINDS` and, when one is a close enough match,
    a suggestion.
@@ -118,9 +121,13 @@ This specification does NOT cover:
      model, the same shape as `exporter`.
    - `autonomy` -> `load_autonomy_document(path)`; a raised `AutonomyError` is mapped the same
      way. It has no short-form model and no published schema.
+   - `prompt` -> `load_prompt_file(path)`; a raised `PromptError` is mapped the same way,
+     keeping its line and field. Any `.md` file is a `prompt` by its suffix (no other kind is
+     Markdown), and a `.yaml`/`.json` file that declares `kind: prompt` is refused, naming
+     the `kind` line.
 2. A parser's own exception or non-empty error string **MUST** be surfaced as a
    `ConfigDocError` naming the file and the parser's own message; this spec does not change what
-   any of the nine parsers accepts or rejects.
+   any of the ten parsers accepts or rejects.
 3. Applying a directory (its `pod.yaml` manifest and each role file), `docket pod update
    <file>`, `docket pod validate`, `docket pod plan --pipeline` and the pipeline file a `docket
    run` is given **MUST** all read the stand-alone file through `load_document` (through
@@ -177,7 +184,8 @@ This specification does NOT cover:
    that one file only.
 2. Given a directory, it **MUST** validate every `*.yaml`/`*.yml`/`*.json` file directly under
    `roles/`, `policies/` and `mcp-servers/`, every `*.yaml`/`*.yml` under `pipelines/` (a
-   pipeline by location), plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
+   pipeline by location), every `*.md` file directly under `prompts/` or under one of its layer
+   directories (`prompts/<layer>/*.md`, after the pipelines), plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
    directly under the directory, when present, in that order. `discover_config_paths` does not
    look for a provider, exporter or channel document by location; `docket pod validate <file>`
    naming one directly still loads it (`kind: provider`/`exporter`/`channel` is enough).
@@ -201,25 +209,63 @@ This specification does NOT cover:
    They are used for two things only, schema generation and the error refinement in
    Requirement 3 below, and are never a second loader; the normalizers remain the only place a
    document is actually parsed. `ExporterSpec`, `ChannelSpec` and `McpServerDocument` are
-   registered for schema generation alongside them, but none is a short-form model in this
+   registered for schema generation alongside them, as is `PromptDocument` (the `prompt` kind's
+   front matter): none is a short-form model in this
    sense: each is its own kind's only, canonical, parsed shape, so none is ever subject to
    Requirement 3's short-form ambiguity check.
 2. The schema generator script **MUST** render `docs/contracts/config-v1/
-   {role,pipeline,policy,pod,exporter,channel,mcp-server}.schema.json` from each model's
+   {role,pipeline,policy,pod,exporter,channel,mcp-server,prompt}.schema.json` from each model's
    `model_json_schema()`, with a `$schema`, `$id`
    (`https://docket.dev/schemas/config-v1/<kind>.schema.json`) and `title`, and write a
    byte-identical copy of each to the schemas directory shipped inside the installed package.
-   `--check` **MUST** exit `1` when any of the fourteen files is stale.
+   `--check` **MUST** exit `1` when any of the sixteen files is stale.
 3. When a document fails its kind's real parser (the role loader, `load_pipeline`,
    `validate_policy`, the pod manifest key check), `load_document` **MUST** attempt
    `model_validate` against that kind's model before raising; on a `pydantic.ValidationError`,
    the raised `ConfigDocError`'s `field` and, for a closed-vocabulary field, `valid` **MUST**
    come from the model's own error instead of the parser's plain message. There is no form to
    guess: every authored `role`, `pipeline`, `policy` and `pod` document is its short form; `exporter`,
-   `channel` and `mcp-server` are never refined by a model.
+   `channel`, `mcp-server` and `prompt` are never refined by a model.
 4. These schemas are a generated, pinned artifact for external editors and validators, not a
    second validation path: `docket pod validate`/`load_document` **MUST** continue to dispatch to
    each kind's own parser as the sole authority for whether a document is valid.
+
+### The `prompt` kind
+
+1. A prompt **MUST** be a file of YAML front matter (between a first line `---` and the next line
+   that is exactly `---`) followed by a Markdown body. The front matter's keys are closed
+   (`PromptDocument`, `extra="forbid"`): `kind` (`prompt`), `name` (lowercase letters, digits and
+   hyphens, starting with a letter), `version` (semver, `MAJOR.MINOR.PATCH`), `layer`
+   (`identity`, `task` or `hop`), `for` (a role name), `modelClass` (`cheap`, `strong` or `any`;
+   `any` when absent), `inputs` (a mapping from a variable name to its type: `string`, `text`,
+   `int`, `bool` or `list`), `output` (a schema name, one of `OUTPUT_SCHEMAS`: `handoff/v1`;
+   absent for a prompt that produces none), `tests` (a relative path beside the prompt, never
+   absolute and never containing `..`) and an optional `description`. `kind`, `name`, `version`,
+   `layer` and `for` are required. A file with no front matter, or whose front matter is not a
+   mapping, is refused.
+2. The body is the prompt's text. `text` **MUST** be the body with its trailing newlines removed,
+   so a prompt file ends like any other text file and its text is the same bytes a Python literal
+   held. Placeholders are `${name}`; `$$` is a literal dollar sign.
+3. A placeholder naming a variable that is not a key of `inputs`, and a malformed placeholder,
+   **MUST** be a load error whose message names the file and the file's line (front matter lines
+   counted), such as `<file>:<line> undeclared variable ${x}`. A prompt with an unknown `output`
+   is refused naming the `output` line. The parser **MUST NOT** accept a front matter key it does
+   not know.
+4. `load_document` of a prompt **MUST** return a `Document` of kind `prompt` whose `doc` is the
+   front matter mapping. `docket pod validate` **MUST** report an invalid prompt like any other
+   invalid file (exit 1, the file named, with its line).
+5. The loader (`teams/prompts.py`) **MUST** return, for a prompt it resolves, a `LoadedPrompt`:
+   `name`, `version`, `layer`, `scope`, `text` and `sha256`, the SHA-256 (hex) of `text` as UTF-8,
+   before any substitution. A shipped prompt (`templates/prompts/<layer>/<name>.md`, found through
+   `kernel/templates.py`, so an installed wheel finds it) has scope `shipped`; its file's `layer`
+   **MUST** equal its directory. A role's own text (a pod overlay's `hopInstruction` or
+   `soulTemplate`) that differs from the shipped prompt of the same name and layer **MUST** resolve
+   to scope `pod`, with the role's version as its `MAJOR.0.0`; the same text as the shipped prompt
+   resolves to the shipped one. A shipped prompt that does not parse is a defect that fails the
+   test suite, never a silent fallback.
+6. Substitution **MUST** be strict (`prompts.substitute`): a variable the caller does not supply
+   raises `PromptError`, never a literal `${typo}`. `role_schema.render` is this function with its
+   error mapped to `ArchetypeError`.
 
 ### Short-form export
 
@@ -354,6 +400,9 @@ ok .docket/roles/custom.yaml (role custom)
 - `src/docket/teams/apply/plan.py`: the pod manifest key set (`_MANIFEST_KEYS`), `export_pod` and
   its schema headers and `.schemas/` copy, `plan_apply`, `repo_config_dir`
 - `src/docket/teams/roles.py`: `load_role_file`, `from_wire`
+- `src/docket/teams/prompts.py`: `load_prompt_file`, `parse_prompt`, `PromptDocument`, `PromptError`,
+  `LoadedPrompt`, `shipped_prompt`, `role_prompt`, `substitute`, `OUTPUT_SCHEMAS`; the shipped prompts are
+  `src/docket/templates/prompts/`
 - `src/docket/pipeline/domain/spec.py`: `load_pipeline`, `normalize_pipeline`
 - `src/docket/governance/policy.py`: `validate_policy`, `read_policy`, `normalize_policy`
 - `src/docket/models/catalog.py`: `load_provider_document`, `ProviderError`

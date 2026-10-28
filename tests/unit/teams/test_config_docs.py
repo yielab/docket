@@ -44,10 +44,12 @@ def test_an_unknown_kind_raises_naming_every_known_kind(tmp_path: Path) -> None:
         "channel",
         "mcp-server",
         "autonomy",
+        "prompt",
     }
     assert str(error) == (
         f"{path}:1 kind: unknown kind 'banana' "
-        "(valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server, autonomy)"
+        "(valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server, autonomy, "
+        "prompt)"
     )
 
 
@@ -205,3 +207,68 @@ def test_a_pipeline_error_is_not_masked_by_an_unquoted_on_key(tmp_path: Path) ->
     assert result.error is not None
     message = str(result.error)
     assert "nowhere" in message and message.count(str(path)) == 1, message
+
+
+_PROMPT = """---
+kind: prompt
+name: nudge
+version: 1.0.0
+layer: hop
+for: reviewer
+inputs:
+  who: string
+---
+Hello ${who}.
+"""
+
+
+def test_a_markdown_prompt_loads_as_a_prompt_document(tmp_path: Path) -> None:
+    path = tmp_path / "prompts" / "hop" / "nudge.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(_PROMPT, encoding="utf-8")
+
+    document = config_docs.load_document(path)
+
+    assert (document.kind, document.name) == ("prompt", "nudge")
+    assert document.doc["layer"] == "hop"
+
+
+def test_a_prompt_with_an_undeclared_variable_is_a_config_error_with_file_and_line(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bad.md"
+    path.write_text(_PROMPT.replace("Hello ${who}.", "Hello ${whom}."), encoding="utf-8")
+
+    with pytest.raises(config_docs.ConfigDocError) as exc_info:
+        config_docs.load_document(path)
+
+    assert exc_info.value.line == 10
+    assert str(exc_info.value).startswith(f"{path}:10 ")
+    assert "${whom}" in str(exc_info.value)
+
+
+def test_a_yaml_file_declaring_kind_prompt_is_refused_at_its_kind_line(tmp_path: Path) -> None:
+    path = tmp_path / "p.yaml"
+    path.write_text("name: x\nkind: prompt\n", encoding="utf-8")
+
+    with pytest.raises(config_docs.ConfigDocError) as exc_info:
+        config_docs.load_document(path)
+
+    assert exc_info.value.field == "kind"
+    assert exc_info.value.line == 2
+
+
+def test_discovery_lists_prompts_under_their_layer_directories_after_pipelines(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "pipelines").mkdir()
+    (tmp_path / "pipelines" / "a.yaml").write_text("steps: []\n", encoding="utf-8")
+    (tmp_path / "prompts" / "hop").mkdir(parents=True)
+    (tmp_path / "prompts" / "hop" / "n.md").write_text(_PROMPT, encoding="utf-8")
+    (tmp_path / "prompts" / "top.md").write_text(_PROMPT, encoding="utf-8")
+
+    found = [
+        p.relative_to(tmp_path).as_posix() for p in config_docs.discover_config_paths(tmp_path)
+    ]
+
+    assert found == ["pipelines/a.yaml", "prompts/top.md", "prompts/hop/n.md"]

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/prompt.schema.json",
+  "title": "PromptDocument",
+  "additionalProperties": false,
+  "description": "The front matter of a prompt file, the schema of ``prompt.schema.json``.",
+  "properties": {
+    "kind": {
+      "const": "prompt",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Version",
+      "type": "string"
+    },
+    "layer": {
+      "enum": [
+        "identity",
+        "task",
+        "hop"
+      ],
+      "title": "Layer",
+      "type": "string"
+    },
+    "for": {
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "For",
+      "type": "string"
+    },
+    "modelClass": {
+      "default": "any",
+      "enum": [
+        "cheap",
+        "strong",
+        "any"
+      ],
+      "title": "Modelclass",
+      "type": "string"
+    },
+    "inputs": {
+      "additionalProperties": {
+        "enum": [
+          "string",
+          "text",
+          "int",
+          "bool",
+          "list"
+        ],
+        "type": "string"
+      },
+      "title": "Inputs",
+      "type": "object"
+    },
+    "output": {
+      "anyOf": [
+        {
+          "const": "handoff/v1",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output"
+    },
+    "tests": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tests"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "version",
+    "layer",
+    "for"
+  ],
+  "type": "object"
+}

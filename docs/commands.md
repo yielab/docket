@@ -280,9 +280,9 @@ Example: docket pod export .docket --force
 Validate any configuration document, or every document in a directory.
 
 The default is .docket/ in the current directory when it exists, else the
-directory itself. Roles, policies, pipelines, pod manifests and MCP server
-documents are each checked by the validator that owns their kind. Exit 1 when
-any is invalid.
+directory itself. Roles, policies, pipelines, prompts, pod manifests and MCP
+server documents are each checked by the validator that owns their kind. Exit
+1 when any is invalid.
 
 Example: docket pod validate .docket
 
