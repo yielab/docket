@@ -48,7 +48,15 @@ SUBJECT = "docket.teams.apply.plan"
 RECIPES_DIR = _templates.RECIPES_DIR
 
 
-REQUIRED_RECIPES = ("secure-build", "research-review", "ops-approval")
+REQUIRED_RECIPES = (
+    "secure-build",
+    "research-review",
+    "ops-approval",
+    "explore-then-edit",
+    "strong-plan-cheap-edit",
+    "parallel-explore",
+    "web-research",
+)
 
 
 def _recipe_dirs() -> list[Path]:
@@ -96,6 +104,13 @@ def test_every_recipe_has_a_readme_and_some_content() -> None:
         has_members = bool(_pod_manifest_members(recipe_dir))
         has_servers = bool(list((recipe_dir / "mcp-servers").glob("*.yaml")))
         assert has_pipeline or has_roles or has_policies or has_members or has_servers, recipe_dir
+
+
+def test_web_research_readme_states_both_prerequisites() -> None:
+    """The web-research README names the fetch allowlist and the search server's MCP command."""
+    readme = (RECIPES_DIR / "web-research" / "README.md").read_text(encoding="utf-8")
+    assert "FETCH_ALLOWED_DOMAINS=<hosts>" in readme
+    assert "docket setup mcp add searxng --kind read -- " in readme
 
 
 @pytest.mark.parametrize("recipe_dir", _recipe_dirs(), ids=lambda p: p.name)

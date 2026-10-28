@@ -1,0 +1,30 @@
+kind: pipeline
+name: web-research
+description: >-
+  The Lead splits a question into sub-questions, three cheap-tier Researchers work the
+  sub-questions concurrently (two over the allowed web hosts, one over the repository), the
+  Analyst draws conclusions from their replies, and the Writer drafts the answer.
+steps:
+  - lead: lead
+  - research:
+      parallel:
+        - web-a: researcher
+          model: cheap
+          instructions: >-
+            Work the first half of the Lead's sub-questions. Search with the search server's
+            tools, then read the most relevant pages on the allowed hosts. Reply with the
+            findings and the URL of every page you used.
+        - web-b: researcher
+          model: cheap
+          instructions: >-
+            Work the second half of the Lead's sub-questions. Search with the search server's
+            tools, then read the most relevant pages on the allowed hosts. Reply with the
+            findings and the URL of every page you used.
+        - repo: researcher
+          model: cheap
+          instructions: >-
+            Answer the Lead's sub-questions from this repository only. Find the code and docs
+            with grep and read the matching ranges. Do not search or fetch anything outside the
+            repository. Reply with path:line locators and one line on what each shows.
+  - analyst: analyst
+  - writer: writer
