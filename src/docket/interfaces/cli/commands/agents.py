@@ -30,6 +30,7 @@ from docket.interfaces.cli.render.apply import (
     render_run_items,
     run_item_label,
 )
+from docket.kernel import layout as _layout
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
@@ -292,6 +293,13 @@ def run_init(req: InitRequest) -> int:
     """Provision a project pod from the request, deriving ordinary defaults from the cwd
     (non-interactive: cwd is the location, its basename the pod id). ``from_file`` takes
     the declarative path instead."""
+    try:
+        moved = _layout.migrate(current_home().root)
+    except _layout.LayoutConflict as exc:
+        return _invalid(req, str(exc))
+    if moved and not req.json_out:
+        ui.info(f"Moved {len(moved)} entries of the old home layout into config/ and state/.")
+    mkdir_private(current_home().config_dir)
     mkdir_private(current_home().projects_dir)
 
     if req.from_file is not None:

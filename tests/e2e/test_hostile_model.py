@@ -64,7 +64,7 @@ def pending_escalation(world: World, task_id: str) -> str:
 
 def task_dir(world: World, task_id: str) -> Path:
     """The task's own worktree, under the Implementer's workspace."""
-    return world.home / "workspaces" / "projects" / "e2e-implementer" / "tasks" / task_id
+    return world.home / "state" / "workspaces" / "projects" / "e2e-implementer" / "tasks" / task_id
 
 
 def commit(world: World, message: str, **files: str) -> None:

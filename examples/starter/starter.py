@@ -333,8 +333,15 @@ def _dispatch(docket: Path, pipeline: Path, *, cwd: Path, env: dict[str, str]) -
     )
 
 
+def _layout(home: Path) -> Any:
+    """The installed docket's own answer to where it keeps files under *home*."""
+    from docket.kernel.home import Home
+
+    return Home(home)
+
+
 def _terminal_evidence(home: Path) -> tuple[Path, dict[str, Any]]:
-    task_lists = list((home / "workspaces" / "projects").glob("*/TASK_LIST.json"))
+    task_lists = list(_layout(home).projects_dir.glob("*/TASK_LIST.json"))
     _require(len(task_lists) == 1, f"expected one task list, found {len(task_lists)}")
     payload = _load_object(task_lists[0])
     tasks = payload.get("tasks")
@@ -495,8 +502,8 @@ def _run(workspace: Path) -> None:
     _require(target.read_bytes() == APPROVED_TEXT.encode(), "approved target bytes mismatched")
     task_list, done_task = _terminal_evidence(home)
     run_id = _inspect_public_cli(docket, done_task, cwd=base, env=env)
-    trace_dir = home / "traces" / PROJECT
-    audit = home / "audit.log"
+    trace_dir = _layout(home).traces_dir / PROJECT
+    audit = _layout(home).audit_log
     print(f"Target: {target}")
     print(f"Task list: {task_list}")
     print(f"Trace: {trace_dir}")

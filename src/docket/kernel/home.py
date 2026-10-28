@@ -10,7 +10,23 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
+from docket.kernel import layout as _layout
+from docket.kernel import templates as _templates
+
 _RETRY_ROLES = ("lead", "implementer", "reviewer", "tester")
+
+# Kind -> the Home property holding the operator's directory for it.
+_OPERATOR_DIRS = {
+    "prompts": "prompts_dir",
+    "pipelines": "pipelines_dir",
+    "skills": "skills_dir",
+    "policies": "policies_dir",
+    "plugins": "plugins_dir",
+}
+# Only text is read from a repository at turn time; a kind that grants or runs something
+# enters from one only through `docket pod update`.
+_REPOSITORY_KINDS = frozenset({"prompts", "skills"})
+_SHIPPED_KINDS = frozenset({"prompts", "pipelines", "skills"})
 
 
 def _int(env: Mapping[str, str], name: str, default: int) -> int:
@@ -35,7 +51,8 @@ class Home:
     """A `<name>_override` field holds a path the environment set; the `<name>` property
     falls back to a path under root, so a Home on another root moves every unset path."""
 
-    # The state root (DOCKET_HOME).
+    # DOCKET_HOME. Authored configuration lives under `config_dir`, what docket writes while
+    # it runs under `state_dir`; every path below resolves under one of the two.
     root: Path
     traces_dir_override: Path | None = None
     # audit.log rotates to one backup (audit.log.1) at this size. The new file carries the
@@ -268,22 +285,35 @@ class Home:
         return {role: overrides.get(role, self.dispatch_retries_default) for role in _RETRY_ROLES}
 
     @property
+    def config_dir(self) -> Path:
+        """The operator's authored configuration: catalogs, recipes, skills, policies, plugins
+        and `pods/<pod>/` overlays. An old-layout home (no `config/` or `state/`) is its own
+        config and state level until `docket init` moves it."""
+        return self.root if _layout.is_legacy(self.root) else self.root / _layout.CONFIG_DIRNAME
+
+    @property
+    def state_dir(self) -> Path:
+        """What docket writes while it runs: sessions, traces, workspaces, caches, audit,
+        approvals, escalations and secrets."""
+        return self.root if _layout.is_legacy(self.root) else self.root / _layout.STATE_DIRNAME
+
+    @property
     def model_registry_file(self) -> Path:
-        return self.root / "docket-models.json"
+        return self.config_dir / "docket-models.json"
 
     # Pod members' workspaces live under projects/, per-pod runtime directories under pods/.
     @property
     def workspaces_dir(self) -> Path:
-        return self.root / "workspaces"
+        return self.state_dir / "workspaces"
 
     @property
     def jail_tmp_dir(self) -> Path:
-        return self.root / "jail-tmp"
+        return self.state_dir / "jail-tmp"
 
     # What a task worktree's install produced, one entry per codebase and lockfile hash.
     @property
     def prepare_cache_dir(self) -> Path:
-        return self.root / "cache" / "prepare"
+        return self.state_dir / "cache" / "prepare"
 
     @property
     def projects_dir(self) -> Path:
@@ -297,71 +327,79 @@ class Home:
     def traces_dir(self) -> Path:
         if self.traces_dir_override is not None:
             return self.traces_dir_override
-        return self.root / "traces"
+        return self.state_dir / "traces"
 
     @property
     def audit_log(self) -> Path:
-        return self.root / "audit.log"
+        return self.state_dir / "audit.log"
 
     # The running `docket start`'s pid, so `docket stop` can find it.
     @property
     def serve_pid_file(self) -> Path:
-        return self.root / "serve.pid"
+        return self.state_dir / "serve.pid"
 
     @property
     def policies_dir(self) -> Path:
         if self.policies_dir_override is not None:
             return self.policies_dir_override
-        return self.root / "policies"
+        return self.config_dir / "policies"
 
     # Operator-applied predicate plugins; never read from a codebase.
     @property
     def plugins_dir(self) -> Path:
         if self.plugins_dir_override is not None:
             return self.plugins_dir_override
-        return self.root / "plugins"
+        return self.config_dir / "plugins"
 
     # The operator's skills, the outermost of the three scopes teams/workspace/skills.py reads.
     @property
     def skills_dir(self) -> Path:
         if self.skills_dir_override is not None:
             return self.skills_dir_override
-        return self.root / "skills"
+        return self.config_dir / "skills"
+
+    @property
+    def prompts_dir(self) -> Path:
+        return self.config_dir / "prompts"
+
+    @property
+    def pipelines_dir(self) -> Path:
+        return self.config_dir / "pipelines"
 
     @property
     def approvals_dir(self) -> Path:
         if self.approvals_dir_override is not None:
             return self.approvals_dir_override
-        return self.root / "approvals"
+        return self.state_dir / "approvals"
 
     @property
     def corrections_dir(self) -> Path:
         if self.corrections_dir_override is not None:
             return self.corrections_dir_override
-        return self.root / "corrections"
+        return self.state_dir / "corrections"
 
     # One 0600 file per parked consult question, read once by dispatch.
     @property
     def consult_parked_dir(self) -> Path:
-        return self.root / "consult-parked"
+        return self.state_dir / "consult-parked"
 
     # One 0600 file per escalation, plus the counter that orders them.
     @property
     def escalations_dir(self) -> Path:
-        return self.root / "escalations"
+        return self.state_dir / "escalations"
 
     @property
     def schedule_file(self) -> Path:
         if self.schedule_file_override is not None:
             return self.schedule_file_override
-        return self.root / "docket-schedules.json"
+        return self.state_dir / "docket-schedules.json"
 
     # One record per dispatch run, whatever triggered it.
     @property
     def runs_file(self) -> Path:
         if self.runs_file_override is not None:
             return self.runs_file_override
-        return self.root / "docket-runs.json"
+        return self.state_dir / "docket-runs.json"
 
     @property
     def trace_retention_s(self) -> int:
@@ -377,12 +415,12 @@ class Home:
 
     @property
     def port_alloc_file(self) -> Path:
-        return self.root / "port-allocations.json"
+        return self.state_dir / "port-allocations.json"
 
     # Channel conversation state (Telegram threads), so a conversation can resume.
     @property
     def conversations_file(self) -> Path:
-        return self.root / "docket-conversations.json"
+        return self.state_dir / "docket-conversations.json"
 
     # One directory per session key, so appending to or compacting one session's history
     # never blocks or corrupts another's.
@@ -390,46 +428,46 @@ class Home:
     def sessions_dir(self) -> Path:
         if self.sessions_dir_override is not None:
             return self.sessions_dir_override
-        return self.root / "sessions"
+        return self.state_dir / "sessions"
 
     @property
     def mcp_servers_file(self) -> Path:
         if self.mcp_servers_file_override is not None:
             return self.mcp_servers_file_override
-        return self.root / "docket-mcp-servers.json"
+        return self.config_dir / "docket-mcp-servers.json"
 
     # The operator's provider documents, merged nearest-wins over the ones in the wheel.
     @property
     def providers_file(self) -> Path:
         if self.providers_file_override is not None:
             return self.providers_file_override
-        return self.root / "docket-providers.json"
+        return self.config_dir / "docket-providers.json"
 
     # The limits each provider's /models published, and when they were observed.
     @property
     def provider_models_file(self) -> Path:
-        return self.root / "provider-models.json"
+        return self.state_dir / "provider-models.json"
 
     # The operator's exporter documents, merged nearest-wins over the ones in the wheel.
     @property
     def exporters_file(self) -> Path:
         if self.exporters_file_override is not None:
             return self.exporters_file_override
-        return self.root / "docket-exporters.json"
+        return self.config_dir / "docket-exporters.json"
 
     # Per-exporter delivery counters and last error.
     @property
     def exporters_health_file(self) -> Path:
         if self.exporters_health_file_override is not None:
             return self.exporters_health_file_override
-        return self.root / "exporters-health.json"
+        return self.state_dir / "exporters-health.json"
 
     # The operator's channel documents, merged nearest-wins over the ones in the wheel.
     @property
     def channels_file(self) -> Path:
         if self.channels_file_override is not None:
             return self.channels_file_override
-        return self.root / "docket-channels.json"
+        return self.config_dir / "docket-channels.json"
 
     # What operator/notify.py::flush already delivered. Saved before delivering, so a crash
     # mid-delivery never sends an event twice (at most once).
@@ -437,14 +475,14 @@ class Home:
     def notify_state_file(self) -> Path:
         if self.notify_state_file_override is not None:
             return self.notify_state_file_override
-        return self.root / "notify-state.json"
+        return self.state_dir / "notify-state.json"
 
     # Per-channel delivery counters and last error.
     @property
     def channels_health_file(self) -> Path:
         if self.channels_health_file_override is not None:
             return self.channels_health_file_override
-        return self.root / "channels-health.json"
+        return self.state_dir / "channels-health.json"
 
     # Agent registration, channel bindings and gate flags; per-agent facts stay in each
     # workspace's meta file and are not repeated here.
@@ -452,34 +490,34 @@ class Home:
     def fleet_file(self) -> Path:
         if self.fleet_file_override is not None:
             return self.fleet_file_override
-        return self.root / "fleet.json"
+        return self.state_dir / "fleet.json"
 
     # The last processed Telegram update id + 1, so a restart does not redeliver the backlog.
     @property
     def telegram_offset_file(self) -> Path:
-        return self.root / "docket-telegram-offset.json"
+        return self.state_dir / "docket-telegram-offset.json"
 
     # Where `docket inbox` last stopped, so a repeat call shows only newly finished tasks.
     @property
     def inbox_cursor_file(self) -> Path:
-        return self.root / "inbox-cursor.json"
+        return self.state_dir / "inbox-cursor.json"
 
     @property
     def reviewed_repos_file(self) -> Path:
-        return self.root / "reviewed-repos.json"
+        return self.state_dir / "reviewed-repos.json"
 
     # Stored provider credentials and their added/rotated bookkeeping (governance/secrets.py).
     @property
     def secrets_file(self) -> Path:
-        return self.root / "secrets.json"
+        return self.state_dir / "secrets.json"
 
     @property
     def secrets_meta_file(self) -> Path:
-        return self.root / "secrets.meta.json"
+        return self.state_dir / "secrets.meta.json"
 
     @property
     def user_recipes_dir(self) -> Path:
-        return self.root / "recipes"
+        return self.config_dir / "recipes"
 
     def workspace_dir(self, agent_id: str) -> Path:
         return self.projects_dir / agent_id
@@ -500,8 +538,26 @@ class Home:
         return self.pods_dir / project / "memory.json"
 
     def pod_config_dir(self, project: str) -> Path:
-        """A pod's configuration overlay, read above the global one for that pod alone."""
-        return self.pods_dir / project / "config"
+        """A pod's configuration overlay, read above the operator's for that pod alone."""
+        if _layout.is_legacy(self.root):
+            return self.pods_dir / project / "config"
+        return self.config_dir / "pods" / project
+
+    def scopes(self, kind: str, project: str = "", repo_root: Path | None = None) -> list[Path]:
+        """The directories that can hold *kind*, nearest first: repository (text kinds, given
+        *repo_root*), pod overlay (given *project*), operator, then shipped templates (kinds read
+        in place). Returned whether or not they exist."""
+        if kind not in _OPERATOR_DIRS:
+            raise ValueError(f"unknown configuration kind {kind!r}")
+        found: list[Path] = []
+        if repo_root is not None and kind in _REPOSITORY_KINDS:
+            found.append(Path(repo_root) / ".docket" / kind)
+        if project:
+            found.append(self.pod_config_dir(project) / kind)
+        found.append(getattr(self, _OPERATOR_DIRS[kind]))
+        if kind in _SHIPPED_KINDS:
+            found.append(_templates.TEMPLATES_DIR / kind)
+        return found
 
     def pod_work_dir(self, project: str) -> Path:
         """The shared working directory of a pod with no codebase (research, content, ops)."""

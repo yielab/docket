@@ -42,7 +42,6 @@ open fields), the built-in/starter tables, and the user-overlay contract.
 
 from __future__ import annotations
 
-import contextlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,7 +50,7 @@ from typing import Any
 from docket.agent.tools.registry import ToolKind
 from docket.kernel.errors import CanonicalFormRefused
 from docket.kernel.home import current_home
-from docket.platform import read_json, read_modify_write
+from docket.platform import mkdir_private, read_json, read_modify_write
 from docket.teams.builtin_roles import (
     _STARTER_AGENTS_TEMPLATE,
     BUILTIN_ARCHETYPES,
@@ -423,13 +422,7 @@ def add_user_archetype(doc: dict[str, Any], project: str) -> RoleArchetype:
         current.setdefault("roles", {})[name] = arch.to_wire()
         return current
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # path.parent is pod_config_dir(project); its parent is PODS_DIR/project.
-    # Both may be freshly created by the mkdir above and inherit umask -- harden
-    # them the same way pod_provisioning.py's scratch dir does.
-    with contextlib.suppress(OSError):
-        current_home().pods_dir.chmod(0o700)
-        path.parent.parent.chmod(0o700)
-        path.parent.chmod(0o700)
+    # path.parent is pod_config_dir(project); every directory this creates is 0700.
+    mkdir_private(path.parent)
     read_modify_write(path, _fn)
     return arch

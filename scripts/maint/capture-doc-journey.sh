@@ -53,10 +53,13 @@ run 1-team.txt "docket pod set verify --member myapp-implementer --pod myapp \"p
 run 2-dispatch.txt 'docket task add "Fix calc.add so it returns the sum of a and b" --pod myapp'
 run 2-dispatch.txt docket run --pod myapp
 run 2-dispatch.txt docket task list --pod myapp
-task_id="$(python3 -c 'import json,glob;print([t["id"] for t in json.load(open(glob.glob("'"$HOME"'/.docket/workspaces/projects/myapp-lead/TASK_LIST.json")[0]))["tasks"]][-1])')"
+# State sits under state/ in the current layout and at the top of an old-layout home.
+docket_state="$HOME/.docket"
+[ -d "$docket_state/state" ] && docket_state="$docket_state/state"
+task_id="$(python3 -c 'import json,glob;print([t["id"] for t in json.load(open(glob.glob("'"$docket_state"'/workspaces/projects/myapp-lead/TASK_LIST.json")[0]))["tasks"]][-1])')"
 run 2-dispatch.txt "docket task trace $task_id --pod myapp"
 
-worktree="$(ls -d "$HOME"/.docket/workspaces/projects/myapp-implementer/tasks/*/ | head -1)"
+worktree="$(ls -d "$docket_state"/workspaces/projects/myapp-implementer/tasks/*/ | head -1)"
 worktree="${worktree%/}"
 run 3-isolation.txt docket pod show myapp-implementer --pod myapp
 run 3-isolation.txt docket setup sandbox

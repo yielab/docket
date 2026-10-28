@@ -14,6 +14,8 @@ from urllib.parse import unquote
 
 import filelock
 
+from docket.kernel.home import Home
+
 LANE = "release"
 REASON = "Prevents the public README, quickstart and spec index from drifting from the commands and boundaries the shipped artifact actually has."
 RETIRE_WHEN = "these prose claims are verified some other machine-checked way, such as folding them into the generated docs build."
@@ -319,8 +321,8 @@ def test_runtime_embedding_example_runs_from_clean_artifact(tmp_path: Path) -> N
     result = _run(str(python), str(RUNTIME_EXAMPLE), cwd=outside, env=runtime_env)
 
     assert result.stdout == "RUNTIME EMBED PASS\n"
-    assert (home / "audit.log").read_text(encoding="utf-8").strip()
-    assert list((home / "traces").rglob("*.jsonl"))
+    assert Home(home).audit_log.read_text(encoding="utf-8").strip()
+    assert list(Home(home).traces_dir.rglob("*.jsonl"))
     _run(
         str(python),
         "-c",
