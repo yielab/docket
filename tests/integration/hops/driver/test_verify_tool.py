@@ -120,3 +120,12 @@ def test_a_command_the_classifier_would_ask_about_is_not_parked_and_leaves_no_au
 
     assert next(m for m in backend.calls[1] if m.role == "tool").content == "exit 0"
     assert [e for e in _audit.read_audit() if str(e["action"]).startswith("tool.")] == []
+
+
+def test_the_report_is_normalized_like_a_bash_result(tmp_path: Path) -> None:
+    command = "printf '\\033[31mfail\\033[0m\\n'; yes boom | head -n 30; exit 1"
+    backend = _RecordingBackend([_verify_call({}), _final_response("done")])
+    _turn("implementer", tmp_path, _plan(tmp_path, command), backend)
+
+    tool_message = next(m for m in backend.calls[1] if m.role == "tool")
+    assert tool_message.content == "exit 1\nfail\nboom  [x 30]"

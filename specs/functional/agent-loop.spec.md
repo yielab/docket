@@ -633,7 +633,38 @@ This specification does NOT cover:
 82. `glob`, `grep`, `read` and `fetch` results **MUST** pass through the same announced truncation
     as every other built-in, bounded by `DOCKET_TOOL_MAX_OUTPUT_CHARS`
     (`[truncated: <n> more characters]`). A result cut by that limit **MUST NOT** be
-    indistinguishable from a complete one.
+    indistinguishable from a complete one. `bash` and `verify` keep the head and the tail of a cut
+    result (40% and 60% of the limit) with the marker paragraph between them, because the end of
+    a command's output is where its verdict is; `read`, `glob`, `grep` and `fetch` keep the head.
+90. `bash` and `verify` **MUST** normalize their output before it is cut, losslessly: ANSI escape
+    sequences are removed, a `\r`-overwritten progress line is reduced to its last state (a `\r\n`
+    line ending is an ordinary newline), and a run of consecutive identical lines becomes the
+    line followed by `  [x N]` (N the run length). Nothing else is rewritten: timestamps, pids and
+    paths stay as they are.
+91. A result longer than `DOCKET_TOOL_MAX_OUTPUT_CHARS` after normalization, from any built-in
+    tool (`bash`, `verify`, `read`, `glob`, `grep`, `fetch`) or an MCP tool, called through
+    `dispatch_tool` for a pod, **MUST** be written whole as plain text to
+    `<pod cache>/artifacts/<sha256 of the text>.txt` (the pod cache is `Home.pod_cache_dir`), and
+    the cut result **MUST** end with the line
+    `[full output: <path> — read it with read(path, offset, limit)]`, a line that counts against the cap
+    (the cut keeps the cap minus its length, but at least half of the cap). Equal text is stored once. A
+    result that is not cut writes nothing. Where the artifact cannot be written (no pod, or a
+    filesystem error) the result is cut as before and carries no such line.
+92. `read` and `grep` **MUST** accept the path of an artifact of the calling pod, as well as paths
+    under the workspace roots; every other path outside the roots stays refused, symlinks
+    included. `grep` given a file path searches that file.
+93. When `bash` finishes with a non-zero exit, the result **MUST** show stderr first and then
+    stdout (a successful `bash` shows stdout then stderr), and the error line **MUST** name the
+    cause of a known exit: 126 in a jail, that the jail could not execute the file and a retry
+    will not help; 127, `not on PATH inside the jail or not in allowCommands`. Any other exit
+    status adds nothing.
+94. `edit` with an `old_string` that is not in the file **MUST** answer
+    `old_string not found in <path>` followed by up to three of the file's lines closest to the
+    first line of `old_string` (`difflib` ratio at least 0.6, best first, each with its 1-indexed
+    line number) and the sentence `the text must match exactly; copy it from read without the
+    line-number prefix`. It **MUST NOT** apply any change.
+95. The trace record of a `tool_result` whose text carries the artifact line of requirement 91
+    **MUST** record the path as `artifact` in its payload.
 83. `builtin_registry()` **MUST** register `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty,
     read when the registry is built. With an empty allowlist `fetch` **MUST NOT** appear in
     `specs()`, so the model is not offered it, and a call naming it is refused as an unknown tool

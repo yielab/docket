@@ -12,6 +12,7 @@ from docket.kernel import text as _text
 from docket.kernel.gate import ToolDenialKind
 from docket.kernel.home import current_home
 from docket.kernel.ports import tracer
+from docket.kernel.tool_outcome import artifact_path_in
 
 # On-disk bound for one captured text/argument/response part (ADR 0015 §2 rule 5). The
 # per-exporter cut applied at projection time is a separate, narrower bound.
@@ -216,6 +217,9 @@ def _trace_tool_result(
         payload["policyId"] = policy_id
     if reason:
         payload["reason"] = reason
+    artifact = artifact_path_in(output) if output else None
+    if artifact:
+        payload["artifact"] = artifact
     if output is not None and "toolResults" in tracer.capture_classes():
         payload["text"] = _text.cut_chars(output, _CONTENT_MAX_CHARS_ON_DISK)
     tracer.trace_event(

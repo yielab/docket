@@ -315,6 +315,26 @@ class TraceExpiryReport:
         return len(self.expired)
 
 
+def _remove_artifacts(paths: set[str]) -> int:
+    """Delete the stored tool results a deleted trace named, only files directly inside a pod's
+    ``cache/artifacts`` directory; the bytes freed."""
+    pods = current_home().pods_dir.resolve()
+    freed = 0
+    for raw in paths:
+        path = Path(raw)
+        try:
+            resolved = path.resolve()
+            inside = resolved.parent.name == "artifacts" and pods in resolved.parents
+            if not inside or not path.is_file() or path.is_symlink():
+                continue
+            size = path.stat().st_size
+            path.unlink()
+            freed += size
+        except OSError:
+            continue
+    return freed
+
+
 def expire_old_traces(
     retention_s: int | None = None,
     dry_run: bool = False,
@@ -345,6 +365,7 @@ def expire_old_traces(
 
     for tf in sorted(traces_root.glob(pattern)):
         report.scanned += 1
+        artifacts: set[str] = set()
         has_end = False
         last_ts_str: str | None = None
         try:
@@ -354,6 +375,9 @@ def expire_old_traces(
                     continue
                 if r.get("event_type") == "session_end":
                     has_end = True
+                payload = r.get("payload")
+                if isinstance(payload, dict) and isinstance(payload.get("artifact"), str):
+                    artifacts.add(payload["artifact"])
                 ts = r.get("ts")
                 if ts:
                     last_ts_str = str(ts)
@@ -390,7 +414,7 @@ def expire_old_traces(
                 tf.unlink()
             except OSError:
                 continue
-            report.bytes_reclaimed += size
+            report.bytes_reclaimed += size + _remove_artifacts(artifacts)
 
         report.expired.append(
             ExpiredTrace(

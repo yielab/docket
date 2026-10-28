@@ -13,6 +13,7 @@ specs/functional/security-gates.spec.md."""
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 import subprocess
@@ -26,10 +27,15 @@ from docket.kernel import clock as _clock
 from docket.kernel import text as _text
 from docket.kernel import threads as _threads
 from docket.kernel.errors import Refused
-from docket.kernel.home import current_home
 from docket.kernel.ports import SandboxAvailability, SandboxBackend
 from docket.kernel.ports import jail as _jail
-from docket.kernel.tool_outcome import ToolOutcome, text_outcome
+from docket.kernel.tool_outcome import (
+    VERDICT_TAIL,
+    ToolOutcome,
+    artifact_dir,
+    bounded_text,
+    text_outcome,
+)
 
 SandboxMode = Literal["off", "auto"]
 
@@ -60,11 +66,15 @@ class PathEscapeError(Refused):
     """A tool was asked to touch a path outside every allowed root."""
 
 
-def _truncate(text: str, limit: int | None = None) -> str:
-    # Resolved per call, not bound as a default argument, so the ceiling follows the
-    # current Home rather than whatever it was at import time.
-    limit = current_home().tool_max_output_chars if limit is None else limit
-    return _text.cut_output(text, limit)
+# The least `difflib` ratio at which a line is offered as the likely target of a failed `edit`.
+_CLOSE_RATIO = 0.6
+
+
+def _readable_roots(roots: tuple[Path, ...]) -> tuple[Path, ...]:
+    """*roots* plus the calling pod's artifacts directory, which `read` and `grep` may open so a
+    result cut at the cap can be read back."""
+    artifacts = artifact_dir()
+    return (*roots, artifacts) if roots and artifacts is not None else roots
 
 
 def resolve_within(roots: tuple[Path, ...], candidate: str) -> Path:
@@ -95,7 +105,7 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
 
     A footer names the window and the next ``offset`` whenever lines remain after it."""
     try:
-        target = resolve_within(roots, path)
+        target = resolve_within(_readable_roots(roots), path)
     except PathEscapeError as ex:
         return ToolOutcome(False, error=str(ex), refusal="path_escape")
     if not target.is_file():
@@ -186,7 +196,7 @@ def edit_file(
 
     occurrences = text.count(old_string)
     if occurrences == 0:
-        return ToolOutcome(False, error=f"old_string not found in {path}")
+        return ToolOutcome(False, error=_not_found(path, text, old_string))
     if occurrences > 1 and not replace_all:
         return ToolOutcome(
             False,
@@ -206,6 +216,30 @@ def edit_file(
         return ToolOutcome(False, error=f"cannot write {path}: {ex}")
     replaced = occurrences if replace_all else 1
     return ToolOutcome(True, content=f"replaced {replaced} occurrence(s) in {target}")
+
+
+def _not_found(path: str, text: str, old_string: str) -> str:
+    """The `edit` miss message: the file's lines closest to the first line of *old_string*, and
+    how an exact copy is made. Nothing is applied from a near miss."""
+    wanted = next((line.strip() for line in old_string.splitlines() if line.strip()), "")
+    lines = text.splitlines()
+    ranked = sorted(
+        (
+            (difflib.SequenceMatcher(None, wanted, line.strip()).ratio(), number)
+            for number, line in enumerate(lines, 1)
+            if line.strip()
+        ),
+        key=lambda pair: (-pair[0], pair[1]),
+    )
+    close = [(number, lines[number - 1]) for ratio, number in ranked[:3] if ratio >= _CLOSE_RATIO]
+    message = f"old_string not found in {path}"
+    if not close:
+        return message
+    shown = "\n".join(f"{number}\t{line}" for number, line in close)
+    return (
+        f"{message}; closest lines:\n{shown}\n"
+        "the text must match exactly; copy it from read without the line-number prefix"
+    )
 
 
 def _resolves_within(roots: tuple[Path, ...], candidate: Path) -> bool:
@@ -255,9 +289,10 @@ def glob_files(roots: tuple[Path, ...], pattern: str, path: str = "") -> ToolOut
 def grep_files(
     roots: tuple[Path, ...], pattern: str, path: str = "", glob: str = "**/*"
 ) -> ToolOutcome:
-    """Search file contents for a regex, returning root-relative ``path:line:text`` hits, sorted.
+    """Search file contents (or the one file *path* names) for a regex: ``path:line:text`` hits, sorted.
 
-    Pure Python, not a shell-out: no second exec path beside the gated one, and no per-machine answers."""
+    Pure Python, not a shell-out: no second exec path beside the gated one, no per-machine answers."""
+    roots = _readable_roots(roots)
     try:
         base = resolve_within(roots, path) if path else roots[0].resolve()
     except (PathEscapeError, IndexError) as ex:
@@ -269,8 +304,9 @@ def grep_files(
 
     hits: list[str] = []
     truncated = False
-    for candidate in sorted(base.glob(glob)):
-        if not candidate.is_file() or _under_skipped_dir(candidate, base):
+    candidates = [base] if base.is_file() else sorted(base.glob(glob))
+    for candidate in candidates:
+        if not candidate.is_file() or (base.is_dir() and _under_skipped_dir(candidate, base)):
             continue
         if not _resolves_within(roots, candidate):
             continue
@@ -297,14 +333,18 @@ def grep_files(
 # ── exec ──────────────────────────────────────────────────────────────────────
 
 
-# Exit 126 is the shell's "found but cannot execute"; in a jail that is usually a binary or a
-# library outside the granted paths, which no retry fixes.
+# What a non-zero exit most often means here, so the model stops retrying what cannot work.
+# 126 is the shell's "found but cannot execute": in a jail, usually a binary or a library outside
+# the granted paths. 127 is "not found": not on PATH inside the jail, or not allowed.
 _CANNOT_EXECUTE = 126
-_CANNOT_EXECUTE_HINT = (
-    "; the jail could not execute it, most likely a file outside its granted paths, so a retry "
-    "will not help: report it (the operator grants a toolchain with "
-    "`docket setup sandbox read add <path>`)"
-)
+_KNOWN_EXIT_CAUSES = {
+    126: (
+        "; the jail could not execute it, most likely a file outside its granted paths, so a "
+        "retry will not help: report it (the operator grants a toolchain with "
+        "`docket setup sandbox read add <path>`)"
+    ),
+    127: "; not on PATH inside the jail or not in allowCommands",
+}
 
 
 def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None) -> str:
@@ -416,8 +456,7 @@ def run_bash(
             shell=shell,
             cwd=str(cwd),
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
+            stderr=subprocess.PIPE,
             env=popen_env,
             start_new_session=True,
         )
@@ -440,7 +479,7 @@ def run_bash(
     try:
         if cancelled is None:
             try:
-                out, _ = proc.communicate(timeout=timeout)
+                out, err = proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 if backend == "docker":
                     _jail.docker_kill(container_name)
@@ -449,7 +488,7 @@ def run_bash(
                 message = f"command timed out after {timeout}s"
                 return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
         else:
-            timed_out, was_cancelled, out = _wait_cancellable(proc, timeout, cancelled)
+            timed_out, was_cancelled, out, err = _wait_cancellable(proc, timeout, cancelled)
             if timed_out or was_cancelled:
                 if backend == "docker":
                     _jail.docker_kill(container_name)
@@ -462,15 +501,20 @@ def run_bash(
                 )
                 return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
 
-        raw = out or ""
-        body = _truncate(raw.strip())
+        exit_payload["exitCode"] = proc.returncode
+        failed = proc.returncode != 0
+        # A failing command shows stderr first: the reason is there, and the cut keeps the end.
+        stdout, stderr = _decode(out), _decode(err)
+        raw = _join_streams(stderr, stdout) if failed else _join_streams(stdout, stderr)
+        body = _text.normalize_output(raw.strip())
         if body and not raw.endswith("\n"):
             body += "\n[output had no trailing newline]"
-        exit_payload["exitCode"] = proc.returncode
-        if proc.returncode != 0:
+        body = bounded_text(body, VERDICT_TAIL)
+        if failed:
             message = f"command exited {proc.returncode}"
-            if tag and proc.returncode == _CANNOT_EXECUTE:
-                message += _CANNOT_EXECUTE_HINT
+            cause = _KNOWN_EXIT_CAUSES.get(proc.returncode, "")
+            if cause and (tag or proc.returncode != _CANNOT_EXECUTE):
+                message += cause
             return ToolOutcome(
                 False,
                 content=body,
@@ -487,6 +531,18 @@ def run_bash(
             on_process("exited", exit_payload)
 
 
+def _decode(data: bytes | None) -> str:
+    """A stream's text, strictly: output that is not UTF-8 is a failed read, not guessed text."""
+    return (data or b"").decode("utf-8")
+
+
+def _join_streams(first: str, second: str) -> str:
+    """*first* then *second*, with a newline between when *first* ends mid-line."""
+    if first and second and not first.endswith("\n"):
+        first += "\n"
+    return first + second
+
+
 # A bare `proc.wait()` never drains stdout, so a command that writes more
 # than the OS pipe buffer (commonly 64KB) blocks on its own next write and
 # never actually exits -- indistinguishable from a hang to a poll loop that
@@ -496,21 +552,22 @@ def run_bash(
 # timeout the instant a cancellation callback is merely present, whether or
 # not it ever fires.
 def _wait_cancellable(
-    proc: subprocess.Popen[str], timeout: int, cancelled: Callable[[], bool]
-) -> tuple[bool, bool, str]:
-    """Wait for *proc* to exit, checking *cancelled* between short polls.
+    proc: subprocess.Popen[bytes], timeout: int, cancelled: Callable[[], bool]
+) -> tuple[bool, bool, bytes, bytes]:
+    """Wait for *proc*, polling *cancelled*: ``(timed_out, was_cancelled, stdout, stderr)``, the
+    streams empty unless the command finished on its own."""
+    drained: dict[str, bytes] = {}
 
-    Returns ``(timed_out, was_cancelled, output)`` — at most one of the first two is true."""
-    assert proc.stdout is not None
-    drained: list[str] = []
-
-    def _drain() -> None:
+    def _drain(name: str, stream: Any) -> None:
         import contextlib
 
         with contextlib.suppress(OSError, ValueError):
-            drained.append(proc.stdout.read())  # type: ignore[union-attr]
+            drained[name] = stream.read()
 
-    reader = _threads.start_thread(_drain)
+    readers = [
+        _threads.start_thread(_drain, ("out", proc.stdout)),
+        _threads.start_thread(_drain, ("err", proc.stderr)),
+    ]
 
     deadline = _clock.monotonic() + timeout
     while True:
@@ -521,19 +578,20 @@ def _wait_cancellable(
         # observes it must still report `was_cancelled`, not a plain finish -- otherwise a
         # cancelled run's own exit callback would misreport it as a normal exit.
         if cancelled():
-            return False, True, ""
-        if not reader.is_alive():
-            reader.join()
+            return False, True, b"", b""
+        if not any(reader.is_alive() for reader in readers):
+            for reader in readers:
+                reader.join()
             proc.wait()
-            return False, False, drained[0] if drained else ""
+            return False, False, drained.get("out", b""), drained.get("err", b"")
         remaining = deadline - _clock.monotonic()
         if remaining <= 0:
-            return True, False, ""
+            return True, False, b"", b""
         time.sleep(max(0.0, min(_CANCEL_POLL_INTERVAL_S, remaining)))
 
 
 def _settle_unreadable(
-    proc: subprocess.Popen[str], container_name: str, exit_payload: dict[str, Any]
+    proc: subprocess.Popen[bytes], container_name: str, exit_payload: dict[str, Any]
 ) -> None:
     """Record how a command ended when reading its output failed: its real exit status if it
     had already exited, else kill the group (and the container, if any) and report SIGKILL."""
@@ -546,7 +604,7 @@ def _settle_unreadable(
     exit_payload["signal"] = "SIGKILL"
 
 
-def _kill_group(proc: subprocess.Popen[str]) -> None:
+def _kill_group(proc: subprocess.Popen[bytes]) -> None:
     """Kill a timed-out command's whole process group, then reap it.
 
     Holds under every in-process sandbox backend: the jailed process stays in the same process
