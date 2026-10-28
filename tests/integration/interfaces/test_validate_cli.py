@@ -119,3 +119,33 @@ def test_pod_validate_refuses_a_pipeline_the_executor_cannot_run(tmp_path: Path,
 
     assert rc == 1
     assert field in out
+
+
+_PROMPT = """---
+kind: prompt
+name: nudge
+version: 1.0.0
+layer: hop
+for: reviewer
+inputs:
+  who: string
+---
+Hello ${who}.
+"""
+
+
+def test_a_prompt_using_an_undeclared_input_makes_validate_exit_one_and_name_it(
+    tmp_path: Path,
+) -> None:
+    hop = tmp_path / "prompts" / "hop"
+    hop.mkdir(parents=True)
+    (hop / "good.md").write_text(_PROMPT, encoding="utf-8")
+    (hop / "bad.md").write_text(_PROMPT.replace("${who}", "${nobody}"), encoding="utf-8")
+
+    rc, out = _validate(tmp_path)
+
+    assert rc == 1
+    assert "bad.md:10" in out
+    assert "${nobody}" in out
+    assert "good.md" in out
+    assert out.index("bad.md") < out.index("good.md")
