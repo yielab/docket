@@ -37,7 +37,8 @@ def _seed_fresh(
     tmp_path: Path,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    home.mkdir(parents=True)
+    Home(home).config_dir.mkdir(parents=True)
+    Home(home).state_dir.mkdir(parents=True)
     with use_home(Home(home)):
         yield home
 
@@ -103,7 +104,7 @@ def test_step_security_hardens_world_readable_secrets(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with _seed_fresh(tmp_path) as home:
-        secrets_file = home / "secrets.json"
+        secrets_file = Home(home).secrets_file
         secrets_file.write_text("{}")
         secrets_file.chmod(0o644)
 
@@ -122,7 +123,7 @@ def test_step_policies_seeds_the_shipped_set_and_is_idempotent(
         _setup.step_policies()
         second = capsys.readouterr().out
 
-        installed = {f.name for f in (home / "policies").glob("*.json")}
+        installed = {f.name for f in Home(home).policies_dir.glob("*.json")}
         assert installed == {f.name for f in _templates.POLICY_TEMPLATES_DIR.glob("*.json")}
         assert "Installed" in first
         assert "Installed" not in second
@@ -149,11 +150,11 @@ def test_init_without_an_endpoint_builds_the_team_and_points_at_setup(
         assert rc == 0
         assert "No model endpoint yet" in captured.out
         assert "docket setup" in captured.err
-        assert (home / "workspaces" / "projects" / "demo-lead").is_dir()
-        assert not (home / "docket-models.json").exists()
+        assert (Home(home).projects_dir / "demo-lead").is_dir()
+        assert not Home(home).model_registry_file.exists()
         # The guardrail policies are installed by init itself (security-gates "Policy engine on
         # the live path" 1), not deferred to setup: a fresh home must not screen nothing.
-        assert (home / "policies" / "prompt-injection.yaml").is_file()
+        assert (Home(home).policies_dir / "prompt-injection.yaml").is_file()
 
 
 def test_init_with_an_endpoint_does_not_mention_setup(

@@ -214,6 +214,8 @@ def _free_pod_resources(project: str) -> None:
     pod_runtime = current_home().pods_dir / project
     if pod_runtime.is_dir():
         shutil.rmtree(pod_runtime, ignore_errors=True)
+    # The overlay lives beside state, not in it, so it goes with the pod explicitly.
+    shutil.rmtree(current_home().pod_config_dir(project), ignore_errors=True)
 
 
 def free_pod_resources(project: str) -> None:

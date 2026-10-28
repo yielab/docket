@@ -36,8 +36,9 @@ _runner = CliRunner()
 
 class TestRankAnchorsOverride:
     def test_registry_overrides_anchors_and_reseeds_roles(self, tmp_path: Path) -> None:
-        registry_path = tmp_path / "docket-models.json"
+        registry_path = Home(tmp_path).model_registry_file
         with use_home(Home(tmp_path)):
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
             registry_path.write_text(
                 json.dumps(
                     {
@@ -62,8 +63,9 @@ class TestRankAnchorsOverride:
             assert not any("claude" in m.lower() for m in role_models.values())
 
     def test_malformed_anchor_entries_are_ignored(self, tmp_path: Path) -> None:
-        registry_path = tmp_path / "docket-models.json"
+        registry_path = Home(tmp_path).model_registry_file
         with use_home(Home(tmp_path)):
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
             registry_path.write_text(
                 json.dumps({"rankAnchors": {"economy": "not-well-formed", "made-up": "openai/x"}})
             )
@@ -76,7 +78,7 @@ class TestRankAnchorsOverride:
             assert tiers == dict(_mp.rank_anchors())
 
     def test_write_registry_persists_rank_keys(self, tmp_path: Path) -> None:
-        registry_path = tmp_path / "docket-models.json"
+        registry_path = Home(tmp_path).model_registry_file
         with use_home(Home(tmp_path)):
             _mp.write_registry(
                 {
@@ -93,7 +95,7 @@ class TestRankAnchorsOverride:
             }
 
     def test_write_registry_ignores_unknown_anchor_name(self, tmp_path: Path) -> None:
-        registry_path = tmp_path / "docket-models.json"
+        registry_path = Home(tmp_path).model_registry_file
         with use_home(Home(tmp_path)):
             _mp.write_registry({"rank.bogus": "openai/gpt-4.1-nano"})
             reg = json.loads(registry_path.read_text())
@@ -256,7 +258,7 @@ class TestNonAnthropicPresetShowsNoResidue:
         _register_provider(home, "google", "gemini-2.5-flash")
         rc, _out, err = _run(["setup", "model", "preset", "google"], home)
         assert rc == 0, err
-        reg = json.loads((home / "docket-models.json").read_text())
+        reg = json.loads(Home(home).model_registry_file.read_text())
         assert reg["rankAnchors"]["standard"] == "google/gemini-2.5-flash"
 
 

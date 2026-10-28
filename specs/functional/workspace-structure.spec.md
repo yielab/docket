@@ -1,9 +1,11 @@
 # Workspace Structure Specification
 
 **Version**: 2.2.0
-**Status**: Complete. `DOCKET_HOME` is the only state root. Agent workspaces live under
-`~/.docket/workspaces/projects/`; a pod's runtime resources, configuration overlay and learned
-memory live under `~/.docket/workspaces/pods/<pod>/`. `docket init` provisions pods.
+**Status**: Complete. `DOCKET_HOME` is the only root, split into `config/` (authored) and
+`state/` (written while running). Agent workspaces live under `~/.docket/state/workspaces/projects/`;
+a pod's runtime resources and learned memory live under `~/.docket/state/workspaces/pods/<pod>/`
+and its configuration overlay under `~/.docket/config/pods/<pod>/`. `docket init` provisions pods
+and moves an old-layout home.
 **Last Updated**: 2026-10-24
 
 ## Purpose
@@ -32,9 +34,41 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
 
 ## Requirements
 
+### Home layout: configuration beside state
+
+1. `DOCKET_HOME` **MUST** hold two directories, `config/` and `state/`, and every path `Home`
+   resolves **MUST** lie under one of them (`Home.config_dir`, `Home.state_dir`).
+   - `config/` holds what the operator authors: the model, provider, exporter, channel and MCP
+     catalogs (`docket-models.json`, `docket-providers.json`, `docket-exporters.json`,
+     `docket-channels.json`, `docket-mcp-servers.json`), `recipes/`, `skills/`, `policies/`,
+     `plugins/` and a pod's overlay at `pods/<pod>/` (its `roles.json`, `policies/`, `plugins/`,
+     `pipelines/`, `skills/`, `mcp-servers.json`).
+   - `state/` holds what docket writes while it runs: `workspaces/` (members, and a pod's
+     `memory.json`, `.scratch`, `cache` and `workdir`), `sessions/`, `traces/`, `cache/`,
+     `audit.log`, `approvals/`, `escalations/`, `secrets.json` and the other runtime files.
+   - A file the operator keeps at the top of the home (a token file) is neither and is left alone.
+   Removing a pod removes its overlay as well as its runtime directory.
+2. `Home.scopes(kind, project, repo_root)` **MUST** return the directories that can hold *kind*,
+   nearest first: the repository's `.docket/<kind>`, the pod overlay `config/pods/<pod>/<kind>`,
+   the operator's `config/<kind>`, then the shipped `templates/<kind>`. The repository entry
+   **MUST** be present only for the text kinds (`prompts`, `skills`) and only when `repo_root` is
+   given; the pod entry only when `project` is given. `policies` and `plugins` have no
+   repository entry and no shipped entry: the shipped policies are seeds `docket init` copies,
+   not a scope, and those two kinds enter from a repository only through `docket pod update`.
+   A directory is returned whether or not it exists.
+3. `docket init` **MUST** move an old-layout home (one that holds the entries above at its top
+   level and neither `config/` nor `state/`) into `config/` and `state/`, and move each
+   `workspaces/pods/<pod>/config` to `config/pods/<pod>`. It **MUST** refuse, changing nothing,
+   when an old-layout entry exists beside `config/` or `state/`, and a second run **MUST** change
+   nothing. This is a one-way move.
+4. Until it has been moved, an old-layout home **MUST** still be served: `Home` resolves every
+   path at the top of the home (a pod overlay at `workspaces/pods/<pod>/config`), so `docket
+   status` works without `docket init`. This reader is a time-boxed exception to the rule
+   against compatibility readers (ADR 0035 decision 2); it is deleted at the next minor release.
+
 ### Project-agent workspace
 
-1. Each project agent **MUST** have a workspace at `~/.docket/workspaces/projects/<agent-id>/`
+1. Each project agent **MUST** have a workspace at `~/.docket/state/workspaces/projects/<agent-id>/`
    containing:
    - `SOUL.md` — agent identity, scope, and session key
    - `AGENTS.md` — session protocol and delegation rules
@@ -98,7 +132,7 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
 What a pod learns about its repository survives the task that learned it, in one file for the
 whole pod and every member that reads it.
 
-1. A pod **MAY** have `memory.json` at `$DOCKET_HOME/workspaces/pods/<pod>/memory.json`, shaped
+1. A pod **MAY** have `memory.json` at `$DOCKET_HOME/state/workspaces/pods/<pod>/memory.json`, shaped
    `{"entries": [...]}`. It is created by the first recorded entry, written only through the
    atomic JSON writer (filelocked, `0600`) and removed with the pod. An entry is
    `{id, kind, path | command, note, status, reason, provenance}` where `status` is `accepted`,
@@ -174,13 +208,13 @@ whole pod and every member that reads it.
 
 ### No shared agents
 
-1. Agent workspaces exist only under `~/.docket/workspaces/projects/<id>/`. `docket init`
+1. Agent workspaces exist only under `~/.docket/state/workspaces/projects/<id>/`. `docket init`
    provisions a pod's own members (the default, `--blueprint`, `--pod`, `--with`, `--recipe`, and
    a `--from` entry, which names a `blueprint`) and registers them in `fleet.json`; no other
    command creates an agent workspace.
 2. `docket pod reset` acts on members of the named pod only. `docket setup --fix` reads every
    directory under `projects/` that holds a `.docket-meta.json`;
-   a directory under `~/.docket/workspaces/` outside `projects/` is not read, healed or reported.
+   a directory under `~/.docket/state/workspaces/` outside `projects/` is not read, healed or reported.
 
 ### Permissions
 
@@ -191,15 +225,16 @@ whole pod and every member that reads it.
    metadata file set. Permission healing **MUST NOT** recursively rewrite those checkouts' modes;
    executable bits and repository-owned permissions remain intact. Provisioning and maintenance
    enforce `700`/`600` on the managed workspace root, prompt/metadata/ledger files, and `memory/`.
-4. A pod's directory under `workspaces/pods/`, its `config/`, `.scratch` and `cache`
-   directories, and `memory.json` follow the same `700` (directories) and `600` (files) rule.
+4. A pod's directory under `workspaces/pods/`, its overlay under `config/pods/`, `.scratch` and
+   `cache` directories, and `memory.json` follow the same `700` (directories) and `600` (files)
+   rule.
 
 ### Shipped-data templates (package, not workspace)
 
 The package's `templates/` directory is package data shipped in the wheel — read-only source material a command
 *copies from* or *reads*, never a workspace this spec's permission/provisioning rules apply to.
 
-1. `templates/policies/*.yaml` (baseline guardrail policies, copied into `$DOCKET_HOME/policies/`
+1. `templates/policies/*.yaml` (baseline guardrail policies, copied into `$DOCKET_HOME/config/policies/`
    by `docket init` and `docket setup --fix`, never overwriting an existing file; the loader also
    accepts `.yml` and `.json`) and `templates/recipes/<name>/` (role/pipeline/policy bundles,
    applied only by an explicit `docket init --recipe <name>` or `docket pod update <name|dir>`)
@@ -216,7 +251,7 @@ The package's `templates/` directory is package data shipped in the wheel — re
    ever a symlink into it — copying (policies) or reading-then-validating (recipes) is always by
    value, so editing a shipped template after installation never mutates an already-provisioned
    workspace or an already-copied policy.
-4. **`$DOCKET_HOME/recipes/<name>/` is operator-owned state, not package data (ADR 0013).** It is
+4. **`$DOCKET_HOME/config/recipes/<name>/` is operator-owned configuration, not package data (ADR 0013).** It is
    writable by the operator (a plain directory drop-in, no registration step), never shipped in
    the wheel, and `docket pod reset`/`docket setup` never touch it. Recipe resolution checks, in
    order, a directory path, this directory, then the shipped library, so a same-named operator
@@ -231,9 +266,9 @@ The package's `templates/` directory is package data shipped in the wheel — re
 
 ### Skills scopes
 
-1. `~/.docket/skills/` (overridable by the `SKILLS_DIR` environment variable) is the operator's
-   own global Agent Skills directory — writable runtime state docket reads, unlike the read-only
-   `templates/` above. A pod's own `config/skills/` (under `workspaces/pods/<pod>/`) holds one
+1. `~/.docket/config/skills/` (overridable by the `SKILLS_DIR` environment variable) is the operator's
+   own global Agent Skills directory — writable configuration docket reads, unlike the read-only
+   `templates/` above. A pod's own `skills/` (under `config/pods/<pod>/`) holds one
    directory per skill a recipe's own `skills/` applied there (pod-blueprints.spec.md, "Pod
    manifests: apply"/"export"). Both, once written, follow this spec's `700`/`600` permission
    rules the same way `config/policies/` and `config/plugins/` do. Discovery order (nearest-wins
@@ -258,7 +293,7 @@ docket setup --fix                      # Report missing files, re-seed a missin
 ### A provisioned Implementer workspace (`codebase`-kind)
 
 ```text
-~/.docket/workspaces/projects/proj-implementer/
+~/.docket/state/workspaces/projects/proj-implementer/
 ├── SOUL.md
 ├── AGENTS.md
 ├── TOOLS.md                  # ports, scratch dir, verify command
@@ -272,7 +307,7 @@ docket setup --fix                      # Report missing files, re-seed a missin
 ### A provisioned pod member with no TOOLS.md (`workdir`-kind, non-Implementer)
 
 ```text
-~/.docket/workspaces/projects/my-market-scan-researcher/
+~/.docket/state/workspaces/projects/my-market-scan-researcher/
 ├── SOUL.md
 ├── AGENTS.md
 ├── HEARTBEAT.md
@@ -314,10 +349,11 @@ docket setup --fix                      # Report missing files, re-seed a missin
 
 Where the names above live today; the only section that names source paths.
 
-- `src/docket/kernel/home.py`: the `Home` members `projects_dir`, `pods_dir`, `skills_dir`,
-  `pod_memory_path`, `pod_config_dir`, `user_recipes_dir`, `pod_memory_max_accepted`,
+- `src/docket/kernel/home.py`: the `Home` members `config_dir`, `state_dir`, `scopes`,
+  `projects_dir`, `pods_dir`, `skills_dir`, `pod_memory_path`, `pod_config_dir`, `user_recipes_dir`, `pod_memory_max_accepted`,
   `pod_memory_max_undecided`, `pod_memory_max_per_task`, `pod_memory_note_max_chars`,
   `pod_memory_render_max_bytes`
+- `src/docket/kernel/layout.py`: `migrate`, `is_legacy`, `LayoutConflict` (called by `docket init`)
 - `src/docket/kernel/templates.py`: `POLICY_TEMPLATES_DIR`, `RECIPES_DIR`, `PROVIDER_TEMPLATES_DIR`,
   `EXPORTER_TEMPLATES_DIR`, `CHANNEL_TEMPLATES_DIR`
 - `src/docket/teams/pod_provisioning.py`: `provision_member`, `rendered_member_files`,

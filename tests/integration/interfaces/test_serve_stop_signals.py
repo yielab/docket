@@ -91,7 +91,7 @@ def test_second_sigint_abandons_a_blocked_sweep(tmp_path: Path) -> None:
             proc.kill()
             proc.wait()
     assert code == 130
-    runs = json.loads((home / "docket-runs.json").read_text())["runs"]
+    runs = json.loads(Home(home).runs_file.read_text())["runs"]
     assert len(runs) == 1
     assert runs[0]["cancellation"]["requestedAt"]
 

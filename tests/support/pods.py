@@ -342,7 +342,7 @@ def ids(home: Path) -> list[str]:
 
 
 def meta(home: Path, member_id: str) -> dict[str, Any]:
-    p = home / "workspaces" / "projects" / member_id / ".docket-meta.json"
+    p = Home(home).projects_dir / member_id / ".docket-meta.json"
     return json.loads(p.read_text())
 
 

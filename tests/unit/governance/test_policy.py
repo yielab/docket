@@ -384,7 +384,7 @@ class TestPodPolicies:
     """A pod's own policy directory joins the global set and can only add."""
 
     def test_pod_only_block_denies_only_that_pod(self, policies_dir: Path) -> None:
-        pod_dir = current_home().pods_dir / "p" / "config" / "policies"
+        pod_dir = current_home().pod_config_dir("p") / "policies"
         pod_dir.mkdir(parents=True)
         _write_policy(
             pod_dir,
@@ -425,7 +425,7 @@ class TestPodPolicies:
                 "then": "block",
             },
         )
-        pod_dir = current_home().pods_dir / "p" / "config" / "policies"
+        pod_dir = current_home().pod_config_dir("p") / "policies"
         pod_dir.mkdir(parents=True)
         _write_policy(
             pod_dir,
