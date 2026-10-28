@@ -422,7 +422,10 @@ This specification does NOT cover:
     Estimates **MUST NOT** be added to `TokenUsage`.
 51. When a normal tool-enabled task request would exceed that prospective cumulative bound, the
     loop **MUST** make at most one finalization attempt. That request **MUST** explicitly ask for a
-    truthful terminal response from work already completed, advertise no tools, preserve the
+    truthful terminal response from work already completed as a trailing `user` message appended
+    after the complete current request (the request-only instruction is never persisted, and the
+    leading system message and every earlier message **MUST** stay byte-identical to the
+    preceding request so the cached prefix is reused), advertise no tools, preserve the
     current durable representation of the complete task and whole assistant/tool-result atomic
     units, and itself pass both the per-request context-window check and the cumulative
     turn-budget check before transport. This cumulative decision **MUST** be made on the complete
