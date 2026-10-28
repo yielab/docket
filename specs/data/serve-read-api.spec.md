@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 5.0.0
+**Version**: 5.1.0
 **Status**: Stable
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -137,6 +137,8 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | `docket_tasks_started_total` | counter | Dispatch task claims, counted from dispatch-sourced `session_start` trace events; a resumed task's second `session_start` (`"resumed": true`) is not counted. Trace-derived. |
 | `docket_escalations_total{kind,outcome,by,level}` | counter | Settled escalations (`operator-loop.spec.md` "Escalations"), one per `escalation_resolved`, `escalation_expired` or `escalation_decided` trace event: `kind` is the escalation's kind (`approval`\|`consult`\|`input`\|`gate`\|`check_changed`), `outcome` the event (`resolved`\|`expired`\|`decided`), `by` who settled it (`person`\|`timeout`\|`policy`, so a pod's own decision never counts as a human one), `level` the autonomy level the pause was decided at (`L3`\|`L4`\|`L5`, `none` for a pause that names no queued task). Trace-derived; an escalation still pending is not counted. |
 | `docket_escalation_wait_seconds{kind}` | summary (`_sum`/`_count`, no quantiles) | Seconds from an escalation's `askedAt` to the record of its settlement, for every settled escalation, by `kind`; a negative interval is skipped. Trace-derived. |
+| `docket_cache_hit_ratio{role}` | gauge | Summed `cachedTokens` over summed `inputTokens` of every `llm_call` trace event by the recording `agent_role` (`trace-store.spec.md` requirements 39-40); a role with no input tokens has no sample. `cachedTokens` of 0 also means "the endpoint reports no cache". Trace-derived; a gauge, not a counter, so the retention caveat below applies to it as to the counters. |
+| `docket_tokens_per_accepted_task` | gauge | Counted tokens (input minus cache reads, plus output; `cost-tracking.spec.md`) summed over the tasks whose status is `done` and that carry a `usage` block, divided by their number, across every dispatchable pod. No sample when no task is `done` with usage. Read from the task records; not an estimate, and never a dollar figure. |
 
 Additional metrics may be added in minor versions. Every metric is computed fresh, on every
 scrape, from durable state already on disk (trace JSONL under `traces/`, `audit.log`, the task
