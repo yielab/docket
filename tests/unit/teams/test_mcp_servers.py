@@ -77,3 +77,22 @@ class TestPodScopedMcpServerSelection:
 
         with pytest.raises(DispatchError, match="zzz"):
             _load_mcp_tools(ToolRegistry(), "implementer", "shop")
+
+
+class TestScopeOrder:
+    """A pod's own server is read before the operator's, and wins a name collision."""
+
+    def test_the_pods_server_comes_first_and_shadows_the_operators_of_that_name(self) -> None:
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="s", command="operator-cmd"))
+        _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="t", command="operator-t"))
+        _mcp_servers.write_pod_mcp_servers(
+            "shop", [_mcp.McpServerConfig(name="s", command="pod-cmd")]
+        )
+
+        servers = _mcp_servers.load_mcp_servers("shop")
+
+        assert [(s.name, s.command) for s in servers] == [("s", "pod-cmd"), ("t", "operator-t")]
+        assert [s.command for s in _mcp_servers.load_mcp_servers("other")] == [
+            "operator-cmd",
+            "operator-t",
+        ]

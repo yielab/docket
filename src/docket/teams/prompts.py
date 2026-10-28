@@ -7,7 +7,8 @@ only parser: the front matter is validated by ``PromptDocument`` (which also gen
 ``prompt.schema.json``), and every ``${name}`` placeholder of the body must be a key of
 ``inputs``. ``shipped_prompt`` reads ``templates/prompts/<layer>/<name>.md`` and ``role_prompt``
 resolves a role's own declared text, so a hop's wording has a name, a version and a hash wherever
-it came from.
+it came from. ``resolve_prompt`` is the one loader over the scopes (base commit, pod overlay,
+operator, shipped) and a ``Reference`` (``implementer@2``) names a name and the major it must be.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from docket.kernel import templates as _templates
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
+from docket.teams.workspace.repo_view import RepoView
 
 Layer = Literal["identity", "task", "hop"]
 OutputSchema = Literal["handoff/v1"]
@@ -33,6 +36,8 @@ InputType = Literal["string", "text", "int", "bool", "list"]
 
 SHIPPED = "shipped"
 POD = "pod"
+OPERATOR = "operator"
+REPOSITORY = "repository"
 
 _NAME = r"^[a-z][a-z0-9-]*$"
 _SEMVER = r"^\d+\.\d+\.\d+$"
@@ -236,3 +241,137 @@ def role_prompt(role: str, layer: str, text: str, version: int) -> LoadedPrompt:
         if shipped.text == text:
             return shipped
     return LoadedPrompt(role, f"{version}.0.0", layer, POD, text, _sha256(text))
+
+
+# The variables each layer's consumer supplies when it renders a prompt of that layer: a prompt
+# declaring any other input could never be rendered. An identity text is rendered with the
+# member's variables (`roles.validate_archetype_dict` samples exactly these); the task and hop
+# layers are composed by `hops/application/compose.py`, which substitutes none.
+SUPPLIED_INPUTS: dict[str, frozenset[str]] = {
+    "identity": frozenset(
+        {
+            "project",
+            "role",
+            "memberId",
+            "sessionKey",
+            "objective",
+            "codebase",
+            "codebaseOrConfigured",
+            "codebaseOrIt",
+            "stack",
+            "workDir",
+            "requiredStartupFile",
+        }
+    ),
+    "task": frozenset(),
+    "hop": frozenset(),
+}
+
+_REFERENCE = re.compile(
+    r"^(?:(?P<kind>prompt):(?P<layer>[a-z]+)/)?(?P<name>[a-z][a-z0-9-]*)(?:@(?P<major>\d+))?$"
+)
+
+
+@dataclass(frozen=True)
+class Reference:
+    """A name and the major it must be: ``kind`` is ``role`` (``implementer@2``) or ``prompt``
+    (``prompt:hop/implementer@2``, with its ``layer``); ``major`` is ``None`` for the newest."""
+
+    kind: str
+    name: str
+    layer: str
+    major: int | None
+
+    def __str__(self) -> str:
+        head = f"prompt:{self.layer}/{self.name}" if self.kind == "prompt" else self.name
+        return head if self.major is None else f"{head}@{self.major}"
+
+
+def parse_reference(text: str) -> Reference:
+    """*text* as a ``Reference``; raises ``PromptError`` for anything else."""
+    match = _REFERENCE.match(text.strip())
+    if match is None:
+        raise PromptError(
+            f"{text!r} is not a reference (implementer, implementer@2 or prompt:hop/implementer@2)"
+        )
+    major = match.group("major")
+    return Reference(
+        kind="prompt" if match.group("kind") else "role",
+        name=match.group("name"),
+        layer=match.group("layer") or "",
+        major=None if major is None else int(major),
+    )
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def _scope_candidates(directory: Path, layer: str, name: str, major: int | None) -> list[Path]:
+    """The files of *directory*/*layer* named ``<name>.md`` or ``<name>@<version>.md`` that parse
+    and declare this layer and name, at *major* when given, newest version first."""
+    layer_dir = directory / layer
+    if not layer_dir.is_dir():
+        return []
+    found: list[tuple[tuple[int, ...], Path]] = []
+    for path in (*layer_dir.glob(f"{name}.md"), *layer_dir.glob(f"{name}@*.md")):
+        try:
+            prompt = load_prompt_file(path)
+        except PromptError:
+            continue
+        if prompt.layer != layer or prompt.name != name:
+            continue
+        key = _version_key(prompt.version)
+        if major is None or key[0] == major:
+            found.append((key, path))
+    return [path for _key, path in sorted(found, reverse=True)]
+
+
+def _loaded(prompt: Prompt, scope: str) -> LoadedPrompt:
+    return LoadedPrompt(
+        prompt.name, prompt.version, prompt.layer, scope, prompt.text, _sha256(prompt.text)
+    )
+
+
+def _repository_prompt(
+    view: RepoView, layer: str, name: str, major: int | None
+) -> LoadedPrompt | None:
+    """The prompt ``.docket/prompts/<layer>/<name>.md`` at the view's commit; a view lists
+    directories only, so a versioned sibling is not offered."""
+    rel = f".docket/prompts/{layer}/{name}.md"
+    text = view.read_text(rel)
+    if text is None:
+        return None
+    try:
+        prompt = parse_prompt(text, rel)
+    except PromptError:
+        return None
+    if prompt.layer != layer or prompt.name != name:
+        return None
+    if major is not None and _version_key(prompt.version)[0] != major:
+        return None
+    return _loaded(prompt, REPOSITORY)
+
+
+def resolve_prompt(
+    layer: str,
+    name: str,
+    *,
+    project: str = "",
+    view: RepoView | None = None,
+    major: int | None = None,
+) -> LoadedPrompt:
+    """The prompt *name* of *layer* from the first scope that holds it, its newest file of *major*:
+    the repository at *view*'s base commit (skipped without a view), the pod overlay, the
+    operator's ``config/prompts``, then ``templates/prompts``. ``PromptError`` when none does."""
+    if view is not None:
+        found = _repository_prompt(view, layer, name, major)
+        if found is not None:
+            return found
+    directories = current_home().scopes("prompts", project)
+    labels = ([POD] if project else []) + [OPERATOR, SHIPPED]
+    for label, directory in zip(labels, directories, strict=True):
+        files = _scope_candidates(directory, layer, name, major)
+        if files:
+            return _loaded(load_prompt_file(files[0]), label)
+    raise PromptError(f"no prompt {Reference('prompt', name, layer, major)}")

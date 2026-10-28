@@ -2,7 +2,7 @@
 
 Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
 starter-library archetypes validating, the pod-overlay pattern (built-ins + starter library
-overlaid by a pod's own `config/roles.json`, the pod wins by name),
+overlaid by a pod's own `config/roles/` files, the pod wins by name),
 `docket pod roles` list/show and `pod update <file>`, and that reviewer/tester gate-contract data resolved
 through `pipeline.domain.plan` matches `pipeline/domain/spec.py`'s own hardcoded `default_pipeline()`
 verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
@@ -31,7 +31,7 @@ SUBJECT = "docket.teams.roles"
 @pytest.fixture
 def registry_file() -> Path:
     """The role overlay of the pod ``seeded_pod`` names (the autouse fixture isolates the home)."""
-    return current_home().pod_config_dir("demo") / "roles.json"
+    return current_home().pod_config_dir("demo") / "roles" / "broken.yaml"
 
 
 @pytest.fixture
@@ -242,7 +242,7 @@ class TestRegistryOverlay:
         assert found is not None
         assert found.version == 2
         assert found.model_class == "strong"
-        assert found.soul_template == "custom lead soul for ${project}"
+        assert found.soul_template == "custom lead soul for ${project}\n"
         assert registry.source_of("lead") == "pod:demo"
 
         # Built-in Python literal itself is untouched (module-level constant).
@@ -251,9 +251,9 @@ class TestRegistryOverlay:
     def test_malformed_overlay_entry_is_skipped_not_fatal(self, registry_file: Path) -> None:
         registry_file.parent.mkdir(parents=True, exist_ok=True)
         registry_file.write_text(
-            json.dumps({"roles": {"broken": {"name": "broken", "scope": "not-a-scope"}}}),
-            encoding="utf-8",
+            "kind: role\nname: broken\nscope: not-a-scope\nmodel: cheap\n", encoding="utf-8"
         )
+        registry_file.with_suffix(".md").write_text("x\n", encoding="utf-8")
         registry = arch.load_registry("demo")
         # Malformed 'broken' entry is silently skipped; built-ins/starters still load.
         assert "broken" not in registry

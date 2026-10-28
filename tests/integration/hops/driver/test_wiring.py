@@ -17,6 +17,7 @@ from tests.support.driver_harness import (
 )
 from tests.support.fakes import FakeJail
 from tests.support.pods import write_meta_overrides as _write_meta
+from tests.support.roles import write_role_overlay
 
 from docket.agent.ports import (
     DOCKET_APPROVAL_MODE,
@@ -107,27 +108,7 @@ def _allow_commands_probe_registry() -> ToolRegistry:
 
 
 def _pod_overlay_denying(project: str, role: str, denied: list[str]) -> None:
-    path = current_home().pod_config_dir(project) / "roles.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "roles": {
-                    role: {
-                        "name": role,
-                        "version": 1,
-                        "scope": "pod",
-                        "modelClass": "cheap",
-                        "soulTemplate": "x",
-                        "agentsTemplate": "y",
-                        "gateContract": {"kind": "none"},
-                        "toolProfile": "read-only",
-                        "deniedTools": denied,
-                    }
-                }
-            }
-        )
-    )
+    write_role_overlay(project, role, denied)
 
 
 def _bash_then_done(command: str) -> _ScriptedBackend:

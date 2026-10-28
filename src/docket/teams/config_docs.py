@@ -465,6 +465,12 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
     return Document(kind=effective_kind, name=name, path=p, doc=doc)
 
 
+def prompt_files(directory: str | Path) -> list[Path]:
+    """Every ``prompts/*.md`` and ``prompts/<layer>/*.md`` directly under *directory*."""
+    prompts_dir = Path(directory) / "prompts"
+    return [*sorted(prompts_dir.glob("*.md")), *sorted(prompts_dir.glob("*/*.md"))]
+
+
 def discover_config_paths(directory: str | Path) -> list[Path]:
     """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``pipelines/*``
     (``.yaml|yml``), ``prompts/*.md`` and ``prompts/<layer>/*.md``, ``pipeline.yaml``/``.yml``, and
@@ -478,9 +484,7 @@ def discover_config_paths(directory: str | Path) -> list[Path]:
         patterns = ("*.yaml", "*.yml") if sub == "pipelines" else ("*.yaml", "*.yml", "*.json")
         for pattern in patterns:
             paths.extend(sorted(sub_dir.glob(pattern)))
-    prompts_dir = base / "prompts"
-    paths.extend(sorted(prompts_dir.glob("*.md")))
-    paths.extend(sorted(prompts_dir.glob("*/*.md")))
+    paths.extend(prompt_files(base))
     for stem in ("pipeline", "pod"):
         for ext in ("yaml", "yml"):
             candidate = base / f"{stem}.{ext}"

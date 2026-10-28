@@ -2,8 +2,8 @@
 add_user_archetype``, member provisioning, the pipeline bind, and ``teams.pod_settings.PodSettings``)
 into one operation, driven by a small ``pod.yaml`` manifest (``members``, ``settings``,
 ``pipeline``) alongside the same ``roles/*.yaml``/``pipeline.yaml`` shape the shipped recipes
-already ship. A role goes into *project*'s own pod-scoped overlay (``core.config.
-pod_config_dir(project)/roles.json``), never the global one: ``teams/pod.py``'s roster helpers
+already ship. A role goes into *project*'s own pod-scoped overlay (``Home.
+pod_config_dir(project)/roles/``) as its authored file, never the global one: ``teams/pod.py``'s roster helpers
 (``_role_names``/``parse_member_id``, which ``pod_full_roster``/``members_of`` depend on to
 resolve a pipeline's roster) resolve that pod overlay too (see ``_plan_roles``), matching what
 ``docket pod update roles/<file>.yaml`` already did by hand. ``plan_apply`` is
@@ -36,8 +36,11 @@ from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
+from docket.teams.apply import lock as _lock
+from docket.teams.apply.check import member_names, unresolved_members, unsupplied_inputs
 from docket.teams.apply.model import (
     ApplyAction,
     ApplyItem,
@@ -50,6 +53,7 @@ from docket.teams.apply.model import (
     _PipelineWrite,
     _PluginWrite,
     _PolicyWrite,
+    _PromptWrite,
     _RoleWrite,
     _SettingWrite,
     _SkillWrite,
@@ -60,7 +64,6 @@ from docket.teams.apply.recipes import (
     _named_pipeline_files,
     _server_files,
     _skill_digest,
-    directory_digest,
     unresolvable_pipeline_steps,
 )
 from docket.teams.apply.review import (
@@ -85,6 +88,7 @@ def _plan_roles(
     writes: list[_RoleWrite] = []
     merged = dict(base_registry.archetypes)
     roles_dir = directory / "roles"
+    overlay_dir = current_home().pod_config_dir(project) / "roles"
     if not roles_dir.is_dir():
         return items, writes, merged
 
@@ -102,16 +106,50 @@ def _plan_roles(
             arch = _role_schema.from_wire(name, doc)
         except _role_schema.ArchetypeError as exc:
             raise PodApplyError(f"{role_file}: {exc}") from exc
+        try:
+            files = _arch.role_overlay_files(role_file)
+        except _role_schema.ArchetypeError as exc:
+            raise PodApplyError(str(exc)) from exc
         existing = base_registry.get(name)
         already_pod = base_registry.source_of(name) == f"pod:{project}"
-        if already_pod and existing is not None and existing.to_wire() == arch.to_wire():
-            action: ApplyAction = "skip"
-        else:
-            action = "replace" if already_pod else "add"
-            writes.append(_RoleWrite(doc=doc))
+        same_bytes = all(
+            (overlay_dir / rel).is_file() and (overlay_dir / rel).read_bytes() == data
+            for rel, data in files.items()
+        )
+        # The same role in other bytes (an export regenerates the short form) is still `skip`: its
+        # overlay copy is refreshed so that it hashes to what `applied.lock` records.
+        same_role = already_pod and existing is not None and existing.to_wire() == arch.to_wire()
+        action: ApplyAction = (
+            "skip" if same_bytes or same_role else "replace" if already_pod else "add"
+        )
+        if not same_bytes:
+            writes.append(_RoleWrite(files=tuple(files.items())))
         merged[name] = arch
         items.append(ApplyItem(kind="role", name=name, action=action))
     return items, writes, merged
+
+
+def _plan_prompts(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PromptWrite]]:
+    """Plan ``prompts/<layer>/<name>.md`` into *project*'s own ``prompts/`` (the pod scope of
+    ``teams.prompts.resolve_prompt``), by bytes. A file that does not parse is refused."""
+    items: list[ApplyItem] = []
+    writes: list[_PromptWrite] = []
+    overlay_dir = current_home().pod_config_dir(project) / "prompts"
+    for prompt_file in _config_docs.prompt_files(directory):
+        try:
+            prompt = _prompts.load_prompt_file(prompt_file)
+        except _prompts.PromptError as exc:
+            raise PodApplyError(str(exc)) from exc
+        rel = prompt_file.relative_to(directory / "prompts").as_posix()
+        source = prompt_file.read_bytes()
+        dest = overlay_dir / rel
+        if dest.is_file() and dest.read_bytes() == source:
+            action: ApplyAction = "skip"
+        else:
+            action = "replace" if dest.is_file() else "add"
+            writes.append(_PromptWrite(rel=rel, source=source))
+        items.append(ApplyItem(kind="prompt", name=f"{prompt.layer}/{prompt.name}", action=action))
+    return items, writes
 
 
 def _plan_policies(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PolicyWrite]]:
@@ -499,6 +537,17 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     base_registry = _arch.load_registry(project)
     role_items, role_writes, merged_archetypes = _plan_roles(directory, base_registry, project)
     augmented = _arch.ArchetypeRegistry(merged_archetypes, project=project)
+    unresolved = unresolved_members(
+        member_roles, {name: a.version for name, a in merged_archetypes.items()}
+    )
+    if unresolved:
+        raise PodApplyError(f"pod.yaml: members: {'; '.join(unresolved)}")
+    member_roles = member_names(member_roles)
+    unsupplied = unsupplied_inputs(directory)
+    if unsupplied:
+        raise PodApplyError("; ".join(unsupplied))
+
+    prompt_items, prompt_writes = _plan_prompts(directory, project)
 
     policy_items, policy_writes = _plan_policies(directory, project)
 
@@ -525,7 +574,15 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         project, all_settings, tuple(i.name for i in mcp_items)
     )
 
-    items = [*role_items, *policy_items, *plugin_items, *skill_items, *mcp_items, *member_items]
+    items = [
+        *role_items,
+        *prompt_items,
+        *policy_items,
+        *plugin_items,
+        *skill_items,
+        *mcp_items,
+        *member_items,
+    ]
     if pipeline_item is not None:
         items.append(pipeline_item)
     items.extend(named_items)
@@ -537,6 +594,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         items=tuple(items),
         exporters=exporter_names,
         _role_writes=tuple(role_writes),
+        _prompt_writes=tuple(prompt_writes),
         _policy_writes=tuple(policy_writes),
         _plugin_writes=tuple(plugin_writes),
         _named_pipeline_writes=tuple(named_writes),
@@ -606,7 +664,7 @@ def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
     recorded = _fleet.meta_get(lead, "configDigest", "")
     if not (repo_dir.is_dir() and recorded and source == str(repo_dir.resolve())):
         return None
-    if directory_digest(repo_dir) == recorded:
+    if _lock.source_digest(repo_dir) == recorded:
         return None
     plan = plan_apply(project, repo_dir)
     found = _reviewed.lookup(repo_root(repo_dir), project)

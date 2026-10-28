@@ -23,7 +23,7 @@ SUBJECT = "docket.teams.roles"
 
 class TestFindOverlayProblems:
     """`find_overlay_problems`: what `docket setup` surfaces for a malformed
-    pod `roles.json` entry that `load_registry` silently skips."""
+    pod role file that `load_registry` silently skips."""
 
     def test_no_file_has_no_problems(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
@@ -31,26 +31,27 @@ class TestFindOverlayProblems:
 
     def test_well_formed_overlay_has_no_problems(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
-            write_vetter_overlay(current_home().pod_config_dir("acme") / "roles.json", [])
+            write_vetter_overlay("acme", [])
             assert find_overlay_problems("acme") == []
 
-    def test_malformed_entry_is_named_by_role(self, tmp_path: Path) -> None:
+    def test_an_invalid_role_file_is_named_by_file(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
-            path = current_home().pod_config_dir("acme") / "roles.json"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({"roles": {"broken-role": {"name": "broken-role"}}}))
+            roles = current_home().pod_config_dir("acme") / "roles"
+            roles.mkdir(parents=True)
+            (roles / "broken-role.yaml").write_text("kind: role\nname: broken-role\nmodel: huge\n")
             problems = find_overlay_problems("acme")
             assert len(problems) == 1
-            assert problems[0][0] == "broken-role"
+            assert problems[0][0] == str(roles / "broken-role.yaml")
+            assert "model" in problems[0][1]
 
-    def test_malformed_json_is_reported_by_file(self, tmp_path: Path) -> None:
+    def test_unparseable_yaml_is_reported_by_file(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path / ".docket")):
-            path = current_home().pod_config_dir("acme") / "roles.json"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("{not json")
+            roles = current_home().pod_config_dir("acme") / "roles"
+            roles.mkdir(parents=True)
+            (roles / "vetter.yaml").write_text("{not yaml")
             problems = find_overlay_problems("acme")
             assert len(problems) == 1
-            assert problems[0][0] == str(path)
+            assert problems[0][0] == str(roles / "vetter.yaml")
 
 
 _SECURITY_VETTER_LONG: dict[str, object] = {
@@ -116,3 +117,56 @@ class TestLoadRoleFile:
 
         with pytest.raises(ArchetypeError, match="deniedTools"):
             _arch.load_role_file(str(path))
+
+
+def _write_role(roles: Path, name: str, hop: str) -> None:
+    roles.mkdir(parents=True, exist_ok=True)
+    (roles / f"{name}.yaml").write_text(
+        f"kind: role\nname: {name}\nmodel: cheap\nhopInstruction: {hop}\n", encoding="utf-8"
+    )
+    (roles / f"{name}.md").write_text("soul\n", encoding="utf-8")
+
+
+class TestRoleScopes:
+    """`load_registry` reads the role files of `Home.scopes("roles", project)`, nearest first."""
+
+    def test_the_operators_role_overlays_the_built_in_for_every_pod(self) -> None:
+        from docket.teams.roles import load_registry
+
+        _write_role(current_home().roles_dir, "lead", "OPERATOR")
+
+        for project in ("", "acme"):
+            registry = load_registry(project)
+            lead = registry.get("lead")
+            assert lead is not None and lead.hop_instruction == "OPERATOR"
+            assert registry.source_of("lead") == "operator"
+
+    def test_the_pod_overlay_beats_the_operator_and_stays_with_its_pod(self) -> None:
+        from docket.teams.roles import load_registry
+
+        _write_role(current_home().roles_dir, "lead", "OPERATOR")
+        _write_role(current_home().pod_config_dir("acme") / "roles", "lead", "POD")
+
+        mine = load_registry("acme")
+        theirs = load_registry("beta")
+        assert mine.get("lead").hop_instruction == "POD"  # type: ignore[union-attr]
+        assert mine.source_of("lead") == "pod:acme"
+        assert theirs.get("lead").hop_instruction == "OPERATOR"  # type: ignore[union-attr]
+
+    def test_a_role_no_file_defines_keeps_its_built_in_source(self) -> None:
+        from docket.teams.roles import load_registry
+
+        registry = load_registry("acme")
+
+        assert registry.source_of("lead") == "built-in"
+        assert registry.source_of("researcher") == "starter"
+        assert registry.source_of("ghost") == ""
+
+    def test_a_roles_json_is_not_read(self) -> None:
+        from docket.teams.roles import load_registry
+
+        legacy = current_home().pod_config_dir("acme") / "roles.json"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text(json.dumps({"roles": {"vetter": {"name": "vetter"}}}))
+
+        assert load_registry("acme").get("vetter") is None

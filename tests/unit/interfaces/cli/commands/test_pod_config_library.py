@@ -104,8 +104,7 @@ class TestPodApply:
             _put_role(role)
             result = _pod_run("update", str(role), "--pod", "demo")
             assert result.exit_code == 0
-            stored = json.loads((current_home().pod_config_dir("demo") / "roles.json").read_text())
-            assert "vetter" in stored["roles"]
+            assert (current_home().pod_config_dir("demo") / "roles" / "vetter.yaml").is_file()
             assert _arch.load_registry("demo").get("vetter") is not None
 
     def test_dry_run_writes_nothing(self, tmp_path: Path) -> None:
@@ -114,7 +113,7 @@ class TestPodApply:
             _put_role(role)
             result = _pod_run("update", str(role), "--pod", "demo", "--dry-run", "--json")
             assert json.loads(result.output)["items"][0]["action"] == "add"
-            assert not (current_home().pod_config_dir("demo") / "roles.json").exists()
+            assert not (current_home().pod_config_dir("demo") / "roles").exists()
 
     @pytest.mark.parametrize(
         ("name", "text", "key"),

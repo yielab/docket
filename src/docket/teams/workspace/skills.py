@@ -22,7 +22,7 @@ from docket.kernel.errors import DocumentError
 from docket.kernel.home import current_home
 from docket.teams.workspace.repo_view import RepoView, view_for
 
-SkillScope = Literal["codebase", "pod", "global", ""]
+SkillScope = Literal["codebase", "pod", "global", "shipped", ""]
 
 _NAME_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 _MAX_DESCRIPTION_LENGTH = 1024
@@ -107,16 +107,21 @@ def parse_skill_text(path: Path, text: str, *, scope: SkillScope = "") -> SkillM
 
 
 def discover_skills(project: str, codebase_root: Path | str | None) -> dict[str, SkillMeta]:
-    """Every skill visible to *project* at *codebase_root*, nearest scope wins by name:
-    codebase ``.docket/skills/``, this pod's ``config/skills/``, then ``Home.skills_dir``.
+    """Every skill visible to *project* at *codebase_root*, nearest scope wins by name, in the
+    order of ``Home.scopes("skills")``: codebase ``.docket/skills/``, this pod's
+    ``config/skills/``, ``Home.skills_dir``, then the shipped skills.
     An invalid or bodiless skill is skipped (audited once as ``skills.invalid``), never raised."""
     found: dict[str, SkillMeta] = {}
-    scopes: list[tuple[Path, SkillScope]] = []
+    labels: list[SkillScope] = []
     if codebase_root is not None:
-        scopes.append((Path(codebase_root) / ".docket" / "skills", "codebase"))
+        labels.append("codebase")
     if project:
-        scopes.append((current_home().pod_config_dir(project) / "skills", "pod"))
-    scopes.append((current_home().skills_dir, "global"))
+        labels.append("pod")
+    labels += ["global", "shipped"]
+    directories = current_home().scopes(
+        "skills", project, None if codebase_root is None else Path(codebase_root)
+    )
+    scopes = list(zip(directories, labels, strict=True))
 
     view = view_for(codebase_root)
     for directory, scope in scopes:
