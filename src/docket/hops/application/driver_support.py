@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from docket.agent import loop as _loop
 from docket.agent.ports import (
@@ -124,6 +124,11 @@ def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
     if meta is not None and meta.work_dir:
         return (Path(meta.work_dir),)
     return (current_home().workspace_dir(agent_id),)
+
+
+def _approval_mode(raw: str | None) -> Literal["wait", "park", "refuse"]:
+    """The in-turn approval mode an env coordinate names; anything unrecognized is ``wait``."""
+    return "refuse" if raw == "refuse" else "park" if raw == "park" else "wait"
 
 
 def _approval_timeout(raw: str | None) -> int | None:

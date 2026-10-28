@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -845,6 +845,10 @@ runs: additive to the gate and to `resolve_within`, never a replacement for eith
      the CLI's group leaves the container running. The timeout handler **MUST** call
      `docker_kill(<container name>)` (a direct `docker kill`, which with the run's `--rm` also
      removes the container) before, or in addition to, killing the CLI's group.
+   - **Background processes** (`bash` with `background: true`, agent-loop requirement 99) **MUST**
+     leave no orphan at turn end: the driver kills each live process group of the turn, whatever
+     the backend, before the turn returns (agent-loop requirement 101). Under docker `background`
+     is refused, because a container outlives a signalled CLI group.
 8. **Under network `open` the jail leaves the network reachable.** `landlock_argv` passes
    `--net open` (no network rule), the seatbelt profile allows `network*`, and docker keeps the
    image's default bridge. An open jail **MUST NOT** be described as network isolation anywhere in
