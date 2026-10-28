@@ -17,7 +17,8 @@
 > finishing a card well matters more than running two at once.
 >
 > **Active: Phases 52 and 53, one schedule. Wave 1 closed 2026-10-28** (seven cards merged into
-> `develop`, unpushed). **Wave 2 (P52-7 ∥ P53-3) is unblocked and waits for a go.** Phase 51
+> `develop`, unpushed). **Wave 2 (P52-7 ∥ P53-3) opened 2026-10-28:** one Sonnet worker each, in
+> `.claude/worktrees/<card>` from the commit that carries this banner. Phase 51
 > closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
 > ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. The integration
 > branch is `develop`.
@@ -314,7 +315,7 @@ behaviour + spec
 
 ### P52-7 — `ModelProfile`: the contract varies with the model (absorbs P52-3's sampling)
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** IN-PROGRESS (@sonnet-p52-7) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** ADR 0033 §Decision 1. Today's single contract: an Implementer's schemas are about
@@ -667,7 +668,7 @@ behaviour + spec + data
 
 ### P53-3 — one resolution order for the team's kinds, and `applied.lock`
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** IN-PROGRESS (@sonnet-p53-3) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request (ADR 0035 decisions 2 and 3). Found:
