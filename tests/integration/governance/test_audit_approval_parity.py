@@ -371,4 +371,4 @@ class TestAuditFailureNeverBreaksApproval:
             token = _ap.approval_create("proj-missing-dir", "implementer", "x")
             _ap.approval_grant(token, channel="cli")  # must not raise
             assert _ap.approval_get(token)["state"] == "granted"
-            assert (home / "nope" / "audit.log").is_file()
+            assert missing.audit_log.is_file()

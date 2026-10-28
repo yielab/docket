@@ -79,7 +79,7 @@ class TestSweepRunsRetention:
     ) -> None:
         old = _store.write_escalation(escalation_record(state="expired"))
         live = _store.write_escalation(escalation_record())
-        path = swept_home / "escalations" / "settled" / f"{old.id}.json"
+        path = Home(swept_home).escalations_dir / "settled" / f"{old.id}.json"
         stale = path.stat().st_mtime - 90 * 86400
         os.utime(path, (stale, stale))
 

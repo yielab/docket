@@ -74,7 +74,7 @@ class TestVerify:
 
     def test_a_tampered_line_exits_one(self, home: Path) -> None:
         _record(3)
-        logf = home / "audit.log"
+        logf = Home(home).audit_log
         lines = logf.read_text(encoding="utf-8").splitlines()
         first = json.loads(lines[0])
         first["detail"] = "forged"
