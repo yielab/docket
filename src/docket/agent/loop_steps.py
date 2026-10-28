@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import Any
 
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_tool_call, _trace_tool_result
@@ -38,6 +39,15 @@ def approval_parked_error(result: ToolResult) -> str:
         f"policy_id={result.policy_id!r} reason={result.reason!r} "
         f"approval_token={result.approval_token!r}"
     )
+
+
+def _call_arguments(raw: str) -> dict[str, Any]:
+    """The JSON object a tool call's arguments hold, ``{}`` for anything else."""
+    try:
+        data = json.loads(raw or "{}")
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 class _ProgressDetector:
@@ -115,6 +125,7 @@ class ToolStep:
         approval_parked: ToolResult | None = None
         round_entries: list[tuple[str, str, bool, str]] = []
         closing_output: str | None = None
+        closing_args: dict[str, Any] | None = None
         self.state.ctx.rationale = assistant_msg.content or ""
         for call in assistant_msg.tool_calls:
             _trace_tool_call(
@@ -132,6 +143,7 @@ class ToolStep:
             tool_output = result.as_tool_output()
             if result.ok and result.executed and self._ends_turn(call.name):
                 closing_output = result.content
+                closing_args = _call_arguments(call.arguments)
             _trace_tool_result(
                 self.state.project,
                 self.state.trace_key,
@@ -207,7 +219,9 @@ class ToolStep:
             )
         if closing_output is not None:
             text = "\n".join(part for part in (assistant_msg.content, closing_output) if part)
-            return self.state.done(ok=True, stop_reason="final_message", output=text)
+            return self.state.done(
+                ok=True, stop_reason="final_message", output=text, closing_args=closing_args
+            )
         return self.stop_if_no_progress(round_entries)
 
     def _ends_turn(self, tool_name: str) -> bool:

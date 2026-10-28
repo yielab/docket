@@ -248,7 +248,7 @@ class TestReviewerGateBasic:
         assert [h.role for h in res.hops] == ["lead", "implementer"]
 
 
-REASK = "Your reply had no verdict line. Reply with exactly one line: {values}."
+REASK = "Your reply had no verdict. Call `handoff` with your verdict: {values}."
 
 
 class _ReaskRunner:
@@ -282,8 +282,8 @@ def _ok(output: str) -> _rd.TurnResult:
     return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
 
-class TestVerdictToolOffer:
-    """The values a verdict-gated hop may record travel to the driver in its environment."""
+class TestHandoffToolOffer:
+    """The values a verdict-gated hop may record, and the handoff offer, travel to the driver in its environment."""
 
     def test_only_verdict_gated_hops_carry_the_values(self, tmp_path: Path) -> None:
         _seed_full_pod()
@@ -301,6 +301,16 @@ class TestVerdictToolOffer:
         assert values("tester") == {"values": ["PASS", "FAIL"], "caseSensitive": False}
         assert values("lead") is None
         assert values("implementer") is None
+
+    def test_every_hop_whose_prompt_declares_the_handoff_output_is_offered_it(
+        self, tmp_path: Path
+    ) -> None:
+        _seed_full_pod()
+        runner = _ReaskRunner({"reviewer": [_ok("APPROVE")]})
+        _executor.dispatch_task("myapp", TaskRecord(id="v2", description="work"), runner=runner)
+
+        for role in ("lead", "implementer", "reviewer", "tester"):
+            assert (runner.envs.get(role) or {}).get(_rd.DOCKET_HANDOFF) == "1", role
 
 
 class TestVerdictReask:
@@ -330,6 +340,22 @@ class TestVerdictReask:
         events = [e["event_type"] for e in _trace_events("myapp")]
         assert events.count("verdict_reasked") == 1
         assert "reviewer_verdict_unparseable" not in events
+
+    def test_the_reask_asks_for_the_call_and_the_verdict_it_carries_counts(
+        self, tmp_path: Path
+    ) -> None:
+        _seed_full_pod()
+        answer = _rd.TurnResult(
+            ok=True, output="", cost_usd=0.0, raw={}, closing_args={"verdict": "approve"}
+        )
+        runner = _ReaskRunner({"reviewer": [_ok("Looks right to me."), answer]})
+        res = _executor.dispatch_task(
+            "myapp", TaskRecord(id="k0", description="work"), runner=runner
+        )
+
+        assert res.status == "done"
+        hop = next(h for h in res.hops if h.role == "reviewer")
+        assert hop.artifact.verdict == "approve"
 
     def test_a_reply_that_still_has_no_marker_fails_after_the_one_re_ask(
         self, tmp_path: Path

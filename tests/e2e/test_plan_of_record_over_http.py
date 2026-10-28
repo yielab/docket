@@ -12,6 +12,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from docket.teams.prompts import shipped_prompt
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import Service, World
 from tests.support.model_server import FakeModel, Reply, call, say, write_file
@@ -145,6 +146,10 @@ def test_a_task_posted_over_http_runs_the_team_and_serves_its_diff(
         status, dispatched = svc.post(f"/dispatch/{w.pod}")
         assert (status, dispatched["status"]) == (200, "dispatched")
         done = _wait_for_status(w, svc, task_id, "done")
+        implementer = next(h for h in done["hops"] if h["role"] == "implementer")
+        layers = {entry["layer"]: entry for entry in implementer["promptManifest"]["layers"]}
+        assert layers["hop"]["sha256"] == shipped_prompt("hop", "implementer").sha256
+        assert layers["identity"]["sha256"] == shipped_prompt("identity", "implementer").sha256
         statuses = ["pending", "waiting_approval", done["status"]]
 
         status, diff = svc.get(f"/tasks/{w.pod}/{task_id}/diff")

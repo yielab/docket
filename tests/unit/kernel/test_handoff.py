@@ -9,9 +9,17 @@ and `HandoffArtifact.brief` never being shed by a token-budgeted consumer (it is
 
 from __future__ import annotations
 
+import pytest
+
 from docket.agent import context as _ctx
 from docket.kernel.brief import TaskBrief
-from docket.kernel.handoff import HandoffArtifact, cap_diff, parse_brief, render_brief
+from docket.kernel.handoff import (
+    HandoffArtifact,
+    cap_diff,
+    parse_brief,
+    parse_handoff_call,
+    render_brief,
+)
 
 SUBJECT = "docket.kernel.handoff"
 
@@ -206,3 +214,41 @@ class TestDiffOmittedMarker:
 
     def test_the_default_render_is_unchanged(self) -> None:
         assert HandoffArtifact(summary="done").render() == "done"
+
+
+# ── the handoff call and the artifact fields it fills ─────────────────────────
+
+
+class TestParseHandoffCall:
+    def test_the_published_field_names_are_read(self) -> None:
+        call = parse_handoff_call(
+            {
+                "summary": "done",
+                "filesChanged": ["a.py"],
+                "verdict": "approve",
+                "assumptions": ["x"],
+                "questions": ["y"],
+            }
+        )
+
+        assert call is not None
+        assert (call.summary, call.files_changed, call.verdict) == ("done", ["a.py"], "approve")
+        assert (call.assumptions, call.questions) == (["x"], ["y"])
+
+    @pytest.mark.parametrize("args", [None, {}, {"assumptions": "not a list"}])
+    def test_no_call_or_one_that_breaks_the_schema_is_none(self, args: dict | None) -> None:  # type: ignore[type-arg]
+        assert parse_handoff_call(args) is None
+
+
+class TestAssumptionsAndQuestions:
+    def test_they_render_after_the_verdict_and_never_when_empty(self) -> None:
+        art = HandoffArtifact(
+            summary="s", verdict="approve", assumptions=["A1"], questions=["Q1", "Q2"]
+        )
+
+        assert art.render() == "s\nVerdict: approve\nAssumptions:\n- A1\nQuestions:\n- Q1\n- Q2"
+        assert HandoffArtifact(summary="s").render() == "s"
+
+    def test_an_empty_pair_is_absent_from_the_dump(self) -> None:
+        assert "assumptions" not in HandoffArtifact(summary="s").model_dump()
+        assert HandoffArtifact(summary="s", questions=["q"]).model_dump()["questions"] == ["q"]

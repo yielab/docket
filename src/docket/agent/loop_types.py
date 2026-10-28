@@ -98,3 +98,5 @@ class AgentLoopResult:
     retry_after_s: float | None = None
     model: str = ""
     provider: str = ""
+    #: The arguments of the ``ends_turn`` tool call that closed the turn; ``None`` otherwise.
+    closing_args: dict[str, Any] | None = None

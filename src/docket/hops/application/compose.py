@@ -7,9 +7,10 @@ from typing import Any
 
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
+from docket.hops.application import manifest as _manifest
 from docket.hops.application import verify_tool as _verify
 from docket.hops.application.base_view import base_commit_view
-from docket.hops.application.verdict_tool import encode_values
+from docket.hops.application.handoff_tool import encode_values
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
 from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
@@ -34,6 +35,7 @@ from docket.teams import pod_settings as _pod_settings
 from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
+from docket.teams.prompts import LoadedPrompt
 from docket.teams.settings import load_pod_settings, pod_approval_mode
 from docket.teams.workspace import repo_map as _repo_map
 from docket.teams.workspace.repo_view import RepoView
@@ -47,6 +49,8 @@ class _HopComposition:
     sections: list[dict[str, Any]] = field(default_factory=list)
     total_bytes: int = 0
     truncated: bool = False
+    #: The prompt layers this hop's message was composed from, in order (``manifest.py``).
+    layers: list[_manifest.Layer] = field(default_factory=list)
 
 
 _VERIFY_SENTENCE = (
@@ -62,38 +66,49 @@ def _resolve_hop_instructions(
     step_instructions: str,
     verify_cmd: str = "",
     view: RepoView | None = None,
-) -> str:
-    """This role's hop instruction text; an Implementer whose step has *verify_cmd* is told it."""
-    text = _role_instructions(role, project, rework_hop, step_instructions, view)
+) -> tuple[str, LoadedPrompt | None]:
+    """This role's hop instruction text and the prompt it came from; an Implementer whose step
+    has *verify_cmd* is told it."""
+    prompt = _role_prompt(role, project, rework_hop, step_instructions, view)
+    text = prompt.text if prompt is not None else ""
     if verify_cmd and role == "implementer":
-        return "\n\n".join(p for p in (text, _VERIFY_SENTENCE.format(verify_cmd)) if p)
-    return text
+        text = "\n\n".join(p for p in (text, _VERIFY_SENTENCE.format(verify_cmd)) if p)
+    return text, prompt
 
 
-def _role_instructions(
+def _role_prompt(
     role: str,
     project: str,
     rework_hop: HopResult | None,
     step_instructions: str,
     view: RepoView | None = None,
-) -> str:
-    """The role's own text: the step's own override, else a built-in role's hop prompt (the
+) -> LoadedPrompt | None:
+    """The role's own prompt: the step's own override, else a built-in role's hop prompt (the
     first of the task's base commit, the pod overlay, the operator and what ships that holds
     it), else a custom role's registry-resolved ``hopInstruction``."""
     if step_instructions:
-        return step_instructions
+        return _prompts.inline_prompt(role, "hop", step_instructions, "pipeline")
     if role == "implementer":
         name = "implementer" if rework_hop is None else "implementer-rework"
-        return _prompts.resolve_prompt("hop", name, project=project, view=view).text
+        return _prompts.resolve_prompt("hop", name, project=project, view=view)
     if role in ("reviewer", "tester"):
-        return _prompts.resolve_prompt("hop", role, project=project, view=view).text
-    # A custom role: its own archetype's `hopInstruction`, or one generated
-    # from its `gateContract` (e.g. a verdict role's marker convention) --
+        return _prompts.resolve_prompt("hop", role, project=project, view=view)
+    # A custom role: its own archetype's `hopInstruction`, or one generated from its
+    # `gateContract` (e.g. a verdict role's marker convention) --
     # see role-archetypes.spec.md ("Hop instructions"). An unrecognized
     # role name (absent from the registry) still gets no instruction,
     # matching today's behavior.
     archetype = _archetypes.load_registry(project).get(role)
-    return _role_schema.resolve_hop_instruction(archetype) if archetype else ""
+    return _role_schema.resolve_hop_prompt(archetype) if archetype else None
+
+
+def _layers_of(role: str, project: str, hop_prompt: LoadedPrompt | None) -> list[_manifest.Layer]:
+    """The identity layer of *role* and its *hop_prompt*, as far as each exists."""
+    identity = _manifest.identity_layer(role, project)
+    return [
+        *([identity] if identity is not None else []),
+        *([_manifest.Layer("hop", hop_prompt)] if hop_prompt is not None else []),
+    ]
 
 
 def _render_gate_reasons(reasons: list[dict[str, Any]]) -> str:
@@ -203,13 +218,8 @@ def _hop_message(
     worktree = "" if role == "lead" else claimed_worktree_dir(task)
     root_block = _repo_map.task_root_block(worktree, project, role)
     if role == "lead":
-        if step_instructions:
-            lead_instruction = step_instructions
-        else:
-            lead_archetype = _archetypes.load_registry(project).get("lead")
-            lead_instruction = (
-                _role_schema.resolve_hop_instruction(lead_archetype) if lead_archetype else ""
-            )
+        lead_prompt = _role_prompt("lead", project, None, step_instructions)
+        lead_instruction = lead_prompt.text if lead_prompt is not None else ""
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
         if root_block:
             message = f"{message}\n\n{root_block}"
@@ -219,9 +229,10 @@ def _hop_message(
         comp = _HopComposition(
             description_bytes=len(desc.encode("utf-8")), total_bytes=len(message.encode("utf-8"))
         )
+        comp.layers = _layers_of(role, project, lead_prompt)
         return message, comp
 
-    instructions = _resolve_hop_instructions(
+    instructions, hop_prompt = _resolve_hop_instructions(
         role,
         project,
         None if is_gate_failure_carryover(rework_hop) else rework_hop,
@@ -242,6 +253,7 @@ def _hop_message(
 
     lines = [f"Task: {desc}", ""] + ([root_block, ""] if root_block else [])
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
+    comp.layers = _layers_of(role, project, hop_prompt)
 
     gate_failed_hop = rework_hop if is_gate_failure_carryover(rework_hop) else None
     if gate_failed_hop is not None:
@@ -369,9 +381,9 @@ def _compose_hop(
     member_id: str,
     prior_snapshot: list[HopResult],
     rework_hop: HopResult | None,
-) -> tuple[str, dict[str, str] | None]:
-    """Build this hop's prompt/environment and emit its ``context_composed``/``tool_call``
-    trace pair. A downstream hop's message gets an extra checkout note naming the real
+) -> tuple[str, dict[str, str] | None, dict[str, Any]]:
+    """Build this hop's prompt/environment and its prompt manifest, and emit its
+    ``context_composed``/``tool_call`` trace pair. A downstream hop's message gets an extra checkout note naming the real
     implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
     step_override = ctx.step_instructions.get(node.step_id, "")
     verify_plan = None if role == "lead" else _verify.plan_for_hop(ctx, node, member_id)
@@ -472,6 +484,8 @@ def _compose_hop(
     if ctx.approval_timeout is not None:
         env = dict(env or {})
         env[_rd.DOCKET_APPROVAL_TIMEOUT] = str(ctx.approval_timeout)
+    if _manifest.offers_handoff(composition.layers):
+        env = {**(env or {}), _rd.DOCKET_HANDOFF: "1"}
     if isinstance(node.gate, _gates.VerdictGate):
         env = dict(env or {})
         env[_rd.DOCKET_VERDICT_VALUES] = encode_values(
@@ -487,7 +501,7 @@ def _compose_hop(
         # through without asking again.
         env = dict(env or {})
         env[_rd.DOCKET_PREGRANTS] = _json.dumps(pregrants_raw)
-    return message, env
+    return message, env, _manifest.build_manifest(composition.layers, planned_model)
 
 
 def _brief_from_step(prior: list[HopResult], step_id: str) -> _brief.TaskBrief | None:

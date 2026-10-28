@@ -74,7 +74,7 @@ class RoleArchetype:
     # for any archetype that does not opt in.
     denied_tools: tuple[str, ...] = ()
     # This role's own hop-message instruction footer (see
-    # `resolve_hop_instruction` below and `hops/application/compose.py`'s hop-message
+    # `resolve_hop_prompt` below and `hops/application/compose.py`'s hop-message
     # builder). Open prose, like `tool_profile`/`description` — "" (the
     # default) means "no declared instruction", not "no instruction at all":
     # a gated role still gets one generated from `gate_contract`.
@@ -185,10 +185,10 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     )
 
 
-def resolve_hop_instruction(archetype: RoleArchetype) -> str:
-    """*archetype*'s own `hop_instruction` if declared, else one generated from its
-    `gate_contract` (verdict/mechanical/approval); a `none`-kind gate generates none. See
-    specs/functional/role-archetypes.spec.md ("Hop instructions")."""
+def resolve_hop_prompt(archetype: RoleArchetype) -> _prompts.LoadedPrompt | None:
+    """*archetype*'s hop prompt: its own `hop_instruction` if declared, else one generated from its
+    `gate_contract` (verdict/mechanical/approval) as a ``generated`` prompt; ``None`` for a
+    `none`-kind gate. See specs/functional/role-archetypes.spec.md ("Hop instructions")."""
     # `implementer`/`reviewer`/`tester` never reach this: `hops/application/compose.py`'s hop-message
     # builder keeps their own shipped text unconditionally. `lead` DOES reach this --
     # its built-in `hop_instruction` is the shipped `hop/lead` prompt, so this returns
@@ -196,8 +196,12 @@ def resolve_hop_instruction(archetype: RoleArchetype) -> str:
     if archetype.hop_instruction:
         return _prompts.role_prompt(
             archetype.name, "hop", archetype.hop_instruction, archetype.version
-        ).text
-    gc = archetype.gate_contract
+        )
+    text = _generated_hop_instruction(archetype.gate_contract)
+    return _prompts.inline_prompt(archetype.name, "hop", text, "generated") if text else None
+
+
+def _generated_hop_instruction(gc: GateContract) -> str:
     if gc.kind == "verdict" and gc.regexes:
         markers = " or ".join(f"`{m}`" for m in gc.regexes)
         return (

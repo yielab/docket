@@ -195,11 +195,13 @@ class TestCompileArtifact:
         assert compiled.original_tokens == compiled.tokens
 
     def test_fields_are_shed_in_declared_drop_order(self) -> None:
-        """diff -> diff_ref -> files_changed -> verdict, one at a time, stopping the moment the render fits -- pinned against `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this test breaks (loudly) if the order is ever changed there."""
+        """diff -> diff_ref -> files_changed -> assumptions -> questions -> verdict, one at a time, stopping the moment the render fits -- pinned against `HandoffArtifact.DROP_ORDER` itself, not a hardcoded tuple, so this test breaks (loudly) if the order is ever changed there."""
         assert HandoffArtifact.DROP_ORDER == (
             "diff",
             "diff_ref",
             "files_changed",
+            "assumptions",
+            "questions",
             "verdict",
         )
 

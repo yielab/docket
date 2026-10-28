@@ -28,6 +28,7 @@ from docket.agent.ports import (
     DOCKET_APPROVAL_MODE,
     DOCKET_APPROVAL_TIMEOUT,
     DOCKET_CONSULT_MODE,
+    DOCKET_HANDOFF,
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
     DOCKET_TURN_TOKEN_BUDGET,
@@ -62,7 +63,7 @@ from docket.hops.application.driver_support import (
     _turn_token_budget,
     _validated_pipeline_worktree,
 )
-from docket.hops.application.verdict_tool import VERDICT_TOOL, parse_values, verdict_tool
+from docket.hops.application.handoff_tool import HANDOFF_TOOL, parse_values, register_closing_tool
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
 from docket.models.adapters import openai_http as _llm
@@ -219,6 +220,7 @@ class DocketDriver:
         )
         token_budget = _turn_token_budget(tool_env.pop(DOCKET_TURN_TOKEN_BUDGET, None))
         verdict_gate = parse_values(tool_env.pop(DOCKET_VERDICT_VALUES, None))
+        offer = tool_env.pop(DOCKET_HANDOFF, None)
         cancellation_signal = _runs.current_cancellation_signal()
         # Same resolution `project=` below applies -- so the `on_process` callback files its
         # trace events under the identical coordinate `agent/loop.py`'s own
@@ -272,13 +274,12 @@ class DocketDriver:
         # filtering -- the same value an in-turn approval gate files traces under.
         registry = self.registry_factory()
         describe_tools(registry, ctx, profile.descriptions)
-        if verdict_gate is not None:
-            registry.register(verdict_tool(*verdict_gate))
+        register_closing_tool(registry, verdict_gate, offer)
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
         loop_config = _loop_config(
-            backend, timeout, token_budget, profile, VERDICT_TOOL if verdict_gate else ""
+            backend, timeout, token_budget, profile, HANDOFF_TOOL if verdict_gate else ""
         )
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None

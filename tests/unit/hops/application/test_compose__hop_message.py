@@ -132,7 +132,7 @@ class TestStepInstructionsOverride:
 
     def test_lead_message_resolves_through_the_lead_archetype(self) -> None:
         # No step override -- the Lead's instruction now comes from
-        # `teams.roles.resolve_hop_instruction` against the built-in `lead`
+        # `teams.role_schema.resolve_hop_prompt` against the built-in `lead`
         # archetype, not a literal string in `_hop_message` itself. An overlay
         # of `lead` changes the Lead's hop message.
         _arch.add_user_archetype(

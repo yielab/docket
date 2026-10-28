@@ -31,7 +31,7 @@ steps:
     on: {REQUEST-CHANGES: {goto: implement, max: 1}}
 """
 
-REASK = "Your reply had no verdict line. Reply with exactly one line: APPROVE or REQUEST-CHANGES."
+REASK = "Your reply had no verdict. Call `handoff` with your verdict: APPROVE or REQUEST-CHANGES."
 
 
 def _with_text(reply: Reply, text: str) -> Reply:
@@ -112,14 +112,14 @@ def test_a_reply_that_still_has_no_verdict_fails_after_the_single_re_ask(
     assert "unparseable" in w.docket("inbox", "--json").json()["failed"][0]["reason"]
 
 
-def test_a_reviewer_that_calls_the_verdict_tool_ends_its_hop_with_that_verdict(
+def test_a_reviewer_that_calls_the_handoff_tool_ends_its_hop_with_that_verdict(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
     model = fake_model(
         script={
             "lead": [say("Plan: nothing to change.")],
             "implementer": [say("Nothing to change.")],
-            "reviewer": [_with_text(call("verdict", value="approve"), "Correct and tested.")],
+            "reviewer": [_with_text(call("handoff", verdict="approve"), "Correct and tested.")],
         }
     )
     w = world(model)
@@ -128,15 +128,13 @@ def test_a_reviewer_that_calls_the_verdict_tool_ends_its_hop_with_that_verdict(
     assert w.task(task_id)["task"]["status"] == "done"
     reviewer = model.by_role("reviewer")
     assert len(reviewer) == 1  # the closing call ends the hop: no request follows it
-    assert "verdict" in reviewer[0].tools
-    assert all(
-        "verdict" not in r.tools for r in (*model.by_role("lead"), *model.by_role("implementer"))
-    )
+    assert "handoff" in reviewer[0].tools
+    assert "verdict" not in reviewer[0].tools
     assert ("hop_finished", "reviewer", "approve") in oracles.trace_skeleton(w, w.pod, task_id)
     assert _events(w, task_id, "verdict_reasked") == []
 
 
-def test_a_verdict_given_by_the_tool_routes_and_hands_its_reasons_to_the_rework(
+def test_a_verdict_given_by_the_handoff_call_routes_and_hands_its_reasons_to_the_rework(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
     model = fake_model(
@@ -144,7 +142,7 @@ def test_a_verdict_given_by_the_tool_routes_and_hands_its_reasons_to_the_rework(
             "lead": [say("Plan: nothing to change.")],
             "implementer": [say("Nothing to change."), say("Added the missing test.")],
             "reviewer": [
-                _with_text(call("verdict", value="REQUEST-CHANGES"), "Add a test for the edge."),
+                _with_text(call("handoff", verdict="REQUEST-CHANGES"), "Add a test for the edge."),
                 say("APPROVE"),
             ],
         }

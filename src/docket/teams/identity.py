@@ -21,6 +21,7 @@ stale copy.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -656,4 +657,25 @@ def compose_agent_prompt(
         + context_reports
         + ((pod_memory_report,) if pod_memory_report is not None else ())
     )
-    return PromptComposition(text, sections, budget_tokens, budget_source)
+    sources = tuple(
+        label
+        for label, part in (
+            (SOUL_FILE, soul_text),
+            ("runtimeContract", runtime_contract),
+            ("runtimeContext", runtime_context),
+            (INSTRUCTIONS_FILE, instructions_text),
+            (PROJECT_INSTRUCTIONS_LABEL, project_instructions_text),
+            (SKILLS_LABEL, skills_text),
+            (AGENTS_FILE, agents_text),
+            ("podMemory", pod_memory_text),
+        )
+        if part.strip()
+    )
+    return PromptComposition(
+        text,
+        sections,
+        budget_tokens,
+        budget_source,
+        hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        sources,
+    )

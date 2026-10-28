@@ -19,15 +19,18 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from tests.support.fakes import FakeDriver
 from tests.support.http import get as _get
 from tests.support.pods import seed_pod as _seed_pod
 
+from docket.hops.application import sweep as _sweep
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
 from docket.tasks.application import queue as _application_queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import HopResult, TaskRecord
+from docket.teams import prompts as _prompts
 
 SUBJECT = "docket.interfaces.http.server"
 
@@ -135,6 +138,27 @@ class TestQueueShapeMatchesTheRecordDump:
                     assert task["status"] == "pending"
                     assert task["priority"] == "normal"
                     assert "id" in task and "created" in task
+
+
+class TestPromptManifestOnTheTask:
+    def test_a_hop_shows_the_shipped_prompts_hashes(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, project="demo"), _live_server() as (url, token):
+            task, _created = _application_queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+
+            status, body = _get(f"{url}/tasks/demo/{task.id}", token)
+
+            assert status == 200
+            hops = body["task"]["hops"] if "task" in body else body["hops"]
+            manifest = next(h for h in hops if h["role"] == "implementer")["promptManifest"]
+            layers = {entry["layer"]: entry for entry in manifest["layers"]}
+            hop = _prompts.shipped_prompt("hop", "implementer")
+            assert layers["hop"]["sha256"] == hop.sha256
+            assert (
+                layers["identity"]["sha256"]
+                == _prompts.shipped_prompt("identity", "implementer").sha256
+            )
+            assert manifest["profile"] == "hosted"
 
 
 def _post(url: str, body: dict, token: str | None = None) -> tuple[int, dict]:  # type: ignore[type-arg]

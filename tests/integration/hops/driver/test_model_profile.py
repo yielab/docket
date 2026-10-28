@@ -18,7 +18,7 @@ from docket.observability import trace as _trace
 
 SUBJECT = "docket.hops.application.driver"
 VALUES = json.dumps({"values": ["APPROVE", "REQUEST-CHANGES"], "caseSensitive": False})
-FORCED = {"type": "function", "function": {"name": "verdict"}}
+FORCED = {"type": "function", "function": {"name": "handoff"}}
 
 
 @pytest.fixture(autouse=True)
@@ -65,10 +65,12 @@ class TestLocalRow:
         tools = _tools(server.requests[0])
         assert tools and all(sentence_count(text) <= 2 for text in tools.values()), tools
 
-    def test_the_closing_call_of_a_verdict_step_forces_the_verdict_tool(
+    def test_the_closing_call_of_a_verdict_step_forces_the_handoff_tool(
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
-        server = fake_model(sequence=[say("The helper is fine."), call("verdict", value="APPROVE")])
+        server = fake_model(
+            sequence=[say("The helper is fine."), call("handoff", verdict="APPROVE")]
+        )
         _register(server, local=True)
 
         result = _run({DOCKET_VERDICT_VALUES: VALUES})
@@ -112,7 +114,7 @@ class TestSampling:
     def test_a_row_that_declares_sampling_sends_both_on_every_request(
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
-        server = fake_model(sequence=[say("one"), call("verdict", value="APPROVE")])
+        server = fake_model(sequence=[say("one"), call("handoff", verdict="APPROVE")])
         _register(server, local=True, sampling={"temperature": 0.7, "topP": 0.8})
 
         _run({DOCKET_VERDICT_VALUES: VALUES})
@@ -138,7 +140,7 @@ class TestTrace:
     def test_every_llm_call_names_the_profile_and_what_was_sent(
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
-        server = fake_model(sequence=[say("one"), call("verdict", value="APPROVE")])
+        server = fake_model(sequence=[say("one"), call("handoff", verdict="APPROVE")])
         _register(server, local=True, sampling={"temperature": 0.7, "topP": 0.8})
         events: list[dict[str, Any]] = []
 
@@ -148,7 +150,7 @@ class TestTrace:
         payloads = [e["payload"] for e in events if e["event_type"] == "llm_call"]
         assert [p["profile"] for p in payloads] == ["local", "local"]
         assert all(p["temperature"] == 0.7 and p["topP"] == 0.8 for p in payloads)
-        assert "toolChoice" not in payloads[0] and payloads[1]["toolChoice"] == "verdict"
+        assert "toolChoice" not in payloads[0] and payloads[1]["toolChoice"] == "handoff"
 
     def test_a_hosted_call_names_hosted_and_no_sampling(
         self, fake_model: Callable[..., FakeModel]
