@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Complete. `DOCKET_HOME` is the only root, split into `config/` (authored) and
 `state/` (written while running). Agent workspaces live under `~/.docket/state/workspaces/projects/`;
 a pod's runtime resources and learned memory live under `~/.docket/state/workspaces/pods/<pod>/`
@@ -41,8 +41,10 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
    - `config/` holds what the operator authors: the model, provider, exporter, channel and MCP
      catalogs (`docket-models.json`, `docket-providers.json`, `docket-exporters.json`,
      `docket-channels.json`, `docket-mcp-servers.json`), `recipes/`, `skills/`, `policies/`,
-     `plugins/` and a pod's overlay at `pods/<pod>/` (its `roles.json`, `policies/`, `plugins/`,
-     `pipelines/`, `skills/`, `mcp-servers.json`).
+     `plugins/`, `roles/`, `prompts/`, `pipelines/` and a pod's overlay at `pods/<pod>/` (its
+     `roles/` and `prompts/` authored files, `policies/`, `plugins/`, `pipelines/`, `skills/`,
+     `mcp-servers.json`, and `applied.lock`, which names every file the last `docket pod update`
+     applied with its sha256). There is no `roles.json`: a role is its authored file.
    - `state/` holds what docket writes while it runs: `workspaces/` (members, and a pod's
      `memory.json`, `.scratch`, `cache` and `workdir`), `sessions/`, `traces/`, `cache/`,
      `audit.log`, `approvals/`, `escalations/`, `secrets.json` and the other runtime files.

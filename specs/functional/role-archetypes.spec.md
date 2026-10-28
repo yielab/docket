@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-28
@@ -31,7 +31,7 @@ This specification covers:
 - The built-in archetypes (lead/implementer/reviewer/tester) and their byte-identity guarantee
 - The starter library (researcher/analyst/writer/critic/operator/monitor)
 - The template rendering contract (`${var}` substitution, the guaranteed variable set)
-- The pod overlay (`<pod>/config/roles.json`) and its merge over the built-in and starter archetypes
+- The pod overlay (`<pod>/config/roles/`) and the operator's `config/roles/`, and their merge over the built-in and starter archetypes
 - How `modelClass` feeds the role→model policy (`model-profiles.spec.md`) without replacing it
 - How pod member ids and role names (`normalize_role`, `member_id`, `pod_of`, `members_of`)
   resolve against this registry instead of a hardcoded list
@@ -380,19 +380,24 @@ This specification does NOT cover:
 ### Pod role overlay
 
 1. A pod's archetypes **MUST** overlay the built-ins and the starter library through that pod's
-   own `$DOCKET_HOME/workspaces/pods/<pod>/config/roles.json` (`pod_config_dir(project)`): a
-   top-level `roles:` map keyed by archetype name, read fresh on every access (not cached),
-   silently skipping a malformed entry (never crashing a live fleet) rather than raising. No file
-   outside a pod's own `config/` directory is read as a role overlay; a `docket-roles.json` under
-   `$DOCKET_HOME` is ignored.
+   own `$DOCKET_HOME/config/pods/<pod>/roles/` (`pod_config_dir(project)`), and the operator's
+   `$DOCKET_HOME/config/roles/` is read beneath it (`Home.scopes("roles", project)`): each role is
+   its authored short-form file (`<name>.yaml|yml|json`) with the Markdown file its `instructions`
+   names beside it, read fresh on every access (not cached), silently skipping a malformed file
+   (never crashing a live fleet) rather than raising. There is no applied `roles.json`: no file
+   by that name is read, and `docket pod update` removes one an earlier release left. A pod
+   applied before is rewritten by its next `docket pod update`; `docket pod show` says so. No file
+   outside those two directories is read as a role; a `docket-roles.json` under `$DOCKET_HOME` is
+   ignored.
 2. A pod archetype **MUST** be able to both add a new role name and override an existing
    built-in/starter archetype by reusing its name (the pod wins by name). Overriding a built-in
    archetype is an explicit operator choice; the byte-identity guarantee (see "Built-in
    archetypes and legacy fidelity") applies to the out-of-the-box state with no overlay present.
 3. The **authoring** format for an archetype **MUST** be a standalone YAML file
-   (`docket pod update <file.yaml>`). The file is parsed, validated, and merged into the pod's
-   JSON overlay through docket's atomic read-modify-write for docket-owned JSON, the same
-   boundary every other docket-owned registry file goes through.
+   (`docket pod update <file.yaml>`). The file is parsed, validated, and written into the pod
+   overlay as `roles/<name>.yaml` with its instructions file beside it; the overlay file is
+   what the registry reads and what `applied.lock` hashes (config-format.spec.md, "Scopes,
+   references and the lockfile").
 4. docket's own built-in and starter archetypes' `soulTemplate` and the hop instructions of the
    built-in roles **MUST** be shipped prompt files (`kind: prompt`, `src/docket/templates/prompts/
    {identity,hop}/`, config-format.spec.md "The `prompt` kind"), read through `teams/prompts.py`;
@@ -407,7 +412,7 @@ This specification does NOT cover:
    unreadable/malformed overlay file itself, naming the file and the pod. It never edits the
    overlay.
 6. `load_registry(project)` **MUST** resolve nearest-wins by name: the pod overlay above the
-   starter library, above built-ins; `load_registry()` with no project (or `project=""`) never
+   operator's roles, above the starter library, above built-ins; `load_registry()` with no project (or `project=""`) never
    reads a pod overlay. `registry_for_role`, SOUL.md/AGENTS.md rendering at provisioning,
    `normalize_role`, the role check `docket pod set pipeline <file>` and `docket pod update
    <dir>` run on a pipeline against the pod's roster, the custom-role hop-instruction lookup,
@@ -454,7 +459,7 @@ docket pod validate <file.yaml>
 A role is authored as the short form below, in `docket pod update <file>`, `docket pod validate`
 and `docket pod update <dir>`; `load_role_file` reads it and `normalize_role` turns it into the
 canonical wire object `from_wire` accepts. The canonical object is the in-memory model and the
-entry the pod overlay `<pod>/config/roles.json` persists, never an authored file: a role file
+object the registry builds from the overlay's authored files, never an authored file itself: a role file
 carrying any canonical-only key (`modelClass`, `deniedTools`, `gateContract`, `soulTemplate`,
 `agentsTemplate`) **MUST** be refused naming each canonical key and the short-form key to write
 instead (`model`, `cannot`, `verdict`/`verify`/`approval`, `instructions`); `canonical_key_refusal`
@@ -537,8 +542,9 @@ applies to the persisted wire object.
 
 ### Overlay files
 
-- Pod: `$DOCKET_HOME/workspaces/pods/<pod>/config/roles.json`
-- Shape: `{"roles": {"<name>": {<archetype fields, camelCase>}}}`
+- Pod: `$DOCKET_HOME/config/pods/<pod>/roles/<name>.yaml` and its instructions file
+- Operator: `$DOCKET_HOME/config/roles/<name>.yaml` and its instructions file
+- Shape: the short form of "Wire format"
 
 ### Return Codes
 
@@ -579,7 +585,8 @@ docket pod validate ./producer.yaml
 ### Post-conditions
 
 - `docket pod update <file>` on a valid file leaves exactly one archetype added or overridden in
-  the pod's `roles.json` `roles:` map; no other key in that file is touched
+  the pod overlay's `roles/` (`<name>.yaml` and its instructions file); no other role file
+  is touched
 - The four built-in archetypes' rendered SOUL.md/AGENTS.md remain byte-identical to the frozen
   baseline for any input, with no overlay present
 
