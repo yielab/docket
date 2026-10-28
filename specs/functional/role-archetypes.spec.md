@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 4.1.0
+**Version**: 4.2.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -123,7 +123,10 @@ This specification does NOT cover:
    built-in archetypes (`BUILTIN_ARCHETYPES`) whose rendered SOUL.md and AGENTS.md are
    **byte-identical** to a frozen, independently written baseline for any
    project/codebase/stack/description input. The parity test embeds that baseline and diffs it
-   against the live renderer; it moves only with a deliberate, spec'd template change.
+   against the live renderer; it moves only with a deliberate, spec'd template change. Moving a
+   template into a shipped prompt file is not such a change: every built-in and starter
+   `soulTemplate`, the Lead's `hopInstruction` and the three fixed hop instructions are the same
+   bytes the Python literals held.
 2. The four built-in archetypes resolve their model through their own name's row (see
    "Role→model policy integration"). Their `modelClass` **MUST** match that row's class
    (`lead`/`reviewer`/`tester` = cheap, `implementer` = strong). There is no `policyRole` field;
@@ -255,9 +258,13 @@ This specification does NOT cover:
    the Implementer (you never edit code yourself):", and the builder's Lead branch **MUST**
    resolve it through `resolve_hop_instruction` like a custom role, so a pod overlay of
    `lead` changes the Lead's hop message. A pod with no `lead` overlay **MUST** see exactly that
-   text. `resolve_hop_instruction` is reachable for `lead` and for any role the builder does not
+   text, which is the shipped prompt `hop/lead`. `resolve_hop_instruction` is reachable for `lead` and for any role the builder does not
    special-case; it is never reachable for `implementer`/`reviewer`/`tester`. A role absent from
-   the registry gets no instruction.
+   the registry gets no instruction. The fixed text of those three is the shipped prompts
+   `hop/implementer` (and `hop/implementer-rework`, the Implementer's text when a reviewer's
+   `REQUEST-CHANGES` is being addressed), `hop/reviewer` and `hop/tester`, read through
+   `prompts.shipped_prompt`; `resolve_hop_instruction` returns a role's declared text through
+   `prompts.role_prompt`, which names the shipped prompt it equals or marks it a pod override.
 4. A pipeline step's own `instructions` (see `pipeline-format.spec.md` "Steps") **MUST** take
    precedence over both an archetype's declared `hopInstruction` and the generated fallback, for
    any role the step targets, including `role: lead`: a step `{role: lead, instructions: "..."}`
@@ -386,9 +393,13 @@ This specification does NOT cover:
    (`docket pod update <file.yaml>`). The file is parsed, validated, and merged into the pod's
    JSON overlay through docket's atomic read-modify-write for docket-owned JSON, the same
    boundary every other docket-owned registry file goes through.
-4. docket's own built-in and starter archetypes **MUST NOT** be loaded from shipped template
-   files: they are Python literals, matching the convention that workspace prose is generated
-   inline. Only a user-authored archetype's *source* is a YAML file on disk.
+4. docket's own built-in and starter archetypes' `soulTemplate` and the hop instructions of the
+   built-in roles **MUST** be shipped prompt files (`kind: prompt`, `src/docket/templates/prompts/
+   {identity,hop}/`, config-format.spec.md "The `prompt` kind"), read through `teams/prompts.py`;
+   `builtin_roles.py` keeps only what is not prose of that kind (names, versions, gate contracts,
+   budgets, tool lists and the `agentsTemplate`, which stays a Python literal). Each
+   `soulTemplate` is its identity prompt's text plus the one newline a SOUL.md ends with. A user-
+   authored archetype's *source* is a YAML file on disk.
 5. Requirement 1's silent skip describes `load_registry` itself, which **MUST** keep resolving
    without raising or warning. Read-only and separate from that path, `docket setup` **MUST** run
    `find_overlay_problems(project)` for each pod and report every overlay entry `load_registry`
@@ -623,7 +634,9 @@ docket pod validate ./producer.yaml
 - `src/docket/interfaces/cli/commands/run.py`: `docket run` plan resolution
 - `src/docket/interfaces/cli/commands/setup_check.py`: overlay problem and stale-template reports for `docket setup`
 - `src/docket/kernel/home.py`: the `Home` members `pod_config_dir`
-- `src/docket/kernel/templates.py`: `RECIPES_DIR`
+- `src/docket/kernel/templates.py`: `RECIPES_DIR`, `PROMPT_TEMPLATES_DIR`
+- `src/docket/teams/prompts.py`, `src/docket/templates/prompts/`: the shipped soul templates and hop
+  instructions
 - `src/docket/templates/recipes/`: the shipped recipe library
 - Tests: `tests/integration/teams/test_pod_role_workspace_parity.py` (byte identity),
   `tests/integration/teams/test_archetypes.py` and `tests/unit/pipeline/domain/test_spec__spec.py` (gate

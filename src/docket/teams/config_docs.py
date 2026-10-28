@@ -23,6 +23,7 @@ from docket.teams import autonomy as _autonomy
 from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import model_selection as _models_policy
+from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams.ports import channel_documents as _channel_documents
@@ -37,6 +38,7 @@ KINDS: tuple[str, ...] = (
     "channel",
     "mcp-server",
     "autonomy",
+    "prompt",
 )
 
 _LOCATION_KIND: dict[str, str] = {
@@ -160,6 +162,7 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "pod": PodDocument,
     "exporter": _exporter.ExporterSpec,
     "mcp-server": _mcp_servers.McpServerDocument,
+    "prompt": _prompts.PromptDocument,
 }
 
 
@@ -360,6 +363,15 @@ def _validate_mcp_server(path: Path) -> None:
         raise ConfigDocError(path, str(exc)) from exc
 
 
+def _load_prompt_document(path: Path) -> Document:
+    """A ``.md`` file is a ``prompt``: parsed by ``teams.prompts``, never as YAML."""
+    try:
+        prompt = _prompts.load_prompt_file(path)
+    except _prompts.PromptError as exc:
+        raise ConfigDocError(path, exc.message, line=exc.line, field=exc.field) from exc
+    return Document(kind="prompt", name=prompt.name, path=path, doc=prompt.front_matter)
+
+
 def load_document(path: str | Path, *, kind: str | None = None) -> Document:
     """Read *path*, resolve its kind, and dispatch to the parser that owns it. *kind* is used
     only when the document has no top-level ``kind:`` key and its location does not resolve
@@ -369,6 +381,9 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
         text = p.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigDocError(p, f"cannot read file: {exc}") from exc
+
+    if p.suffix == ".md":
+        return _load_prompt_document(p)
 
     try:
         import yaml as _yaml
@@ -407,6 +422,14 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             )
         effective_kind = declared
 
+    if effective_kind == "prompt":
+        raise ConfigDocError(
+            p,
+            "a prompt is a Markdown file: front matter, then the text",
+            field="kind",
+            line=_line_for_key(text, "kind"),
+        )
+
     if effective_kind == "role":
         refusal = _archetypes.canonical_key_refusal(doc)
     elif effective_kind == "policy":
@@ -444,8 +467,8 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
 
 def discover_config_paths(directory: str | Path) -> list[Path]:
     """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``pipelines/*``
-    (``.yaml|yml``), ``pipeline.yaml``/``.yml``, and ``pod.yaml``/``.yml`` directly under
-    *directory*, in that order."""
+    (``.yaml|yml``), ``prompts/*.md`` and ``prompts/<layer>/*.md``, ``pipeline.yaml``/``.yml``, and
+    ``pod.yaml``/``.yml`` directly under *directory*, in that order."""
     base = Path(directory)
     paths: list[Path] = []
     for sub in ("roles", "policies", "mcp-servers", "pipelines"):
@@ -455,6 +478,9 @@ def discover_config_paths(directory: str | Path) -> list[Path]:
         patterns = ("*.yaml", "*.yml") if sub == "pipelines" else ("*.yaml", "*.yml", "*.json")
         for pattern in patterns:
             paths.extend(sorted(sub_dir.glob(pattern)))
+    prompts_dir = base / "prompts"
+    paths.extend(sorted(prompts_dir.glob("*.md")))
+    paths.extend(sorted(prompts_dir.glob("*/*.md")))
     for stem in ("pipeline", "pod"):
         for ext in ("yaml", "yml"):
             candidate = base / f"{stem}.{ext}"

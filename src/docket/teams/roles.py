@@ -32,9 +32,9 @@ resource budget cannot drift apart; defaults to 6000 when unset.
 A pod's own archetypes overlay the built-ins through `<pod>/config/roles.json`,
 tolerant on load (a malformed entry is skipped, never crashes a live fleet;
 `docket pod validate` explains why). The authoring format is a standalone YAML
-file (`docket pod update <file.yaml>`), merged into that JSON overlay. Built-in/starter archetypes stay
-Python literals here, matching the project's convention of generating
-workspace prose inline rather than loading shipped template files.
+file (`docket pod update <file.yaml>`), merged into that JSON overlay. Built-in/starter
+`soulTemplate`s and built-in hop instructions are shipped prompt files (`templates/prompts/`,
+`teams/prompts.py`); the rest of each archetype is a literal in `teams/builtin_roles.py`.
 
 See specs/functional/role-archetypes.spec.md for the full schema (closed vs.
 open fields), the built-in/starter tables, and the user-overlay contract.

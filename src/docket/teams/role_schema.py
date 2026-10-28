@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from string import Template
 from typing import Any
 
 from docket.kernel.errors import InvalidInput
+from docket.teams import prompts as _prompts
 
 SCOPES: frozenset[str] = frozenset({"pod"})
 MODEL_CLASSES: frozenset[str] = frozenset({"cheap", "strong"})
@@ -190,11 +190,13 @@ def resolve_hop_instruction(archetype: RoleArchetype) -> str:
     `gate_contract` (verdict/mechanical/approval); a `none`-kind gate generates none. See
     specs/functional/role-archetypes.spec.md ("Hop instructions")."""
     # `implementer`/`reviewer`/`tester` never reach this: `hops/application/compose.py`'s hop-message
-    # builder keeps their own hardcoded text unconditionally. `lead` DOES reach this --
-    # its built-in `hop_instruction` below carries that same fixed text, so this returns
+    # builder keeps their own shipped text unconditionally. `lead` DOES reach this --
+    # its built-in `hop_instruction` is the shipped `hop/lead` prompt, so this returns
     # it verbatim absent an overlay.
     if archetype.hop_instruction:
-        return archetype.hop_instruction
+        return _prompts.role_prompt(
+            archetype.name, "hop", archetype.hop_instruction, archetype.version
+        ).text
     gc = archetype.gate_contract
     if gc.kind == "verdict" and gc.regexes:
         markers = " or ".join(f"`{m}`" for m in gc.regexes)
@@ -214,8 +216,6 @@ def render(template: str, variables: dict[str, str]) -> str:
     `safe_substitute`): an unprovided variable is a real authoring bug, raised as
     `ArchetypeError` rather than silently writing a literal `${typo}`."""
     try:
-        return Template(template).substitute(variables)
-    except KeyError as exc:
-        raise ArchetypeError(f"template references unknown variable: {exc}") from exc
-    except ValueError as exc:
-        raise ArchetypeError(f"template is malformed: {exc}") from exc
+        return _prompts.substitute(template, variables)
+    except _prompts.PromptError as exc:
+        raise ArchetypeError(exc.message) from exc
