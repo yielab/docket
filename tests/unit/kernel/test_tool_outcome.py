@@ -14,6 +14,7 @@ from docket.kernel.tool_outcome import (
     artifact_path_in,
     artifact_scope,
     bounded_text,
+    read_window_chars,
     text_outcome,
 )
 
@@ -132,3 +133,35 @@ def test_the_artifact_line_counts_against_the_cap(capped: None) -> None:
 
     assert artifact_path_in(out.content) is not None
     assert len(out.content) <= 2_000 + len("\n\n[truncated: 7000 more characters]") + 2
+
+
+class TestTheTurnsBudgets:
+    """A scope can hold a per-turn output cap and read window; neither may exceed the home's cap."""
+
+    @staticmethod
+    def _cut_at(text: str, **budgets: int) -> int:
+        with artifact_scope("", **budgets):
+            return len(bounded_text(text))
+
+    def test_a_smaller_turn_cap_cuts_sooner(self, capped: None) -> None:
+        assert self._cut_at("x" * 1000, output_chars=40) < self._cut_at("x" * 1000) - 40
+
+    def test_a_turn_cap_above_the_home_cap_is_held_to_the_home_cap(self, capped: None) -> None:
+        assert self._cut_at("x" * 1000, output_chars=900) == self._cut_at("x" * 1000)
+
+    def test_a_turn_cap_the_text_fits_leaves_it_whole(self, capped: None) -> None:
+        assert self._cut_at("x" * 90, output_chars=95) == 90
+
+    def test_the_read_window_is_the_turns_where_it_has_one(self, capped: None) -> None:
+        with artifact_scope("", read_chars=30):
+            assert read_window_chars(6000) == 30
+        with artifact_scope("", read_chars=900):
+            assert read_window_chars(6000) == 100
+        assert read_window_chars(6000) == 6000
+
+    def test_a_scope_ends_with_its_block(self, capped: None) -> None:
+        before = self._cut_at("x" * 1000)
+        with artifact_scope("", output_chars=40):
+            pass
+
+        assert self._cut_at("x" * 1000) == before

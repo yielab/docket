@@ -126,6 +126,19 @@ def _resolve_roots(meta: AgentMeta | None, agent_id: str) -> tuple[Path, ...]:
     return (current_home().workspace_dir(agent_id),)
 
 
+def _turn_budgets(profile: ModelProfile) -> tuple[int, int | None]:
+    """The turn's tool-output cap and `read` window in characters: the profile's budget where it
+    declares a share (never above the home's cap), else the home's cap and ``None``, the
+    window `read` has always had (``hosted`` declares no share)."""
+    cap = current_home().tool_max_output_chars
+    output = profile.budgets.tool_output_chars
+    window = profile.budgets.read_window_chars
+    return (
+        cap if output is None else min(output, cap),
+        None if window is None else min(window, cap),
+    )
+
+
 def _approval_mode(raw: str | None) -> Literal["wait", "park", "refuse"]:
     """The in-turn approval mode an env coordinate names; anything unrecognized is ``wait``."""
     return "refuse" if raw == "refuse" else "park" if raw == "park" else "wait"
@@ -320,10 +333,9 @@ def _parse_pregrants(raw: str | None) -> tuple[Pregrant, ...]:
 def _build_on_process(
     project: str, session_key: str, role: str, task_id: str = ""
 ) -> Callable[[str, dict[str, Any]], None]:
-    """A `ToolContext.on_process` for one turn: trace a tool call's process lifecycle and,
-    while a dispatch run is current, register/clear its pgid against it so `docket task
-    cancel` reaches a live subprocess. A started process of a turn that serves *task_id*
-    refreshes the task's claim."""
+    """A `ToolContext.on_process` for one turn: trace a process's lifecycle, register its pgid
+    against the current dispatch run so `docket task cancel` reaches it, and refresh the claim
+    of *task_id* when a process starts."""
 
     def _on_process(kind: str, data: dict[str, Any]) -> None:
         run_id = _runs.current_run_id()

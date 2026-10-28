@@ -25,6 +25,9 @@ _ARTIFACT_LINE = re.compile(
 # The share of the cap a cut result keeps from its end, for output whose verdict is last.
 VERDICT_TAIL = 0.6
 _POD: ContextVar[str] = ContextVar("docket_tool_artifact_pod", default="")
+# The turn's own output cap and read window, in characters; None keeps the home's values.
+_OUTPUT_CHARS: ContextVar[int | None] = ContextVar("docket_tool_output_chars", default=None)
+_READ_CHARS: ContextVar[int | None] = ContextVar("docket_tool_read_chars", default=None)
 
 
 @dataclass
@@ -38,14 +41,29 @@ class ToolOutcome:
 
 
 @contextmanager
-def artifact_scope(pod: str) -> Iterator[None]:
-    """Store an over-cap result whole under *pod*'s cache while the block runs (``dispatch_tool``
-    opens it around every handler); outside it a cut result is only cut."""
-    token = _POD.set(pod)
+def artifact_scope(
+    pod: str, *, output_chars: int | None = None, read_chars: int | None = None
+) -> Iterator[None]:
+    """Store an over-cap result whole under *pod*'s cache while the block runs, and cut at the
+    turn's *output_chars* and *read_chars* where given (``dispatch_tool`` opens it around every
+    handler); outside it a cut result is only cut, at the home's cap."""
+    tokens = (_POD.set(pod), _OUTPUT_CHARS.set(output_chars), _READ_CHARS.set(read_chars))
     try:
         yield
     finally:
-        _POD.reset(token)
+        _READ_CHARS.reset(tokens[2])
+        _OUTPUT_CHARS.reset(tokens[1])
+        _POD.reset(tokens[0])
+
+
+def _held_to_cap(chars: int | None, default: int) -> int:
+    """*chars* when set, never above the home's tool-output cap, else *default*."""
+    return default if chars is None else min(chars, current_home().tool_max_output_chars)
+
+
+def read_window_chars(default: int) -> int:
+    """The characters a ``read`` without a window returns: the turn's, else *default*."""
+    return _held_to_cap(_READ_CHARS.get(), default)
 
 
 def artifact_dir() -> Path | None:
@@ -86,7 +104,7 @@ def _store_artifact(text: str) -> Path | None:
 def bounded_text(text: str, tail: float = 0.0) -> str:
     """*text* whole when it fits the cap, else cut (keeping *tail* of the cap from the end) and,
     where the whole can be stored, ending with its artifact line, which counts against the cap."""
-    limit = current_home().tool_max_output_chars
+    limit = _held_to_cap(_OUTPUT_CHARS.get(), current_home().tool_max_output_chars)
     if len(text) <= limit:
         return text
     path = _store_artifact(text)
