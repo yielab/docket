@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from docket.governance.command_lexer import cut_quoted_heredocs, split_segments, unwrap
+from docket.governance.command_lexer import (
+    cut_quoted_heredocs,
+    split_segments,
+    starts_background,
+    unwrap,
+)
 
 SUBJECT = "docket.governance.command_lexer"
 
@@ -80,3 +85,21 @@ def test_wrappers_are_peeled(tokens: list[str], inner: list[str]) -> None:
 
 def test_wrappers_nested_too_deep_cannot_be_read() -> None:
     assert unwrap(["env"] * 12 + ["rm"]) is None
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("sleep 30 &", True),
+        ("sleep 30 &\n\n", True),
+        ("sleep 30 & echo hi", True),
+        ("a && b", False),
+        ("ls 2>&1", False),
+        ("ls &> f", False),
+        ("echo 'a &'", False),
+        ("(sleep 3 &)", True),
+    ],
+)
+def test_only_a_lone_ampersand_starts_a_background_child(command: str, expected: bool) -> None:
+    """A lone `&` anywhere starts one; `&&`, `2>&1`, `&>` and a quoted `&` do not."""
+    assert starts_background(command) is expected
