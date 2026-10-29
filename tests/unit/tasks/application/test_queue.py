@@ -189,6 +189,21 @@ class TestPolicyGates:
         # Nothing was persisted -- a block is rejected before queueing.
         assert TaskRepository.for_pod("myapp").list() == []
 
+    def test_a_block_verdict_covers_the_text_inside_task(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _seed_lean_pod("myapp")
+        _write_policy("no-wipes", "wipe prod db", "block", message="absolutely not")
+        status, body = _post(
+            f"{url}/tasks/myapp",
+            {"description": "tidy up", "task": {"objective": "wipe prod db tonight"}},
+            token,
+        )
+        assert 400 <= status < 500
+        assert "no-wipes" in body["error"]
+        assert TaskRepository.for_pod("myapp").list() == []
+
     def test_require_approval_verdict_surfaces_status_and_escalation(
         self, live_server: tuple[str, str]
     ) -> None:

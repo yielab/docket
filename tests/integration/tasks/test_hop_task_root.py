@@ -143,3 +143,34 @@ class TestTaskRootAndRepositoryMap:
 
         assert "new.py" not in second
         assert first.split("\n\n## Hop\n", 1)[0] == second.split("\n\n## Hop\n", 1)[0]
+
+
+class TestStructuredTaskPaths:
+    def test_paths_bound_the_map_when_no_lead_brief_exists(self, tmp_path: Path) -> None:
+        worktree = _repo_with_files(tmp_path / "wt")
+        (worktree / "src" / "app").mkdir()
+        (worktree / "src" / "app" / "main.py").write_text("m = 1\n")
+        import subprocess
+
+        subprocess.run(["git", "-C", str(worktree), "add", "."], check=True)
+        task = TaskRecord.model_validate(
+            {"description": "ship it", "task": {"paths": ["src/app/"], "doneWhen": "it ships"}}
+        ).model_copy(update={"worktree": _tree(worktree)})
+
+        message, _ = _compose._hop_message(task, "implementer", [])
+
+        section = message.split("\n\n## Hop\n", 1)[0]
+        assert "Done when: it ships" in section
+        assert "src/app/main.py" in section
+        assert "README.md" not in section and "src/util.py" not in section
+        assert "(3 files)" not in section
+
+    def test_a_task_without_paths_keeps_the_capped_map(self, tmp_path: Path) -> None:
+        worktree = _repo_with_files(tmp_path / "wt")
+        task = TaskRecord.model_validate(
+            {"description": "ship it", "task": {"doneWhen": "it ships"}}
+        ).model_copy(update={"worktree": _tree(worktree)})
+
+        message, _ = _compose._hop_message(task, "implementer", [])
+
+        assert "Repository map (tracked files by directory):" in message

@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.1.0
+**Version**: 7.2.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -87,6 +87,7 @@ same functions as their routes; `docket start` takes `--bind`. `prepare`, `restr
 | `priority` | `high` / `normal` / `low` | default `normal` |
 | `trusted` | bool | overrides the `pre_input` trust flag for this enqueue only |
 | `brief` | object | a `TaskBrief`; an invalid one is `422` and nothing is enqueued |
+| `task` | object | optional structured fields beside `description`, additive to API 6 (no version change): `objective`, `doneWhen`, `risk`, `verify`, `kind` (strings), `acceptance`, `constraints`, `paths` (lists of strings) and `answers` (a list of objects), each optional. An unknown key or a field of the wrong type is `400` naming it, and nothing is enqueued. The record keeps it as `task`; with both present `description` is the title. The first non-Lead hop's `## Task` section renders it after the description in the fixed order objective, done when, acceptance, constraints, risk, answers, verify, kind, paths, and `paths` bound that hop's repository map to the entries beside them (`pod-dispatch.spec.md` "Bounded hop prompts"). The text is screened by `pre_input` with the description. Not exposed by the CLI, MCP or the operator view |
 | `externalRef` | string, 1-200 chars | a caller label, stored verbatim, never interpreted; filterable |
 | `idempotencyKey` | string, 1-200 chars | when a task in this pod's queue already carries it, nothing is enqueued and that task is returned with `200`; a new task answers `201` |
 | `baseRef` | string | a branch name or commit the task worktree starts from (`git worktree add -b <task-branch> <dir> <baseRef>`); unset means the codebase's HEAD. Validated at claim, not at enqueue: an unresolvable ref, or a pod whose Implementer has no codebase, fails the task before any hop with `failureKind: "base_ref"` |
@@ -436,7 +437,7 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 |---|---|
 | `200` | a read; an idempotent re-post; cancel/retry/apply/ensure done |
 | `201` | a new task or a new pod |
-| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy` of the wrong shape, a naive `since`, a bad `apply` body |
+| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
 | `404` | no pod (checked before an `apply` body is read), no task, no escalation (`POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting |
