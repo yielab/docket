@@ -170,7 +170,7 @@ class TestPipeline:
             by_agent = {agent_id: (message, env) for agent_id, message, env in calls}
             lead_message, lead_env = by_agent["demo-lead"]
             assert "checkout" not in lead_message
-            assert lead_env is None
+            assert lead_env == {_rd.DOCKET_HANDOFF: "1"}
             impl_message, impl_env = by_agent["demo-implementer"]
             assert f"Working directory: {worktree}" in impl_message
             assert "origin codebase" not in impl_message
@@ -183,7 +183,11 @@ class TestPipeline:
                 assert "must still end with the verdict marker as its LAST line" in message
                 assert env is not None
                 assert env[_rd.PIPELINE_WORKTREE_ENV] == str(worktree)
-                assert set(env) == {_rd.PIPELINE_WORKTREE_ENV, _rd.DOCKET_VERDICT_VALUES}
+                assert set(env) == {
+                    _rd.PIPELINE_WORKTREE_ENV,
+                    _rd.DOCKET_VERDICT_VALUES,
+                    _rd.DOCKET_HANDOFF,
+                }
 
     def test_default_approval_mode_leaves_every_hop_env_unchanged(self, tmp_path: Path) -> None:
         """Pin: with no `approvalMode` configured, DOCKET_APPROVAL_MODE never reaches a hop's
@@ -263,7 +267,7 @@ class TestPipeline:
                 assert env is not None
                 assert env[_rd.DOCKET_APPROVAL_MODE] == "refuse"
                 if agent_id.endswith("-lead"):
-                    assert env == {_rd.DOCKET_APPROVAL_MODE: "refuse"}
+                    assert env == {_rd.DOCKET_APPROVAL_MODE: "refuse", _rd.DOCKET_HANDOFF: "1"}
                 else:
                     # The Implementer's port-range env (real DOCKET_PORT_*/
                     # DOCKET_SCRATCH_DIR vars from provisioning) is merged with,
@@ -457,13 +461,13 @@ class TestHopEnvInjection:
 
     def test_dispatch_pod_env_only_overridden_on_implementer_hop(self, tmp_path: Path) -> None:
         """Integration: dispatch_pod passes env=<dict> to the implementer hop's
-        runner call and env=None to the lead hop — the acceptance gate end to end."""
+        runner call and only the handoff offer to the lead hop — the acceptance gate end to end."""
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "Use my env", channel="cli")
             runner = FakeDriver()
             _sweep.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
-            assert by_role["lead"] is None
+            assert by_role["lead"] == {_rd.DOCKET_HANDOFF: "1"}
             impl_env = by_role["implementer"]
             assert impl_env is not None
             assert impl_env["DOCKET_PORT_BASE"] == str(_res.PORT_BASE)
@@ -484,4 +488,4 @@ class TestHopEnvInjection:
             runner = FakeDriver()
             _sweep.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
-            assert by_role["implementer"] is None
+            assert by_role["implementer"] == {_rd.DOCKET_HANDOFF: "1"}

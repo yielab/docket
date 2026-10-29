@@ -1222,25 +1222,33 @@ parsing for any verdict-gated step (`parse_verdict`).
      rework cycle to `rework.to` (any earlier top-level step id) while that gate's own rework-cycle
      count (tracked per gated step id) is below `rework.maxCycles`; anything else (no rework
      configured, the value matches neither list, or no match at all) **MUST** fail the step.
-   - A verdict-gated hop whose successful reply carries no marker **MUST** be asked once more
-     before that failure: dispatch sends exactly one further request on the hop's own session
-     with the message `Your reply had no verdict line. Reply with exactly one line: <v1> or <v2>.`
-     (the gate's allowed values, upper-case unless the gate is case-sensitive, joined by ` or `),
-     emits one `verdict_reasked` trace event, and reads the verdict from the original reply
-     followed by the answer. The re-ask happens at most once per hop attempt, never when the first
-     reply carries a marker, and a failed re-ask request leaves the original reply and its
-     unparseable outcome in place. A reply that still has no marker fails exactly as before.
-   - A verdict-gated hop **MUST** be offered a `verdict` tool (`kind="read"`) whose single required
-     `value` parameter is a string with a JSON-schema `enum` of the gate's allowed values (upper-case
-     unless the gate is case-sensitive) and whose description is "Record your verdict and finish.
-     Call this once, as your last action.". A call with a value in the enum (matched ignoring case
-     unless the gate is case-sensitive) **MUST** succeed and end the turn (`agent-loop.spec.md`
-     "A tool that ends the turn"): the hop's output is the assistant text of that message followed
-     by a final line holding exactly the recorded value, so `parse_verdict` reads it like any
-     other reply and the verdict, gate, rework and routing handling are unchanged. A value outside
-     the enum **MUST** fail the call with the allowed values named and **MUST NOT** end the turn.
-     The text marker remains accepted: a hop that never calls `verdict` is parsed, and re-asked,
-     exactly as above. A hop with no verdict gate **MUST NOT** be offered the tool.
+   - A verdict-gated hop whose successful turn carries no verdict (neither a `handoff` call's
+     `verdict` nor a marker line) **MUST** be asked once more before that failure: dispatch sends
+     exactly one further request on the hop's own session with the message `Your reply had no
+     verdict. Call \`handoff\` with your verdict: <v1> or <v2>.` (the gate's allowed values,
+     upper-case unless the gate is case-sensitive, joined by ` or `), emits one `verdict_reasked`
+     trace event, and reads the verdict from the original reply followed by the answer, a
+     `handoff` call the answer makes being the turn's. The re-ask happens at most once per hop
+     attempt, never when the first turn carries a verdict, and a failed re-ask request leaves the
+     original reply and its unparseable outcome in place. A turn that still has no verdict fails
+     exactly as before.
+   - A hop **MUST** be offered a `handoff` tool (`kind="read"`) when its step has a verdict gate
+     or the hop's prompt declares `output: handoff/v1` (every built-in hop prompt does; dispatch
+     tells the driver by the `DOCKET_HANDOFF` environment coordinate), and **MUST NOT** be offered
+     a tool named `verdict`. Its description is "Record your handoff and finish. Call this once, as
+     your last action." and its parameters are the `handoff/v1` schema: `summary` (string),
+     `filesChanged` (list of strings), `verdict` (string), `assumptions` and `questions` (lists of
+     strings), none required. On a verdict-gated step `verdict` **MUST** be required and a string
+     with a JSON-schema `enum` of the gate's allowed values (upper-case unless the gate is
+     case-sensitive). A call whose arguments do not validate against the schema, or whose
+     `verdict` is outside the enum (matched ignoring case unless the gate is case-sensitive),
+     **MUST** fail with the allowed values named and **MUST NOT** end the turn; any other call
+     **MUST** succeed and end the turn (`agent-loop.spec.md` "A tool that ends the turn"). The
+     hop's output is the assistant text of that message followed by a final line holding the
+     recorded `verdict` (its `summary` when it gave none), and the call's arguments reach the
+     hop's record ("Structured handoff artifacts" requirement 6), so the verdict, gate, rework and
+     routing handling are unchanged. The text marker remains accepted: a hop that never calls
+     `handoff` is parsed, and re-asked, exactly as above.
    - An `ApprovalGate` **MUST** be evaluated **pre-hop** (see "require_approval gate and
      waiting_approval") -- by the time a hop's turn has run, an `ApprovalGate` simply advances.
      Outcome routing (item 5) does not apply to an approval gate.
@@ -1478,9 +1486,12 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 ### Structured handoff artifacts
 
-1. Every hop **MUST** produce a typed `HandoffArtifact` -- a Pydantic model with exactly seven
-   fields: `summary` (the hop's full reply text -- always populated), `verdict` (the parsed gate
-   marker for a `VerdictGate`-gated hop, else `None`), `files_changed` (populated by a real git
+1. Every hop **MUST** produce a typed `HandoffArtifact` -- a Pydantic model with exactly nine
+   fields: `summary` (the `summary` of the hop's `handoff` call when it gave one, else the hop's
+   full reply text -- always populated), `verdict` (the `handoff` call's `verdict`, else the parsed
+   gate marker, for a `VerdictGate`-gated hop; else `None`), `assumptions` and `questions` (the
+   `handoff` call's lists, `[]` when there was none; a question informs the next hop and the
+   operator and **MUST NOT** park a task), `files_changed` (populated by a real git
    probe for any hop that changed the tree -- see "Implementer diff producer" below), `diff_ref` (the
    same probe, Implementer hops only), `diff` (the capped text of what a hop that changed the tree
    wrote, `""` otherwise), `brief` (a parsed `TaskBrief`, see "Task brief", else `None`). `HopResult.artifact` **MUST** always be set once a hop is constructed -- a hop built
@@ -1489,7 +1500,8 @@ parsing for any verdict-gated step (`parse_verdict`).
 2. The next hop's prompt **MUST** be composed from the prior hop's *rendered artifact*
    (`HandoffArtifact.render()`), never from its raw `output` string directly. `render()` returns
    exactly `summary` unchanged when every other field is at its default; otherwise it appends, in
-   this fixed order, a `"Diff:"` block, a `"Brief:"` block, a `"Verdict: <value>"` line, a
+   this fixed order, a `"Diff:"` block, a `"Brief:"` block, a `"Verdict: <value>"` line, an
+   `"Assumptions:"` block, a `"Questions:"` block (one `- ` line per item), a
    `"Files changed: ..."` line, a `"Diff ref: ..."` line for each field
    that is set, so the next hop sees structure the raw reply does not carry, and the diff only once.
 3. The artifact **MUST** be persisted alongside its hop record (an `artifact` key in the persisted
@@ -1499,13 +1511,22 @@ parsing for any verdict-gated step (`parse_verdict`).
    a persisted artifact's normalized `verdict` without reparsing its raw model prose. A record whose
    artifact carries no verdict falls back to parsing the hop's raw output.
 4. `HandoffArtifact.DROP_ORDER` **MUST** declare a least-valuable-first field-shedding order
-   (`diff`, `diff_ref`, `files_changed`, `verdict` -- `summary` and `brief` are never
+   (`diff`, `diff_ref`, `files_changed`, `assumptions`, `questions`, `verdict` -- `summary` and `brief` are never
    included; `summary` is the artifact's minimum viable content) and a `dropped(field)` helper that
    returns a copy with *field* reset to empty. The context compiler (`compile_artifact`) walks
    `DROP_ORDER` to budget one hop's carryover against its role's token budget (see "Bounded hop
    prompts").
 5. The artifact module **MUST** stay pure -- no filesystem I/O, no subprocess, and no dependency on
    the dispatch state machine.
+6. A hop whose turn closed with a `handoff` call that validates against `handoff/v1` **MUST**
+   take its artifact's `summary`, `verdict`, `assumptions` and `questions` from the call; the git
+   probe's `files_changed`, `diff_ref` and `diff` stay the record's (the call's `filesChanged` is
+   advisory and never replaces git's). The gate reads the artifact's `verdict` first and a marker
+   line in the output second (`parse_verdict`), the pattern of a `VerdictGate` still deciding what
+   counts as a verdict. A hop with no call, a call that does not validate, or an output an output
+   guardrail rewrote derives its artifact from the reply text as before. The artifact's
+   `assumptions` and `questions` are omitted from its persisted dump while empty, so a record
+   written before they existed loads and dumps unchanged.
 
 ### Implementer diff producer
 
@@ -1614,6 +1635,24 @@ changed, for an external consumer that reads the hop record instead of trace tex
 5. Neither field changes gating. `verify`/`evidence` are record-keeping, read by nothing on the live
    gate-decision path (the `GATE FAILED` carryover and an `input` step's gate report read them to
    compose text, not to decide).
+
+### Hop prompt manifest (ADR 0035)
+
+1. `HopResult.prompt_manifest` (persisted and served as `promptManifest`) **MUST** record which
+   prompts the hop's turn was composed from: `layers`, one entry per prompt layer in composition
+   order, each `{layer, name, version, sha256, scope, tokens}`, then `model` (the hop's planned
+   model), `family` (its provider), `class` (the hop prompt's `modelClass`, `any` when none) and
+   `profile` (the model profile's name). The layers are `identity` (the role's identity prompt,
+   when a scope holds one) and `hop` (the hop's instruction: the shipped or overriding prompt,
+   a step's own `instructions` as scope `pipeline`, a role's generated one as scope `generated`);
+   the hop layer is one message layer until the message is split into layers.
+2. A layer's `sha256` **MUST** be the hash of its prompt's text as UTF-8 (a shipped prompt's equals
+   the hash of its file's body), `version` is the prompt's own semantic version (`""` for a text
+   with no file), `scope` is where the loader found it (`shipped`, `operator`, `pod`,
+   `repository`) and `tokens` is the estimate the context compiler budgets with.
+3. The manifest is empty for a hop recorded before the field existed; a record with no
+   `promptManifest` key, or a malformed one, **MUST** load with an empty manifest, and an empty
+   manifest **MUST** be omitted from the persisted dump.
 
 ### Hop events and task usage (ADR 0027)
 

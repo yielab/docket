@@ -1,5 +1,5 @@
 """``teams/roles.py``'s pure, non-registry pieces: ``hop_instruction``'s wire
-round-trip, ``resolve_hop_instruction``'s gateContract-derived fallback, and that
+round-trip, ``resolve_hop_prompt``'s gateContract-derived fallback, and that
 every built-in/starter role's generated prose agrees with the live runtime contract.
 """
 
@@ -19,7 +19,7 @@ from docket.teams.role_schema import (
     RoleArchetype,
     from_wire,
     render,
-    resolve_hop_instruction,
+    resolve_hop_prompt,
 )
 from docket.teams.roles import normalize_role
 
@@ -40,14 +40,19 @@ def _archetype(gate: GateContract, hop_instruction: str = "") -> RoleArchetype:
     )
 
 
+def _hop_instruction(arch: RoleArchetype) -> str:
+    prompt = resolve_hop_prompt(arch)
+    return prompt.text if prompt is not None else ""
+
+
 class TestResolveHopInstruction:
     def test_declared_hop_instruction_wins_outright(self) -> None:
         arch = _archetype(GateContract(kind="none"), hop_instruction="Do the thing.")
-        assert resolve_hop_instruction(arch) == "Do the thing."
+        assert _hop_instruction(arch) == "Do the thing."
 
     def test_verdict_gate_generates_marker_instruction(self) -> None:
         arch = _archetype(GateContract(kind="verdict", regexes=("APPROVE", "REQUEST-CHANGES")))
-        instruction = resolve_hop_instruction(arch)
+        instruction = _hop_instruction(arch)
         assert instruction == (
             "The LAST line of your FINAL message must be exactly `APPROVE` or "
             "`REQUEST-CHANGES`, with nothing else on that line. Reasons go above it."
@@ -55,22 +60,22 @@ class TestResolveHopInstruction:
 
     def test_mechanical_gate_generates_an_instruction(self) -> None:
         arch = _archetype(GateContract(kind="mechanical"))
-        assert resolve_hop_instruction(arch) != ""
+        assert _hop_instruction(arch) != ""
 
     def test_approval_gate_generates_an_instruction(self) -> None:
         arch = _archetype(GateContract(kind="approval"))
-        assert resolve_hop_instruction(arch) != ""
+        assert _hop_instruction(arch) != ""
 
     def test_none_gate_generates_no_instruction(self) -> None:
         arch = _archetype(GateContract(kind="none"))
-        assert resolve_hop_instruction(arch) == ""
+        assert _hop_instruction(arch) == ""
 
     def test_declared_instruction_overrides_generated_one(self) -> None:
         arch = _archetype(
             GateContract(kind="verdict", regexes=("APPROVE", "REJECT")),
             hop_instruction="Custom review note.",
         )
-        assert resolve_hop_instruction(arch) == "Custom review note."
+        assert _hop_instruction(arch) == "Custom review note."
 
 
 class TestHopInstructionWireFormat:

@@ -67,7 +67,7 @@ def _run_pipeline(
         sequence=[
             call("write", path="notes/x.md", content=note),
             say("researcher done"),
-            call("verdict", value="APPROVE"),
+            call("handoff", verdict="APPROVE"),
         ]
     )
     with _seed_research_pod(tmp_path, server.base_url):

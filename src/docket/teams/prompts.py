@@ -113,6 +113,16 @@ class LoadedPrompt:
     scope: str
     text: str
     sha256: str
+    #: The output schema the front matter names (``handoff/v1``), or ``None``.
+    output: str | None = None
+    #: The ``modelClass`` the front matter declares (``cheap``, ``strong``, ``any``).
+    model_class: str = "any"
+
+
+def inline_prompt(name: str, layer: str, text: str, scope: str) -> LoadedPrompt:
+    """*text* that has no prompt file (a step's own instruction, a generated one) as a loaded
+    prompt of *layer*, so the hop's record names it like any other."""
+    return LoadedPrompt(name, "", layer, scope, text, _sha256(text))
 
 
 def _sha256(text: str) -> str:
@@ -228,19 +238,30 @@ def shipped_prompt(layer: str, name: str) -> LoadedPrompt:
         raise PromptError(
             f"declares {prompt.layer}/{prompt.name} but ships as {layer}/{name}", path=path, line=2
         )
-    return LoadedPrompt(
-        prompt.name, prompt.version, layer, SHIPPED, prompt.text, _sha256(prompt.text)
-    )
+    return _loaded(prompt, SHIPPED)
 
 
 def role_prompt(role: str, layer: str, text: str, version: int) -> LoadedPrompt:
     """*role*'s own declared *text* for *layer*: the shipped prompt of that name when the text is
     the same, else a pod override named for the role, at the role's *version* as ``MAJOR.0.0``."""
-    if (_templates.PROMPT_TEMPLATES_DIR / layer / f"{role}.md").is_file():
-        shipped = shipped_prompt(layer, role)
-        if shipped.text == text:
-            return shipped
-    return LoadedPrompt(role, f"{version}.0.0", layer, POD, text, _sha256(text))
+    shipped = (
+        shipped_prompt(layer, role)
+        if (_templates.PROMPT_TEMPLATES_DIR / layer / f"{role}.md").is_file()
+        else None
+    )
+    if shipped is not None and shipped.text == text:
+        return shipped
+    # An override of a shipped prompt keeps the contract the shipped one declares.
+    return LoadedPrompt(
+        role,
+        f"{version}.0.0",
+        layer,
+        POD,
+        text,
+        _sha256(text),
+        shipped.output if shipped is not None else None,
+        shipped.model_class if shipped is not None else "any",
+    )
 
 
 # The variables each layer's consumer supplies when it renders a prompt of that layer: a prompt
@@ -329,7 +350,14 @@ def _scope_candidates(directory: Path, layer: str, name: str, major: int | None)
 
 def _loaded(prompt: Prompt, scope: str) -> LoadedPrompt:
     return LoadedPrompt(
-        prompt.name, prompt.version, prompt.layer, scope, prompt.text, _sha256(prompt.text)
+        prompt.name,
+        prompt.version,
+        prompt.layer,
+        scope,
+        prompt.text,
+        _sha256(prompt.text),
+        prompt.output,
+        prompt.model_class,
     )
 
 

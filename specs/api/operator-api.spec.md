@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.0.0
+**Version**: 7.1.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -183,6 +183,15 @@ in the queue (`200`):
             "provider": "local", "usage": {"input": 40950, "cached": 36000, "cacheWrite": 0, "output": 1425}, "ok": true, "...": "..."}]
 }
 ```
+
+Each hop of `hops` carries `promptManifest` once it has one (absent on a hop recorded before the
+field existed): `{"layers": [{"layer", "name", "version", "sha256", "scope", "tokens"}, ...],
+"model", "family", "class", "profile"}`. A layer's `sha256` is the hash of its prompt's text as
+the prompt file holds it, so a consumer compares it with the file; `tokens` is the estimate the
+context compiler budgets with, not a measurement. The field is additive: a consumer that does not
+read it is unaffected. A hop's `artifact` may also carry `assumptions` and `questions` (lists of
+strings, absent when empty) from the hop's `handoff` call; a question there is information for the
+next hop and the operator, and never parks the task.
 
 `tokenBudget` is the measured-token ceiling the next hop of the task would run under: the
 configured per-turn budget (`AGENT_LOOP_TOKEN_BUDGET`) for a task without `maxTokens`; for a task

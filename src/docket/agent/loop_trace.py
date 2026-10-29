@@ -323,6 +323,8 @@ def _trace_prompt_composed(
     budget_tokens: int,
     budget_source: str,
     task_id: str = "",
+    sha256: str = "",
+    sources: tuple[str, ...] = (),
 ) -> None:
     tracer.trace_event(
         project,
@@ -336,6 +338,8 @@ def _trace_prompt_composed(
                 ],
                 "budgetTokens": budget_tokens,
                 "budgetSource": budget_source,
+                "sha256": sha256,
+                "sources": list(sources),
             }
         ),
         task_id=task_id,

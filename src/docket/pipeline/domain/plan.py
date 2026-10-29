@@ -344,12 +344,17 @@ def verdict_values(gate: _gates.VerdictGate) -> tuple[str, ...]:
     return tuple(found if gate.case_sensitive else (v.upper() for v in found))
 
 
-def parse_verdict(gate: _gates.VerdictGate, output: str) -> str | None:
-    """The verdict in *output*, or ``None`` when no line carries one: the gate's pattern applied
-    at the start of each decoration-stripped line, the last match winning, never a substring
-    search."""
+def parse_verdict(gate: _gates.VerdictGate, output: str, declared: str | None = None) -> str | None:
+    """The *declared* verdict of the hop's ``handoff`` call when the gate's pattern accepts it, else
+    the last line of *output* the pattern matches at its start (decoration stripped), else ``None``;
+    never a substring search."""
     flags = 0 if gate.case_sensitive else re.IGNORECASE
     compiled = re.compile(gate.pattern, flags)
+    if declared is not None:
+        match = compiled.match(declared.strip())
+        if match:
+            value = match.group(1)
+            return value if gate.case_sensitive else value.lower()
     verdict: str | None = None
     for line in output.splitlines():
         if not line.strip():

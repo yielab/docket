@@ -19,12 +19,12 @@ other field at its default).
 
 **What dispatch populates today, honestly:**
 
-- ``summary`` — always the hop's full raw reply text; only the container is
-  typed.
-- ``verdict`` — the parsed gate marker (e.g. ``"approve"``, ``"fail"``) for a
-  hop gated by a ``VerdictGate`` (Reviewer/Tester, or any verdict-gated
-  archetype). ``None`` for every other hop: Lead, a ``MechanicalGate``- or
-  ``ApprovalGate``-gated hop, or an unparseable verdict.
+- ``summary`` — the ``summary`` of the hop's ``handoff`` call when it made one, else the hop's
+  full raw reply text.
+- ``verdict`` — the ``handoff`` call's ``verdict`` field, else the parsed gate marker (e.g.
+  ``"approve"``, ``"fail"``), for a hop gated by a ``VerdictGate`` (Reviewer/Tester, or any
+  verdict-gated archetype). ``None`` for every other hop (a hop that declared none), or an
+  unparseable verdict.
 - ``files_changed`` / ``diff_ref`` / ``diff`` — populated via a real git probe:
   ``teams/workspace/worktree.py``'s ``_hop_diff_probe`` resolves the member's
   working tree the same way the mechanical verify gate does (worktree →
@@ -41,6 +41,9 @@ other field at its default).
   empty default for a ``workdir`` (non-codebase) pod, a workspace that is not a
   git repository, or a host with no ``git`` binary — an honest degrade, never an
   exception, never a crash mid-dispatch.
+- ``assumptions`` / ``questions`` — what the hop's ``handoff`` tool call declared
+  (``HandoffCall``); empty for a hop that closed with text alone. A question informs the next hop
+  and the operator's view; it never parks a task (a question that needs an answer is a consult).
 - ``brief`` — the Lead's typed intake output (``parse_brief``), when its raw
   reply's last fenced ``json`` block validates as a ``TaskBrief``. ``None``
   for every other hop, and for a Lead hop with no parseable brief -- a brief
@@ -59,10 +62,70 @@ import json
 import re
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import InvalidInput
+
+#: The output schema a prompt names with ``output: handoff/v1``.
+HANDOFF_SCHEMA = "handoff/v1"
+
+#: The ``handoff`` tool's parameters: the published ``handoff/v1`` shape. ``verdict`` gains an
+#: ``enum`` and becomes required on a gated step (``hops/application/handoff_tool.py``).
+HANDOFF_V1_PARAMETERS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "summary": {
+            "type": "string",
+            "description": "What you did or found, for the next hop and the operator.",
+        },
+        "filesChanged": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Paths you changed. The record keeps git's own list; this is advisory.",
+        },
+        "verdict": {"type": "string", "description": "Your verdict, when the step asks for one."},
+        "assumptions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "What you took as true without being told.",
+        },
+        "questions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Open questions for the next hop; use consult for one that needs an answer.",
+        },
+    },
+}
+
+
+class HandoffCall(BaseModel):
+    """The arguments of one ``handoff`` tool call, validated against ``handoff/v1``."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    summary: str = ""
+    files_changed: list[str] = Field(default_factory=list, alias="filesChanged")
+    verdict: str | None = None
+    assumptions: list[str] = Field(default_factory=list)
+    questions: list[str] = Field(default_factory=list)
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def _text(cls, value: Any) -> Any:
+        return "" if value is None else value
+
+
+def parse_handoff_call(args: dict[str, Any] | None) -> HandoffCall | None:
+    """The ``handoff`` call *args* describe, or ``None`` when there is none or it does not
+    validate against ``handoff/v1`` -- a hop's record then derives from its reply text."""
+    if not args:
+        return None
+    try:
+        return HandoffCall.model_validate(args)
+    except ValidationError:
+        return None
+
 
 #: The Lead's typed intake output is the LAST ```json fenced block in its reply -- a
 #: reply may reason in prose first and only commit to the brief at the end.
@@ -124,6 +187,10 @@ def render_brief(brief: TaskBrief) -> str:
     return "\n".join(lines)
 
 
+def _is_empty(value: object) -> bool:
+    return not value
+
+
 class HandoffArtifact(BaseModel):
     """One hop's structured output, handed to the next hop instead of raw text.
 
@@ -146,6 +213,9 @@ class HandoffArtifact(BaseModel):
     #: (``cap_diff``). First in ``DROP_ORDER``; ``""`` when the hop changed nothing.
     diff: str = ""
     verdict: str | None = None
+    #: What the hop's ``handoff`` call declared; empty for a hop that closed with text alone.
+    assumptions: list[str] = Field(default_factory=list, exclude_if=_is_empty)
+    questions: list[str] = Field(default_factory=list, exclude_if=_is_empty)
     #: The Lead's typed intake output, when this hop's raw text parsed as one
     #: (``parse_brief``) -- ``None`` for every other hop. Never shed: excluded
     #: from ``DROP_ORDER`` on purpose, the same posture as ``summary``.
@@ -156,6 +226,8 @@ class HandoffArtifact(BaseModel):
         "diff",
         "diff_ref",
         "files_changed",
+        "assumptions",
+        "questions",
         "verdict",
     )
 
@@ -164,6 +236,8 @@ class HandoffArtifact(BaseModel):
         "diff": "",
         "diff_ref": None,
         "files_changed": [],
+        "assumptions": [],
+        "questions": [],
         "verdict": None,
     }
 
@@ -198,6 +272,10 @@ class HandoffArtifact(BaseModel):
             lines.append(f"Brief:\n{render_brief(self.brief)}")
         if self.verdict is not None:
             lines.append(f"Verdict: {self.verdict}")
+        if self.assumptions:
+            lines.append("Assumptions:\n" + "\n".join(f"- {a}" for a in self.assumptions))
+        if self.questions:
+            lines.append("Questions:\n" + "\n".join(f"- {q}" for q in self.questions))
         if self.files_changed:
             lines.append(f"Files changed: {', '.join(self.files_changed)}")
         if self.diff_ref is not None:

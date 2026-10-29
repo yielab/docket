@@ -99,6 +99,8 @@ class TestHandoffArtifactModel:
             "diff",
             "diff_ref",
             "files_changed",
+            "assumptions",
+            "questions",
             "verdict",
         }
 
@@ -455,10 +457,12 @@ class TestDispatchBuildsTypedArtifacts:
 
             real_parse_verdict = _plan.parse_verdict
 
-            def _reject_reparse(gate: _gates.VerdictGate, output: str) -> str | None:
+            def _reject_reparse(
+                gate: _gates.VerdictGate, output: str, declared: str | None = None
+            ) -> str | None:
                 if output == "APPROVE - solid":
                     raise AssertionError("resume reparsed persisted reviewer prose")
-                return real_parse_verdict(gate, output)
+                return real_parse_verdict(gate, output, declared)
 
             monkeypatch.setattr(_plan, "parse_verdict", _reject_reparse)
 
@@ -488,3 +492,155 @@ class TestDispatchBuildsTypedArtifacts:
             # of raw text) is what reached the tester's prompt.
             assert "APPROVE - solid" in tester_message
             assert "Verdict: approve" in tester_message
+
+
+# ── the handoff call and the prompt manifest ─────────────────────────────────
+
+
+def _reviewer_runner(reviewer: Any) -> Any:
+    from docket.agent.ports import TurnResult
+
+    texts = {"lead": "plan", "implementer": "did it", "tester": "PASS - works"}
+
+    def _run(
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> Any:
+        role = agent_id.rsplit("-", 1)[-1]
+        if role == "reviewer":
+            return reviewer
+        return TurnResult(True, texts[role], 0.01, {})
+
+    return _run
+
+
+class TestHandoffCallBuildsTheRecord:
+    def test_the_call_supplies_summary_verdict_and_assumptions_and_the_gate_passes(
+        self, tmp_path: Path
+    ) -> None:
+        from docket.agent.ports import TurnResult
+
+        reviewer = TurnResult(
+            True,
+            "Looks fine.\nAPPROVE",
+            0.01,
+            {},
+            closing_args={
+                "summary": "Reviewed the diff.",
+                "verdict": "approve",
+                "assumptions": ["python 3.13", "no new deps"],
+                "questions": ["rename the helper?"],
+            },
+        )
+        with _seed_pod(tmp_path, full=True):
+            res = _executor.dispatch_task(
+                "demo", TaskRecord(id="h1", description="work"), runner=_reviewer_runner(reviewer)
+            )
+
+        assert res.status == "done"
+        artifact = next(h for h in res.hops if h.role == "reviewer").artifact
+        assert artifact is not None
+        assert artifact.verdict == "approve"
+        assert artifact.summary == "Reviewed the diff."
+        assert artifact.assumptions == ["python 3.13", "no new deps"]
+        assert artifact.questions == ["rename the helper?"]
+
+    def test_the_call_wins_over_a_contradicting_marker_line(self, tmp_path: Path) -> None:
+        from docket.agent.ports import TurnResult
+
+        reviewer = TurnResult(
+            True, "APPROVE", 0.01, {}, closing_args={"verdict": "request-changes"}
+        )
+        with _seed_pod(tmp_path, full=True):
+            res = _executor.dispatch_task(
+                "demo", TaskRecord(id="h2", description="work"), runner=_reviewer_runner(reviewer)
+            )
+
+        artifact = next(h for h in res.hops if h.role == "reviewer").artifact
+        assert artifact is not None and artifact.verdict == "request-changes"
+
+    def test_a_marker_line_alone_still_yields_the_verdict_and_nothing_else(
+        self, tmp_path: Path
+    ) -> None:
+        from docket.agent.ports import TurnResult
+
+        reviewer = TurnResult(True, "Fine.\nAPPROVE", 0.01, {})
+        with _seed_pod(tmp_path, full=True):
+            res = _executor.dispatch_task(
+                "demo", TaskRecord(id="h3", description="work"), runner=_reviewer_runner(reviewer)
+            )
+
+        assert res.status == "done"
+        artifact = next(h for h in res.hops if h.role == "reviewer").artifact
+        assert artifact is not None
+        assert (artifact.verdict, artifact.summary) == ("approve", "Fine.\nAPPROVE")
+        assert artifact.assumptions == [] and artifact.questions == []
+
+    def test_a_next_hop_is_shown_the_assumptions(self, tmp_path: Path) -> None:
+        from docket.agent.ports import TurnResult
+
+        reviewer = TurnResult(
+            True, "APPROVE", 0.01, {}, closing_args={"verdict": "approve", "assumptions": ["A1"]}
+        )
+        seen: list[str] = []
+        base = _reviewer_runner(reviewer)
+
+        def runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> Any:
+            if agent_id.endswith("-tester"):
+                seen.append(message)
+            return base(agent_id, session_key, message, timeout, env)
+
+        with _seed_pod(tmp_path, full=True):
+            _executor.dispatch_task("demo", TaskRecord(id="h4", description="work"), runner=runner)
+
+        assert "Assumptions:\n- A1" in seen[0]
+
+
+class TestPromptManifest:
+    def test_a_hop_records_each_layers_hash_equal_to_the_shipped_prompts(
+        self, tmp_path: Path
+    ) -> None:
+        from docket.teams import prompts as _prompts
+
+        with _seed_pod(tmp_path, full=True):
+            res = _executor.dispatch_task(
+                "demo", TaskRecord(id="m1", description="work"), runner=FakeDriver()
+            )
+
+        reviewer = next(h for h in res.hops if h.role == "reviewer")
+        layers = {entry["layer"]: entry for entry in reviewer.prompt_manifest["layers"]}
+        hop = _prompts.shipped_prompt("hop", "reviewer")
+        identity = _prompts.shipped_prompt("identity", "reviewer")
+        assert (layers["hop"]["sha256"], layers["hop"]["version"], layers["hop"]["scope"]) == (
+            hop.sha256,
+            hop.version,
+            "shipped",
+        )
+        assert layers["identity"]["sha256"] == identity.sha256
+        assert layers["hop"]["tokens"] > 0
+        assert set(reviewer.prompt_manifest) == {"layers", "model", "family", "class", "profile"}
+        assert reviewer.prompt_manifest["profile"] == "hosted"
+
+    def test_the_manifest_is_dumped_as_prompt_manifest_and_read_back(self) -> None:
+        manifest = {"layers": [], "model": "m", "family": "", "class": "any", "profile": "hosted"}
+        hop = _task.HopResult(role="lead", output="x", prompt_manifest=manifest)
+
+        dumped = hop.model_dump(by_alias=True)
+
+        assert dumped["promptManifest"] == manifest
+        assert _task.HopResult.model_validate(dumped).prompt_manifest == manifest
+
+    def test_a_hop_persisted_before_the_manifest_loads_with_an_empty_one(self) -> None:
+        hop = _task.HopResult.model_validate({"role": "lead", "output": "x", "ok": True})
+
+        assert hop.prompt_manifest == {}
+        assert "promptManifest" not in hop.model_dump(by_alias=True)

@@ -116,8 +116,11 @@ DOCKET_MAX_CONSULTATIONS = "DOCKET_MAX_CONSULTATIONS"
 
 # Same route again, set only on a verdict-gated hop: a JSON object ``{"values": [...],
 # "caseSensitive": bool}`` naming what the hop may record. Popped by DocketDriver, which registers
-# the ``verdict`` tool for the turn from it.
+# the ``handoff`` tool for the turn from it, with ``verdict`` required.
 DOCKET_VERDICT_VALUES = "DOCKET_VERDICT_VALUES"
+# Set to "1" on a hop whose prompt declares `output: handoff/v1`: the driver offers the `handoff`
+# tool for the turn, without a verdict gate's values.
+DOCKET_HANDOFF = "DOCKET_HANDOFF"
 
 
 @dataclass
@@ -151,6 +154,9 @@ class TurnResult:
     # "" when no response arrived. See pod-dispatch.spec.md, "Hop events and task usage".
     model: str = field(default="", kw_only=True)
     provider: str = field(default="", kw_only=True)
+    # The arguments of the ``ends_turn`` tool call that closed the turn (the ``handoff`` tool's
+    # structured outcome); ``None`` when the turn closed on text.
+    closing_args: dict[str, Any] | None = field(default=None, kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────
@@ -301,6 +307,10 @@ class PromptComposition:
     # composition (no prompt material), describing what would have applied.
     budget_tokens: int = field(default_factory=lambda: current_home().context_token_budget_default)
     budget_source: BudgetSource = "default"
+    # sha256 of ``text`` as UTF-8, and the names of the parts that fed it; ``""`` and ``()`` for an
+    # empty composition.
+    sha256: str = ""
+    sources: tuple[str, ...] = ()
 
 
 # ── the role composer: what a turn needs from the team that owns the role ──────

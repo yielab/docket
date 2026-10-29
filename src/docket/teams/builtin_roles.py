@@ -50,7 +50,7 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         # for completeness/forward-compat, not exercised today.
         token_budget=2000,
         # `hops/application/compose.py`'s `_hop_message` resolves the Lead's instruction through
-        # `resolve_hop_instruction` against this archetype, like any custom role, instead
+        # `resolve_hop_prompt` against this archetype, like any custom role, instead
         # of holding a separate literal string of its own -- so a global or pod overlay of
         # `lead` changes the Lead's hop message; a pod with none gets the shipped `hop/lead` prompt.
         hop_instruction=_hop("lead"),

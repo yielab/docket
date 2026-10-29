@@ -191,6 +191,14 @@ class TestResolveGate:
 
 
 class TestParseVerdict:
+    def test_the_declared_value_wins_over_the_marker_line(self) -> None:
+        gate = _gates.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
+        assert _orch.parse_verdict(gate, "approve\nfine", "reject") == "reject"
+
+    def test_a_declared_value_the_pattern_refuses_leaves_the_marker(self) -> None:
+        gate = _gates.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
+        assert _orch.parse_verdict(gate, "approve\nfine", "maybe") == "approve"
+
     def test_case_insensitive_by_default(self) -> None:
         gate = _gates.VerdictGate(pattern=r"^(APPROVE|REJECT)\b", pass_values=["approve"])
         assert _orch.parse_verdict(gate, "approve\nfine") == "approve"
