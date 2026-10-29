@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -387,7 +387,10 @@ where it applies to commands docket itself launches.
      approval record (`context: {"taskId", "pipelineIndex": 0}`), resolved like the pod's own
      pre-hop gate (grant → `pending` plus a hop-0 gate override; deny → terminal
      `failureKind: "approval_denied"`).
-   - `redact` **MUST** scrub the stored task description (`redact`) before it is persisted.
+   - `redact` **MUST** scrub every text the task was sent with before it is persisted: the
+     description, the pre-brief (`brief`) and the structured request (`task`). The stored brief is
+     what the operator inbox and a `conversation`-level notification show, so it is scrubbed like
+     the description it is folded into.
    - `warn` and `allow` **MUST NOT** change task status or the stored description; `warn` **MUST**
      still emit a `guardrail_check` trace event.
 3. The `pre_output` hook **MUST** be evaluated on **every** hop's real output, after the agent
