@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 3.8.0
+**Version**: 3.8.1
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -261,9 +261,9 @@ This specification does NOT cover:
     state itself. Instead it **MUST** state once that private control files are already loaded and
     read-only and are never project-tool targets (explicitly including shell execution), and that
     returning the completed result is sufficient because docket owns turn durability. It **MUST
-    NOT** carry the project roots (ADR 0028): they limit the tools through `ToolContext.roots` and
-    reach the model in the task message (`pod-dispatch.spec.md`, "Bounded hop prompts" requirement
-    10), so two tasks of one member in different worktrees compose a byte-identical system prompt.
+    NOT** carry the project roots (ADR 0028): they limit the tools through `ToolContext.roots`; the
+    message tells the model only that its tools start at the repository root (`pod-dispatch.spec.md`,
+    "Bounded hop prompts" requirement 10), so two tasks of one member in different worktrees compose a byte-identical system prompt.
     `HEARTBEAT.md` and `TOOLS.md` **MUST NOT** be composed: every live turn is a pod hop, the task
     arrives in the message, and tool schemas travel in the `tools` parameter. `MEMORY.md` **MUST**
     be composed only when it holds text beyond its generated template (headings, `_..._`
