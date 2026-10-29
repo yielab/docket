@@ -162,7 +162,7 @@ class TestHopTools:
 
             assert {"read", "grep", "bash"} <= set(narrowed.names())
 
-    def test_the_minimal_surface_keeps_what_reads_changes_runs_and_checks_and_the_closing_tool(
+    def test_the_minimal_surface_keeps_what_finds_reads_changes_runs_and_checks_and_the_closing_tool(
         self,
     ) -> None:
         base = builtin_registry()
@@ -171,7 +171,15 @@ class TestHopTools:
 
         narrowed = registry_for_role(base, "implementer", surface="minimal")
 
-        assert sorted(narrowed.names()) == ["bash", "edit", "handoff", "read", "verify", "write"]
+        assert sorted(narrowed.names()) == [
+            "bash",
+            "edit",
+            "glob",
+            "handoff",
+            "read",
+            "verify",
+            "write",
+        ]
 
     def test_an_allow_list_keeps_the_closing_tool(self) -> None:
         base = builtin_registry()
