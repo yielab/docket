@@ -104,6 +104,13 @@ def _prompt_version(path: Path) -> str:
     return str(_tolerant(lambda: _prompts.load_prompt_file(path).version, ""))
 
 
+def _prompt_tests_of(path: Path, directory: Path) -> Path | None:
+    try:
+        return _config_docs.prompt_tests_file(path, directory)
+    except _prompts.PromptError:  # plan_apply refuses it; the lock still names the prompt
+        return None
+
+
 def _glob(directory: Path, *patterns: str) -> list[Path]:
     return sorted(p for pattern in patterns for p in directory.glob(pattern))
 
@@ -116,6 +123,9 @@ def source_items(directory: Path) -> tuple[LockItem, ...]:
     items: list[LockItem] = [_role_item(scope, p) for p in _roles.role_files(directory / "roles")]
     for path in _config_docs.prompt_files(directory):
         items.append(_file_item(scope, "prompt", directory, path, _prompt_version(path)))
+        tests = _prompt_tests_of(path, directory)
+        if tests is not None and not any(i.path == str(tests) for i in items):
+            items.append(_file_item(scope, "prompt-tests", directory, tests))
     for kind, sub, patterns in (
         ("policy", "policies", ("*.yaml", "*.yml", "*.json")),
         ("plugin", "plugins", ("*.py",)),

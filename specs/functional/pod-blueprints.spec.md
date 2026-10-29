@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Implemented
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -217,6 +217,11 @@ overlay, policies, members, pipeline binding, settings) into one command.
    unresolvable name exits 1 naming the operator's and the shipped recipes) as these optional
    parts:
    - `roles/*.yaml|yml|json`: role definitions, the wire format `role-archetypes.spec.md` defines;
+   - `prompts/<layer>/<name>.md`: prompt files (`config-format.spec.md`, "Scopes, references and
+     the lockfile"), applied into this pod's own `config/prompts/<layer>/`, each with the tests
+     file its `tests:` front-matter key names, copied beside it at the same relative path so
+     `docket pod test` finds it on the installed prompt. A `tests:` path that escapes `prompts/`
+     or names no file **MUST** be refused, naming the prompt, before anything is written;
    - `policies/*.yaml|yml|json`: guardrail policies, the schema `security-gates.spec.md` defines;
    - `plugins/*.py`: predicate plugins;
    - `skills/<name>/SKILL.md`: each `<name>/` a complete Agent Skill, applied whole into this
@@ -277,7 +282,7 @@ overlay, policies, members, pipeline binding, settings) into one command.
    over HTTP); an all-`skip` plan **MUST NOT** write a new audit entry. Every successful apply, an
    all-`skip` plan included, **MUST** also record this pod's configuration of record (ADR 0012,
    amended by ADR 0013) in its settings: `configSource` (the absolute *dir*) and `configDigest` (the sha256 of the
-   `applied.lock` that apply wrote, which names every `roles/`, `prompts/`, `policies/`,
+   `applied.lock` that apply wrote, which names every `roles/`, `prompts/` (and the tests file each names), `policies/`,
    `mcp-servers/` and `pipelines/` document, `pipeline.yaml` and `pod.yaml`, `plugins/*.py` and
    skill of *dir* with its sha256, excluding the generated `.schemas/`; config-format.spec.md,
    "Scopes, references and the lockfile"), so composing
@@ -474,6 +479,9 @@ reproduced on a second machine.
      ones), plus a paired `roles/<name>.md` holding that role's instructions (`soulTemplate`
      and, when it is not the generated starter template, a `## AGENTS` section with
      `agentsTemplate`);
+   - `prompts/<layer>/<file>` as a byte-for-byte copy of this pod's own `config/prompts/` files,
+     each with the tests file its `tests:` key names, at the same relative path (a `tests:` path
+     that escapes `prompts/` or names no file **MUST** be refused, naming the prompt);
    - `policies/<stem>.yaml` for every file in this pod's own policy directory, regenerated from the
      parsed policy, never a byte copy;
    - `mcp-servers/<name>.yaml` for this pod's pod-scoped MCP servers, never a global one;
@@ -740,4 +748,5 @@ Where the names above live today. This is the only section that names paths.
 - `src/docket/templates/recipes/<name>/`: the shipped recipes
 - Tests: `tests/unit/teams/test_blueprints.py` (including `TestPipelineGateFidelity`),
   `tests/integration/teams/test_provisioning_contract.py` (`TestSeedContractWorkdir`),
-  `tests/unit/teams/apply/test_plan.py`, `tests/integration/teams/test_recipes.py`
+  `tests/unit/teams/apply/test_plan.py`, `tests/integration/teams/test_recipes.py`,
+  `tests/integration/teams/test_prompt_tests_travel.py`
