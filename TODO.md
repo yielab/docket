@@ -241,31 +241,29 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 - **`memory_update` has no structural telemetry key**; members stamped `POD_TEMPLATE_VERSION` 4 show stale
   to `pod update` by text comparison; `scripts/smoke_workflow.py`'s memory scenario needs a live run.
 
-**Phases 52 and 53 (closed 2026-10-29).**
+**Phases 52 and 53 (closed 2026-10-29).** Triaged the same day: the brief redaction, the prompt `tests` file, a role's
+unknown tool name, `pod test`'s handoff spec, the live-run key lookup and the stale docs were fixed; what stays waits
+for its trigger.
 
 - **P52-12, a wait on a machine is an escalation.** Trigger: one recorded Tack-driven run in which a task fails,
   re-polls or spends a hop waiting on CI, a deploy or a URL. Until then the wait sits in Tack (ADR 0034 decision 5).
-- **P53-4 goal 3, the Lead's locators read into the Implementer's message.** Trigger: `context_replay.py --repeats` on
-  recorded Implementer steps shows 30 % or more of its `read` calls on files the Lead had already read (the committed
-  fixture shows a repeat only after path normalization, a heuristic over one sample; the figure is not recorded).
-- **P52-2's bench oracle** ("no step worse") fails on 3 of 4 fixture steps by +0.3 % to +3.0 % estimated bytes because
-  small results are kept whole on purpose; prefix stability improves. The maintainer chooses: relax the oracle, or drop
-  that goal.
-- **A redact verdict redacts the new `task` text but not the Lead's `brief`** (`tasks/application/queue.py`). Trigger: a
-  brief that carries a secret.
-- **Spec and code disagree in three places, the docs follow the code:** role-archetypes requirement 3 says the fixed
-  Implementer, Reviewer and Tester text is read by `prompts.shipped_prompt`, while `compose.py` uses `resolve_prompt`, so a
-  pod's `prompts/hop/<role>.md` overrides it; pod-blueprints requirements 1 (apply, export) do not list `prompts/`;
-  whether the Lead is offered `handoff` is not stated by either. Fix with the next change to those specs.
-- **A model-visible absolute path remains in one place:** `teams/agent_memory.py:182` writes the pod codebase's path into a
-  provisioned file, not the hop message. Check it if a model reads that file.
-- **Small prompt-layer items.** The Lead's message has no headings (spec-correct). The nudge text sits in
-  `loop_request.py`. `HANDOFF_TOOL` is a literal in `teams/prompt_tests.py`. `pod update` does not copy a prompt's `tests`
-  file. Class anchor limits (P53-7) are unmeasured. P53-5's manifest definitions and `docs/DOCKET.md` are stale. `pod
-  validate` does not catch a typo in a role's `tools`. `smoke_workflow.py::_shell_path_candidates` calls `VAR=x cmd` opaque.
-  A `background` process in an unjailed Lead or Tester needs a cache or scratch directory.
-- **Structured `task` intake** exists on `POST /tasks/<pod>` only; the CLI, MCP and Tack's runner do not send it. Trigger:
-  Tack adopting it.
+- **P53-4 goal 3, the Lead's locators read into the Implementer's message.** Measured on three recorded smoke tasks
+  (two local Qwen, one Haiku, `context_replay.py --repeats`): the Implementer read 1/1, 1/1 and 2/4 files the Lead had
+  read, but all except one were files it then edited, whose exact text `edit` needs; "not edited after" was 0, 0 and
+  1 file (682 bytes). Trigger: "not edited after" reaching 30 % of the Implementer's reads on recorded tasks of a real
+  pod (the smoke repository has three files).
+- **The model class comes only from the rank anchors** (`economy` is `cheap`, `standard` and `premium` are `strong`),
+  so a non-anchor model such as the local Qwen resolves `any` and no `<name>.<class>.md` variant acts for it. No
+  shipped prompt has a variant. Trigger: a variant written for a non-anchor model.
+- **Structured `task` intake** exists on `POST /tasks/<pod>` only; the CLI, MCP and Tack's runner do not send it.
+  Trigger: Tack adopting it.
+- **Decided, not open:** P52-2's bench oracle is "no step worse than the recorded request, and prefix stability not
+  worse", met on the fixture (sent 0.25 to 0.66 of the baseline per step; stable 8/10, 3/4, 5/7, 6/7). The "+0.3 %
+  to +3 %" was against the pre-P52-2 `condense_history`, which the bench's `phase44` policy now calls live, so it is no
+  longer reproducible; the small-result rule stays. The re-ask, finalization and closing texts
+  (`hops/application/runner.py`, `agent/loop_request.py`) are the harness's protocol, versioned with the code and the
+  agent-loop spec, not role prompts. `smoke_workflow.py` calls an interpreter running a script (`PYTHONPATH=src python3
+  x.py`) opaque on purpose: it can read any file, so the private-path check fails closed; `VAR=x` alone is parsed.
 
 **Architecture and packaging.**
 
