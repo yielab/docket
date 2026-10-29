@@ -17,7 +17,7 @@
 > finishing a card well matters more than running two at once.
 >
 > **Active: Phases 52 and 53, one schedule. Wave 1 closed 2026-10-28** (seven cards merged into
-> `develop`, unpushed). **Waves 2 (P52-7 ∥ P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28.** Wave 4 is next. Phase 51
+> `develop`, unpushed). **Waves 2 (P52-7 ∥ P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28, Wave 4 (P53-4, P52-4's `&` half) closed 2026-10-29.** Wave 5 (P53-8) is next. Phase 51
 > closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
 > ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. The integration
 > branch is `develop`.
@@ -102,6 +102,26 @@ wave is free.
 | 5 | P53-8 | `task_create.py`, `task.py`, `queue.py`, `compose.py` (task layer) | P53-4, P53-5 |
 | close | P53-9 | docs | every card |
 | — | P52-12 | blocked on a recorded run; no wave until its trigger fires | |
+
+**Wave 4 closed 2026-10-29.** Merges P53-4 (`8a5e85b8`) and P52-4 (`53124f0d`), then the `agent-loop` sentence
+(`689e68eb`). Gates: full suite green, e2e lane rc=0, goldens 9/9, ruff/format/mypy, `validate-specs`,
+`gen_cli_docs`, `gen_config_schemas`. Not run: agent lane, escape matrix, no-sandbox script, operator step (phase close).
+- **Live check, same smoke, tokens only:** local Qwen 3/3 (0 violations, 0 bound stops), hosted Haiku 2/2. Across
+  the 5 runs, no `read` or `bash` call starts at the worktree's absolute root (the Wave 3 series: 5 of 11
+  local runs did). Small samples; what they support is the audited cause (the absolute `Working directory:`
+  line, now `the repository root (your tools start there; give paths relative to it)`), not a pass rate.
+- **P53-4:** a non-Lead hop message is `## Task` (description and a map bounded to the paths the brief names plus their
+  directory, ending with a `glob` line) then `## Hop`; the map reads the base commit, so a staged file does not
+  change `## Task` between hops. `HopResult.promptManifest` has a `task` layer. Bench `--policy p53-4`:
+  `~600 B` less per hop message on the replay fixtures (the old map was already capped). **Open:** goal 3
+  (locators) waits for P52-1's ≥ 30 % figure from a private replay; the Lead keeps its old layout without
+  headings; the brief is still `## Brief` under `## Hop` (P53-8 continues `## Task`); `teams/agent_memory.py:182`
+  writes the pod codebase's absolute path into a provisioned file (not the hop message), check it if a model reads it;
+  the bounded-map and git tests were written with the code, only the section tests were seen failing first.
+- **P52-4:** the worker's probe showed `sleep 30 & echo hi` allowed in the jail, so the integrator widened the card's
+  "trailing" `&` to any lone `&` token (`starts_background`; `(sleep 3 &)` too). `&&`, `2>&1`, `&>`, `>&2` and a
+  quoted `&` keep their verdicts. The corpus gained four asked rows; the allowed controls live as unit rows because
+  a corpus allowed row needs a `limit`. **Open:** the parse-failure refusal waits for the maintainer's go.
 
 **Wave 3 closed 2026-10-28.** Merge order P53-5, P53-7, P52-9, P53-6 (`4be5006d`, `47880a21`, `edf167f0`,
 `f127fa07`), then four integrator commits: the spec renumbering and two tests (`b5804692`), the `summary`
@@ -327,8 +347,8 @@ close leaves open:
 
 ### P52-4 — the classifier: a parse failure is refused, a trailing `&` asks (absorbs P52-10 step 4)
 
-**Status:** TODO · the `&` half is ready (P52-9 is merged), the syntax half is BLOCKED (needs maintainer go: a parse failure
-stops being an `ask`) for the syntax half · **Size:** S · **Model:** Sonnet · **Kind:**
+**Status:** BLOCKED (the syntax half needs the maintainer's go: a parse failure stops being an `ask`) · the `&` half is DONE
+(2026-10-29, merge 53124f0d: any lone `&` asks, jailed or not) · **Size:** S · **Model:** Sonnet · **Kind:**
 behaviour + spec
 
 - **Trigger:** (a) `governance/security.py:353-440` with `command_lexer.py:162-169`: a `shlex`
@@ -809,7 +829,7 @@ spec
 
 ### P53-4 — three layers in a fixed order, and a repository map bounded by relevance (absorbs P52-5)
 
-**Status:** TODO · **Size:** L · **Model:**
+**Status:** DONE (2026-10-29, merge 8a5e85b8; goals 1 and 2 and the Working directory finding, goal 3 stays cut until P52-1's figure is recorded) · **Size:** L · **Model:**
 Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:**
@@ -1030,7 +1050,7 @@ spec + CLI
 
 ### P53-8 — a structured `task` on `POST /tasks/<pod>`
 
-**Status:** TODO (after P53-4) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request (ADR 0035 decision 10). `POST /tasks/<pod>`
