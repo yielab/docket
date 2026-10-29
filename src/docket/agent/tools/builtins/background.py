@@ -39,8 +39,7 @@ def _report(on_process: OnProcess | None, kind: str, data: dict[str, Any]) -> No
 
 
 def _log_dir(cache_dir: Path | None, agent_id: str) -> Path | None:
-    """The jail's cache dir when jailed, else the home's directory for the agent. docket opens the
-    log and the command inherits it, so the log needs no place the jail can see."""
+    """The jail's cache dir when jailed, else the home's directory for the agent."""
     if cache_dir is not None:
         return cache_dir / "processes"
     return current_home().process_logs_dir(agent_id) if agent_id else None
