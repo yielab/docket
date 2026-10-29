@@ -1241,7 +1241,9 @@ parsing for any verdict-gated step (`parse_verdict`).
      a tool named `verdict`. Its description is "Record your handoff and finish. Call this once, as
      your last action." and its parameters are the `handoff/v1` schema: `summary` (string),
      `filesChanged` (list of strings), `verdict` (string), `assumptions` and `questions` (lists of
-     strings), none required. On a verdict-gated step `verdict` **MUST** be required and a string
+     strings), none required; the `summary` description says it is what the next hop reads in place of
+     the reply (the decisions, values, names and paths it must use), not a description of the work, because
+     the artifact's `summary` is the call's. On a verdict-gated step `verdict` **MUST** be required and a string
      with a JSON-schema `enum` of the gate's allowed values (upper-case unless the gate is
      case-sensitive). A call whose arguments do not validate against the schema, or whose
      `verdict` is outside the enum (matched ignoring case unless the gate is case-sensitive),
