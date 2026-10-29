@@ -9,7 +9,7 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-29.** Phases 0–53 are complete. Phases 52 and 53 ran as one schedule in five waves and closed 2026-10-29.
+**Last updated: 2026-10-29.** Phases 0–54 are complete. Phases 52 and 53 ran as one schedule in five waves and closed 2026-10-29; Phase 54 closed the same day.
 **Phase 52** (D-73, [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md); D-74,
 [ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)): the harness adapts to the model by
 data from the provider catalog and pays for context once, the turn owns its processes and its time, and `fetch`
@@ -23,8 +23,10 @@ someone outside the task one `Escalation` record with one `resolve` verb; its lo
 `TODO.md` under "Escalations". Phase 50 (D-71,
 [ADR 0031](docs/adr/0031-end-to-end-tests-that-run-the-product.md)): end-to-end tests that run the
 product the way an operator or Tack does, in `tests/e2e/`, with one fake model and shared oracles. Phase 49 (D-70) made the task one typed record behind one
-store, with the same JSON on disk. **Phase 54** (D-76) is planned on `TODO.md`: a native
-Anthropic Messages dialect, so the provider's prompt cache is used and measured. A new phase starts from a measured trigger or a maintainer
+store, with the same JSON on disk. **Phase 54** (D-76, [ADR 0011, amendment of 2026-10-29](docs/adr/0011-provider-catalog.md)): the built-in `anthropic`
+provider speaks Anthropic's Messages API as the second chat dialect, so its prompt cache is used and measured (one live
+Haiku run: 76,359 of 111,824 input tokens read from the cache); what it leaves open is under "Phase 54" in `TODO.md`'s
+follow-ups. A new phase starts from a measured trigger or a maintainer
 request, never from this file.
 
 **Phases 46-51** closed on branch `plan/phase-46-structure`, merged into `develop` as PR #5
@@ -92,6 +94,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 51 | One escalation: a durable `Escalation` record behind the store for approval, consult, input, gate and check-changed pauses; one `resolve` verb, one event family, one render, a policy table for when nobody is there (`consultMode: decide` first), then the A2A facade and a per-task level | D-72 · [0032](docs/adr/0032-one-escalation-record-and-one-resolve.md) | **complete** 2026-10-25: cards P51-1..P51-14; the old approval, answer and `waiting_*` shapes are retired (`operator-v2`), with the A2A facade and the per-task level; follow-ups under "Escalations" in `TODO.md` |
 | 52 | The harness adapts to the model by data, and pays for context once: cache-hit and tokens-per-accepted-task figures, a re-read report on recorded traces; tool results normalized and cut head+tail, errors that teach, small results never condensed first; a stable prefix (finalization as a trailing message) and sampling from the catalog; a parse failure refused rather than asked; the Lead's locators read into the Implementer's message; viewer/editor recipes; `ModelProfile` (`hosted`, `local`: surface, descriptions, forced `tool_choice` on close, window-derived budgets); results over the cap kept whole under the pod cache. With D-74: a tool's clock clamped to the turn's and a running tool keeping the claim fresh; background processes with a handle, stopped at turn end, a bare `&` asking; `fetch` converting HTML to text; a `web-research` recipe; a `wait` escalation held until a run needs it | D-73 · [0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) · D-74 · [0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md) | **complete** 2026-10-29: eight of nine cards; P52-12 (`wait`) stays blocked on a recorded run; P52-2's bench oracle was decided at triage (no step worse than the recorded request); the `&` and parse-failure halves of P52-4 both shipped |
 | 53 | Prompts as versioned configuration: one `prompt` kind and loader, four scopes with one order, `applied.lock`, a hash and a manifest on every hop; the `handoff` tool replaces the free-text close; `Task` and `Hop` layers, a map bounded by the Lead's paths and no absolute path; prompt variants by class, `docket pod test` and a role `floor`; a structured `task` on `POST /tasks/<pod>` | D-75 · [0035](docs/adr/0035-prompts-are-versioned-configuration.md) | **complete** 2026-10-29: nine cards, P53-1..P53-9; the Lead's locators (P53-4 goal 3) wait for P52-1's figure; follow-ups under "Phases 52 and 53" in `TODO.md` |
+| 54 | The native Anthropic Messages dialect: `dialect: anthropic-messages` beside `openai-chat`, one chat client whose request path, payload, decoding and per-part sizes come from the dialect, the built-in `anthropic` document moved to it (two cache markers, cache reads and writes in the measured usage, a call without an output cap fails before sending), recorded real response bodies as decoder fixtures | D-76 · [0011](docs/adr/0011-provider-catalog.md) amendment | **complete** 2026-10-29: P54-1, P54-2; follow-ups under "Phase 54" in `TODO.md` |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).

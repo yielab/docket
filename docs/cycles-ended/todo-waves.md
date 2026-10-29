@@ -18843,3 +18843,183 @@ spec
   test --help`).
 - **Contention:** after every card of both phases.
 
+## ▶ PHASE 54 — the native Anthropic Messages dialect (D-76) · CLOSED 2026-10-29
+
+> **Why.** The built-in `anthropic` document speaks Anthropic's OpenAI-compatibility layer, which
+> drops `cache_control` and reports no cache field: every Haiku and Sonnet request through it pays
+> its whole prefix. Measured 2026-10-29 with two identical requests of about 8,400 tokens: compat
+> reported `prompt_tokens` 8417 twice and no cache field; `/v1/messages` reported
+> `cache_creation_input_tokens` 8410, then `cache_read_input_tokens` 8410. What share of a hosted
+> run's input is a repeated prefix is **not measured** (the compat layer reports nothing); the same
+> request builder gives 77.5 % to 83.1 % cache hits against local llama.cpp over six smoke runs.
+> Tokens are measured, dollars are not: no card claims a saving.
+>
+> **Shape.** One Sonnet card owns the code, the wire's spec and the tests, because the encoder, the
+> decoder, the fake server and the seam test exchange the same shapes and splitting them would make
+> two workers rediscover one contract. One Haiku card owns the prose, which shares no file with it
+> and runs in parallel. The integrator records the real bodies first and runs the live measurement
+> last. Nothing above `models/adapters/` changes: the turn, the tools, the gates and `ModelProfile`
+> talk to the `ChatBackend` port (`agent/ports.py`) and never see a wire shape.
+
+**Integrator, before the spawn (two Haiku calls and one refused, about 9k tokens):** **done 2026-10-29**,
+recorded under `tests/fixtures/anthropic-messages/`, byte for byte as returned: `tool-use.json` (one
+`bash` call, `input {"command": "ls"}`; the block also carries `caller`, which the encoder never sends
+back), `end-turn-cached.json` (the next step of the same conversation: `input_tokens` 6,
+`cache_creation_input_tokens` 69, `cache_read_input_tokens` 8986) and `error-unknown-model.json`
+(HTTP **404** `not_found_error`, not a 400). The status code is not in the body, so the test states it.
+These fixtures are what the decoder is tested against, so no decode test invents a body.
+
+**Wave 1** (parallel; merge P54-1 first, then P54-2):
+
+| Card | Model | Size | Owns |
+| --- | --- | --- | --- |
+| P54-1 | Sonnet | L | `models/adapters/`, `catalog.py:209`, `01-anthropic.yaml`, `model_server.py`, model-profiles spec, the tests |
+| P54-2 | Haiku | S | ADR 0011, `docs/MODEL-GATEWAYS.md`, `docs/README.md`, `cli-json-shapes.spec.md` |
+
+**Integrator, after both merges:** the default suite once and the e2e lane (the wire changed); then
+the operator step and the live measurement of P54-1's last acceptance item; then the close (spec
+index rows, ROADMAP status, archive this section).
+
+**Close (2026-10-29).** Both cards merged; the model-profiles spec is 6.3.0 and cli-json-shapes 4.6.1.
+- **One file beyond the card's nine:** `models/application/endpoint.py` gained `resolve_dialect`, because
+  `DOCKET_LLM_BASE_URL` is documented as an OpenAI-compatible endpoint and 57 e2e tests went red when the
+  override reached the Messages wire. Requirement 4 says so; only the e2e lane tests it, because the
+  suite-shape ratchet allows no new `setenv` in an in-process test.
+- **Integrator fixes after the merge:** the layout guard failed on the parent commit too (my own
+  `background.py` refactor left it at 151 lines; trimmed to 150), and the dialect test used `setenv` for a
+  credential (now the home's secret store). `scripts/smoke_workflow.py` gained `--max-tokens`, which a
+  `--provider` run needs now that the wire requires a cap.
+- **Gates:** the default suite once (the two failures above, each rerun by name and green), e2e 61 pass,
+  `verify-all` 9/9, `tests/agent` rc 0, `gen_cli_docs --check`, `validate-specs.sh`, `split_board check`.
+  Not run: `pytest-without-sandbox.sh` and the escape matrix, because nothing touched the jail.
+- **Live, measured in tokens:** one Haiku 4.5 smoke run in a throwaway home and a scratch repository
+  (`--max-tokens 4096`), 23 `llm_call` events: 111,824 input tokens, 76,359 read from the cache, 22,775
+  written. The first calls of each hop sit under the model's cacheable minimum (about 4,100 tokens of
+  prefix) and read none. No dollar figure is claimed.
+- **Not done, the operator's:** a home that already holds a global `anthropic` document keeps its
+  `openai-chat` and bearer pin until `docket setup provider add anthropic --model claude-haiku-4-5
+  --max-tokens N` registers it again; the installed `docket` predates this phase.
+
+### P54-1 — a second dialect, `anthropic-messages`, on the same client
+
+**Status:** DONE (merge `ad08721f`) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** the maintainer's request (2026-10-29) and the measurement in the section header,
+  which meets ADR 0011's deferral trigger (`docs/adr/0011-provider-catalog.md:148-152`) as far as it
+  can be measured before the dialect exists.
+- **Goal:**
+  1. `ProviderSpec.dialect` (`models/catalog.py:209`) is `Literal["openai-chat",
+     "anthropic-messages"]`.
+  2. `OpenAIChatClient` (`models/adapters/openai_http.py:52`) becomes one client that takes its
+     wire from the dialect: the request path, `build_payload`, `decode_response` and
+     `request_part_bytes`. The transport, the timeouts, the error handling, `_headers`,
+     `estimate_input_tokens` and `Retry-After` stay one copy. `_DIALECTS` (`:325`) maps each dialect
+     to its wire; `client_for` (`:336`) is unchanged. Rename the class only if the name would lie
+     (`ChatClient`), and then in the same change everywhere it is named, with no alias.
+  3. A new `models/adapters/anthropic_wire.py` encodes and decodes `POST {baseUrl}/messages`:
+
+     | docket | `anthropic-messages` |
+     | --- | --- |
+     | `system` messages | the top-level `system`, as text blocks; not in `messages` |
+     | assistant `tool_calls` | `tool_use` blocks `{id, name, input}`, `input` the parsed `arguments` object (a string that does not parse is sent as `{}`); an empty assistant text is no block |
+     | `tool` messages | `tool_result` blocks `{tool_use_id, content}`; consecutive results in one `user` message |
+     | `ToolSpec` | `{name, description, input_schema}` |
+     | `tool_choice` name | `{"type": "tool", "name": ...}`; none sends no key |
+     | `max_tokens` | required: the request's value, else the endpoint's `max_output_tokens`; with neither, the call fails before sending (`nonzero_exit`), naming the model and `docket setup provider add <provider> --model <id> --max-tokens N`; never an invented number |
+     | `temperature`, `top_p` | only when declared, as today |
+     | `stop_reason` | `tool_use` → `tool_calls`, `end_turn` and `stop_sequence` → `stop`, `max_tokens` → `length`, any other value verbatim |
+     | `content[]` of the reply | text blocks joined into `content`; `tool_use` blocks into `ToolCall`s with `arguments` the compact JSON of `input` |
+     | `usage` | `input_tokens` = `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`; `cached_tokens` = read; `cache_write_tokens` = creation (both subsets of input, as `TokenUsage` says) |
+     | cache markers | `cache_control: {"type": "ephemeral"}` on the last `system` block and on the last block of the last message: the same two places as requirement 8, for every model on this dialect |
+
+  4. `529` (Anthropic's "overloaded") joins `_RETRYABLE_STATUS` (`openai_wire.py:25`).
+  5. `templates/providers/01-anthropic.yaml` moves to `dialect: anthropic-messages`, `auth: {type:
+     header, header: x-api-key}`, keeps `anthropic-version: "2023-06-01"`, and its preset note stops
+     saying caching is missing.
+- **Non-goals:** streaming, thinking blocks, structured outputs, server tools, images; a gateway's
+  `cache_control` passthrough (OpenRouter and the AI gateway stay `openai-chat`, requirement 8
+  unchanged); more than two cache breakpoints; `scripts/maint/context_replay.py`, which keeps
+  encoding the OpenAI shape; the probe's matching of dated model ids (see Risks); anyone's existing home or pod.
+- **Spec:** `specs/functional/model-profiles.spec.md` 6.2.0 → 6.3.0 (MINOR). "Provider catalog"
+  requirement 1 (the enum), 5 (two adapters), 8 (the markers are the `openai-chat` rule) and a new
+  requirement 10, "The `anthropic-messages` dialect", holding the table above. Amend first.
+- **Change** (nine files; two are one-line edits):
+  - new `src/docket/models/adapters/anthropic_wire.py`;
+  - `src/docket/models/adapters/openai_http.py` (`OpenAIChatClient`, `probe_models`'s use of
+    `_headers`, `_DIALECTS`);
+  - `src/docket/models/adapters/openai_wire.py:25`;
+  - `src/docket/models/catalog.py:209`;
+  - `src/docket/templates/providers/01-anthropic.yaml`;
+  - `tests/support/model_server.py`: `POST /v1/messages` beside `/v1/chat/completions` (`:231`),
+    decoding into the same `Request` the scripts read (`tool_result(call_id)`, the role line) and
+    encoding `say`, `call`, `calls` and `fail` in the Anthropic shape, with a `usage` the test sets;
+  - new `tests/unit/models/adapters/test_anthropic_wire.py` (`SUBJECT` the new module), over the
+    integrator's fixtures;
+  - `tests/contracts/test_model_wire_contract.py`: the same reply builders read back through the
+    client on the new dialect;
+  - the spec.
+- **Acceptance:**
+  - Encode: a conversation of system, user, an assistant turn with two tool calls and empty text,
+    two tool results and a user nudge encodes to `system` blocks, then user / assistant (two
+    `tool_use`, no text block) / user (two `tool_result` then the nudge text); the cache markers sit on
+    the last system block and the last block only. Encoding it twice gives the same bytes.
+  - Decode, on each recorded fixture: the `tool_use` body gives `ToolCall`s whose `arguments` parse
+    back to the recorded `input`; the cached body gives `input_tokens` = the sum of the three fields
+    and `cached_tokens` = the read count; the error body gives `ok=False` with the message.
+  - Round trip: a `tool_use` decoded and encoded again in the next request gives the same
+    `tool_use` block, so the prefix stays byte-identical across steps.
+  - The seam, through the real producer and parser: `DocketDriver().run_turn` for a pod member on a
+    `kind: provider` document with `dialect: anthropic-messages` against the fake server runs a
+    `bash` call and a closing tool, the request carried `x-api-key` and no `Authorization`, and the
+    `llm_call` trace event carries the `cachedTokens` the fake reported (place it beside
+    `tests/integration/agent/test_bash_background.py::TestTheTurnLeavesNoOrphan`, which shows the
+    pattern, in a new file under `tests/integration/models/llm_port/`; it is the tenth file and only
+    a test).
+  - `max_tokens` unknown: the call fails before any request reaches the fake, naming `--max-tokens`.
+  - `openai-chat` unchanged: `tests/integration/models/llm_port/` and the existing contract tests
+    pass untouched, the anthropic-marked compat bodies included.
+  - The built-in catalog still loads all fourteen documents (a document that fails validation is
+    skipped silently, so assert `anthropic` is present and on the new dialect).
+  - Live, by the integrator after the merge, in a throwaway `DOCKET_HOME` and a scratch repository
+    (no existing pod, no real project): one Haiku run on the new dialect shows `cachedTokens` > 0 on
+    its second and later `llm_call` events; the figure is reported as tokens.
+- **Gate:** static per commit; `tests/unit/models/adapters/`, `tests/integration/models/`,
+  `tests/contracts/test_model_wire_contract.py`, `tests/architecture/`; the e2e lane once (about
+  42 s, the wire changed). Not the full suite.
+- **Risks:** a wrong `usage` mapping corrupts budgets and `docket log` silently, hence the decode
+  test on a real body. a Haiku 4.5 endpoint has no observed `maxTokens` unless the
+  operator declares it (the native `/models` lists dated ids, so the probe does not match
+  `claude-haiku-4-5`), so a call without one fails loudly naming `--max-tokens`; the probe matching
+  dated ids is a follow-up, not this card. Recent Claude models refuse `temperature` and `top_p`
+  together; docket sends neither unless a document declares them.
+- **Contention:** none with P54-2. `openai_http.py`, `openai_wire.py` and `model_server.py` are
+  nobody else's in this wave.
+
+### P54-2 — the docs say there are two dialects
+
+**Status:** DONE (merge `3bc5c209`) · **Size:** S · **Model:** Haiku · **Kind:** docs
+
+- **Trigger:** P54-1 changes what is true about the anthropic provider; AGENTS.md: the prose changes
+  in the same work.
+- **Goal:**
+  - `docs/adr/0011-provider-catalog.md`: a closing section "Amendment (2026-10-29): a second
+    dialect" of at most twelve lines. It says the deferral at `:148-152` was resolved by D-76, with
+    the measurement from this section's header; D-18's reading at `:218` stands; D-42's cut of a
+    second dialect is reversed for `anthropic-messages` only; the refused list from D-76's ROADMAP
+    row. The body of the ADR is not edited.
+  - `docs/MODEL-GATEWAYS.md:110-114` and `docs/README.md:170-175`: the direct `anthropic` provider
+    speaks Anthropic's Messages API and uses its prompt cache; the compatibility layer's limits stay
+    true for anyone who registers it by hand; gateways still speak `openai-chat`.
+  - `specs/data/cli-json-shapes.spec.md:383`: `"dialect": "string (openai-chat | anthropic-messages)"`,
+    with a PATCH version bump.
+  - `README.md:24` stays: it says "any OpenAI-compatible model", which is still true; do not widen it.
+- **Non-goals:** a new guide; any figure in dollars; numbers beyond the ones D-76 states.
+- **Spec:** `cli-json-shapes.spec.md` PATCH only.
+- **Change:** the four files above.
+- **Acceptance:** every sentence checked against model-profiles requirement 10 as P54-1 amends it
+  (read the card's table if the spec is not merged yet); `scripts/maint/comment_lint.py --check` and
+  `bash scripts/validate-specs.sh` (the spec index carries the version) pass.
+- **Gate:** the two checks above; no test runs.
+- **Contention:** none with P54-1; merge after it so the prose never describes a dialect the code
+  does not have.
+
