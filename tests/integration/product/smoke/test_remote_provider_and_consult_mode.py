@@ -233,6 +233,28 @@ def test_remote_run_registers_the_builtin_provider_with_the_key_only_in_the_envi
     assert CANARY not in out.out + out.err
 
 
+def test_a_declared_output_cap_travels_to_the_remote_provider_registration(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    live = _smoke._LiveModel(
+        "", "claude-haiku-4-5", provider="anthropic", remote=True, max_output_tokens=4096
+    )
+
+    recorder = _drive_run(monkeypatch, tmp_path, live, "decide", CANARY)
+
+    assert (
+        "setup",
+        "provider",
+        "add",
+        "anthropic",
+        "--no-preset",
+        "--model",
+        "claude-haiku-4-5",
+        "--max-tokens",
+        "4096",
+    ) in recorder.calls
+
+
 def test_main_leaves_no_key_in_a_kept_world(
     operator_home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
