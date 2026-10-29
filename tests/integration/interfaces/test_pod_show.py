@@ -178,8 +178,8 @@ class TestPodShowTextUnchangedWithNoPodScope:
         ):
             text = _explain_text(pod.member_id("demo", "implementer"), capsys)
             assert (
-                "  Tools allowed: bash, consult, edit, fetch, glob, grep, read, skill, write\n"
-                in text
+                "  Tools allowed: bash, consult, edit, fetch, glob, grep, process_output, "
+                "process_stop, read, skill, write\n" in text
             )
             assert "  Tools denied:  (none)\n" in text
             assert "  MCP servers:   (none configured)\n" in text
@@ -194,7 +194,10 @@ class TestPodShowTextUnchangedWithNoPodScope:
             ),
         ):
             text = _explain_text(pod.member_id("demo", "reviewer"), capsys)
-            assert "  Tools allowed: consult, fetch, glob, grep, read, skill\n" in text
+            assert (
+                "  Tools allowed: consult, fetch, glob, grep, process_output, process_stop, "
+                "read, skill\n"
+            ) in text
             assert "  Tools denied:  bash, edit, write\n" in text
 
 

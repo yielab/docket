@@ -108,7 +108,7 @@ def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
         retries=None,
         timeout=None,
     )
-    _, env = _compose._compose_hop(ctx, node, role, member, [], None)
+    _, env, _ = _compose._compose_hop(ctx, node, role, member, [], None)
     return env or {}
 
 
