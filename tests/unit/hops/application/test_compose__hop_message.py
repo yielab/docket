@@ -275,3 +275,61 @@ class TestTwoSections:
         task_layer = comp.layers[1].prompt
         assert task_layer.text == "## Task\nship the feature"
         assert "task" not in [layer.layer for layer in lead.layers]
+
+
+_STRUCTURED = {
+    "objective": "add a flag",
+    "doneWhen": "the flag test passes",
+    "acceptance": ["--flag is accepted", "--no-flag is accepted"],
+    "constraints": ["no new dependency"],
+    "risk": "touches the parser",
+    "answers": [{"question": "which flag", "answer": "--flag"}],
+    "verify": "pytest tests/test_flag.py",
+    "kind": "feature",
+    "paths": ["src/app/"],
+}
+
+
+class TestStructuredTask:
+    """A task's structured request renders after its description in one fixed order."""
+
+    def test_the_fields_render_after_the_description_in_the_fixed_order(self) -> None:
+        task = TaskRecord.model_validate({"description": "Add a flag", "task": _STRUCTURED})
+
+        message, _ = _compose._hop_message(task, "implementer", [])
+
+        section = _task_section(message)
+        assert section == (
+            "## Task\nAdd a flag\n\n"
+            "Objective: add a flag\n"
+            "Done when: the flag test passes\n"
+            "Acceptance:\n- --flag is accepted\n- --no-flag is accepted\n"
+            "Constraints:\n- no new dependency\n"
+            "Risk: touches the parser\n"
+            'Answers:\n- {"answer": "--flag", "question": "which flag"}\n'
+            "Verify: pytest tests/test_flag.py\n"
+            "Kind: feature\n"
+            "Paths:\n- src/app/"
+        )
+
+    def test_only_the_fields_that_are_set_render(self) -> None:
+        task = TaskRecord.model_validate(
+            {"description": "Add a flag", "task": {"doneWhen": "it works"}}
+        )
+
+        message, _ = _compose._hop_message(task, "reviewer", [])
+
+        assert _task_section(message) == "## Task\nAdd a flag\n\nDone when: it works"
+
+    def test_a_task_without_the_request_is_unchanged(self) -> None:
+        message, _ = _compose._hop_message(_TASK, "implementer", [])
+
+        assert _task_section(message) == "## Task\nship the feature"
+
+    def test_the_section_is_the_same_for_two_hops(self) -> None:
+        task = TaskRecord.model_validate({"description": "Add a flag", "task": _STRUCTURED})
+
+        implementer, _ = _compose._hop_message(task, "implementer", [])
+        reviewer, _ = _compose._hop_message(task, "reviewer", [])
+
+        assert _task_section(implementer) == _task_section(reviewer)

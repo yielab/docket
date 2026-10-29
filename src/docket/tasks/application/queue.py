@@ -26,6 +26,7 @@ from docket.tasks.application import transitions as _transitions
 from docket.tasks.application.repository import Claim, TaskRepository, claimable
 from docket.tasks.application.runs import get_run, list_runs
 from docket.tasks.domain import options as _task_options
+from docket.tasks.domain import request as _request
 from docket.tasks.domain import state as _state
 from docket.tasks.domain.parts import Prepared, Worktree
 from docket.tasks.domain.refs import LEAD_STEP_ID, TaskRef, TaskRefError
@@ -38,6 +39,23 @@ from docket.teams import pod as _pod
 from docket.teams.settings import builtin_tool_names, load_pod_settings, pod_task_list_path
 from docket.teams.workspace import prepare as _prepare
 from docket.teams.workspace.worktree import ensure_task_worktree
+
+
+def _redact_strings(value: Any) -> Any:
+    """*value* with every string in it passed through ``redact``."""
+    if isinstance(value, str):
+        return _secrets.redact(value)
+    if isinstance(value, list):
+        return [_redact_strings(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_strings(item) for key, item in value.items()}
+    return value
+
+
+def _redacted_request(request: _request.TaskRequest | None) -> _request.TaskRequest | None:
+    if request is None:
+        return None
+    return _request.TaskRequest.model_validate(_redact_strings(request.model_dump(by_alias=True)))
 
 
 def _enqueue_pre_input_gate(
@@ -109,6 +127,7 @@ def enqueue_task_once(
     channel: str,
     trusted: bool | None = None,
     brief: dict[str, Any] | None = None,
+    task: dict[str, Any] | None = None,
     **options: Any,
 ) -> tuple[TaskRecord, bool]:
     """Locked read-modify-write returning ``(task, created)``; DispatchError persists nothing.
@@ -143,13 +162,23 @@ def enqueue_task_once(
             raise DispatchError(f"invalid brief: {exc}") from exc
         description = f"{description}\n\n## Pre-brief\n{_handoff.render_brief(parsed_brief)}"
 
+    # *task*, when given, is the structured request beside the description: validated as a
+    # TaskRequest (invalid raises DispatchError, nothing persisted), screened by `pre_input`
+    # with the description and redacted with it.
+    parsed_task: _request.TaskRequest | None = None
+    screened = description
+    if task is not None:
+        try:
+            parsed_task = _request.TaskRequest.model_validate(task)
+        except _ValidationError as exc:
+            raise DispatchError(f"invalid task: {exc}") from exc
+        screened = f"{description}\n\n{parsed_task.model_dump_json(by_alias=True)}"
+
     task_id = _ids.new_id("task")
     session_id = f"agent:{project}:{task_id}"
     effective_trusted = True if trusted is None else trusted
 
-    hit = _enqueue_pre_input_gate(
-        project, session_id, task_id, description, trusted=effective_trusted
-    )
+    hit = _enqueue_pre_input_gate(project, session_id, task_id, screened, trusted=effective_trusted)
     if hit.action == "block":
         raise DispatchError(
             f"task rejected by guardrail policy '{hit.policy_id}' at enqueue"
@@ -162,6 +191,7 @@ def enqueue_task_once(
         priority=priority if priority in ("high", "normal", "low") else "normal",
         channel=channel,
         brief=parsed_brief,
+        task=_redacted_request(parsed_task) if hit.action == "redact" else parsed_task,
         **parsed_options.model_dump(),
     )
 
