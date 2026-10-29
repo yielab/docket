@@ -13,6 +13,7 @@ from docket.hops.gates.pre_hop import (
     _gate_budget,
     _gate_pre_hop_approval,
     _hop_model,
+    _refuse_failed_floor,
     _warn_unpriced_hop,
 )
 from docket.kernel import clock as _clock
@@ -231,10 +232,12 @@ def execute_unit(
             f"refusing cross-pod dispatch: '{member_id}' is not in pod '{ctx.project}'"
         )
 
+    hop_model = _hop_model(node, member_id)
+    _refuse_failed_floor(ctx.project, role, hop_model)
     budget_outcome = _gate_budget(ctx, role)
     if budget_outcome is not None:
         return budget_outcome
-    _warn_unpriced_hop(ctx, role, _hop_model(node, member_id))
+    _warn_unpriced_hop(ctx, role, hop_model)
 
     approval_outcome = _gate_pre_hop_approval(
         ctx, role, node, check_approval=check_approval, index_for_context=index_for_context

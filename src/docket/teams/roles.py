@@ -335,7 +335,7 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     canonical["soulTemplate"] = soul
     canonical["agentsTemplate"] = agents if agents is not None else _STARTER_AGENTS_TEMPLATE
 
-    for key in ("scope", "version", "tokenBudget", "toolProfile", "hopInstruction"):
+    for key in ("scope", "version", "tokenBudget", "toolProfile", "hopInstruction", "floor"):
         if key in doc:
             canonical[key] = doc.pop(key)
     canonical.setdefault("scope", "pod")
@@ -379,6 +379,8 @@ def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
         doc["toolProfile"] = arch.tool_profile
     if arch.hop_instruction:
         doc["hopInstruction"] = arch.hop_instruction
+    if arch.floor:
+        doc["floor"] = list(arch.floor)
 
     soul = arch.soul_template.rstrip("\n") + "\n"
     if arch.agents_template == _STARTER_AGENTS_TEMPLATE:

@@ -342,6 +342,19 @@ with `pod check`.
 
 Example: docket pod policies block-destructive
 
+### pod test
+
+**Usage:** `docket pod test`
+
+Run a prompt's tests against a model; exit 0 on pass, 1 on fail, 2 when it cannot run.
+
+The prompt's `tests` file holds cases (an input and assertions: contains, matchesSchema,
+calledHandoff, underTokens). Each case is one call to the model. The result is recorded once
+per model and prompt text, so a repeat reads the record; a role whose `floor` names this prompt
+refuses a model recorded as failed.
+
+Example: docket pod test hop/reviewer --model local/qwen
+
 ### pod memory
 
 **Usage:** `docket pod memory`
