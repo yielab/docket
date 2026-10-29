@@ -7,7 +7,6 @@ from collections.abc import Callable
 from docket.agent import ports as _rd
 from docket.hops.application import driver as _dr
 from docket.hops.application.compose import _compose_hop
-from docket.hops.application.handoff_tool import HANDOFF_TOOL
 from docket.hops.gates.post_hop import _apply_output_guardrails, _evaluate_hop_gates
 from docket.hops.gates.pre_hop import (
     _gate_budget,
@@ -19,6 +18,7 @@ from docket.hops.gates.pre_hop import (
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel.errors import DispatchError
+from docket.kernel.handoff import HANDOFF_TOOL
 from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
 from docket.pipeline.domain import gates as _gates

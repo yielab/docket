@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Implemented
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -291,7 +291,8 @@ This specification does NOT cover:
    reported them, the reply text's estimate when it reported none, are below the number). Any other
    key is refused naming the file and the case. `docket pod test` sends each case as one exchange:
    the prompt's text as the system message, `input` as the user message, and, when the prompt
-   declares `output: handoff/v1`, a `handoff` tool with no required parameter. The tests file is
+   declares `output: handoff/v1`, the `handoff` tool a turn without a verdict gate is offered: the
+   same name, description and `handoff/v1` parameters (`kernel/handoff.py`). The tests file is
    never written by a test run, and the result is `pass` only when every assertion of every case
    holds.
 

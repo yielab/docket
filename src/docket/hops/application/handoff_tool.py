@@ -15,11 +15,13 @@ import json
 from typing import Any
 
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
-from docket.kernel.handoff import HANDOFF_V1_PARAMETERS, parse_handoff_call
+from docket.kernel.handoff import (
+    HANDOFF_DESCRIPTION,
+    HANDOFF_TOOL,
+    HANDOFF_V1_PARAMETERS,
+    parse_handoff_call,
+)
 from docket.kernel.tool_outcome import ToolOutcome
-
-HANDOFF_TOOL = "handoff"
-_DESCRIPTION = "Record your handoff and finish. Call this once, as your last action."
 
 
 def handoff_tool(values: tuple[str, ...] = (), case_sensitive: bool = False) -> Tool:
@@ -50,7 +52,7 @@ def handoff_tool(values: tuple[str, ...] = (), case_sensitive: bool = False) -> 
         parameters["required"] = ["verdict"]
     return Tool(
         name=HANDOFF_TOOL,
-        description=_DESCRIPTION,
+        description=HANDOFF_DESCRIPTION,
         parameters=parameters,
         handler=_record,
         kind="read",

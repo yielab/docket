@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec
+from docket.kernel.handoff import HANDOFF_DESCRIPTION, HANDOFF_V1_PARAMETERS
 from docket.teams import prompt_tests as pt
 
 SUBJECT = "docket.teams.prompt_tests"
@@ -18,6 +19,7 @@ class _Model:
     def __init__(self, *responses: ChatResponse) -> None:
         self._responses = list(responses)
         self.tools: list[list[str]] = []
+        self.specs: list[ToolSpec] = []
         self.sent: list[list[ChatMessage]] = []
 
     def complete(
@@ -25,6 +27,7 @@ class _Model:
     ) -> ChatResponse:  # type: ignore[assignment]
         self.sent.append(list(messages))
         self.tools.append([t.name for t in tools])
+        self.specs.extend(tools)
         return self._responses.pop(0)
 
 
@@ -97,6 +100,16 @@ def test_a_reply_that_meets_every_assertion_passes_and_a_handoff_tool_is_offered
     assert (outcome.result, outcome.cases, outcome.failed) == ("pass", 1, ())
     assert model.tools == [["handoff"]]
     assert [m.role for m in model.sent[0]] == ["system", "user"]
+
+
+def test_the_offered_handoff_is_the_tool_a_live_turn_is_offered(tmp_path: Path) -> None:
+    model = _Model(_say("APPROVE", "handoff"))
+
+    pt.run_cases("You review.", pt.load_cases(_tests(tmp_path, _FULL)), model, handoff=True)
+
+    (spec,) = model.specs
+    assert spec.description == HANDOFF_DESCRIPTION
+    assert spec.parameters == HANDOFF_V1_PARAMETERS
 
 
 def test_a_model_that_never_calls_handoff_fails_the_case(tmp_path: Path) -> None:

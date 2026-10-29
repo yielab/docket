@@ -69,6 +69,9 @@ from docket.kernel.errors import InvalidInput
 
 #: The output schema a prompt names with ``output: handoff/v1``.
 HANDOFF_SCHEMA = "handoff/v1"
+# The closing tool a turn is offered; `pod test` offers the same one.
+HANDOFF_TOOL = "handoff"
+HANDOFF_DESCRIPTION = "Record your handoff and finish. Call this once, as your last action."
 
 #: The ``handoff`` tool's parameters: the published ``handoff/v1`` shape. ``verdict`` gains an
 #: ``enum`` and becomes required on a gated step (``hops/application/handoff_tool.py``).
