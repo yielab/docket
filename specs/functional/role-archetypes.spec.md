@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 4.5.0
+**Version**: 4.6.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -119,6 +119,18 @@ This specification does NOT cover:
    `agentsTemplate` once against a representative variable set (`validate_archetype_dict`, called
    by `load_document` for every role file). An unknown variable fails both commands, naming the
    template, before any member is provisioned from the archetype (requirement 1).
+4. The same validation **MUST** refuse a role document whose `tools` allow-list names a tool
+   docket does not ship (a typo such as `grpe`), with an error naming the role and every unknown
+   name and listing the known ones. The known names are the keys of `BUILTIN_TOOL_KINDS` (the
+   built-in registry's tools, the universe a pod's `deniedTools` is checked against) plus the two
+   tools a hop registers from its step instead of the built-in registry, `verify` and `handoff`
+   (`STEP_TOOL_NAMES`; `deniedTools` does not offer them because they are the step's contract,
+   not a capability). A name of the form `mcp__<server>__<tool>` (the MCP namespace) **MUST** be
+   accepted, because it can be checked only against a live server. The refusal sits in
+   `validate_archetype_dict`, so `pod validate` and `pod update <file|dir>` (apply plans a role
+   through `load_document`) refuse alike. `from_wire` and the registry load stay lenient: the turn
+   path keeps the no-op of "Tools and calls per hop" requirement 2, so a recipe or an older
+   document with an unknown name still loads and runs.
 
 ### Built-in archetypes and legacy fidelity
 
@@ -260,17 +272,21 @@ This specification does NOT cover:
    generates no instruction (`""`).
 3. The `implementer`/`reviewer`/`tester` built-in archetypes' `hopInstruction` **MUST** remain
    unset: the hop-message builder never consults the registry for those three, and their hop
-   messages are fixed built-in text regardless of this field. The `lead` archetype **MUST** carry
-   a `hopInstruction` equal to "You are the pod Lead. Decompose this task into a concrete plan for
+   messages are the prompt files `hop/<role>` regardless of this field. The `lead` archetype
+   **MUST** carry a `hopInstruction` equal to "You are the pod Lead. Decompose this task into a concrete plan for
    the Implementer (you never edit code yourself):", and the builder's Lead branch **MUST**
    resolve it through `resolve_hop_instruction` like a custom role, so a pod overlay of
    `lead` changes the Lead's hop message. A pod with no `lead` overlay **MUST** see exactly that
    text, which is the shipped prompt `hop/lead`. `resolve_hop_instruction` is reachable for `lead` and for any role the builder does not
    special-case; it is never reachable for `implementer`/`reviewer`/`tester`. A role absent from
-   the registry gets no instruction. The fixed text of those three is the shipped prompts
-   `hop/implementer` (and `hop/implementer-rework`, the Implementer's text when a reviewer's
-   `REQUEST-CHANGES` is being addressed), `hop/reviewer` and `hop/tester`, read through
-   `prompts.shipped_prompt`; `resolve_hop_instruction` returns a role's declared text through
+   the registry gets no instruction. The text of those three is the prompts `hop/implementer`
+   (and `hop/implementer-rework`, the Implementer's text when a reviewer's `REQUEST-CHANGES` is
+   being addressed), `hop/reviewer` and `hop/tester`, resolved through `prompts.resolve_prompt`
+   (`config-format.spec.md`, "The `prompt` kind"): the first of the task's base commit, the pod
+   overlay, the operator's `config/prompts` and the shipped file that holds one, the file of the
+   hop's model class before an `any` one. With no override they are the shipped text, so a
+   `prompts/hop/<role>.md` in any of the first three scopes replaces a built-in role's hop
+   message. `resolve_hop_instruction` returns a role's declared text through
    `prompts.role_prompt`, which names the shipped prompt it equals or marks it a pod override.
 4. A pipeline step's own `instructions` (see `pipeline-format.spec.md` "Steps") **MUST** take
    precedence over both an archetype's declared `hopInstruction` and the generated fallback, for
@@ -477,7 +493,8 @@ docket pod validate <file.yaml>
    removal of what the role and the pod deny (requirements 2, 6 and 7 of "Per-role tool sets").
    An allow-list **MUST NOT** grant a tool the role denies: a role with `tools: [read, bash]` and
    `deniedTools: [bash]` is offered `read` alone. A name in an allow-list that no registry holds is
-   a no-op, as in `deniedTools`.
+   a no-op at run time, as in `deniedTools`; `pod validate` is where it is refused (requirement 4
+   of "Template rendering").
 3. A step's `maxToolCalls` wins over the archetype's, which wins over the loop's default
    (`AGENT_LOOP_MAX_TOOL_CALLS`); `agent-loop.spec.md` ("Tools and calls per hop") says how the
    cap ends a hop.
