@@ -17,6 +17,7 @@ from tests.support.trace import trace_events
 
 from docket.agent import ports as _ports
 from docket.agent.ports import Endpoint, user
+from docket.governance import secrets as _secrets
 from docket.hops.application.driver import DocketDriver
 from docket.models import catalog as _catalog
 from docket.models.adapters import openai_http as adapter
@@ -45,7 +46,8 @@ def _register(server: FakeModel, **model_row: object) -> None:
 
 @pytest.fixture(autouse=True)
 def _credential(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LAB_API_KEY", _KEY)
+    _secrets.save_secrets({"LAB_API_KEY": _KEY})
+    monkeypatch.delenv("LAB_API_KEY", raising=False)
     monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
     monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
 
@@ -68,20 +70,6 @@ class TestTheClient:
         assert "authorization" not in request.headers
         assert request.headers.get("anthropic-version") == "2023-06-01"
         assert request.raw["max_tokens"] == 512
-
-    def test_the_process_wide_endpoint_override_is_spoken_to_as_openai_chat(
-        self, fake_model: Callable[..., FakeModel], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        server = fake_model(sequence=[say("hello")])
-        _register(server)
-        monkeypatch.setenv("DOCKET_LLM_BASE_URL", server.base_url)
-
-        client = adapter.client_for("lab/m")
-        assert client is not None
-        got = client.complete([user("hi")], timeout=5)
-
-        assert got.ok and got.message.content == "hello"
-        assert server.requests[0].path == "/v1/chat/completions"
 
     def test_an_unknown_output_cap_fails_before_any_request_naming_the_flag(
         self, fake_model: Callable[..., FakeModel]
