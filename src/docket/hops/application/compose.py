@@ -110,11 +110,16 @@ def _role_prompt(
     return _role_schema.resolve_hop_prompt(archetype) if archetype else None
 
 
-def _layers_of(role: str, project: str, hop_prompt: LoadedPrompt | None) -> list[_manifest.Layer]:
-    """The identity layer of *role* and its *hop_prompt*, as far as each exists."""
+def _layers_of(
+    role: str, project: str, hop_prompt: LoadedPrompt | None, task_section: str = ""
+) -> list[_manifest.Layer]:
+    """The identity layer of *role*, the composed ``## Task`` section when it has one and its
+    *hop_prompt*, as far as each exists."""
     identity = _manifest.identity_layer(role, project)
+    task = _prompts.inline_prompt("task", "task", task_section, "task") if task_section else None
     return [
         *([identity] if identity is not None else []),
+        *([_manifest.Layer("task", task)] if task is not None else []),
         *([_manifest.Layer("hop", hop_prompt)] if hop_prompt is not None else []),
     ]
 
@@ -199,6 +204,31 @@ def _latest_brief_hop_index(prior: list[HopResult]) -> int | None:
     return index
 
 
+def _brief_text(prior: list[HopResult]) -> str | None:
+    """The words of the latest Lead brief in *prior* a path can be named in; ``None`` without one."""
+    index = _latest_brief_hop_index(prior)
+    artifact = prior[index].artifact if index is not None else None
+    brief = artifact.brief if artifact is not None else None
+    if brief is None:
+        return None
+    parts = (brief.objective, *brief.acceptance, *brief.context, *brief.constraints)
+    return " ".join([*parts, *brief.assumptions, *brief.resources])
+
+
+def _task_section(task: TaskRecord, desc: str, root: str, prior: list[HopResult]) -> str:
+    """The ``## Task`` section: the description and a map bounded by the Lead's brief (capped
+    before there is one). Only the description, the brief and the base commit feed it."""
+    brief_text = _brief_text(prior)
+    if not root:
+        repo_map = ""
+    elif brief_text is None:
+        repo_map = _repo_map.capped_map(root)
+    else:
+        base = task.worktree.base_commit if task.worktree is not None else ""
+        repo_map = _repo_map.bounded_map(root, base, brief_text)
+    return "\n\n".join(p for p in (f"## Task\n{desc}", repo_map) if p)
+
+
 def _hop_message(
     task: TaskRecord,
     role: str,
@@ -224,13 +254,15 @@ def _hop_message(
     role-archetypes.spec.md). *verify_cmd* is named in the Implementer's instruction."""
     desc = task.description.strip()
     worktree = "" if role == "lead" else claimed_worktree_dir(task)
-    root_block = _repo_map.task_root_block(worktree, project, role)
+    root = _repo_map.resolve_root(worktree, project, role)
+    root_line = _repo_map.WORKING_DIRECTORY_LINE if root else ""
     if role == "lead":
         lead_prompt = _role_prompt("lead", project, None, step_instructions)
         lead_instruction = lead_prompt.text if lead_prompt is not None else ""
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
-        if root_block:
-            message = f"{message}\n\n{root_block}"
+        if root:
+            lead_map = _repo_map.capped_map(root)
+            message = f"{message}\n\n{root_line}" + (f"\n{lead_map}" if lead_map else "")
         answers_block = _render_operator_answers(answers_of(task))
         if answers_block:
             message = f"{message}\n\n## Operator answers\n{answers_block}"
@@ -257,12 +289,13 @@ def _hop_message(
     # budget" a real, checkable property rather than an aspiration: the two
     # pieces that are never shed are accounted for before anything
     # sheddable is given a share.
-    reserved_tokens = sum(_rd.estimate_tokens(t) for t in (desc, instructions, root_block))
+    task_section = _task_section(task, desc, root, prior)
+    reserved_tokens = sum(_rd.estimate_tokens(t) for t in (task_section, instructions, root_line))
     carryover_budget = max(_ctx.budget_for_role(role, project=project) - reserved_tokens, 0)
 
-    lines = [f"Task: {desc}", ""] + ([root_block, ""] if root_block else [])
+    lines = [task_section, "", "## Hop"] + ([root_line, ""] if root_line else [])
     comp = _HopComposition(description_bytes=len(desc.encode("utf-8")))
-    comp.layers = _layers_of(role, project, hop_prompt)
+    comp.layers = _layers_of(role, project, hop_prompt, task_section)
 
     gate_failed_hop = rework_hop if is_gate_failure_carryover(rework_hop) else None
     if gate_failed_hop is not None:

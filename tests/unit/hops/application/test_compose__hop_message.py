@@ -10,8 +10,10 @@ specs/functional/pipeline-format.spec.md ("Variables").
 from __future__ import annotations
 
 from docket.hops.application import compose as _compose
+from docket.kernel import brief as _brief
+from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
-from docket.tasks.domain.task import TaskRecord
+from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.hops.application.compose"
@@ -55,8 +57,7 @@ class TestCustomRoleFallsBackToArchetype:
         # No archetype registered for this name -- matches pre-card behavior
         # exactly (the trigger this card closes for a *registered* custom role).
         message, _ = _compose._hop_message(_TASK, "totally-unknown-role", [])
-        assert "Task: ship the feature" in message
-        assert message.strip().endswith("ship the feature")
+        assert message == "## Task\nship the feature\n\n## Hop"
 
     def test_registered_verdict_role_gets_generated_marker_instruction(self) -> None:
         _arch.add_user_archetype(
@@ -215,3 +216,62 @@ class TestHopInstructionByModelClass:
 
         assert "SHORT REVIEW" not in message
         assert "You are the Reviewer." in message
+
+
+def _lead_hop() -> HopResult:
+    brief = _brief.TaskBrief(objective="add a flag", context=["edit src/app/x.py"])
+    return HopResult(
+        role="lead",
+        member_id="demo-lead",
+        ok=True,
+        output="the plan",
+        artifact=_handoff.HandoffArtifact(summary="the plan", brief=brief),
+    )
+
+
+def _task_section(message: str) -> str:
+    return message.split("\n\n## Hop\n", 1)[0]
+
+
+class TestTwoSections:
+    """A non-Lead message is a `## Task` section then a `## Hop` section."""
+
+    def test_the_description_is_in_task_and_the_instruction_in_hop(self) -> None:
+        message, _ = _compose._hop_message(_TASK, "implementer", [])
+
+        task, hop = message.split("\n\n## Hop\n", 1)
+        assert task == "## Task\nship the feature"
+        assert hop.startswith("You are the Implementer.")
+
+    def test_the_prior_artifacts_are_in_hop(self) -> None:
+        message, _ = _compose._hop_message(_TASK, "reviewer", [_lead_hop()])
+
+        assert "the plan" not in _task_section(message)
+        assert "--- lead output ---" in message.split("\n\n## Hop\n", 1)[1]
+
+    def test_the_task_section_is_the_same_for_two_hops_of_one_task(self) -> None:
+        prior = [_lead_hop()]
+        implementer, _ = _compose._hop_message(_TASK, "implementer", prior)
+        reviewer, _ = _compose._hop_message(_TASK, "reviewer", prior)
+        rework, _ = _compose._hop_message(
+            _TASK,
+            "implementer",
+            [*prior, HopResult(role="reviewer", ok=True, output="REQUEST-CHANGES\nfix it")],
+            rework_hop=HopResult(role="reviewer", ok=True, output="REQUEST-CHANGES\nfix it"),
+        )
+
+        assert _task_section(implementer) == _task_section(reviewer) == _task_section(rework)
+
+    def test_the_lead_message_has_no_section_headings(self) -> None:
+        message, _ = _compose._hop_message(_TASK, "lead", [])
+
+        assert "## Task" not in message and "## Hop" not in message
+
+    def test_the_layers_name_the_task_between_identity_and_hop(self) -> None:
+        _, comp = _compose._hop_message(_TASK, "implementer", [])
+        _, lead = _compose._hop_message(_TASK, "lead", [])
+
+        assert [layer.layer for layer in comp.layers] == ["identity", "task", "hop"]
+        task_layer = comp.layers[1].prompt
+        assert task_layer.text == "## Task\nship the feature"
+        assert "task" not in [layer.layer for layer in lead.layers]
