@@ -85,7 +85,7 @@ from `main`.
 ## ▶ PHASE 54 — the native Anthropic Messages dialect (D-76) · PLANNED, waits for a go
 
 > **Why.** The built-in `anthropic` document speaks Anthropic's OpenAI-compatibility layer, which
-> drops `cache_control` and reports no cache field: every Haiku and Sonnet request on `fab-dev` pays
+> drops `cache_control` and reports no cache field: every Haiku and Sonnet request through it pays
 > its whole prefix. Measured 2026-10-29 with two identical requests of about 8,400 tokens: compat
 > reported `prompt_tokens` 8417 twice and no cache field; `/v1/messages` reported
 > `cache_creation_input_tokens` 8410, then `cache_read_input_tokens` 8410. What share of a hosted
@@ -158,7 +158,7 @@ index rows, ROADMAP status, archive this section).
 - **Non-goals:** streaming, thinking blocks, structured outputs, server tools, images; a gateway's
   `cache_control` passthrough (OpenRouter and the AI gateway stay `openai-chat`, requirement 8
   unchanged); more than two cache breakpoints; `scripts/maint/context_replay.py`, which keeps
-  encoding the OpenAI shape; the probe's matching of dated model ids (see Risks); the live home.
+  encoding the OpenAI shape; the probe's matching of dated model ids (see Risks); anyone's existing home or pod.
 - **Spec:** `specs/functional/model-profiles.spec.md` 6.2.0 → 6.3.0 (MINOR). "Provider catalog"
   requirement 1 (the enum), 5 (two adapters), 8 (the markers are the `openai-chat` rule) and a new
   requirement 10, "The `anthropic-messages` dialect", holding the table above. Amend first.
@@ -199,15 +199,16 @@ index rows, ROADMAP status, archive this section).
     pass untouched, the anthropic-marked compat bodies included.
   - The built-in catalog still loads all fourteen documents (a document that fails validation is
     skipped silently, so assert `anthropic` is present and on the new dialect).
-  - Live, by the integrator after the merge: one Haiku smoke run on the new dialect shows
-    `cachedTokens` > 0 on its second and later `llm_call` events; the figure is reported as tokens.
+  - Live, by the integrator after the merge, in a throwaway `DOCKET_HOME` and a scratch repository
+    (no existing pod, no real project): one Haiku run on the new dialect shows `cachedTokens` > 0 on
+    its second and later `llm_call` events; the figure is reported as tokens.
 - **Gate:** static per commit; `tests/unit/models/adapters/`, `tests/integration/models/`,
   `tests/contracts/test_model_wire_contract.py`, `tests/architecture/`; the e2e lane once (about
   42 s, the wire changed). Not the full suite.
 - **Risks:** a wrong `usage` mapping corrupts budgets and `docket log` silently, hence the decode
-  test on a real body. Haiku 4.5 has no observed `maxTokens` in the live home
-  (`state/provider-models.json` holds `claude-sonnet-4-6` only; the native `/models` lists dated
-  ids), so after this card the Lead fails loudly until the operator declares it; the probe matching
+  test on a real body. a Haiku 4.5 endpoint has no observed `maxTokens` unless the
+  operator declares it (the native `/models` lists dated ids, so the probe does not match
+  `claude-haiku-4-5`), so a call without one fails loudly naming `--max-tokens`; the probe matching
   dated ids is a follow-up, not this card. Recent Claude models refuse `temperature` and `top_p`
   together; docket sends neither unless a document declares them.
 - **Contention:** none with P54-2. `openai_http.py`, `openai_wire.py` and `model_server.py` are
