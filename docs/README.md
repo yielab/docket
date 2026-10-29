@@ -167,11 +167,13 @@ do not prove are in [Adoption evidence](ADOPTION-EVIDENCE.md).
 
 **Models**
 
-- **Compatible HTTP, not provider SDK parity.** docket speaks non-streaming `/chat/completions`
-  with function tools. A text-only endpoint can answer text turns but cannot complete
-  tool-dependent work. Anthropic documents its OpenAI-compatibility layer as intended for
-  evaluation (no prompt caching) and Google documents its Gemini layer as beta; the built-in
-  provider documents say so in their preset notes.
+- **Compatible HTTP, not provider SDK parity.** docket speaks non-streaming HTTP in two dialects:
+  `/chat/completions` with function tools (`openai-chat`, used by gateways and OpenAI-compatible
+  endpoints) and Anthropic's `/v1/messages` (`anthropic-messages`, used by the built-in `anthropic`
+  provider). A text-only endpoint can answer text turns but cannot complete tool-dependent work.
+  Google documents its Gemini compatibility layer as beta, and a model registered by hand against
+  Anthropic's compatibility layer gets no prompt caching; the built-in `google` document's preset
+  note says so.
 - **Small models vary.** A small local model still varies run to run; a 16k-context endpoint is
   the honest integration test.
 

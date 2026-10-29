@@ -294,3 +294,18 @@ config-format 1.2.0 (P29-1, only if P28-1 has shipped by then; otherwise the int
 - README limit "Compatible HTTP, not provider SDK parity" stays true and gains "and Anthropic's
   compatibility layer is documented by Anthropic as for evaluation"; the integrator rewrites that
   bullet in P29-6's merge (D-37).
+
+## Amendment (2026-10-29): a second dialect
+
+Resolves the deferral at lines 148-152 (D-76, Phase 54). Measured 2026-10-29 with two identical
+requests of about 8,400 tokens (Haiku 4.5): `/v1/chat/completions` gave `prompt_tokens` 8417 both
+times and no cache field; `/v1/messages` gave `cache_creation_input_tokens` 8410, then
+`cache_read_input_tokens` 8410. The share of a hosted run's input that is a repeated prefix is not
+measured.
+
+D-42's cut of a second dialect is reversed for `anthropic-messages` only; `dialect` is now the
+closed pair `openai-chat | anthropic-messages`. D-18 stands as read at line 218 (a closed dialect
+map is one client per open protocol, no SDK). Refused, as D-76 lists them: an Anthropic SDK,
+streaming, thinking blocks, structured outputs, server tools, more cache breakpoints than the two
+the compatibility markers place, and any savings claim. Gateways still speak `openai-chat`. The
+body above is not edited.
