@@ -77,7 +77,10 @@ HANDOFF_V1_PARAMETERS: dict[str, Any] = {
     "properties": {
         "summary": {
             "type": "string",
-            "description": "What you did or found, for the next hop and the operator.",
+            "description": (
+                "What the next hop reads in place of your reply: the decisions, exact values, "
+                "formulas, names and paths it must use. Not a description of your work."
+            ),
         },
         "filesChanged": {
             "type": "array",
