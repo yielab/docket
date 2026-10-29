@@ -3245,3 +3245,23 @@ rows:
     layer: "none"
     policy_action: "allow"
     expected: "asked"
+  - policy: block-destructive
+    command: 'echo "unclosed'
+    effect: "text the shell cannot parse, unclosed quote"
+    isolation: "off"
+    role: "implementer"
+    hook: "pre_tool_call"
+    outcome: "asked"
+    layer: "classifier:parse"
+    policy_action: "allow"
+    expected: "denied"
+  - policy: block-destructive
+    command: 'echo "unclosed'
+    effect: "text the shell cannot parse, unclosed quote"
+    isolation: "on"
+    role: "implementer"
+    hook: "pre_tool_call"
+    outcome: "asked"
+    layer: "classifier:parse"
+    policy_action: "allow"
+    expected: "denied"

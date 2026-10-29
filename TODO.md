@@ -17,7 +17,7 @@
 > finishing a card well matters more than running two at once.
 >
 > **Active: Phases 52 and 53, one schedule. Wave 1 closed 2026-10-28** (seven cards merged into
-> `develop`, unpushed). **Waves 2 (P52-7 ∥ P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28, Wave 4 (P53-4, P52-4's `&` half) and Wave 5 (P53-8) closed 2026-10-29.** Only the phase close (P53-9) and the blocked cards remain. Phase 51
+> `develop`, unpushed). **Waves 2 (P52-7 ∥ P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28, Wave 4 (P53-4, P52-4) and Wave 5 (P53-8) closed 2026-10-29.** Only the phase close (P53-9) and the blocked cards remain. Phase 51
 > closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
 > ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. The integration
 > branch is `develop`.
@@ -117,6 +117,16 @@ escape matrix, no-sandbox script, operator step (phase close).
   verdict (before this wave); CLI and MCP intake and Tack's adoption are non-goals; one redact test was written after
   the code and then seen failing with the line reverted.
 
+**P52-4 syntax half, 2026-10-29 (the maintainer's go).** `classify_command` denies a command the lexer cannot read
+with `syntax: <lexer message>; fix the quoting and call again`; the model sees `REFUSED [gate_denied]: syntax: ...`.
+The card said `REFUSED [syntax]`; a new denial kind would have changed the closed set of requirement 7 and every
+type that carries it for no gain, so the kind stays `gate_denied` and the word is in the reason. A `run:` step with a
+`deny` verdict now fails in every approval mode (before it would have waited on a person for text no one can run).
+Measured first: 46 distinct `bash` commands in the stored traces, 0 failed the lexer. Probed by hand: a trailing
+backslash (`echo \`) fails the lexer but bash accepts it, so that shape is now refused too; the model rewrites it.
+`security-gates` 2.5.0, `pod-dispatch` 11.4.0, two corpus rows. Both tests that changed verdict were seen failing
+before the code, and the `run:` test fails without the `steps.py` branch. Full suite and e2e lane green.
+
 **Wave 4 closed 2026-10-29.** Merges P53-4 (`8a5e85b8`) and P52-4 (`53124f0d`), then the `agent-loop` sentence
 (`689e68eb`). Gates: full suite green, e2e lane rc=0, goldens 9/9, ruff/format/mypy, `validate-specs`,
 `gen_cli_docs`, `gen_config_schemas`. Not run: agent lane, escape matrix, no-sandbox script, operator step (phase close).
@@ -135,7 +145,7 @@ escape matrix, no-sandbox script, operator step (phase close).
 - **P52-4:** the worker's probe showed `sleep 30 & echo hi` allowed in the jail, so the integrator widened the card's
   "trailing" `&` to any lone `&` token (`starts_background`; `(sleep 3 &)` too). `&&`, `2>&1`, `&>`, `>&2` and a
   quoted `&` keep their verdicts. The corpus gained four asked rows; the allowed controls live as unit rows because
-  a corpus allowed row needs a `limit`. **Open:** the parse-failure refusal waits for the maintainer's go.
+  a corpus allowed row needs a `limit`. The syntax half shipped later the same day (the block above).
 
 **Wave 3 closed 2026-10-28.** Merge order P53-5, P53-7, P52-9, P53-6 (`4be5006d`, `47880a21`, `edf167f0`,
 `f127fa07`), then four integrator commits: the spec renumbering and two tests (`b5804692`), the `summary`
@@ -361,8 +371,8 @@ close leaves open:
 
 ### P52-4 — the classifier: a parse failure is refused, a trailing `&` asks (absorbs P52-10 step 4)
 
-**Status:** BLOCKED (the syntax half needs the maintainer's go: a parse failure stops being an `ask`) · the `&` half is DONE
-(2026-10-29, merge 53124f0d: any lone `&` asks, jailed or not) · **Size:** S · **Model:** Sonnet · **Kind:**
+**Status:** DONE (2026-10-29) · the `&` half merged as 53124f0d (any lone `&` asks, jailed or not); the syntax half
+with the maintainer's go the same day (a parse failure is a `deny` whose reason starts `syntax:`) · **Size:** S · **Model:** Sonnet · **Kind:**
 behaviour + spec
 
 - **Trigger:** (a) `governance/security.py:353-440` with `command_lexer.py:162-169`: a `shlex`

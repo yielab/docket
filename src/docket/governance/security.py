@@ -426,7 +426,7 @@ def classify_command(
     try:
         segments = split_segments(text)
     except ValueError as ex:
-        return CommandVerdict("ask", f"command could not be parsed ({ex})")
+        return CommandVerdict("deny", f"syntax: {ex}; fix the quoting and call again")
     if not segments:
         return CommandVerdict("deny", "no binary found in command")
     if starts_background(text):
