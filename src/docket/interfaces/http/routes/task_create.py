@@ -12,6 +12,7 @@ from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
+from docket.tasks.domain import request as _request
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.state import Status
 
@@ -68,6 +69,21 @@ def post_task(h: HttpExchange, project: str) -> None:
             return
         brief = brief_raw
 
+    # `task` (optional): the structured request beside `description`. An unknown key or a field
+    # of the wrong type is `400` naming it, before anything is enqueued.
+    request_raw = task_body.get("task")
+    request: dict[str, Any] | None = None
+    if request_raw is not None:
+        if not isinstance(request_raw, dict):
+            h._send_json_error("task must be an object", 400)
+            return
+        try:
+            _request.TaskRequest.model_validate(request_raw)
+        except ValidationError as exc:
+            h._send_json_error(f"invalid task: {exc}", 400)
+            return
+        request = request_raw
+
     options = {key: task_body.get(name) for key, name in _TASK_OPTION_FIELDS if name in task_body}
     try:
         task, created = _queue.enqueue_task_once(
@@ -77,6 +93,7 @@ def post_task(h: HttpExchange, project: str) -> None:
             channel="http",
             trusted=trusted,
             brief=brief,
+            task=request,
             **options,
         )
     except _task.TaskRestrictionError as exc:

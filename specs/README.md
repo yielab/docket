@@ -104,7 +104,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 3.0.0 | Implemented and live |
 | Pipeline Format | 4.3.0 | Implemented |
 | Pod Blueprints | 2.3.0 | Implemented |
-| Pod Dispatch | 11.2.0 | Implemented |
+| Pod Dispatch | 11.3.0 | Implemented |
 | Role Archetypes | 4.5.0 | Implemented |
 | Security Gates | 2.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.10.0 | Implemented and live |
@@ -119,7 +119,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | CLI JSON Shapes | 4.6.0 | Complete |
 | docket-meta schema | 5.5.0 | Complete |
 | Docket Store | 3.1.0 | Implemented |
-| Operator API | 7.1.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.2.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.2.0 | Implemented |
 | Serve Read API | 5.2.0 | Stable |
 | Adoption Benchmark | 2.2.0 | Implemented |

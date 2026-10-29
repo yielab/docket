@@ -22,6 +22,7 @@ from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import DispatchError
 from docket.tasks.domain.options import TaskGate, TaskRestrictions
 from docket.tasks.domain.parts import Prepared, TaskUsage, Worktree, is_none
+from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.state import Status
 
 # The Reviewer/Tester verdict patterns live in exactly one place:
@@ -213,6 +214,8 @@ class TaskRecord(BaseModel):
     created: str = Field(default_factory=_clock.iso)
     channel: str = Field("", exclude_if=_is_empty)
     brief: TaskBrief | None = Field(None, exclude_if=is_none)
+    # The structured request beside the description (operator-api.spec.md); not the Lead's brief.
+    task: TaskRequest | None = Field(None, exclude_if=is_none)
     external_ref: str | None = Field(None, alias="externalRef", exclude_if=is_none)
     idempotency_key: str | None = Field(None, alias="idempotencyKey", exclude_if=is_none)
     base_ref: str | None = Field(None, alias="baseRef", exclude_if=is_none)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import subprocess
 import threading
 import urllib.error
 import urllib.request
@@ -22,7 +23,9 @@ import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.http import get as _get
 from tests.support.pods import seed_pod as _seed_pod
+from tests.support.pods import seed_pod_at_codebase
 
+from docket.hops.application import compose as _compose
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
@@ -319,6 +322,65 @@ class TestAddressableTask:
         with _seed_pod(tmp_path), _live_server() as (url, _token):
             status, _body = _get(f"{url}/tasks/demo/task-x")
             assert status == 401
+
+
+def _app_repo(root: Path) -> Path:
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    for rel in ("src/app/main.py", "src/other/x.py", "README.md"):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("x\n")
+    subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+    return root
+
+
+class TestStructuredTask:
+    def test_the_record_holds_it_and_the_first_hop_renders_it_over_a_bounded_map(
+        self, tmp_path: Path
+    ) -> None:
+        codebase = _app_repo(tmp_path / "code")
+        structured = {"doneWhen": "the app tests pass", "paths": ["src/app/"]}
+        with seed_pod_at_codebase(tmp_path, codebase), _live_server() as (url, token):
+            status, created = _post(
+                f"{url}/tasks/demo", {"description": "Fix the app", "task": structured}, token
+            )
+            assert status == 201
+            _status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+            assert record["task"] == structured
+            assert record["description"] == "Fix the app"
+
+            stored = TaskRepository.for_pod("demo").get(created["task"])
+            assert stored is not None
+            message, _ = _compose._hop_message(stored, "implementer", [], project="demo")
+
+        section = message.split("\n\n## Hop\n", 1)[0]
+        assert section.startswith("## Task\nFix the app\n\nDone when: the app tests pass")
+        assert "src/app/main.py" in section
+        assert "src/other" not in section and "README.md" not in section
+
+    def test_an_unknown_key_inside_task_is_400_naming_it(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            status, body = _post(
+                f"{url}/tasks/demo",
+                {"description": "x", "task": {"doneWhen": "ok", "bogusKey": 1}},
+                token,
+            )
+            assert status == 400
+            assert "bogusKey" in body["error"]
+            assert _queue() == []
+
+    def test_a_task_of_the_wrong_shape_is_400(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            for bad in ("text", ["a"], {"paths": "src/"}, {"acceptance": [1]}):
+                status, _body = _post(f"{url}/tasks/demo", {"description": "x", "task": bad}, token)
+                assert status == 400, bad
+            assert _queue() == []
+
+    def test_a_description_only_body_stores_no_task_key(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            _status, created = _post(f"{url}/tasks/demo", {"description": "plain"}, token)
+            _status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+            assert "task" not in record
 
 
 class TestPostEnqueueSweep:

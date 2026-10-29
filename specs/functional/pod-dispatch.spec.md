@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.2.0
+**Version**: 11.3.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1978,7 +1978,12 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
     answer, the gate failure, the rework note, the prior artifacts (the Lead's brief included) and
     the role's instruction. The `## Task` section **MUST** be byte-identical across the non-Lead hops
     of one task, so it is derived only from the description, the Lead's brief and the task's base
-    commit (never from the worktree's index or files, which a hop changes). The bounded map lists,
+    commit (never from the worktree's index or files, which a hop changes), and from the task's
+    structured `task` request (operator-api.spec.md) when it has one. That request renders after the
+    description, one labelled line or `- ` list per field that is set, in the fixed order objective,
+    done when, acceptance, constraints, risk, answers, verify, kind, paths; a description-only task
+    renders exactly as before. The `paths` of that request are named like a brief's text for the
+    map, so a task that carries them gets the bounded map before any Lead brief exists. The bounded map lists,
     for every path the Lead's latest brief names, the entries directly in that path's directory
     (the path itself when it is a directory), as relative paths with a trailing `/` on a directory;
     a path is named by a whitespace-delimited token of the brief's text (an optional `path:` prefix,
