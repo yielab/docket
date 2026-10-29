@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from tests.support.cli import invoke_pod
 
+from docket.teams import roles as _roles
+
 SUBJECT = "docket.interfaces.cli.commands.pod_config"
 
 _GOOD_ROLE = "kind: role\nname: security-vetter\nscope: pod\nmodel: cheap\n"
@@ -75,6 +77,51 @@ def test_a_role_template_with_an_unknown_variable_fails_validation(tmp_path: Pat
 
     assert rc == 1
     assert "soulTemplate" in out
+
+
+def _role_with_tools(roles_dir: Path, tools: list[str]) -> None:
+    _put_role(
+        roles_dir,
+        "vetter.yaml",
+        f"kind: role\nname: vetter\nscope: pod\nmodel: cheap\ntools: [{', '.join(tools)}]\n",
+    )
+
+
+def test_a_role_allow_list_with_a_typo_is_refused_naming_the_role_and_the_name(
+    tmp_path: Path,
+) -> None:
+    roles_dir = tmp_path / "roles"
+    roles_dir.mkdir()
+    _role_with_tools(roles_dir, ["read", "grpe", "wirte"])
+
+    rc, out = _validate(tmp_path)
+
+    assert rc == 1
+    assert "vetter" in out
+    assert "grpe" in out
+    assert "wirte" in out
+    assert "grep" in out  # the known names are listed
+
+
+def test_every_tool_docket_ships_is_accepted_in_a_role_allow_list(tmp_path: Path) -> None:
+    roles_dir = tmp_path / "roles"
+    roles_dir.mkdir()
+    shipped = [*sorted(_roles.BUILTIN_TOOL_KINDS), "verify", "handoff"]
+    _role_with_tools(roles_dir, shipped)
+
+    rc, out = _validate(tmp_path)
+
+    assert rc == 0, out
+
+
+def test_an_mcp_tool_name_is_accepted_in_a_role_allow_list(tmp_path: Path) -> None:
+    roles_dir = tmp_path / "roles"
+    roles_dir.mkdir()
+    _role_with_tools(roles_dir, ["read", "mcp__docs__lookup"])
+
+    rc, out = _validate(tmp_path)
+
+    assert rc == 0, out
 
 
 _REFUSED_PIPELINES = {

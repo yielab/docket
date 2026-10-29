@@ -12,11 +12,19 @@ import pytest
 from tests.support.pods import write_security_vetter_md as _write_security_vetter_md
 from tests.support.roles import write_vetter_overlay
 
+from docket.agent.tools import mcp_tools
+from docket.hops.application.handoff_tool import HANDOFF_TOOL
+from docket.hops.application.verify_tool import VERIFY_TOOL
 from docket.kernel.home import Home, current_home, use_home
 from docket.teams.role_schema import (
     ArchetypeError,
 )
-from docket.teams.roles import find_overlay_problems
+from docket.teams.roles import (
+    MCP_TOOL_PREFIX,
+    STEP_TOOL_NAMES,
+    find_overlay_problems,
+    unknown_allow_list_tools,
+)
 
 SUBJECT = "docket.teams.roles"
 
@@ -170,3 +178,16 @@ class TestRoleScopes:
         legacy.write_text(json.dumps({"roles": {"vetter": {"name": "vetter"}}}))
 
         assert load_registry("acme").get("vetter") is None
+
+
+class TestAllowListToolNames:
+    """`unknown_allow_list_tools`: the names an allow-list holds that docket ships no tool for."""
+
+    def test_the_step_tools_and_the_mcp_namespace_match_their_producers(self) -> None:
+        assert set(STEP_TOOL_NAMES) == {VERIFY_TOOL, HANDOFF_TOOL}
+        assert MCP_TOOL_PREFIX == mcp_tools.NAMESPACE_PREFIX
+
+    def test_only_unshipped_names_are_returned_once_each(self) -> None:
+        names = ("read", "grpe", "verify", "mcp__a__b", "grpe", "handoff")
+
+        assert unknown_allow_list_tools(names) == ["grpe"]
