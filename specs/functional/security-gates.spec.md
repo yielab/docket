@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -53,6 +53,14 @@ and chain (audit.spec.md).
      unescaped newline (`\n`, `\r\n`) **MUST** start a new segment exactly like `;`, since
      `/bin/sh` starts a new command there; a newline inside quotes stays text and a
      backslash-newline is a continuation.
+   - **A lone `&`.** A command holding the lone control operator `&`, last or not
+     (`sleep 30 &`, `nohup x > log 2>&1 &`, `sleep 30 & echo hi`) **MUST** ask, jailed or not, with the reason
+     `background a process with bash background=true`: a child started that way outlives the call
+     and docket cannot supervise it, while `background: true` on the `bash` tool starts it as a
+     governed process. It joins the opaque markers in position (read after them, before the
+     allowlist, the high-risk classes and redirect containment), and a command the lexer cannot
+     read keeps the `could not be parsed` ask. `&&`, `2>&1`, `>&2`, `&>` and an `&` inside quotes
+     are not the operator and keep their verdicts.
    - **Builtins.** `cd`, `pwd`, `true`, `false`, `test`, `[` and `echo` are on `SAFE_BINS` and
      **MUST NOT** force approval merely because they lead a segment, so `cd <path> && git status`
      reads as `cd` (allowed) then `git status` (allowed). `export`, `source`, `.`, `eval` and
@@ -130,7 +138,7 @@ and chain (audit.spec.md).
      resolved to a real backend; a turn without one is refused before it starts, so this is the
      decision `run_bash` acts on). When `jailed`, a binary off `SAFE_BINS` and `extra_bins` is
      allowed instead of asking. Unchanged in both modes: the not-statically-analysable `ask`
-     (command substitution, `eval`, `exec`, unparseable text), every high-risk class, the
+     (command substitution, `eval`, `exec`, a lone `&`, unparseable text), every high-risk class, the
      empty-command `deny`, and redirect containment (an output redirect whose targets do not all
      resolve inside `roots` or name `/dev/null` still asks, for every binary when jailed). Every
      host-side caller (dispatch's `run:` steps, `docket pod check`) leaves `jailed` false. Policies

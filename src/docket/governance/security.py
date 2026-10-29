@@ -18,7 +18,13 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from docket.governance.command_lexer import Segment, cut_quoted_heredocs, split_segments, unwrap
+from docket.governance.command_lexer import (
+    Segment,
+    cut_quoted_heredocs,
+    split_segments,
+    starts_background,
+    unwrap,
+)
 
 # Curated set of common, lower-risk binaries `classify_command` allows
 # unattended. Destructive/sensitive bins (rm, dd, docker, systemctl, ...) and
@@ -186,6 +192,10 @@ def match_high_risk(command: str) -> HighRiskClass | None:
 # real binary is produced at runtime. Their presence forces an approval rather
 # than a guess.
 _OPAQUE_MARKERS: tuple[str, ...] = ("$(", "`", "${", "eval ", "exec ")
+
+# A lone `&` starts a child the call does not wait for; the governed way is the `bash` tool's
+# `background` argument.
+_BACKGROUND_REASON = "background a process with bash background=true"
 
 
 @dataclass(frozen=True)
@@ -359,6 +369,7 @@ def classify_command(
     """Decide whether *command* may run unattended. First match wins: empty
     -> deny; opaque (command substitution/``eval``/``exec``) or
     untokenizable -> ask, since the binary that will run is not knowable; a
+    lone ``&`` -> ask, since the child outlives the call (``bash`` has ``background``); a
     high-risk class matching the full line -> ask, naming it (argument-aware:
     ``git`` is allowlisted, but ``git push origin production`` still asks);
     any segment's binary off ``SAFE_BINS`` (and off *extra_bins*) -> ask,
@@ -418,6 +429,8 @@ def classify_command(
         return CommandVerdict("ask", f"command could not be parsed ({ex})")
     if not segments:
         return CommandVerdict("deny", "no binary found in command")
+    if starts_background(text):
+        return CommandVerdict("ask", _BACKGROUND_REASON)
 
     risk = match_high_risk(full_text)
     if risk is not None:
