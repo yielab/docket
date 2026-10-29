@@ -750,15 +750,12 @@ This specification does NOT cover:
 99. `bash` **MAY** be called with `background: true`: the command **MUST** start in its own session,
     its stdout and stderr **MUST** go to `<log directory>/<pgid>.log`, its pgid **MUST** be
     registered in `ToolContext.processes`, and the call **MUST** return at once with `started
-    pgid=<n> log=<path>`. No timeout applies to it. The log directory is `ToolContext.process_dir`;
-    a context that leaves it unset uses `<cache_dir, else $DOCKET_SCRATCH_DIR from
-    ToolContext.env>/processes`. `DocketDriver` **MUST** set `process_dir` on every turn, whatever
-    the role and whether or not the turn is jailed: `<cache_dir>/processes` when the turn is
-    jailed, else `processes/<agent id>` under the home's `state/cache/`. docket opens the log
-    itself and the command inherits the descriptor, so the log needs no place the jail can see;
-    the model reads it through `process_output` (requirement 100), not by path. With no directory
-    at all (a context built without a home or a driver), and under the docker backend, the call
-    **MUST** be refused with a reason and start nothing. The `process_started` event **MUST**
+    pgid=<n> log=<path>`. No timeout applies to it. The log directory is the same for every role:
+    `<ToolContext.cache_dir>/processes` when the turn is jailed, else `processes/<agent id>` under
+    the home's `state/cache/`. docket opens the log itself and the command inherits the
+    descriptor, so the log needs no place the jail can see; the model reads it through
+    `process_output` (requirement 100), not by path. A context with neither a cache dir nor an
+    agent id, and the docker backend, **MUST** refuse the call with a reason and start nothing. The `process_started` event **MUST**
     carry `background: true`.
 100. `process_output(pgid, offset=0)` (kind `read`) **MUST** answer `alive: true|false` (with
     `exit: <code>` once the process has ended), the `offset` to continue from and the log's text
