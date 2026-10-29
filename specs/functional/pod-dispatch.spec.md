@@ -199,13 +199,16 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    (and the task's `costUsd` recomputed from them), not held in memory until the whole task
    finishes. A crash between hop *N* finishing and hop *N+1* starting therefore loses at most the
    in-flight attempt, never a completed hop.
-2. Every hop-completion persist, and every retry attempt (see "Retries"), **MUST** refresh the
-   task's `claimedAt` timestamp -- both are forward progress, not staleness, and this is what stops
-   a legitimately long-running hop (especially one retrying) from being mistaken for a crashed
-   claim by a *concurrent* dispatcher's stale-claim sweep.
+2. Every hop-completion persist, every retry attempt (see "Retries") and every `started`
+   process event of a turn that serves the task **MUST** refresh the task's `claimedAt` timestamp
+   -- each is forward progress, not staleness, and this is what stops a legitimately long-running
+   hop (especially one retrying, or one running one command after another) from being mistaken
+   for a crashed claim by a *concurrent* dispatcher's stale-claim sweep.
 3. At the top of every `dispatch_pod` call (including one made by a different thread or process
    than the one that claimed a task), any `running` task whose `claimedAt` is older than
-   `CLAIM_STALE_TIMEOUT` (default 1800s, env-overridable) **MUST** be swept to `failed` with
+   `max(CLAIM_STALE_TIMEOUT, lease)` (`CLAIM_STALE_TIMEOUT` defaults to 1800s and is
+   env-overridable; the lease is the pod's `turnTimeoutS` plus `verifyTimeoutS` of requirement 4a,
+   so a pod with a long turn is never swept inside it) **MUST** be swept to `failed` with
    `failureKind: "stale_claim"`, reason `stale claim — dispatcher likely crashed mid-task`, and a
    `stale_claim` trace event (payload: the task and its `claimedAt`), and
    its already-persisted `hops[]` left untouched. This is the presumption that the dispatcher which

@@ -12,7 +12,6 @@ specs/functional/pod-dispatch.spec.md Requirements 3-4.
 
 from __future__ import annotations
 
-import dataclasses
 import json
 from pathlib import Path
 from typing import Any
@@ -20,12 +19,12 @@ from typing import Any
 import pytest
 from tests.support import home as _support_home
 from tests.support.pods import write_meta as _write_meta
+from tests.support.tasks import claims_gone_stale
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.hops.application import executor as _executor
 from docket.hops.application import sweep as _sweep
-from docket.kernel.home import current_home, use_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -648,7 +647,7 @@ class TestReviewerReworkResume:
         assert [h.role for h in tasks[0].hops] == ["lead", "implementer", "reviewer"]
 
         # Force the claim stale, exactly like test_dispatch.py's own crash-recovery tests.
-        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+        with claims_gone_stale():
             resumer = _ReworkRunner(request_changes_count=0)  # approves whenever asked
             results = _sweep.dispatch_pod("myapp", runner=resumer, resume=True)
 
@@ -684,7 +683,7 @@ class TestReviewerReworkResume:
         crasher = _CrashOnSecondImplementerCallRunner()
         with pytest.raises(RuntimeError):
             _sweep.dispatch_pod("myapp", runner=crasher)
-        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=-1)):
+        with claims_gone_stale():
             resumer = _ReworkRunner(request_changes_count=0)
             _sweep.dispatch_pod("myapp", runner=resumer, resume=True)
 

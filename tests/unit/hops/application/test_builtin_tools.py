@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from tests.support import home as _support_home
@@ -18,13 +19,16 @@ from tests.support import pods as _support_pods
 from tests.support.cli import call as _call
 from tests.support.prose import sentence_count
 
+from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.registry import (
     ToolContext,
     dispatch_tool,
 )
 from docket.hops.application import builtin_tools
 from docket.hops.application.builtin_tools import builtin_registry
+from docket.kernel.clock import use_clock
 from docket.kernel.home import current_home, use_home
+from docket.kernel.tool_outcome import ToolOutcome
 
 _isolate_gates = _support_home.isolate_gates
 workspace = _support_pods.workspace_with_files
@@ -51,6 +55,8 @@ class TestRegistry:
             "fetch",
             "glob",
             "grep",
+            "process_output",
+            "process_stop",
             "read",
             "skill",
             "write",
@@ -64,7 +70,7 @@ class TestRegistry:
     def test_without_narrows_the_set(self) -> None:
         readonly = builtin_registry().without("write", "edit", "bash")
         assert "write" not in readonly and "read" in readonly
-        assert len(readonly) == 6
+        assert len(readonly) == 8
 
     def test_a_narrowed_registry_denies_the_removed_tool(self, ctx: ToolContext) -> None:
         readonly = builtin_registry().without("write")
@@ -214,6 +220,134 @@ class TestBashStatesItsRules:
 
         tool = registry.get("bash")
         assert tool is not None and tool.description == "mine"
+
+
+class _FixedClock:
+    """A monotonic clock that reads one value."""
+
+    def __init__(self, monotonic: float) -> None:
+        self._monotonic = monotonic
+
+    def now(self) -> datetime:
+        return datetime.now(UTC)
+
+    def monotonic(self) -> float:
+        return self._monotonic
+
+
+class TestBashRunsWithinTheTurnsClock:
+    """`bash` never runs past the turn's deadline, and says so when the clamp killed it."""
+
+    @staticmethod
+    def _bash(
+        monkeypatch: pytest.MonkeyPatch,
+        workspace: object,
+        *,
+        deadline: float | None,
+        now: float,
+        timeout: int,
+        outcome: ToolOutcome,
+    ) -> tuple[list[int], ToolOutcome]:
+        seen: list[int] = []
+
+        def _record(roots: object, command: str, run_for: int, *rest: object) -> ToolOutcome:
+            seen.append(run_for)
+            return outcome
+
+        monkeypatch.setattr(toolbox, "run_bash", _record)
+        tool = builtin_registry().get("bash")
+        assert tool is not None
+        context = ToolContext(roots=(workspace,), timeout=120, deadline=deadline)  # type: ignore[arg-type]
+        with use_clock(_FixedClock(now)):
+            result = tool.handler({"command": "sleep 900", "timeout": timeout}, context)
+        return seen, result
+
+    def test_a_request_past_the_deadline_runs_for_the_time_left(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: object
+    ) -> None:
+        seen, _ = self._bash(
+            monkeypatch,
+            tmp_path,
+            deadline=1300.0,
+            now=1250.0,
+            timeout=900,
+            outcome=ToolOutcome(True, content="done"),
+        )
+
+        assert seen == [50]
+
+    def test_a_killed_result_carries_the_marker(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: object
+    ) -> None:
+        _, result = self._bash(
+            monkeypatch,
+            tmp_path,
+            deadline=1300.0,
+            now=1250.0,
+            timeout=900,
+            outcome=ToolOutcome(False, error="command timed out after 50s"),
+        )
+
+        assert result.error.endswith(
+            "[killed at the turn's remaining time (50 s); run it as a verify gate or raise "
+            "turnTimeoutS]"
+        )
+
+    def test_a_request_inside_the_time_left_is_not_clamped_or_marked(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: object
+    ) -> None:
+        seen, result = self._bash(
+            monkeypatch,
+            tmp_path,
+            deadline=1300.0,
+            now=1250.0,
+            timeout=20,
+            outcome=ToolOutcome(False, error="command timed out after 20s"),
+        )
+
+        assert seen == [20] and result.error == "command timed out after 20s"
+
+    def test_a_spent_deadline_still_grants_one_second(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: object
+    ) -> None:
+        seen, _ = self._bash(
+            monkeypatch,
+            tmp_path,
+            deadline=1300.0,
+            now=1400.0,
+            timeout=900,
+            outcome=ToolOutcome(True, content="done"),
+        )
+
+        assert seen == [1]
+
+    def test_no_deadline_applies_no_clamp(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: object
+    ) -> None:
+        seen, _ = self._bash(
+            monkeypatch,
+            tmp_path,
+            deadline=None,
+            now=1250.0,
+            timeout=900,
+            outcome=ToolOutcome(True, content="done"),
+        )
+
+        assert seen == [900]
+
+    def test_bash_offers_background_and_the_process_tools_have_a_kind(self) -> None:
+        registry = builtin_registry()
+
+        bash = registry.get("bash")
+        assert bash is not None and bash.parameters["properties"]["background"]["type"] == "boolean"
+        kinds = {name: registry.get(name).kind for name in ("process_output", "process_stop")}  # type: ignore[union-attr]
+        assert kinds == {"process_output": "read", "process_stop": "write"}
+
+    def test_the_timeout_description_names_the_ceiling(self) -> None:
+        tool = builtin_registry().get("bash")
+
+        assert tool is not None
+        assert "remaining time" in tool.parameters["properties"]["timeout"]["description"]
 
 
 class TestCompactDescriptions:

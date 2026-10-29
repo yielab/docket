@@ -449,6 +449,7 @@ class TestSinglePathToExecution:
         "agent/tools/registry.py",
         "hops/application/builtin_tools.py",
         "agent/tools/builtins/toolbox.py",
+        "agent/tools/builtins/background.py",
         "agent/tools/mcp_tools.py",
         "agent/tools/mcp_client.py",
         "platform/fetch.py",

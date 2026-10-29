@@ -12,6 +12,7 @@ that a retrying task never trips the stale-claim sweep.
 from __future__ import annotations
 
 import dataclasses
+import datetime as _dt
 import json
 from pathlib import Path
 from typing import Any
@@ -20,9 +21,11 @@ import pytest
 from tests.support import home as _support_home
 from tests.support.fakes import FakeJail
 from tests.support.pods import build_pod
+from tests.support.tasks import claims_gone_stale, stored_task, update_task
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
+from docket.hops.application import driver_support as _driver_support
 from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _application_runner
 from docket.hops.application import steps as _steps_c
@@ -30,6 +33,7 @@ from docket.hops.application import sweep as _sweep
 from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
+from docket.kernel import clock as _clock
 from docket.kernel.home import current_home, use_home
 from docket.kernel.ports import jail as _jail
 from docket.tasks.application import lifecycle as _lifecycle
@@ -449,23 +453,14 @@ class TestTimeoutResolution:
 class TestRetryDoesNotTripStaleClaimSweep:
     def test_retrying_task_survives_a_concurrent_stale_claim_sweep(self, tmp_path: Path) -> None:
         """Proves `on_retry` refreshes `claimedAt` mid-hop: without it, stacked backoff sleeps
-        and agent-turn timeouts could push time since the *original* claim past
-        CLAIM_STALE_TIMEOUT even though the dispatcher is alive, letting a concurrent
-        `dispatch_pod` call sweep the task out from under a live retry. Verified with real
-        wall-clock timing: the first implementer attempt is made to outlast
-        CLAIM_STALE_TIMEOUT before failing retryably, so only a refreshed `claimedAt` lets the
+        and agent-turn timeouts could push time since the *original* claim past the sweep's
+        floor even though the dispatcher is alive, letting a concurrent `dispatch_pod` call sweep
+        the task out from under a live retry. The first implementer attempt moves the clock
+        past the floor before failing retryably, so only a refreshed `claimedAt` lets the
         second attempt's simulated concurrent sweep leave the task alone."""
         oc_dir = _seed_pod(tmp_path)
         _queue.enqueue_task_once("demo", "Retry me", channel="cli")
-        # Small but real threshold: the deliberate 0.3s sleep below comfortably
-        # exceeds it (proving the *unrefreshed* claim would already be stale),
-        # while the near-instant gap between an on_retry refresh and the very
-        # next line of Python comfortably does not (generous margin for a
-        # loaded CI box — a handful of local filelock read-modify-writes, not
-        # network I/O).
-        with use_home(dataclasses.replace(current_home(), claim_stale_timeout=0.1)):
-            import time as _real_time
-
+        with claims_gone_stale(hours=0) as clock:
             calls = {"implementer": 0}
 
             def _flaky_then_ok(
@@ -480,9 +475,9 @@ class TestRetryDoesNotTripStaleClaimSweep:
                     return _rd.TurnResult(True, "done", 0.0, {})
                 calls["implementer"] += 1
                 if calls["implementer"] == 1:
-                    # This attempt alone already outlasts CLAIM_STALE_TIMEOUT — an
-                    # un-refreshed claimedAt would read as stale from this point on.
-                    _real_time.sleep(0.3)
+                    # This attempt alone outlasts the sweep's floor -- an un-refreshed
+                    # claimedAt would read as stale from this point on.
+                    clock.offset_s += 4 * 3600
                     return _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout")
                 # Second attempt: simulate a concurrent dispatcher's sweep landing
                 # here, immediately after on_retry refreshed claimedAt for the
@@ -505,6 +500,78 @@ class TestRetryDoesNotTripStaleClaimSweep:
                 json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
             ]
             assert not any(e["event_type"] == "stale_claim" for e in events)
+
+
+def _age_claim(project: str, task_id: str, seconds: int) -> None:
+    claimed = _clock.now() - _dt.timedelta(seconds=seconds)
+    update_task(project, task_id, claimed_at=claimed.isoformat())
+
+
+class TestAProcessStartRefreshesTheClaim:
+    def test_a_started_event_moves_claimed_at(self, tmp_path: Path) -> None:
+        """A command the model starts is forward progress, so the claim's clock restarts."""
+        _seed_pod(tmp_path)
+        _queue.enqueue_task_once("demo", "Run a command", channel="cli")
+        claim = _queue.claim_next_task("demo", resume=False)
+        assert claim is not None
+        task_id = claim.record.id
+        _age_claim("demo", task_id, 1000)
+        aged = stored_task("demo", task_id).claimed_at
+
+        on_process = _driver_support._build_on_process("demo", "agent:demo:s", "lead", task_id)
+        on_process("started", {"pgid": 4242})
+
+        assert stored_task("demo", task_id).claimed_at != aged
+        refreshed = _clock.parse_iso(stored_task("demo", task_id).claimed_at or "")
+        assert refreshed is not None and (_clock.now() - refreshed).total_seconds() < 60
+
+    def test_an_exited_event_leaves_the_claim_alone(self, tmp_path: Path) -> None:
+        _seed_pod(tmp_path)
+        _queue.enqueue_task_once("demo", "Run a command", channel="cli")
+        claim = _queue.claim_next_task("demo", resume=False)
+        assert claim is not None
+        task_id = claim.record.id
+        _age_claim("demo", task_id, 1000)
+        aged = stored_task("demo", task_id).claimed_at
+
+        on_process = _driver_support._build_on_process("demo", "agent:demo:s", "lead", task_id)
+        on_process("exited", {"pgid": 4242, "exitCode": 0})
+
+        assert stored_task("demo", task_id).claimed_at == aged
+
+    def test_a_turn_without_a_task_touches_nothing(self, tmp_path: Path) -> None:
+        _seed_pod(tmp_path)
+
+        on_process = _driver_support._build_on_process("demo", "agent:demo:s", "lead", "")
+        on_process("started", {"pgid": 4242})
+
+
+class TestTheSweepWaitsOutTheLease:
+    def test_a_pod_with_a_long_turn_stays_running_inside_its_lease(self, tmp_path: Path) -> None:
+        """`turnTimeoutS: 2400` makes a 1,900 s old claim live, though it is past the 1,800 s floor."""
+        _seed_pod(tmp_path)
+        _write_meta("demo-lead", {"turnTimeoutS": 2400})
+        _queue.enqueue_task_once("demo", "Long turn", channel="cli")
+        claim = _queue.claim_next_task("demo", resume=False)
+        assert claim is not None
+        _age_claim("demo", claim.record.id, 1900)
+
+        _lifecycle.sweep_stale_claims("demo")
+
+        assert stored_task("demo", claim.record.id).status == "running"
+
+    def test_a_claim_past_the_lease_is_still_swept(self, tmp_path: Path) -> None:
+        _seed_pod(tmp_path)
+        _write_meta("demo-lead", {"turnTimeoutS": 2400})
+        _queue.enqueue_task_once("demo", "Long turn", channel="cli")
+        claim = _queue.claim_next_task("demo", resume=False)
+        assert claim is not None
+        _age_claim("demo", claim.record.id, 4000)
+
+        _lifecycle.sweep_stale_claims("demo")
+
+        swept = stored_task("demo", claim.record.id)
+        assert swept.status == "failed" and swept.failure_kind == "stale_claim"
 
 
 # ── regression guard: existing state-machine behaviour is untouched ─────────────

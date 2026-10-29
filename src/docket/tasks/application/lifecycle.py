@@ -82,13 +82,21 @@ def finalize_task(project: str, task_id: str, res: TaskResult) -> None:
     _pod_memory.record_task_memory(project, task_id, res)
 
 
+def _claim_lease_s(project: str) -> int:
+    """The longest a live claim goes without moving: the pod's ``turnTimeoutS`` plus its
+    ``verifyTimeoutS``, each falling back to ``DEFAULT_TIMEOUT``."""
+    return resolve_timeout(None, pod_turn_timeout(project)) + resolve_timeout(
+        None, pod_verify_timeout(project)
+    )
+
+
 def sweep_stale_claims(project: str) -> None:
     """Crash recovery: fail a ``running`` task whose claim has gone stale (older than
-    ``CLAIM_STALE_TIMEOUT``), tagging ``failureKind: "stale_claim"`` and leaving its
+    ``max(CLAIM_STALE_TIMEOUT, lease)``, the lease of ``reclaim_stale_running``), tagging ``failureKind: "stale_claim"`` and leaving its
     persisted ``hops`` untouched for a later ``--resume`` (pod-dispatch.spec.md, "Per-hop
     incremental persistence and crash recovery"). Runs at the top of every ``dispatch_pod`` call."""
     now = _clock.now()
-    timeout = current_home().claim_stale_timeout
+    timeout = max(current_home().claim_stale_timeout, _claim_lease_s(project))
 
     def _sweep(record: TaskRecord) -> bool:
         claimed_at = _clock.parse_iso(record.claimed_at or "")
@@ -139,9 +147,7 @@ def reclaim_stale_running(project: str) -> None:
     claim step that follows picks it up from its last persisted hop; audited ``task.reclaimed``
     and traced as ``stale_claim``, as the timeout sweep does."""
     now = _clock.now()
-    lease_s = resolve_timeout(None, pod_turn_timeout(project)) + resolve_timeout(
-        None, pod_verify_timeout(project)
-    )
+    lease_s = _claim_lease_s(project)
     reasons: dict[str, str] = {}
 
     def _reclaim(record: TaskRecord) -> bool:

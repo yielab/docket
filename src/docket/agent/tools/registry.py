@@ -21,6 +21,7 @@ from docket.agent.ports import ToolCall, ToolCallArgumentsError, ToolSpec, tool_
 
 # ToolOutcome is re-exported: callers outside the chokepoint build one without importing the
 # handler module, which only this module may import.
+from docket.agent.tools.builtins import background
 from docket.agent.tools.builtins.toolbox import SandboxMode
 from docket.kernel.gate import (
     DEFAULT_MAX_CONSULTATIONS,
@@ -60,6 +61,8 @@ class ToolContext:
     trace_session_key: str = ""
     roots: tuple[Path, ...] = ()
     timeout: int = 120
+    # The turn's end in monotonic seconds, set once by `run_agent_turn`; None applies no clamp.
+    deadline: float | None = None
     env: dict[str, str] = field(default_factory=dict)
     role: str = ""
     project: str = ""
@@ -78,6 +81,12 @@ class ToolContext:
     # The operator's read-only jail grants (the toolchain); only a jailed bash reads them.
     read_only: tuple[Path, ...] = ()
     on_process: Callable[[str, dict[str, Any]], None] | None = None
+    # The turn's tool-output cap and `read` window in characters (agent-loop requirement 102);
+    # None keeps the home's cap and `READ_DEFAULT_CHARS`.
+    output_cap: int | None = None
+    read_window: int | None = None
+    # The turn's background `bash` processes by pgid; the driver stops the live ones at turn end.
+    processes: background.Processes = field(default_factory=dict)
     # The assistant text of the message making the current call(s); the agent loop sets it
     # per batch. Raw: ``_approval.screen_rationale`` screens it when an approval is made.
     rationale: str = ""
@@ -281,7 +290,7 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         return result
 
     try:
-        with artifact_scope(ctx.project):
+        with artifact_scope(ctx.project, output_chars=ctx.output_cap, read_chars=ctx.read_window):
             outcome = tool.handler(args, ctx)
     except HandlerParked as ex:
         result.decision = "deny"

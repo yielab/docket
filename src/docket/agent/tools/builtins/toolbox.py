@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,6 +35,7 @@ from docket.kernel.tool_outcome import (
     ToolOutcome,
     artifact_dir,
     bounded_text,
+    read_window_chars,
     text_outcome,
 )
 
@@ -122,7 +124,7 @@ def read_file(roots: tuple[Path, ...], path: str, offset: int = 0, limit: int = 
         for n, line in enumerate(lines[start : start + (limit or READ_DEFAULT_LINES)], start + 1)
     ]
     if not limit:
-        rows = _within_chars(rows, READ_DEFAULT_CHARS)
+        rows = _within_chars(rows, read_window_chars(READ_DEFAULT_CHARS))
     body = "\n".join(rows)
     shown_end = start + len(rows)
     if shown_end < len(lines):
@@ -377,6 +379,98 @@ def _sandbox_tag(sandbox: SandboxMode, availability: SandboxAvailability | None)
     return f"sandbox: none ({', '.join(reasons)})"
 
 
+@dataclass(frozen=True)
+class StartedProcess:
+    """A command that is running: the process, the backend it got, the marker that says so and
+    the container a docker run named."""
+
+    proc: subprocess.Popen[bytes]
+    backend: SandboxBackend
+    tag: str
+    container: str
+
+
+def start_process(
+    roots: tuple[Path, ...],
+    command: str,
+    sandbox: SandboxMode = "off",
+    env: dict[str, str] | None = None,
+    network: bool = True,
+    cache_dir: Path | None = None,
+    read_only: tuple[Path, ...] = (),
+    *,
+    log: Path | None = None,
+) -> StartedProcess | ToolOutcome:
+    """Launch *command* in its own session as *sandbox* asks, or say why it did not run. With *log*
+    it is a background process: stdin closed, output appended to *log*, docker refused (a
+    container outlives a signalled CLI group)."""
+    if not roots:
+        return ToolOutcome(False, error="no working directory configured")
+    cwd = roots[0].resolve()
+
+    availability = _jail.sandbox_availability() if sandbox == "auto" else None
+    backend: SandboxBackend = availability.backend if availability else "none"
+    tag = _sandbox_tag(sandbox, availability)
+    if sandbox == "auto" and backend == "none":
+        return ToolOutcome(False, error=f"not run: no sandbox backend is usable [{tag}]")
+    if log is not None and backend == "docker":
+        return ToolOutcome(
+            False,
+            error="background is not available under the docker backend; run it in the foreground",
+        )
+
+    popen_env: dict[str, str] | None
+    container_name = ""
+    if backend in ("docker", "landlock", "seatbelt"):
+        launch = _jail.jail_launch(
+            roots,
+            command,
+            backend,
+            network=network,
+            env=env,
+            cache_dir=cache_dir,
+            read_only=read_only,
+        )
+        popen_arg: str | list[str] = launch.argv
+        shell = False
+        popen_env = launch.env
+        container_name = launch.container
+    else:
+        popen_arg = command
+        shell = True
+        popen_env = _jail.task_environment(env)
+
+    try:
+        if log is None:
+            proc = subprocess.Popen(
+                popen_arg,
+                shell=shell,
+                cwd=str(cwd),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=popen_env,
+                start_new_session=True,
+            )
+        else:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with log.open("ab") as sink:
+                proc = subprocess.Popen(
+                    popen_arg,
+                    shell=shell,
+                    cwd=str(cwd),
+                    stdin=subprocess.DEVNULL,
+                    stdout=sink,
+                    stderr=subprocess.STDOUT,
+                    env=popen_env,
+                    start_new_session=True,
+                )
+    except OSError as ex:
+        if backend != "none":
+            return ToolOutcome(False, error=f"sandbox ({backend}) failed to start: {ex}")
+        return ToolOutcome(False, error=f"cannot start command: {ex}")
+    return StartedProcess(proc, backend, tag, container_name)
+
+
 def run_bash(
     roots: tuple[Path, ...],
     command: str,
@@ -419,54 +513,18 @@ def run_bash(
     (timeout or cancellation). Left ``None``, behaviour is unchanged, byte for byte -- no
     callback is ever invoked. See specs/functional/trace-store.spec.md "Process lifecycle
     events"."""
-    if not roots:
-        return ToolOutcome(False, error="no working directory configured")
-    cwd = roots[0].resolve()
-
-    availability = _jail.sandbox_availability() if sandbox == "auto" else None
-    backend: SandboxBackend = availability.backend if availability else "none"
-    tag = _sandbox_tag(sandbox, availability)
-    if sandbox == "auto" and backend == "none":
-        return ToolOutcome(False, error=f"not run: no sandbox backend is usable [{tag}]")
-
-    popen_env: dict[str, str] | None
-    container_name = ""
-    if backend in ("docker", "landlock", "seatbelt"):
-        launch = _jail.jail_launch(
-            roots,
-            command,
-            backend,
-            network=network,
-            env=env,
-            cache_dir=cache_dir,
-            read_only=read_only,
-        )
-        popen_arg: str | list[str] = launch.argv
-        shell = False
-        popen_env = launch.env
-        container_name = launch.container
-    else:
-        popen_arg = command
-        shell = True
-        popen_env = _jail.task_environment(env)
-
-    try:
-        proc = subprocess.Popen(
-            popen_arg,
-            shell=shell,
-            cwd=str(cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=popen_env,
-            start_new_session=True,
-        )
-    except OSError as ex:
-        if backend != "none":
-            return ToolOutcome(False, error=f"sandbox ({backend}) failed to start: {ex}")
-        return ToolOutcome(False, error=f"cannot start command: {ex}")
+    started = start_process(roots, command, sandbox, env, network, cache_dir, read_only)
+    if isinstance(started, ToolOutcome):
+        return started
+    proc, backend, tag, container_name = (
+        started.proc,
+        started.backend,
+        started.tag,
+        started.container,
+    )
 
     # `start_new_session=True` makes this child the leader of a brand-new session, so its
-    # pid doubles as its own process group id -- the same identity `_kill_group` and
+    # pid doubles as its own process group id -- the same identity `kill_group` and
     # `tasks.application.runs.add_hop_pid` already rely on, with no extra syscall to confirm it.
     pgid = proc.pid
     if on_process is not None:
@@ -483,7 +541,7 @@ def run_bash(
             except subprocess.TimeoutExpired:
                 if backend == "docker":
                     _jail.docker_kill(container_name)
-                _kill_group(proc)
+                kill_group(proc)
                 exit_payload["signal"] = "SIGKILL"
                 message = f"command timed out after {timeout}s"
                 return ToolOutcome(False, error=f"{message} [{tag}]" if tag else message)
@@ -492,7 +550,7 @@ def run_bash(
             if timed_out or was_cancelled:
                 if backend == "docker":
                     _jail.docker_kill(container_name)
-                _kill_group(proc)
+                kill_group(proc)
                 exit_payload["signal"] = "SIGKILL"
                 message = (
                     "cancelled before completion"
@@ -607,11 +665,11 @@ def _settle_unreadable(
         return
     if container_name:
         _jail.docker_kill(container_name)
-    _kill_group(proc)
+    kill_group(proc)
     exit_payload["signal"] = "SIGKILL"
 
 
-def _kill_group(proc: subprocess.Popen[bytes]) -> None:
+def kill_group(proc: subprocess.Popen[bytes]) -> None:
     """Kill a timed-out command's whole process group, then reap it.
 
     Holds under every in-process sandbox backend: the jailed process stays in the same process
@@ -623,6 +681,6 @@ def _kill_group(proc: subprocess.Popen[bytes]) -> None:
     import signal
 
     with contextlib.suppress(OSError, ProcessLookupError):
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        os.killpg(proc.pid, signal.SIGKILL)
     with contextlib.suppress(subprocess.SubprocessError, OSError, ValueError):
         proc.communicate(timeout=5)
