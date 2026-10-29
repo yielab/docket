@@ -100,7 +100,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Audit | 3.2.0 | Implemented |
 | Config Format | 2.5.0 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
-| Model Profiles | 6.2.0 | Complete |
+| Model Profiles | 6.3.0 | Complete |
 | Observability Export | 3.0.0 | Implemented and live |
 | Pipeline Format | 4.3.0 | Implemented |
 | Pod Blueprints | 2.4.0 | Implemented |
