@@ -100,12 +100,13 @@ from `main`.
 > last. Nothing above `models/adapters/` changes: the turn, the tools, the gates and `ModelProfile`
 > talk to the `ChatBackend` port (`agent/ports.py`) and never see a wire shape.
 
-**Integrator, before the spawn (one Haiku call, about 9k tokens, on the maintainer's go):** record
-three real `/v1/messages` bodies under `tests/fixtures/anthropic-messages/`: a `tool_use` response, an
-`end_turn` text response whose `usage` carries `cache_read_input_tokens`, and an error body (a 400
-from an unknown model). Drop `id` values only if the worker's test would pin them. The scratchpad
-probe (`cache_probe.py`) is the starting point; never print the key. These fixtures are what the
-decoder is tested against, so no decode test invents a body.
+**Integrator, before the spawn (two Haiku calls and one refused, about 9k tokens):** **done 2026-10-29**,
+recorded under `tests/fixtures/anthropic-messages/`, byte for byte as returned: `tool-use.json` (one
+`bash` call, `input {"command": "ls"}`; the block also carries `caller`, which the encoder never sends
+back), `end-turn-cached.json` (the next step of the same conversation: `input_tokens` 6,
+`cache_creation_input_tokens` 69, `cache_read_input_tokens` 8986) and `error-unknown-model.json`
+(HTTP **404** `not_found_error`, not a 400). The status code is not in the body, so the test states it.
+These fixtures are what the decoder is tested against, so no decode test invents a body.
 
 **Wave 1** (parallel; merge P54-1 first, then P54-2):
 
