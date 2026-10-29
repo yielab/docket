@@ -219,7 +219,8 @@ directly — see "Provider catalog" below.
    upper-cased, `-` as `_`), else that name in the central key store.
 4. `DOCKET_LLM_BASE_URL` remains a process-wide override for tests and local development. It
    **MUST** take endpoint precedence over the catalog (the catalog entry's auth type, extra
-   headers and limits do not apply) and **MUST NOT** inherit registered context/output limits from
+   headers, limits and dialect do not apply: the override is an OpenAI-compatible endpoint, spoken
+   to as `openai-chat`) and **MUST NOT** inherit registered context/output limits from
    the endpoint it replaces. Otherwise, an exact registered model row **MUST** retain those limits.
 5. Default tests **MUST** cover both hosted gateways together from public configuration semantics
    without network or real credentials. A live gateway canary is opt-in and **MUST** have an

@@ -206,7 +206,7 @@ class ProviderSpec(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str
-    dialect: Literal["openai-chat"] = "openai-chat"
+    dialect: Literal["openai-chat", "anthropic-messages"] = "openai-chat"
     base_url: str = Field(alias="baseUrl")
     auth: AuthSpec
     local: bool = False

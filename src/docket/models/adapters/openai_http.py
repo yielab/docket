@@ -1,16 +1,17 @@
-"""OpenAI-compatible chat-completions adapter.
+"""The chat client: one transport over two wires, OpenAI-compatible chat completions and Anthropic Messages.
 
-The one shipped implementation of ``agent/ports.py``'s ``ChatBackend`` port, and
-the **only** module in docket that knows what a chat-completions request or
-response looks like on the wire. Everything above it — the turn loop, the tool
+The one shipped implementation of ``agent/ports.py``'s ``ChatBackend`` port. With
+``openai_wire.py`` and ``anthropic_wire.py`` it is the **only** code in docket that knows what a
+chat request or response looks like on the wire; the provider's ``dialect`` picks the wire
+(``_DIALECTS``) and everything else here is one copy. Everything above it — the turn loop, the tool
 dispatcher, the gates — speaks ``ChatMessage``/``ToolCall``/``ChatResponse``.
 
 **Zero new dependencies, on purpose.** The protocol is an HTTP POST with a JSON
 body; stdlib ``urllib`` covers it. Pulling in a vendor SDK to do that would
 re-introduce exactly the coupling docket deliberately avoids, and the standing
 ban on hand-rolled *per-vendor* clients is not in tension with this: there is
-one client here for one open protocol, not one per provider. llama.cpp, vLLM,
-LM Studio, OpenAI, Groq, Together and OpenRouter all speak it.
+one client here, with one wire per protocol, not one per provider. llama.cpp, vLLM,
+LM Studio, OpenAI, Groq, Together and OpenRouter speak the first; Anthropic's own API the second.
 
 **What this module refuses to do:** decide anything. It does not retry (that
 policy lives in ``hops/application/runner.py``, keyed on ``FailureKind``), does not
@@ -24,44 +25,70 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
-from dataclasses import replace
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from docket.agent import ports as _ports
 from docket.agent.ports import ChatMessage, ChatResponse, Endpoint, ModelLimits, ToolSpec
 from docket.kernel import clock as _clock
-from docket.models.adapters.openai_wire import (
-    _classify_http_status,
-    _retry_after_seconds,
-    build_payload,
-    decode_response,
-    request_part_bytes,
-)
+from docket.models.adapters import anthropic_wire as _anthropic_wire
+from docket.models.adapters import openai_wire as _openai_wire
+from docket.models.adapters.openai_wire import _classify_http_status, _retry_after_seconds
 from docket.platform import open_same_origin
 
 if TYPE_CHECKING:
     pass
-from docket.models import catalog as _prov
-from docket.models.application.endpoint import resolve_endpoint
+from docket.models.application.endpoint import resolve_dialect, resolve_endpoint
 from docket.models.application.probe import ProbeResult
 
 _PROTOCOL_OVERHEAD_TOKENS = 16
 
 
+@dataclass(frozen=True)
+class _Wire:
+    """What a dialect decides: the request path, the request body, the reply decoding, the
+    per-part request sizes, and why a request cannot be sent at all (``None`` when it can)."""
+
+    path: str
+    build_payload: Callable[..., dict[str, Any]]
+    decode_response: Callable[[dict[str, Any]], ChatResponse]
+    request_part_bytes: Callable[[dict[str, Any]], dict[str, int]]
+    request_problem: Callable[[Endpoint, int | None], str | None]
+
+
+_DIALECTS: dict[str, _Wire] = {
+    "openai-chat": _Wire(
+        "/chat/completions",
+        _openai_wire.build_payload,
+        _openai_wire.decode_response,
+        _openai_wire.request_part_bytes,
+        lambda endpoint, max_tokens: None,
+    ),
+    "anthropic-messages": _Wire(
+        "/messages",
+        _anthropic_wire.build_payload,
+        _anthropic_wire.decode_response,
+        _anthropic_wire.request_part_bytes,
+        _anthropic_wire.request_problem,
+    ),
+}
+
+
 class OpenAIChatClient:
-    """``ChatBackend`` over an OpenAI-compatible ``/v1/chat/completions``.
+    """``ChatBackend`` over a provider's chat endpoint, in the wire its ``dialect`` names.
 
     Stateless apart from its ``Endpoint`` — safe to construct per call or hold
     for the life of a loop.
     """
 
-    def __init__(self, endpoint: Endpoint) -> None:
+    def __init__(self, endpoint: Endpoint, dialect: str = "openai-chat") -> None:
         self.endpoint = endpoint
+        self._wire = _DIALECTS[dialect]
 
     @property
     def url(self) -> str:
-        return f"{self.endpoint.base_url.rstrip('/')}/chat/completions"
+        return f"{self.endpoint.base_url.rstrip('/')}{self._wire.path}"
 
     @property
     def context_window_tokens(self) -> int | None:
@@ -86,7 +113,7 @@ class OpenAIChatClient:
         result remains the documented bytes-per-token estimate, never measured
         model usage.
         """
-        payload = build_payload(self.endpoint, messages, tools, max_tokens, temperature)
+        payload = self._wire.build_payload(self.endpoint, messages, tools, max_tokens, temperature)
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return max(1, _ports.estimate_tokens(encoded)) + _PROTOCOL_OVERHEAD_TOKENS
 
@@ -125,7 +152,17 @@ class OpenAIChatClient:
                 provider=self.endpoint.provider,
                 latency_ms=_elapsed_ms(),
             )
-        payload = build_payload(
+        problem = self._wire.request_problem(self.endpoint, max_tokens)
+        if problem:
+            return ChatResponse(
+                ok=False,
+                error=problem,
+                failure_kind="nonzero_exit",
+                model=self.endpoint.model_id,
+                provider=self.endpoint.provider,
+                latency_ms=_elapsed_ms(),
+            )
+        payload = self._wire.build_payload(
             self.endpoint, messages, tools, max_tokens, temperature, top_p, tool_choice
         )
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8", errors="replace")
@@ -216,11 +253,11 @@ class OpenAIChatClient:
                 latency_ms=_elapsed_ms(),
             )
         return replace(
-            decode_response(data),
+            self._wire.decode_response(data),
             model=self.endpoint.model_id,
             provider=self.endpoint.provider,
             latency_ms=_elapsed_ms(),
-            request_bytes=request_part_bytes(payload),
+            request_bytes=self._wire.request_part_bytes(payload),
         )
 
 
@@ -322,15 +359,11 @@ def probe_models(endpoint: Endpoint, timeout: float = 5.0) -> ProbeResult:
     )
 
 
-_DIALECTS: dict[str, type[OpenAIChatClient]] = {"openai-chat": OpenAIChatClient}
-
-
 def client_for_endpoint(
     endpoint: Endpoint, dialect: str = "openai-chat"
 ) -> OpenAIChatClient | None:
     """A client for an already-resolved *endpoint*, or ``None`` when *dialect* has no adapter."""
-    client_cls = _DIALECTS.get(dialect)
-    return client_cls(endpoint) if client_cls else None
+    return OpenAIChatClient(endpoint, dialect) if dialect in _DIALECTS else None
 
 
 def client_for(model: str) -> OpenAIChatClient | None:
@@ -339,9 +372,4 @@ def client_for(model: str) -> OpenAIChatClient | None:
     endpoint = resolve_endpoint(model)
     if endpoint is None:
         return None
-    dialect = "openai-chat"
-    if endpoint.provider:
-        spec = _prov.load_catalog().get(endpoint.provider)
-        if spec is not None:
-            dialect = spec.dialect
-    return client_for_endpoint(endpoint, dialect)
+    return client_for_endpoint(endpoint, resolve_dialect(model))

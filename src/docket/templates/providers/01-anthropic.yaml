@@ -1,9 +1,10 @@
 kind: provider
 name: anthropic
-dialect: openai-chat
+dialect: anthropic-messages
 baseUrl: https://api.anthropic.com/v1
 auth:
-  type: bearer
+  type: header
+  header: x-api-key
   credentials: [ANTHROPIC_API_KEY]
 credentialPrefix: sk-ant-
 headers:
@@ -24,6 +25,6 @@ presets:
   - name: anthropic
     ranks: {economy: claude-haiku-4-5, standard: claude-sonnet-4-6, premium: claude-opus-4-6}
     note: >-
-      Anthropic's OpenAI-compatibility layer. Anthropic documents it as intended to test and
-      compare models, not as a production solution: no prompt caching, `strict` ignored,
-      system messages concatenated. For Claude with caching, a native dialect is a deferred item.
+      Anthropic's native Messages API, with prompt caching on the system prompt and the latest
+      message. A model with no known output cap fails the call and names the fix:
+      `docket setup provider add anthropic --model <id> --max-tokens N`.
