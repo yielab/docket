@@ -395,6 +395,16 @@ class TestTaskRecord:
         assert _dump(_task.TaskRecord(description="x", autonomy="L4"))["autonomy"] == "L4"
         assert "autonomy" not in _dump(_task.TaskRecord(description="x"))
 
+    def test_a_structured_task_is_stored_as_sent_and_absent_when_unset(self) -> None:
+        sent = {"objective": "add a flag", "doneWhen": "tests pass", "paths": ["src/app/"]}
+        record = _task.TaskRecord.model_validate({"description": "x", "task": sent})
+        assert _dump(record)["task"] == sent
+        assert "task" not in _dump(_task.TaskRecord(description="x"))
+
+    def test_a_structured_task_with_an_unknown_key_is_refused_naming_it(self) -> None:
+        with pytest.raises(ValidationError, match="bogus"):
+            _task.TaskRecord.model_validate({"description": "x", "task": {"bogus": 1}})
+
     def test_a_transition_drop_leaves_no_key_behind(self) -> None:
         record = _task.TaskRecord(
             description="x", failure_kind="gate_failed", check_changed=["a"], claim_pid=4

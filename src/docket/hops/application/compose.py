@@ -29,6 +29,7 @@ from docket.tasks.application.record import (
     trace_locked,
 )
 from docket.tasks.domain.parts import Answer
+from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
 from docket.teams import model_selection as _models
@@ -215,18 +216,45 @@ def _brief_text(prior: list[HopResult]) -> str | None:
     return " ".join([*parts, *brief.assumptions, *brief.resources])
 
 
+def _request_lines(request: TaskRequest) -> str:
+    """The structured request as labelled lines in one fixed order; only the fields set."""
+    lines: list[str] = []
+    for label, value in (
+        ("Objective", request.objective),
+        ("Done when", request.done_when),
+        ("Acceptance", request.acceptance),
+        ("Constraints", request.constraints),
+        ("Risk", request.risk),
+        ("Answers", [_json.dumps(a, sort_keys=True) for a in request.answers or []] or None),
+        ("Verify", request.verify),
+        ("Kind", request.kind),
+        ("Paths", request.paths),
+    ):
+        if isinstance(value, list):
+            lines.append(f"{label}:\n" + "\n".join(f"- {item}" for item in value))
+        elif value is not None:
+            lines.append(f"{label}: {value}")
+    return "\n".join(lines)
+
+
 def _task_section(task: TaskRecord, desc: str, root: str, prior: list[HopResult]) -> str:
-    """The ``## Task`` section: the description and a map bounded by the Lead's brief (capped
-    before there is one). Only the description, the brief and the base commit feed it."""
+    """The ``## Task`` section: the description, the structured request when the task has one,
+    and a map bounded by the Lead's brief and the request's paths (capped when neither exists).
+    Only the description, the request, the brief and the base commit feed it."""
+    request = task.task
     brief_text = _brief_text(prior)
+    paths = " ".join(request.paths or []) if request is not None else ""
     if not root:
         repo_map = ""
-    elif brief_text is None:
+    elif brief_text is None and not paths:
         repo_map = _repo_map.capped_map(root)
     else:
         base = task.worktree.base_commit if task.worktree is not None else ""
-        repo_map = _repo_map.bounded_map(root, base, brief_text)
-    return "\n\n".join(p for p in (f"## Task\n{desc}", repo_map) if p)
+        repo_map = _repo_map.bounded_map(root, base, f"{brief_text or ''} {paths}")
+    head = f"## Task\n{desc}"
+    if request is not None and (lines := _request_lines(request)):
+        head = f"{head}\n\n{lines}"
+    return "\n\n".join(p for p in (head, repo_map) if p)
 
 
 def _hop_message(
