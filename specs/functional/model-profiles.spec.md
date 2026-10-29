@@ -419,9 +419,11 @@ directly — see "Provider catalog" below.
    the name the caller gives; the adapter **MUST NOT** name any tool itself.
 7. `toolSurface` is declared and resolved here; `DocketDriver` hands it to the turn
    (`LoopConfig.tool_surface`) and `registry_for_role` applies it (`agent-loop.spec.md`, "Tools and
-   calls per hop"): `minimal` offers `bash`, `read`, `edit`, `write`, `verify` and the step's closing tool (a role
-   denied `edit` and `write`, as the Reviewer and the Tester are, loses them to the denial), `full`
-   offers every tool. A jailed Implementer's `minimal` request carries about 3,400 bytes of tool
+   calls per hop"): `minimal` offers `bash`, `read`, `glob`, `edit`, `write`, `verify` and the step's closing tool (a
+   role denied `edit` and `write`, as the Reviewer and the Tester are, loses them to the denial; `glob`
+   stays because the repository map names directories and counts, not files, so a role with only
+   `read` guesses file names), `full`
+   offers every tool. A jailed Implementer's `minimal` request carries about 3,800 bytes of tool
    schemas against 6,200 under `full`; without `edit` and `write` a small model wrote its files
    through `bash` redirects. The budgets are resolved here too, on the profile as `budgets` (`read_window_chars`,
    `tool_output_chars`): each declared share becomes `floor(context_window_tokens * share *

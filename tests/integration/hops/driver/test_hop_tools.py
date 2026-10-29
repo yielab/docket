@@ -31,9 +31,9 @@ from docket.models.adapters.openai_wire import request_part_bytes
 SUBJECT = "docket.hops.application.driver"
 
 VALUES = json.dumps({"values": ["APPROVE", "REQUEST-CHANGES"], "caseSensitive": False})
-# A bound on the tool schemas a small local model is sent for an implementer hop: measured 3,376
-# bytes with bash, read, edit, write, verify and handoff, against 6,240 under the full surface.
-LOCAL_TOOLS_CEILING = 3500
+# A bound on the tool schemas a small local model is sent for an implementer hop: measured 3,764
+# bytes with bash, read, glob, edit, write, verify and handoff, against 6,240 under the full surface.
+LOCAL_TOOLS_CEILING = 4000
 
 
 def _run(role: str, workspace: Path, env: dict[str, str] | None = None) -> TurnResult:
@@ -76,7 +76,7 @@ class TestSurface:
         _run("implementer", workspace, _implementer_env(workspace))
 
         request = server.requests[0]
-        assert _names(request) == {"bash", "read", "edit", "write", "verify", "handoff"}
+        assert _names(request) == {"bash", "read", "glob", "edit", "write", "verify", "handoff"}
         assert request_part_bytes(request.body)["tools"] < LOCAL_TOOLS_CEILING
 
     def test_a_hosted_row_offers_the_implementer_every_tool_it_may_hold(

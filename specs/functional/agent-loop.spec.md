@@ -783,7 +783,7 @@ This specification does NOT cover:
     coordinates. `registry_for_role` decides what the hop sees from them once, in the order the
     surface, the allow-list, the role's and the pod's denials (`role-archetypes.spec.md`, "Tools
     and calls per hop"); the loop and the driver **MUST NOT** narrow tools another way. Under a
-    `minimal` surface the request offers only `bash`, `read`, `edit`, `write`, `verify` and the tool that closes
+    `minimal` surface the request offers only `bash`, `read`, `glob`, `edit`, `write`, `verify` and the tool that closes
     the step (`handoff`), where each is registered; a `hosted` row declares `full`, which leaves
     the request byte-identical to a profile-less one.
 104. `DocketDriver` **MUST** set `LoopConfig.max_tool_calls` from the hop's step `maxToolCalls`

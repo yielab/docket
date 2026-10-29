@@ -72,9 +72,9 @@ def _pod_denied_tools(project: str) -> tuple[str, ...]:
         return ()
 
 
-# What the `minimal` surface keeps: the tools a small model needs to read, change, run and check. A tool
+# What the `minimal` surface keeps: the tools a small model needs to find, read, change, run and check. A tool
 # that ends the turn (the step's closing tool) is kept by what it does, not by a name given here.
-MINIMAL_SURFACE = ("bash", "read", "edit", "write", "verify")
+MINIMAL_SURFACE = ("bash", "read", "glob", "edit", "write", "verify")
 
 # Tools that only serve another: a role denied the key is not offered them either.
 SERVED_TOOLS: dict[str, tuple[str, ...]] = {"bash": ("process_output", "process_stop")}
