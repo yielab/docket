@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 **Status**: Implemented
 **Last Updated**: 2026-10-28
 
@@ -272,6 +272,28 @@ This specification does NOT cover:
 6. Substitution **MUST** be strict (`prompts.substitute`): a variable the caller does not supply
    raises `PromptError`, never a literal `${typo}`. `role_schema.render` is this function with its
    error mapped to `ArchetypeError`.
+7. A prompt **MAY** exist once per `modelClass`. A variant is a file `<name>.<class>.md` (or
+   `<name>.<class>@<version>.md`) whose front matter declares `modelClass: <class>`; the file name
+   is a convention and the front matter decides. `resolve_prompt` takes the resolved model's class
+   (`cheap`, `strong` or none) and, in each scope in order, **MUST** prefer a file declaring that
+   class over a file declaring `any`, whatever their versions; a file declaring another class is
+   never offered. With no class, only `any` files are offered, so a document that declares no
+   `modelClass` resolves exactly as before. The class of a model is `cheap` for the `economy` rank
+   anchor, `strong` for the `standard` and `premium` anchors and none for any other model
+   (`model_selection.model_class_of`): a class is never guessed from a model id. A repository
+   scope offers `<name>.<class>.md` before `<name>.md` at the base commit.
+8. A prompt's `tests` file is YAML, `cases:` a non-empty list of `{name?, input, assert}`: `input`
+   is the user message, and `assert` is a non-empty list of one-key mappings drawn from exactly:
+   `contains: <text>` (the reply text includes it), `matchesSchema: <mapping>` (the reply text is a
+   JSON document that satisfies the mapping, a JSON Schema subset: `type`, `properties`,
+   `required`, `items`, `enum`), `calledHandoff: <bool>` (whether the reply's tool calls include
+   one named `handoff`) and `underTokens: <int>` (the reply's output tokens as the endpoint
+   reported them, the reply text's estimate when it reported none, are below the number). Any other
+   key is refused naming the file and the case. `docket pod test` sends each case as one exchange:
+   the prompt's text as the system message, `input` as the user message, and, when the prompt
+   declares `output: handoff/v1`, a `handoff` tool with no required parameter. The tests file is
+   never written by a test run, and the result is `pass` only when every assertion of every case
+   holds.
 
 ### Scopes, references and the lockfile
 
@@ -449,6 +471,7 @@ ok .docket/roles/custom.yaml (role custom)
 - `src/docket/teams/apply/plan.py`: the pod manifest key set (`_MANIFEST_KEYS`), `export_pod` and
   its schema headers and `.schemas/` copy, `plan_apply`, `repo_config_dir`
 - `src/docket/teams/roles.py`: `load_role_file`, `from_wire`
+- `src/docket/teams/prompt_tests.py`: `load_cases`, `run_cases`, `PromptCase`, `Assertion`
 - `src/docket/teams/prompts.py`: `load_prompt_file`, `parse_prompt`, `PromptDocument`, `PromptError`,
   `LoadedPrompt`, `shipped_prompt`, `role_prompt`, `substitute`, `OUTPUT_SCHEMAS`; the shipped prompts are
   `src/docket/templates/prompts/`

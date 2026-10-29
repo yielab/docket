@@ -12,6 +12,7 @@ MODEL_CLASSES: frozenset[str] = frozenset({"cheap", "strong"})
 GATE_KINDS: frozenset[str] = frozenset({"none", "verdict", "mechanical", "approval"})
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+_FLOOR_RE = re.compile(r"^(identity|task|hop)/[a-z][a-z0-9-]*$")
 
 
 class ArchetypeError(InvalidInput):
@@ -79,6 +80,9 @@ class RoleArchetype:
     # default) means "no declared instruction", not "no instruction at all":
     # a gated role still gets one generated from `gate_contract`.
     hop_instruction: str = ""
+    # Prompts (`<layer>/<name>`) whose tests a model must not fail to run this role
+    # (model-profiles.spec.md, "Prompt variants and the floor"). Empty means no floor.
+    floor: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.name or not _NAME_RE.match(self.name):
@@ -107,6 +111,12 @@ class RoleArchetype:
             or self.token_budget <= 0
         ):
             raise ArchetypeError(f"archetype {self.name!r}: tokenBudget must be a positive integer")
+        for ref in self.floor:
+            if not _FLOOR_RE.match(ref):
+                raise ArchetypeError(
+                    f"archetype {self.name!r}: floor entry {ref!r} must be <layer>/<name> "
+                    "with layer identity, task or hop"
+                )
 
     def to_wire(self) -> dict[str, Any]:
         """Serialize to the camelCase wire format (`docket pod roles`, overlay persistence)."""
@@ -127,6 +137,8 @@ class RoleArchetype:
             doc["deniedTools"] = list(self.denied_tools)
         if self.hop_instruction:
             doc["hopInstruction"] = self.hop_instruction
+        if self.floor:
+            doc["floor"] = list(self.floor)
         return doc
 
 
@@ -182,6 +194,7 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         token_budget=token_budget,
         denied_tools=tuple(str(t) for t in doc.get("deniedTools", [])),
         hop_instruction=str(doc.get("hopInstruction", "")),
+        floor=tuple(str(ref) for ref in doc.get("floor", [])),
     )
 
 

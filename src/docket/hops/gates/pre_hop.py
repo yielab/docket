@@ -156,6 +156,14 @@ def _hop_model(node: _orch.PlannedUnit, member_id: str) -> str:
     return str(_fleet.meta_get(member_id, "model", "") or current_home().default_model)
 
 
+def _refuse_failed_floor(project: str, role: str, model: str) -> None:
+    """Refuse the hop (a ``DispatchError``, so the task settles ``dispatch_refused``) when *role*
+    declares a floor that *model* failed; there is no fallback model."""
+    reason = _models_policy.floor_refusal(role, project, model)
+    if reason is not None:
+        raise DispatchError(reason)
+
+
 def _unpriced(model: str) -> bool:
     """A model the budget estimate cannot price; a local provider costs nothing, so never."""
     provider = model.split("/", 1)[0]

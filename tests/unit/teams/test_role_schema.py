@@ -293,3 +293,22 @@ class TestNormalizeRole:
 
         with pytest.raises(ArchetypeError):
             normalize_role(short, tmp_path)
+
+
+class TestFloor:
+    def test_a_floor_round_trips_the_wire_and_the_short_form(self, tmp_path: Path) -> None:
+        arch = _archetype(GateContract(kind="none"))
+        arch = RoleArchetype(**{**arch.__dict__, "floor": ("hop/reviewer",)})
+
+        assert from_wire("custom-role", arch.to_wire()).floor == ("hop/reviewer",)
+        assert "floor" not in _archetype(GateContract(kind="none")).to_wire()
+        (tmp_path / "r.md").write_text("You are a role.\n")
+        short = {"name": "r", "model": "cheap", "instructions": "r.md", "floor": ["hop/reviewer"]}
+        assert normalize_role(short, tmp_path)["floor"] == ["hop/reviewer"]
+
+    @pytest.mark.parametrize("entry", ["reviewer", "hop/", "tools/reviewer", "hop/Reviewer"])
+    def test_an_entry_that_is_not_a_layer_and_name_is_refused(self, entry: str) -> None:
+        arch = _archetype(GateContract(kind="none"))
+
+        with pytest.raises(ArchetypeError, match="floor entry"):
+            RoleArchetype(**{**arch.__dict__, "floor": (entry,)})
