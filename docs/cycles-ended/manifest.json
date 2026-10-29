@@ -846,5 +846,21 @@
     "heading": "◇ PHASE 51 — closed 2026-10-25 — one escalation: ask, resolve, decide (D-72, ADR 0032)",
     "bytes": 36805,
     "sha256": "193602b6c8e40435e6844804e7c641a4bfa5021a457b9b19b86fbc92310cef00"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 52 ACTIVE — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033); the turn owns its processes and its time (D-74, ADR 0034)",
+    "bytes": 51673,
+    "sha256": "850f61129855935eeb4d07be6c8d9f25ba005650c06d15e4e461db52309b309c"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 53 ACTIVE — prompts are versioned configuration, and the harness is one a small model can use (D-75, ADR 0035)",
+    "bytes": 32687,
+    "sha256": "8d271da9f308fcd1c4d525e3e182aa70d2657ab71ae424c5fc742d484e4e613e"
   }
 ]

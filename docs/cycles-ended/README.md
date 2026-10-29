@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (78 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (80 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
@@ -133,6 +133,8 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | ◆ CLOSED — Phase 44: context in layers and a budget that counts new tokens (D-64, ADR 0028) | `todo-waves.md` | 21,773 |
 | ◇ WAVE 120 — the defects the specs truth pass found (before P46-6; stages 1-3 above) | `todo-waves.md` | 33,069 |
 | 6. Decisions (D-1…D-66) | `roadmap-decisions.md` | 61,528 |
+| ▶ PHASE 52 ACTIVE — the harness adapts to the model by data, and pays for context once (D-73, ADR 0033); the turn owns its processes and its time (D-74, ADR 0034) | `todo-waves.md` | 51,673 |
+| ▶ PHASE 53 ACTIVE — prompts are versioned configuration, and the harness is one a small model can use (D-75, ADR 0035) | `todo-waves.md` | 32,687 |
 <!-- archive-index:end -->
 
 ## Handoffs
