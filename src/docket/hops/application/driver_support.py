@@ -3,6 +3,7 @@ policy scope, loop config and the trace callback. Moved out of ``driver.py`` unc
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -11,6 +12,8 @@ from typing import Any, Literal
 
 from docket.agent import loop as _loop
 from docket.agent.ports import (
+    DOCKET_HOP_MAX_TOOL_CALLS,
+    DOCKET_HOP_TOOLS,
     DOCKET_TASK_DENIED_TOOLS,
     DOCKET_TASK_NETWORK,
     DOCKET_TASK_POLICIES,
@@ -36,6 +39,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import roles as _archetypes
 from docket.teams.models import AgentMeta
 from docket.teams.roles import BUILTIN_TOOL_KINDS
 from docket.teams.workspace import repo_view as _repo_view
@@ -252,18 +256,50 @@ def _task_scope(registry: ToolRegistry, tool_env: dict[str, str]) -> AbstractCon
     return _policy.task_policies(_task_policy_documents(registry, denied_raw, policies_raw))
 
 
+def _hop_tool_allow(raw: str | None) -> tuple[str, ...] | None:
+    """The step's allow-list from its coordinate, ``None`` when it set none or the value is not a
+    non-empty JSON list of names (a malformed value never raises here)."""
+    try:
+        names = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    if not isinstance(names, list) or not names:
+        return None
+    return tuple(str(name) for name in names)
+
+
+def _hop_max_tool_calls(raw: str | None, role: str, project: str) -> int | None:
+    """The hop's tool-call cap: the step's coordinate when it is a positive integer, else the role
+    archetype's ``maxToolCalls``, else ``None`` (the loop's default applies)."""
+    try:
+        value = int(raw or "")
+    except ValueError:
+        value = 0
+    if value > 0:
+        return value
+    archetype = _archetypes.load_registry(project).get(role)
+    return archetype.max_tool_calls if archetype is not None else None
+
+
 def _loop_config(
     backend: ChatBackend,
     timeout: int,
     token_budget: int,
     profile: ModelProfile,
     closing_tool: str,
+    ctx: ToolContext,
 ) -> _loop.LoopConfig:
     """The turn loop's bounds: wall clock, measured-token budget and the endpoint's own windows,
-    with the sampling and tool choice the model's profile declares."""
+    with the sampling, tool choice and tool surface the model's profile declares, and the step's
+    allow-list and tool-call cap, popped from *ctx*'s environment (so no tool sees them), where
+    the step sets them."""
+    tool_allow = _hop_tool_allow(ctx.env.pop(DOCKET_HOP_TOOLS, None))
+    max_tool_calls = _hop_max_tool_calls(
+        ctx.env.pop(DOCKET_HOP_MAX_TOOL_CALLS, None), ctx.role, ctx.project
+    )
     context_window = getattr(backend, "context_window_tokens", None)
     max_output_tokens = getattr(backend, "max_output_tokens", None)
-    return _loop.LoopConfig(
+    config = _loop.LoopConfig(
         wall_clock_timeout_s=float(timeout),
         token_budget=token_budget,
         context_window_tokens=(
@@ -278,7 +314,14 @@ def _loop_config(
         top_p=profile.sampling.top_p,
         tool_choice=profile.tool_choice,
         closing_tool=closing_tool,
+        tool_surface=profile.tool_surface,
+        tool_allow=tool_allow,
         profile=profile.name,
+    )
+    return (
+        config
+        if max_tool_calls is None
+        else dataclasses.replace(config, max_tool_calls=max_tool_calls)
     )
 
 

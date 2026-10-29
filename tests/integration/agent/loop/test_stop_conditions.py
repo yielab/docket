@@ -235,6 +235,21 @@ class TestStopConditions:
         assert result.stop_reason == "max_tool_calls"
         assert result.tool_calls_executed == 2
 
+    def test_a_hop_capped_at_three_calls_ends_after_the_third_with_the_fixed_message(
+        self, ctx: ToolContext, registry: ToolRegistry
+    ) -> None:
+        backend = InfiniteToolBackend()
+        config = _loop.LoopConfig(max_iterations=1000, max_tool_calls=3)
+
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:demo:default", "go", config=config
+        )
+
+        assert result.stop_reason == "max_tool_calls"
+        assert result.error == "exceeded max_tool_calls=3"
+        assert result.tool_calls_executed == 3
+        assert backend.call_count == 3
+
     def test_max_tool_calls_never_dispatches_a_partial_batch(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:

@@ -26,6 +26,8 @@ _STEP_SUGAR_KEYS = frozenset(
         "max",
         "archetype",
         "when",
+        "tools",
+        "maxToolCalls",
     }
 )
 _BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
@@ -244,7 +246,16 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
         )
     step: dict[str, Any] = {"id": step_id}
     _assign_target(step, target)
-    for key in ("instructions", "timeout", "retries", "model", "archetype", "when"):
+    for key in (
+        "instructions",
+        "timeout",
+        "retries",
+        "model",
+        "archetype",
+        "when",
+        "tools",
+        "maxToolCalls",
+    ):
         if key in entry:
             step[key] = entry[key]
     gate, on = _build_gate(step_id, entry, seen_ids)

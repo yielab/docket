@@ -1,10 +1,10 @@
 # Pipeline Format Specification
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
 operator-input steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-28
 
 ## Purpose
 
@@ -155,8 +155,8 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    built-in line, or an overlaid `lead` archetype's `hopInstruction`).
 9. A unit step **MAY** declare `run` (`str`, a shell command) instead of `role`/`agent`; declaring
    `run` beside either, or beside `input`, **MUST** be a validation error. A `run` step (a command step) **MUST NOT**
-   also declare `gate`, `instructions`, `retries`, `archetype` or `model`; each is a validation
-   error naming the field. It **MAY** declare `timeout`, `when` and `on` (see "Conditional steps and
+   also declare `gate`, `instructions`, `retries`, `archetype`, `model`, `tools` or `maxToolCalls`;
+   each is a validation error naming the field. It **MAY** declare `timeout`, `when` and `on` (see "Conditional steps and
    command steps" and "Outcome routing"). Its exit code is its own outcome; the format models no
    `gate` for it. A `run` step **MAY** declare `env` (`dict[str, str]`, "Conditional steps and
    command steps" Requirement 4); `env` on any other step kind, including a `parallel` group,
@@ -171,6 +171,17 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
     (`pod-dispatch.spec.md`, "Per-hop execution"), never by loading text. Omitting `model` (`None`, the default) means "defer to the role/pin/policy
     resolution that already applies". A parallel group **MUST NOT** declare `model` at the group
     level (only its children may).
+11. A unit step that runs an agent turn **MAY** declare `tools` (a non-empty list of tool names, an
+    allow-list) and `maxToolCalls` (`int`, `> 0`). `tools` narrows what the hop is offered: the
+    hop's tools are the model profile's tool surface, then this list, then minus what the role
+    denies, so a name here never grants a tool the role denies (`agent-loop.spec.md`, "Tools and
+    calls per hop"). `maxToolCalls` bounds the tool calls the hop may make before it ends. Each,
+    when set, overrides the same field of the target's archetype for this hop only
+    (`role-archetypes.spec.md`, "Tools and calls per hop"); omitting it (`None`, the default)
+    defers to the archetype and then to the loop's default. An empty `tools` list, a non-positive
+    `maxToolCalls`, and either field on a `run` step, an `input` step or a `parallel` group (only
+    its children may) **MUST** be a validation error naming the field. Loading does not check
+    that a name in `tools` exists.
 
 ### Gates
 
@@ -245,14 +256,15 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    list of unit steps that the executor runs concurrently (`pod-dispatch.spec.md`, "Parallel step
    groups"), for example one per `--count N` duplicate role member.
 2. A parallel-group step **MUST NOT** also declare `role`, `agent`, `gate`, `retries`, `timeout`,
-   `instructions`, `model`, `on`, `env`, `run`, `input`, `when` or `archetype` at the group
+   `instructions`, `model`, `tools`, `maxToolCalls`, `on`, `env`, `run`, `input`, `when` or
+   `archetype` at the group
    level — its children carry the hop fields; declaring any of them on the group **MUST** be a
    validation error naming the field. An empty `parallel` list **MUST** be a validation error.
 3. Nesting **MUST** be limited to exactly one level: a child of a `parallel` group **MUST NOT**
    itself declare `parallel`. A nested `parallel` **MUST** be a validation error naming the
    offending child.
 4. Each child **MUST** independently satisfy the unit-step requirements above (a document-unique
-   `id`, a valid target, valid `archetype`/`retries`/`timeout`/`instructions`/`model`/`gate`
+   `id`, a valid target, valid `archetype`/`retries`/`timeout`/`instructions`/`model`/`tools`/`maxToolCalls`/`gate`
    shape), except that a child's gate **MUST NOT** carry a `rework` edge (Rework edges
    Requirement 5). A group is written `- <id>: {parallel: [...]}` and each child is a short step
    (`- <child id>: <role or agent>` with its own sugar keys); the group carries nothing else. The
@@ -312,7 +324,7 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    `{input: ...}` or `{parallel: [...]}`).
 2. A `steps` entry **MUST** be a mapping with exactly one key that is not one of the sugar keys
    below (`verify`, `verdict`, `approval`, `gate`, `instructions`, `timeout`, `retries`, `model`,
-   `archetype`, `when`, `on`, `until`, `max`), so a step id cannot be a sugar key's name; that key
+   `archetype`, `when`, `tools`, `maxToolCalls`, `on`, `until`, `max`), so a step id cannot be a sugar key's name; that key
    becomes the step's `id`. Its value is a string (a role or agent step, Requirement 3) or a mapping
    carrying `run`, `input` or `parallel` (a command, input or parallel-group step). Any other shape
    **MUST** be a load error naming the step. A command or input step's mapping carries the
@@ -337,8 +349,8 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    - `gate: {external: "<command>"}` -> `gate: {type: external, command: "<command>"}`, with
      optional `timeout` and `exitMap` carried to the gate's own fields; any other shape of the
      short `gate` key is a load error naming the step.
-   - `instructions`, `timeout`, `retries`, `model`, `archetype`, `when` carry straight through to
-     the same-named canonical field.
+   - `instructions`, `timeout`, `retries`, `model`, `archetype`, `when`, `tools`, `maxToolCalls` carry
+     straight through to the same-named canonical field.
    - `on: {<label>: {goto: <earlier step id>, max: <n>}}` **MUST**, when the step also carries a
      `verdict` sugar key, the `on` mapping has exactly that one entry whose keys are only `goto` and
      `max`, and `goto` names an earlier step, become that gate's `rework: {to: <goto>, when:

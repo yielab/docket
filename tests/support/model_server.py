@@ -342,3 +342,21 @@ def only_if(marker: str, then: Reply) -> Callable[[Request], Reply]:
         return fail(400, f"fake model: the request does not carry {marker!r}")
 
     return step
+
+
+def register_lab_provider(server: FakeModel, **fields: Any) -> None:
+    """A catalog row named `lab` over *server*, with one model `m`; *fields* are further document
+    keys (`local`, a profile and its overrides)."""
+    from docket.models import catalog
+
+    catalog.save_provider(
+        catalog.ProviderSpec.model_validate(
+            {
+                "name": "lab",
+                "baseUrl": server.base_url,
+                "auth": {"type": "none"},
+                "models": [{"id": "m", "contextWindow": 32768}],
+                **fields,
+            }
+        )
+    )

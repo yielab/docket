@@ -83,6 +83,11 @@ class RoleArchetype:
     # Prompts (`<layer>/<name>`) whose tests a model must not fail to run this role
     # (model-profiles.spec.md, "Prompt variants and the floor"). Empty means no floor.
     floor: tuple[str, ...] = ()
+    # An allow-list of tool names this role is offered, and a bound on its tool calls per hop
+    # (role-archetypes.spec.md, "Tools and calls per hop"); `None` declares nothing. A step's own
+    # `tools`/`maxToolCalls` override them for one hop.
+    tools: tuple[str, ...] | None = None
+    max_tool_calls: int | None = None
 
     def __post_init__(self) -> None:
         if not self.name or not _NAME_RE.match(self.name):
@@ -111,6 +116,16 @@ class RoleArchetype:
             or self.token_budget <= 0
         ):
             raise ArchetypeError(f"archetype {self.name!r}: tokenBudget must be a positive integer")
+        if self.tools is not None and not self.tools:
+            raise ArchetypeError(f"archetype {self.name!r}: tools must name at least one tool")
+        if self.max_tool_calls is not None and (
+            not isinstance(self.max_tool_calls, int)
+            or isinstance(self.max_tool_calls, bool)
+            or self.max_tool_calls <= 0
+        ):
+            raise ArchetypeError(
+                f"archetype {self.name!r}: maxToolCalls must be a positive integer"
+            )
         for ref in self.floor:
             if not _FLOOR_RE.match(ref):
                 raise ArchetypeError(
@@ -139,6 +154,10 @@ class RoleArchetype:
             doc["hopInstruction"] = self.hop_instruction
         if self.floor:
             doc["floor"] = list(self.floor)
+        if self.tools is not None:
+            doc["tools"] = list(self.tools)
+        if self.max_tool_calls is not None:
+            doc["maxToolCalls"] = self.max_tool_calls
         return doc
 
 
@@ -181,6 +200,10 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
     except (TypeError, ValueError) as exc:
         raise ArchetypeError(f"archetype {name!r}: tokenBudget must be an integer") from exc
 
+    tools_doc = doc.get("tools")
+    if tools_doc is not None and not isinstance(tools_doc, list):
+        raise ArchetypeError(f"archetype {name!r}: tools must be a list of tool names")
+
     return RoleArchetype(
         name=name,
         version=version,
@@ -195,6 +218,8 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         denied_tools=tuple(str(t) for t in doc.get("deniedTools", [])),
         hop_instruction=str(doc.get("hopInstruction", "")),
         floor=tuple(str(ref) for ref in doc.get("floor", [])),
+        tools=None if tools_doc is None else tuple(str(t) for t in tools_doc),
+        max_tool_calls=doc.get("maxToolCalls"),
     )
 
 
