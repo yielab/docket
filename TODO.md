@@ -918,6 +918,11 @@ spec
     (`tests/unit/teams/test_role_composer.py`).
   - A step with `maxToolCalls: 3` and a fake model that calls four times: the hop ends after the
     third with the fixed message (`tests/integration/agent/loop/test_stop_conditions.py`).
+  - A role whose `bash` is denied (the built-in Reviewer) is not offered `process_output` or
+    `process_stop`: P52-9 added both as built-ins, and the Reviewer's `deniedTools` names three
+    tools, so both reached its request (found at the Wave 3 merge; `docket pod show` lists them).
+    The minimal surface's "closing tool" is `handoff` since P53-5 (`HANDOFF_TOOL` in
+    `hops/application/handoff_tool.py`).
   - Bench `--policy p53-6`: tool bytes per request before/after. Lane e2e green.
 - **Contention:** Wave 3. `loop_types.py` comes after P52-7, and `role_schema.py` after P53-1.
   `role_composer.py`, `loop_steps.py` and `pipeline/domain/spec.py` are nobody else's.
