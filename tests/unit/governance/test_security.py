@@ -306,3 +306,46 @@ class TestHighRiskClassSeesPastOptionsAndQuoting:
     )
     def test_a_read_or_a_feature_branch_is_not_a_class(self, command: str) -> None:
         assert match_high_risk(command) is None
+
+
+_BACKGROUND_REASON = "background a process with bash background=true"
+
+
+@pytest.mark.parametrize("jailed", [True, False])
+@pytest.mark.parametrize(
+    "command",
+    [
+        "sleep 30 &",
+        "sleep 30 & ",
+        "sleep 30 &\n",
+        "echo hi &",
+        "nohup sleep 47 > bg.log 2>&1 &",
+        "echo hi; ls &",
+    ],
+)
+def test_a_trailing_ampersand_asks_to_use_the_background_argument(
+    tmp_path: Path, command: str, jailed: bool
+) -> None:
+    """A lone trailing `&` asks with the background reason, jailed or not."""
+    verdict = classify_command(command, roots=(tmp_path,), jailed=jailed)
+    assert (verdict.action, verdict.reason) == ("ask", _BACKGROUND_REASON)
+
+
+@pytest.mark.parametrize("jailed", [True, False])
+@pytest.mark.parametrize(
+    "command",
+    ["echo a && echo b", "ls 2>&1", "ls &> out.txt", "ls >&2", "echo 'a &'", 'echo "wait &"'],
+)
+def test_other_ampersands_are_not_the_background_operator(
+    tmp_path: Path, command: str, jailed: bool
+) -> None:
+    """`&&`, `2>&1`, `&>`, `>&2` and a quoted `&` do not ask for the background reason."""
+    verdict = classify_command(command, roots=(tmp_path,), jailed=jailed)
+    assert verdict.reason != _BACKGROUND_REASON
+
+
+def test_an_unclosed_quote_before_an_ampersand_keeps_the_parse_ask() -> None:
+    """A command the lexer cannot read stays an ask for parsing, not for the background."""
+    verdict = classify_command('echo "unclosed &')
+    assert verdict.action == "ask"
+    assert verdict.reason.startswith("command could not be parsed")
