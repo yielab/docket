@@ -159,15 +159,31 @@ def cut_quoted_heredocs(text: str) -> tuple[str, str | None]:
     return "\n".join(out), None
 
 
-def split_segments(command: str) -> list[Segment]:
-    """Split a shell command into per-invocation token lists, plus the output redirects attached
-    to each -- kept internal, used only by ``classify_command``."""
+def _tokens(command: str) -> list[str]:
+    """The shell tokens of *command*, each logical line closed by a ``"\\n"`` token. Raises
+    ``ValueError`` on unbalanced quotes; deliberately not caught here."""
     tokens: list[str] = []
     for line in _logical_lines(command):
         lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
-        tokens.extend(lexer)  # ValueError on unbalanced quotes; deliberately not caught here
-        tokens.append("\n")  # a line boundary is a command separator, below
+        tokens.extend(lexer)
+        tokens.append("\n")  # a line boundary is a command separator
+    return tokens
+
+
+def ends_in_background(command: str) -> bool:
+    """Whether the last token of *command* is the lone control operator ``&``. ``&&``, ``&>``,
+    ``>&`` and a quoted ``&`` are other tokens. Raises ``ValueError`` like ``split_segments``."""
+    tokens = _tokens(command)
+    while tokens and tokens[-1] == "\n":
+        tokens.pop()
+    return bool(tokens) and tokens[-1] == "&"
+
+
+def split_segments(command: str) -> list[Segment]:
+    """Split a shell command into per-invocation token lists, plus the output redirects attached
+    to each -- kept internal, used only by ``classify_command``."""
+    tokens = _tokens(command)
 
     segments: list[Segment] = []
     current: list[str] = []

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from docket.governance.command_lexer import cut_quoted_heredocs, split_segments, unwrap
+from docket.governance.command_lexer import (
+    cut_quoted_heredocs,
+    ends_in_background,
+    split_segments,
+    unwrap,
+)
 
 SUBJECT = "docket.governance.command_lexer"
 
@@ -80,3 +85,21 @@ def test_wrappers_are_peeled(tokens: list[str], inner: list[str]) -> None:
 
 def test_wrappers_nested_too_deep_cannot_be_read() -> None:
     assert unwrap(["env"] * 12 + ["rm"]) is None
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("sleep 30 &", True),
+        ("sleep 30 &\n\n", True),
+        ("sleep 30 & echo hi", False),
+        ("a && b", False),
+        ("ls 2>&1", False),
+        ("ls &> f", False),
+        ("echo 'a &'", False),
+        ("(sleep 3 &)", False),
+    ],
+)
+def test_only_a_lone_final_ampersand_ends_in_the_background(command: str, expected: bool) -> None:
+    """`&&`, `2>&1`, `&>`, a quoted `&` and a mid-command `&` do not end the command in one."""
+    assert ends_in_background(command) is expected
