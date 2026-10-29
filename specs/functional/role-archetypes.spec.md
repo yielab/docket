@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 4.4.0
+**Version**: 4.5.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-28
@@ -67,7 +67,8 @@ This specification does NOT cover:
    "Hop instructions") **MAY** be present; empty or absent is valid for all three. `tokenBudget`
    **MAY** be absent from a wire document and defaults to `6000`, never a parse error.
    `deniedTools` absent or empty defaults to `()`: no narrower than the registry the caller hands
-   in. `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
+   in. `tools` (a non-empty list of tool names) and `maxToolCalls` (a positive integer) **MAY** be present and
+   default to unset; see "Tools and calls per hop". `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
    variants and the floor") **MAY** be present and defaults to `()`; an entry that is not a
    `<layer>/<name>` with `layer` one of `identity`, `task`, `hop` is refused naming the field. `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
    all". `from_wire` reads only the fields above; it refuses a `kind:` other than `role` and a
@@ -235,7 +236,11 @@ This specification does NOT cover:
    `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash`
    to run things. This is guidance, not enforcement: `bash` stays available to both roles and its
    classification is unchanged.
-9. The Lead's rendered `SOUL.md` **MUST** name one escalation channel: decide from the repository
+9. A role that denies `bash`, by its own `deniedTools` or its pod's, **MUST NOT** be offered the
+   tools that only serve a background `bash` process, `process_output` and `process_stop`:
+   `registry_for_role` removes them with `bash`, by name, from the same union. The built-in Lead,
+   Reviewer and writer therefore carry neither.
+10. The Lead's rendered `SOUL.md` **MUST** name one escalation channel: decide from the repository
    and list every assumption at the top of the plan, and use the `consult` tool only for a
    decision a person alone can make. It **MUST NOT** say the Lead cannot reach the human, and it
    **MUST NOT** name a second channel such as a `NEEDS-INPUT` marker: that marker belongs to the
@@ -456,6 +461,29 @@ docket pod update <file.yaml>
 docket pod validate <file.yaml>
 ```
 
+### Tools and calls per hop
+
+1. An archetype **MAY** declare `tools` (`RoleArchetype.tools`, `tuple[str, ...] | None`, an
+   allow-list of tool names) and `maxToolCalls` (`RoleArchetype.max_tool_calls`, `int | None`).
+   Both default to `None`, "declares nothing". An empty `tools` list and a `maxToolCalls` that is
+   not a positive integer **MUST** be refused naming the field (`ArchetypeError`). `to_wire`
+   writes each only when set.
+2. `registry_for_role(base, role, project="", *, surface="full", allow=None)` is the one place
+   that decides what a hop sees, in this order: (a) the model profile's *surface* (`full` keeps
+   every tool; `minimal` keeps only `bash`, `read`, `verify` and any tool that ends the turn, so
+   the closing tool is kept without being named here), then (b) the allow-list, *allow* when the
+   step declared one, else the archetype's `tools`, keeping the names it lists and any tool that ends
+   the turn (the closing tool is the step's contract, not a capability), then (c) the
+   removal of what the role and the pod deny (requirements 2, 6 and 7 of "Per-role tool sets").
+   An allow-list **MUST NOT** grant a tool the role denies: a role with `tools: [read, bash]` and
+   `deniedTools: [bash]` is offered `read` alone. A name in an allow-list that no registry holds is
+   a no-op, as in `deniedTools`.
+3. A step's `maxToolCalls` wins over the archetype's, which wins over the loop's default
+   (`AGENT_LOOP_MAX_TOOL_CALLS`); `agent-loop.spec.md` ("Tools and calls per hop") says how the
+   cap ends a hop.
+4. The surface is the model profile's (`model-profiles.spec.md`, "Model profiles"); no caller
+   **MUST** branch on a role's or a model's name to decide it.
+
 ### Wire format (the one authored role file, and the persisted wire object)
 
 A role is authored as the short form below, in `docket pod update <file>`, `docket pod validate`
@@ -481,6 +509,8 @@ tokenBudget: 6000
 deniedTools: []   # optional; e.g. ["write", "edit", "bash"] for a read-only role
 hopInstruction: ""   # optional; unset + a gated role -> generated from gateContract
 floor: []   # optional; e.g. ["hop/reviewer"]: prompts whose tests a model must not fail
+tools: [read, bash]   # optional allow-list; omitted -> no allow-list
+maxToolCalls: 20   # optional; omitted -> the loop's default
 gateContract:
   kind: none
 soulTemplate: |
@@ -516,7 +546,8 @@ instructions: security-vetter.md     # optional; default "<name>.md" beside this
 whose content up to an optional literal `## AGENTS` heading line becomes `soulTemplate`; the text
 after that heading becomes `agentsTemplate`, or the starter library's AGENTS prose when the
 heading is absent. The same `${variable}` substitution applies to both halves at render time.
-`scope`, `version`, `tokenBudget`, `toolProfile`, `hopInstruction` and `floor` may be given; `scope`
+`scope`, `version`, `tokenBudget`, `toolProfile`, `hopInstruction`, `floor`, `tools` and
+`maxToolCalls` may be given; `scope`
 defaults to `"pod"`, `version` to `1`, `tokenBudget` to `6000`, the same defaults `from_wire`
 applies to the persisted wire object.
 

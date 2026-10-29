@@ -91,7 +91,9 @@ def _seed_pod(tmp_path: Path, base_url: str = "") -> Iterator[Path]:
     with use_home(Home(home)):
         record_isolation_off(home)
         if base_url:
-            register_local_provider(home, "local", [{"id": "stub"}], base_url=base_url)
+            register_local_provider(
+                home, "local", [{"id": "stub"}], base_url=base_url, toolSurface="full"
+            )
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         if base_url:
             for role in ("lead", "implementer"):

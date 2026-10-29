@@ -266,3 +266,14 @@ def test_the_finalization_policy_shares_the_whole_last_request_only_when_it_trai
         assert before == 0
         assert after == last
     assert "shared after" in BENCH.render_projection(steps, [BENCH.FINALIZATION_POLICY])
+
+
+def test_the_tool_surface_policy_measures_the_real_registry_per_profile() -> None:
+    """The local profile offers a hop fewer, smaller tool schemas than the hosted one, for each role."""
+    for role in ("lead", "implementer", "reviewer", "tester"):
+        hosted_names, hosted = BENCH.hop_tool_bytes(role, "full", "full")
+        local_names, local = BENCH.hop_tool_bytes(role, "minimal", "compact")
+        assert set(local_names) < set(hosted_names)
+        assert local < hosted
+    assert "handoff" in local_names and "bash" in local_names and "write" not in local_names
+    assert "implementer" in BENCH.render_projection([], [BENCH.TOOL_SURFACE_POLICY])

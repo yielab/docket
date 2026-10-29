@@ -78,6 +78,8 @@ class RoleDocument(BaseModel):
     toolProfile: str | None = None
     hopInstruction: str | None = None
     floor: list[str] | None = None
+    tools: list[str] | None = None
+    maxToolCalls: int | None = None
 
 
 class PipelineDocument(BaseModel):

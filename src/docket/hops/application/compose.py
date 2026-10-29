@@ -501,6 +501,10 @@ def _compose_hop(
         env[_rd.DOCKET_VERDICT_VALUES] = encode_values(
             _orch.verdict_values(node.gate), node.gate.case_sensitive
         )
+    if node.tools is not None:
+        env = {**(env or {}), _rd.DOCKET_HOP_TOOLS: _json.dumps(list(node.tools))}
+    if node.max_tool_calls is not None:
+        env = {**(env or {}), _rd.DOCKET_HOP_MAX_TOOL_CALLS: str(node.max_tool_calls)}
     env = _consult_budget_env(ctx, env)
     env = _apply_task_restrictions(ctx, env)
     pregrants_raw = [*pregrants_for(ctx.task_id), *mint_task_grant_pregrants(ctx, role)]

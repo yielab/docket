@@ -122,6 +122,12 @@ DOCKET_VERDICT_VALUES = "DOCKET_VERDICT_VALUES"
 # tool for the turn, without a verdict gate's values.
 DOCKET_HANDOFF = "DOCKET_HANDOFF"
 
+# Same route again, set only on a hop whose step declares them: the JSON list of tool names the step
+# allows (``tools``) and the positive integer, as text, that bounds its tool calls (``maxToolCalls``).
+# Popped by DocketDriver into ``LoopConfig.tool_allow`` and ``LoopConfig.max_tool_calls``.
+DOCKET_HOP_TOOLS = "DOCKET_HOP_TOOLS"
+DOCKET_HOP_MAX_TOOL_CALLS = "DOCKET_HOP_MAX_TOOL_CALLS"
+
 
 @dataclass
 class TurnResult:
@@ -323,8 +329,17 @@ class RoleComposer(Protocol):
     and the system prompt its workspace composes are the team's data, bound once at the entry
     point (``bootstrap.bind_adapters``) and swapped in a test with ``role_composer_port.use``."""
 
-    def narrow_registry(self, registry: ToolRegistry, role: str, project: str) -> ToolRegistry:
-        """*registry* without the tools *role* may never call."""
+    def narrow_registry(
+        self,
+        registry: ToolRegistry,
+        role: str,
+        project: str,
+        *,
+        surface: str = "full",
+        allow: tuple[str, ...] | None = None,
+    ) -> ToolRegistry:
+        """What the hop sees of *registry*: the model profile's *surface*, then the *allow*-list
+        (else the role's own), minus the tools *role* may never call."""
         ...
 
     def declared_token_budget(self, role: str, project: str) -> int | None:

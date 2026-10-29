@@ -21,7 +21,7 @@ from docket.teams.role_schema import (
     render,
     resolve_hop_prompt,
 )
-from docket.teams.roles import normalize_role
+from docket.teams.roles import normalize_role, to_short_role
 
 SUBJECT = "docket.teams.role_schema"
 
@@ -312,3 +312,34 @@ class TestFloor:
 
         with pytest.raises(ArchetypeError, match="floor entry"):
             RoleArchetype(**{**arch.__dict__, "floor": (entry,)})
+
+
+class TestToolsAndCalls:
+    def test_both_round_trip_the_wire_and_the_short_form(self, tmp_path: Path) -> None:
+        arch = _archetype(GateContract(kind="none"))
+        arch = RoleArchetype(**{**arch.__dict__, "tools": ("read", "bash"), "max_tool_calls": 20})
+
+        parsed = from_wire("custom-role", arch.to_wire())
+        assert (parsed.tools, parsed.max_tool_calls) == (("read", "bash"), 20)
+        plain = _archetype(GateContract(kind="none"))
+        assert (plain.tools, plain.max_tool_calls) == (None, None)
+        assert "tools" not in plain.to_wire() and "maxToolCalls" not in plain.to_wire()
+        (tmp_path / "r.md").write_text("You are a role.\n")
+        short = {"name": "r", "model": "cheap", "instructions": "r.md", "tools": ["read"]}
+        short["maxToolCalls"] = 5
+        canonical = normalize_role(short, tmp_path)
+        assert (canonical["tools"], canonical["maxToolCalls"]) == (["read"], 5)
+        assert to_short_role(from_wire("r", canonical))[0]["maxToolCalls"] == 5
+
+    def test_an_empty_allow_list_is_refused(self) -> None:
+        arch = _archetype(GateContract(kind="none"))
+
+        with pytest.raises(ArchetypeError, match="tools"):
+            RoleArchetype(**{**arch.__dict__, "tools": ()})
+
+    @pytest.mark.parametrize("calls", [0, -1, True])
+    def test_a_cap_that_is_not_a_positive_integer_is_refused(self, calls: int) -> None:
+        arch = _archetype(GateContract(kind="none"))
+
+        with pytest.raises(ArchetypeError, match="maxToolCalls"):
+            RoleArchetype(**{**arch.__dict__, "max_tool_calls": calls})

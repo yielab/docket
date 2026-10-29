@@ -157,7 +157,13 @@ class TestPodShowToolDenial:
             reviewer = pod.member_id("demo", "reviewer")
             report = _explain_json(reviewer, capsys)
             denied = {d["name"]: d["scope"] for d in report["tools"]["denied"]}
-            assert denied == {"write": "built-in", "edit": "built-in", "bash": "built-in"}
+            assert denied == {
+                "write": "built-in",
+                "edit": "built-in",
+                "bash": "built-in",
+                "process_output": "built-in",
+                "process_stop": "built-in",
+            }
             assert "write" not in report["tools"]["allowed"]
             assert "read" in report["tools"]["allowed"]
             assert report["roleScope"] == "built-in"
@@ -194,11 +200,8 @@ class TestPodShowTextUnchangedWithNoPodScope:
             ),
         ):
             text = _explain_text(pod.member_id("demo", "reviewer"), capsys)
-            assert (
-                "  Tools allowed: consult, fetch, glob, grep, process_output, process_stop, "
-                "read, skill\n"
-            ) in text
-            assert "  Tools denied:  bash, edit, write\n" in text
+            assert "  Tools allowed: consult, fetch, glob, grep, read, skill\n" in text
+            assert "  Tools denied:  bash, edit, process_output, process_stop, write\n" in text
 
 
 class TestPodShowScopeLabels:
@@ -284,14 +287,18 @@ class TestPodShowScopeLabels:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Negative case: an unshadowed built-in role plus a pod-only `deniedTools`
-        setting -- `bash` avoids the kind-cascade so only one name is denied."""
+        setting -- `bash` avoids the kind-cascade; the two tools that only serve it go with it."""
         with _seed(tmp_path):
             lead = pod.member_id("demo", "lead")
             _fleet.meta_set(lead, "deniedTools", "bash")
             implementer = pod.member_id("demo", "implementer")
             report = _explain_json(implementer, capsys)
             assert report["roleScope"] == "built-in"
-            assert report["tools"]["denied"] == [{"name": "bash", "scope": "pod"}]
+            assert report["tools"]["denied"] == [
+                {"name": "bash", "scope": "pod"},
+                {"name": "process_output", "scope": "pod"},
+                {"name": "process_stop", "scope": "pod"},
+            ]
 
 
 class TestPodShowNonPodAgent:

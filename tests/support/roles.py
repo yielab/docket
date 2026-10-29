@@ -5,13 +5,17 @@ from __future__ import annotations
 from docket.kernel.home import current_home
 
 
-def write_role_overlay(project: str, role: str, denied_tools: list[str]) -> None:
-    """A read-only pod role *role* as its authored ``roles/<role>.yaml`` and instructions file."""
+def write_role_overlay(
+    project: str, role: str, denied_tools: list[str], *, extra: str = ""
+) -> None:
+    """A read-only pod role *role* as its authored ``roles/<role>.yaml`` and instructions file;
+    *extra* is further authored YAML lines (an allow-list, a cap)."""
     roles = current_home().pod_config_dir(project) / "roles"
     roles.mkdir(parents=True, exist_ok=True)
     cannot = ", ".join(denied_tools)
     (roles / f"{role}.yaml").write_text(
         f"kind: role\nname: {role}\nmodel: cheap\ntoolProfile: read-only\ncannot: [{cannot}]\n"
+        f"{extra}"
     )
     (roles / f"{role}.md").write_text("x\n")
 
