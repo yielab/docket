@@ -321,12 +321,13 @@ _BACKGROUND_REASON = "background a process with bash background=true"
         "echo hi &",
         "nohup sleep 47 > bg.log 2>&1 &",
         "echo hi; ls &",
+        "sleep 30 & echo hi",
     ],
 )
-def test_a_trailing_ampersand_asks_to_use_the_background_argument(
+def test_a_lone_ampersand_asks_to_use_the_background_argument(
     tmp_path: Path, command: str, jailed: bool
 ) -> None:
-    """A lone trailing `&` asks with the background reason, jailed or not."""
+    """A lone `&`, last or not, asks with the background reason, jailed or not."""
     verdict = classify_command(command, roots=(tmp_path,), jailed=jailed)
     assert (verdict.action, verdict.reason) == ("ask", _BACKGROUND_REASON)
 
