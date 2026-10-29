@@ -644,6 +644,7 @@ class _LiveModel:
     context_tokens: int | None = None
     provider: str = "smoke-local"
     remote: bool = False
+    max_output_tokens: int | None = None
 
 
 def _loopback_endpoint(raw: str) -> str:
@@ -1483,6 +1484,8 @@ def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> 
     if live.remote:
         # A catalog provider needs no URL; its key is read from the subprocess environment.
         provider_args = ["setup", "provider", "add", live.provider, "--no-preset"]
+        if live.max_output_tokens is not None:
+            provider_args += ["--model", live.model_id, "--max-tokens", str(live.max_output_tokens)]
     else:
         provider_args = [
             "setup",
@@ -1645,6 +1648,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         f"and --allow-remote (one of: {', '.join(live_credentials.REMOTE_KEY_ENV)}).",
     )
     parser.add_argument(
+        "--max-tokens",
+        type=int,
+        help="The --provider model's output cap, for a provider whose wire requires one.",
+    )
+    parser.add_argument(
         "--allow-remote",
         action="store_true",
         help="Consent to sending the run's prompts to the --provider's remote service.",
@@ -1679,7 +1687,10 @@ def _remote_model(args: argparse.Namespace) -> tuple[_LiveModel, str] | str:
     if key is None:
         name = live_credentials.REMOTE_KEY_ENV[args.provider]
         return f"no {args.provider} key: export {name}, or store it with docket setup provider"
-    return _LiveModel("", args.model, provider=args.provider, remote=True), key
+    live = _LiveModel(
+        "", args.model, provider=args.provider, remote=True, max_output_tokens=args.max_tokens
+    )
+    return live, key
 
 
 def _enclosing_work_tree(path: Path) -> Path | None:
