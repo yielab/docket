@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -58,9 +58,16 @@ and chain (audit.spec.md).
      `background a process with bash background=true`: a child started that way outlives the call
      and docket cannot supervise it, while `background: true` on the `bash` tool starts it as a
      governed process. It joins the opaque markers in position (read after them, before the
-     allowlist, the high-risk classes and redirect containment), and a command the lexer cannot
-     read keeps the `could not be parsed` ask. `&&`, `2>&1`, `>&2`, `&>` and an `&` inside quotes
-     are not the operator and keep their verdicts.
+     allowlist, the high-risk classes and redirect containment). `&&`, `2>&1`, `>&2`, `&>` and an `&`
+     inside quotes are not the operator and keep their verdicts.
+   - **Unparseable text.** A command the lexer cannot read (an unclosed quote, a trailing
+     backslash) **MUST** be denied, not asked, with the reason `syntax: <lexer message>; fix the
+     quoting and call again`, so the model sees `REFUSED [gate_denied]: syntax: ...` and rewrites
+     it. Nothing runs and no approval record is made: a person cannot approve text that is not a
+     command, and a lights-out pod would stall on a typo. The denial is audited as `tool.deny` like
+     any other and counts toward the consecutive-denial stop. The opaque markers (`$(`, a backtick,
+     `${`, `eval`, `exec`) and an unclosed heredoc keep asking: they are risk, not syntax. This is
+     checked before the lone `&`, so a command both unparseable and backgrounded is refused.
    - **Builtins.** `cd`, `pwd`, `true`, `false`, `test`, `[` and `echo` are on `SAFE_BINS` and
      **MUST NOT** force approval merely because they lead a segment, so `cd <path> && git status`
      reads as `cd` (allowed) then `git status` (allowed). `export`, `source`, `.`, `eval` and
@@ -138,8 +145,8 @@ and chain (audit.spec.md).
      resolved to a real backend; a turn without one is refused before it starts, so this is the
      decision `run_bash` acts on). When `jailed`, a binary off `SAFE_BINS` and `extra_bins` is
      allowed instead of asking. Unchanged in both modes: the not-statically-analysable `ask`
-     (command substitution, `eval`, `exec`, a lone `&`, unparseable text), every high-risk class, the
-     empty-command `deny`, and redirect containment (an output redirect whose targets do not all
+     (command substitution, `eval`, `exec`, a lone `&`), every high-risk class, the
+     empty-command `deny` and the unparseable-text `deny`, and redirect containment (an output redirect whose targets do not all
      resolve inside `roots` or name `/dev/null` still asks, for every binary when jailed). Every
      host-side caller (dispatch's `run:` steps, `docket pod check`) leaves `jailed` false. Policies
      apply in both modes.

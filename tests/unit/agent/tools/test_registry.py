@@ -74,9 +74,12 @@ class TestCommandClassifierIsArgumentAware:
     def test_unanalysable_commands_ask_rather_than_guess(self, command: str) -> None:
         assert classify_command(command).action == "ask"
 
-    def test_untokenizable_command_asks(self) -> None:
-        verdict = classify_command('ls "unterminated')
-        assert verdict.action == "ask" and "could not be parsed" in verdict.reason
+    @pytest.mark.parametrize("command", ['ls "unterminated', "echo it's", "echo \\"])
+    def test_untokenizable_command_is_denied_as_syntax(self, command: str) -> None:
+        verdict = classify_command(command)
+        assert verdict.action == "deny"
+        assert verdict.reason.startswith("syntax: ")
+        assert verdict.reason.endswith("; fix the quoting and call again")
 
     def test_empty_command_is_denied(self) -> None:
         assert classify_command("   ").action == "deny"
@@ -268,10 +271,12 @@ class TestJailedGateStandsDownTheAllowlist:
         assert classify_command("curl https://x", jailed=True).action == "allow"
         assert classify_command("bash -c 'make test'", jailed=True).action == "allow"
 
-    def test_high_risk_opaque_and_unparseable_still_ask_when_jailed(self) -> None:
+    def test_high_risk_and_opaque_still_ask_and_unparseable_is_still_denied_when_jailed(
+        self,
+    ) -> None:
         assert classify_command("git push origin production", jailed=True).action == "ask"
         assert classify_command("echo $(id)", jailed=True).action == "ask"
-        assert classify_command('ls "unterminated', jailed=True).action == "ask"
+        assert classify_command('ls "unterminated', jailed=True).action == "deny"
         assert classify_command("  ", jailed=True).action == "deny"
 
     def test_redirect_containment_holds_for_every_binary_when_jailed(self, workspace: Path) -> None:
@@ -388,4 +393,4 @@ class TestSegmentSplitting:
         assert verdict.bin_name == "ls"
 
     def test_unbalanced_quotes_are_never_allowed(self) -> None:
-        assert classify_command('ls "oops').action == "ask"
+        assert classify_command('ls "oops').action == "deny"

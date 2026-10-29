@@ -258,8 +258,10 @@ def _run_command_step(
     if verdict.action != "allow":
         level = _autonomy.effective_level(ctx.project, ctx.task.autonomy)
         by_level = _autonomy.table_denies_approval(ctx.project, level)
-        if by_level or (
-            pod_approval_mode(ctx.project, caller_default=ctx.approval_default) == "refuse"
+        if (
+            by_level
+            or verdict.action == "deny"
+            or pod_approval_mode(ctx.project, caller_default=ctx.approval_default) == "refuse"
         ):
             if by_level:
                 _escalations.decided_approval(

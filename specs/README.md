@@ -104,9 +104,9 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 3.0.0 | Implemented and live |
 | Pipeline Format | 4.3.0 | Implemented |
 | Pod Blueprints | 2.3.0 | Implemented |
-| Pod Dispatch | 11.3.0 | Implemented |
+| Pod Dispatch | 11.4.0 | Implemented |
 | Role Archetypes | 4.5.0 | Implemented |
-| Security Gates | 2.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 2.5.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |

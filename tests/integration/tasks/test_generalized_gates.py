@@ -358,6 +358,24 @@ class TestCommandSteps:
         events = _trace_events("myapp")
         assert any(e["event_type"] == "command_step" for e in events)
 
+    def test_an_unparseable_command_fails_the_step_without_asking(self) -> None:
+        _write_meta("myapp-lead")
+        spec = _pipeline.PipelineSpec(
+            name="checks",
+            steps=[_step.Step(id="check", run='echo "unclosed')],
+        )
+        task = TaskRecord(id="c2", description="work")
+        res = _executor.dispatch_task("myapp", task, runner=_RoleRunner({}), spec=spec)
+        assert res.status == "failed"
+        assert "refused: syntax:" in res.reason
+        ran = [
+            e
+            for e in _trace_events("myapp")
+            if e["event_type"] == "command_step" and e["payload"]["exit"] is not None
+        ]
+        assert not ran
+        assert not _ap.list_pending()
+
 
 class TestConditionalSteps:
     def test_false_predicate_skips_the_step_and_the_next_step_runs(

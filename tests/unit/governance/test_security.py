@@ -345,8 +345,8 @@ def test_other_ampersands_are_not_the_background_operator(
     assert verdict.reason != _BACKGROUND_REASON
 
 
-def test_an_unclosed_quote_before_an_ampersand_keeps_the_parse_ask() -> None:
-    """A command the lexer cannot read stays an ask for parsing, not for the background."""
+def test_an_unclosed_quote_before_an_ampersand_is_refused_as_syntax() -> None:
+    """A command the lexer cannot read is refused for its syntax, not asked for the background."""
     verdict = classify_command('echo "unclosed &')
-    assert verdict.action == "ask"
-    assert verdict.reason.startswith("command could not be parsed")
+    assert verdict.action == "deny"
+    assert verdict.reason == "syntax: No closing quotation; fix the quoting and call again"

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.3.0
+**Version**: 11.4.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1341,11 +1341,11 @@ parsing for any verdict-gated step (`parse_verdict`).
    it in the same directory this section's `changed` predicate reads, bounded by the step's own
    `timeout` else the pod's `verifyTimeoutS`. With isolation recorded on, the command **MUST** run in
    the same jail as the verify command ("Implementer verification gate" requirement 7) and a missing
-   backend fails the step. A non-`allow` verdict **MUST NOT** run the command: under the pod's
-   resolved `approvalMode: "refuse"` the step **MUST** fail immediately, naming the classifier's
-   reason; under `"wait"` or `"park"` it **MUST** gate exactly like a pipeline `approval` step, keyed
-   to the step's own pipeline position, so a granted single-use override lets a resumed run through
-   without asking again.
+   backend fails the step. A non-`allow` verdict **MUST NOT** run the command: a `deny` verdict
+   (an empty or unparseable command) and, under the pod's resolved `approvalMode: "refuse"`, an `ask` verdict
+   **MUST** fail the step immediately, naming the classifier's reason; under `"wait"` or `"park"`
+   an `ask` **MUST** gate exactly like a pipeline `approval` step, keyed to the step's own pipeline
+   position, so a granted single-use override lets a resumed run through without asking again.
 3. A command step's outcome label is the last non-blank output line when that line is a single
    upper-case token (e.g. `PASS`, `NEEDS-REVIEW`), else `pass` for exit `0` and `fail` otherwise. A
    label named in the step's own `on` map is routed (Generalized gate execution item 5); otherwise
