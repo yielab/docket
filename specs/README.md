@@ -116,7 +116,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 2.0.0 | Implemented |
-| CLI JSON Shapes | 4.6.0 | Complete |
+| CLI JSON Shapes | 4.6.1 | Complete |
 | docket-meta schema | 5.5.0 | Complete |
 | Docket Store | 3.1.0 | Implemented |
 | Operator API | 7.2.0 | Implemented (Phase 43, ADR 0027) |
