@@ -20,18 +20,18 @@ import yaml  # type: ignore[import-untyped]
 
 from docket.agent.ports import ChatBackend, ToolSpec, estimate_tokens, system, user
 from docket.kernel.errors import InvalidInput
+from docket.kernel.handoff import HANDOFF_DESCRIPTION, HANDOFF_TOOL, HANDOFF_V1_PARAMETERS
 from docket.kernel.home import current_home
 from docket.platform import read_json, read_modify_write
 
 ASSERTIONS = ("contains", "matchesSchema", "calledHandoff", "underTokens")
-HANDOFF_TOOL = "handoff"
 PASS = "pass"
 FAIL = "fail"
 
 _HANDOFF_SPEC = ToolSpec(
     name=HANDOFF_TOOL,
-    description="Hand your work to the next hop and finish. Call this once, as your last action.",
-    parameters={"type": "object", "properties": {}},
+    description=HANDOFF_DESCRIPTION,
+    parameters=HANDOFF_V1_PARAMETERS,
 )
 _JSON_TYPES: dict[str, tuple[type, ...]] = {
     "object": (dict,),

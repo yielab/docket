@@ -66,7 +66,8 @@ from docket.hops.application.driver_support import (
     _turn_token_budget,
     _validated_pipeline_worktree,
 )
-from docket.hops.application.handoff_tool import HANDOFF_TOOL, parse_values, register_closing_tool
+from docket.hops.application.handoff_tool import parse_values, register_closing_tool
+from docket.kernel.handoff import HANDOFF_TOOL
 from docket.kernel.home import current_home
 from docket.kernel.ports import process as _process
 from docket.models.adapters import openai_http as _llm

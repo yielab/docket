@@ -98,7 +98,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Agent Loop | 3.8.1 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
 | Audit | 3.2.0 | Implemented |
-| Config Format | 2.4.0 | Implemented |
+| Config Format | 2.5.0 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 6.2.0 | Complete |
 | Observability Export | 3.0.0 | Implemented and live |
