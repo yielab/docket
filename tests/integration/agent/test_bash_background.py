@@ -8,6 +8,7 @@ its pgid and log path; `process_output` reads the log and `process_stop` kills t
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import re
 import time
@@ -28,6 +29,7 @@ from docket.agent.tools.registry import ToolContext
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.hops.application.driver import DocketDriver
 from docket.kernel import ports as _ports
+from docket.kernel.home import current_home, use_home
 from docket.models import catalog as _catalog
 
 workspace = _support_pods.workspace
@@ -243,3 +245,54 @@ class TestTheTurnLeavesNoOrphan:
             "reason": "turn_end",
             "tool": "bash",
         }
+
+
+class TestEveryRoleGetsALogDirectory:
+    def test_an_unjailed_tester_with_no_scratch_dir_starts_a_process_and_reads_it_back(
+        self,
+        fake_model: Callable[..., FakeModel],
+        monkeypatch: pytest.MonkeyPatch,
+        workspace: Path,
+    ) -> None:
+        monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+        seen: dict[str, str] = {}
+
+        def _read_back(request: Request) -> Reply:
+            seen["started"] = request.tool_result("start") or ""
+            found = _STARTED.search(seen["started"])
+            if found is None:
+                return say("refused")
+            deadline = time.monotonic() + 5
+            while "done" not in Path(found.group(2)).read_text() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            return call("process_output", call_id="read", pgid=int(found.group(1)))
+
+        def _finish(request: Request) -> Reply:
+            seen["output"] = request.tool_result("read") or ""
+            return say("done")
+
+        server = fake_model(
+            sequence=[
+                call(
+                    "bash",
+                    call_id="start",
+                    command="python3 -c \"import time; time.sleep(1); print('done')\"",
+                    background=True,
+                ),
+                _read_back,
+                _finish,
+            ]
+        )
+        _register_model(server)
+        _write_meta("bg-tester", role="tester", model="lab/m", codebase=str(workspace))
+
+        with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
+            result = DocketDriver().run_turn(
+                "bg-tester", "agent:bg-tester:default", "start it", 60, {}
+            )
+
+        assert result.ok, result.error
+        found = _STARTED.search(seen["started"])
+        assert found is not None, seen["started"]
+        assert Path(found.group(2)).parent == current_home().process_logs_dir("bg-tester")
+        assert "done" in seen["output"]

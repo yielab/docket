@@ -37,7 +37,9 @@ def _report(on_process: OnProcess | None, kind: str, data: dict[str, Any]) -> No
         on_process(kind, {**data, "tool": "bash"})
 
 
-def _log_dir(cache_dir: Path | None, env: dict[str, str]) -> Path | None:
+def _log_dir(process_dir: Path | None, cache_dir: Path | None, env: dict[str, str]) -> Path | None:
+    if process_dir is not None:
+        return process_dir
     base = cache_dir or (Path(env["DOCKET_SCRATCH_DIR"]) if env.get("DOCKET_SCRATCH_DIR") else None)
     return base / "processes" if base is not None else None
 
@@ -50,17 +52,18 @@ def start(
     env: dict[str, str],
     sandbox: toolbox.SandboxMode,
     network: bool,
+    process_dir: Path | None,
     cache_dir: Path | None,
     read_only: tuple[Path, ...],
     on_process: OnProcess | None,
 ) -> ToolOutcome:
     """Start *command* in the background and register it in *processes*."""
-    directory = _log_dir(cache_dir, env)
+    directory = _log_dir(process_dir, cache_dir, env)
     if directory is None:
         return ToolOutcome(
             False,
-            error="background needs a cache or scratch directory for <dir>/processes/<pgid>.log; "
-            "this turn has neither",
+            error="background needs a directory for <dir>/processes/<pgid>.log; this turn has no "
+            "process, cache or scratch directory",
         )
     # The log is named by the pgid, which the process only has once it runs: a private name
     # first, then the rename.
