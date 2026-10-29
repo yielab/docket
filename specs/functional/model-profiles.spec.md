@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 6.2.0
+**Version**: 6.3.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -274,7 +274,7 @@ directly — see "Provider catalog" below.
 ### Provider catalog
 
 1. A provider **MUST** be a `kind: provider` document (ADR 0011; `ProviderSpec`):
-   `name`, `dialect` (closed enum, `openai-chat` today), `baseUrl`, `auth` (`type:
+   `name`, `dialect` (closed enum: `openai-chat` or `anthropic-messages`), `baseUrl`, `auth` (`type:
    bearer|header|none` plus `credentials`, a list of names — never values, and `header`, the
    request header name a `type: header` credential rides on — required exactly when `type` is
    `header`), `headers` (a map of additional static header names to values sent verbatim on
@@ -328,7 +328,11 @@ directly — see "Provider catalog" below.
    from the document, and its credential through `resolve_credential`. A provider absent from the
    catalog **MUST** fall back to "Hosted gateway resolution" unchanged. `client_for` **MUST**
    dispatch on the entry's `dialect` over a closed adapter table and return `None` for a dialect
-   with no adapter.
+   with no adapter. There are two adapters, one client: `openai-chat` (`POST
+   {baseUrl}/chat/completions`) and `anthropic-messages` (requirement 10, `POST
+   {baseUrl}/messages`). The dialect chooses only the wire (path, request body, response
+   decoding, the per-part request sizes); the transport, timeouts, error handling, headers,
+   `estimate_input_tokens` and `Retry-After` are one copy for both.
 6. `resolve_endpoint` **MUST** carry a catalog entry's `auth.type`, `auth.header` and `headers`
    onto the resulting `Endpoint` (`auth_type`, `auth_header`, `headers`). The adapter
    **MUST** send `Authorization: Bearer <credential>` only for `auth_type: bearer` with a
@@ -350,7 +354,7 @@ directly — see "Provider catalog" below.
    fails the validation `ProviderSpec` applies — naming the file, the provider's name and the
    failing field — the same way a malformed pod role overlay entry is named, and carry
    the same list under `--json` (`providerCatalog`).
-8. **Prompt-cache markers.** For a model whose id, after any `<vendor>/` prefix, starts with
+8. **Prompt-cache markers on `openai-chat`.** For a model whose id, after any `<vendor>/` prefix, starts with
    `claude` (the `anthropic` provider and `anthropic/...` through a gateway),
    `build_payload` **MUST** encode the system message's `content` (when the first message is a
    system message) and the last message's `content` (a `tool` message included) as one text part
@@ -359,7 +363,8 @@ directly — see "Provider catalog" below.
    because the provider refuses a marker on an empty text block, and a single message that is both
    first and last carries one marker. For every other model the request body **MUST** be
    byte-identical to the unmarked encoding. `request_part_bytes` counts the encoded parts as
-   sent. No catalog field decides this: the model id does.
+   sent. No catalog field decides this: the model id does. This rule is the `openai-chat` dialect's; the
+   `anthropic-messages` dialect marks its own two places for every model (requirement 10).
 9. **Limits come from the provider.** A model's context window and output cap are resolved per
    limit as **declared > observed > unknown**. *Declared* is the exact `models[]` row's
    `contextWindow`/`maxTokens` (from `setup provider add --ctx/--max-tokens` or a `kind: provider`
@@ -387,6 +392,31 @@ directly — see "Provider catalog" below.
    `<N> (declared)`, `<N> (observed <date>)` or `unknown`; `--json` carries `contextWindow`,
    `maxTokens`, `limitsSource` (`declared` when any limit is declared, else `observed` when any is
    observed, else `unknown`), `contextWindowSource`, `maxTokensSource` and `observedAt`.
+
+10. **The `anthropic-messages` dialect.** `POST {baseUrl}/messages`, with the encoding and decoding
+    below; `docket` never invents a value the table does not name.
+
+    | docket | `anthropic-messages` |
+    | --- | --- |
+    | `system` messages | the top-level `system`, as text blocks; none in `messages` |
+    | assistant `tool_calls` | `tool_use` blocks `{id, name, input}`, `input` the parsed `arguments` object (a string that does not parse to an object is sent as `{}`); an empty assistant text is no block |
+    | `tool` messages | `tool_result` blocks `{tool_use_id, content}`; consecutive results share one `user` message, and a following `user` text is a text block after them |
+    | `ToolSpec` | `{name, description, input_schema}` |
+    | `tool_choice` name | `{"type": "tool", "name": <name>}`; no name sends no `tool_choice` key |
+    | `max_tokens` | required by the endpoint: the request's value, else the endpoint's `max_output_tokens`; with neither, the call fails before any request is sent (`nonzero_exit`), naming the model and `docket setup provider add <provider> --model <id> --max-tokens N`; never an invented number |
+    | `temperature`, `top_p` | only when declared, as on `openai-chat` |
+    | `stop_reason` | `tool_use` becomes `tool_calls`, `end_turn` and `stop_sequence` become `stop`, `max_tokens` becomes `length`, any other value is kept verbatim |
+    | reply `content[]` | `text` blocks joined into the message `content`; `tool_use` blocks into `ToolCall`s whose `arguments` are the compact JSON of `input` |
+    | `usage` | `input_tokens` = `input_tokens` + `cache_read_input_tokens` + `cache_creation_input_tokens`; `cached_tokens` = the read count; `cache_write_tokens` = the creation count (both subsets of the input, as `TokenUsage` says); `output_tokens` as sent |
+    | cache markers | `cache_control: {"type": "ephemeral"}` on the last `system` block and on the last block of the last message, for every model on this dialect |
+
+    An `{"type": "error"}` body is a failed response carrying its `error.message`. Encoding the same
+    conversation twice **MUST** give the same bytes, and a `tool_use` decoded and encoded again in
+    the next request **MUST** give the same block, so the cached prefix does not move between steps.
+    HTTP `529` (overloaded) is retryable, like `503`. `request_part_bytes` counts the system blocks
+    as `system`, the tools as `tools`, `tool_result` blocks as `toolResults`, and the other blocks
+    by their message's role. Streaming, thinking blocks, structured outputs, server tools and
+    images are not part of this dialect.
 
 ### Model profiles
 
