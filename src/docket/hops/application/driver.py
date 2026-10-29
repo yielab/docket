@@ -77,12 +77,7 @@ from docket.observability.adapters import sinks as _exporters
 from docket.platform import write_json
 from docket.tasks.application import runs as _runs
 from docket.teams import pod as _pod
-from docket.teams.isolation_posture import (
-    hop_read_only,
-    jail_cache_dir,
-    process_log_dir,
-    resolve_posture,
-)
+from docket.teams.isolation_posture import hop_read_only, jail_cache_dir, resolve_posture
 from docket.teams.workspace import repo_view as _repo_view
 
 __all__ = ["DocketDriver"]
@@ -235,7 +230,6 @@ class DocketDriver:
             (Path(pipeline_worktree),) if pipeline_worktree else _resolve_roots(meta, agent_id)
         )
         output_cap, read_window = _turn_budgets(profile)
-        cache_dir = jail_cache_dir(agent_id, want_sandbox)
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
@@ -267,8 +261,7 @@ class DocketDriver:
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,
             approval_timeout=approval_timeout,
-            cache_dir=cache_dir,
-            process_dir=process_log_dir(agent_id, cache_dir),
+            cache_dir=jail_cache_dir(agent_id, want_sandbox),
             read_only=hop_read_only(resolved_project, ctx_roots[0]) if want_sandbox else (),
             on_process=_build_on_process(
                 resolved_project, resolved_session_key, meta.role, trace_task_id or ""

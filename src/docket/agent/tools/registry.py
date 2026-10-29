@@ -78,9 +78,6 @@ class ToolContext:
     approval_timeout: int | None = None
     # The pod's cache dir: a jailed bash gets it as its home and an extra read-write root.
     cache_dir: Path | None = None
-    # Where a background `bash` writes its logs; the driver sets it on every turn. Unset, the
-    # cache dir's `processes/` or the scratch dir's serves (agent-loop requirement 99).
-    process_dir: Path | None = None
     # The operator's read-only jail grants (the toolchain); only a jailed bash reads them.
     read_only: tuple[Path, ...] = ()
     on_process: Callable[[str, dict[str, Any]], None] | None = None

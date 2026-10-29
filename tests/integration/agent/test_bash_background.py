@@ -152,19 +152,21 @@ class TestBackgroundTool:
         assert not out.ok and "processes" in out.error
         assert not ctx.processes and _pgrep_count(marker) == 0
 
-    def test_the_scratch_directory_holds_the_log_when_there_is_no_cache(
+    def test_an_unjailed_log_is_under_the_homes_directory_for_the_agent_not_the_scratch_dir(
         self, workspace: Path, tmp_path: Path
     ) -> None:
         ctx = ToolContext(
-            roots=(workspace,), timeout=60, env={"DOCKET_SCRATCH_DIR": str(tmp_path / "scratch")}
+            agent_id="bg-impl",
+            roots=(workspace,),
+            timeout=60,
+            env={"DOCKET_SCRATCH_DIR": str(tmp_path / "scratch")},
         )
 
         out = _handler("bash")({"command": "true", "background": True}, ctx)
 
         found = _STARTED.search(out.content)
-        assert (
-            found is not None and Path(found.group(2)).parent == tmp_path / "scratch" / "processes"
-        )
+        assert found is not None
+        assert Path(found.group(2)).parent == current_home().process_logs_dir("bg-impl")
 
     def test_the_docker_backend_refuses_background_and_starts_nothing(
         self, workspace: Path, tmp_path: Path, fake_jail: FakeJail

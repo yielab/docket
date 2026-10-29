@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent.tools.builtins import toolbox
+from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome
 
 OnProcess = Callable[[str, dict[str, Any]], None]
@@ -37,11 +38,12 @@ def _report(on_process: OnProcess | None, kind: str, data: dict[str, Any]) -> No
         on_process(kind, {**data, "tool": "bash"})
 
 
-def _log_dir(process_dir: Path | None, cache_dir: Path | None, env: dict[str, str]) -> Path | None:
-    if process_dir is not None:
-        return process_dir
-    base = cache_dir or (Path(env["DOCKET_SCRATCH_DIR"]) if env.get("DOCKET_SCRATCH_DIR") else None)
-    return base / "processes" if base is not None else None
+def _log_dir(cache_dir: Path | None, agent_id: str) -> Path | None:
+    """The jail's cache dir when jailed, else the home's directory for the agent. docket opens the
+    log and the command inherits it, so the log needs no place the jail can see."""
+    if cache_dir is not None:
+        return cache_dir / "processes"
+    return current_home().process_logs_dir(agent_id) if agent_id else None
 
 
 def start(
@@ -52,18 +54,18 @@ def start(
     env: dict[str, str],
     sandbox: toolbox.SandboxMode,
     network: bool,
-    process_dir: Path | None,
+    agent_id: str,
     cache_dir: Path | None,
     read_only: tuple[Path, ...],
     on_process: OnProcess | None,
 ) -> ToolOutcome:
     """Start *command* in the background and register it in *processes*."""
-    directory = _log_dir(process_dir, cache_dir, env)
+    directory = _log_dir(cache_dir, agent_id)
     if directory is None:
         return ToolOutcome(
             False,
-            error="background needs a directory for <dir>/processes/<pgid>.log; this turn has no "
-            "process, cache or scratch directory",
+            error="background needs a log directory (<dir>/processes/<pgid>.log); a turn with no "
+            "agent and no jail cache has none",
         )
     # The log is named by the pgid, which the process only has once it runs: a private name
     # first, then the rename.

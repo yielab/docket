@@ -276,7 +276,7 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
             env=ctx.env,
             sandbox=ctx.sandbox,
             network=ctx.network,
-            process_dir=ctx.process_dir,
+            agent_id=ctx.agent_id,
             cache_dir=ctx.cache_dir,
             read_only=ctx.read_only,
             on_process=ctx.on_process,
