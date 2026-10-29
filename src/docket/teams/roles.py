@@ -217,6 +217,24 @@ BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
 }
 
 
+# Tools a hop registers from its step (the `verify` command, the closing `handoff`) rather than
+# from `builtin_registry()`, so `BUILTIN_TOOL_KINDS` does not hold them. A `deniedTools` entry
+# cannot name them (they are the step's contract, not a capability); an allow-list may, because
+# the `minimal` surface keeps `verify` and an allow-list drops a tool it does not list.
+STEP_TOOL_NAMES: tuple[str, ...] = ("verify", "handoff")
+
+# The namespace of an MCP-adapted tool (`agent.tools.mcp_tools.NAMESPACE_PREFIX`, pinned by
+# `test_roles.py`); such a name can be checked only against a live server.
+MCP_TOOL_PREFIX = "mcp__"
+
+
+def unknown_allow_list_tools(tools: tuple[str, ...]) -> list[str]:
+    """The names in a role's `tools` allow-list that docket ships no tool for: not built-in, not a
+    step tool and not in the MCP namespace."""
+    known = BUILTIN_TOOL_KINDS.keys() | set(STEP_TOOL_NAMES)
+    return [t for t in dict.fromkeys(tools) if t not in known and not t.startswith(MCP_TOOL_PREFIX)]
+
+
 def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
     """Validate a candidate archetype definition without raising. Returns a list of
     human-readable error strings (empty = valid). Used by `docket pod validate` and `docket pod update`
@@ -226,6 +244,13 @@ def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
         arch = from_wire(name, doc)
     except ArchetypeError as exc:
         return [str(exc)]
+
+    if unknown := unknown_allow_list_tools(arch.tools or ()):
+        known = sorted({*BUILTIN_TOOL_KINDS, *STEP_TOOL_NAMES})
+        errors.append(
+            f"archetype {name!r}: tools names no tool docket ships: {', '.join(unknown)} "
+            f"(known: {', '.join(known)}; an MCP tool is {MCP_TOOL_PREFIX}<server>__<tool>)"
+        )
 
     sample_variables = {
         "project": "sample-project",
