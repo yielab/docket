@@ -470,7 +470,7 @@ docket pod validate <file.yaml>
    writes each only when set.
 2. `registry_for_role(base, role, project="", *, surface="full", allow=None)` is the one place
    that decides what a hop sees, in this order: (a) the model profile's *surface* (`full` keeps
-   every tool; `minimal` keeps only `bash`, `read`, `verify` and any tool that ends the turn, so
+   every tool; `minimal` keeps only `bash`, `read`, `edit`, `write`, `verify` and any tool that ends the turn, so
    the closing tool is kept without being named here), then (b) the allow-list, *allow* when the
    step declared one, else the archetype's `tools`, keeping the names it lists and any tool that ends
    the turn (the closing tool is the step's contract, not a capability), then (c) the
