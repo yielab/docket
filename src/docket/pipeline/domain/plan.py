@@ -84,6 +84,10 @@ class PlannedUnit:
     # never written back to the target's own persisted meta. See
     # specs/functional/pod-dispatch.spec.md ("Per-hop execution").
     model: str | None = None
+    # Copies of the step's own `tools` and `maxToolCalls` (see `_step.Step`), or `None`; they reach
+    # the hop's turn as the driver's hop coordinates (`hops/application/compose.py`).
+    tools: tuple[str, ...] | None = None
+    max_tool_calls: int | None = None
     skipped: bool = False
     # A command step's `when` (dumped by alias: "changed"/"var"/"is"/"memberPresent")
     # and `run` -- `None` for an ordinary role/agent step. See
@@ -196,6 +200,8 @@ def _resolve_unit(step: _step.Step, roster: dict[str, str], registry: RoleRegist
         retries=step.retries,
         timeout=step.timeout,
         model=step.model,
+        tools=tuple(step.tools) if step.tools is not None else None,
+        max_tool_calls=step.max_tool_calls,
         skipped=skipped,
         when=step.when.model_dump(exclude_none=True, by_alias=True) if step.when else None,
         run=step.run,

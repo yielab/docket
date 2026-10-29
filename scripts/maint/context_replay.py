@@ -27,14 +27,20 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent.loop_request import _FINALIZATION_INSTRUCTION
-from docket.agent.ports import ChatMessage, ToolCall
+from docket.agent.ports import ChatMessage, Endpoint, ToolCall
 from docket.agent.session import condense_history
 from docket.agent.tools.builtins.toolbox import read_file, text_outcome
+from docket.agent.tools.registry import ToolContext
+from docket.hops.application.builtin_tools import builtin_registry, describe_tools
+from docket.hops.application.handoff_tool import parse_values, register_closing_tool
+from docket.hops.application.verify_tool import VerifyPlan, verify_tool
 from docket.kernel.home import current_home
 from docket.kernel.text import normalize_output
 from docket.kernel.tool_outcome import VERDICT_TAIL, bounded_text
+from docket.models.adapters.openai_wire import build_payload, request_part_bytes
 from docket.pipeline.domain import gates
 from docket.pipeline.domain import plan as orchestrator
+from docket.teams.role_composer import registry_for_role
 
 Messages = list[dict[str, Any]]
 Policy = Callable[[Messages], Messages]
@@ -372,12 +378,46 @@ def render_finalization(steps: list[Step]) -> list[str]:
     return lines
 
 
+TOOL_SURFACE_POLICY = "p53-6"
+_SURFACE_VERDICT = '{"values": ["APPROVE", "REQUEST-CHANGES"], "caseSensitive": false}'
+
+
+def hop_tool_bytes(role: str, surface: str, descriptions: str) -> tuple[list[str], int]:
+    """The tool names and wire bytes a *role* hop is offered under a profile's *surface* and
+    *descriptions*, built the way the driver builds a gated, verified hop in a jail."""
+    registry = builtin_registry()
+    describe_tools(registry, ToolContext(agent_id="bench", role=role, sandbox="auto"), descriptions)
+    registry.register(verify_tool(VerifyPlan("true", ".", 30), ""))
+    register_closing_tool(registry, parse_values(_SURFACE_VERDICT), None)
+    narrowed = registry_for_role(registry, role, surface=surface)
+    payload = build_payload(Endpoint("http://bench", "bench"), [], narrowed.specs())
+    return sorted(narrowed.names()), request_part_bytes(payload)["tools"]
+
+
+def render_tool_surface() -> list[str]:
+    lines = [
+        f"policy {TOOL_SURFACE_POLICY} (tool schemas a hop is offered, measured on the real registry)",
+        f"{'role':<13}{'profile':<9}{'tools':>6}{'bytes':>8}  names",
+    ]
+    for role in ("lead", "implementer", "reviewer", "tester"):
+        for profile, surface, descriptions in (
+            ("hosted", "full", "full"),
+            ("local", "minimal", "compact"),
+        ):
+            names, size = hop_tool_bytes(role, surface, descriptions)
+            lines.append(f"{role:<13}{profile:<9}{len(names):>6}{size:>8,}  {' '.join(names)}")
+    return lines
+
+
 def render_projection(steps: list[Step], names: list[str]) -> str:
     base = measure(steps)
     lines = []
     for name in names:
         if name == FINALIZATION_POLICY:
             lines.extend(render_finalization(steps))
+            continue
+        if name == TOOL_SURFACE_POLICY:
+            lines.extend(render_tool_surface())
             continue
         if name not in POLICIES:
             raise SystemExit(f"unknown policy {name!r}; known: {', '.join(sorted(POLICIES))}")

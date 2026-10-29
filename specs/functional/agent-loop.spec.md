@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.7.0
+**Version**: 3.8.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -151,7 +151,8 @@ This specification does NOT cover:
 ### Per-role tool narrowing
 
 26. `run_agent_turn` **MUST** narrow the *registry* it was given via
-    `registry_for_role(registry, ctx.role, ctx.project)` exactly once per turn, before the first
+    `registry_for_role(registry, ctx.role, ctx.project, surface=cfg.tool_surface,
+    allow=cfg.tool_allow)` (requirement 103) exactly once per turn, before the first
     `ChatBackend.complete` call — not per iteration, since a role's tool set does not change
     mid-turn. Every use of the registry for the rest of the turn (advertising tool specs to the
     model, `dispatch_tool`) **MUST** use the narrowed result.
@@ -167,7 +168,9 @@ This specification does NOT cover:
     requirement 83). A role's `deniedTools` may name any of them, and a denied tool follows the
     same not-advertised refusal path as any other. A hop whose step has a verify command is also
     offered `verify`, an `exec`-kind tool the driver registers per hop (`pod-dispatch.spec.md`
-    "Verify tool"); a role denied `bash` loses it by capability.
+    "Verify tool"); a role denied `bash` loses it by capability. A role denied `bash` is also not
+    offered `process_output` or `process_stop` (`role-archetypes.spec.md`, "Per-role tool sets"
+    requirement 9).
 
 ### System prompt composition
 
@@ -770,6 +773,29 @@ This specification does NOT cover:
     values (that cap, and `READ_DEFAULT_CHARS`) where it does not, so a `hosted` row behaves as it
     always has. A context that sets neither keeps today's values.
 
+### Tools and calls per hop (ADR 0035)
+
+103. `LoopConfig` **MUST** carry `tool_surface` (`full` or `minimal`, default `full`) and
+    `tool_allow` (a tuple of tool names, or `None` for no allow-list). `DocketDriver` **MUST** set
+    `tool_surface` from the turn's model profile (`toolSurface`, model-profiles "Model profiles")
+    and `tool_allow` from the hop's step (`tools`, `pipeline-format.spec.md` "Steps" requirement
+    11), which reaches it as the JSON list in `DOCKET_HOP_TOOLS`, popped like the other hop
+    coordinates. `registry_for_role` decides what the hop sees from them once, in the order the
+    surface, the allow-list, the role's and the pod's denials (`role-archetypes.spec.md`, "Tools
+    and calls per hop"); the loop and the driver **MUST NOT** narrow tools another way. Under a
+    `minimal` surface the request offers only `bash`, `read`, `verify` and the tool that closes
+    the step (`handoff`), where each is registered; a `hosted` row declares `full`, which leaves
+    the request byte-identical to a profile-less one.
+104. `DocketDriver` **MUST** set `LoopConfig.max_tool_calls` from the hop's step `maxToolCalls`
+    (`DOCKET_HOP_MAX_TOOL_CALLS`, a positive integer as text; any other value is ignored), else
+    from the role archetype's `maxToolCalls`, else leaves the loop's default.
+105. A turn whose `max_tool_calls` is reached **MUST** end by requirement 8 with `stop_reason=
+    "max_tool_calls"`, `ok=False`, the fixed error `exceeded max_tool_calls=<N>` and no further
+    backend call: with `maxToolCalls: 3` and a model that asks for a tool each round, three calls
+    run and the hop ends before a fourth request.
+106. A repeated identical call is the no_progress stop of requirements 77-79 and nothing else:
+    its limit is `LoopConfig.no_progress_rounds`, and no second repeat detector exists.
+
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
 ## Interface Contracts
@@ -798,6 +824,8 @@ class LoopConfig:                              # frozen
     top_p: float | None = None
     tool_choice: Literal["auto", "forced-on-close"] = "auto"
     closing_tool: str = ""
+    tool_surface: Literal["full", "minimal"] = "full"   # the profile's surface (103)
+    tool_allow: tuple[str, ...] | None = None           # the hop's allow-list (103)
     profile: str = ""
     history_budget_tokens: int | None = None # None resolves through budget_for_role
     summary_input_budget_tokens: int | None = None # None follows resolved history budget

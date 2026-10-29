@@ -27,3 +27,10 @@ def _isolate_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator
         # TestIsolationWiring records its own choice, or clears it to test the default.
         record_isolation_off(tmp_path / "docket")
         yield
+
+
+@pytest.fixture(autouse=True)
+def _no_endpoint_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A catalog row, not an environment override, picks the endpoint of these turns."""
+    monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)

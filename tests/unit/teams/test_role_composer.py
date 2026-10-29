@@ -14,7 +14,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from tests.support.roles import write_vetter_overlay
+from tests.support.roles import write_role_overlay, write_vetter_overlay
 
 from docket.agent.tools.registry import Tool, ToolOutcome
 from docket.hops.application.builtin_tools import builtin_registry
@@ -111,3 +111,103 @@ class TestPodDeniedTools:
             narrowed = registry_for_role(builtin_registry(), "implementer", project="")
 
             assert "fetch" in narrowed.names()
+
+
+def _closing_tool() -> Tool:
+    return Tool(
+        name="handoff",
+        description="close the step",
+        parameters={"type": "object", "properties": {}},
+        handler=lambda args, ctx: ToolOutcome(ok=True, content="done"),
+        ends_turn=True,
+    )
+
+
+def _verify_tool() -> Tool:
+    return Tool(
+        name="verify",
+        description="run the check",
+        parameters={"type": "object", "properties": {}},
+        handler=lambda args, ctx: ToolOutcome(ok=True, content="ok"),
+        kind="exec",
+    )
+
+
+class TestHopTools:
+    """What a hop sees: the profile's surface, then the allow-list, then the role's denials."""
+
+    def test_an_allow_list_never_grants_a_denied_tool(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "vetter", ["bash"], extra="tools: [read, bash]\n")
+
+            narrowed = registry_for_role(builtin_registry(), "vetter", project="acme")
+
+            assert narrowed.names() == ["read"]
+
+    def test_a_step_allow_list_replaces_the_archetypes(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "vetter", [], extra="tools: [read, bash]\n")
+
+            narrowed = registry_for_role(
+                builtin_registry(), "vetter", project="acme", allow=("grep",)
+            )
+
+            assert narrowed.names() == ["grep"]
+
+    def test_no_allow_list_leaves_every_tool_the_role_may_hold(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "vetter", ["write", "edit"])
+
+            narrowed = registry_for_role(builtin_registry(), "vetter", project="acme")
+
+            assert {"read", "grep", "bash"} <= set(narrowed.names())
+
+    def test_the_minimal_surface_keeps_bash_read_verify_and_the_closing_tool(self) -> None:
+        base = builtin_registry()
+        base.register(_verify_tool())
+        base.register(_closing_tool())
+
+        narrowed = registry_for_role(base, "implementer", surface="minimal")
+
+        assert sorted(narrowed.names()) == ["bash", "handoff", "read", "verify"]
+
+    def test_an_allow_list_keeps_the_closing_tool(self) -> None:
+        base = builtin_registry()
+        base.register(_closing_tool())
+
+        narrowed = registry_for_role(base, "implementer", allow=("read",))
+
+        assert sorted(narrowed.names()) == ["handoff", "read"]
+
+    def test_the_full_surface_returns_the_registry_unchanged(self) -> None:
+        base = builtin_registry()
+
+        assert registry_for_role(base, "implementer", surface="full") is base
+
+    def test_the_allow_list_narrows_the_surface_and_never_widens_it(self) -> None:
+        narrowed = registry_for_role(
+            builtin_registry(), "implementer", surface="minimal", allow=("read", "write")
+        )
+
+        assert narrowed.names() == ["read"]
+
+    def test_a_role_denied_bash_is_not_offered_the_tools_that_serve_a_background_process(
+        self,
+    ) -> None:
+        for role in ("reviewer", "lead"):
+            narrowed = registry_for_role(builtin_registry(), role)
+
+            assert not {"bash", "process_output", "process_stop"} & set(narrowed.names())
+
+    def test_a_pod_denying_bash_removes_them_from_every_role_in_it(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            _write_lead_meta("acme", "bash")
+
+            narrowed = registry_for_role(builtin_registry(), "implementer", project="acme")
+
+            assert not {"bash", "process_output", "process_stop"} & set(narrowed.names())
+
+    def test_a_role_that_keeps_bash_keeps_them(self) -> None:
+        narrowed = registry_for_role(builtin_registry(), "tester")
+
+        assert {"bash", "process_output", "process_stop"} <= set(narrowed.names())

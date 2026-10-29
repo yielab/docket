@@ -135,6 +135,47 @@ class TestStepModel:
         assert spec.steps[1].model == "strong"
 
 
+class TestStepToolsAndCalls:
+    """A unit step's ``tools`` allow-list and ``maxToolCalls`` (pipeline-format.spec.md Steps
+    Req. 11): shape-only validation, short-form passthrough, and where they are refused."""
+
+    def test_both_default_to_none(self) -> None:
+        step = Step(id="s1", role="reviewer")
+        assert step.tools is None and step.max_tool_calls is None
+
+    def test_short_form_carries_both_through(self) -> None:
+        doc = {
+            "name": "p",
+            "steps": [{"look": "reviewer", "tools": ["read", "bash"], "maxToolCalls": 3}],
+        }
+        spec = PipelineSpec.model_validate(normalize_pipeline(doc))
+        assert spec.steps[0].tools == ["read", "bash"]
+        assert spec.steps[0].max_tool_calls == 3
+
+    def test_an_empty_allow_list_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="tools"):
+            Step(id="s1", role="reviewer", tools=[])
+
+    @pytest.mark.parametrize("calls", [0, -1])
+    def test_a_non_positive_cap_is_refused(self, calls: int) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="s1", role="reviewer", max_tool_calls=calls)
+
+    @pytest.mark.parametrize("field", [{"tools": ["read"]}, {"max_tool_calls": 3}])
+    def test_a_command_step_and_an_input_step_carry_neither(self, field: dict[str, object]) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="check", run="true", **field)  # type: ignore[arg-type]
+        with pytest.raises(ValidationError):
+            Step(id="ask", input={"from": "operator", "message": "q"}, **field)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("field", [{"tools": ["read"]}, {"max_tool_calls": 3}])
+    def test_a_group_carries_neither_but_its_children_may(self, field: dict[str, object]) -> None:
+        child = Step(id="a", role="implementer", **field)  # type: ignore[arg-type]
+        assert Step(id="fanout", parallel=[child]).parallel == [child]
+        with pytest.raises(ValidationError):
+            Step(id="fanout", parallel=[Step(id="a", role="implementer")], **field)  # type: ignore[arg-type]
+
+
 # ── TestStepInstructions ─────────────────────────────────────────────────────
 
 

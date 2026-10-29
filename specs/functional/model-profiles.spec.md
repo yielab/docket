@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 6.1.0
+**Version**: 6.2.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-10-28
@@ -417,8 +417,10 @@ directly — see "Provider catalog" below.
 6. `toolChoice: forced-on-close` **MUST** make a step that names its closing tool send
    `tool_choice` for that tool on the closing call (agent-loop requirement 96). The wire carries
    the name the caller gives; the adapter **MUST NOT** name any tool itself.
-7. `toolSurface` is declared and resolved here only; this requirement does not narrow any tool
-   list. The budgets are resolved here too, on the profile as `budgets` (`read_window_chars`,
+7. `toolSurface` is declared and resolved here; `DocketDriver` hands it to the turn
+   (`LoopConfig.tool_surface`) and `registry_for_role` applies it (`agent-loop.spec.md`, "Tools and
+   calls per hop"): `minimal` offers `bash`, `read`, `verify` and the step's closing tool, `full`
+   offers every tool. The budgets are resolved here too, on the profile as `budgets` (`read_window_chars`,
    `tool_output_chars`): each declared share becomes `floor(context_window_tokens * share *
    Home.context_bytes_per_token)` for the model's context window as requirement 9 of "Provider
    catalog" resolves it, and `None` where the profile declares no share or the window is unknown

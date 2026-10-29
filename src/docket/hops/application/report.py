@@ -312,6 +312,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
         _role_composer.registry_for_role(base_registry, role, project) if role else base_registry
     )
     pod_denied = set(pod_settings.denied_tools) if pod_settings is not None else set()
+    pod_denied |= {t for name in pod_denied for t in _role_composer.SERVED_TOOLS.get(name, ())}
     denied = [
         {"name": name, "scope": "pod" if name in pod_denied else role_scope}
         for name in sorted(set(base_registry.names()) - set(role_registry.names()))

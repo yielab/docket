@@ -214,8 +214,10 @@ def register_local_provider(
     name: str,
     models: list[dict[str, object]],
     base_url: str = "http://127.0.0.1:9999/v1",
+    **fields: object,
 ) -> None:
-    """Write a keyless loopback provider document into *home*'s global catalog."""
+    """Write a keyless loopback provider document into *home*'s global catalog; *fields* are
+    further document keys, such as a profile override."""
     from docket.models import catalog as _provider
 
     with use_home(Home(home)):
@@ -227,6 +229,7 @@ def register_local_provider(
                     "auth": {"type": "none"},
                     "local": True,
                     "models": models,
+                    **fields,
                 }
             )
         )
