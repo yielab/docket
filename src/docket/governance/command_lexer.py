@@ -171,13 +171,11 @@ def _tokens(command: str) -> list[str]:
     return tokens
 
 
-def ends_in_background(command: str) -> bool:
-    """Whether the last token of *command* is the lone control operator ``&``. ``&&``, ``&>``,
-    ``>&`` and a quoted ``&`` are other tokens. Raises ``ValueError`` like ``split_segments``."""
-    tokens = _tokens(command)
-    while tokens and tokens[-1] == "\n":
-        tokens.pop()
-    return bool(tokens) and tokens[-1] == "&"
+def starts_background(command: str) -> bool:
+    """Whether *command* holds the lone control operator ``&``, which starts a child the call does
+    not wait for, wherever it stands. ``&&``, ``&>``, ``>&`` and a quoted ``&`` are other tokens; a closing ``)`` or ``;`` may be fused to it.
+    Raises ``ValueError`` like ``split_segments``."""
+    return any(t.count("&") == 1 and set(t) <= set("&();") for t in _tokens(command))
 
 
 def split_segments(command: str) -> list[Segment]:
