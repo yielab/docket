@@ -267,6 +267,26 @@ class TestEnqueuePreInputGate:
         stored = TaskRepository.for_pod("myapp").list()[0]
         assert "leaky@example.com" not in stored.description
 
+    def test_redact_scrubs_the_brief_and_the_structured_task(self) -> None:
+        _seed_lean_pod()
+        _write_policy(
+            "email-in-task",
+            "pre_input",
+            r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
+            "redact",
+        )
+        _queue.enqueue_task_once(
+            "myapp",
+            "ship the fix",
+            channel="http",
+            brief={"objective": "mail leaky@example.com", "context": ["cc leaky@example.com"]},
+            task={"objective": "reply to leaky@example.com"},
+        )
+        stored = TaskRepository.for_pod("myapp").list()[0]
+        assert stored.brief is not None and stored.task is not None
+        assert "leaky@example.com" not in stored.model_dump_json()
+        assert stored.brief.objective == "mail [REDACTED]"
+
     def test_warn_does_not_change_status_or_description(self) -> None:
         _seed_lean_pod()
         _write_policy("fyi-only", "pre_input", "heads up", "warn")

@@ -3,8 +3,9 @@ from __future__ import annotations
 import json as _json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
+from pydantic import BaseModel
 from pydantic import ValidationError as _ValidationError
 
 from docket.governance import approval as _ap
@@ -40,6 +41,8 @@ from docket.teams.settings import builtin_tool_names, load_pod_settings, pod_tas
 from docket.teams.workspace import prepare as _prepare
 from docket.teams.workspace.worktree import ensure_task_worktree
 
+_M = TypeVar("_M", bound=BaseModel)
+
 
 def _redact_strings(value: Any) -> Any:
     """*value* with every string in it passed through ``redact``."""
@@ -52,10 +55,11 @@ def _redact_strings(value: Any) -> Any:
     return value
 
 
-def _redacted_request(request: _request.TaskRequest | None) -> _request.TaskRequest | None:
-    if request is None:
+def _redacted(model: _M | None) -> _M | None:
+    """*model* rebuilt with every string in it redacted; the intake texts beside the description."""
+    if model is None:
         return None
-    return _request.TaskRequest.model_validate(_redact_strings(request.model_dump(by_alias=True)))
+    return type(model).model_validate(_redact_strings(model.model_dump(by_alias=True)))
 
 
 def _enqueue_pre_input_gate(
@@ -190,8 +194,8 @@ def enqueue_task_once(
         description=_secrets.redact(description) if hit.action == "redact" else description,
         priority=priority if priority in ("high", "normal", "low") else "normal",
         channel=channel,
-        brief=parsed_brief,
-        task=_redacted_request(parsed_task) if hit.action == "redact" else parsed_task,
+        brief=_redacted(parsed_brief) if hit.action == "redact" else parsed_brief,
+        task=_redacted(parsed_task) if hit.action == "redact" else parsed_task,
         **parsed_options.model_dump(),
     )
 
