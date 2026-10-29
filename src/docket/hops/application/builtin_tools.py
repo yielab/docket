@@ -5,7 +5,7 @@ import urllib.parse
 from collections.abc import Callable
 from typing import Any
 
-from docket.agent.tools.builtins import toolbox
+from docket.agent.tools.builtins import background, toolbox
 from docket.agent.tools.registry import (
     Tool,
     ToolContext,
@@ -14,6 +14,8 @@ from docket.agent.tools.registry import (
 )
 from docket.agent.tools.screening import screen_tool_result
 from docket.governance.security import SAFE_BINS
+from docket.hops.application import process_tools
+from docket.kernel import clock as _clock
 from docket.kernel.gate import CONSULT_TOOL, DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
@@ -266,10 +268,26 @@ def _register_all(registry: ToolRegistry, *tools: Tool) -> None:
 
 
 def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
-    return toolbox.run_bash(
+    if args.get("background") is True:
+        return background.start(
+            ctx.processes,
+            ctx.roots,
+            str_arg(args, "command"),
+            env=ctx.env,
+            sandbox=ctx.sandbox,
+            network=ctx.network,
+            cache_dir=ctx.cache_dir,
+            read_only=ctx.read_only,
+            on_process=ctx.on_process,
+        )
+    requested = _int_arg(args, "timeout", ctx.timeout) or ctx.timeout
+    run_for = requested
+    if ctx.deadline is not None:
+        run_for = min(requested, max(1, int(ctx.deadline - _clock.monotonic())))
+    outcome = toolbox.run_bash(
         ctx.roots,
         str_arg(args, "command"),
-        _int_arg(args, "timeout", ctx.timeout) or ctx.timeout,
+        run_for,
         ctx.env,
         ctx.sandbox,
         ctx.cancellation_check,
@@ -277,6 +295,16 @@ def _bash_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         ctx.network,
         ctx.cache_dir,
         ctx.read_only,
+    )
+    if run_for < requested and outcome.error.startswith("command timed out after"):
+        return dataclasses.replace(outcome, error=f"{outcome.error} {_clamp_marker(run_for)}")
+    return outcome
+
+
+def _clamp_marker(seconds: int) -> str:
+    return (
+        f"[killed at the turn's remaining time ({seconds} s); run it as a verify gate or "
+        "raise turnTimeoutS]"
     )
 
 
@@ -406,7 +434,7 @@ def describe_tools(registry: ToolRegistry, ctx: ToolContext, descriptions: str) 
     stated_bash = bash is not None and bash.description == _bash_description(
         ctx.allow_commands, jailed=jailed
     )
-    texts = dict(_COMPACT_DESCRIPTIONS)
+    texts = {**_COMPACT_DESCRIPTIONS, **process_tools.COMPACT_DESCRIPTIONS}
     texts["consult"] = _compact_consult_description(
         ctx.max_consultations, ctx.consult_park, ctx.consult_decides, _consult.waits_in_turn(ctx)
     )
@@ -418,6 +446,37 @@ def describe_tools(registry: ToolRegistry, ctx: ToolContext, descriptions: str) 
             registry.register(dataclasses.replace(tool, description=text))
 
 
+def _bash_tool() -> Tool:
+    return Tool(
+        name="bash",
+        description=_bash_description((), jailed=False),
+        parameters={
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell command to run."},
+                "timeout": {
+                    "type": "integer",
+                    "description": (
+                        "Seconds before it is killed; the turn's remaining time is the "
+                        "ceiling, whatever you ask."
+                    ),
+                },
+                "background": {
+                    "type": "boolean",
+                    "description": (
+                        "Start the command and return its pgid and log path at once; read it "
+                        "with process_output, stop it with process_stop. It is stopped when "
+                        "your turn ends."
+                    ),
+                },
+            },
+            "required": ["command"],
+        },
+        handler=_bash_handler,
+        kind="exec",
+    )
+
+
 def _offered_fetch() -> list[Tool]:
     """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
 
@@ -425,7 +484,7 @@ def _offered_fetch() -> list[Tool]:
 
 
 def builtin_registry() -> ToolRegistry:
-    """The default tool set: read, write, edit, glob, grep, bash, skill, consult, and fetch (only
+    """The default tool set: read, write, edit, glob, grep, bash, process_output, process_stop, skill, consult, and fetch (only
     with an allowlist). Handlers are imported here, not at module scope, so this module stays
     importable without the filesystem/subprocess layer. Core reaches out to edges for I/O here.
     """
@@ -547,22 +606,14 @@ def builtin_registry() -> ToolRegistry:
         )
     )
 
-    registry.register(
-        Tool(
-            name="bash",
-            description=_bash_description((), jailed=False),
-            parameters={
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "description": "Shell command to run."},
-                    "timeout": {"type": "integer", "description": "Seconds before it is killed."},
-                },
-                "required": ["command"],
-            },
-            handler=_bash_handler,
-            kind="exec",
-        )
+    registry.register(_bash_tool())
+    _register_all(
+        registry,
+        _skill_tool(),
+        _consult_tool(),
+        process_tools.process_output_tool(),
+        process_tools.process_stop_tool(),
+        *_offered_fetch(),
     )
-    _register_all(registry, _skill_tool(), _consult_tool(), *_offered_fetch())
 
     return registry

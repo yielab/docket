@@ -212,6 +212,8 @@ BUILTIN_TOOL_KINDS: dict[str, ToolKind] = {
     "write": "write",
     "edit": "write",
     "bash": "exec",
+    "process_output": "read",
+    "process_stop": "write",
 }
 
 

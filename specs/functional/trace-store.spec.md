@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 4.1.0
+**Version**: 4.2.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
@@ -237,6 +237,9 @@ report into a trace event, so an external plan-of-record can show and cancel a l
     process's real exit status, including a normal zero) or `signal` (the string `"SIGKILL"`,
     present only when `run_bash` itself killed the group on a timeout or a cancellation) — never
     both, never neither — and is tagged with `"tool": "bash"` the same way.
+    A background process of agent-loop requirement 99 adds `"background": true` to its
+    `process_started`; the `process_exited` recorded when the turn ends adds `"reason":
+    "turn_end"`. These are the only optional fields of either event.
 32. Exactly one `process_started`/`process_exited` pair **MUST** be emitted per process group a
     tool handler starts, and **MUST** fire even when the process is killed rather than left to
     exit on its own and when reading the command's output fails (the call then fails; the

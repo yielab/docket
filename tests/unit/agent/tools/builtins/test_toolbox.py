@@ -320,6 +320,15 @@ class TestToolOutputBudget:
         assert 0 < shown < 300
         assert footer == f"lines 1-{shown} of 300; call read with offset={shown + 1} for more]"
 
+    def test_read_without_a_window_stops_at_the_turns_read_window(self, workspace: Path) -> None:
+        """A turn's `read_window` replaces the default character budget."""
+        row = "x" * 99
+        (workspace / "wide.txt").write_text(f"{row}\n" * 300, encoding="utf-8")
+        with artifact_scope("", read_chars=1000):
+            out = toolbox.read_file((workspace,), "wide.txt")
+        window = out.content.split("\n\n[")[0]
+        assert len(window) <= 1000 and len(window.splitlines()) < 10
+
     def test_read_with_an_explicit_window_is_numbered_and_names_what_remains(
         self, workspace: Path
     ) -> None:

@@ -18,7 +18,7 @@ import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import unquote as _url_unquote
 
 from docket.agent import loop as _loop
@@ -42,10 +42,12 @@ from docket.agent.ports import (
     UsageReport,
     UsageTotals,
 )
+from docket.agent.tools.builtins import background
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.hops.application import verify_tool as _verify
 from docket.hops.application.builtin_tools import builtin_registry, describe_tools
 from docket.hops.application.driver_support import (
+    _approval_mode,
     _approval_timeout,
     _base_commit_view,
     _build_on_process,
@@ -59,6 +61,7 @@ from docket.hops.application.driver_support import (
     _resolve_roots,
     _stdio_launch,
     _task_scope,
+    _turn_budgets,
     _turn_result_from,
     _turn_token_budget,
     _validated_pipeline_worktree,
@@ -202,13 +205,7 @@ class DocketDriver:
         # tool_env reaches ToolContext.env. An unset or unrecognized value
         # keeps today's default ("wait") byte for byte.
         approval_mode_raw = tool_env.pop(DOCKET_APPROVAL_MODE, None)
-        approval_mode: Literal["wait", "park", "refuse"] = (
-            "refuse"
-            if approval_mode_raw == "refuse"
-            else "park"
-            if approval_mode_raw == "park"
-            else "wait"
-        )
+        approval_mode = _approval_mode(approval_mode_raw)
         consult_mode_raw = tool_env.pop(DOCKET_CONSULT_MODE, None)
         approval_timeout = _approval_timeout(tool_env.pop(DOCKET_APPROVAL_TIMEOUT, None))
         pregrants_raw = tool_env.pop(DOCKET_PREGRANTS, None)
@@ -231,12 +228,15 @@ class DocketDriver:
         ctx_roots = (
             (Path(pipeline_worktree),) if pipeline_worktree else _resolve_roots(meta, agent_id)
         )
+        output_cap, read_window = _turn_budgets(profile)
         ctx = ToolContext(
             agent_id=agent_id,
             session_key=session_key,
             trace_session_key=trace_session_key or "",
             roots=ctx_roots,
             timeout=timeout,
+            output_cap=output_cap,
+            read_window=read_window,
             env=tool_env,
             role=meta.role,
             # trace_project (the pod, when a dispatch hop supplies one) is what an
@@ -262,7 +262,9 @@ class DocketDriver:
             approval_timeout=approval_timeout,
             cache_dir=jail_cache_dir(agent_id, want_sandbox),
             read_only=hop_read_only(resolved_project, ctx_roots[0]) if want_sandbox else (),
-            on_process=_build_on_process(resolved_project, resolved_session_key, meta.role),
+            on_process=_build_on_process(
+                resolved_project, resolved_session_key, meta.role, trace_task_id or ""
+            ),
         )
         # Folded in before the turn loop narrows by role
         # (teams.roles.registry_for_role, called once inside
@@ -297,6 +299,7 @@ class DocketDriver:
                     trace_task_id=trace_task_id or "",
                 )
         finally:
+            background.stop_all(ctx.processes, ctx.on_process, reason="turn_end")
             if view_token is not None:
                 _repo_view.unregister(view_token)
 

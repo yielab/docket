@@ -95,7 +95,8 @@ This specification does NOT cover:
    total over the cap is refused in full before any call in it runs.
 9. The loop **MUST** stop with `stop_reason="timeout"` once the configured wall-clock budget for
    the whole turn has elapsed, checked between iterations. Each request's own timeout is the
-   smaller of `request_timeout_s` and the wall-clock budget left.
+   smaller of `request_timeout_s` and the wall-clock budget left. The tool clamp of requirement
+   98 keeps a tool from running past that budget.
 10. The loop **MUST** stop with `stop_reason="token_budget"` once the turn's cumulative *counted*
     token usage exceeds the configured budget. Counted tokens are `TokenUsage.counted_tokens`:
     `input_tokens - cached_tokens + output_tokens` (a cache read is never counted; a cache write is
@@ -732,6 +733,42 @@ This specification does NOT cover:
     round take precedence. The arguments of that last call **MUST** be returned with the result
     (`AgentLoopResult.closing_args`, carried to `TurnResult.closing_args`; `None` for a turn that
     closed on text), so a caller reads the structured outcome the tool recorded.
+
+### The turn's clock, processes and budgets over its tools (ADR 0034, ADR 0035)
+
+98. `run_agent_turn` **MUST** set `ToolContext.deadline` once, at the turn's start, to its clock's
+    reading plus `wall_clock_timeout_s` (monotonic seconds). `bash` **MUST** run for the smaller of
+    the `timeout` it asked for (the context's `timeout` when it asked for none) and the time
+    left, `max(1, deadline - now)`; a context with no deadline applies no clamp. A `bash` result
+    the clamp ended **MUST** end with `[killed at the turn's remaining time (N s); run it as a
+    verify gate or raise turnTimeoutS]` (N the seconds it ran for), and the `timeout` argument's
+    description **MUST** say the turn's remaining time is the ceiling.
+
+99. `bash` **MAY** be called with `background: true`: the command **MUST** start in its own session,
+    its stdout and stderr **MUST** go to `<ToolContext.cache_dir, else $DOCKET_SCRATCH_DIR from
+    ToolContext.env>/processes/<pgid>.log`, its pgid **MUST** be registered in
+    `ToolContext.processes`, and the call **MUST** return at once with `started pgid=<n>
+    log=<path>`. No timeout applies to it. With neither directory, and under the docker backend,
+    the call **MUST** be refused with a reason and start nothing. The `process_started` event
+    **MUST** carry `background: true`.
+100. `process_output(pgid, offset=0)` (kind `read`) **MUST** answer `alive: true|false` (with
+    `exit: <code>` once the process has ended), the `offset` to continue from and the log's text
+    from the byte offset; an unknown pgid is a failed call. `process_stop(pgid)` (kind `write`)
+    **MUST** kill the process group, record `process_exited` with `signal` and answer
+    `stopped pgid=<n>`; stopping an ended process kills nothing. Both act only on pgids this
+    turn's `ToolContext.processes` holds.
+101. When the turn ends, by any return path, `DocketDriver` **MUST** stop every background process
+    still alive and record each one's `process_exited` with `reason: turn_end`; a process that
+    had already ended is recorded with its `exitCode` once, never twice.
+
+102. `ToolContext` **MUST** carry the turn's tool-output cap (`output_cap`) and `read` window
+    (`read_window`), and `dispatch_tool` **MUST** hold them for every handler it runs, so a
+    built-in's `bounded_text` cut (requirements 82 and 91), an MCP tool's result and `read`'s
+    default window use them instead of one value per home. `DocketDriver` **MUST** set each from
+    the turn's model profile (model-profiles "Model profiles"): the profile's budget in
+    characters where it declares a share, never above `DOCKET_TOOL_MAX_OUTPUT_CHARS`, and today's
+    values (that cap, and `READ_DEFAULT_CHARS`) where it does not, so a `hosted` row behaves as it
+    always has. A context that sets neither keeps today's values.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
