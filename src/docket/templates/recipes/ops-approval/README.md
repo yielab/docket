@@ -42,5 +42,5 @@ requests are denied after `APPROVAL_TIMEOUT` (900s).
 
 ```bash
 docket pod unset pipeline
-rm ~/.docket/workspaces/pods/<project>/config/policies/ops-approval-high-risk.yaml
+rm ~/.docket/config/pods/<project>/policies/ops-approval-high-risk.yaml
 ```

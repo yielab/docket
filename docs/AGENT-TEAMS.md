@@ -106,7 +106,7 @@ ships six more you can drop into any pod without writing a line of YAML:
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod add researcher`. A user-authored archetype (a standalone YAML file,
 `docket pod update`) can add a brand-new role name or override an existing one — merged into the
-pod's own `config/roles/` files, the pod wins by name. A denied tool is absent from that role's turn,
+pod's own `config/pods/<pod>/roles/` files, the pod wins by name. A denied tool is absent from that role's turn,
 not merely discouraged: it is the only capability statement a role carries (`cannot:` in the short
 form). Denying a built-in tool removes that tool alone; denying one also removes every MCP tool of
 its kind.
@@ -163,7 +163,7 @@ that fail a task whose tests prove nothing (`anti-tautology`, `mutation`), and a
 (`code-intel`). `docket pod recipes` shows what each brings, derived from
 its files; `docket init --recipe tdd` starts a new pod from one, `docket pod update
 git-safety` applies one onto a pod that already exists, and a directory under
-`~/.docket/recipes/<name>/` is addressable the same way. A recipe is the same directory shape as
+`~/.docket/config/recipes/<name>/` is addressable the same way. A recipe is the same directory shape as
 a repository's own `.docket/`, which plain `docket init` discovers, validates and applies when it
 is committed next to the code — see [the recipe library](recipes.md),
 [CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-recipe) and
@@ -217,8 +217,9 @@ Each hop that isn't the Lead is **gated** before the pipeline advances past it:
   advancing to Reviewer/Tester. An unset `verifyCmd` is never silently skipped — it's a visible
   "verification skipped" line, so you can always tell "not configured" from "configured and
   passing."
-- **Reviewer → verdict gate, with bounded rework.** The Reviewer's reply must carry exactly one
-  of `APPROVE`/`REQUEST-CHANGES` at the start of a line (two different markers are unparseable). A `REQUEST-CHANGES` sends the task back to the
+- **Reviewer → verdict gate, with bounded rework.** The Reviewer closes with `handoff` and a
+  `verdict` of `APPROVE` or `REQUEST-CHANGES`; a reply ending with that marker line is still read, and
+  two different markers are unparseable. A `REQUEST-CHANGES` sends the task back to the
   Implementer with the Reviewer's feedback attached, bounded by a rework budget (`maxReworkCycles`,
   default 1); exhausting it — or a second rejection — fails the task.
 - **Tester → verdict gate, hard fail.** The reply must carry exactly one of `PASS`/`FAIL` at the start of a line.
@@ -314,14 +315,73 @@ An agent's identity is a pure function of its metadata: its **role** (structural
 Implementer," from `SOUL.md`). Display names resolve from role; docket-managed workspaces never read
 self-authored `IDENTITY.md`. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
 
-A turn's prompt is composed from three instruction layers, in order: docket's own **generated**
-templates (`SOUL.md`, `AGENTS.md`, `TOOLS.md`, re-rendered by `docket pod update` when
-they drift from the current archetype), the **operator-owned** `INSTRUCTIONS.md` right after
-`SOUL.md` (docket never writes it, so it survives `docket pod update` and `docket pod reset`), and a
-`projectInstructions` section — the repository's `AGENTS.md` by default, or the codebase files
-named with `docket pod set projectInstructions <path,...>`, screened through the same
-`pre_input` policy hook as any other input and restricted to relative paths that can't escape the
-codebase root. See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
+A turn's system prompt is composed from, in order: `SOUL.md`, the operator-owned `INSTRUCTIONS.md`
+(docket never writes it, so `docket pod update` leaves it alone), the member's `AGENTS.md`, a fixed
+runtime contract, the project instructions, the skills index, `MEMORY.md` when it has content, and the
+pod's accepted memory last. Docket generates `SOUL.md` and `AGENTS.md` from the role's templates, and
+`docket pod update` re-renders them when they drift from the current archetype. The project
+instructions are the repository's `AGENTS.md` by default, or the codebase files named with
+`docket pod set projectInstructions <path,...>`, screened through the same `pre_input` policy hook as
+any other input and restricted to relative paths that can't escape the codebase root. The budget and
+each section's fate are in [CONFIGURATION.md](CONFIGURATION.md) §2, the full reference.
+
+---
+
+## What a hop is sent, and what it returns
+
+A hop's turn is built from prompt **layers**, and each hop's record keeps the layers it used:
+
+- **identity**: the role's identity prompt, the text its `SOUL.md` is generated from. It is present
+  when a scope holds one.
+- **task**: the `## Task` section of a non-Lead hop, below.
+- **hop**: the hop's instruction: the pipeline step's own `instructions`, the role's hop prompt, or
+  the line generated from its gate.
+
+Each layer records its version and the scope it came from (shipped, operator, pod, repository,
+pipeline or generated). The Lead's message has no headings: its instruction, the task description,
+then the working-directory line and a repository map. Every other hop's message has two sections, in
+this order:
+
+- `## Task`: the task description, never shortened, and a repository map bounded to the paths the
+  Lead's brief names. Every non-Lead hop of one task gets the same bytes.
+- `## Hop`: the working-directory line, any operator answer, gate failure or rework note, the prior
+  hops' handoffs (each trimmed to the role's token budget, least valuable fields first), and the
+  role's instruction.
+
+No message carries an absolute path. A hop is told that its tools start at the repository root and
+to give paths relative to it, so the worktree's location stays out of every prompt.
+
+Each hop record carries a `promptManifest`: for every layer, its name, version, SHA-256, scope and
+estimated tokens, then the model, provider family, model class and model profile. Two hops'
+manifests show whether a prompt changed between them.
+
+### `handoff`: how a hop closes
+
+A hop is offered one tool, `handoff`, when its step has a verdict gate or its prompt declares
+`output: handoff/v1`. The built-in Implementer, Reviewer and Tester prompts do. Calling it once, as
+the last action, ends the turn, in place of a free-text closing line:
+
+- `summary` is what the next hop reads in place of your reply. Put the decisions, names and paths it
+  must use there; it is not a description of the work.
+- `verdict` is required on a verdict-gated step, and must be one of the gate's values.
+- `filesChanged`, `assumptions` and `questions` are optional. A question reaches the next hop and the
+  operator; it does not park the task.
+
+A reply that ends with the gate's marker line is still read when no `handoff` call was made. A
+verdict-gated hop with no verdict is asked once more before it fails.
+
+### Prompt tests and the floor
+
+A prompt can ship a `tests` file: cases, each an `input` and assertions (`contains`, `matchesSchema`,
+`calledHandoff`, `underTokens`). `docket pod test <layer>/<name> [--model <provider/model>]` sends each
+case to the model and records `pass` or `fail` against that model and the prompt's text, so a repeat
+reads the record; `--force` runs it again. Without `--model`, the model is the prompt's role's own
+model. It exits `0` on pass, `1` on fail and `2` when it cannot run.
+
+A role names the prompts it must run on in its `floor` (`floor: [hop/reviewer]`). It refuses a
+model whose recorded test for one of them failed: the task settles as `dispatch_refused`,
+naming the prompt and the fix (`docket pod test <ref> --force` after a change, or another model for
+the role). docket never falls back to another model.
 
 ---
 

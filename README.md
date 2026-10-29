@@ -129,11 +129,12 @@ When the defaults stop fitting, `docket pod export` writes the team into your re
 
 ```text
 .docket/
-  pod.yaml            kind: pod       who is on the team, the pod's settings
-  roles/*.yaml        kind: role      what a role may not do, how it is gated, its model
-  pipeline.yaml       kind: pipeline  who works a task, in what order, behind which gates
-  policies/*.yaml     kind: policy    what always needs a human
-  skills/<name>/      SKILL.md        instructions an agent reads on demand
+  pod.yaml                 kind: pod       who is on the team, the pod's settings
+  roles/*.yaml             kind: role      what a role may not do, how it is gated, its model
+  pipeline.yaml            kind: pipeline  who works a task, in what order, behind which gates
+  policies/*.yaml          kind: policy    what always needs a human
+  prompts/<layer>/*.md     kind: prompt    the text a hop or an identity is built from, by name
+  skills/<name>/           SKILL.md        instructions an agent reads on demand
 ```
 
 Edit a file, check it with `docket pod validate`, preview the run with `docket pod plan`, and

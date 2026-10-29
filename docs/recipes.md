@@ -4,8 +4,10 @@
 
 A recipe is a directory in the same shape as a repository's `.docket/`: an optional `pod.yaml`
 (`kind: pod`, `name`, `description`, `members`, `settings`), optional `roles/`, `pipeline.yaml`,
-`policies/`, `plugins/`, `skills/` and `mcp-servers/`. What a recipe brings is derived from what the directory
-holds, never declared; `docket pod recipes` prints the same derivation. Apply one with:
+`policies/`, `plugins/`, `skills/`, `mcp-servers/` and `prompts/<layer>/` (prompt files, `kind: prompt`).
+What a recipe brings is derived from what the directory holds, never declared; `docket pod recipes`
+prints the same derivation and does not count prompts (`docket pod update <name> --dry-run` lists
+each one). Apply one with:
 
 ```bash
 docket init --recipe <name>            # a new pod for the current repository
@@ -13,7 +15,7 @@ docket pod update <name>      # onto a pod that already exists (--dry-run to pla
 docket pod recipes <name>             # description, what it brings, its README
 ```
 
-A directory of your own under `~/.docket/recipes/<name>/` is addressable the same way and wins
+A directory of your own under `~/.docket/config/recipes/<name>/` is addressable the same way and wins
 over a shipped recipe of the same name. Composition: apply as many recipes as you need, then
 `docket pod export` writes the merged team to `.docket/`, the configuration of record.
 
@@ -24,12 +26,14 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`code-intel`](#code-intel) | 2 MCP servers | Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers. |
 | [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`dual-review`](#dual-review) | 2 members, pipeline `dual-review` | Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass. |
+| [`explore-then-edit`](#explore-then-edit) | 3 members, pipeline `explore-then-edit` | Researcher, Implementer and Reviewer as a pipeline, with the Researcher on a cheap model and one bounded rework cycle back to the Implementer. |
 | [`frugal`](#frugal) | 1 member, 2 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
 | [`git-safety`](#git-safety) | 2 policies | Block unattended-unsafe git commands and ask before a push that touches a protected branch. |
 | [`intake`](#intake) | 1 member, pipeline `intake` | The Lead reasons about a task before any code changes: a typed brief, a deterministic resource check, and an operator question when something only a human can answer. |
 | [`mutation`](#mutation) | pipeline `mutation` | Fails a task whose changed source files are not well covered by their tests, measured by mutation testing with mutmut (must be installed). |
 | [`no-egress`](#no-egress) | 3 policies | Ask before a bash-run network client, package install, or fetch call leaves the workspace. |
 | [`ops-approval`](#ops-approval) | 1 policy, 1 member, pipeline `ops-approval` | An Operator whose action needs an explicit human sign-off before it runs at all, plus a policy that asks on deploy-shaped commands. |
+| [`parallel-explore`](#parallel-explore) | 2 members, pipeline `parallel-explore` | Two cheap-tier Researchers mapping disjoint parts of the code in parallel, then an Implementer gated on its verify command, with one retry back to the Lead. |
 | [`prod-approval`](#prod-approval) | 1 policy | Ask before an implementer or operator runs a deploy/production-shaped command. |
 | [`reflexion`](#reflexion) | 2 members, pipeline `reflexion` | Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the Tester has the final word. |
 | [`research-review`](#research-review) | 4 members, pipeline `research-review` | Lead, Researcher, Analyst, Writer and Critic as a pipeline, gated on the Critic's APPROVE/REJECT with one rework cycle back to the Writer. |
@@ -37,7 +41,9 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`secure-build`](#secure-build) | 1 role, 1 policy, 1 member, 1 skill, pipeline `secure-build` | A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle. |
 | [`spec-first`](#spec-first) | 3 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
 | [`spec-writer`](#spec-writer) | pipeline `spec-writer` | Tests from the brief as a two-step pipeline on two different models: one writes failing tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
+| [`strong-plan-cheap-edit`](#strong-plan-cheap-edit) | 1 member, pipeline `strong-plan-cheap-edit` | Implementer as the cheap-tier editor of a strong-tier plan, gated on its verify command with one retry. |
 | [`tdd`](#tdd) | 1 member, 1 skill, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
+| [`web-research`](#web-research) | 3 members, pipeline `web-research` | Three cheap-tier Researchers in parallel (two over the web through a search server and fetch, one over the repository), then Analyst and Writer. |
 
 ## anti-tautology
 
@@ -150,7 +156,7 @@ server's launch command or cache location rather than leaving the jail.
 `language-intel` is wired for Python. For another language change `--lsp` and its arguments
 (the server's README lists gopls, rust-analyzer, typescript-language-server and clangd).
 `--workspace .` resolves against the server process's working directory; set an absolute path if
-the turn does not start in the codebase. Servers are stored pod-scoped in `config/mcp-servers.json`
+the turn does not start in the codebase. Servers are stored pod-scoped in `config/pods/<project>/mcp-servers.json`
 and are selected like any other through the pod's `mcpServers` setting (global servers and this
 pod's own).
 
@@ -255,6 +261,52 @@ every item `skip`). `--dry-run` prints the plan without writing.
 docket pod unset pipeline
 docket pod remove <project>-reviewer
 docket pod remove <project>-critic
+```
+
+## explore-then-edit
+
+Researcher, Implementer and Reviewer as a pipeline, with the Researcher on a cheap model and one bounded rework cycle back to the Implementer.
+
+**Brings:** 3 members, pipeline `explore-then-edit`. **Summary line:** `roles 0 · policies 0 · members 3 · pipeline explore-then-edit · plugins 0 · skills 0 · settings 0`
+
+```bash
+docket init --recipe explore-then-edit
+docket pod update explore-then-edit
+```
+
+Researcher -> Implementer -> Reviewer. The Researcher runs on the cheap model class
+(`model: cheap` on its step, overriding the built-in `researcher` archetype's `strong`) and
+maps the code the task touches. The Implementer edits with that map as its handoff, and the
+Reviewer's APPROVE/REQUEST-CHANGES verdict is the last gate, with one rework cycle back to the
+Implementer.
+
+### Apply it
+
+For a new pod, or onto one that already exists:
+
+```bash
+docket init --recipe explore-then-edit    # a new pod for the current directory
+docket pod update explore-then-edit       # onto an existing pod
+```
+
+`pod.yaml` names the three members this recipe adds: `researcher`, `implementer` and
+`reviewer`. `apply` validates the roster and `pipeline.yaml` before writing anything, and is
+safe to run again (a second run plans every item `skip`). `--dry-run` prints the plan without
+writing.
+
+### Files
+
+- `pod.yaml` - what `apply` reads: `members: [researcher, implementer, reviewer]`.
+- `pipeline.yaml` - `explore` (Researcher, `model: cheap`) -> `build` (Implementer) ->
+  `review` (Reviewer, APPROVE/REQUEST-CHANGES verdict, rework -> build, maxCycles 1).
+
+### Undo
+
+```bash
+docket pod unset pipeline
+docket pod remove <project>-researcher
+docket pod remove <project>-implementer
+docket pod remove <project>-reviewer
 ```
 
 ## frugal
@@ -375,8 +427,8 @@ docket pod check "git push origin main" --role implementer
 ### Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/git-safety-block-destructive.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/git-safety-ask-protected-branch-push.yaml
+rm ~/.docket/config/pods/<project>/policies/git-safety-block-destructive.yaml
+rm ~/.docket/config/pods/<project>/policies/git-safety-ask-protected-branch-push.yaml
 ```
 
 ## intake
@@ -561,9 +613,9 @@ Each names its own policy and asks.
 ### Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/no-egress-ask-network-tools.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/no-egress-ask-package-installs.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/no-egress-ask-fetch.yaml
+rm ~/.docket/config/pods/<project>/policies/no-egress-ask-network-tools.yaml
+rm ~/.docket/config/pods/<project>/policies/no-egress-ask-package-installs.yaml
+rm ~/.docket/config/pods/<project>/policies/no-egress-ask-fetch.yaml
 ```
 
 ## ops-approval
@@ -619,7 +671,56 @@ requests are denied after `APPROVAL_TIMEOUT` (900s).
 
 ```bash
 docket pod unset pipeline
-rm ~/.docket/workspaces/pods/<project>/config/policies/ops-approval-high-risk.yaml
+rm ~/.docket/config/pods/<project>/policies/ops-approval-high-risk.yaml
+```
+
+## parallel-explore
+
+Two cheap-tier Researchers mapping disjoint parts of the code in parallel, then an Implementer gated on its verify command, with one retry back to the Lead.
+
+**Brings:** 2 members, pipeline `parallel-explore`. **Summary line:** `roles 0 · policies 0 · members 2 · pipeline parallel-explore · plugins 0 · skills 0 · settings 0`
+
+```bash
+docket init --recipe parallel-explore
+docket pod update parallel-explore
+```
+
+Lead -> (Researcher A | Researcher B, in parallel) -> Implementer. The Lead splits the work
+into two halves. Each Researcher runs on the cheap model class (`model: cheap` on its child
+step) and maps one half. The `parallel` group joins before the Implementer edits with both
+findings as its handoff. The Implementer's edit is gated on the pod's verify command
+(`verify: true`); a failed gate sends the task back to the Lead once
+(`on: {fail: {goto: lead, max: 1}}`).
+
+The two Researcher instructions are disjoint by construction: each names one half of the
+Lead's plan and its own paths.
+
+### Apply it
+
+For a new pod, or onto one that already has its `lead`:
+
+```bash
+docket init --recipe parallel-explore    # a new pod for the current directory
+docket pod update parallel-explore       # onto an existing pod
+```
+
+`pod.yaml` names the two members this recipe adds: `researcher` and `implementer`. `apply`
+validates the roster and `pipeline.yaml` before writing anything, and is safe to run again (a
+second run plans every item `skip`). `--dry-run` prints the plan without writing.
+
+### Files
+
+- `pod.yaml` - what `apply` reads: `members: [researcher, implementer]`.
+- `pipeline.yaml` - `lead` (Lead) -> `explore` (parallel group: `map-a` and `map-b`, both
+  Researchers on `model: cheap`) -> `build` (Implementer, gated on its verify command,
+  fail -> lead, maxCycles 1).
+
+### Undo
+
+```bash
+docket pod unset pipeline
+docket pod remove <project>-researcher
+docket pod remove <project>-implementer
 ```
 
 ## prod-approval
@@ -674,7 +775,7 @@ Both name `prod-approval-high-risk` and ask.
 ### Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/prod-approval-high-risk.yaml
+rm ~/.docket/config/pods/<project>/policies/prod-approval-high-risk.yaml
 ```
 
 ## reflexion
@@ -830,9 +931,9 @@ The first names `secrets-guard-block-paths` and blocks; the second (an ordinary 
 ### Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/secrets-guard-block-paths.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/secrets-guard-block-credential-text.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/secrets-guard-redact-output.yaml
+rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-paths.yaml
+rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-credential-text.yaml
+rm ~/.docket/config/pods/<project>/policies/secrets-guard-redact-output.yaml
 ```
 
 ## secure-build
@@ -875,7 +976,7 @@ verdict.
 - `pipeline.yaml` — `lead -> implementer (mechanical gate, its own verifyCmd) ->
   security-vetter (verdict gate, rework -> implementer, maxCycles 1)`.
 - `skills/security-review/SKILL.md` — an Agent Skill, applied whole into the pod's own
-  `config/skills/security-review/`; a concrete review checklist (injection points, secrets in
+  `config/pods/<project>/skills/security-review/`; a concrete review checklist (injection points, secrets in
   the diff, unsafe deserialization, path traversal, dependency changes, auth checks) the
   vetter reads on demand by calling the `skill` tool with `name: security-review`.
 - `policies/require-approval-secret-writes.yaml` — applied into the pod's own policy directory;
@@ -890,8 +991,8 @@ verdict.
 ```bash
 docket pod unset pipeline
 docket pod remove <project>-security-vetter
-rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.yaml
-rm -r ~/.docket/workspaces/pods/<project>/config/skills/security-review
+rm ~/.docket/config/pods/<project>/policies/require-approval-secret-writes.yaml
+rm -r ~/.docket/config/pods/<project>/skills/security-review
 ```
 
 ## spec-first
@@ -996,6 +1097,50 @@ run plans every item `skip`). `--dry-run` prints the plan without writing.
 docket pod unset pipeline
 ```
 
+## strong-plan-cheap-edit
+
+Implementer as the cheap-tier editor of a strong-tier plan, gated on its verify command with one retry.
+
+**Brings:** 1 member, pipeline `strong-plan-cheap-edit`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline strong-plan-cheap-edit · plugins 0 · skills 0 · settings 0`
+
+```bash
+docket init --recipe strong-plan-cheap-edit
+docket pod update strong-plan-cheap-edit
+```
+
+Lead -> Implementer. The Lead plans on the strong model class (`model: strong` on its step)
+and the Implementer edits on the cheap model class (`model: cheap` on its step). The edit is
+gated on the pod's verify command (`verify: true`). A failed gate sends the task back to the
+Implementer once (`on: {fail: {goto: build, max: 1}}`).
+
+The pod's `verifyCmd` setting supplies the command the gate runs; this recipe does not set it.
+
+### Apply it
+
+For a new pod, or onto one that already has its `lead`:
+
+```bash
+docket init --recipe strong-plan-cheap-edit    # a new pod for the current directory
+docket pod update strong-plan-cheap-edit       # onto an existing pod
+```
+
+`pod.yaml` names the one member this recipe adds: `implementer`. `apply` validates the roster
+and `pipeline.yaml` before writing anything, and is safe to run again (a second run plans every
+item `skip`). `--dry-run` prints the plan without writing.
+
+### Files
+
+- `pod.yaml` - what `apply` reads: `members: [implementer]`.
+- `pipeline.yaml` - `plan` (Lead, `model: strong`) -> `build` (Implementer, `model: cheap`,
+  gated on its verify command, fail -> build, maxCycles 1).
+
+### Undo
+
+```bash
+docket pod unset pipeline
+docket pod remove <project>-implementer
+```
+
 ## tdd
 
 Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists.
@@ -1047,4 +1192,74 @@ docket pod update tdd    # onto an existing pod
 ```bash
 docket pod unset pipeline
 docket pod remove <project>-tester
+```
+
+## web-research
+
+Three cheap-tier Researchers in parallel (two over the web through a search server and fetch, one over the repository), then Analyst and Writer.
+
+**Brings:** 3 members, pipeline `web-research`. **Summary line:** `roles 0 · policies 0 · members 3 · pipeline web-research · plugins 0 · skills 0 · settings 0`
+
+```bash
+docket init --recipe web-research
+docket pod update web-research
+```
+
+Lead -> (Researcher A | Researcher B | Researcher C, in parallel) -> Analyst -> Writer.
+
+The Lead splits the question into sub-questions. Three Researchers run on the cheap model
+class (`model: cheap` on each child step) with disjoint instructions: two work the web, the
+third works the repository with `grep` and `read`. Each web Researcher searches through a
+search server and reads the pages it picks with `fetch`. The pages stay in the Researcher's
+own session; only its reply reaches the Analyst as a handoff. The Analyst and the Writer are
+the built-in `analyst` and `writer` roles.
+
+### Prerequisites
+
+Two things must be in place before the web Researchers can work. Both are set by the
+operator, not by this recipe.
+
+1. The hosts whose pages the Researchers may read:
+
+   ```bash
+   FETCH_ALLOWED_DOMAINS=<hosts>
+   ```
+
+2. A search server, declared through MCP with `--kind read`. docket has no built-in search. The
+   example below is a self-hosted SearXNG behind its MCP server: no vendor and no key, with
+   the operator's own SearXNG host on the allowlist above.
+
+   ```bash
+   docket setup mcp add searxng --kind read -- <searxng-mcp-server-command>
+   ```
+
+   A hosted search API works through the same command: pass its key with `--env KEY=VALUE`
+   (`docket setup mcp list` shows the value as `****`).
+
+### Apply it
+
+For a new pod, or onto one that already has its `lead`:
+
+```bash
+docket init --recipe web-research    # a new pod for the current directory
+docket pod update web-research       # onto an existing pod
+```
+
+`pod.yaml` names the three members this recipe adds: `researcher`, `analyst` and `writer`.
+`apply` validates the roster and `pipeline.yaml` before writing anything, and is safe to run
+again (a second run plans every item `skip`). `--dry-run` prints the plan without writing.
+
+### Files
+
+- `pod.yaml` - what `apply` reads: `members: [researcher, analyst, writer]`.
+- `pipeline.yaml` - `lead` (Lead) -> `research` (parallel group: `web-a`, `web-b` and `repo`,
+  all Researchers on `model: cheap`) -> `analyst` -> `writer`.
+
+### Undo
+
+```bash
+docket pod unset pipeline
+docket pod remove <project>-researcher
+docket pod remove <project>-analyst
+docket pod remove <project>-writer
 ```
