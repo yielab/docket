@@ -1,5 +1,5 @@
 """``teams/roles.py``'s pure, non-registry pieces: ``hop_instruction``'s wire
-round-trip, ``resolve_hop_instruction``'s gateContract-derived fallback, and that
+round-trip, ``resolve_hop_prompt``'s gateContract-derived fallback, and that
 every built-in/starter role's generated prose agrees with the live runtime contract.
 """
 

@@ -347,4 +347,5 @@ def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:
         stop_reason=result.stop_reason,
         model=result.model,
         provider=result.provider,
+        closing_args=result.closing_args,
     )

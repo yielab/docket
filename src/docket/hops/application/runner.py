@@ -7,6 +7,7 @@ from collections.abc import Callable
 from docket.agent import ports as _rd
 from docket.hops.application import driver as _dr
 from docket.hops.application.compose import _compose_hop
+from docket.hops.application.handoff_tool import HANDOFF_TOOL
 from docket.hops.gates.post_hop import _apply_output_guardrails, _evaluate_hop_gates
 from docket.hops.gates.pre_hop import (
     _gate_budget,
@@ -15,6 +16,7 @@ from docket.hops.gates.pre_hop import (
     _warn_unpriced_hop,
 )
 from docket.kernel import clock as _clock
+from docket.kernel import handoff as _handoff
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
@@ -42,6 +44,12 @@ from docket.teams.settings import retries_for_role
 _RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"})
 
 
+def _declared_verdict(turn: _rd.TurnResult) -> str | None:
+    """The verdict the turn's closing ``handoff`` call declared, if it made one."""
+    call = _handoff.parse_handoff_call(turn.closing_args)
+    return call.verdict if call is not None else None
+
+
 def _reask_unmarked_verdict(
     ctx: UnitContext,
     role: str,
@@ -49,9 +57,10 @@ def _reask_unmarked_verdict(
     first: _rd.TurnResult,
     call: Callable[[str], _rd.TurnResult],
 ) -> _rd.TurnResult:
-    """A reply with no verdict marker is asked for once more on the same session; the answer is
-    appended to the original reply. A failed extra request leaves *first* as it was."""
-    if _orch.parse_verdict(gate, first.output) is not None:
+    """A reply with no verdict (neither the ``handoff`` call's nor a marker line) is asked for
+    once more on the same session, for the call; the answer is appended to the original reply and
+    a call it makes is the turn's. A failed extra request leaves *first* as it was."""
+    if _orch.parse_verdict(gate, first.output, _declared_verdict(first)) is not None:
         return first
     values = _orch.verdict_values(gate)
     trace_locked(
@@ -62,7 +71,8 @@ def _reask_unmarked_verdict(
         _json.dumps({"hop": role, "values": list(values)}),
     )
     second = call(
-        f"Your reply had no verdict line. Reply with exactly one line: {' or '.join(values)}."
+        f"Your reply had no verdict. Call `{HANDOFF_TOOL}` with your verdict: "
+        f"{' or '.join(values)}."
     )
     if not second.ok:
         return first
@@ -72,6 +82,7 @@ def _reask_unmarked_verdict(
         cost_usd=first.cost_usd + second.cost_usd,
         usage=_sum_usage(first.usage, second.usage),
         raw=second.raw,
+        closing_args=second.closing_args or first.closing_args,
     )
 
 
@@ -231,7 +242,7 @@ def execute_unit(
     if approval_outcome is not None:
         return approval_outcome
 
-    message, env = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
+    message, env, manifest = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
     hop_first_ts = _clock.stamp()
     run_res, attempt = _run_hop_turn(ctx, node, role, member_id, history_session_key, message, env)
 
@@ -249,6 +260,7 @@ def execute_unit(
         attempt,
         hop_first_ts,
         prior_snapshot,
+        manifest,
     )
 
     early_outcome = persist_hop_and_trace(

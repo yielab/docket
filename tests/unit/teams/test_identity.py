@@ -6,6 +6,7 @@ The display name is a pure function of docket metadata (name → role).
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 from pathlib import Path
 
@@ -40,6 +41,26 @@ class TestSoulHasNoPersonaBlock:
         assert "body" in text
         assert "Orion" not in text
         assert "## Persona" not in text
+
+
+class TestCompositionNamesItself:
+    def test_the_hash_is_the_texts_and_the_sources_name_what_fed_it(self) -> None:
+        ws = current_home().workspace_dir("named")
+        ws.mkdir(parents=True, exist_ok=True)
+        (ws / "SOUL.md").write_text("# SOUL\nbody\n")
+        (ws / "INSTRUCTIONS.md").write_text("Do the work.\n")
+
+        composition = I.compose_agent_prompt("named")
+
+        assert composition.sha256 == hashlib.sha256(composition.text.encode("utf-8")).hexdigest()
+        assert "SOUL.md" in composition.sources
+        assert "INSTRUCTIONS.md" in composition.sources
+        assert "skills" not in composition.sources
+
+    def test_an_empty_composition_has_no_hash_and_no_sources(self) -> None:
+        composition = I.compose_agent_prompt("")
+
+        assert (composition.sha256, composition.sources) == ("", ())
 
 
 class TestRuntimeWorkspaceContextReporting:

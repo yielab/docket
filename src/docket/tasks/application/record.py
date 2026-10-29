@@ -321,15 +321,21 @@ def build_hop_result(
     attempt: int,
     first_ts: str = "",
     prior: list[HopResult] | None = None,
+    manifest: dict[str, Any] | None = None,
 ) -> HopResult:
-    """Build this hop's persisted record and handoff artifact. The verdict is parsed once,
-    guarded on ``hop_ok`` (not ``run_res.ok``) since a ``pre_output`` block can fail an
+    """Build this hop's persisted record and handoff artifact. A ``handoff`` call supplies the
+    summary, verdict, assumptions and questions unless a guardrail rewrote the reply. The verdict
+    is parsed once, guarded on ``hop_ok`` (not ``run_res.ok``) since a ``pre_output`` block can fail an
     otherwise-successful call and must not hand a "here is what I changed" artifact
     downstream; the diff probe is likewise gated. Uses ``hop_output``, never
     ``run_res.output`` -- the raw text would silently undo a ``redact`` verdict's rewrite."""
-    verdict: str | None = None
+    # A guardrail's rewrite (`redact`) must not be undone by the call's own, unscreened text.
+    call = None
+    if hop_ok and hop_output == run_res.output:
+        call = _handoff.parse_handoff_call(run_res.closing_args)
+    verdict: str | None = call.verdict if call is not None else None
     if hop_ok and isinstance(node.gate, _gates.VerdictGate):
-        verdict = _orch.parse_verdict(node.gate, hop_output)
+        verdict = _orch.parse_verdict(node.gate, hop_output, verdict)
     files_changed: list[str] = []
     diff_ref: str | None = None
     evidence: dict[str, Any] | None = None
@@ -354,8 +360,10 @@ def build_hop_result(
     # closed on anything else.
     brief = _handoff.parse_brief(hop_output) if hop_ok else None
     artifact = _handoff.HandoffArtifact(
-        summary=hop_output,
+        summary=(call.summary if call is not None else "") or hop_output,
         verdict=verdict,
+        assumptions=call.assumptions if call is not None else [],
+        questions=call.questions if call is not None else [],
         files_changed=files_changed,
         diff_ref=diff_ref,
         diff=diff,
@@ -380,6 +388,7 @@ def build_hop_result(
         usage=_hop_usage(run_res),
         trace=_hop_trace_link(ctx, first_ts),
         repo_files=dict(run_res.repo_files),
+        prompt_manifest=manifest or {},
     )
 
 

@@ -295,6 +295,8 @@ class _TurnState(TurnState):
                 composition.budget_tokens,
                 composition.budget_source,
                 task_id=trace_task_id,
+                sha256=composition.sha256,
+                sources=composition.sources,
             )
         return cls(
             backend=backend,

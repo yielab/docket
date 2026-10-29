@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 5.1.0
+**Version**: 5.2.0
 **Status**: Stable
 **Last Updated**: 2026-10-28
 
@@ -328,7 +328,9 @@ an empty list, not an error.
 ```
 
 The field set of a task record is the one `TaskRecord` dumps (owned by
-`pod-dispatch.spec.md` and `operator-api.spec.md`); this spec does not re-enumerate it.
+`pod-dispatch.spec.md` and `operator-api.spec.md`); this spec does not re-enumerate it. Each hop
+in `hops` carries its `promptManifest` (the prompts the turn was composed from, by hash) when it
+has one, as `operator-api.spec.md` states, in the list and in the single-task body alike.
 
 - The project segment must be non-empty — `GET /tasks` and `GET /tasks/` both reject with `400`.
 - The project segment must also pass `validate_project_id` (`input-validation.spec.md` §1) — a

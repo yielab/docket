@@ -95,7 +95,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.0 | Complete |
-| Agent Loop | 3.5.0 | Implemented and live |
+| Agent Loop | 3.6.0 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
 | Audit | 3.2.0 | Implemented |
 | Config Format | 2.3.0 | Implemented |
@@ -119,9 +119,9 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | CLI JSON Shapes | 4.6.0 | Complete |
 | docket-meta schema | 5.5.0 | Complete |
 | Docket Store | 3.1.0 | Implemented |
-| Operator API | 7.0.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.1.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.2.0 | Implemented |
-| Serve Read API | 5.1.0 | Stable |
+| Serve Read API | 5.2.0 | Stable |
 | Adoption Benchmark | 2.2.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.4.0 | Active |

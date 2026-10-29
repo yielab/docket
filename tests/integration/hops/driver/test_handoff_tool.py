@@ -1,4 +1,4 @@
-"""``DocketDriver`` offers ``verdict`` only on a verdict-gated hop, and calling it ends the hop."""
+"""``DocketDriver`` offers ``handoff`` on a gated or handoff-declaring hop; calling it ends the hop."""
 
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ class _Backend:
         return self._replies.pop(0)
 
 
-def _verdict_call(value: str, text: str = "") -> ChatResponse:
-    call = ToolCall(id="v1", name="verdict", arguments=json.dumps({"value": value}))
+def _handoff_call(args: dict[str, object], text: str = "") -> ChatResponse:
+    call = ToolCall(id="v1", name="handoff", arguments=json.dumps(args))
     return ChatResponse(
         ok=True,
         message=assistant(text, tool_calls=[call]),
@@ -57,31 +57,53 @@ def _run(backend: _Backend, env: dict[str, str] | None) -> _rd.TurnResult:
     return driver.run_turn("rev-agent", "agent:rev-agent:default", "review it", 60, env)
 
 
-def test_the_verdict_tool_is_offered_with_the_gates_enum() -> None:
+def test_the_handoff_tool_is_offered_with_the_gates_enum() -> None:
     backend = _Backend([_text("APPROVE")])
 
     _run(backend, {_rd.DOCKET_VERDICT_VALUES: VALUES})
 
     specs = {s.name: s for s in backend.tools_seen[0]}
-    assert specs["verdict"].parameters["properties"]["value"]["enum"] == [
+    assert "verdict" not in specs
+    assert specs["handoff"].parameters["properties"]["verdict"]["enum"] == [
         "APPROVE",
         "REQUEST-CHANGES",
     ]
+    assert specs["handoff"].parameters["required"] == ["verdict"]
 
 
-def test_a_hop_without_a_verdict_gate_is_not_offered_the_tool() -> None:
+def test_a_hop_declaring_the_handoff_output_is_offered_the_tool_without_a_gate() -> None:
+    backend = _Backend([_text("done")])
+
+    _run(backend, {_rd.DOCKET_HANDOFF: "1"})
+
+    spec = {s.name: s for s in backend.tools_seen[0]}["handoff"]
+    assert "required" not in spec.parameters
+
+
+def test_a_turn_with_neither_is_not_offered_the_tool() -> None:
     backend = _Backend([_text("done")])
 
     _run(backend, None)
 
-    assert "verdict" not in {s.name for s in backend.tools_seen[0]}
+    assert "handoff" not in {s.name for s in backend.tools_seen[0]}
 
 
-def test_calling_the_tool_ends_the_hop_with_the_value_as_the_last_line() -> None:
-    backend = _Backend([_verdict_call("request-changes", "The helper leaks a handle."), _text("x")])
+def test_calling_the_tool_ends_the_hop_with_the_verdict_as_the_last_line() -> None:
+    backend = _Backend(
+        [_handoff_call({"verdict": "request-changes"}, "The helper leaks a handle."), _text("x")]
+    )
 
     result = _run(backend, {_rd.DOCKET_VERDICT_VALUES: VALUES})
 
     assert result.ok is True
     assert result.output == "The helper leaks a handle.\nREQUEST-CHANGES"
     assert len(backend.tools_seen) == 1  # no request after the closing call
+
+
+def test_the_closing_call_arguments_reach_the_turn_result() -> None:
+    args = {"summary": "Added it.", "assumptions": ["python 3"], "questions": ["rename?"]}
+    backend = _Backend([_handoff_call(args), _text("x")])
+
+    result = _run(backend, {_rd.DOCKET_HANDOFF: "1"})
+
+    assert result.closing_args == args
