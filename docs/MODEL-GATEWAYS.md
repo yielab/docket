@@ -107,11 +107,14 @@ Compatibility does not mean feature parity. Docket currently:
   defaulting to 60s — so one large value never stalls a hop indefinitely, and provider-routing
   options are still not exposed.
 
-The built-in `anthropic` and `google` documents point at each vendor's own OpenAI-compatibility
-layer, not a first-party API: Anthropic documents its layer as intended to test and compare
-models, not as a production solution (no prompt caching, `strict` ignored, system messages
-concatenated), and Google documents its Gemini layer as beta. Treat either as a convenience for
-trying docket against a familiar model, not a production commitment from the vendor.
+The built-in `anthropic` document speaks Anthropic's Messages API (`dialect: anthropic-messages`), so
+its requests use the prompt cache, and cache reads and writes are counted in the token usage docket
+records. Anthropic's OpenAI-compatibility layer is a different path: a model registered by hand
+against it has no prompt caching, `strict` is ignored, and system messages are concatenated.
+Anthropic documents that layer as intended to test and compare models, not as a production
+solution. The built-in `google` document points at Google's Gemini compatibility layer, which Google
+documents as beta. Treat that as a convenience for trying docket against a familiar model, not a
+production commitment from the vendor. OpenRouter and Vercel AI Gateway still speak `openai-chat`.
 
 Choose a model only after representative evals for the actual tool schemas and tasks. A model id
 being available does not prove reliable tool use. Keep live remote canaries opt-in with an explicit

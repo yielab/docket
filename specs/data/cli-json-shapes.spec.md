@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.6.0
+**Version**: 4.6.1
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -380,7 +380,7 @@ winning scope's skill is listed (ADR 0013).
   "provider": {
     "name":       "string (catalog entry; the bare prefix when absent from the catalog)",
     "scope":      "built-in | global | \"\" (absent from the catalog)",
-    "dialect":    "string (openai-chat)",
+    "dialect":    "string (openai-chat | anthropic-messages)",
     "baseUrl":    "string | null",
     "credential": { "name": "string (may be empty)", "source": "override | env | store | none" },
     "model":      { "id": "string", "contextWindow": "number | null", "maxTokens": "number | null", "contextWindowSource": "declared | observed | unknown", "maxTokensSource": "declared | observed | unknown", "source": "declared | observed | unknown", "observedAt": "YYYY-MM-DD | \"\"" }
