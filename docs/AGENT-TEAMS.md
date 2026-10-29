@@ -222,7 +222,8 @@ Each hop that isn't the Lead is **gated** before the pipeline advances past it:
   two different markers are unparseable. A `REQUEST-CHANGES` sends the task back to the
   Implementer with the Reviewer's feedback attached, bounded by a rework budget (`maxReworkCycles`,
   default 1); exhausting it — or a second rejection — fails the task.
-- **Tester → verdict gate, hard fail.** The reply must carry exactly one of `PASS`/`FAIL` at the start of a line.
+- **Tester → verdict gate, hard fail.** The Tester closes with `handoff` and a `verdict` of `PASS` or
+  `FAIL`; a reply ending with exactly one of those markers at the start of a line is still read.
   Unlike the Reviewer, there is no rework loop here — a `FAIL` or unparseable output fails the
   task outright.
 
