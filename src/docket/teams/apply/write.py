@@ -18,6 +18,7 @@ from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import prompts as _prompts
 from docket.teams import roles as _arch
 from docket.teams.apply import lock as _lock
 from docket.teams.apply.model import ApplyPlan, ApplyResult, PodApplyError
@@ -65,9 +66,14 @@ def _export_roles(project: str, directory: Path) -> None:
 
 
 def _export_prompts(project: str, directory: Path) -> None:
-    """Copy *project*'s own ``config/prompts/`` files byte-for-byte as ``prompts/<layer>/<file>``."""
+    """Copy *project*'s own ``config/prompts/`` files, and the tests file each names, byte-for-byte
+    as ``prompts/<layer>/<file>``."""
     overlay = current_home().pod_config_dir(project)
-    for f in _config_docs.prompt_files(overlay):
+    try:
+        files = _config_docs.prompt_payload(overlay)
+    except _prompts.PromptError as exc:
+        raise PodApplyError(str(exc)) from exc
+    for f in files:
         dest = directory / "prompts" / f.relative_to(overlay / "prompts")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(f.read_bytes())

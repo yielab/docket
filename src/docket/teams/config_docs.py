@@ -474,6 +474,39 @@ def prompt_files(directory: str | Path) -> list[Path]:
     return [*sorted(prompts_dir.glob("*.md")), *sorted(prompts_dir.glob("*/*.md"))]
 
 
+def prompt_tests_file(prompt_file: Path, directory: str | Path) -> Path | None:
+    """The tests file *prompt_file* names with ``tests:``, or ``None`` when it names none. The
+    file must exist and, resolved, stay under ``<directory>/prompts``; ``PromptError`` otherwise."""
+    prompt = _prompts.load_prompt_file(prompt_file)
+    if prompt.tests is None:
+        return None
+    tests = prompt_file.parent / prompt.tests
+    if not tests.resolve().is_relative_to((Path(directory) / "prompts").resolve()):
+        raise _prompts.PromptError(
+            f"tests file {prompt.tests!r} escapes the prompts directory",
+            path=prompt_file,
+            field="tests",
+        )
+    if not tests.is_file():
+        raise _prompts.PromptError(
+            f"tests file {prompt.tests!r} does not exist", path=prompt_file, field="tests"
+        )
+    return tests
+
+
+def prompt_payload(directory: str | Path) -> list[Path]:
+    """The files of the prompts under *directory*: each prompt file, then the tests file it
+    names, once however many prompts name it. ``PromptError`` for a prompt that does not parse or
+    names a tests file ``prompt_tests_file`` refuses."""
+    files: list[Path] = []
+    for path in prompt_files(directory):
+        files.append(path)
+        tests = prompt_tests_file(path, directory)
+        if tests is not None and tests not in files:
+            files.append(tests)
+    return files
+
+
 def discover_config_paths(directory: str | Path) -> list[Path]:
     """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``pipelines/*``
     (``.yaml|yml``), ``prompts/*.md`` and ``prompts/<layer>/*.md``, ``pipeline.yaml``/``.yml``, and
