@@ -862,5 +862,13 @@
     "heading": "▶ PHASE 53 ACTIVE — prompts are versioned configuration, and the harness is one a small model can use (D-75, ADR 0035)",
     "bytes": 32687,
     "sha256": "8d271da9f308fcd1c4d525e3e182aa70d2657ab71ae424c5fc742d484e4e613e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 54 — the native Anthropic Messages dialect (D-76) · CLOSED 2026-10-29",
+    "bytes": 14193,
+    "sha256": "6d68785ca2bf40bf94122080697465a5799539965b1ebf1c5ce1c1fdba15187a"
   }
 ]
