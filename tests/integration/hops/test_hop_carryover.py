@@ -50,8 +50,9 @@ class TestHopMessageCap:
 
         expected = "\n".join(
             [
-                "Task: Fix the bug",
+                "## Task\nFix the bug",
                 "",
+                "## Hop",
                 "--- lead output ---\nPlan: do X.\n",
                 "You are the Implementer. Implement the change in the workspace.",
             ]
@@ -92,7 +93,7 @@ class TestHopMessageCap:
         assert huge_desc in lead_message
 
         message, comp = _compose._hop_message(task, "implementer", [_hop("lead", "small plan")])
-        assert f"Task: {huge_desc}" in message
+        assert f"## Task\n{huge_desc}" in message
         assert comp.description_bytes == len(huge_desc.encode("utf-8"))
 
     def test_prior_output_over_budget_is_truncated_with_a_visible_marker(
@@ -150,8 +151,9 @@ class TestHopMessageCap:
         message, comp = _compose._hop_message(task, "reviewer", prior)
         expected = "\n".join(
             [
-                "Task: Small task",
+                "## Task\nSmall task",
                 "",
+                "## Hop",
                 "--- lead output ---\nshort plan\n",
                 "--- implementer output ---\nsmall diff\n",
                 "You are the Reviewer. Review the diff (read-only). The LAST line of your "

@@ -630,6 +630,22 @@ class TestPromptManifest:
         assert set(reviewer.prompt_manifest) == {"layers", "model", "family", "class", "profile"}
         assert reviewer.prompt_manifest["profile"] == "hosted"
 
+    def test_a_non_lead_hop_records_its_task_section_between_identity_and_hop(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path, full=True):
+            res = _executor.dispatch_task(
+                "demo", TaskRecord(id="m2", description="work"), runner=FakeDriver()
+            )
+
+        implementer = next(h for h in res.hops if h.role == "implementer")
+        lead = next(h for h in res.hops if h.role == "lead")
+        entries = implementer.prompt_manifest["layers"]
+        assert [entry["layer"] for entry in entries] == ["identity", "task", "hop"]
+        task = entries[1]
+        assert (task["scope"], task["version"], task["tokens"] > 0) == ("task", "", True)
+        assert "task" not in [entry["layer"] for entry in lead.prompt_manifest["layers"]]
+
     def test_the_manifest_is_dumped_as_prompt_manifest_and_read_back(self) -> None:
         manifest = {"layers": [], "model": "m", "family": "", "class": "any", "profile": "hosted"}
         hop = _task.HopResult(role="lead", output="x", prompt_manifest=manifest)

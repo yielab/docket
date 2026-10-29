@@ -27,20 +27,26 @@ from pathlib import Path
 from typing import Any
 
 from docket.agent.loop_request import _FINALIZATION_INSTRUCTION
-from docket.agent.ports import ChatMessage, Endpoint, ToolCall
+from docket.agent.ports import ChatMessage, Endpoint, ToolCall, estimate_tokens
 from docket.agent.session import condense_history
 from docket.agent.tools.builtins.toolbox import read_file, text_outcome
 from docket.agent.tools.registry import ToolContext
+from docket.bootstrap import bind_adapters
 from docket.hops.application.builtin_tools import builtin_registry, describe_tools
+from docket.hops.application.compose import _task_section as task_section_of
 from docket.hops.application.handoff_tool import parse_values, register_closing_tool
 from docket.hops.application.verify_tool import VerifyPlan, verify_tool
+from docket.kernel.brief import TaskBrief
+from docket.kernel.handoff import HandoffArtifact
 from docket.kernel.home import current_home
 from docket.kernel.text import normalize_output
 from docket.kernel.tool_outcome import VERDICT_TAIL, bounded_text
 from docket.models.adapters.openai_wire import build_payload, request_part_bytes
 from docket.pipeline.domain import gates
 from docket.pipeline.domain import plan as orchestrator
+from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams.role_composer import registry_for_role
+from docket.teams.workspace.repo_map import WORKING_DIRECTORY_LINE, capped_map
 
 Messages = list[dict[str, Any]]
 Policy = Callable[[Messages], Messages]
@@ -409,6 +415,57 @@ def render_tool_surface() -> list[str]:
     return lines
 
 
+HOP_MESSAGE_POLICY = "p53-4"
+_NAMED_PATH = "src/docket/hops/application/compose.py"
+
+
+def _repo_root() -> str:
+    return str(Path(__file__).resolve().parents[2])
+
+
+def hop_task_block(description: str, brief_text: str | None, root: str) -> tuple[str, str]:
+    """The task block of a non-Lead hop message built two ways over the repository at *root*:
+    the whole-tree map with the worktree's absolute path as it was, and the two sections as they
+    are (``## Task`` with the map bounded by *brief_text*, then the working-directory line)."""
+    old = f"Task: {description}\n\nWorking directory: {root}\n{capped_map(root)}"
+    prior = []
+    if brief_text is not None:
+        brief = TaskBrief(objective=description[:80], context=[brief_text])
+        prior = [
+            HopResult(
+                role="lead",
+                ok=True,
+                output="plan",
+                artifact=HandoffArtifact(summary="plan", brief=brief),
+            )
+        ]
+    task_section = task_section_of(TaskRecord(description=description), description, root, prior)
+    return old, f"{task_section}\n\n## Hop\n{WORKING_DIRECTORY_LINE}"
+
+
+def render_hop_message(steps: list[Step]) -> list[str]:
+    """Bytes and counted tokens (``estimate_tokens``) of the task block before and after the two
+    sections, per recorded step's first message as the task, over this repository's tracked files;
+    the recorded text names no real path, so the last two rows name one file and no brief."""
+    root = _repo_root()
+    lines = [
+        f"policy {HOP_MESSAGE_POLICY} (task block of a hop message over this repository, counted not measured)",
+        f"{'task':<15}{'before B':>10}{'after B':>10}{'before tok':>12}{'after tok':>11}",
+    ]
+    cases: list[tuple[str, str, str | None]] = [
+        (step.name, str(step.messages[0].get("content", "")), "") for step in steps
+    ]
+    cases.append(("names a file", "change the Reviewer prompt", f"edit {_NAMED_PATH}"))
+    cases.append(("no brief yet", "change the Reviewer prompt", None))
+    for name, description, brief_text in cases:
+        old, new = hop_task_block(description, brief_text, root)
+        lines.append(
+            f"{name:<15}{len(old.encode()):>10,}{len(new.encode()):>10,}"
+            f"{estimate_tokens(old):>12,}{estimate_tokens(new):>11,}"
+        )
+    return lines
+
+
 def render_projection(steps: list[Step], names: list[str]) -> str:
     base = measure(steps)
     lines = []
@@ -418,6 +475,9 @@ def render_projection(steps: list[Step], names: list[str]) -> str:
             continue
         if name == TOOL_SURFACE_POLICY:
             lines.extend(render_tool_surface())
+            continue
+        if name == HOP_MESSAGE_POLICY:
+            lines.extend(render_hop_message(steps))
             continue
         if name not in POLICIES:
             raise SystemExit(f"unknown policy {name!r}; known: {', '.join(sorted(POLICIES))}")
@@ -699,6 +759,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repeats", action="store_true")
     ap.add_argument("--anonymize", type=Path, metavar="OUT")
     args = ap.parse_args(argv)
+    bind_adapters()
     if args.anonymize:
         print("\n".join(anonymize(args.directory, args.anonymize)))
         return 0

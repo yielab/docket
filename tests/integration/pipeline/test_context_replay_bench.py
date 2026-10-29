@@ -277,3 +277,17 @@ def test_the_tool_surface_policy_measures_the_real_registry_per_profile() -> Non
         assert local < hosted
     assert "handoff" in local_names and "bash" in local_names and "write" not in local_names
     assert "implementer" in BENCH.render_projection([], [BENCH.TOOL_SURFACE_POLICY])
+
+
+def test_the_hop_message_policy_bounds_the_map_to_the_named_paths() -> None:
+    """A brief naming one file sends fewer task-block bytes than the whole-tree map did."""
+    old, new = BENCH.hop_task_block(
+        "change the prompt", f"edit {BENCH._NAMED_PATH}", BENCH._repo_root()
+    )
+
+    assert len(new.encode()) < len(old.encode())
+    assert BENCH._NAMED_PATH in new and "`glob`" in new
+    assert BENCH._repo_root() not in new
+    assert "names a file" in BENCH.render_projection(
+        BENCH.load_steps(FIXTURES), [BENCH.HOP_MESSAGE_POLICY]
+    )
