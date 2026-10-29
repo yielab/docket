@@ -35,6 +35,14 @@ def jail_cache_dir(agent_id: str, want_sandbox: bool) -> Path | None:
     return _pod_cache_dir(agent_id) if want_sandbox else None
 
 
+def process_log_dir(agent_id: str, cache_dir: Path | None) -> Path:
+    """Where this turn's background `bash` logs go: the jail's cache dir when jailed, else a
+    directory docket keeps for the agent."""
+    if cache_dir is not None:
+        return cache_dir / "processes"
+    return current_home().process_logs_dir(agent_id)
+
+
 def _resolve_sandbox(agent_id: str, role: str) -> tuple[bool, str | None]:
     """Fail-closed go/no-go for this turn's isolation posture. Returns ``(want_sandbox,
     refusal)``; a non-``None`` refusal message means isolation is on but no backend

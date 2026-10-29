@@ -316,6 +316,10 @@ class Home:
     def prepare_cache_dir(self) -> Path:
         return self.state_dir / "cache" / "prepare"
 
+    def process_logs_dir(self, agent_id: str) -> Path:
+        """Where an unjailed turn's background `bash` logs go, one directory per agent."""
+        return self.state_dir / "cache" / "processes" / agent_id
+
     @property
     def projects_dir(self) -> Path:
         return self.workspaces_dir / "projects"
