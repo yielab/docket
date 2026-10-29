@@ -89,6 +89,23 @@ class TestBuiltinCatalog:
         assert spec is not None
         assert spec.headers.get("anthropic-version") == "2023-06-01"
 
+    def test_anthropic_speaks_the_native_dialect_with_the_key_header(self) -> None:
+        spec = _provider.load_catalog().get("anthropic")
+        assert spec is not None
+        assert spec.dialect == "anthropic-messages"
+        assert (spec.auth.type, spec.auth.header) == ("header", "x-api-key")
+        assert spec.auth.credentials == ["ANTHROPIC_API_KEY"]
+
+    def test_the_anthropic_note_no_longer_says_caching_is_missing(self) -> None:
+        spec = _provider.load_catalog().get("anthropic")
+        assert spec is not None
+        assert all("no prompt caching" not in p.note for p in spec.presets)
+
+    def test_all_fourteen_built_in_documents_are_in_the_catalog(self) -> None:
+        catalog = _provider.load_catalog()
+        assert len(catalog.entries) == 14
+        assert {catalog.source_of(name) for name in catalog.entries} == {"built-in"}
+
     def test_every_built_in_document_loads(self) -> None:
         directory = _templates.PROVIDER_TEMPLATES_DIR
         files = sorted(directory.glob("*.yaml"))
@@ -134,6 +151,16 @@ class TestLoadProviderDocument:
 
         assert excinfo.value.field == "dialect"
         assert "openai-chat" in excinfo.value.valid
+        assert "anthropic-messages" in excinfo.value.valid
+
+    def test_the_messages_dialect_is_a_valid_value(self, tmp_path: Path) -> None:
+        doc = tmp_path / "native.yaml"
+        doc.write_text(
+            "kind: provider\nname: native\nbaseUrl: https://example.com/v1\n"
+            "dialect: anthropic-messages\nauth: {type: none}\n"
+        )
+
+        assert _provider.load_provider_document(doc).dialect == "anthropic-messages"
 
     def test_a_reserved_header_name_is_refused(self, tmp_path: Path) -> None:
         doc = tmp_path / "bad-headers.yaml"
