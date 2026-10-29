@@ -17,7 +17,7 @@
 > finishing a card well matters more than running two at once.
 >
 > **Active: Phases 52 and 53, one schedule. Wave 1 closed 2026-10-28** (seven cards merged into
-> `develop`, unpushed). **Waves 2 (P52-7 ∥ P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28, Wave 4 (P53-4, P52-4's `&` half) closed 2026-10-29.** Wave 5 (P53-8) is next. Phase 51
+> `develop`, unpushed). **Waves 2 (P52-7 ∥ P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28, Wave 4 (P53-4, P52-4's `&` half) and Wave 5 (P53-8) closed 2026-10-29.** Only the phase close (P53-9) and the blocked cards remain. Phase 51
 > closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
 > ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. The integration
 > branch is `develop`.
@@ -102,6 +102,20 @@ wave is free.
 | 5 | P53-8 | `task_create.py`, `task.py`, `queue.py`, `compose.py` (task layer) | P53-4, P53-5 |
 | close | P53-9 | docs | every card |
 | — | P52-12 | blocked on a recorded run; no wave until its trigger fires | |
+
+**Wave 5 closed 2026-10-29.** Merge P53-8 (`49804775`). Gates: full suite green, e2e lane rc=0, ruff/format/mypy,
+`validate-specs`, `gen_cli_docs`, `gen_config_schemas`. Not run: goldens (no CLI or tool-list change), agent lane,
+escape matrix, no-sandbox script, operator step (phase close).
+- **P53-8:** `POST /tasks/<pod>` takes an optional `task` object (`objective`, `doneWhen`, `acceptance`, `constraints`,
+  `risk`, `answers`, `verify`, `kind`, `paths`) beside `description`, which stays the title. `TaskRecord.task` keeps it
+  (`tasks/domain/request.py::TaskRequest`, separate from the Lead's `brief`); `## Task` renders the set fields in a fixed
+  order and `paths` bound the map even before a Lead brief exists. An unknown key or a wrong type is a 400 naming it.
+  Specs: `operator-api` 7.2.0, `pod-dispatch` 11.3.0. The e2e journey crosses the real route, the stored record and the
+  real `_hop_message`.
+- **Worker addition, kept:** the task text goes through `pre_input` with the description and is redacted with it
+  (new text reaching the model must not skip the screen). **Open:** the existing `brief` is not redacted on a redact
+  verdict (before this wave); CLI and MCP intake and Tack's adoption are non-goals; one redact test was written after
+  the code and then seen failing with the line reverted.
 
 **Wave 4 closed 2026-10-29.** Merges P53-4 (`8a5e85b8`) and P52-4 (`53124f0d`), then the `agent-loop` sentence
 (`689e68eb`). Gates: full suite green, e2e lane rc=0, goldens 9/9, ruff/format/mypy, `validate-specs`,
@@ -1050,7 +1064,7 @@ spec + CLI
 
 ### P53-8 — a structured `task` on `POST /tasks/<pod>`
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** DONE (2026-10-29, merge 49804775) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request (ADR 0035 decision 10). `POST /tasks/<pod>`
