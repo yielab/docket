@@ -130,24 +130,31 @@ def _plan_roles(
 
 
 def _plan_prompts(directory: Path, project: str) -> tuple[list[ApplyItem], list[_PromptWrite]]:
-    """Plan ``prompts/<layer>/<name>.md`` into *project*'s own ``prompts/`` (the pod scope of
-    ``teams.prompts.resolve_prompt``), by bytes. A file that does not parse is refused."""
+    """Plan ``prompts/<layer>/<name>.md`` -- and the tests file each names -- into *project*'s own
+    ``prompts/`` (the pod scope of ``teams.prompts.resolve_prompt``), by bytes. A file that does
+    not parse, or a ``tests:`` path that escapes ``prompts/`` or names no file, is refused."""
     items: list[ApplyItem] = []
     writes: list[_PromptWrite] = []
     overlay_dir = current_home().pod_config_dir(project) / "prompts"
     for prompt_file in _config_docs.prompt_files(directory):
         try:
             prompt = _prompts.load_prompt_file(prompt_file)
+            tests = _config_docs.prompt_tests_file(prompt_file, directory)
         except _prompts.PromptError as exc:
             raise PodApplyError(str(exc)) from exc
-        rel = prompt_file.relative_to(directory / "prompts").as_posix()
-        source = prompt_file.read_bytes()
-        dest = overlay_dir / rel
-        if dest.is_file() and dest.read_bytes() == source:
-            action: ApplyAction = "skip"
-        else:
-            action = "replace" if dest.is_file() else "add"
-            writes.append(_PromptWrite(rel=rel, source=source))
+        changed: list[_PromptWrite] = []
+        exists = False
+        for path in (prompt_file, tests):
+            if path is None:
+                continue
+            rel = path.relative_to(directory / "prompts").as_posix()
+            source = path.read_bytes()
+            dest = overlay_dir / rel
+            exists = exists or dest.is_file()
+            if not (dest.is_file() and dest.read_bytes() == source):
+                changed.append(_PromptWrite(rel=rel, source=source))
+        writes.extend(w for w in changed if w not in writes)
+        action: ApplyAction = ("replace" if exists else "add") if changed else "skip"
         items.append(ApplyItem(kind="prompt", name=f"{prompt.layer}/{prompt.name}", action=action))
     return items, writes
 
