@@ -11,6 +11,8 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from docket.kernel.home import Home
+
 REMOTE_KEY_ENV: dict[str, str] = {"anthropic": "ANTHROPIC_API_KEY"}
 
 REDACTED = "[redacted]"
@@ -19,13 +21,14 @@ _MIN_KEY_LENGTH = 8
 
 
 def resolve_key(provider: str, environ: Mapping[str, str], home: Path) -> str | None:
-    """The provider's key from its environment variable, else ``~/.docket/secrets.json``, else None."""
+    """The provider's key from its environment variable, else the stored secrets of the docket home
+    under *home* (either layout), else None."""
     name = REMOTE_KEY_ENV[provider]
     value = environ.get(name, "").strip()
     if value:
         return value
     try:
-        raw = json.loads((home / ".docket" / "secrets.json").read_text(encoding="utf-8"))
+        raw = json.loads(Home(home / ".docket").secrets_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     stored = raw.get(name) if isinstance(raw, dict) else None
