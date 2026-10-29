@@ -172,14 +172,16 @@ class TestPipeline:
             assert "checkout" not in lead_message
             assert lead_env == {_rd.DOCKET_HANDOFF: "1"}
             impl_message, impl_env = by_agent["demo-implementer"]
-            assert f"Working directory: {worktree}" in impl_message
+            assert "Working directory: the repository root" in impl_message
+            assert str(worktree) not in impl_message
             assert "origin codebase" not in impl_message
             assert impl_env is not None
             assert impl_env[_rd.PIPELINE_WORKTREE_ENV] == str(worktree)
             downstream = [call for call in calls if call[0].endswith(("-reviewer", "-tester"))]
             assert len(downstream) == 2
             for _agent_id, message, env in downstream:
-                assert f"Working directory: {worktree}" in message
+                assert "Working directory: the repository root" in message
+                assert str(worktree) not in message
                 assert "must still end with the verdict marker as its LAST line" in message
                 assert env is not None
                 assert env[_rd.PIPELINE_WORKTREE_ENV] == str(worktree)

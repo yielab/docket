@@ -119,7 +119,7 @@ def test_hop_message_without_gate_failed_hop_is_unchanged() -> None:
     ]
     message, _ = _compose._hop_message(TaskRecord(description="d"), "implementer", prior)
     assert message == (
-        "Task: d\n\n--- lead output ---\nPlan: X.\n\n"
+        "## Task\nd\n\n## Hop\n--- lead output ---\nPlan: X.\n\n"
         "You are the Implementer. Implement the change in the workspace."
     )
 

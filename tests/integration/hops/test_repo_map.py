@@ -74,15 +74,98 @@ class TestRenderRepoMap:
         assert R.SKIPPED_DIRS == toolbox.SKIPPED_DIRS
 
 
-class TestTaskRootBlock:
-    def test_a_worktree_is_named_with_its_map(self, tmp_path: Path) -> None:
+class TestCappedMapAndRoot:
+    def test_the_capped_map_has_a_header_and_no_path(self, tmp_path: Path) -> None:
         root = _repo(tmp_path / "wt", ["src/a.py"])
 
-        block = R.task_root_block(str(root), "", "implementer")
+        block = R.capped_map(str(root))
 
-        assert block.startswith(f"Working directory: {root}\n")
-        assert block.endswith("src/ (1 file)")
+        assert block == "Repository map (tracked files by directory):\nsrc/ (1 file)"
+        assert str(root) not in block
 
-    def test_nothing_resolves_to_no_block(self) -> None:
-        assert R.task_root_block("", "", "implementer") == ""
-        assert R.task_root_block("", "no-such-pod", "implementer") == ""
+    def test_a_directory_with_no_tracked_file_has_no_capped_map(self, tmp_path: Path) -> None:
+        assert R.capped_map(str(tmp_path)) == ""
+
+    def test_a_task_worktree_is_the_root_before_the_pod_codebase(self) -> None:
+        assert R.resolve_root("/some/worktree", "", "implementer") == "/some/worktree"
+
+    def test_nothing_resolves_to_no_root(self) -> None:
+        assert R.resolve_root("", "", "implementer") == ""
+        assert R.resolve_root("", "no-such-pod", "implementer") == ""
+
+
+class TestBoundedMap:
+    def _big(self, tmp_path: Path) -> Path:
+        files = [f"pkg{i % 25:02d}/mod{i}.py" for i in range(450)]
+        files += ["src/app/x.py", "src/app/y.py", "src/app/util/z.py", "src/lib/q.py", "README.md"]
+        return _repo(tmp_path / "big", files)
+
+    def test_a_named_file_lists_its_directory_and_not_the_tree(self, tmp_path: Path) -> None:
+        root = self._big(tmp_path)
+
+        text = R.bounded_map(str(root), "", "change src/app/x.py to take a flag")
+
+        lines = text.splitlines()
+        assert lines[0] == "Repository map (the paths the brief names, with their direct entries):"
+        assert lines[1:-1] == ["src/app/util/", "src/app/x.py", "src/app/y.py"]
+        assert "glob" in lines[-1]
+        assert "pkg00" not in text and "src/lib" not in text
+
+    def test_a_named_directory_lists_its_direct_entries(self, tmp_path: Path) -> None:
+        root = self._big(tmp_path)
+
+        text = R.bounded_map(
+            str(root), "", "everything under `src/app/`, then path:src/lib/q.py#L1-4."
+        )
+
+        assert text.splitlines()[1:-1] == [
+            "src/app/util/",
+            "src/app/x.py",
+            "src/app/y.py",
+            "src/lib/q.py",
+        ]
+
+    def test_a_brief_that_names_nothing_lists_the_root(self, tmp_path: Path) -> None:
+        root = self._big(tmp_path)
+
+        text = R.bounded_map(str(root), "", "make it faster")
+
+        assert "README.md" in text.splitlines() and "src/" in text.splitlines()
+        assert "pkg00/mod0.py" not in text
+
+    def test_the_map_is_cut_at_the_cap_before_the_glob_line(self, tmp_path: Path) -> None:
+        root = self._big(tmp_path)
+        with use_home(dataclasses.replace(current_home(), repo_map_max_chars=120)):
+            text = R.bounded_map(str(root), "", "see pkg03")
+
+        lines = text.splitlines()
+        assert "more entries" in lines[-2] and "glob" in lines[-1]
+
+    def test_the_base_commit_not_the_index_is_listed(self, tmp_path: Path) -> None:
+        root = _repo(tmp_path / "r", ["src/a.py"])
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-qm",
+                "x",
+            ],
+            check=True,
+        )
+        base = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        (root / "src" / "b.py").write_text("x\n")
+        subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+
+        assert "src/b.py" not in R.bounded_map(str(root), base, "src/a.py")
+        assert "src/b.py" in R.bounded_map(str(root), "", "src/a.py")
