@@ -125,7 +125,8 @@ def test_each_role_is_told_the_root_its_tools_use(tmp_path: Path, pod_home: Path
     implementer, _ = _compose._hop_message(claimed, "implementer", [], project="demo")
     in_place_implementer, _ = _compose._hop_message(in_place, "implementer", [], project="demo")
 
-    assert f"Working directory: {origin}" in lead and str(worktree) not in lead
-    assert f"Working directory: {worktree}" in implementer and origin not in implementer
-    assert f"Working directory: {origin}" in in_place_implementer
+    line = "Working directory: the repository root"
+    for message in (lead, implementer, in_place_implementer):
+        assert line in message
+        assert origin not in message and str(worktree) not in message
     assert "src/ (1 file)" in implementer

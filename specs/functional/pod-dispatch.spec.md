@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.1.0
+**Version**: 11.2.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -1650,7 +1650,9 @@ changed, for an external consumer that reads the hop record instead of trace tex
    `profile` (the model profile's name). The layers are `identity` (the role's identity prompt,
    when a scope holds one) and `hop` (the hop's instruction: the shipped or overriding prompt,
    a step's own `instructions` as scope `pipeline`, a role's generated one as scope `generated`);
-   the hop layer is one message layer until the message is split into layers.
+   a non-Lead hop also records `task`, the `## Task` section of "Bounded hop prompts" requirement 11
+   (scope `task`, version `""`, `sha256` and `tokens` of that section's text), between the two. The
+   `hop` layer names the hop's instruction, not the whole `## Hop` section.
 2. A layer's `sha256` **MUST** be the hash of its prompt's text as UTF-8 (a shipped prompt's equals
    the hash of its file's body), `version` is the prompt's own semantic version (`""` for a text
    with no file), `scope` is where the loader found it (`shipped`, `operator`, `pod`,
@@ -1869,8 +1871,10 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
 ### Downstream worktree continuity
 
 1. When the task has a recorded worktree, every non-Lead hop (the Implementer included) **MUST**
-   receive that checkout path in its message (the `Working directory:` line of "Bounded hop prompts"
-   requirement 10) and as an internal dispatch-to-driver coordinate. A downstream hop **MUST NOT**
+   have its tools rooted in that checkout, passed as an internal dispatch-to-driver coordinate; its
+   message states that root only as "the repository root" (the `Working directory:` line of "Bounded
+   hop prompts" requirement 10) and never carries the checkout's absolute path, because a model
+   copies a path it is shown and misspells it. A downstream hop **MUST NOT**
    inspect the unchanged origin checkout when judging or testing the Implementer's result.
 2. `DocketDriver` **MUST** accept that root only when it resolves to a directory directly under a
    same-pod Implementer's `tasks/` directory (`<member workspace>/tasks/<taskId>`). An absent,
@@ -1891,8 +1895,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    hop) -- a partial geometric series that never sums past the configured total no matter how many
    prior hops exist, while the most recent (most relevant) hop is squeezed the least.
 2. The role's total token budget **MUST** first be reduced by the (approximate) token cost of the
-   task's own description, the working-directory block (requirement 10) and that role's fixed
-   instruction text -- what remains funds the carryover budget requirement 1 describes. The task's
+   task's own description, the `## Task` section's map and `## Hop` working-directory line
+   (requirements 10-11) and that role's fixed instruction text -- what remains funds the carryover budget requirement 1 describes. The task's
    own description **MUST NEVER** itself be truncated or shed -- only a prior hop's rendered artifact
    is subject to budgeting.
 3. When a prior hop's rendered artifact does not fit its share, `compile_artifact` **MUST** shed
@@ -1954,18 +1958,37 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    section **MUST** also carry the operator's latest answer (`Operator answer:`), rendered like the
    Lead's operator answers, because it is what the human decided. A forward route, a backward `pass`
    route, an unrouted gate and a verdict rework **MUST** compose no such section.
-10. **Task root and repository map (ADR 0028).** The hop message **MUST** name the directory the
-    hop's tools are rooted in, as a `Working directory: <path>` line followed by a derived repository
-    map (`Repository map (tracked files by directory):`), placed right after the task description
-    (the Lead's message after its description too) and ahead of every prior artifact. The root is the
-    task's recorded worktree when it has one (for every hop but the Lead's), else the pod's codebase
-    or working directory (the same root the driver gives the tools). The map (`render_repo_map`) is
-    derived from `git ls-files`: relative directories with their file counts, at the deepest
-    directory depth (3, 2, then 1) that fits `REPO_MAP_MAX_CHARS`, skipping the directories the
-    built-in `glob`/`grep` skip. A root that is not a git repository gets the `Working directory`
-    line and no map. The block is never shed by the budget compiler; its estimated tokens are
-    reserved before the carryover budget is computed. A pod's system prompt carries neither the root
-    nor the map, so it is identical between tasks.
+10. **Task root and repository map (ADR 0028, ADR 0035).** The hop message **MUST** state where the
+    hop's tools start without naming a path: the line `Working directory: the repository root (your
+    tools start there; give paths relative to it).`, then a repository map. The message **MUST NOT**
+    contain the absolute path of the task's worktree, of the pod's codebase or of any other root,
+    anywhere. The root the tools use is the task's recorded worktree when it has one (for every hop
+    but the Lead's), else the pod's codebase or working directory (the same root the driver gives
+    the tools); when no root resolves there is neither the line nor a map. The Lead, which has no
+    brief, gets the capped map: `Repository map (tracked files by directory):` followed by
+    `render_repo_map`, derived from `git ls-files`, as relative directories with their file counts at
+    the deepest directory depth (3, 2, then 1) that fits `REPO_MAP_MAX_CHARS`, skipping the
+    directories the built-in `glob`/`grep` skip. A root that is not a git repository gets the line
+    and no map. Neither the line nor the map is shed by the budget compiler; their estimated tokens
+    are reserved before the carryover budget is computed. A pod's system prompt carries neither the
+    root nor the map, so it is identical between tasks.
+11. **Two sections after the identity layer (ADR 0035).** A non-Lead hop's message **MUST** be two
+    named sections in a fixed order. `## Task` holds the task description (never truncated) and the
+    repository map bounded by relevance; `## Hop` holds the working-directory line, the operator's
+    answer, the gate failure, the rework note, the prior artifacts (the Lead's brief included) and
+    the role's instruction. The `## Task` section **MUST** be byte-identical across the non-Lead hops
+    of one task, so it is derived only from the description, the Lead's brief and the task's base
+    commit (never from the worktree's index or files, which a hop changes). The bounded map lists,
+    for every path the Lead's latest brief names, the entries directly in that path's directory
+    (the path itself when it is a directory), as relative paths with a trailing `/` on a directory;
+    a path is named by a whitespace-delimited token of the brief's text (an optional `path:` prefix,
+    `#` suffix, surrounding punctuation and a leading `./` removed) that is a tracked file or a
+    directory holding one. A brief that names none lists the root's direct entries. The map is cut
+    at `REPO_MAP_MAX_CHARS` with a `... N more entries` line, and its last line names the built-in
+    `glob` tool for the rest. A task whose Lead has not run (no brief) gets the capped map of
+    requirement 10 in `## Task`. The Lead's own message keeps its layout of requirement 8 and has no
+    section headings. The `## Task` text is derived from the base commit's tree when the task's
+    worktree records one, else from the index.
 
 ### Task status vocabulary
 

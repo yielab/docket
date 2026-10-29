@@ -531,13 +531,13 @@ def _read_new_file(path: str, limit: int) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def git_ls_files(cwd: str) -> list[str] | None:
-    """Tracked paths of the repository at *cwd*, repository-relative and sorted; ``None`` when
-    git is missing, *cwd* is not a repository, or the listing fails or times out."""
-    if not git_available():
+def git_ls_files(cwd: str, rev: str = "") -> list[str] | None:
+    """Tracked paths at *cwd*, sorted: the index, or full commit *rev*'s tree; ``None`` on failure."""
+    if not git_available() or (rev and not _FULL_SHA.match(rev)):
         return None
+    args = ["ls-tree", "-r", "--name-only", "-z", rev] if rev else ["ls-files", "-z"]
     try:
-        result = _git_run(cwd, ["ls-files", "-z"], PROBE_TIMEOUT_S)
+        result = _git_run(cwd, args, PROBE_TIMEOUT_S)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return None
     if result.returncode != 0:

@@ -3,7 +3,7 @@
 A pod member learns where the code lives from the hop message and from ``WORKFLOW_AUTO.md``/
 ``TOOLS.md``; ``SOUL.md`` and ``AGENTS.md`` name no path. Its tool calls are separately
 contained by ``docket_runtime._resolve_roots``; a task's worktree reaches the driver as the
-pipeline root instead, and the hop message names it.
+pipeline root instead, and the hop message says only that the tools start at the repository root.
 
 When those two disagree the failure is silent and expensive: every read
 of the advertised path is refused, the model retries other spellings, the
@@ -109,17 +109,23 @@ def test_soul_and_agents_name_no_path(repo: Path) -> None:
 
 
 @pytest.mark.parametrize("role", ["lead", "implementer", "reviewer", "tester"])
-def test_the_task_message_names_a_path_inside_the_members_roots(repo: Path, role: str) -> None:
-    """The hop message's `Working directory` is a root the tools will accept."""
+def test_the_task_message_names_no_path_and_its_root_is_one_the_tools_accept(
+    repo: Path, role: str
+) -> None:
+    """The hop message states the root without a path, and the root it stands for is gated in."""
+    from docket.hops.application import compose
+    from docket.tasks.domain.task import TaskRecord
     from docket.teams.workspace import repo_map
 
     member = _make_member(role)
     _provision(member, repo)
 
-    block = repo_map.task_root_block("", member.project, role)
+    message, _ = compose._hop_message(TaskRecord(description="x"), role, [], project=member.project)
+    root = repo_map.resolve_root("", member.project, role)
 
-    named = Path(block.split("Working directory: ", 1)[1].split("\n", 1)[0])
-    assert _inside(named, _roots_for(member.member_id))
+    assert repo_map.WORKING_DIRECTORY_LINE in message
+    assert not re.search(r"(^|[\s`(])/[\w.-]+/", message)
+    assert _inside(Path(root), _roots_for(member.member_id))
 
 
 def test_implementer_startup_contract_names_a_path_inside_its_own_roots(repo: Path) -> None:

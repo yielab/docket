@@ -99,6 +99,7 @@ def test_a_repository_reports_its_branch_head_and_tracked_files(
     assert git.git_rev_parse(cwd, "HEAD") == sha
     assert git.git_tracked_files(cwd) == ["tracked.txt"]
     assert git.git_ls_files(cwd) == ["tracked.txt"]
+    assert git.git_ls_files(cwd, sha) == ["tracked.txt"]
     assert git.git_changed_files(cwd) == []
 
 

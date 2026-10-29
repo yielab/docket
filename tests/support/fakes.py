@@ -222,7 +222,7 @@ class FakeGit:
     def git_new_files_text(self, cwd: str, limit: int) -> str:
         return ""
 
-    def git_ls_files(self, cwd: str) -> list[str] | None:
+    def git_ls_files(self, cwd: str, rev: str = "") -> list[str] | None:
         repo = self._repo(cwd)
         return list(repo.tracked) if repo else None
 
