@@ -359,7 +359,7 @@ manifests show whether a prompt changed between them.
 ### `handoff`: how a hop closes
 
 A hop is offered one tool, `handoff`, when its step has a verdict gate or its prompt declares
-`output: handoff/v1`. The built-in Implementer, Reviewer and Tester prompts do. Calling it once, as
+`output: handoff/v1`. Every built-in hop prompt does, the Lead's included. Calling it once, as
 the last action, ends the turn, in place of a free-text closing line:
 
 - `summary` is what the next hop reads in place of your reply. Put the decisions, names and paths it
