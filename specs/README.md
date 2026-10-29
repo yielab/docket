@@ -95,7 +95,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.0 | Complete |
-| Agent Loop | 3.8.0 | Implemented and live |
+| Agent Loop | 3.8.1 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
 | Audit | 3.2.0 | Implemented |
 | Config Format | 2.4.0 | Implemented |
@@ -110,7 +110,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
-| Trace Store | 4.1.0 | Implemented and live |
+| Trace Store | 4.2.0 | Implemented and live |
 | Workspace Structure | 3.1.0 | Complete |
 | CLI Interface | 5.2.0 | Complete |
 | MCP Client | 2.0.1 | Implemented and wired to the live turn path |
