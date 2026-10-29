@@ -47,7 +47,7 @@ The first names `secrets-guard-block-paths` and blocks; the second (an ordinary 
 ## Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/secrets-guard-block-paths.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/secrets-guard-block-credential-text.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/secrets-guard-redact-output.yaml
+rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-paths.yaml
+rm ~/.docket/config/pods/<project>/policies/secrets-guard-block-credential-text.yaml
+rm ~/.docket/config/pods/<project>/policies/secrets-guard-redact-output.yaml
 ```

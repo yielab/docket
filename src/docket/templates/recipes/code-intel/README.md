@@ -39,6 +39,6 @@ server's launch command or cache location rather than leaving the jail.
 `language-intel` is wired for Python. For another language change `--lsp` and its arguments
 (the server's README lists gopls, rust-analyzer, typescript-language-server and clangd).
 `--workspace .` resolves against the server process's working directory; set an absolute path if
-the turn does not start in the codebase. Servers are stored pod-scoped in `config/mcp-servers.json`
+the turn does not start in the codebase. Servers are stored pod-scoped in `config/pods/<project>/mcp-servers.json`
 and are selected like any other through the pod's `mcpServers` setting (global servers and this
 pod's own).

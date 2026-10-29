@@ -41,5 +41,5 @@ Both name `prod-approval-high-risk` and ask.
 ## Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/prod-approval-high-risk.yaml
+rm ~/.docket/config/pods/<project>/policies/prod-approval-high-risk.yaml
 ```

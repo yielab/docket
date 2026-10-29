@@ -32,8 +32,10 @@ HEADER = """# The recipe library
 
 A recipe is a directory in the same shape as a repository's `.docket/`: an optional `pod.yaml`
 (`kind: pod`, `name`, `description`, `members`, `settings`), optional `roles/`, `pipeline.yaml`,
-`policies/`, `plugins/`, `skills/` and `mcp-servers/`. What a recipe brings is derived from what the directory
-holds, never declared; `docket pod recipes` prints the same derivation. Apply one with:
+`policies/`, `plugins/`, `skills/`, `mcp-servers/` and `prompts/<layer>/` (prompt files, `kind: prompt`).
+What a recipe brings is derived from what the directory holds, never declared; `docket pod recipes`
+prints the same derivation and does not count prompts (`docket pod update <name> --dry-run` lists
+each one). Apply one with:
 
 ```bash
 docket init --recipe <name>            # a new pod for the current repository
@@ -41,7 +43,7 @@ docket pod update <name>      # onto a pod that already exists (--dry-run to pla
 docket pod recipes <name>             # description, what it brings, its README
 ```
 
-A directory of your own under `~/.docket/recipes/<name>/` is addressable the same way and wins
+A directory of your own under `~/.docket/config/recipes/<name>/` is addressable the same way and wins
 over a shipped recipe of the same name. Composition: apply as many recipes as you need, then
 `docket pod export` writes the merged team to `.docket/`, the configuration of record.
 
