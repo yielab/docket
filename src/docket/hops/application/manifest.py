@@ -1,8 +1,9 @@
 """The prompt manifest of a hop: which prompts its turn was composed from, by identity and hash.
 
 ``HopResult.prompt_manifest`` (``tasks/domain/task.py``) holds what :func:`build_manifest`
-returns: one entry per prompt layer (identity, then the hop's message layer until the layer split
-gives the message three), and the model the hop ran on with its provider, class and profile. The
+returns: one entry per prompt layer (``identity``, then ``task`` when the hop's message has a
+``## Task`` section, then ``hop``), and the model the hop ran on with its provider, class and
+profile. The
 hash is the prompt's own (``LoadedPrompt.sha256``), so a reader can compare it with the file.
 """
 
@@ -19,7 +20,7 @@ from docket.teams import prompts as _prompts
 
 @dataclass(frozen=True)
 class Layer:
-    """One layer of a hop's composition: its name (``identity``, ``hop``) and the prompt behind it."""
+    """One layer of a hop's composition: its name (``identity``, ``task``, ``hop``) and its prompt."""
 
     layer: str
     prompt: _prompts.LoadedPrompt

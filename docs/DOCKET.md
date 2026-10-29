@@ -519,7 +519,9 @@ Total: 150K+ tokens per turn, growing across projects
 **After docket:**
 ```
 The pod's Lead reads:
-- its composed prompt: SOUL.md, AGENTS.md, its startup contract, and bounded MEMORY.md
+- its system prompt: SOUL.md, operator instructions, AGENTS.md, the live runtime contract,
+  the repository's instructions and skills, and the pod's accepted memory
+- its hop message: the shipped or overridden `prompts/hop/lead.md` and the task
 The Implementer reads:
 - only the workspace files it touches
 ────────────────────────────────────
@@ -532,10 +534,10 @@ the same way it reads any other file, with `read`/`grep`. What actually scopes a
 the **workspace startup contract** docket provisions on `docket pod add`/`docket init` and
 `docket setup` re-seeds if a workspace is missing one or has a stale version:
 
-- **`WORKFLOW_AUTO.md`** — the startup protocol. docket's own turn loop forces every agent to
-  re-read this file after each context reset (its system-prompt composition re-injects it every
-  turn), so docket anchors the codebase path and the resume/durability rules here — the one place
-  guaranteed to survive compaction even when `SOUL.md`/`MEMORY.md` fall out of context.
+- **`WORKFLOW_AUTO.md`** — the startup and resume protocol for an agent that opens the workspace
+  by hand. A docket turn does not send it: its system prompt carries a short live runtime contract
+  in its place, and the hop message says where the tools start (at the repository root, no
+  absolute path).
 - **`MEMORY.md`** — long-term curated project facts (what the project is, architecture, current
   state) — written by the agent, seeded with a stub on first run.
 - **`HEARTBEAT.md`** — the durable in-flight task ledger. An agent is instructed to write
