@@ -29,7 +29,7 @@ verdict.
 - `pipeline.yaml` — `lead -> implementer (mechanical gate, its own verifyCmd) ->
   security-vetter (verdict gate, rework -> implementer, maxCycles 1)`.
 - `skills/security-review/SKILL.md` — an Agent Skill, applied whole into the pod's own
-  `config/skills/security-review/`; a concrete review checklist (injection points, secrets in
+  `config/pods/<project>/skills/security-review/`; a concrete review checklist (injection points, secrets in
   the diff, unsafe deserialization, path traversal, dependency changes, auth checks) the
   vetter reads on demand by calling the `skill` tool with `name: security-review`.
 - `policies/require-approval-secret-writes.yaml` — applied into the pod's own policy directory;
@@ -44,6 +44,6 @@ verdict.
 ```bash
 docket pod unset pipeline
 docket pod remove <project>-security-vetter
-rm ~/.docket/workspaces/pods/<project>/config/policies/require-approval-secret-writes.yaml
-rm -r ~/.docket/workspaces/pods/<project>/config/skills/security-review
+rm ~/.docket/config/pods/<project>/policies/require-approval-secret-writes.yaml
+rm -r ~/.docket/config/pods/<project>/skills/security-review
 ```
