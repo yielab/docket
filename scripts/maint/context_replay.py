@@ -693,6 +693,26 @@ def _reads(steps: list[Step], role: str) -> list[_Call]:
     return [c for s in steps if s.role == role for c in _tool_calls(s) if c.tool == "read"]
 
 
+def _edited(steps: list[Step], role: str) -> list[str]:
+    """Paths the *role*'s `edit` and `write` calls named, below the task's worktree."""
+    paths = []
+    for step in steps:
+        if step.role != role:
+            continue
+        task = str(step.calls[0].get("task_id", "")) if step.calls else ""
+        for message in step.messages:
+            for call in message.get("toolCalls") or []:
+                if call.get("name") not in ("edit", "write"):
+                    continue
+                try:
+                    args = json.loads(call.get("arguments") or "{}")
+                except ValueError:
+                    continue
+                if isinstance(args, dict) and args.get("path"):
+                    paths.append(_relative_path(str(args["path"]), task))
+    return paths
+
+
 def _task_overlaps(steps: list[Step]) -> list[dict[str, Any]]:
     by_task: dict[str, list[Step]] = {}
     for step in steps:
@@ -704,6 +724,10 @@ def _task_overlaps(steps: list[Step]) -> list[dict[str, Any]]:
         lead = _reads(members, "lead")
         mine = _reads(members, "implementer")
         shared = [c for c in mine if any(_same_path(c.path, r.path) for r in lead)]
+        # A shared file the Implementer then edits had to be read for the edit's exact text;
+        # the rest is the reading a Lead's locators could have spared it.
+        edited = _edited(members, "implementer")
+        avoidable = [c for c in shared if not any(_same_path(c.path, e) for e in edited)]
         tasks.append(
             {
                 "task": task,
@@ -711,6 +735,8 @@ def _task_overlaps(steps: list[Step]) -> list[dict[str, Any]]:
                 "implementerReads": len(mine),
                 "overlap": sorted({c.path for c in shared}),
                 "bytes": sum(c.size for c in shared),
+                "avoidable": sorted({c.path for c in avoidable}),
+                "avoidableBytes": sum(c.size for c in avoidable),
             }
         )
     return tasks
@@ -744,7 +770,8 @@ def render_repeats(report: dict[str, Any]) -> str:
     for task in report["tasks"]:
         lines.append(
             f"  {task['task'] or '(no task id)'}: lead read {task['leadReads']}, implementer read "
-            f"{task['implementerReads']}, shared {len(task['overlap'])} ({task['bytes']:,} bytes)"
+            f"{task['implementerReads']}, shared {len(task['overlap'])} ({task['bytes']:,} bytes), "
+            f"not edited after {len(task['avoidable'])} ({task['avoidableBytes']:,} bytes)"
         )
     return "\n".join(lines)
 

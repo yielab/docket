@@ -133,3 +133,30 @@ def test_files_the_implementer_read_that_the_lead_had_read(tmp_path: Path) -> No
     assert task["task"] == "t1"
     assert task["overlap"] == ["src/a.py"]
     assert task["bytes"] == 40
+
+
+def test_a_shared_file_the_implementer_then_edits_is_not_avoidable(tmp_path: Path) -> None:
+    _step_files(
+        tmp_path,
+        "lead",
+        "lead",
+        "t1",
+        [("read", {"path": "src/a.py"}, "a" * 40), ("read", {"path": "tests/t.py"}, "t" * 30)],
+    )
+    _step_files(
+        tmp_path,
+        "impl",
+        "implementer",
+        "t1",
+        [
+            ("read", {"path": "src/a.py"}, "a" * 40),
+            ("read", {"path": "tests/t.py"}, "t" * 30),
+            ("edit", {"path": "src/a.py", "old_string": "a", "new_string": "b"}, "ok"),
+        ],
+    )
+
+    (task,) = BENCH.repeats_report(BENCH.load_steps(tmp_path))["tasks"]
+
+    assert task["overlap"] == ["src/a.py", "tests/t.py"]
+    assert task["avoidable"] == ["tests/t.py"]
+    assert task["avoidableBytes"] == 30
