@@ -22,7 +22,7 @@ from docket.kernel import clock as _clock
 # briefly-unreachable server is not an answer. Everything else in the 4xx range
 # is a real rejection (bad request, bad credential, unknown model) and retrying
 # it just spends the same money twice for the same error.
-_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+_RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504, 529})
 
 _VALID_ROLES: frozenset[str] = frozenset({"system", "user", "assistant", "tool"})
 

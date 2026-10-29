@@ -1,6 +1,8 @@
 """One loopback OpenAI-compatible fake model for every Python test.
 
-``FakeModel`` serves ``GET /v1/models`` and ``POST /v1/chat/completions`` on a free port. A script
+``FakeModel`` serves ``GET /v1/models``, ``POST /v1/chat/completions`` and ``POST /v1/messages`` (the
+Anthropic Messages shape, decoded into the same ``Request`` and encoded from the same replies; its
+``usage`` is the one the test sets) on a free port. A script
 routes replies by the role named in the system prompt (``script=``) or by request order
 (``sequence=``). A reply runs out loudly: HTTP 400 naming the fake, never a silent repeat unless
 ``repeat_last`` asks for one. Reply builders: ``say call calls fail hang not_json truncated hold``.
@@ -39,10 +41,14 @@ class Reply:
 
 @dataclass(frozen=True)
 class Request:
-    """One parsed chat-completions request, as the fake received it."""
+    """One parsed request, as the fake received it. An Anthropic Messages body is read into the
+    chat-completions shape (``body``); ``raw`` is the body as sent and ``headers`` its headers, names lower-cased."""
 
     body: Mapping[str, Any]
     role: str | None
+    path: str = "/v1/chat/completions"
+    headers: Mapping[str, str] = field(default_factory=dict)
+    raw: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def messages(self) -> list[dict[str, Any]]:
@@ -83,6 +89,67 @@ def _text(message: Mapping[str, Any]) -> str:
 def _chars(message: Mapping[str, Any]) -> int:
     calls = message.get("tool_calls") or []
     return len(_text(message)) + sum(len(c["function"]["arguments"]) for c in calls)
+
+
+def _from_anthropic(body: Mapping[str, Any]) -> dict[str, Any]:
+    """An Anthropic Messages body in the chat-completions shape the scripts read."""
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": str(b.get("text", ""))} for b in body.get("system") or []
+    ]
+    for message in body.get("messages", []):
+        blocks = message["content"]
+        blocks = [{"type": "text", "text": blocks}] if isinstance(blocks, str) else blocks
+        text = "".join(str(b.get("text", "")) for b in blocks if b["type"] == "text")
+        if message["role"] == "assistant":
+            uses = [b for b in blocks if b["type"] == "tool_use"]
+            entry: dict[str, Any] = {"role": "assistant", "content": text}
+            if uses:
+                entry["tool_calls"] = [_wire_call(b["name"], b["input"], b["id"]) for b in uses]
+            messages.append(entry)
+            continue
+        for block in blocks:
+            if block["type"] == "tool_result":
+                content = block.get("content", "")
+                messages.append(
+                    {"role": "tool", "tool_call_id": block["tool_use_id"], "content": content}
+                )
+        if text:
+            messages.append({"role": "user", "content": text})
+    out: dict[str, Any] = {"model": body.get("model"), "messages": messages}
+    if body.get("tools"):
+        out["tools"] = [{"function": {"name": t["name"]}} for t in body["tools"]]
+    return out
+
+
+_STOP_REASON = {"tool_calls": "tool_use", "stop": "end_turn", "length": "max_tokens"}
+
+
+def _to_anthropic(model: str, reply: Reply, usage: Mapping[str, int]) -> dict[str, Any]:
+    """A reply in the Anthropic Messages shape."""
+    message = reply.message or {}
+    blocks: list[dict[str, Any]] = []
+    if message.get("content"):
+        blocks.append({"type": "text", "text": message["content"]})
+    for entry in message.get("tool_calls") or []:
+        function = entry["function"]
+        blocks.append(
+            {
+                "type": "tool_use",
+                "id": entry["id"],
+                "name": function["name"],
+                "input": json.loads(function["arguments"]),
+            }
+        )
+    return {
+        "id": "msg_fake",
+        "type": "message",
+        "role": "assistant",
+        "model": model,
+        "content": blocks,
+        "stop_reason": _STOP_REASON.get(reply.finish_reason, reply.finish_reason),
+        "stop_sequence": None,
+        "usage": dict(usage),
+    }
 
 
 def _wire_call(tool: str, arguments: Mapping[str, Any], call_id: str) -> dict[str, Any]:
@@ -157,6 +224,7 @@ class FakeModel:
         repeat_last: bool = False,
         context_window_chars: int | None = None,
         models: Sequence[str] = ("e2e-model",),
+        usage: Mapping[str, int] | None = None,
     ) -> None:
         if script is not None and sequence is not None:
             raise ValueError("give a role script or an ordinal sequence, not both")
@@ -165,6 +233,7 @@ class FakeModel:
         self._repeat_last = repeat_last
         self._context_window_chars = context_window_chars
         self._models = tuple(models)
+        self._usage = usage
         self._lock = threading.Lock()
         self._used: dict[str, int] = {}
         self._closing = threading.Event()
@@ -228,22 +297,37 @@ class FakeModel:
     def _handle_post(self, handler: BaseHTTPRequestHandler) -> None:
         length = int(handler.headers.get("Content-Length", 0))
         raw = handler.rfile.read(length)
-        if handler.path.split("?")[0] != "/v1/chat/completions":
+        path = handler.path.split("?")[0]
+        if path not in ("/v1/chat/completions", "/v1/messages"):
             return self._send(handler, 404, {"error": {"message": "fake model: no such path"}})
-        body = json.loads(raw.decode("utf-8"))
+        sent = json.loads(raw.decode("utf-8"))
+        anthropic = path == "/v1/messages"
+        body = _from_anthropic(sent) if anthropic else sent
         role = self._role_of(body)
-        request = Request(body=body, role=role)
+        request = Request(
+            body=body,
+            role=role,
+            path=path,
+            headers={k.lower(): v for k, v in handler.headers.items()},
+            raw=sent,
+        )
         total = sum(_chars(m) for m in request.messages)
         over = self._context_window_chars is not None and total > self._context_window_chars
         with self._lock:
             self.requests.append(request)
             step, why = (None, "") if over else self._pick(request)
         if over:
-            return self._send(handler, 400, {"error": {"message": _CONTEXT_FULL}})
+            return self._send(handler, 400, self._error_body(anthropic, _CONTEXT_FULL))
         if step is None:
-            return self._send(handler, 400, {"error": {"message": f"fake model: {why}"}})
+            return self._send(handler, 400, self._error_body(anthropic, f"fake model: {why}"))
         reply = step(request) if callable(step) else step
-        self._answer(handler, reply, total)
+        self._answer(handler, reply, total, anthropic)
+
+    @staticmethod
+    def _error_body(anthropic: bool, message: str) -> dict[str, Any]:
+        if anthropic:
+            return {"type": "error", "error": {"type": "api_error", "message": message}}
+        return {"error": {"message": message}}
 
     @staticmethod
     def _role_of(body: Mapping[str, Any]) -> str | None:
@@ -268,19 +352,29 @@ class FakeModel:
             return steps[-1], ""
         return None, f"no step left for {key or 'the sequence'} (request {index + 1})"
 
-    def _answer(self, handler: BaseHTTPRequestHandler, reply: Reply, prompt_chars: int) -> None:
+    def _answer(
+        self,
+        handler: BaseHTTPRequestHandler,
+        reply: Reply,
+        prompt_chars: int,
+        anthropic: bool = False,
+    ) -> None:
         if reply.gate is not None:
             event, then = reply.gate
             event.wait(_HOLD_LIMIT_S)
-            return self._answer(handler, then, prompt_chars)
+            return self._answer(handler, then, prompt_chars, anthropic)
         if reply.delay_s and self._closing.wait(reply.delay_s):
             return
         if reply.raw_body is not None:
             return self._send_raw(handler, reply.status, reply.raw_body.encode(), reply.headers)
         if reply.message is None:
-            error = {"error": {"message": reply.error_message}}
+            error = self._error_body(anthropic, reply.error_message)
             return self._send(handler, reply.status, error, reply.headers)
         completion = max(1, _chars(reply.message) // 4)
+        if anthropic:
+            usage = self._usage or {"input_tokens": prompt_chars // 4, "output_tokens": completion}
+            body = _to_anthropic(self._models[0], reply, usage)
+            return self._send(handler, reply.status, body, reply.headers)
         payload = {
             "model": self._models[0],
             "choices": [{"message": dict(reply.message), "finish_reason": reply.finish_reason}],

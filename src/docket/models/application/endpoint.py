@@ -77,6 +77,15 @@ def resolve_profile(model: str) -> ModelProfile:
     return _prov.profile_of(spec, model_id) if spec else _prov.BUILTIN_PROFILES["hosted"]
 
 
+def resolve_dialect(model: str) -> str:
+    """The wire dialect of the catalog row *model* (``provider/model-id``) names. A provider absent
+    from the catalog, and every model while ``DOCKET_LLM_BASE_URL`` overrides the endpoint (an
+    OpenAI-compatible one), is ``openai-chat``: the same lookup ``resolve_endpoint`` makes."""
+    provider = model.partition("/")[0] if "/" in model else ""
+    spec = _catalog_row(provider)
+    return spec.dialect if spec else "openai-chat"
+
+
 def _catalog_row(provider: str) -> ProviderSpec | None:
     """*provider*'s catalog row, unless ``DOCKET_LLM_BASE_URL`` overrides every endpoint."""
     if not provider or _endpoint_override():
