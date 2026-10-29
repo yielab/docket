@@ -9,7 +9,7 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-28.** Phases 0–51 are complete. Phases 52 and 53 run as one schedule; Waves 1 (seven cards) and 2 (P52-7, P53-3) closed 2026-10-28 and Wave 3 is ready. Phase 51 (D-72,
+**Last updated: 2026-10-28.** Phases 0–51 are complete. Phases 52 and 53 run as one schedule; Waves 1 (seven cards), 2 (P52-7, P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28 and Wave 4 (P53-4, P52-4) is next. Phase 51 (D-72,
 [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md)) made every pause that waits on
 someone outside the task one `Escalation` record with one `resolve` verb; its loose ends are on
 `TODO.md` under "Escalations". **Phase 52 is active** (D-73,

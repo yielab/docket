@@ -17,7 +17,7 @@
 > finishing a card well matters more than running two at once.
 >
 > **Active: Phases 52 and 53, one schedule. Wave 1 closed 2026-10-28** (seven cards merged into
-> `develop`, unpushed). **Wave 2 (P52-7 ∥ P53-3) closed 2026-10-28.** Wave 3 is next. Phase 51
+> `develop`, unpushed). **Waves 2 (P52-7 ∥ P53-3) and 3 (P52-9, P53-5, P53-6, P53-7) closed 2026-10-28.** Wave 4 is next. Phase 51
 > closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md),
 > ROADMAP §6); its loose ends are under "Escalations" in the follow-ups below. The integration
 > branch is `develop`.
@@ -102,6 +102,61 @@ wave is free.
 | 5 | P53-8 | `task_create.py`, `task.py`, `queue.py`, `compose.py` (task layer) | P53-4, P53-5 |
 | close | P53-9 | docs | every card |
 | — | P52-12 | blocked on a recorded run; no wave until its trigger fires | |
+
+**Wave 3 closed 2026-10-28.** Merge order P53-5, P53-7, P52-9, P53-6 (`4be5006d`, `47880a21`, `edf167f0`,
+`f127fa07`), then four integrator commits: the spec renumbering and two tests (`b5804692`), the `summary`
+description (`ad0ef391`), and the minimal surface (`0dd27705`, `90c0290f`). Gates: full suite green after
+those fixes, e2e lane rc=0, goldens 9/9, ruff/format/mypy, `validate-specs`, `gen_cli_docs`,
+`gen_config_schemas`. Not run: agent lane, escape matrix, no-sandbox script, operator step (phase close).
+What the close leaves open:
+
+- **Live comparison, local Qwen against hosted Haiku, same smoke, tokens only, no cost.** Baseline at
+  `b52496f2` (Wave 2 close): local 0/2, Haiku 2/2. After P53-5/P52-9/P53-7: local 0/2, **Haiku 0/2**
+  ("Lead handoff lost '5000'"). After the `summary` description fix and P53-6: Haiku 2/2. Local after
+  P53-6 as merged 0/2 (the Implementer wrote with a bash heredoc), then 1/2 with `edit` and `write` kept,
+  then 0/3 with `glob` kept. The small samples decide nothing about pass rates; the failures were audited
+  one by one and each led to a change below.
+- **`handoff` made the call's `summary` the record's `summary`, and a model describes its work instead of
+  carrying it.** Haiku wrote "Reviewed ... Produced the Implementer plan" and left the formula in its
+  reply, which a call's summary now replaces. The field's description says what it is for (the
+  next hop reads it in place of the reply). **Follow-up:** if a model still thins the summary, the
+  fallback is to keep the reply text beside the call's summary; not built, because no run needs it.
+- **P53-6's `minimal` surface was wrong twice, both found by running it.** Without `edit` and `write` the
+  Implementer wrote files with `bash cat > ... << EOF`; without `glob` the Lead could not learn a file name
+  from a repository map that lists directories and counts, guessed `src/__init__.py`, and ended on the
+  no-progress detector. `MINIMAL_SURFACE` is now `bash read glob edit write verify` plus the closing tool.
+  The jailed Implementer's schemas measure 3,764 bytes (6,240 full, hosted unchanged), so the card's 2,500
+  ceiling became 4,000 in `test_hop_tools.py` with the measurement beside it. An unjailed local row is
+  larger (bash's description lists the classifier's allow-list). The Lead and Reviewer on a local row keep
+  `read`, `glob` and the closing tool; `grep` is out.
+- **The `Working directory: <absolute path>` line is the main cause of local failures now (P53-4).** It sits
+  under `.docket/state/workspaces/...`, the same message forbids `.docket` paths, and the local model
+  copies the path with the UUID's hyphens turned into slashes (`960eee4e/b126-...`), then reads or `cd`s
+  there: 5 of the 11 local runs of this series. Haiku ignores the line. The spec (ADR 0028,
+  `pod-dispatch` "Bounded hop prompts" 10) requires the line, so P53-4 changes it with the layer split.
+  Two other local failures were the model's own: `... 2>&1` and `python3 -c`, both forbidden by the task
+  text and rightly refused by the smoke's classifier.
+- **Reviewer and Lead received `process_output` and `process_stop`** (P52-9 added them; the Reviewer's
+  `deniedTools` names three tools). Fixed in P53-6: a tool that serves `bash` goes when `bash` goes.
+- **P53-7 loose ends:** the model class comes from the rank anchors (`economy` is `cheap`,
+  `standard` and `premium` are `strong`), so a model that is no anchor, such as the local Qwen, resolves
+  `any` and no variant acts by default; `ModelProfile` carries no class. `pod update` does not copy a
+  prompt's `tests` file into the pod overlay (`teams/apply/plan.py`), so `pod test` finds tests beside the
+  prompt in its own scope. No shipped prompt declares `tests:` yet. `HANDOFF_TOOL` is a literal in
+  `teams/prompt_tests.py` (a lower layer cannot import `hops`).
+- **P53-5 loose ends:** `family` in the manifest is the provider and `class` the hop prompt's
+  `modelClass` (the catalog has neither); the identity layer's hash is the identity prompt's own, not the
+  composed SOUL text (that hash is in `PromptComposition.sha256` and the trace); a guardrail-rewritten
+  reply that ignores the call is untested; `docs/DOCKET.md` still describes the old artifact fields;
+  `scripts/maint/split_driver_support.py` still names `verdict_tool` (a spent script). The nudge text in
+  `loop_request.py` is still a fixed string (P53-4's layers).
+- **P52-9 loose ends:** `bash { background: true }` needs the turn's cache or scratch directory, so an
+  unjailed Lead or Tester is refused with a reason; a pod-cache fallback would widen it. No MCP-specific
+  test of the per-turn cap (`mcp_client` reads it through `bounded_text`).
+- **P53-6 loose ends:** a typo in a `tools` name offers nothing and `docket pod validate` does not say so;
+  the detector's limit has no new field (`LoopConfig.no_progress_rounds` already carries it).
+- **Operator step, unchanged and still waiting for a go:** the closing tool is now `handoff`, so a live
+  pod needs the reinstall and `docket pod update <blueprint>` before its next real run, as above.
 
 **Wave 2 closed 2026-10-28.** Merge order P52-7, P53-3 (`6aafabb3`, `a2a8e7b1`), then two integrator
 fixes (`8d6b0141`, `edff6bc6`). Gates: suite rc=1 on three tests only, fixed (below), e2e lane rc=0.
@@ -272,7 +327,7 @@ close leaves open:
 
 ### P52-4 — the classifier: a parse failure is refused, a trailing `&` asks (absorbs P52-10 step 4)
 
-**Status:** TODO (after P52-9) for the `&` half · BLOCKED (needs maintainer go: a parse failure
+**Status:** TODO · the `&` half is ready (P52-9 is merged), the syntax half is BLOCKED (needs maintainer go: a parse failure
 stops being an `ask`) for the syntax half · **Size:** S · **Model:** Sonnet · **Kind:**
 behaviour + spec
 
@@ -390,7 +445,7 @@ spec
 
 ### P52-9 — the turn owns its tools' clock, processes and output budgets (absorbs P52-10)
 
-**Status:** TODO · **Size:** XL (two cards' scope, one pass over
+**Status:** DONE (2026-10-28, merge edf167f0) · **Size:** XL (two cards' scope, one pass over
 `ToolContext`) · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** (a) the 2026-10-24 run on `fab-dev` asked `bash` for `timeout: 600` and `timeout:
@@ -754,7 +809,7 @@ spec
 
 ### P53-4 — three layers in a fixed order, and a repository map bounded by relevance (absorbs P52-5)
 
-**Status:** TODO (after P53-1 and P53-5; goal 3 needs P52-1's figure) · **Size:** L · **Model:**
+**Status:** TODO · **Size:** L · **Model:**
 Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:**
@@ -768,6 +823,13 @@ Sonnet · **Kind:** behaviour + spec
     already read; window: the recorded steps; threshold ≥ 30 %; observed: _pending_. Context:
     `TaskBrief.context` is prose (`kernel/brief.py:24-38`), so the Lead's reads are lost; the
     Implementer's share is `agent/context.py:148-157`.
+- **Found at the Wave 3 close (local Qwen, 11 runs):** the `Working directory: <absolute path>` line
+  (`pod-dispatch` "Bounded hop prompts" 10) sits under `.docket/state/workspaces/...`, the same message
+  forbids `.docket` paths, and the model copies the path with the UUID's hyphens turned into slashes, then
+  reads or `cd`s there (5 of 11 runs). The tools are already rooted there, so the new `## Task` section
+  names the root in a form the model need not copy (paths relative to it), and the spec's requirement 10
+  changes with it. Acceptance: a local run's tester and reviewer make no `read` or `bash` call whose path
+  starts at the worktree's absolute root.
 - **Goal:**
   1. `_hop_message` emits two named sections after the system prompt (the identity layer), in a
      fixed order:
@@ -818,7 +880,7 @@ Sonnet · **Kind:** behaviour + spec
 
 ### P53-5 — the hop's record: the handoff is a tool call, and a prompt manifest per hop
 
-**Status:** TODO · **Size:** XL (two decisions that change what a hop records, one
+**Status:** DONE (2026-10-28, merge 4be5006d) · **Size:** XL (two decisions that change what a hop records, one
 pass over `record.py` and `task.py`) · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** the request (ADR 0035 decisions 5 and 6). Found:
@@ -880,7 +942,7 @@ pass over `record.py` and `task.py`) · **Model:** Sonnet · **Kind:** behaviour
 
 ### P53-6 — tools and calls per hop: one place decides what a hop sees (absorbs P52-7's surface)
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** DONE (2026-10-28, merge f127fa07) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:**
@@ -929,7 +991,7 @@ spec
 
 ### P53-7 — prompt variants by model class, and a floor a model must pass
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** DONE (2026-10-28, merge 47880a21) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
 spec + CLI
 
 - **Trigger:** the request (ADR 0035 decision 7). `model_class` is read only by
@@ -968,7 +1030,7 @@ spec + CLI
 
 ### P53-8 — a structured `task` on `POST /tasks/<pod>`
 
-**Status:** TODO (after P53-4 and P53-5) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO (after P53-4) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request (ADR 0035 decision 10). `POST /tasks/<pod>`
