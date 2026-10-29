@@ -50,7 +50,7 @@ Each names its own policy and asks.
 ## Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/no-egress-ask-network-tools.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/no-egress-ask-package-installs.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/no-egress-ask-fetch.yaml
+rm ~/.docket/config/pods/<project>/policies/no-egress-ask-network-tools.yaml
+rm ~/.docket/config/pods/<project>/policies/no-egress-ask-package-installs.yaml
+rm ~/.docket/config/pods/<project>/policies/no-egress-ask-fetch.yaml
 ```

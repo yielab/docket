@@ -53,6 +53,6 @@ docket pod check "git push origin main" --role implementer
 ## Undo
 
 ```bash
-rm ~/.docket/workspaces/pods/<project>/config/policies/git-safety-block-destructive.yaml
-rm ~/.docket/workspaces/pods/<project>/config/policies/git-safety-ask-protected-branch-push.yaml
+rm ~/.docket/config/pods/<project>/policies/git-safety-block-destructive.yaml
+rm ~/.docket/config/pods/<project>/policies/git-safety-ask-protected-branch-push.yaml
 ```
