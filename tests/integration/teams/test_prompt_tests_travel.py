@@ -31,18 +31,14 @@ _TESTS = (
 
 
 @pytest.fixture()
-def seeded(tmp_path: Path) -> Iterator[Path]:
-    with _seed_fixture_pod(tmp_path, _PROJECT):
-        yield tmp_path
-
-
-def _blueprint(root: Path, tests: str | None = _TESTS) -> Path:
-    hop = root / "team" / "prompts" / "hop"
+def team(tmp_path: Path) -> Iterator[Path]:
+    """A pod, and a blueprint whose implementer prompt names the tests file beside it."""
+    hop = tmp_path / "team" / "prompts" / "hop"
     hop.mkdir(parents=True)
     (hop / "implementer.md").write_text(_PROMPT)
-    if tests is not None:
-        (hop / "implementer.tests.yaml").write_text(tests)
-    return root / "team"
+    (hop / "implementer.tests.yaml").write_text(_TESTS)
+    with _seed_fixture_pod(tmp_path, _PROJECT):
+        yield tmp_path / "team"
 
 
 def _installed() -> Path:
@@ -50,9 +46,9 @@ def _installed() -> Path:
 
 
 def test_apply_installs_the_tests_file_beside_the_prompt_and_pod_test_can_load_it(
-    seeded: Path,
+    team: Path,
 ) -> None:
-    _write.apply(_pod_apply.plan_apply(_PROJECT, _blueprint(seeded)))
+    _write.apply(_pod_apply.plan_apply(_PROJECT, team))
 
     assert (_installed() / "implementer.tests.yaml").read_text() == _TESTS
     loaded = _prompts.resolve_prompt("hop", "implementer", project=_PROJECT)
@@ -60,8 +56,8 @@ def test_apply_installs_the_tests_file_beside_the_prompt_and_pod_test_can_load_i
     assert [case.name for case in _prompt_tests.load_cases(loaded.tests)] == ["hands off"]
 
 
-def test_the_lock_records_the_tests_file_so_drift_sees_it(seeded: Path) -> None:
-    _write.apply(_pod_apply.plan_apply(_PROJECT, _blueprint(seeded)))
+def test_the_lock_records_the_tests_file_so_drift_sees_it(team: Path) -> None:
+    _write.apply(_pod_apply.plan_apply(_PROJECT, team))
 
     lock = current_home().pod_config_dir(_PROJECT) / "applied.lock"
     items = {(i["kind"], i["name"]): i for i in json.loads(lock.read_text())["items"]}
@@ -70,9 +66,9 @@ def test_the_lock_records_the_tests_file_so_drift_sees_it(seeded: Path) -> None:
     assert tests["sha256"] == hashlib.sha256(_TESTS.encode()).hexdigest()
 
 
-def test_export_writes_the_tests_file_back_beside_the_prompt(seeded: Path) -> None:
-    _write.apply(_pod_apply.plan_apply(_PROJECT, _blueprint(seeded)))
-    out = seeded / "export"
+def test_export_writes_the_tests_file_back_beside_the_prompt(team: Path) -> None:
+    _write.apply(_pod_apply.plan_apply(_PROJECT, team))
+    out = team.parent / "export"
 
     _write.export_pod(_PROJECT, out)
 
@@ -81,9 +77,9 @@ def test_export_writes_the_tests_file_back_beside_the_prompt(seeded: Path) -> No
 
 
 def test_a_tests_file_that_does_not_exist_is_refused_and_nothing_is_written(
-    seeded: Path,
+    team: Path,
 ) -> None:
-    team = _blueprint(seeded, tests=None)
+    (team / "prompts" / "hop" / "implementer.tests.yaml").unlink()
 
     with pytest.raises(_model.PodApplyError, match=r"implementer\.tests\.yaml"):
         _write.apply(_pod_apply.plan_apply(_PROJECT, team))
@@ -91,11 +87,12 @@ def test_a_tests_file_that_does_not_exist_is_refused_and_nothing_is_written(
     assert not _installed().exists()
 
 
-def test_a_tests_file_that_escapes_the_prompts_directory_is_refused(seeded: Path) -> None:
-    outside = seeded / "outside.yaml"
+def test_a_tests_file_that_escapes_the_prompts_directory_is_refused(team: Path) -> None:
+    outside = team.parent / "outside.yaml"
     outside.write_text(_TESTS)
-    team = _blueprint(seeded, tests=None)
-    (team / "prompts" / "hop" / "implementer.tests.yaml").symlink_to(outside)
+    tests = team / "prompts" / "hop" / "implementer.tests.yaml"
+    tests.unlink()
+    tests.symlink_to(outside)
 
     with pytest.raises(_model.PodApplyError, match="escapes"):
         _pod_apply.plan_apply(_PROJECT, team)
