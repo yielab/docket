@@ -226,12 +226,15 @@ def _resolve_trace_coordinates(
 def _resolve_role_registry_and_prompt(
     registry: ToolRegistry,
     ctx: ToolContext,
+    cfg: LoopConfig,
     *,
     context_window_tokens: int | None = None,
     output_reserve_tokens: int | None = None,
 ) -> tuple[ToolRegistry, PromptComposition, list[ToolSpec]]:
-    """Narrow the tool registry to this role and compose today's system prompt."""
-    registry = role_composer.narrow_registry(registry, ctx.role, ctx.project)
+    """Narrow the tool registry to what this hop sees and compose today's system prompt."""
+    registry = role_composer.narrow_registry(
+        registry, ctx.role, ctx.project, surface=cfg.tool_surface, allow=cfg.tool_allow
+    )
     composition = role_composer.compose_prompt(
         ctx.agent_id,
         project_roots=ctx.roots,
@@ -283,6 +286,7 @@ class _TurnState(TurnState):
         registry, composition, tool_specs = _resolve_role_registry_and_prompt(
             registry,
             ctx,
+            cfg,
             context_window_tokens=context_window,
             output_reserve_tokens=output_reserve,
         )

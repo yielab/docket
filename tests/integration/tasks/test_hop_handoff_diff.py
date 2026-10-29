@@ -47,7 +47,9 @@ def _seed_research_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
-        register_local_provider(home, "local", [{"id": "stub"}], base_url=base_url)
+        register_local_provider(
+            home, "local", [{"id": "stub"}], base_url=base_url, toolSurface="full"
+        )
         build_pod("demo", ("lead", "researcher", "critic"), codebase=str(codebase))
         for role in ("lead", "researcher", "critic"):
             _fleet.meta_set(_pod.pod.member_id("demo", role), "model", "local/stub")

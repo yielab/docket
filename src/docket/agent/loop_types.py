@@ -45,7 +45,9 @@ class LoopConfig:
     ``closing_tool``; ``profile`` is only the name recorded on the trace. A
     positive ``max_tokens`` also supplies the output reserve for cumulative
     request preflight; without one the loop keeps its measured-response guard
-    rather than inventing an output bound.
+    rather than inventing an output bound. ``tool_surface`` (the profile's) and ``tool_allow``
+    (the step's allow-list, ``None`` for none) decide what the hop is offered, once, through the
+    role composer.
     """
 
     max_iterations: int = field(default_factory=lambda: current_home().agent_loop_max_iterations)
@@ -68,6 +70,8 @@ class LoopConfig:
     top_p: float | None = None
     tool_choice: Literal["auto", "forced-on-close"] = "auto"
     closing_tool: str = ""
+    tool_surface: Literal["full", "minimal"] = "full"
+    tool_allow: tuple[str, ...] | None = None
     profile: str = ""
     history_budget_tokens: int | None = None
     summary_input_budget_tokens: int | None = None

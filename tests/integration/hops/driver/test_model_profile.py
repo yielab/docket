@@ -6,40 +6,17 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-import pytest
-from tests.support.model_server import FakeModel, Request, call, say
+from tests.support.model_server import FakeModel, Request, call, register_lab_provider, say
 from tests.support.pods import write_meta_overrides as _write_meta
 from tests.support.prose import sentence_count
 
 from docket.agent.ports import DOCKET_VERDICT_VALUES, TurnResult
 from docket.hops.application.driver import DocketDriver
-from docket.models import catalog as _catalog
 from docket.observability import trace as _trace
 
 SUBJECT = "docket.hops.application.driver"
 VALUES = json.dumps({"values": ["APPROVE", "REQUEST-CHANGES"], "caseSensitive": False})
 FORCED = {"type": "function", "function": {"name": "handoff"}}
-
-
-@pytest.fixture(autouse=True)
-def _no_endpoint_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("DOCKET_LLM_BASE_URL", raising=False)
-    monkeypatch.delenv("DOCKET_LLM_API_KEY", raising=False)
-
-
-def _register(server: FakeModel, **fields: Any) -> None:
-    """A catalog row named `lab` over *server*; `local` and the profile fields come from *fields*."""
-    _catalog.save_provider(
-        _catalog.ProviderSpec.model_validate(
-            {
-                "name": "lab",
-                "baseUrl": server.base_url,
-                "auth": {"type": "none"},
-                "models": [{"id": "m", "contextWindow": 32768}],
-                **fields,
-            }
-        )
-    )
 
 
 def _run(env: dict[str, str] | None = None) -> TurnResult:
@@ -58,7 +35,7 @@ class TestLocalRow:
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
         server = fake_model(sequence=[say("done")])
-        _register(server, local=True)
+        register_lab_provider(server, local=True)
 
         _run()
 
@@ -71,7 +48,7 @@ class TestLocalRow:
         server = fake_model(
             sequence=[say("The helper is fine."), call("handoff", verdict="APPROVE")]
         )
-        _register(server, local=True)
+        register_lab_provider(server, local=True)
 
         result = _run({DOCKET_VERDICT_VALUES: VALUES})
 
@@ -85,7 +62,7 @@ class TestLocalRow:
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
         server = fake_model(sequence=[say("done")])
-        _register(server, local=True)
+        register_lab_provider(server, local=True)
 
         result = _run()
 
@@ -99,7 +76,7 @@ class TestHostedRow:
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
         server = fake_model(sequence=[say("The helper is fine.")])
-        _register(server)
+        register_lab_provider(server)
 
         result = _run({DOCKET_VERDICT_VALUES: VALUES})
 
@@ -115,7 +92,7 @@ class TestSampling:
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
         server = fake_model(sequence=[say("one"), call("handoff", verdict="APPROVE")])
-        _register(server, local=True, sampling={"temperature": 0.7, "topP": 0.8})
+        register_lab_provider(server, local=True, sampling={"temperature": 0.7, "topP": 0.8})
 
         _run({DOCKET_VERDICT_VALUES: VALUES})
 
@@ -128,7 +105,7 @@ class TestSampling:
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
         server = fake_model(sequence=[say("one")])
-        _register(server, local=True)
+        register_lab_provider(server, local=True)
 
         _run()
 
@@ -141,7 +118,7 @@ class TestTrace:
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
         server = fake_model(sequence=[say("one"), call("handoff", verdict="APPROVE")])
-        _register(server, local=True, sampling={"temperature": 0.7, "topP": 0.8})
+        register_lab_provider(server, local=True, sampling={"temperature": 0.7, "topP": 0.8})
         events: list[dict[str, Any]] = []
 
         with _trace.subscribe(events.append):
@@ -156,7 +133,7 @@ class TestTrace:
         self, fake_model: Callable[..., FakeModel]
     ) -> None:
         server = fake_model(sequence=[say("one")])
-        _register(server)
+        register_lab_provider(server)
         events: list[dict[str, Any]] = []
 
         with _trace.subscribe(events.append):

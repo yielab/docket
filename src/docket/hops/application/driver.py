@@ -281,7 +281,7 @@ class DocketDriver:
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
         loop_config = _loop_config(
-            backend, timeout, token_budget, profile, HANDOFF_TOOL if verdict_gate else ""
+            backend, timeout, token_budget, profile, HANDOFF_TOOL if verdict_gate else "", ctx
         )
         view = _base_commit_view(pipeline_worktree, resolved_project, trace_task_id or "")
         view_token = _repo_view.register(pipeline_worktree, view) if view is not None else None

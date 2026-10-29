@@ -112,6 +112,10 @@ class Step(BaseModel):
     # model-profiles.spec.md "Where a member's model comes from". `None` means "defer to the target's
     # own policy/pin resolution", not "no model".
     model: str | None = None
+    # Narrows what this hop is offered to these tool names, and bounds the calls it may make
+    # (pipeline-format.spec.md "Steps" Req. 11); each overrides the archetype's own for this hop.
+    tools: list[str] | None = None
+    max_tool_calls: int | None = Field(None, alias="maxToolCalls", gt=0)
     # Skips this step on a closed predicate vocabulary (see `When`) -- applies to any
     # step kind, including a `run` command step. `None` means "always run".
     when: When | None = None
@@ -131,10 +135,27 @@ class Step(BaseModel):
     # target). See specs/functional/pipeline-format.spec.md ("Outcome routing").
     on: dict[str, Any] | None = None
 
+    def _check_hop_limits(self) -> None:
+        """``tools`` names at least one tool, and only a step that runs an agent turn (a unit
+        step or a child of a group) carries ``tools`` or ``maxToolCalls``."""
+        if self.tools is not None and not [t for t in self.tools if t.strip()]:
+            raise InvalidInput(f"step {self.id!r}: 'tools' must name at least one tool")
+        if self.tools is None and self.max_tool_calls is None:
+            return
+        for kind, present in (
+            ("parallel' group", self.parallel is not None),
+            ("run' (command) step", self.run is not None),
+            ("input' step", self.input is not None),
+        ):
+            if present:
+                raise InvalidInput(f"step {self.id!r}: a '{kind} carries no 'tools'/'maxToolCalls'")
+
     @model_validator(mode="after")
     def _check_shape(self) -> Step:
         if not self.id.strip():
             raise InvalidInput("step 'id' must not be empty")
+        self._check_hop_limits()
+
         if self.archetype is not None and not _is_slug(self.archetype):
             raise InvalidInput(
                 f"step {self.id!r}: 'archetype' must be a lowercase slug (got {self.archetype!r})"
