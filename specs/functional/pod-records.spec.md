@@ -331,7 +331,7 @@ store.read("DELETE FROM listings", ReadLimits(200, 2500, 5.0))  # RecordsError, 
 - `tests/architecture/test_records_adapter.py`: requirement 1's rule that only `bootstrap.py` names the adapter
 - `tests/integration/platform/test_record_store_conformance.py`: requirements 3-14 on every backend
   (one `store` fixture entry per backend)
-- `tests/integration/platform/test_records_sqlite.py`: what only the SQLite file has (mode, WAL, stored
+- `tests/unit/platform/test_records_sqlite.py`: what only the SQLite file has (mode, WAL, stored
   booleans, no file created by a read)
 - `tests/unit/kernel/test_records_rules.py`: the shared rules
 - `tests/unit/teams/test_records__doc.py`: requirements 15-16 (the document)

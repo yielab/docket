@@ -1,9 +1,10 @@
 """A pod's records: the ``kind: records`` document, the files it is read from and the pod's records
 file it is applied to (specs/functional/pod-records.spec.md). The documents are pod-scoped only; the
-file is ``Home.pod_records_path``, written through ``platform.RecordsStore``."""
+file is ``Home.pod_records_path``, reached through the ``RecordStore`` port (``records.open``)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Literal
 
@@ -11,13 +12,13 @@ from pydantic import ValidationError
 
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
+from docket.kernel.ports import records
 from docket.kernel.records import RecordSet
-from docket.platform import Column, EnsureResult, QueryResult, RecordsStore
+from docket.kernel.records_port import ReadLimits, Rows, SetChange
 
 _COUNT_LIMIT = 5
-_MAX_CHARS = 200_000
-_QUERY_TIMEOUT_S = 5.0
-_EXPORT_TIMEOUT_S = 30.0
+_READ = ReadLimits(max_chars=200_000, timeout_s=5.0)
+_EXPORT = ReadLimits(timeout_s=30.0)
 _IMPLICIT = ("_id", "_at", "_task", "_session", "_step", "_updated_at")
 
 
@@ -83,37 +84,23 @@ def find_set(project: str, name: str) -> RecordSet | None:
     return next((s for s in pod_record_sets(project)[0] if s.name == name), None)
 
 
-def _store(project: str) -> RecordsStore:
-    return RecordsStore(current_home().pod_records_path(project))
+def check_set(project: str, record_set: RecordSet) -> SetChange:
+    """What applying *record_set* to *project*'s records would do; a refusal changes nothing."""
+    return records.open(project).plan(record_set)
 
 
-def _columns(record_set: RecordSet) -> list[Column]:
-    return [Column(c.name, c.type) for c in record_set.columns]
-
-
-def check_set(project: str, record_set: RecordSet) -> EnsureResult:
-    """What applying *record_set* to *project*'s file would do; a refusal changes nothing."""
-    return _store(project).check_table(record_set.name, _columns(record_set), record_set.key)
-
-
-def ensure_set(project: str, record_set: RecordSet) -> EnsureResult:
-    """Create *record_set*'s table in *project*'s file or add its new columns."""
-    return _store(project).ensure_table(record_set.name, _columns(record_set), record_set.key)
-
-
-def _table_exists(project: str, name: str) -> bool:
-    if not current_home().pod_records_path(project).exists():
-        return False
-    sql = f"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '{name}'"
-    return bool(_store(project).query(sql, 1, _MAX_CHARS, _QUERY_TIMEOUT_S).rows)
+def ensure_set(project: str, record_set: RecordSet) -> SetChange:
+    """Declare *record_set* in *project*'s records: create it or add its new columns."""
+    return records.open(project).declare(record_set)
 
 
 def row_count(project: str, record_set: RecordSet) -> int:
-    """How many rows *record_set* holds; 0 while its table does not exist."""
-    if not _table_exists(project, record_set.name):
+    """How many rows *record_set* holds; 0 while it is not declared."""
+    store = records.open(project)
+    if not store.has(record_set.name):
         return 0
     sql = f'SELECT count(*) FROM "{record_set.name}"'
-    return int(_store(project).query(sql, _COUNT_LIMIT, _MAX_CHARS, _QUERY_TIMEOUT_S).rows[0][0])
+    return int(store.read(sql, replace(_READ, max_rows=_COUNT_LIMIT)).rows[0][0])
 
 
 def default_sql(record_set: RecordSet, newest_first: bool = False) -> str:
@@ -123,23 +110,24 @@ def default_sql(record_set: RecordSet, newest_first: bool = False) -> str:
 
 def read_rows(
     project: str, record_set: RecordSet, sql: str | None, limit: int, newest_first: bool = False
-) -> QueryResult:
-    """Run *sql* (the whole set when omitted, newest first if asked) on the read-only connection,
-    at most *limit* rows. A set whose table does not exist yet reads as no rows."""
-    if sql is None and not _table_exists(project, record_set.name):
+) -> Rows:
+    """Run *sql* (the whole set when omitted, newest first if asked) as a read, at most *limit*
+    rows. A set that is not declared yet reads as no rows."""
+    store = records.open(project)
+    if sql is None and not store.has(record_set.name):
         columns = (*_IMPLICIT, *(c.name for c in record_set.columns))
-        return QueryResult(columns=columns, rows=[], cut=0)
+        return Rows(columns=columns, rows=[], cut=0)
     statement = sql if sql is not None else default_sql(record_set, newest_first)
-    return _store(project).query(statement, limit, _MAX_CHARS, _QUERY_TIMEOUT_S)
+    return store.read(statement, replace(_READ, max_rows=limit))
 
 
 def export_csv(project: str, record_set: RecordSet, sql: str | None, path: Path) -> int:
     """Write every row *sql* (the whole set when omitted) returns to *path* as CSV; the count."""
     statement = sql if sql is not None else default_sql(record_set)
-    return _store(project).export(statement, path, "csv", _EXPORT_TIMEOUT_S)
+    return records.open(project).export(statement, path, "csv", _EXPORT)
 
 
-def rows_payload(record_set: RecordSet, result: QueryResult) -> dict[str, object]:
+def rows_payload(record_set: RecordSet, result: Rows) -> dict[str, object]:
     """``{set, columns, rows, cut}``: *result* with each row an object keyed by column name."""
     names = list(result.columns)
     return {

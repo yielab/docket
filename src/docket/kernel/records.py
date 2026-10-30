@@ -1,14 +1,17 @@
 """The typed configuration of a pod's records: one set (a table), its optional key and its typed
-columns. Pure data and the rules that bound it; nothing here opens a file
-(specs/functional/pod-records.spec.md "The document")."""
+columns, and the error a store refuses with. Pure data and the rules that bound it; nothing here
+opens a file (specs/functional/pod-records.spec.md "The document")."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
+from docket.kernel.errors import InvalidInput
+
 ColumnType = Literal["string", "integer", "number", "boolean", "date"]
+COLUMN_TYPES: tuple[str, ...] = get_args(ColumnType)
 
 _NAME = r"^[a-z][a-z0-9_]*$"
 MAX_COLUMNS = 40
@@ -17,6 +20,10 @@ RECORDS_TOOL_PREFIX = "rec__"
 # The allow-list entry that names every record tool of the pod.
 RECORDS_ALL_ENTRY = "rec"
 RECORDS_QUERY_TOOL = RECORDS_TOOL_PREFIX + "query"
+
+
+class RecordsError(InvalidInput):
+    """A request a record store refused; the records are as they were."""
 
 
 def records_tool_name(set_name: str = "", operation: str = "") -> str:

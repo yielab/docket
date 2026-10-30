@@ -10,9 +10,8 @@ from tests.support.registry import tool_named
 
 from docket.agent.tools import records_tools as _rt
 from docket.agent.tools.registry import ToolContext, ToolRegistry
-from docket.kernel.records import RecordColumn, RecordSet
-from docket.platform import RecordsError
-from docket.platform.records_store import AddResult, QueryResult, RecordMeta
+from docket.kernel.records import RecordColumn, RecordsError, RecordSet
+from docket.kernel.records_port import AddOutcome, ReadLimits, RecordOrigin, Rows
 
 SUBJECT = "docket.agent.tools.records_tools"
 
@@ -44,22 +43,22 @@ class _Store:
         if self.error is not None:
             raise self.error
 
-    def add(self, set_name: str, values: dict[str, Any], meta: RecordMeta) -> AddResult:
-        self._note("add", set_name, values, meta)
-        return AddResult({"_id": 1, **values}, created=True)
+    def add(self, set_name: str, values: dict[str, Any], origin: RecordOrigin) -> AddOutcome:
+        self._note("add", set_name, values, origin)
+        return AddOutcome({"_id": 1, **values}, created=True)
 
     def update(
-        self, set_name: str, match: dict[str, Any], values: dict[str, Any], meta: RecordMeta
+        self, set_name: str, match: dict[str, Any], values: dict[str, Any], origin: RecordOrigin
     ) -> dict[str, Any]:
-        self._note("update", set_name, match, values, meta)
+        self._note("update", set_name, match, values, origin)
         return {"_id": 1, **values}
 
-    def query(self, sql: str, max_rows: int, max_chars: int, timeout_s: float = 5.0) -> QueryResult:
-        self._note("query", sql, max_rows, max_chars)
-        return QueryResult(("n",), list(self.rows), 0)
+    def read(self, statement: str, limits: ReadLimits) -> Rows:
+        self._note("read", statement, limits)
+        return Rows(("n",), list(self.rows), 0)
 
-    def export(self, sql: str, path: Path, fmt: str, timeout_s: float = 30.0) -> int:
-        self._note("export", sql, path, fmt)
+    def export(self, statement: str, target: Path, fmt: str, limits: ReadLimits) -> int:
+        self._note("export", statement, target, fmt)
         return 4
 
 
@@ -138,7 +137,7 @@ class TestAdd:
         )
 
         assert out.ok
-        assert store.calls[0][1][2] == RecordMeta(task="t-1", session="s-9", step="scan")
+        assert store.calls[0][1][2] == RecordOrigin(task="t-1", session="s-9", step="scan")
         assert json.loads(out.content)["created"] is True
 
     def test_the_session_key_stands_in_when_the_hop_has_no_trace_session(
@@ -228,9 +227,9 @@ class TestQuery:
         )
 
         assert json.loads(out.content) == {"columns": ["n"], "rows": [[1]], "cut": 0}
-        _, (sql, rows, chars) = store.calls[0]
-        assert (sql, rows) == ("SELECT 1", 50)
-        assert chars == 2500
+        _, (sql, limits) = store.calls[0]
+        assert (sql, limits.max_rows) == ("SELECT 1", 50)
+        assert limits.max_chars == 2500
 
     def test_rows_that_do_not_fit_the_cap_count_as_cut(self, tmp_path: Path) -> None:
         store = _Store()
@@ -253,7 +252,7 @@ class TestQuery:
             {"sql": "SELECT 1", "limit": 5000}, _ctx(tmp_path)
         )
 
-        assert store.calls[0][1][1] == 200
+        assert store.calls[0][1][1].max_rows == 200
 
     def test_a_limit_that_is_not_a_positive_integer_is_refused(self, tmp_path: Path) -> None:
         registry, store = _load()
