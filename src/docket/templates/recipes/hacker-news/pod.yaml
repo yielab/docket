@@ -1,0 +1,3 @@
+kind: pod
+name: hacker-news
+description: A service for the public Hacker News search API, a set of the most commented stories with a summary and the discussion of each, a digest pipeline and a weekly report routine, for a routine pod.
