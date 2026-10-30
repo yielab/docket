@@ -42,7 +42,7 @@ class AgentMeta(BaseModel):
     stack: str = ""
     description: str = ""
     role: str = ""
-    # Which pod blueprint provisioned this agent (e.g. "software", "research")
+    # Which pod blueprint provisioned this agent (e.g. "build", "respond")
     # and whether its workspace is anchored to a codebase or a plain working
     # directory.
     blueprint: str = ""

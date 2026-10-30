@@ -76,7 +76,7 @@ class TestInitRefusesWhatItCannotStore:
     ) -> None:
         spec = tmp_path / "spec.json"
         spec.write_text(
-            json.dumps([{"id": "Bad_ID", "blueprint": "software", "codebase": str(tmp_path)}])
+            json.dumps([{"id": "Bad_ID", "blueprint": "build", "codebase": str(tmp_path)}])
         )
 
         result = runner.invoke(app, ["init", "--from", str(spec)])

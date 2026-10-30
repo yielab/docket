@@ -37,7 +37,7 @@ def _record_three(project: str) -> None:
 def test_corrections_since_filters_by_timestamp(live_server: tuple[str, str]) -> None:
     """`since` returns only records after the cursor, and `next` is the last returned ts."""
     url, token = live_server
-    _pp.provision_pod("demo", "software", location="/src/demo")
+    _pp.provision_pod("demo", "build", location="/src/demo")
     _record_three("demo")
 
     status, body = _get(f"{url}/pods/demo/corrections?since={quote(_TS[1])}", token)
@@ -54,7 +54,7 @@ def test_corrections_since_filters_by_timestamp(live_server: tuple[str, str]) ->
 def test_corrections_next_keeps_cursor_when_nothing_is_new(live_server: tuple[str, str]) -> None:
     """With nothing after `since`, the body is empty and `next` echoes the given cursor."""
     url, token = live_server
-    _pp.provision_pod("demo", "software", location="/src/demo")
+    _pp.provision_pod("demo", "build", location="/src/demo")
     _record_three("demo")
 
     status, body = _get(f"{url}/pods/demo/corrections?since={quote(_TS[2])}", token)
@@ -65,7 +65,7 @@ def test_corrections_next_keeps_cursor_when_nothing_is_new(live_server: tuple[st
 def test_pod_without_ledger_returns_empty_list(live_server: tuple[str, str]) -> None:
     """A provisioned pod with no corrections ledger answers an empty list, not an error."""
     url, token = live_server
-    _pp.provision_pod("quiet", "software", location="/src/quiet")
+    _pp.provision_pod("quiet", "build", location="/src/quiet")
 
     status, body = _get(f"{url}/pods/quiet/corrections", token)
     assert status == 200
@@ -84,7 +84,7 @@ def test_unknown_pod_returns_404(live_server: tuple[str, str]) -> None:
 def test_bad_since_returns_400(live_server: tuple[str, str]) -> None:
     """A `since` that is not an ISO-8601 timestamp answers 400."""
     url, token = live_server
-    _pp.provision_pod("demo", "software", location="/src/demo")
+    _pp.provision_pod("demo", "build", location="/src/demo")
 
     status, body = _get(f"{url}/pods/demo/corrections?since=yesterday", token)
     assert status == 400
@@ -103,7 +103,7 @@ def test_corrections_without_token_returns_401(live_server: tuple[str, str]) -> 
 def test_offset_since_is_normalised_to_utc(live_server: tuple[str, str]) -> None:
     """A `since` with an offset selects the same records, and the same next, as its UTC instant."""
     url, token = live_server
-    _pp.provision_pod("demo", "software", location="/src/demo")
+    _pp.provision_pod("demo", "build", location="/src/demo")
     _record_three("demo")
 
     _, utc = _get(f"{url}/pods/demo/corrections?since=2026-10-01T10:00:05Z", token)
@@ -116,7 +116,7 @@ def test_offset_since_is_normalised_to_utc(live_server: tuple[str, str]) -> None
 def test_since_compares_sub_second_records_by_instant(live_server: tuple[str, str]) -> None:
     """A record half a second after `since` is delivered, not dropped by a string compare."""
     url, token = live_server
-    _pp.provision_pod("demo", "software", location="/src/demo")
+    _pp.provision_pod("demo", "build", location="/src/demo")
     _corrections.record(
         "demo",
         "deny_reason",
@@ -135,7 +135,7 @@ def test_since_compares_sub_second_records_by_instant(live_server: tuple[str, st
 def test_naive_since_returns_400(live_server: tuple[str, str]) -> None:
     """A `since` with no offset is refused, not compared as if it were UTC."""
     url, token = live_server
-    _pp.provision_pod("demo", "software", location="/src/demo")
+    _pp.provision_pod("demo", "build", location="/src/demo")
 
     status, body = _get(f"{url}/pods/demo/corrections?since=2026-10-01T10:00:05", token)
     assert status == 400

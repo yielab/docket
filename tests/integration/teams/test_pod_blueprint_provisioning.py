@@ -1,6 +1,6 @@
 """Pod blueprint provisioning end-to-end.
 
-Covers: every built-in blueprint provisions a real pod; `software` provisions
+Covers: every built-in blueprint provisions a real pod; `build` provisions
 byte-for-byte identically to the underlying `_pod.build_pod` primitive (a
 hard parity requirement); a `workdir` blueprint's pod passes `docket setup --fix`
 clean; `docket init --from spec.yaml` provisions a pod via a `blueprint` field
@@ -49,11 +49,10 @@ class TestBuiltinBlueprintsProvision:
     @pytest.mark.parametrize(
         "blueprint_name,expected_roles",
         [
-            ("software", ("lead", "implementer")),
-            ("research", ("lead", "researcher", "analyst", "writer", "reviewer")),
-            ("content", ("lead", "writer", "reviewer")),
-            ("ops", ("lead", "operator", "monitor")),
-            ("agentic-product", ("lead", "implementer", "reviewer")),
+            ("build", ("lead", "implementer", "reviewer")),
+            ("respond", ("lead", "researcher", "writer", "reviewer", "actor")),
+            ("operate", ("lead", "monitor", "operator", "reviewer")),
+            ("routine", ("lead", "analyst", "writer", "reviewer")),
         ],
     )
     def test_provisions_expected_members_and_files(
@@ -115,11 +114,10 @@ class TestBuiltinBlueprintsProvision:
     @pytest.mark.parametrize(
         "blueprint_name,expected_budget",
         [
-            ("software", None),
-            ("research", 20.0),
-            ("content", 15.0),
-            ("ops", 30.0),
-            ("agentic-product", None),
+            ("build", None),
+            ("respond", 20.0),
+            ("operate", 30.0),
+            ("routine", 15.0),
         ],
     )
     def test_default_budget_applies_to_lead_only(
@@ -145,7 +143,7 @@ class TestBuiltinBlueprintsProvision:
 
     def test_workdir_auto_provisioned_when_location_omitted(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
-            _pod.build_pod_from_blueprint("myops", "ops")
+            _pod.build_pod_from_blueprint("myops", "operate")
             work_dir = Path(_meta(oc_dir, "myops-lead")["workDir"])
             assert work_dir.is_dir()
             assert work_dir == current_home().pod_work_dir("myops")
@@ -154,18 +152,18 @@ class TestBuiltinBlueprintsProvision:
         with _seed(tmp_path):
             custom = tmp_path / "my-custom-work-dir"
             created = _pod.build_pod_from_blueprint(
-                "myresearch", "research", location=str(custom), stack=""
+                "myresearch", "respond", location=str(custom), stack=""
             )
             assert custom.is_dir()
             assert created  # sanity: pod actually provisioned
 
 
-# ── hard requirement: `software` behaves exactly as it did before blueprints ──
+# ── hard requirement: `build` provisions exactly the full pod ──
 
 
-class TestSoftwareParity:
+class TestBuildParity:
     """Provisions two environments, one via `_pod.build_pod`, one via
-    `build_pod_from_blueprint(..., "software", ...)`; every file must match byte-for-byte
+    `build_pod_from_blueprint(..., "build", ...)`; every file must match byte-for-byte
     once each tmp-dir root is normalized out (`DOCKET_SCRATCH_DIR` in TOOLS.md)."""
 
     _MEMBER_FILES = ("SOUL.md", "AGENTS.md", "HEARTBEAT.md", "WORKFLOW_AUTO.md", "MEMORY.md")
@@ -175,12 +173,12 @@ class TestSoftwareParity:
         with _seed(root) as oc_dir:
             if via_blueprint:
                 _pod.build_pod_from_blueprint(
-                    "demo", "software", location="/src/demo", stack="Python", description="the app"
+                    "demo", "build", location="/src/demo", stack="Python", description="the app"
                 )
             else:
                 build_pod(
                     "demo",
-                    _pod_core.DEFAULT_POD_ROLES,
+                    _pod_core.FULL_POD_ROLES,
                     codebase="/src/demo",
                     stack="Python",
                     description="the app",
@@ -196,7 +194,7 @@ class TestSoftwareParity:
             self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
             self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
         ):
-            for role in ("lead", "implementer"):
+            for role in ("lead", "implementer", "reviewer"):
                 ws_a, ws_b = _ws(oc_a, f"demo-{role}"), _ws(oc_b, f"demo-{role}")
                 for fname in self._MEMBER_FILES:
                     text_a = self._normalize_root((ws_a / fname).read_text(), oc_a)
@@ -220,7 +218,7 @@ class TestSoftwareParity:
             self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
             self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
         ):
-            for mid in ("demo-lead", "demo-implementer"):
+            for mid in ("demo-lead", "demo-implementer", "demo-reviewer"):
                 meta_a = _meta(oc_a, mid)
                 meta_b = _meta(oc_b, mid)
                 # Two fields legitimately differ across two separate provisioning
@@ -231,7 +229,7 @@ class TestSoftwareParity:
                 if "scratchDir" in meta_a or "scratchDir" in meta_b:
                     assert meta_a.pop("scratchDir", "").endswith("/workspaces/pods/demo/.scratch")
                     assert meta_b.pop("scratchDir", "").endswith("/workspaces/pods/demo/.scratch")
-                assert meta_b.pop("blueprint") == "software"
+                assert meta_b.pop("blueprint") == "build"
                 assert "blueprint" not in meta_a
                 assert "workspaceKind" not in meta_a
                 assert "workspaceKind" not in meta_b
@@ -242,7 +240,15 @@ class TestSoftwareParity:
             self._provision(tmp_path / "a", via_blueprint=False) as oc_a,
             self._provision(tmp_path / "b", via_blueprint=True) as oc_b,
         ):
-            assert sorted(_ids(oc_a)) == sorted(_ids(oc_b)) == ["demo-implementer", "demo-lead"]
+            assert (
+                sorted(_ids(oc_a))
+                == sorted(_ids(oc_b))
+                == [
+                    "demo-implementer",
+                    "demo-lead",
+                    "demo-reviewer",
+                ]
+            )
 
     def test_no_default_budget_cap(self, tmp_path: Path) -> None:
         with self._provision(tmp_path / "b", via_blueprint=True) as oc_b:
@@ -253,7 +259,7 @@ class TestSoftwareParity:
 
 
 class TestDoctorAcceptsWorkdirBlueprint:
-    @pytest.mark.parametrize("blueprint_name", ["research", "content", "ops"])
+    @pytest.mark.parametrize("blueprint_name", ["respond", "operate", "routine"])
     def test_pod_passes_doctor_clean(self, tmp_path: Path, blueprint_name: str) -> None:
         with _seed(tmp_path) as oc_dir:
             created = _pod.build_pod_from_blueprint(
@@ -263,18 +269,11 @@ class TestDoctorAcceptsWorkdirBlueprint:
             assert issues == 0
             del oc_dir  # only used to keep _seed's return value referenced
 
-    def test_software_pod_still_passes_doctor_clean(self, tmp_path: Path) -> None:
-        with _seed(tmp_path):
-            created = _pod.build_pod_from_blueprint("demo", "software", location="/src/demo")
-            assert _setup_check._check_project_agents(sorted(created)) == 0
-
-    def test_agentic_product_pod_passes_doctor_clean(self, tmp_path: Path) -> None:
-        # codebase-kind, full (lead/implementer/reviewer) roster —
-        # same doctor path software's full pod (`--pod full`) already
-        # exercises, just reached via a blueprint name.
+    def test_build_pod_still_passes_doctor_clean(self, tmp_path: Path) -> None:
+        # codebase-kind, full (lead/implementer/reviewer) roster.
         with _seed(tmp_path):
             created = _pod.build_pod_from_blueprint(
-                "demo", "agentic-product", location="/src/demo", stack="Python"
+                "demo", "build", location="/src/demo", stack="Python"
             )
             assert sorted(r.split("-", 1)[1] for r in created) == [
                 "implementer",
@@ -310,7 +309,7 @@ class TestUnknownBlueprintFailsCleanly:
             good.mkdir()
             spec = [
                 {"id": "bad-pod", "blueprint": "wizard-pod"},
-                {"id": "goodagent", "blueprint": "software", "codebase": str(good)},
+                {"id": "goodagent", "blueprint": "build", "codebase": str(good)},
             ]
             spec_file = tmp_path / "spec.json"
             spec_file.write_text(json.dumps(spec))
@@ -332,7 +331,7 @@ class TestFromSpecBlueprint:
             spec = [
                 {
                     "id": "myresearch",
-                    "blueprint": "research",
+                    "blueprint": "respond",
                     "workDir": str(tmp_path / "research-work"),
                     "description": "look into X",
                     "budgetUsd": "5",
@@ -345,43 +344,43 @@ class TestFromSpecBlueprint:
 
             assert rc == 0
             ids = _ids(oc_dir)
-            for role in ("lead", "researcher", "analyst", "writer", "reviewer"):
+            for role in ("lead", "researcher", "writer", "reviewer", "actor"):
                 assert f"myresearch-{role}" in ids
 
             meta = _meta(oc_dir, "myresearch-lead")
-            assert meta["blueprint"] == "research"
+            assert meta["blueprint"] == "respond"
             assert meta["workspaceKind"] == "workdir"
             assert meta["workDir"] == str(tmp_path / "research-work")
             # Explicit spec budgetUsd overrides the blueprint's own default (20.0).
             assert float(meta["budgetUsd"]) == 5.0
 
-    def test_from_spec_software_blueprint_matches_codebase_field(self, tmp_path: Path) -> None:
+    def test_from_spec_build_blueprint_matches_codebase_field(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             code = tmp_path / "demo"
             code.mkdir()
-            spec = {"id": "demo", "blueprint": "software", "codebase": str(code), "stack": "Python"}
+            spec = {"id": "demo", "blueprint": "build", "codebase": str(code), "stack": "Python"}
             spec_file = tmp_path / "spec.json"
             spec_file.write_text(json.dumps(spec))
 
             rc = _agents.run_init(_agents.InitRequest(from_file=str(spec_file)))
 
             assert rc == 0
-            assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
+            assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead", "demo-reviewer"]
             assert _meta(oc_dir, "demo-lead")["codebase"] == str(code)
 
     def test_from_spec_existing_pod_is_skipped_not_recreated(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
             code = tmp_path / "demo"
             code.mkdir()
-            _pod.build_pod_from_blueprint("demo", "software", location=str(code))
-            spec = [{"id": "demo", "blueprint": "software", "codebase": str(code)}]
+            _pod.build_pod_from_blueprint("demo", "build", location=str(code))
+            spec = [{"id": "demo", "blueprint": "build", "codebase": str(code)}]
             spec_file = tmp_path / "spec.json"
             spec_file.write_text(json.dumps(spec))
 
             rc = _agents.run_init(_agents.InitRequest(from_file=str(spec_file)))
 
             assert rc == 0
-            assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead"]
+            assert sorted(_ids(oc_dir)) == ["demo-implementer", "demo-lead", "demo-reviewer"]
 
     def test_from_spec_invalid_project_id_exits_one_and_provisions_nothing(
         self, tmp_path: Path
@@ -390,7 +389,7 @@ class TestFromSpecBlueprint:
         # characters) must not reach provision_pod's workspace-path
         # construction -- the command exits 1 and nothing is provisioned.
         with _seed(tmp_path) as oc_dir:
-            spec = [{"id": "../../escaped", "blueprint": "software", "codebase": "/src/demo"}]
+            spec = [{"id": "../../escaped", "blueprint": "build", "codebase": "/src/demo"}]
             spec_file = tmp_path / "spec.json"
             spec_file.write_text(json.dumps(spec))
 

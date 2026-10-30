@@ -36,7 +36,7 @@ class TestProvisioningLeavesAWorkdirItDidNotCreate:
         workdir.mkdir()
         workdir.chmod(0o755)
 
-        _pp.provision_pod("demo", "research", location=str(workdir))
+        _pp.provision_pod("demo", "respond", location=str(workdir))
 
         assert _mode(workdir) == 0o755
 
@@ -48,7 +48,7 @@ class TestProvisioningLeavesAWorkdirItDidNotCreate:
         cwd.chmod(0o755)
         monkeypatch.chdir(cwd)
 
-        result = runner.invoke(app, ["init", "demo", "--blueprint", "research"])
+        result = runner.invoke(app, ["init", "demo", "--blueprint", "respond"])
 
         assert result.exit_code == 0, result.output
         assert _mode(cwd) == 0o755
@@ -56,7 +56,7 @@ class TestProvisioningLeavesAWorkdirItDidNotCreate:
     def test_a_workdir_provisioning_creates_is_owner_only(self, tmp_path: Path) -> None:
         workdir = tmp_path / "made-here"
 
-        _pp.provision_pod("demo", "research", location=str(workdir))
+        _pp.provision_pod("demo", "respond", location=str(workdir))
 
         assert _mode(workdir) == 0o700
 
@@ -118,13 +118,13 @@ class TestFromRefusesAnEntryWithoutABlueprint:
         code.mkdir()
         spec = self._spec(
             tmp_path,
-            [{"id": "legacy"}, {"id": "demo", "blueprint": "software", "codebase": str(code)}],
+            [{"id": "legacy"}, {"id": "demo", "blueprint": "build", "codebase": str(code)}],
         )
 
         result = runner.invoke(app, ["init", "--from", spec])
 
         assert result.exit_code == 2
-        assert _members() == ["demo-implementer", "demo-lead"]
+        assert _members() == ["demo-implementer", "demo-lead", "demo-reviewer"]
 
 
 class TestInitFromTheDirectoryHoldingTheHome:

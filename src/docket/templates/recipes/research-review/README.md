@@ -5,9 +5,8 @@ verdict with one bounded rework cycle back to the Writer. `researcher`, `analyst
 are starter archetypes and `reviewer` is a built-in one (`docket pod roles`) — no role YAML to add,
 just roster and pipeline.
 
-This is the same pipeline shape as the built-in `research` pod blueprint
-(`docket init --blueprint research`). Use this recipe instead when you want the same
-review discipline on a pod that already exists and was not created with that blueprint.
+It is close to the built-in `respond` pod blueprint's research, draft and review steps, without
+the Actor. Use this recipe when you want that review discipline on a pod that already exists.
 
 ## Apply it
 

@@ -94,7 +94,8 @@ This specification does NOT cover:
    `reviewer`, no default budget cap, and a `defaultPipeline` that is exactly the built-in default
    pipeline (`pipeline-format.spec.md`), not a second, independently hand-rolled copy. `docket init`
    and `POST /pods` provision the lean subset `lead`, `implementer` unless `--pod full`, `--with` or
-   `pod: full` widens it, so the Reviewer step is reached only on a pod that has the role.
+   `pod: full` widens it, so the Reviewer step is reached only on a pod that has the role; an
+   entry of `docket init --from` names no roster and gets the blueprint's own.
 3. `respond`, `operate` and `routine` **MUST** be `workspaceKind: "workdir"`; none assumes a
    codebase. Their `defaultPipeline`s are:
    - `respond` (roster `lead`, `researcher`, `writer`, `reviewer`, `actor`): `intake` (Lead) ->

@@ -14,7 +14,7 @@
   "sessionKey": "agent:webapp:default",
   "projectKey": "default",
   "templateVersion": "2",
-  "blueprint": "software",
+  "blueprint": "build",
   "portRangeStart": 3000,
   "portRangeCount": 100,
   "scratchDir": "/home/user/.docket/workspaces/pods/webapp/.scratch"

@@ -17,6 +17,8 @@ writer       anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  drafts the pod'
 operator     anthropic/claude-sonnet-4-6  $3.00/$15.00  builtin  executes real operational actions
 monitor      anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  observes signals and reports
                                                                  status; no unilateral action
+actor        anthropic/claude-sonnet-4-6  $3.00/$15.00  builtin  sends what the step before
+                                                                 approved, nothing else
 default  anthropic/claude-sonnet-4-6
 rank anchors  anthropic/claude-opus-4-6 -> anthropic/claude-sonnet-4-6 -> anthropic/claude-haiku-4-5
 PRICE is an estimate from a snapshot, not recorded spend

@@ -16,8 +16,8 @@ docket init --from examples/configs/agents.yaml
 ```
 
 Re-applying is safe: an entry whose pod already exists is skipped. Each entry needs an explicit
-`id` (there is no auto-slugify from `name`) and a `blueprint`: `software`, `research`, `content`,
-`ops` or `agentic-product`, which provisions a **pod** (a Lead plus that blueprint's worker
+`id` (there is no auto-slugify from `name`) and a `blueprint`: `build`, `respond`, `operate`
+or `routine`, which provisions a **pod** (a Lead plus that blueprint's worker
 roles). An entry without a `blueprint` is refused. See the comments in `agents.yaml` for the full
 field list.
 
@@ -25,7 +25,7 @@ field list.
 
 ### repo-agent-meta.json
 
-An Implementer inside a **pod** (`blueprint: software`), anchored to a codebase, with the
+An Implementer inside a **pod** (`blueprint: build`), anchored to a codebase, with the
 runtime-resource fields docket allocates once at pod provisioning: a disjoint port range, a
 scratch directory. A git codebase gets a worktree per task at claim, recorded on the task, not here.
 
@@ -53,7 +53,7 @@ day:
 | `kind` | `"project"` \| `"specialist"` | required |
 | `role` | string | pod role (`lead`/`implementer`/`reviewer`) |
 | `pod` | string | which pod this member belongs to |
-| `blueprint` | string | which pod shape provisioned it (`software`, `research`, ...) |
+| `blueprint` | string | which pod shape provisioned it (`build`, `respond`, ...) |
 | `model` / `modelSource` | string / `"policy"` \| `"pinned"` | `policy` follows the role→model table; `pinned` was set explicitly |
 | `codebase` | string | absolute path; empty for a `workdir`-kind member |
 | `sessionKey` / `projectKey` | string | isolation coordinate — see [docs/AGENT-TEAMS.md](../../docs/AGENT-TEAMS.md) |
