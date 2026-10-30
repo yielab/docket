@@ -374,6 +374,12 @@ class TestRecipeRows:
             _pod_config_library._brings(_summary(roles=2, mcp_servers=("a",)))
             == "roles+mcp-servers"
         )
+        assert (
+            _pod_config_library._brings(
+                _summary(pipelines=("capture",), records=("entries",), routines=("weekly",))
+            )
+            == "pipelines+records+routines"
+        )
 
 
 class TestPodExportIntoTeams:

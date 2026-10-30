@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -346,7 +346,8 @@ overlay, policies, members, pipeline binding, settings) into one command.
    `roles/*.yaml|yml|json`, `policies/*.yaml|yml|json`, `plugins/*.py`, and `skills/*/SKILL.md`
    directories directly under *directory*; `pod.yaml`'s `members`/`settings` entry counts (`0`
    when absent or of the wrong type); the names of the `mcp-servers/` documents and of the
-   `pipelines/` files; the bound pipeline document's own `name` (the file `pod.yaml`'s `pipeline`
+   `pipelines/`, `records/` and `routines/` files (each by its file name without the extension);
+   the bound pipeline document's own `name` (the file `pod.yaml`'s `pipeline`
    key names, or `pipeline.yaml` when present and no key names one; `""` when no pipeline file
    resolves or it fails to parse); `pod.yaml`'s `description` (`""` when absent); and `pod.yaml`'s
    `exporters` list, filtered to string entries only (unvalidated against the catalog; that check
@@ -354,8 +355,8 @@ overlay, policies, members, pipeline binding, settings) into one command.
    `policies`, `members`, `pipeline`, `plugins`, `skills`, `settings`) as one line, e.g. `roles 1 ·
    policies 1 · members 1 · pipeline secure-build · plugins 0 · skills 1 · settings 0`
    (`pipeline none` when no pipeline resolves), with `· exporters <name>[, <name>...]`, then `·
-   mcp-servers <name>[, ...]`, then `· pipelines <name>[, ...]` appended, in that order, only when
-   present. `docket pod validate <dir>` (`config-format.spec.md`) prints this summary after its
+   mcp-servers <name>[, ...]`, then `· pipelines <name>[, ...]`, then `· records <name>[, ...]`,
+   then `· routines <name>[, ...]` appended, in that order, only when present. `docket pod validate <dir>` (`config-format.spec.md`) prints this summary after its
    per-file lines; `docket pod update` and `docket init --recipe`/a discovered `.docket/` print it,
    and the directory's own `description` when set, before the plan itself
    (`cli-interface.spec.md`).
@@ -364,8 +365,9 @@ overlay, policies, members, pipeline binding, settings) into one command.
     requirement 8 reads, sorted by name; a name present in both **MUST** resolve to the operator's
     own directory. `docket pod recipes [--json]` **MUST** print every entry: name, scope, a derived
     `brings`, and the description. `brings` is the non-empty parts among roles, policies, members,
-    pipeline, plugins, skills, mcp-servers and settings joined with `+` in that order, e.g.
-    `roles+policies+members+pipeline+skills`; `nothing` for an empty directory. It is never a
+    pipeline, plugins, skills, mcp-servers, settings, pipelines, records and routines joined with
+    `+` in that order, e.g. `roles+policies+members+pipeline+skills`, and `pipelines+records+routines`
+    for a recipe that holds only those three directories; `nothing` for an empty directory. It is never a
     stored field (requirement 9's rule). `docket pod recipes <name|dir> [--json]` has no `show`
     verb: it **MUST** resolve *name|dir* the same way (an unresolvable name **MUST** exit 1 naming
     both scopes' recipe names, matching requirement 8) and print the directory's name, description,

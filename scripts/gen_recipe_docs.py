@@ -60,6 +60,9 @@ def _brings(summary: _recipes.RecipeSummary) -> str:
         (summary.plugins, "plugin", "plugins"),
         (summary.settings, "setting", "settings"),
         (len(summary.mcp_servers), "MCP server", "MCP servers"),
+        (len(summary.pipelines), "named pipeline", "named pipelines"),
+        (len(summary.records), "record set", "record sets"),
+        (len(summary.routines), "routine", "routines"),
     ):
         if count:
             parts.append(f"{count} {singular if count == 1 else plural}")

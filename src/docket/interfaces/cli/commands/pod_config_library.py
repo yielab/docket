@@ -35,6 +35,9 @@ def _brings(summary: _recipes.RecipeSummary) -> str:
             ("skills", summary.skills > 0),
             ("mcp-servers", bool(summary.mcp_servers)),
             ("settings", summary.settings > 0),
+            ("pipelines", bool(summary.pipelines)),
+            ("records", bool(summary.records)),
+            ("routines", bool(summary.routines)),
         )
         if present
     ]
@@ -58,6 +61,9 @@ def _info_dict(
         "skills": summary.skills,
         "settings": summary.settings,
         "mcp_servers": list(summary.mcp_servers),
+        "pipelines": list(summary.pipelines),
+        "records": list(summary.records),
+        "routines": list(summary.routines),
         "exporters": list(summary.exporters),
     }
 

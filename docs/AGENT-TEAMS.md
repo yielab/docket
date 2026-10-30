@@ -6,8 +6,9 @@
 
 A single autonomous agent is easy. Getting several agents to ship real software together is
 harder: it needs the same separation of duties a human team has — someone who plans and talks to
-people, someone who writes the code, someone who reviews it, someone who tests it — with hard
-boundaries so one project's work never contaminates another's. docket makes that structure
+people, someone who writes the code, someone who judges it — with hard boundaries so one
+project's work never contaminates another's. The tests are run by a mechanical gate, not by a
+role that could talk its way past a failure. docket makes that structure
 first-class.
 
 ---
@@ -37,8 +38,9 @@ Each member is a distinct registered agent with its **own permission-locked work
 (`700`/`600`, with `SOUL.md`, `AGENTS.md`, `HEARTBEAT.md`, `.docket-meta.json`, and a `memory/`
 log) — so **no role is ever shared between two projects.**
 
-The default pod is **lean — a Lead and an Implementer.** You add a Reviewer, or extra
-Implementers when the work warrants it.
+The default pod is **lean — a Lead and an Implementer.** The full code pod is a Lead, an
+Implementer and a `strong` Reviewer, the one judge; you add the Reviewer, or extra Implementers,
+when the work warrants it.
 
 <p align="center">
   <img src="assets/isolation.png" alt="Real terminal output: the Implementer's own workspace and model, isolation on, the task's git worktree on its own branch, the operator's main checkout clean, and the one-line fix living only in the worktree" width="760">
@@ -88,7 +90,7 @@ docket pod validate ./producer.yaml   # dry-run the schema + template render
 ```
 
 Three **built-in** archetypes cover the everyday roster. A **starter library**
-ships six more you can drop into any pod without writing a line of YAML:
+ships more you can drop into any pod without writing a line of YAML:
 
 | Name | Class | Gate | Denied tools |
 |---|---|---|---|
@@ -152,6 +154,11 @@ A department is a shape plus your own prose, connectors and policy, not another 
 `respond` pod needs the operator's role overlay to name the Actor's send tool; the `outward` recipe is
 the policy pack that asks before every send and caps them.
 
+The `workdir` shapes have **no git**. A hop in a plain working directory has no commit, diff stat
+or changed-file list to show for its work, so the hop record says "checked, found nothing" rather
+than showing commit evidence; what a `routine` or `respond` pod leaves behind is the files in its
+working directory and the pod's records (below).
+
 Start lean and grow only when the work earns it:
 
 | Situation | Pod |
@@ -165,6 +172,164 @@ Start lean and grow only when the work earns it:
 The Reviewer is the difference between "an agent changed the code" and "a change was
 reviewed before it landed" — the line between a prototype and a change you can let
 into a real codebase.
+
+### Recipes each shape takes
+
+A blueprint carries the roster, the pipeline and the workspace. A recipe carries only what a
+blueprint cannot: a method, a policy pack, a set of records, a schedule. Nothing ships twice.
+
+| Blueprint | Recipes it takes | What the recipe adds |
+|---|---|---|
+| `build` | `tdd`, `intake` (and the other code recipes in [the library](recipes.md)) | `tdd` is a red-then-green pipeline whose `check-red` step fails the task if the new test passes; `intake` is a Lead step that writes a typed brief and a resource check before any code changes |
+| `respond` | `outward` | the policy pack: ask a person before every `send` tool, and cap the sends |
+| `operate` | `ops-approval` | a policy that asks a person before a deploy- or production-shaped command |
+| `routine` | `records` | a set, a capture pipeline and a weekly report routine; apply it with `docket pod update records` on a `routine` pod |
+
+```bash
+docket init my-pod --blueprint routine
+docket pod update records             # the recipe is applied to the pod that exists
+```
+
+---
+
+## The standard teams of a digital business
+
+The same four shapes sit behind most departments of a small business. A department is an
+**instance**: a shape, the recipes that fit it, and what only you can supply. docket ships no
+blueprint named for a department, and the table is guidance for where to start, not a feature of
+its own.
+
+| Department | Shape | Recipes to apply | What you add |
+|---|---|---|---|
+| software | `build` | `tdd`, `intake` | the repository and its `verify` command; prose in `INSTRUCTIONS.md`; a policy such as `git-safety` if you want one |
+| ops | `operate` | `ops-approval` | a service or MCP declaration for each system it changes; the runbook as prose; the input its Monitor watches |
+| support | `respond` | `outward` | a service or MCP declaration to read the queue and one to send a reply; the Actor's role overlay naming that send tool; prose for tone and when to escalate; the send quota |
+| growth | `respond` | `outward` | a service or MCP declaration for the channel it publishes or sends on; the Actor's role overlay; prose for audience and voice; a quota |
+| revenue | `respond` | `outward` | the CRM or billing system as a declared service (reads open, writes behind approval); the Actor's role overlay; prose for the rules it must not break |
+| finance | `routine` | `records` | the ledger's columns in the `records/` document; a read-only service or MCP declaration for the books; prose; a policy that asks before anything leaves the machine |
+| insight | `routine` | `records` | the sets it compiles from and the source it reads; the report's prose; the routine's schedule |
+
+Each row uses only what the sections above describe: a blueprint at `docket init --blueprint
+<shape>`, the recipe with `docket pod update <recipe>`, a service with `docket setup service`
+(below), and your own prose, role overlay and policy. The first two are shipped; the last column
+is yours. A department that needs a role the roster lacks gets it with `docket pod add <role>` or
+a role file, as in "Role archetypes".
+
+---
+
+## A pod reaches a service
+
+A pod reaches an HTTP API without anyone writing a program for it. A **service** is a document:
+the address, how to authenticate and the operations a pod may perform. Each operation becomes a
+tool `svc__<service>__<operation>` that passes through the same gate as every other tool.
+
+```yaml
+# crm.yaml
+kind: service
+name: crm
+baseUrl: https://api.example.com/v1
+auth: {header: Authorization, value: "Bearer ${secret:crm}"}
+operations:
+  - {name: get_contact, method: GET, path: "/contacts/{id}", params: [{name: id, in: path, type: integer}]}
+  - name: create_contact
+    method: POST
+    path: /contacts
+    body: {type: object, properties: {email: {type: string}}, required: [email]}
+  - {name: delete_contact, method: DELETE, path: "/contacts/{id}", params: [{name: id, in: path, type: integer}]}
+```
+
+```bash
+printf '%s' "$CRM_TOKEN" | docket setup secret set crm --stdin   # the value is never an argument
+docket setup service add crm.yaml                                # or: add crm --from-openapi spec.yaml
+docket setup service list                                        # header and secret names, never a value
+```
+
+A pod can also carry its own `services/` directory, applied with `docket pod update`.
+
+- **The access rule.** A `GET` is `read` unless the document declares it `send`. A `POST`, `PUT`,
+  `PATCH` or `DELETE` is always `send`. A `send` operation reaches only a role whose own `tools`
+  list names it (`svc__crm__create_contact`, or `svc__crm` for every operation), so the roles that
+  read are never offered a write.
+- **A write asks a person.** The approver sees the whole call, credentials removed; every other
+  copy docket keeps is redacted. It is audited as `tool.send`, and a policy `limit` with
+  `service: crm` caps the sends to that service as one count.
+- **`DELETE` is one call at a time.** Its approval offers `approve_once` and `deny` only, never
+  "approve for this task".
+- **The perimeter is the service's host.** The call is made by docket's own process, not from the
+  jail. It may reach the `baseUrl` host and the hosts the document lists, nothing else: another
+  host, a redirect off the list, and a private, loopback or link-local address are refused, and
+  the last only unless the document lists that host. A path parameter is encoded, never
+  concatenated. Response size and time are bounded.
+- **The secret is never seen by the model.** `${secret:crm}` is resolved when the call runs and
+  goes only into the request header. It does not enter the prompt, the trace or the audit log,
+  and it is removed from a response that echoes it back.
+- **A call names its task.** Every call carries `X-Docket-Task: <task id>`; a document that
+  declares `idempotencyHeader` also sends a key derived from the task, step, operation and body,
+  so a service can recognize the call a resumed hop repeats.
+
+Limits: a header token only (no OAuth grant), JSON in and out, and one name is never both a
+service and an MCP server. It has been exercised against a local fake service, not a live third
+party. The policy side is in [Security](SECURITY-SIMPLE.md#acting-outside-the-machine-the-send-tool);
+the `outward` recipe README shows the same service wired to an Actor.
+
+---
+
+## A pod's records
+
+A pod that compiles reports, keeps a register or captures data needs a place for it that is not
+a file the model must read whole. A pod's **records** are declared tables in one SQLite file the
+pod owns, at `state/workspaces/pods/<pod>/records.sqlite` under `DOCKET_HOME`, beside the pod's
+`memory.json`. docket's own state (tasks, trace, audit, approvals) stays where it is.
+
+```yaml
+# records/entries.yaml, in a directory applied with `docket pod update`
+kind: records
+name: entries
+key: ref
+columns:
+  - {name: ref, type: string, required: true}
+  - {name: title, type: string, required: true}
+  - {name: amount, type: number}
+```
+
+A column is a `string`, `integer`, `number`, `boolean` or `date`. `docket pod update` creates the
+table, or adds a column to it; it never removes, renames or retypes one, and it refuses a document
+that tries.
+
+**The four tools.** A hop of a pod with a set is offered:
+
+| Tool | Kind | What it does |
+|---|---|---|
+| `rec__<set>__add` | write | adds a row; its parameters are the set's columns. With a `key`, an add whose key exists returns the existing row, so a resumed hop that repeats the call writes once |
+| `rec__<set>__update` | write | changes one row, found by `_id` or by the key; it cannot change the key |
+| `rec__query` | read | runs one `SELECT` on a read-only connection, with a row bound and a time bound |
+| `rec__export` | write | writes a query's rows as CSV or Markdown into the hop's working directory; the rows do not pass through the model |
+
+docket fills `_task`, `_session`, `_step` and `_at` on every row from the hop, never from the
+model's arguments; an argument that names one is refused. A role holds the tools by naming
+`rec__<set>`, `rec__query`, `rec__export` or `rec` (all of them) in its `tools`; a role that
+denies `write` loses add, update and export and keeps `rec__query`, which is how the `records`
+recipe's Reviewer can check a set and never change it. No record tool is `send`: the tools do not
+send a record anywhere, and a policy `ask` on `rec__*` is your choice.
+
+**What the jail can and cannot write.** The tools run in docket's process, and the records file is
+not under any directory the jail is given. With isolation on, a command the model runs cannot read
+or write it, and `rec__export` writes only inside the hop's own roots (a path outside them is
+refused). With isolation off, a shell command is not confined to anything, so the file's
+protection is the tools' discipline and your file permissions, not a boundary. The records file
+is a working store, not a tamper-evident log: unlike `audit.log` it has no hash chain.
+
+You read them yourself, read-only:
+
+```bash
+docket pod records                          # the sets and their row counts
+docket pod records entries --limit 20       # the rows
+docket pod records entries --sql "SELECT title, amount FROM entries ORDER BY amount DESC" --csv out.csv
+```
+
+The plan of record reads the same rows over the HTTP API (`GET /pods/<pod>/records` and
+`GET /pods/<pod>/records/<set>`). `docket pod export` writes the `records/` documents back, not the
+rows. Not covered: deleting rows, a set shared between pods, vector search.
 
 ---
 
@@ -181,8 +346,8 @@ workspaces isolate files, memory, and identity.
 
 ## Per-role model policy
 
-Each role maps to the **cheapest model adequate for its workload** — coordination and
-review/test are cheap-class; the Implementer (and security audits) get the strong class. Change a
+Each role maps to the **cheapest model adequate for its workload** — coordination is
+cheap-class; the Implementer and the Reviewer get the strong class. Change a
 role once and every policy-following agent re-resolves; override per-pod with a role overlay or set per step (`model:` in the pipeline). A
 starter or custom archetype with no dedicated policy-table row falls back to resolving through its
 own `modelClass` (`cheap`/`strong`) instead of the global default — see `docket pod roles <name>`
@@ -208,7 +373,7 @@ docket init <project> [path]              # lean pod (Lead + Implementer)
 docket init <project> [path] --pod full   # + Reviewer
 docket init <project> [path] --with reviewer
 docket init <project> [path] --blueprint <name>   # build (default) | respond | operate | routine
-docket pod recipes                      # the seventeen shipped recipes and your own, what each brings
+docket pod recipes                      # the shipped recipes and your own, what each brings
 docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a methodology) or
                                          #   your own directory; a committed .docket/ is applied
                                          #   by plain `docket init`
@@ -226,6 +391,12 @@ docket pod roles                        # every registered archetype
 docket pod roles <name>                 # one archetype's full definition
 docket pod update <file.yaml>             # register/override a custom archetype
 docket pod validate [file.yaml]        # dry-run schema + template validation
+
+# Services and records (the sections above)
+docket setup secret set <NAME> --stdin           # a token, by prompt or stdin, never an argument
+docket setup service add <file> | <name> --from-openapi <spec>
+docket setup service list | remove <name>
+docket pod records [<set>] [--sql "<SELECT>"] [--limit N] [--csv FILE]   # read-only
 
 # Run the pipeline
 docket task add [--priority high|normal|low] [--brief FILE.json] "<task>"
