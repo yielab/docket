@@ -139,21 +139,21 @@ This specification does NOT cover:
 28. A redirect **MUST NOT** be followed to a host outside that set, or to a scheme that downgrades `https`
     to `http`; the refusal is reported as in Requirement 27. A redirect inside the set is followed.
 29. Every address the host resolves to **MUST** be checked before connecting; the call **MUST** connect
-     to the address it checked. A private, loopback, link-local, multicast, reserved or unspecified
-     address **MUST** be refused (`refusal="service_not_allowed"`) unless the host is listed
-     in `hosts` explicitly: being the `base_url` host is not enough. System proxy settings **MUST NOT**
-     apply, since a proxy would move the connection past the check.
+    to the address it checked. A private, loopback, link-local, multicast, reserved or unspecified
+    address **MUST** be refused (`refusal="service_not_allowed"`) unless the host is listed
+    in `hosts` explicitly: being the `base_url` host is not enough. System proxy settings **MUST NOT**
+    apply, since a proxy would move the connection past the check.
 30. A header name **MUST** be an HTTP token and a header value **MUST NOT** contain CR, LF or NUL; a
-     header named `Host`, `Content-Length` or `Transfer-Encoding` **MUST** be refused. A violation is
-     refused (`refusal="service_bad_request"`) before any socket is opened.
+    header named `Host`, `Content-Length` or `Transfer-Encoding` **MUST** be refused. A violation is
+    refused (`refusal="service_bad_request"`) before any socket is opened.
 31. The call **MUST** be bounded in time by `Home.fetch_timeout_s` (the whole call, headers and body)
-     and in size by `Home.fetch_max_response_bytes`: a body over the cap is cut at it and the content
-     ends with `[truncated: response exceeded <N> bytes]`, so a cut body is returned as text, never as
-     JSON.
+    and in size by `Home.fetch_max_response_bytes`: a body over the cap is cut at it and the content
+    ends with `[truncated: response exceeded <N> bytes]`, so a cut body is returned as text, never as
+    JSON.
 32. The value of any header named `Authorization`, `Proxy-Authorization`, `Cookie`, or containing
-     `key`, `token`, `secret` or `auth`, each word of it, and every value in the request's `secrets`
-     **MUST** be replaced by `[REDACTED]` wherever it appears in the outcome's `content` or `error`, so
-     a server that echoes the credential back does not hand it to the model.
+    `key`, `token`, `secret` or `auth`, each word of it, and every value in the request's `secrets`
+    **MUST** be replaced by `[REDACTED]` wherever it appears in the outcome's `content` or `error`, so
+    a server that echoes the credential back does not hand it to the model.
 
 ## Interface Contracts
 
