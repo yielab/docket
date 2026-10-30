@@ -445,6 +445,10 @@ class TestSinglePathToExecution:
     # `fetch_url` handler function produces. `agent/tools/registry.py`'s `fetch`
     # registration calls `fetch_url` directly (the same way it calls
     # `toolbox.read_file` et al.); nothing outside `dispatch_tool` ever does.
+    #
+    # agent/tools/records_tools.py: imports `resolve_within` and `PathEscapeError` only, so
+    # `rec__export` resolves its path inside the hop's roots exactly as `write` does; it calls no
+    # handler function.
     ALLOWED_IMPORTERS: ClassVar[set[str]] = {
         "agent/tools/registry.py",
         "hops/application/builtin_tools.py",
@@ -452,6 +456,7 @@ class TestSinglePathToExecution:
         "agent/tools/builtins/background.py",
         "agent/tools/mcp_tools.py",
         "agent/tools/mcp_client.py",
+        "agent/tools/records_tools.py",
         "platform/fetch.py",
     }
 

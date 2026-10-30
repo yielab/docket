@@ -495,3 +495,73 @@ class TestServiceTools:
         narrowed = registry_for_role(_service_registry(), "implementer", surface="minimal")
 
         assert not [n for n in narrowed.names() if n.startswith("svc__")]
+
+
+def _records_registry() -> ToolRegistry:
+    base = builtin_registry()
+    for name, kind in (
+        ("rec__leads__add", "write"),
+        ("rec__leads__update", "write"),
+        ("rec__notes__add", "write"),
+        ("rec__query", "read"),
+        ("rec__export", "write"),
+    ):
+        base.register(_mcp_tool(name, kind))
+    return base
+
+
+class TestRecordTools:
+    """A pod's record tools reach a role by its allow-list and lose their writers to a `write` denial."""
+
+    def test_a_role_denying_write_sees_the_query_and_no_add_update_or_export(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", ["write"])
+
+            narrowed = registry_for_role(_records_registry(), "actor", project="acme")
+
+            names = {n for n in narrowed.names() if n.startswith("rec__")}
+            assert names == {"rec__query"}
+
+    def test_a_role_with_no_allow_list_holds_every_record_tool(self) -> None:
+        narrowed = registry_for_role(_records_registry(), "implementer")
+
+        assert len([n for n in narrowed.names() if n.startswith("rec__")]) == 5
+
+    def test_the_allow_list_names_a_set_a_tool_or_all_of_them(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            for tools, expected in (
+                ("rec__leads", ["rec__leads__add", "rec__leads__update"]),
+                ("rec__query, rec__export", ["rec__export", "rec__query"]),
+                (
+                    "rec",
+                    [
+                        "rec__export",
+                        "rec__leads__add",
+                        "rec__leads__update",
+                        "rec__notes__add",
+                        "rec__query",
+                    ],
+                ),
+            ):
+                write_role_overlay("acme", "actor", [], extra=f"tools: [{tools}]\n")
+
+                narrowed = registry_for_role(_records_registry(), "actor", project="acme")
+
+                assert sorted(narrowed.names()) == expected
+
+    def test_the_minimal_surface_keeps_a_record_tool_the_role_names(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, rec__query]\n")
+
+            narrowed = registry_for_role(
+                _records_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert sorted(narrowed.names()) == ["read", "rec__query"]
+
+    def test_the_minimal_surface_drops_record_tools_a_role_does_not_name(self) -> None:
+        narrowed = registry_for_role(_records_registry(), "implementer", surface="minimal")
+
+        assert not [n for n in narrowed.names() if n.startswith("rec__")]

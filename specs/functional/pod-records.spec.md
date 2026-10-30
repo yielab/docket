@@ -1,10 +1,10 @@
 # Pod Records Specification
 
-**Version**: 1.1.0
+**Version**: 1.3.0
 **Status**: Implemented in part. The store (`platform/records_store.py`), the `kind: records` document
-(`pod update` and `pod export` carry it) and `docket pod records` are implemented. The `rec__*` tools
-are specified by their own card and are not shipped: a pod's agent still cannot read or write
-records, and only an operator reads them (`docket pod records`).
+(`pod update` and `pod export` carry it), `docket pod records` and the `rec__*` tools a hop's agent
+reads and writes records with ("The tools") and the two read routes of the HTTP API ("Over HTTP") are
+implemented. Nothing is proven against a live model yet.
 **Last Updated**: 2026-10-30
 
 ## Purpose
@@ -26,10 +26,12 @@ This specification covers:
 - Which module may import `sqlite3`
 - The `kind: records` document, how `pod update` and `pod export` carry it, and `Home.pod_records_path`
 - `docket pod records`: listing a pod's sets and reading their rows
+- The `rec__*` tools: the operations a pod's agent has on its records, and how a role names them
+- `GET /pods/<pod>/records` and `GET /pods/<pod>/records/<set>`: reading records over the HTTP API
 
 This specification does NOT cover:
 
-- The `rec__*` tools, which are the next card: nothing yet lets a pod's agent read or write a row
+- Sending a record anywhere: records never leave the machine, and no record tool is `send`
 - Deleting rows, or a set shared between pods (ADR 0036, "Not in this amendment")
 - docket's own state (tasks, trace, audit, approvals), which stays where it is
 
@@ -146,6 +148,56 @@ This specification does NOT cover:
     nothing to the audit log. A pod that has written no row has no file, and reading it prints no
     rows rather than failing for a set the document declares.
 
+### The tools
+
+30. A hop of a pod that declares at least one valid set **MUST** be offered, beside the MCP and service
+    tools and before the role narrows them, `rec__<set>__add` and `rec__<set>__update` for each set,
+    and `rec__query` and `rec__export` once. A hop of a pod with no set, or with no pod, **MUST** be
+    offered none. A name the registry already holds **MUST** be left as it is. A document that does not
+    validate **MUST** contribute no tool and **MUST** append a `records.unavailable` event to the
+    audit log naming the file. Loading **MUST NOT** raise. Every call **MUST** pass `dispatch_tool`,
+    like any tool, so the pod's policies and the role's kinds apply.
+31. `rec__<set>__add` **MUST** be a `write` tool whose parameters are the set's columns: a `string` and
+    a `date` as a JSON string (a `date` with `format: date`), an `integer`, a `number` and a `boolean`
+    as their JSON types, with `required` naming the columns declared `required` and the key. It
+    **MUST** call `RecordsStore.add` and return JSON `{"created": <bool>, "row": {...}}`. An add whose
+    key exists returns that row with `created` false and writes nothing, so a resumed hop that repeats
+    its call leaves one row. A required column that is missing or null **MUST** be refused naming the
+    column, writing nothing.
+32. `rec__<set>__update` **MUST** be a `write` tool with two parameters, both required: `match`, an
+    object holding `_id` or the key column (one of them), and `values`, an object of the set's columns.
+    It **MUST** call `RecordsStore.update` and return `{"row": {...}}`. A refusal the store makes
+    (a missing row, a change to the key, a wrong type, an undeclared column) **MUST** come back as the
+    tool's error text, with the file unchanged.
+33. docket **MUST** fill `_task` (the hop's task id), `_session` (the hop's trace session, else its
+    session key) and `_step` (the hop's pipeline step) from the hop and **MUST NOT** take them from
+    the model. An argument named `_id`, `_at`, `_task`, `_session`, `_step` or `_updated_at`, at the
+    top level of an add or inside `values` of an update, **MUST** be refused naming it, writing
+    nothing. A column of the set is the only other name an add accepts.
+34. `rec__query` **MUST** be a `read` tool with `sql` (required) and `limit` (optional, default 50,
+    at most 200). It **MUST** call `RecordsStore.query` unchanged, so requirements 10-12 hold, bound
+    its rows by `limit` and the characters of its result by the turn's tool-output cap
+    (`DOCKET_TOOL_MAX_OUTPUT_CHARS`), and return `{"columns": [...], "rows": [[...]], "cut": n}`. A
+    statement the store refuses, or a pod that has written no row, **MUST** come back as the tool's
+    error text.
+35. `rec__export` **MUST** be a `write` tool with `sql` and `path` (required) and `format` (`csv`, the
+    default, or `md`). `path` **MUST** resolve as the `write` tool resolves it: relative to the hop's
+    first root, inside one of its roots; a path that resolves outside them **MUST** be refused with
+    the `path_escape` refusal and nothing written. It **MUST** call `RecordsStore.export` and return
+    `{"rows": n, "path": <path>}` only: the exported rows **MUST NOT** pass through the model.
+36. No result of a record tool **MUST** exceed the turn's tool-output cap.
+37. A role's `tools` allow-list names record tools as `rec__<set>` (that set's add and update),
+    `rec__query`, `rec__export`, or `rec` (every record tool of the pod); a role with no allow-list
+    holds them all. A role that denies `write`, by its own `deniedTools` or its pod's, **MUST** lose
+    add, update and export, by their kind, and keep `rec__query`. The `minimal` surface **MUST** keep
+    a record tool the allow-list in force names. `role-archetypes.spec.md` is the contract of those
+    rules.
+38. No record tool **MUST** be `send`, and none has an approval of its own: a policy `ask` on `rec__*`
+    is the operator's choice, through the ordinary approval path.
+39. The tools run in docket's process. The records file **MUST NOT** be under any root, cache or
+    read-only directory a hop's jail is given, so a command the model runs reads and writes no
+    record.
+
 ### Over HTTP
 
 50. `GET /pods/<pod>/records` **MUST** answer `200` with `{"records": [...], "problems": [...]}`:
@@ -182,9 +234,15 @@ This specification does NOT cover:
 - `RecordsStore.export(sql, path, fmt, timeout_s) -> int`
 - `RecordsStore.check_table(set_name, columns, key=None) -> EnsureResult`
 - `Column(name, type)`, `RecordMeta(task, session, step)`, `RecordsError(InvalidInput)`
+  (`platform/__init__.py` exports `RecordMeta` too, which the tools build from the hop)
 - `COLUMN_TYPES`, `check_value(column, value)`, `render_markdown(columns, rows)`
 
 `docket.kernel.records`: `RecordSet`, `RecordColumn`, `ColumnType` (the typed config, no I/O).
+
+`docket.kernel.records` also holds `RECORDS_TOOL_PREFIX` (`rec__`) and `records_tool_name(set, op)`.
+
+`docket.agent.tools.records_tools`: `load_records_tools(registry, *, store, sets)`, which registers the
+tools of "The tools" into a `ToolRegistry`.
 
 `docket.teams.records`: `RecordsDocument`, `RecordsDocError`, `load_records_document(path)`,
 `records_files(directory)`, `pod_record_sets(project)`, `check_sets(project, sets)`,
@@ -234,12 +292,18 @@ store.query("DELETE FROM listings", 200, 2500, 5.0)  # RecordsError, nothing del
 - `src/docket/kernel/records.py`: the typed config of the document
 - `src/docket/teams/records.py`: loading, validating and applying a pod's documents
 - `src/docket/teams/apply/records.py`: the `records/` plan, write and export
+- `src/docket/agent/tools/records_tools.py`: the tools; `hops/application/driver_support.py` loads them
+  each turn (`_load_records_tools`); `teams/roles.py`, `teams/role_composer.py` and
+  `teams/apply/check.py` carry the role rules
 - `src/docket/interfaces/cli/commands/pod_records.py`: `docket pod records`
 - `src/docket/interfaces/http/routes/pod_records.py`: `GET /pods/<pod>/records[/<set>]`
 - `tests/architecture/test_records_writer.py`: requirement 1's import rule
 - `tests/integration/platform/test_records_store.py`: requirements 3-13 on a temporary file
 - `tests/unit/platform/test_records_store.py`: `check_value`, `render_markdown`, name checks
 - `tests/unit/teams/test_records__doc.py`: requirements 15-16 (the document)
+- `tests/unit/agent/tools/test_records_tools.py`: requirements 31-36 on the tool objects
+- `tests/integration/agent/tools/test_records_tools.py`: requirements 30-39 through `DocketDriver`
+  and a scripted model
 - `tests/integration/interfaces/test_pod_records_cli.py`: requirements 17-23 (`pod update`, `pod
   export`, `pod records`)
 - `tests/integration/interfaces/test_pod_records_api.py`: requirements 50-53 (the two routes)
