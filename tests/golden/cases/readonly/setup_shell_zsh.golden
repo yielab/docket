@@ -30,7 +30,7 @@ _docket_options() {
     "start") echo "--port --bind --interval --dispatch --telegram --mcp --token-file --help" ;;
     "stop") echo "--wait --help" ;;
     "task") echo "--help" ;;
-    "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --autonomy --pod --help" ;;
+    "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --autonomy --var --pod --help" ;;
     "task list") echo "--json --pod --help" ;;
     "task show") echo "--json --pod --help" ;;
     "task diff") echo "--pod --json --help" ;;

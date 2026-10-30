@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
@@ -10,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from pydantic import ValidationError as _PydanticValidationError
 
 from docket.governance import security as _security
+from docket.kernel import clock as _clock
 from docket.kernel import protected_paths as _protected
 from docket.kernel import text as _text
 from docket.kernel.errors import InvalidInput
@@ -589,7 +589,7 @@ def grant_network(project: str, *, by: str) -> None:
     raw = _lead_meta(member_id(project, "lead"))
     if not raw:
         raise PodSettingsError(f"pod {project!r} has no settings to widen")
-    raw[NETWORK_GRANT_KEY] = {"at": datetime.now(UTC).isoformat(timespec="seconds"), "by": by}
+    raw[NETWORK_GRANT_KEY] = {"at": _clock.stamp(), "by": by}
     raw["network"] = "open"
     write_json(path, raw)
 
