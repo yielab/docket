@@ -338,6 +338,16 @@ def _handle_tool_result(
             attributes={"gen_ai.tool.name": tool, "gen_ai.tool.call.id": call_id},
         )
     attributes = dict(open_span.attributes)
+    name = open_span.name
+    verification = payload.get("verification")
+    if isinstance(verification, str) and not call_id:
+        name = "docket.verification"
+        attributes["docket.verification"] = verification
+        command = payload.get("cmd")
+        if _granted(policy, "toolArguments") and isinstance(command, str) and command:
+            attributes["gen_ai.tool.call.arguments"] = _text.cut_chars(
+                command, policy.content_max_chars
+            )
     if "ok" in payload:
         attributes["docket.tool.ok"] = bool(payload["ok"])
     policy_id = payload.get("policyId")
@@ -355,7 +365,7 @@ def _handle_tool_result(
             trace_id=_trace_id(session_id),
             span_id=open_span.span_id,
             parent_id=open_span.parent_id,
-            name=open_span.name,
+            name=name,
             start_ts=open_span.start_ts,
             end_ts=ts,
             status="unset",

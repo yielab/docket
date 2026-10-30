@@ -417,3 +417,20 @@ class TestHopSpans:
             ]
         )
         assert not any("cache" in key for key in chat.attributes)
+
+    def test_a_verification_is_its_own_span_naming_its_outcome_and_command(self) -> None:
+        verification = _hop_record(
+            "tool_result",
+            "2026-10-29T10:00:06Z",
+            "implementer",
+            verification="passed",
+            cmd="make test",
+        )
+        full = observability_spans.ExportPolicy(classes=privacy.LEVELS["full"], label="full")
+
+        (span,) = _run([verification], full)
+        assert span.name == "docket.verification"
+        assert span.attributes["docket.verification"] == "passed"
+        assert span.attributes["gen_ai.tool.call.arguments"] == "make test"
+        (withheld,) = _run([verification])
+        assert "gen_ai.tool.call.arguments" not in withheld.attributes
