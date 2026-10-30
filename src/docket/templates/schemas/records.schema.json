@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/records.schema.json",
+  "title": "RecordsDocument",
+  "$defs": {
+    "RecordColumn": {
+      "additionalProperties": false,
+      "description": "One column of a set. ``required`` is carried and published; the tools enforce it.",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "date"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "RecordColumn",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A ``kind: records`` document: the set's fields under the ``kind`` envelope.",
+  "properties": {
+    "name": {
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "columns": {
+      "items": {
+        "$ref": "#/$defs/RecordColumn"
+      },
+      "maxItems": 40,
+      "minItems": 1,
+      "title": "Columns",
+      "type": "array"
+    },
+    "key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key"
+    },
+    "kind": {
+      "const": "records",
+      "title": "Kind",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "columns",
+    "kind"
+  ],
+  "type": "object"
+}

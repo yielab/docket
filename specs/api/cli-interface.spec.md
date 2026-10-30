@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.6.1
+**Version**: 5.7.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -441,7 +441,7 @@ configured, `2` on an unknown flag or a `--var` that is not `key=value`.
 #### docket pod
 
 **Purpose**: The pod: its roster, its settings and its configuration of record
-**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|update|export|validate|plan|check|recipes|roles|policies|memory|routine> [args] [--pod <p>]`
+**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|update|export|validate|plan|check|recipes|roles|policies|memory|routine|records> [args] [--pod <p>]`
 
 A real Typer sub-app: every verb declares its arguments and options, a
 bare `docket pod` prints help, an unknown verb or flag is a usage error (exit 2), and every leaf's
@@ -484,6 +484,17 @@ Each state-changing verb ends with one `Next:` line on stderr.
   tz, scope, enabled, catchUp, overlap, next, last}`. A pod with none prints `No routines in
   pod '<pod>'.` and exits 0. A routine fires only under `docket start --dispatch`.
 
+- `records [SET] [--sql "<SELECT>"] [--limit N] [--csv FILE] [--json]`: what the pod keeps in its
+  records file (pod-records.spec.md "The CLI"), read-only. With no `SET`, one row per set the pod's
+  `records/` documents declare: name, rows, columns, key and description; `--json` prints a list of
+  `{name, rows, columns, key, description}`, a pod with none prints `No records in pod '<pod>'.`.
+  With a `SET`, its rows in `_id` order, at most `--limit` (default 50) and a line saying how many
+  were left out; `--sql` replaces the statement and runs it on a read-only connection, so anything
+  but one `SELECT` exits 1 with the rows unchanged; `--csv FILE` writes every row of the statement
+  to FILE and prints the count; `--json` prints `{set, columns, rows, cut}`. A set no document
+  declares exits 1 naming it. A pod's agent cannot yet read or write these records; the tools are a
+  later card.
+
 **Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
 removal; missing confirmation), `2` on a usage error.
 
@@ -519,7 +530,8 @@ operator's review stops the update
 **`pod export`**
 **Purpose**: Write the pod's own configuration into a directory
 **Syntax**: `docket pod export [DIR] [--force] [--pod <p>]`
-**Output**: This pod's own scope, every YAML file in the short form with a `# yaml-language-server:`
+**Output**: This pod's own scope (its `records/` documents too, byte for byte; never a row of
+them, which stay in the pod's `records.sqlite`, and the output says so), every YAML file in the short form with a `# yaml-language-server:`
 header — pod-overlay `roles/<name>.yaml` (+ paired `roles/<name>.md` instructions), this pod's
 own `policies/<stem>.yaml`, a bound `pipeline.yaml` copy (if any), a `pod.yaml` naming `kind: pod`,
 `name`, non-Lead `members`, every non-default `setting`, this pod's recorded `exporters` (when
@@ -1132,6 +1144,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/interfaces/cli/commands/setup_mcp.py`: `setup mcp`
 - `src/docket/interfaces/cli/commands/setup_secret.py`: `setup secret`
 - `src/docket/interfaces/cli/commands/setup_service.py`: `setup service`
+- `src/docket/interfaces/cli/commands/pod_records.py`: `pod records`
 - `src/docket/interfaces/cli/commands/service.py`: `docket start`, `docket stop`
 - `src/docket/interfaces/cli/render/ui.py`: `TAGLINE`, `guide`, `header`, `section`, `table`, `error`, `hint`, plain mode
 - `src/docket/tasks/domain/refs.py`: `resolve_task`

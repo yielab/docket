@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 2.9.0
+**Version**: 2.10.0
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -18,7 +18,7 @@ This specification covers:
 
 - The envelope: every configuration document starts with `kind:` (one of `role`, `pipeline`,
   `policy`, `pod`, `provider`, `exporter`, `channel`, `mcp-server`, `autonomy`, `prompt`,
-  `routine`, `service`) and `name:`; `load_document(path)` reads the file, resolves its kind, and dispatches to the existing
+  `routine`, `service`, `records`) and `name:`; `load_document(path)` reads the file, resolves its kind, and dispatches to the existing
   parser for that kind
 - One authored form per kind (`role`, `pipeline`, `policy`, `pod`): the short form. A file with a
   canonical key (a role's `modelClass`, a policy's `applies_to`, a pipeline step's `id:`) is
@@ -36,17 +36,19 @@ This specification covers:
   model, `RoutineDocument` (see "The `routine` kind")
 - The `service` kind: a pod's declaration of an external HTTP service and its operations, parsed by
   `teams/services.py` (service-client.spec.md owns its structure and rules)
-- The eleven parsers this dispatches to unchanged: `from_wire` (with the role file loader) for
+- The `records` kind: a pod's declaration of one table of records it keeps, parsed by
+  `teams/records.py` (pod-records.spec.md owns its structure and rules)
+- The twelve parsers this dispatches to unchanged: `from_wire` (with the role file loader) for
   `role`, `load_pipeline` for `pipeline`, `validate_policy` for `policy`, the pod manifest key
   set for `pod`, `load_provider_document` for `provider`, `load_exporter_document` for
   `exporter`, `load_channel_document` for `channel` and `load_mcp_server_document` for
   `mcp-server`, `load_autonomy_document` for `autonomy`, `load_prompt_file` for `prompt`,
-  `load_service_document` for `service`. `provider` and `autonomy` have no published
+  `load_service_document` for `service`, `load_records_document` for `records`. `provider` and `autonomy` have no published
   schema (canonical form only); `exporter`,
-  `channel`, `mcp-server`, `prompt` and `service` each have a published schema generated directly from
+  `channel`, `mcp-server`, `prompt`, `service` and `records` each have a published schema generated directly from
   their own canonical model, since none has a separate short form to refine against
 - The published `docs/contracts/config-v1/{role,pipeline,policy,pod,exporter,channel,mcp-server,
-  prompt,routine,service}.schema.json` JSON Schemas, generated from the short-form models that also refine a short-form
+  prompt,routine,service,records}.schema.json` JSON Schemas, generated from the short-form models that also refine a short-form
   document's `ConfigDocError`, and the `# yaml-language-server:`/`.schemas/` convention
   `docket pod export` writes its short-form output with (see "Published schemas", "Short-form
   export")
@@ -71,7 +73,7 @@ This specification does NOT cover:
 ### The envelope
 
 1. `KINDS` **MUST** be the closed tuple `("role", "pipeline", "policy", "pod", "provider",
-   "exporter", "channel", "mcp-server", "autonomy", "prompt", "routine", "service")`, in that order. An `autonomy` document is
+   "exporter", "channel", "mcp-server", "autonomy", "prompt", "routine", "service", "records")`, in that order. An `autonomy` document is
    `name`, an optional `description` and `rows`: a mapping from each escalation kind (`approval`,
    `consult`, `input`, `gate`, `check_changed`, `wait`) to a mapping from each level (`L3`, `L4`, `L5`) to
    `{policy, onExpiry}`, where `policy` is `person`, `recommendation`, `deny`, `fail` or `machine` and
@@ -87,7 +89,8 @@ This specification does NOT cover:
    requirements below), and lives under a repository's `prompts/<layer>/`. A `routine` document
    lives under `routines/` (the `routine` kind below). A `service` document lives under
    `services/` (service-client.spec.md, "The document"); `discover_config_paths` lists the
-   directory after `mcp-servers/`.
+   directory after `mcp-servers/`. A `records` document lives under `records/` (pod-records.spec.md,
+   "The document"); `discover_config_paths` lists the directory after `services/`.
 2. A document's `kind:` key, when present, **MUST** be one of `KINDS`; any other value **MUST**
    raise `ConfigDocError` naming every value in `KINDS` and, when one is a close enough match,
    a suggestion.
@@ -129,6 +132,8 @@ This specification does NOT cover:
      model, the same shape as `exporter`.
    - `service` -> `load_service_document(path)`; a raised `ServiceDocError` is mapped the same
      way. Its model (`ServiceDocument`) doubles as its schema-generation model.
+   - `records` -> `load_records_document(path)`; a raised `RecordsDocError` is mapped the same
+     way. Its model (`RecordsDocument`) doubles as its schema-generation model.
    - `autonomy` -> `load_autonomy_document(path)`; a raised `AutonomyError` is mapped the same
      way. It has no short-form model and no published schema.
    - `prompt` -> `load_prompt_file(path)`; a raised `PromptError` is mapped the same way,
@@ -150,7 +155,7 @@ This specification does NOT cover:
 
 1. A document with no top-level `kind:` key **MUST** still load. `load_document`
    **MUST** resolve its kind first from location (a file directly under a `roles/`, `policies/`,
-   `mcp-servers/`, `services/`, `pipelines/` or `routines/` directory, or named `pipeline.yaml`/`pipeline.yml` or
+   `mcp-servers/`, `services/`, `records/`, `pipelines/` or `routines/` directory, or named `pipeline.yaml`/`pipeline.yml` or
    `pod.yaml`/`pod.yml`) and only then from the caller's own `kind=` argument, when location
    does not resolve one. A document that fails its kind's parser **MUST** report that parser's own
    error, refined by the kind's model (requirement 3 of "Published schemas").
@@ -193,7 +198,7 @@ This specification does NOT cover:
    repository keeps one; otherwise the current directory. A file argument **MUST** validate
    that one file only.
 2. Given a directory, it **MUST** validate every `*.yaml`/`*.yml`/`*.json` file directly under
-   `roles/`, `policies/` and `mcp-servers/`, every `*.yaml`/`*.yml` under `services/`, `pipelines/` (a
+   `roles/`, `policies/` and `mcp-servers/`, every `*.yaml`/`*.yml` under `services/`, `records/`, `pipelines/` (a
    pipeline by location) and under `routines/` (a routine by location), every `*.md` file directly under `prompts/` or under one of its layer
    directories (`prompts/<layer>/*.md`, after the pipelines), plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
    directly under the directory, when present, in that order. `discover_config_paths` does not
@@ -233,18 +238,18 @@ This specification does NOT cover:
    sense: each is its own kind's only, canonical, parsed shape, so none is ever subject to
    Requirement 3's short-form ambiguity check.
 2. The schema generator script **MUST** render `docs/contracts/config-v1/
-   {role,pipeline,policy,pod,exporter,channel,mcp-server,prompt,routine,service}.schema.json` from each model's
+   {role,pipeline,policy,pod,exporter,channel,mcp-server,prompt,routine,service,records}.schema.json` from each model's
    `model_json_schema()`, with a `$schema`, `$id`
    (`https://docket.dev/schemas/config-v1/<kind>.schema.json`) and `title`, and write a
    byte-identical copy of each to the schemas directory shipped inside the installed package.
-   `--check` **MUST** exit `1` when any of the twenty files is stale.
+   `--check` **MUST** exit `1` when any of the twenty-two files is stale.
 3. When a document fails its kind's real parser (the role loader, `load_pipeline`,
    `validate_policy`, the pod manifest key check), `load_document` **MUST** attempt
    `model_validate` against that kind's model before raising; on a `pydantic.ValidationError`,
    the raised `ConfigDocError`'s `field` and, for a closed-vocabulary field, `valid` **MUST**
    come from the model's own error instead of the parser's plain message. There is no form to
    guess: every authored `role`, `pipeline`, `policy` and `pod` document is its short form; `exporter`,
-   `channel`, `mcp-server`, `service` and `prompt` are never refined by a model. A `routine` is parsed by its
+   `channel`, `mcp-server`, `service`, `records` and `prompt` are never refined by a model. A `routine` is parsed by its
    model alone (`RoutineDocument`), so the `ConfigDocError` it raises already names the model's
    field.
 4. These schemas are a generated, pinned artifact for external editors and validators, not a
@@ -346,7 +351,8 @@ This specification does NOT cover:
 3. `docket pod update <directory>` **MUST** write the directory's authored files into the pod
    overlay: each role as `roles/<name>.<ext>` with the file its `instructions` names beside it
    (a copy of the source bytes, never a regenerated document), each prompt as
-   `prompts/<layer>/<file>`, each `services/` file byte for byte as `services/<name>.yaml`, and the
+   `prompts/<layer>/<file>`, each `services/` file byte for byte as `services/<name>.yaml`, each `records/` file byte for byte as
+   `records/<name>.yaml`, and the
    pipelines, skills, policies and plugins as before. There is
    no applied `roles.json`; an `update` **MUST** leave none behind.
 4. The same update **MUST** write `applied.lock`, a JSON object `{"items": [...]}` in the overlay
@@ -355,7 +361,7 @@ This specification does NOT cover:
    `repository` for a directory named `.docket`, `shipped` for a shipped recipe and `operator`
    otherwise, `applied` is the overlay file relative to the overlay (empty for an item with no
    copy there: the manifest, the bound pipeline and an MCP server; a `services/` file is applied
-   as `services/<name>.yaml`), and `sha256` is the hex
+   as `services/<name>.yaml` and a `records/` file as `records/<name>.yaml`), and `sha256` is the hex
    digest of the item's bytes (a role's file followed by its instructions file; a skill's
    files in path order). The recorded `configDigest` **MUST** be the sha256 of the lock file's
    bytes, so one source answers drift.
@@ -371,7 +377,7 @@ This specification does NOT cover:
    a `# yaml-language-server: $schema=<relative path>` comment line resolving to that kind's
    schema, copied into the export's own `<directory>/.schemas/` (the role, pipeline, policy and
    pod schemas). A copied bound pipeline file, a copied named pipeline and a written
-   `mcp-servers/<name>.yaml` and a written `services/<name>.yaml` carry no such header: pipelines are written verbatim (see
+   `mcp-servers/<name>.yaml` and a written `services/<name>.yaml` and `records/<name>.yaml` carry no such header: pipelines are written verbatim (see
    pod-blueprints.spec.md, "Pod manifests: export"), never regenerated.
 2. `discover_config_paths` and the apply of a directory **MUST NOT** look under `.schemas/`: it
    holds reference schema copies, never a configuration document to load.
@@ -412,6 +418,7 @@ ExporterSpec        # pydantic; exporter's own canonical model, also its schema 
 ChannelSpec         # pydantic; channel's own canonical model, also its schema source
 McpServerDocument   # pydantic; mcp-server's own canonical model, also its schema source
 ServiceDocument     # pydantic; service's own canonical model, also its schema source
+RecordsDocument     # pydantic; records' own canonical model, also its schema source
 
 parse_reference(text) -> Reference                      # teams/prompts.py: name, kind, layer, major
 resolve_prompt(layer, name, *, project="", view=None, major=None) -> LoadedPrompt

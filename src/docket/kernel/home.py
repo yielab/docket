@@ -572,6 +572,10 @@ class Home:
     def pod_memory_path(self, project: str) -> Path:
         return self.pods_dir / project / "memory.json"
 
+    def pod_records_path(self, project: str) -> Path:
+        """A pod's records file (specs/functional/pod-records.spec.md), beside its memory."""
+        return self.pods_dir / project / "records.sqlite"
+
     def pod_config_dir(self, project: str) -> Path:
         """A pod's configuration overlay, read above the operator's for that pod alone."""
         if _layout.is_legacy(self.root):
