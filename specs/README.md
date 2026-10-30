@@ -32,7 +32,8 @@ specs/
 │   ├── pod-dispatch.spec.md              # Pod dispatch pipeline state machine and gates
 │   ├── role-archetypes.spec.md           # Declarative role archetypes (registry, overlay, CLI)
 │   ├── security-gates.spec.md            # Tool-call gate (always on), approvals, isolation (on where the machine can jail)
-│   ├── service-client.spec.md            # External HTTP services: the document, access, the call
+│   ├── pod-records.spec.md               # Pod records: typed tables in one SQLite file per pod
+│   ├── service-client.spec.md            # External HTTP services: the document, access, the call, the tools
 │   ├── session-history.spec.md           # Durable per-session turn history and compaction
 │   ├── session-scoping.spec.md           # Multi-project session isolation
 │   ├── telegram-integration.spec.md      # Telegram bindings and docket's own bot
@@ -99,22 +100,23 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Agent Loop | 3.10.1 | Implemented and live |
 | API Keys | 2.2.0 | Complete |
 | Audit | 3.3.2 | Implemented |
-| Config Format | 2.9.0 | Implemented |
+| Config Format | 2.10.0 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 6.5.0 | Complete |
 | Observability Export | 3.1.1 | Implemented and live |
 | Pipeline Format | 4.5.0 | Implemented |
 | Pod Blueprints | 3.0.0 | Implemented |
 | Pod Dispatch | 11.9.0 | Implemented |
-| Role Archetypes | 5.1.0 | Implemented |
-| Security Gates | 3.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
-| Service Client | 1.0.0 | Implemented in part (the call is not wired yet) |
+| Role Archetypes | 5.2.0 | Implemented |
+| Security Gates | 3.5.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Service Client | 1.2.0 | Implemented in part (the tools, the call and the writes handling; the task and idempotency headers are not carried yet) |
+| Pod Records | 1.1.0 | Implemented in part (the store, the document and the CLI; the agent tools are not shipped) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
 | Trace Store | 5.0.0 | Implemented and live |
 | Workspace Structure | 3.1.1 | Complete |
-| CLI Interface | 5.6.0 | Complete |
+| CLI Interface | 5.7.0 | Complete |
 | MCP Client | 3.1.0 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 2.0.1 | Implemented |
