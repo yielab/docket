@@ -753,8 +753,10 @@ that already own the files.
 - *To investigate, important, first after Phase 55: declarative external services.* The maintainer wants a pod to reach
   an external service from a `kind: service` document or commands (base URL, auth from the secret store, operations as
   read/send tools through `dispatch_tool`), with no program written per service and no more MCP implementation work. It
-  reverses ADR 0036's "no native HTTP tool", so it needs an ADR first. Sketch and open questions in
-  `internal-docs/design/site-credentials-for-a-pod.md` (Addendum). No card yet.
+  reverses ADR 0036's "no native HTTP tool": written as decision 13 in the amendment of
+  [ADR 0036](docs/adr/0036-a-pod-works-outward.md) (proposed 2026-10-30, not accepted; no new ADR). Sketch and open
+  questions in `internal-docs/design/site-credentials-for-a-pod.md` (Addendum). No card until the maintainer accepts
+  its scope.
 - *To investigate, important: a pod logging in to a site nobody configured.* Per-service MCP bridges and `secret:<name>`
   are fixed when a server is registered; a task that ends in a `send` at a new site that needs a login has no per-site
   credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
