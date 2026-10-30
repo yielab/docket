@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, Literal, cast
 
@@ -11,7 +13,9 @@ from docket.governance import security as _security
 from docket.kernel import protected_paths as _protected
 from docket.kernel import text as _text
 from docket.kernel.errors import InvalidInput
+from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _schedule
+from docket.platform import read_json, write_json
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import roles as _archetypes
@@ -26,6 +30,15 @@ def is_explicit(project: str, key: str) -> bool:
     """Whether the pod's Lead meta carries *key* itself. A loaded ``PodSettings`` always holds a
     value (the field default), so only the raw stored key tells a choice from its absence."""
     return bool(_fleet.meta_get(member_id(project, "lead"), key, ""))
+
+
+# The scope `effective_network` reports for a pod the operator widened past a machine at `none`.
+POD_GRANT_SCOPE = "pod-grant"
+NETWORK_GRANT_KEY = "networkGrant"
+NETWORK_GRANT_REACH = "this pod's `bash`, `run:` steps, checks and MCP servers can reach any host"
+NETWORK_GRANT_SKIPPED = (
+    "never applied from a repository: only `docket pod set network open --widen` records it"
+)
 
 
 # alias -> attribute, so the CLI and dispatch never hardcode a second copy of
@@ -200,6 +213,11 @@ class PodSettings(BaseModel):
     # by `plan_apply` before this is ever stored, so no catalog dependency is added here.
     exporters: tuple[str, ...] = Field((), alias="exporters")
 
+    # The operator's recorded yes that widens this pod past a machine at network `none`
+    # (``effective_network``): the stored form is the JSON text of ``{"at", "by"}``. Written only by
+    # ``grant_network`` (`docket pod set network open --widen`), never by `apply`/`pod set`.
+    network_grant: str = Field("", alias="networkGrant")
+
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
     KEYS: ClassVar[tuple[str, ...]] = (
@@ -230,7 +248,12 @@ class PodSettings(BaseModel):
     # settable-key path (`coerce`, `pod set`'s fallthrough, a `pod.yaml` `settings` mapping)
     # already refuses them as unknown; `pod set` checks this tuple first only to give the
     # friendlier "written by apply" message instead of "unknown pod setting".
-    RECORDED_KEYS: ClassVar[tuple[str, ...]] = ("configSource", "configDigest", "exporters")
+    RECORDED_KEYS: ClassVar[tuple[str, ...]] = (
+        "configSource",
+        "configDigest",
+        "exporters",
+        NETWORK_GRANT_KEY,
+    )
 
     @field_validator("allow_commands", mode="before")
     @classmethod
@@ -367,6 +390,22 @@ class PodSettings(BaseModel):
             raise InvalidInput("must be 'none' or 'open'")
         return name
 
+    @field_validator("network_grant", mode="before")
+    @classmethod
+    def _parse_network_grant(cls, value: Any) -> str:
+        """The stored JSON text of ``{"at", "by"}``; anything else is unreadable settings."""
+        if value in (None, ""):
+            return ""
+        try:
+            doc = json.loads(value) if isinstance(value, str) else value
+        except ValueError:
+            doc = None
+        if not isinstance(doc, dict) or not all(
+            isinstance(doc.get(k), str) and doc[k].strip() for k in ("at", "by")
+        ):
+            raise InvalidInput("must be an object with a date 'at' and an operator 'by'")
+        return json.dumps({"at": doc["at"], "by": doc["by"]}, sort_keys=True)
+
     @field_validator("read_only", mode="before")
     @classmethod
     def _parse_read_only(cls, value: Any) -> str:
@@ -458,8 +497,12 @@ class PodSettings(BaseModel):
         ``KEYS`` (see class docs: never catch the raised error to substitute a default)."""
         lead_id = member_id(project, "lead")
         present = {
-            k: v for k in (*cls.KEYS, *cls.RECORDED_KEYS) if (v := _fleet.meta_get(lead_id, k, ""))
+            k: v
+            for k in (*cls.KEYS, *cls.RECORDED_KEYS)
+            if k != NETWORK_GRANT_KEY and (v := _fleet.meta_get(lead_id, k, ""))
         }
+        if (grant := _lead_meta(lead_id).get(NETWORK_GRANT_KEY)) not in (None, ""):
+            present[NETWORK_GRANT_KEY] = json.dumps(grant)
         return cls._validated(present, project=project)
 
     @classmethod
@@ -512,18 +555,60 @@ class PodSettings(BaseModel):
 
 def effective_network(project: str | None) -> tuple[str, str]:
     """``(mode, scope)`` for a turn: ``none`` if the global mode or the pod's ``network`` says so,
-    else ``open``. Scope is ``global``, ``pod`` or ``default`` (the unrecorded ``none``). A pod's
-    ``open`` never widens a global ``none``; unreadable pod settings fail closed to ``none``."""
+    else ``open``; a recorded ``networkGrant`` alone widens a global ``none`` (``pod-grant``).
+    Unreadable pod settings fail closed to ``none``."""
     global_none = _fleet.get_network_mode() == "none"
-    if global_none and _fleet.network_mode_recorded():
-        return "none", "global"
-    if project is not None:
-        try:
-            if PodSettings.load_for(project).network == "none":
-                return "none", "pod"
-        except PodSettingsError:
-            return "none", "pod"
+    recorded = global_none and _fleet.network_mode_recorded()
+    if project is None:
+        return ("none", "global") if recorded else _machine_mode(global_none)
+    try:
+        settings = PodSettings.load_for(project)
+    except PodSettingsError:
+        return "none", ("global" if recorded else "pod")
+    if settings.network == "none":
+        return "none", ("global" if recorded else "pod")
+    if global_none and settings.network_grant:
+        return "open", POD_GRANT_SCOPE
+    return ("none", "global") if recorded else _machine_mode(global_none)
+
+
+def _machine_mode(global_none: bool) -> tuple[str, str]:
     return ("none" if global_none else "open"), "default"
+
+
+def _lead_meta(lead_id: str) -> dict[str, Any]:
+    path = current_home().meta_path(lead_id)
+    return read_json(path) if path.exists() else {}
+
+
+def grant_network(project: str, *, by: str) -> None:
+    """Record the operator's yes: *project* may reach the network past a machine at ``none``
+    (and its ``network`` is ``open``, in the same write). Called only by `docket pod set network
+    open --widen`."""
+    path = current_home().meta_path(member_id(project, "lead"))
+    raw = _lead_meta(member_id(project, "lead"))
+    if not raw:
+        raise PodSettingsError(f"pod {project!r} has no settings to widen")
+    raw[NETWORK_GRANT_KEY] = {"at": datetime.now(UTC).isoformat(timespec="seconds"), "by": by}
+    raw["network"] = "open"
+    write_json(path, raw)
+
+
+def revoke_network_grant(project: str) -> bool:
+    """Remove *project*'s grant; True when there was one."""
+    lead_id = member_id(project, "lead")
+    raw = _lead_meta(lead_id)
+    if raw.get(NETWORK_GRANT_KEY) in (None, ""):
+        return False
+    del raw[NETWORK_GRANT_KEY]
+    write_json(current_home().meta_path(lead_id), raw)
+    return True
+
+
+def network_grant_pods(projects: list[str]) -> list[str]:
+    """The pods of *projects* that run with a grant right now (the machine at ``none`` and the
+    grant honoured), in the order given."""
+    return [p for p in projects if effective_network(p) == ("open", POD_GRANT_SCOPE)]
 
 
 def effective_read_only(project: str | None) -> tuple[Path, ...]:

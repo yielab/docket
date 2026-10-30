@@ -11,10 +11,13 @@ from docket.governance.review import RunItem
 from docket.kernel.home import current_home
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import config_docs as _config_docs
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
 from docket.teams.apply.recipes import _config_glob, _declared_servers, _named_pipeline_files
 from docket.teams.workspace import prepare as _prepare
 
+# `allowCommands` and `network` are run items; `networkGrant` is never applied from a repository.
+_NOT_ADDED_SETTINGS = ("allowCommands", "network", _pod_settings.NETWORK_GRANT_KEY)
 REPO_REFUSED_COMMANDS: tuple[str, ...] = ("sh", "bash", "zsh", "dash", "sudo", "ssh", "nc", "socat")
 
 
@@ -169,7 +172,7 @@ def classify_directory(directory: Path) -> PlanReview:
     skills_dir = directory / "skills"
     if skills_dir.is_dir():
         adds.extend(("skill", p.name) for p in sorted(skills_dir.iterdir()) if p.is_dir())
-    adds.extend(("setting", k) for k in sorted(settings) if k not in ("allowCommands", "network"))
+    adds.extend(("setting", k) for k in sorted(settings) if k not in _NOT_ADDED_SETTINGS)
     if "prepare" in manifest:
         adds.append(("setting", "prepare"))
     if "protects" in manifest:

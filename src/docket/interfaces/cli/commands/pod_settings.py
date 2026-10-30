@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from docket.governance.audit import audit_log
+from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.pod_members import _implementer_member
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import DispatchError
@@ -189,6 +190,12 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     if key == "schedule":
         _pod_config_set_schedule(project, lead_id, value)
         return
+    if key == _pod_settings.NETWORK_GRANT_KEY:
+        ui.error(
+            f"{key} is recorded only by the operator's yes",
+            f"Run: docket pod set network open --widen --pod {project}",
+        )
+        raise typer.Exit(1)
     if key in _pod_settings.PodSettings.RECORDED_KEYS:
         ui.error(f"{key} is written by update, not by set")
         raise typer.Exit(1)
@@ -209,6 +216,56 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
         _budget_changed(project, lead_id)
 
 
+def _narrow(project: str, action: str) -> None:
+    """Drop the pod's network grant, if it holds one, and audit that it was withdrawn."""
+    if _pod_settings.revoke_network_grant(project):
+        audit_log("pod.network_narrow", f"pod={project} action={action}")
+        ui.dim(f"Pod '{project}' no longer holds a network grant")
+
+
+def set_network(project: str, value: str, *, widen: bool, yes: bool) -> None:
+    """``pod set network``: ``--widen`` records the operator's yes (a grant) for a machine at
+    ``none``; any other value narrows, dropping a grant the pod held."""
+    if not widen:
+        try:
+            _pod_settings.PodSettings.coerce("network", value, project=project)
+        except _pod_settings.PodSettingsError:
+            pass  # `set_setting` below reports it
+        else:
+            _narrow(project, f"set network={value.strip().lower()}")
+        set_setting(project, "network", value)
+        return
+    if value.strip().lower() != "open":
+        ui.error("--widen goes with network open", "Example: docket pod set network open --widen")
+        raise typer.Exit(1)
+    _lead_for_settings(project)
+    if not _fleet.get_isolation_enabled():
+        ui.error(
+            "isolation is off, so there is nothing to widen: the network is not cut",
+            "Turn the jail on first: docket setup sandbox on",
+        )
+        raise typer.Exit(1)
+    if _fleet.get_network_mode() == "open":
+        ui.dim("The machine's network is already open; this pod follows it")
+        set_setting(project, "network", "open")
+        return
+    ui.warn(
+        f"This opens pod '{project}' to the network: {_pod_settings.NETWORK_GRANT_REACH}. "
+        "Every other pod stays at network none."
+    )
+    if not _contract.confirm(f"Widen the network of pod {project}", yes=yes):
+        ui.warn("Aborted.")
+        raise typer.Exit(1)
+    scope = _pod_settings.effective_network(None)[1]
+    try:
+        _pod_settings.grant_network(project, by="cli")
+    except _pod_settings.PodSettingsError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+    audit_log("pod.network_widen", f"pod={project} overrides={scope}")
+    ui.success(f"Pod '{project}' may reach the network (the machine stays at none)")
+
+
 def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
     """Clear one pod setting back to its default, or with ``member`` a verify command."""
     if key == "verify" or member is not None:
@@ -224,6 +281,8 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
             f"Valid keys: {', '.join(_pod_settings.PodSettings.KEYS)}",
         )
         raise typer.Exit(1)
+    if key == "network":
+        _narrow(project, "unset")
     # None reads back exactly like an absent key: the writer's only way to clear one.
     _fleet.meta_set(lead_id, key, None)
     if key == "pipeline":

@@ -34,6 +34,13 @@ def test_open_is_never_enforced() -> None:
         assert posture.short == "open"
 
 
+def test_a_pod_grant_is_worded_as_one() -> None:
+    posture = _np.network_posture("open", "pod-grant", isolation_on=True)
+    assert posture.enforced is False
+    assert posture.line == "open (pod grant)"
+    assert posture.short == "open (pod grant)"
+
+
 def test_global_posture_reads_the_fleet_record(tmp_path: Path) -> None:
     home = tmp_path / ".docket"
     home.mkdir()
