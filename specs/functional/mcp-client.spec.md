@@ -1,11 +1,12 @@
 # MCP Client Specification
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Implemented and on the live turn path: configured servers' tools load into the turn's
 registry before per-role narrowing, so a role that denies a capability loses them like a built-in.
 Stdio transport only; each turn re-spawns every configured server (no listing cache). A server
 declared `lifetime: hop` keeps one session open for the hop's calls (Requirements 41-46); every
-other server is one subprocess per exchange.
+other server is one subprocess per exchange. An `env` value may be `secret:<name>`, resolved from
+docket's secret store when a turn loads its servers (Requirements 47-50).
 **Last Updated**: 2026-10-30
 
 ## Purpose
@@ -155,7 +156,7 @@ This specification does NOT cover:
     kind, tools allow-list, timeout and env), **MUST NOT** print any `env` value in the clear (mask
     as `KEY=****`, in the table and in `--json`, matching `docket setup provider list`), and
     **MUST NOT** connect to any server: it is a pure read of the global server configuration.
-21. `docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS] [--kind read|write|send]
+21. `docket setup mcp add <name> [--env KEY=VALUE ...] [--secret VAR=NAME ...] [--timeout SECONDS] [--kind read|write|send]
     [--tools NAME,NAME,...] -- <command> [args...]` **MUST** treat everything after a literal `--`
     token as the server's launch command and arguments verbatim, so a command's own flags (e.g.
     `npx -y ...`, or a `--env`/`--timeout` that belongs to the launched process rather than to
@@ -244,6 +245,32 @@ This specification does NOT cover:
 46. The session is a runtime object owned by the hop's `ToolContext` (`mcp_sessions`); it **MUST
     NOT** be stored in `McpServerConfig`, any document or the trace. Because the hop's calls are
     sequential, a session serves one call at a time.
+
+### Credentials from the secret store
+
+47. An `env` value of the form `secret:<name>` (`<name>` is `[A-Za-z0-9_.-]+`) **MUST** be a
+    reference to a stored secret. It is stored exactly as written: `mcp-servers.json`, a pod-scoped
+    file and a `kind: mcp-server` document (`McpServerDocument.env`, `mcp_server_document`) carry the
+    reference and **MUST NOT** ever carry the value, and a document or config round-trips unchanged.
+    A value that is not a reference is a literal and loads as before.
+48. `docket setup mcp add` **MUST** accept `--secret VAR=<name>` (repeatable), which writes the
+    entry `VAR: secret:<name>` into the server's `env`. It never reads or prints the secret's value;
+    a malformed pair, or a `VAR` also given to `--env`, exits 1 naming the flag. A `<name>` with no
+    stored secret is allowed (the secret may be stored later) and **MUST** be reported as a warning
+    naming the variable and the secret's name.
+49. The live turn **MUST** resolve every reference where it loads its servers (after Requirement
+    34's selection, before `load_mcp_tools`) through `governance.secrets.secret_value`, into a copy
+    of the config handed to the load; the stored config is not changed. A server one of whose
+    references names no stored (or an empty) secret **MUST NOT** be loaded for that turn: it is
+    recorded as an `mcp_client.unavailable` audit event and an `McpServerLoadResult` with
+    `ok=False` whose error names the variable and the secret's name, never a value; the pod's other
+    servers **MUST** still load and the turn **MUST NOT** fail on this alone (Requirement 28). A
+    value resolved from the store reaches only the server's process environment; because it is a
+    stored secret it is removed from the trace, the audit log and exports like any other.
+50. `docket setup` (the check) **MUST** warn once per server and variable when a server's `env` holds
+    a literal value under a credential-shaped name (one ending `_TOKEN`, `_KEY`, `_SECRET` or
+    `_PASSWORD`), naming the server and the variable and the `--secret` fix, and **MUST NOT** print
+    the value. The warning is advisory: it is not counted as a critical issue.
 
 ### Model-visible output bound
 
@@ -354,6 +381,8 @@ class McpServerConfig(BaseModel):              # name, command, args, env, timeo
     # lifetime: Literal["call", "hop"] = "call" -- "call": one subprocess per exchange (today);
     #   "hop": one stdio session answers the hop's calls (Requirements 41-46)
 
+    # env values: a literal, or `secret:<name>` resolved at turn load (Requirements 47-49)
+
 class McpServerRegistry(BaseModel):            # servers: list[McpServerConfig]
 
 def load_mcp_servers(project: str = "") -> list[McpServerConfig]: ...  # global, then project's own
@@ -449,7 +478,7 @@ Requirement 34's `mcpServers` filtering keys off.
       "name": "weather",
       "command": "npx",
       "args": ["-y", "@example/weather-mcp-server"],
-      "env": {},
+      "env": {"API_TOKEN": "secret:weather"},
       "timeout": 0.0,
       "kind": "write",
       "tools": [],
@@ -472,7 +501,7 @@ docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
 docket setup mcp remove <name>
 ```
 
-`--kind`/`--tools`/`--lifetime` follow the same before-`--` convention as `--env`/`--timeout` (Requirement 21).
+`--kind`/`--tools`/`--lifetime`/`--secret` follow the same before-`--` convention as `--env`/`--timeout` (Requirement 21).
 `--tools` takes a single comma-separated argument (no repeated flag, unlike `--env`) since it names
 a subset of one server's own tools, not a set of independent key/value pairs.
 
@@ -618,7 +647,10 @@ dispatch_tool(
   `MISSING_SDK_HINT`; the output truncation, the jail wrapping of a stdio server's argv, and the
   hard wall-clock bound (`anyio.fail_after`)
 - `src/docket/hops/application/driver.py`: `DocketDriver.mcp_loader` and its default wrapper
-  (the pod `mcpServers` selection, the `StdioLaunch` built from the turn's context)
+  (the pod `mcpServers` selection, the `StdioLaunch` built from the turn's context);
+  `driver_support.py` resolves `secret:` references before the load (Requirement 49)
+- `src/docket/kernel/mcp.py`: `secret_reference`, `is_credential_name`; `src/docket/teams/mcp_servers.py`:
+  `resolve_secret_env`, `literal_credential_env` (Requirements 47-50)
 - `src/docket/agent/tools/screening.py`: `screen_tool_result` (the untrusted-result screen used for MCP
   results); `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolRegistry`
 - `src/docket/teams/pod.py`: `PodSettings` `mcpServers` validation (Requirement 38)
@@ -630,4 +662,5 @@ dispatch_tool(
   `TestOnlyTheInertResultTypeIsImported`), `tests/unit/agent/tools/test_mcp_tools.py`
   (`TestZeroServersIsUnchanged`, `TestReviewerNeverGainsAWriteCapableMcpTool`),
   `tests/integration/interfaces/test_mcp_servers_cli.py`, `tests/integration/teams/test_recipe_mcp_servers.py`,
-  `tests/integration/agent/tools/test_mcp_lifetime.py` (`lifetime: hop`, Requirements 41-46)
+  `tests/integration/agent/tools/test_mcp_lifetime.py` (`lifetime: hop`, Requirements 41-46),
+  `tests/integration/agent/tools/test_mcp_secret_env.py` (Requirements 47-49)
