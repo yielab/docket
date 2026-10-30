@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 5.1.0
+**Version**: 5.2.0
 **Status**: Implemented. Three built-in and five starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
@@ -126,7 +126,9 @@ This specification does NOT cover:
    tools a hop registers from its step instead of the built-in registry, `verify` and `handoff`
    (`STEP_TOOL_NAMES`; `deniedTools` does not offer them because they are the step's contract,
    not a capability). A name of the form `mcp__<server>__<tool>` (the MCP namespace) **MUST** be
-   accepted, because it can be checked only against a live server. The refusal sits in
+   accepted, because it can be checked only against a live server; so **MUST** a name of the form
+   `svc__<service>__<operation>` or `svc__<service>` (a declared service's operations,
+   `service-client.spec.md` "Tools"). The refusal sits in
    `validate_archetype_dict`, so `pod validate` and `pod update <file|dir>` (apply plans a role
    through `load_document`) refuse alike. `from_wire` and the registry load stay lenient: the turn
    path keeps the no-op of "Tools and calls per hop" requirement 2, so a recipe or an older
@@ -503,7 +505,7 @@ docket pod validate <file.yaml>
 2. `registry_for_role(base, role, project="", *, surface="full", allow=None)` is the one place
    that decides what a hop sees, in this order: (a) the model profile's *surface* (`full` keeps
    every tool; `minimal` keeps `bash`, `read`, `glob`, `edit`, `write`, `verify`, any tool that ends the turn, so
-   the closing tool is kept without being named here, and any MCP tool the allow-list in force names, as
+   the closing tool is kept without being named here, and any MCP or service tool the allow-list in force names, as
    `model-profiles.spec.md` requirement 7 says), then (b) the allow-list, *allow* when the
    step declared one, else the archetype's `tools`, keeping the names it lists and any tool that ends
    the turn (the closing tool is the step's contract, not a capability), then (c) the
@@ -518,8 +520,11 @@ docket pod validate <file.yaml>
 4. The surface is the model profile's (`model-profiles.spec.md`, "Model profiles"); no caller
    **MUST** branch on a role's or a model's name to decide it.
 5. **A `send` tool is opt-in.** An MCP tool of kind `send` (a tool that acts outside the machine,
-   `mcp-client.spec.md` requirement 32) **MUST** reach a role only when the role's own `tools`
-   allow-list names it: `mcp__<server>__<tool>`, or `mcp__<server>` for every tool of that server.
+   `mcp-client.spec.md` requirement 32) or a declared service's `send` operation
+   (`svc__<service>__<operation>`, `service-client.spec.md` "Tools") **MUST** reach a role only when
+   the role's own `tools` allow-list names it: `mcp__<server>__<tool>`, or `mcp__<server>` for every
+   tool of that server; `svc__<service>__<operation>`, or `svc__<service>` for every operation of
+   that service.
    A role with no allow-list, and a role that does not name it, are offered none, whatever a step
    allows (a step's `tools` narrows further, it never grants a `send` tool the role does not
    name). `cannot: [send]` (and a pod's `deniedTools: send`) is accepted and removes every `send`
@@ -529,11 +534,13 @@ docket pod validate <file.yaml>
    for every tool, not only `send` ones.
 6. **Reading and acting are separate roles.** `docket pod update` (a directory or a role file) and
    `docket pod validate` **MUST** refuse a role whose `tools` allow-list names a `send` tool and
-   that still holds `fetch` or a tool of a `read` MCP server, naming the role and both tools and
+   that still holds `fetch`, a tool of a `read` MCP server or a `read` service operation, naming the role and both tools and
    stating the rule. A step's `tools` can satisfy the rule: the role is accepted when every step of
    the directory's pipelines that runs it declares `tools` and none of those narrowed views holds
    both. A server's kind is read from the directory's `mcp-servers/` documents, the pod's and the
-   global catalog; a name no catalog holds is not checked.
+   global catalog, and a service operation's access from the directory's `services/` documents,
+   the pod's and the global catalog (`svc__<service>` counts as every operation of the service);
+   a name no catalog holds is not checked.
 
 ### Wire format (the one authored role file, and the persisted wire object)
 

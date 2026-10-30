@@ -20,6 +20,11 @@ _WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 SERVICE_TOOL_PREFIX = "svc__"
 
 
+def service_tool_name(service: str, operation: str = "") -> str:
+    """``svc__<service>__<operation>``, or ``svc__<service>`` for the whole service."""
+    return f"{SERVICE_TOOL_PREFIX}{service}" + (f"__{operation}" if operation else "")
+
+
 def service_of_tool(tool_name: str) -> str:
     """The service a ``svc__<service>__<operation>`` tool belongs to; ``''`` for any other name."""
     if not tool_name.startswith(SERVICE_TOOL_PREFIX):
@@ -123,6 +128,13 @@ class ServiceConfig(BaseModel):
     timeout: float = Field(default=0.0, ge=0)
     idempotencyHeader: str = Field(default="", pattern=r"^[A-Za-z0-9-]*$")
     operations: list[Operation] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def _name_has_no_double_underscore(cls, value: str) -> str:
+        if "__" in value:
+            raise ValueError("name must not contain '__' (it separates the parts of a tool name)")
+        return value
 
     @field_validator("baseUrl")
     @classmethod

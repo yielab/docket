@@ -239,3 +239,12 @@ def test_an_mcp_name_is_refused_when_a_service_holds_it(tmp_path: Path) -> None:
 
     assert "crm" in _services.service_name_conflict("crm")
     assert _services.service_name_conflict("other") == ""
+
+
+def test_a_document_whose_name_holds_a_double_underscore_is_refused_naming_the_field(
+    tmp_path: Path,
+) -> None:
+    path = _write(tmp_path, {**_DOC, "name": "my__crm"})
+
+    with pytest.raises(_services.ServiceDocError, match=r"crm.yaml: name: .*__"):
+        _services.load_service_document(path)

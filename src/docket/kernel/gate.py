@@ -96,11 +96,14 @@ class GateContext(Protocol):
 
 @dataclass(frozen=True)
 class GateCall:
-    """One call to decide: the tool, the model's call id and its parsed arguments."""
+    """One call to decide: the tool, the model's call id and its parsed arguments. ``audit_detail``
+    is what the tool adds to the audit row of a ``send`` call or a refusal it made itself (a
+    service call: the HTTP method and host); empty for a tool that adds nothing."""
 
     tool: GatedTool
     call_id: str
     args: dict[str, Any] = field(default_factory=dict)
+    audit_detail: str = ""
 
 
 @dataclass(frozen=True)

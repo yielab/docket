@@ -187,6 +187,32 @@ class TestASendCall:
         assert "tool=mcp__outbox__send" in detail and "decision=allow" in detail
         assert "ana@example.com" not in detail and TOKEN_TEXT not in detail
 
+    def test_a_send_row_carries_the_audit_detail_the_call_brings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _verdict(monkeypatch, "allow", reason="", policy_id="")
+        call = GateCall(SEND_TOOL, "c", {}, audit_detail="method=POST host='api.example.com'")
+
+        _gate.govern(call, _Ctx())
+
+        (entry,) = [e for e in _audit.read_audit() if e["action"] == "tool.send"]
+        assert "method=POST host='api.example.com'" in entry["detail"]
+
+    @pytest.mark.parametrize("kind", ["service_not_allowed", "service_bad_request"])
+    def test_a_service_refusal_names_the_kind_method_and_host_only(self, kind: str) -> None:
+        call = GateCall(
+            SEND_TOOL,
+            "c",
+            {"id": 1, "q": "secret-query"},
+            audit_detail="method=GET host='api.example.com'",
+        )
+
+        _gate.audit_refusal(call, _Ctx(), kind)
+
+        (entry,) = [e for e in _audit.read_audit() if e["action"] == "tool.refused"]
+        assert f"kind={kind} method=GET host='api.example.com'" in entry["detail"]
+        assert "secret-query" not in entry["detail"]
+
     def test_a_denied_send_writes_tool_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _verdict(monkeypatch, "deny", reason="no sending")
 

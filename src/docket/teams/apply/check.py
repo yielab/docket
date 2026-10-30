@@ -8,12 +8,19 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from docket.kernel.service import (
+    SERVICE_TOOL_PREFIX,
+    ServiceConfig,
+    service_of_tool,
+    service_tool_name,
+)
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _roles
+from docket.teams import services as _services
 
 
 def directory_role_versions(directory: Path) -> dict[str, int]:
@@ -94,22 +101,37 @@ def _server_of(entry: str) -> str | None:
     return entry[len(_roles.MCP_TOOL_PREFIX) :].split("__", 1)[0]
 
 
+def _entry_kinds(entry: str, kinds: Mapping[str, str]) -> set[str]:
+    """The kinds an MCP or service allow-list entry may carry. *kinds* maps a server to its kind
+    and a service operation's tool name to its access; a whole service (`svc__<service>`) carries
+    the kind of each of its operations."""
+    server = _server_of(entry)
+    if server is not None:
+        kind = kinds.get(server)
+        return {kind} if kind else set()
+    if service_of_tool(entry):
+        kind = kinds.get(entry)
+        return {kind} if kind else set()
+    service = entry[len(SERVICE_TOOL_PREFIX) :]
+    return {kind for name, kind in kinds.items() if service and service_of_tool(name) == service}
+
+
 def _send_and_read(
     tools: Sequence[str], denied: Sequence[str], kinds: Mapping[str, str]
 ) -> tuple[list[str], list[str]]:
-    """The send tools and the read tools (`fetch`, a `read` server's) an allow-list names."""
+    """The send tools and the read tools (`fetch`, a `read` server's or `read` operation) an
+    allow-list names."""
     sends: list[str] = []
     reads: list[str] = []
     for entry in dict.fromkeys(tools):
-        server = _server_of(entry)
-        if server is None:
+        if _server_of(entry) is None and not entry.startswith(SERVICE_TOOL_PREFIX):
             if entry == "fetch" and entry not in denied:
                 reads.append(entry)
             continue
-        kind = kinds.get(server)
-        if kind == "send":
+        held = _entry_kinds(entry, kinds)
+        if "send" in held:
             sends.append(entry)
-        elif kind == "read" and "read" not in denied:
+        if "read" in held and "read" not in denied:
             reads.append(entry)
     return sends, reads
 
@@ -155,6 +177,29 @@ def _directory_server_kinds(directory: Path) -> dict[str, str]:
     return kinds
 
 
+def _operation_kinds(config: ServiceConfig) -> dict[str, str]:
+    return {
+        service_tool_name(config.name, op.name): op.access or "read" for op in config.operations
+    }
+
+
+def _directory_service_kinds(directory: Path) -> dict[str, str]:
+    kinds: dict[str, str] = {}
+    for path in _services.service_files(directory):
+        try:
+            kinds.update(_operation_kinds(_services.load_service_document(path)))
+        except _services.ServiceDocError:
+            continue  # the kind validator reports it
+    return kinds
+
+
+def _catalog_service_kinds(project: str) -> dict[str, str]:
+    kinds: dict[str, str] = {}
+    for config in _services.load_services(project):
+        kinds.update(_operation_kinds(config))
+    return kinds
+
+
 def _directory_step_tools(directory: Path) -> dict[str, list[tuple[str, ...] | None]]:
     """The `tools` of each step, by the role it runs, over the directory's pipelines."""
     files = [directory / f"pipeline.{ext}" for ext in ("yaml", "yml")]
@@ -182,9 +227,12 @@ def _role_tools(doc: Mapping[str, object]) -> RoleTools:
 
 def directory_send_problems(directory: Path, project: str) -> list[str]:
     """`send_conflicts` over the roles *directory* declares, with servers read from its
-    `mcp-servers/` documents, then *project*'s catalog and the global one."""
+    `mcp-servers/` documents and service operations from its `services/` documents, then
+    *project*'s catalog and the global one."""
     kinds: dict[str, str] = {s.name: s.kind for s in _mcp_servers.load_mcp_servers(project)}
+    kinds.update(_catalog_service_kinds(project))
     kinds.update(_directory_server_kinds(directory))
+    kinds.update(_directory_service_kinds(directory))
     roles: dict[str, RoleTools] = {}
     for path in _roles.role_files(directory / "roles"):
         try:
@@ -204,7 +252,9 @@ def role_file_send_problems(path: Path, project: str) -> list[str]:
     except _role_schema.ArchetypeError:
         return []  # the kind validator reports it
     kinds: dict[str, str] = {s.name: s.kind for s in _mcp_servers.load_mcp_servers(project)}
+    kinds.update(_catalog_service_kinds(project))
     kinds.update(_directory_server_kinds(path.parent.parent))
+    kinds.update(_directory_service_kinds(path.parent.parent))
     return send_conflicts(roles, kinds, {})
 
 
