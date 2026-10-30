@@ -10,6 +10,7 @@ from docket.observability import exporter as _exporter
 from docket.operator import load_catalog, unreached_warning
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _np
+from docket.teams import pod_settings as _pod_settings
 
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
@@ -138,6 +139,13 @@ def _check_security_gates(ids: list[str] | None = None) -> int:
         ui.warn(
             f"  Network: {posture.line} -- turns will be refused. "
             "docket setup sandbox on, or docket setup sandbox network open"
+        )
+
+    granted = _pod_settings.network_grant_pods(ids or [])
+    if granted:
+        ui.warn(
+            f"  Pod network grant: {', '.join(granted)} -- {_pod_settings.NETWORK_GRANT_REACH}; "
+            "docket pod set network none --pod <name> withdraws it"
         )
 
     return issues

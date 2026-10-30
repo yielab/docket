@@ -10,6 +10,7 @@ import pytest
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.platform import store as _store
+from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod, pod_settings
 
@@ -441,3 +442,69 @@ class TestPodSettingsDeniedTools:
         _write_lead_meta("shop", {"deniedTools": "fetch"})
         settings = pod_settings.PodSettings.load_for("shop")
         assert settings.value_and_source("deniedTools", "shop") == ("fetch", "set")
+
+
+_GRANT = {"at": "2026-10-30T10:00:00+00:00", "by": "cli"}
+
+
+class TestEffectiveNetworkGrant:
+    """A pod widens a machine at ``none`` only through a recorded ``networkGrant``."""
+
+    def test_machine_none_and_pod_open_stays_none(self) -> None:
+        _fleet.set_network_mode("none")
+        _write_lead_meta("shop", {"network": "open"})
+        assert pod_settings.effective_network("shop") == ("none", "global")
+
+    def test_machine_none_and_a_grant_is_open_for_that_pod(self) -> None:
+        _fleet.set_network_mode("none")
+        _write_lead_meta("shop", {"network": "open", "networkGrant": _GRANT})
+        assert pod_settings.effective_network("shop") == ("open", "pod-grant")
+
+    def test_the_unrecorded_default_none_is_widened_by_a_grant_too(self) -> None:
+        _write_lead_meta("shop", {"networkGrant": _GRANT})
+        assert pod_settings.effective_network("shop") == ("open", "pod-grant")
+
+    def test_a_second_pod_without_a_grant_stays_none(self) -> None:
+        _fleet.set_network_mode("none")
+        _write_lead_meta("shop", {"networkGrant": _GRANT})
+        _write_lead_meta("other")
+        assert pod_settings.effective_network("other") == ("none", "global")
+
+    def test_a_grant_with_unreadable_settings_fails_closed(self) -> None:
+        _fleet.set_network_mode("none")
+        _write_lead_meta("shop", {"networkGrant": _GRANT, "turnTimeoutS": "not-a-number"})
+        assert pod_settings.effective_network("shop")[0] == "none"
+
+    @pytest.mark.parametrize("bad", ["x", {"at": "now"}, {"at": "", "by": "cli"}, ["a"]])
+    def test_an_unparseable_grant_fails_closed(self, bad: object) -> None:
+        _fleet.set_network_mode("none")
+        _write_lead_meta("shop", {"networkGrant": bad})
+        assert pod_settings.effective_network("shop")[0] == "none"
+
+    def test_a_pod_none_wins_over_a_grant(self) -> None:
+        _fleet.set_network_mode("none")
+        _write_lead_meta("shop", {"network": "none", "networkGrant": _GRANT})
+        assert pod_settings.effective_network("shop")[0] == "none"
+
+    def test_a_grant_changes_nothing_when_the_machine_is_open(self) -> None:
+        _fleet.set_network_mode("open")
+        _write_lead_meta("shop", {"networkGrant": _GRANT})
+        assert pod_settings.effective_network("shop") == ("open", "default")
+
+    def test_a_grant_is_not_settable_by_coerce(self) -> None:
+        with pytest.raises(pod_settings.PodSettingsError, match="unknown pod setting"):
+            pod_settings.PodSettings.coerce("networkGrant", "x")
+
+    def test_the_grant_is_a_recorded_key_not_a_settable_one(self) -> None:
+        assert "networkGrant" in pod_settings.PodSettings.RECORDED_KEYS
+        assert "networkGrant" not in pod_settings.PodSettings.KEYS
+
+    def test_grant_and_revoke_round_trip(self) -> None:
+        _fleet.set_network_mode("none")
+        _write_lead_meta("shop")
+        pod_settings.grant_network("shop", by="cli")
+        assert pod_settings.effective_network("shop") == ("open", "pod-grant")
+        assert pod_settings.network_grant_pods(["shop", "other"]) == ["shop"]
+        assert pod_settings.revoke_network_grant("shop") is True
+        assert pod_settings.revoke_network_grant("shop") is False
+        assert pod_settings.effective_network("shop") == ("none", "global")

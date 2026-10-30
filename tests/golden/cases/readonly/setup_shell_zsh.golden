@@ -46,7 +46,7 @@ _docket_options() {
     "pod remove") echo "--yes --pod --help" ;;
     "pod reset") echo "--yes --pod --help" ;;
     "pod delete") echo "--confirm --pod --help" ;;
-    "pod set") echo "--member --pod --help" ;;
+    "pod set") echo "--member --widen --yes --pod --help" ;;
     "pod unset") echo "--member --pod --help" ;;
     "pod update") echo "--pod --dry-run --json --accept --help" ;;
     "pod export") echo "--pod --force --help" ;;

@@ -436,6 +436,10 @@ def _plan_settings(
     for key, value in raw_settings.items():
         if key == "pipeline":
             raise PodApplyError("pod.yaml: 'pipeline' belongs at the top level, not 'settings'")
+        if key == _pod_settings.NETWORK_GRANT_KEY:
+            note = _pod_settings.NETWORK_GRANT_SKIPPED
+            items.append(ApplyItem(kind="setting", name=key, action="skip", note=note))
+            continue
         if key not in _pod_settings.PodSettings.KEYS:
             raise PodApplyError(f"pod.yaml: unknown pod setting {key!r}")
         str_value = ",".join(str(v) for v in value) if isinstance(value, list) else str(value)

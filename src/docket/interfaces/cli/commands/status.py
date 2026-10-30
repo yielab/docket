@@ -35,6 +35,7 @@ from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _np
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 from docket.teams.apply import lock as _apply_lock
 from docket.teams.apply import review as _review
 from docket.teams.fleet import project_ids
@@ -184,6 +185,11 @@ def _project_summary(project: str) -> dict[str, Any]:
         ),
         **({"budgetUnpriced": u} if (u := _unpriced_models(project)) else {}),
         **({"needsUpdate": n} if (n := _apply_lock.needs_update(project)) else {}),
+        **(
+            {"networkGrant": _pod_settings.NETWORK_GRANT_REACH}
+            if _pod_settings.network_grant_pods([project])
+            else {}
+        ),
     }
 
 
@@ -325,6 +331,11 @@ def _render_current(summary: dict[str, Any]) -> None:
         *_command_rows(summary.get("commands")),
         *_profile_rows(summary.get("profile")),
         *([("Needs update", summary["needsUpdate"])] if summary.get("needsUpdate") else []),
+        *(
+            [("Network", f"open by the operator's grant: {summary['networkGrant']}")]
+            if summary.get("networkGrant")
+            else []
+        ),
         ("Approved, ready", str(tasks["approvedReady"])),
         ("Tokens", tokens),
         *(
