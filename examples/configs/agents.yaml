@@ -5,11 +5,11 @@
 #
 # Required per entry: id, blueprint. Everything else has a default:
 #   blueprint    the pod shape (see `docket pod roles` / teams/blueprints.py:
-#                software, research, content, ops, agentic-product). An entry
+#                build, respond, operate, routine). An entry
 #                without one is refused.
-#   codebase     a software pod's codebase: an existing directory ("~" is
+#   codebase     a build pod's codebase: an existing directory ("~" is
 #                expanded, a relative path is taken from the current directory)
-#   workDir      the working directory of a research, content or ops pod;
+#   workDir      the working directory of a respond, operate or routine pod;
 #                created when missing, the pod's own directory when omitted
 #   stack        auto-detected from the codebase when omitted
 #   description, telegram, budgetUsd, projectKey  all optional
@@ -20,17 +20,17 @@
 # `_cmd_add_declarative`) — every entry below actually provisions.
 agents:
   - id: webapp
-    blueprint: software
+    blueprint: build
     codebase: ~/Sites/webapp
     description: Customer-facing web app.
     budgetUsd: 20
 
   - id: research
-    blueprint: research
+    blueprint: respond
     description: Web research and file automation.
 
   - id: mobile-app
-    blueprint: software
+    blueprint: build
     codebase: ~/Sites/mobile-app
     description: React Native client.
     telegram: "-1001234567890"

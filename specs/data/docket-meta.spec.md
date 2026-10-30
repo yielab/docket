@@ -62,7 +62,7 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 | `codebase` | string | path | pod members | provisioning | The project path with `~` expanded; empty for a `workdir`-kind member. `docket init` stores it absolute (a relative path is taken from the current directory) and refuses one that is not an existing directory; `POST /pods` stores it as given |
 | `workspaceKind` | enum | `codebase` or `workdir` | No (absent means `codebase`) | provisioning (blueprints with a working directory) | Whether the workspace is anchored to a codebase or a plain working directory. Only ever written as the literal `workdir` |
 | `workDir` | string | path | `workdir`-kind members | provisioning | The pod's shared working directory, stored as given. Present only with `workspaceKind: workdir`, and then `codebase` is `""` |
-| `blueprint` | string | none | No | provisioning | Name of the pod blueprint that provisioned the member (`software`, `research`, `content`, `ops`, `agentic-product`). |
+| `blueprint` | string | none | No | provisioning | Name of the pod blueprint that provisioned the member (`build`, `respond`, `operate`, `routine`). |
 | `stack` | string | none | No | provisioning | Comma-separated detected stack (`Docker,git`), `unknown` when a codebase shows none, and empty for a `workdir`-kind member (nothing to inspect) |
 | `model` | string | `provider/model-id` | Yes (written always; `AgentMeta` defaults it to empty) | provisioning, `docket setup model` | Provider-qualified model id. Provisioning resolves it from the role-to-model policy; re-resolving the policy rewrites it |
 | `description` | string | none | No | provisioning | Free-text purpose; empty when none was given |
@@ -190,7 +190,7 @@ kind, so `workspaceKind` and `workDir` are absent):
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
   "templateVersion": "6",
-  "blueprint": "software"
+  "blueprint": "build"
 }
 ```
 
@@ -213,7 +213,7 @@ the budget gate has paused the pod (`paused` and `pausedReason` change):
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
   "templateVersion": "6",
-  "blueprint": "software",
+  "blueprint": "build",
   "budgetUsd": 5.0,
   "paused": true,
   "pausedReason": "budget",
@@ -243,13 +243,13 @@ The pod's Implementer, with its port range, scratch directory and a verify comma
   "portRangeStart": 3000,
   "portRangeCount": 100,
   "scratchDir": "/home/user/.docket/workspaces/pods/myshop/.scratch",
-  "blueprint": "software",
+  "blueprint": "build",
   "verifyCmd": "true"
 }
 ```
 
-A `research`-blueprint Lead (`workdir` kind, see pod-blueprints.spec.md) created by
-`docket init my-scan ~/work/scan --blueprint research`; the blueprint's default budget is stored as
+A `respond`-blueprint Lead (`workdir` kind, see pod-blueprints.spec.md) created by
+`docket init my-scan ~/work/scan --blueprint respond`; the blueprint's default budget is stored as
 a string:
 
 ```json
@@ -267,7 +267,7 @@ a string:
   "sessionKey": "agent:my-scan:default",
   "projectKey": "default",
   "templateVersion": "6",
-  "blueprint": "research",
+  "blueprint": "respond",
   "workspaceKind": "workdir",
   "workDir": "/home/user/work/scan",
   "budgetUsd": 20.0

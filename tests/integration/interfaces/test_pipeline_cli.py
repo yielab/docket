@@ -80,17 +80,17 @@ class TestPipelinePlanCli:
         assert "lead" in result.output
         assert "demo-lead" in result.output
 
-    def test_research_pod_plan_renders_its_blueprint_pipeline_with_no_skips(self) -> None:
-        """Every one of a research pod's five steps has a present member -- none renders as
+    def test_respond_pod_plan_renders_its_blueprint_pipeline_with_no_skips(self) -> None:
+        """Every one of a respond pod's five steps has a present member -- none renders as
         "skipped — role not in pod"."""
-        _write_meta("demo-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "reviewer"):
+        _write_meta("demo-lead", {"blueprint": "respond"})
+        for role in ("researcher", "writer", "reviewer", "actor"):
             _write_meta(f"demo-{role}")
 
         result = _plan()
 
         assert result.exit_code == 0
-        for role in ("researcher", "analyst", "writer", "reviewer"):
+        for role in ("researcher", "writer", "reviewer", "actor"):
             assert role in result.output
         assert "skipped — role not in pod" not in result.output
 
@@ -126,12 +126,12 @@ class TestPipelinePlanCli:
         assert "Source: built-in default" in result.output
 
     def test_blueprint_pipeline_plan_names_the_blueprint_source(self) -> None:
-        _write_meta("demo-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "reviewer"):
+        _write_meta("demo-lead", {"blueprint": "respond"})
+        for role in ("researcher", "writer", "reviewer", "actor"):
             _write_meta(f"demo-{role}")
         result = _plan()
         assert result.exit_code == 0
-        assert "Source: blueprint 'research'" in result.output
+        assert "Source: blueprint 'respond'" in result.output
 
     def test_bound_pipeline_plan_names_the_bound_source(self, tmp_path: Path) -> None:
         from docket.interfaces.cli.commands.pod_settings import _pod_config_set_pipeline

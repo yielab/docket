@@ -259,7 +259,7 @@ def _write_inputs(world: Path) -> tuple[Path, Path]:
         json.dumps(
             {
                 "id": PROJECT,
-                "blueprint": "agentic-product",
+                "blueprint": "build",
                 "codebase": str(codebase),
                 "stack": "Python",
                 "description": "Verify the installed Docket release boundary.",

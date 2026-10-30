@@ -31,7 +31,7 @@ columns:
 
 
 def _pod_with_leads(name: str = "demo", rows: int = 2) -> None:
-    _pp.provision_pod(name, "software", location=f"/src/{name}")
+    _pp.provision_pod(name, "build", location=f"/src/{name}")
     directory = _records.pod_records_dir(name)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "leads.yaml").write_text(_LEADS, encoding="utf-8")
@@ -64,7 +64,7 @@ def test_list_names_the_set_with_columns_and_row_count(live_server: tuple[str, s
 
 def test_list_of_a_pod_without_records_is_empty(live_server: tuple[str, str]) -> None:
     url, token = live_server
-    _pp.provision_pod("quiet", "software", location="/src/quiet")
+    _pp.provision_pod("quiet", "build", location="/src/quiet")
 
     assert _get(f"{url}/pods/quiet/records", token) == (200, {"records": [], "problems": []})
 
@@ -152,7 +152,7 @@ def test_a_set_is_read_from_the_pod_the_path_names(live_server: tuple[str, str])
 
 def test_a_declared_set_with_no_file_reads_as_no_rows(live_server: tuple[str, str]) -> None:
     url, token = live_server
-    _pp.provision_pod("fresh", "software", location="/src/fresh")
+    _pp.provision_pod("fresh", "build", location="/src/fresh")
     directory = _records.pod_records_dir("fresh")
     directory.mkdir(parents=True)
     (directory / "leads.yaml").write_text(_LEADS, encoding="utf-8")

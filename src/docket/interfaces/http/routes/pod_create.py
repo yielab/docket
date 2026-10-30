@@ -8,7 +8,7 @@ from docket.interfaces.http.exchange import HttpExchange
 from docket.teams import blueprints as _bp
 from docket.teams import pod_provisioning as _pp
 from docket.teams import provisioning as _prov
-from docket.teams.pod import FULL_POD_ROLES
+from docket.teams.pod import DEFAULT_POD_ROLES, FULL_POD_ROLES
 
 
 def post_pod(h: HttpExchange, _arg: str) -> None:
@@ -34,19 +34,23 @@ def post_pod(h: HttpExchange, _arg: str) -> None:
         return
 
     # `pod` mirrors `docket init --pod full` — the CLI's only roster
-    # override, itself restricted to the `software` blueprint (a
-    # non-`software` blueprint provisions its own fixed roster; the CLI
+    # override, itself restricted to the default blueprint (any other
+    # blueprint provisions its own fixed roster; the CLI
     # warns and ignores rather than erroring, and there is no HTTP
     # surface to print that warning to, so this route just ignores it
     # the same way).
     pod_field = body.get("pod")
-    roles: tuple[str, ...] | None = None
+    full = False
     if pod_field is not None:
         if not isinstance(pod_field, str) or pod_field.lower() != "full":
             h._send_json_error('pod must be "full" if given', 400)
             return
-        if blueprint_name == "software":
-            roles = FULL_POD_ROLES
+        full = True
+    # The default blueprint's roster is the full pod; like `docket init`, this route provisions the
+    # lean one (Lead and Implementer) unless the pod is asked for in full.
+    roles: tuple[str, ...] | None = None
+    if blueprint_name == _bp.DEFAULT_BLUEPRINT:
+        roles = FULL_POD_ROLES if full else DEFAULT_POD_ROLES
 
     budget_raw = body.get("budget")
     budget_usd: float | None = None

@@ -253,7 +253,7 @@ Run without `--live-model`, the command **MUST** print a `SMOKE FAIL` line that 
 `tests/e2e/` and exit 2, and **MUST NOT** start any endpoint. A live run **MUST** exercise,
 display, and verify this sequence:
 
-1. Declarative provisioning of an `agentic-product` pod (`docket init --from`).
+1. Declarative provisioning of a `build` pod (`docket init --from`).
 2. Task delegation and rendering of the resolved pipeline plan.
 3. Lead planning, an Implementer tool call through `dispatch_tool`, and a real mechanical file
    check.

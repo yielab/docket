@@ -27,9 +27,10 @@ ALL_ROLES: tuple[str, ...] = (
     "writer",
     "operator",
     "monitor",
+    "actor",
 )
 
-# cheap = high-volume / low reasoning; strong = reasoning-dense. The class of each of the eight
+# cheap = high-volume / low reasoning; strong = reasoning-dense. The class of each of the nine
 # named roles is its archetype's own `modelClass`.
 ROLE_CLASS: dict[str, str] = {
     name: arch.model_class

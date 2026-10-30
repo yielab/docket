@@ -72,7 +72,7 @@ Positional arguments are command-specific; the following conventions apply acros
 | `ID` | `pod memory approve|refuse|revert` | A memory entry id as `pod memory list` prints it (`mem-` and ten hex characters); unknown to the resolved pod exits 1 |
 | `MEMBER` | `pod show|remove|reset`, `pod set|unset --member` | MUST match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`; a member of the resolved pod |
 | `KEY VALUE` | `pod set|unset` | A `PodSettings` key, or `verify` with `--member` |
-| `location` | `init` | Tilde-expanded and recorded as given; `init` neither makes it absolute nor checks that a codebase exists (see Path Validation). For a `workdir`-kind blueprint (`research`/`content`/`ops`) docket creates the working directory if absent |
+| `location` | `init` | Tilde-expanded and recorded as given; `init` neither makes it absolute nor checks that a codebase exists (see Path Validation). For a `workdir`-kind blueprint (`respond`/`operate`/`routine`) docket creates the working directory if absent |
 | `provider/model` | `setup model set` | MUST be well-formed `<provider>/<model-id>`; `setup model set` also accepts the literal `default` |
 | `NAME` | `setup provider|notify|export|mcp` verbs, `pod recipes|roles|policies` | A catalog or document name; an unknown one exits 1 |
 
@@ -175,21 +175,21 @@ passes without a key.
   working directory is created when missing; provisioning never changes the mode of a directory
   it did not create
 **Options**:
-- `--blueprint <name>`: Select a pod blueprint (`software` | `research` | `content` | `ops` |
-  `agentic-product`); omitted defaults to `software`. An unknown name fails
+- `--blueprint <name>`: Select a pod blueprint (`build` | `respond` | `operate` |
+  `routine`); omitted defaults to `build`. An unknown name fails
   cleanly (exit 1) before any prompt is shown
 - `--codebase <path>`: The location, as an option instead of the second argument
 - `--name <text>`: The pod's name, as an option instead of the first argument; an option wins
   over its positional
 - `--pod full`: Provision a full pod — Lead, Implementer, and Reviewer. Applies only to
-  the `software` blueprint
+  the `build` blueprint
 - `--with <roles>`: Start from the lean pod (Lead and Implementer, the base) and add named
   roles (comma-separated), in the order given. A name is any role `docket pod roles` lists:
   built-in, starter or defined under the operator's `config/roles/`; a name the lean pair
   already holds, or a repeat, adds nothing. A name the registry does not know is refused with
   exit `2` (`{"status": "invalid", "reason"}` under `--json`) naming it and the known names,
   before anything is provisioned: no pod directory exists afterwards. Applies only to the
-  `software` blueprint; passing it with another blueprint warns and is ignored (that
+  `build` blueprint; passing it with another blueprint warns and is ignored (that
   blueprint's own fixed roster is used instead)
 - `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); each entry
   names a `blueprint` and provisions a pod the same way `--blueprint` does interactively. An

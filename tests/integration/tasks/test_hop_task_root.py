@@ -197,7 +197,7 @@ class TestWorkdirPod:
                 "demo",
                 ("lead", "writer", "reviewer"),
                 work_dir=str(work_dir),
-                blueprint_name="content",
+                blueprint_name="routine",
             )
 
             lead, _ = _compose._hop_message(_TASK, "lead", [], project="demo")
@@ -210,14 +210,14 @@ class TestWorkdirPod:
             assert "src/util.py" not in message and "README.md" not in message
             assert str(work_dir) not in message
 
-    def test_a_content_pods_reviewer_message_names_no_diff_or_code(self, tmp_path: Path) -> None:
+    def test_a_routine_pods_reviewer_message_names_no_diff_or_code(self, tmp_path: Path) -> None:
         work_dir = _repo_with_files(tmp_path / "work")
         with seed_empty_home(tmp_path):
             build_pod(
                 "demo",
                 ("lead", "writer", "reviewer"),
                 work_dir=str(work_dir),
-                blueprint_name="content",
+                blueprint_name="routine",
             )
 
             message, _ = _compose._hop_message(_TASK, "reviewer", [_lead_hop()], project="demo")
@@ -240,7 +240,7 @@ class TestWorkdirPod:
     ) -> None:
         work_dir = _repo_with_files(tmp_path / "work")
         with seed_empty_home(tmp_path):
-            build_pod("demo", ("lead", "writer"), work_dir=str(work_dir), blueprint_name="content")
+            build_pod("demo", ("lead", "writer"), work_dir=str(work_dir), blueprint_name="routine")
             _arch.add_user_archetype(
                 {
                     "name": "lead",

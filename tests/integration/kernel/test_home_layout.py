@@ -91,7 +91,7 @@ def test_init_moves_an_old_layout_home_and_a_second_init_is_a_no_op(tmp_path: Pa
     root = _old_home(tmp_path / "old")
     runner = CliRunner()
     with use_home(Home(root=root)):
-        first = runner.invoke(app, ["init", "demo", "--blueprint", "research"])
+        first = runner.invoke(app, ["init", "demo", "--blueprint", "respond"])
         assert first.exit_code == 0, first.output
         assert (root / "config" / "policies" / "mine.yaml").is_file()
         assert (root / "state" / "audit.log").is_file()
@@ -99,7 +99,7 @@ def test_init_moves_an_old_layout_home_and_a_second_init_is_a_no_op(tmp_path: Pa
         snapshot = {
             str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()
         }
-        again = runner.invoke(app, ["init", "demo", "--blueprint", "research"])
+        again = runner.invoke(app, ["init", "demo", "--blueprint", "respond"])
         assert again.exit_code == 1, again.output  # the pod exists; the layout is not touched
     assert not (root / "policies").exists()
     assert (root / "config" / "pods" / "p" / "policies" / "pod.yaml").is_file()

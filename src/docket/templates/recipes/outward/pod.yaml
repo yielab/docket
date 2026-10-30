@@ -1,4 +1,3 @@
 kind: pod
 name: outward
-description: Research, draft, vet, then act outside the machine through a send tool that asks a person first.
-members: [researcher, writer, reviewer, actor]
+description: The policy pack of a respond pod - a send tool asks a person first, and the pod's sends are capped.

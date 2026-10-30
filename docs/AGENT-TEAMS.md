@@ -88,7 +88,7 @@ docket pod validate ./producer.yaml   # dry-run the schema + template render
 ```
 
 Three **built-in** archetypes cover the everyday roster. A **starter library**
-ships five more you can drop into any pod without writing a line of YAML:
+ships six more you can drop into any pod without writing a line of YAML:
 
 | Name | Class | Gate | Denied tools |
 |---|---|---|---|
@@ -99,6 +99,7 @@ ships five more you can drop into any pod without writing a line of YAML:
 | `writer` *(starter)* | cheap | none | none |
 | `operator` *(starter)* | strong | mechanical | none |
 | `monitor` *(starter)* | cheap | approval | write, edit, bash |
+| `actor` *(starter)* | strong | none | write, edit, bash (reads with `read`, `glob` only) |
 
 Provisioning a starter role into a live pod works exactly like any other role:
 `docket pod add researcher`. A user-authored archetype (a standalone YAML file,
@@ -126,312 +127,30 @@ next section.
 pipeline, a workspace kind, and an optional default budget cap — provisioned in one command.
 
 ```bash
-docket init my-market-scan --blueprint research
-# Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, reviewer)...
+docket init my-market-scan --blueprint respond
+# Provisioning 'respond' pod 'my-market-scan' (lead, researcher, writer, reviewer, actor)...
 ```
 
-| Blueprint | Workspace kind | Roster | Default budget | Gated step |
+Four blueprints exist, one per pipeline shape behind every department:
+
+| Blueprint | Workspace kind | Roster | Default budget | Pipeline |
 |---|---|---|---|---|
-| `software` *(default)* | codebase | lead, implementer | (none) | implementer: mechanical |
-| `research` | workdir | lead, researcher, analyst, writer, reviewer | $20 | reviewer: verdict, rework -> writer |
-| `content` | workdir | lead, writer, reviewer | $15 | reviewer: verdict, rework -> writer |
-| `ops` | workdir | lead, operator, monitor | $30 | operator: mechanical; monitor: approval |
-| `agentic-product` | codebase | lead, implementer, reviewer | (none) | implementer: mechanical; reviewer: verdict, rework -> implementer |
+| `build` *(default)* | codebase | lead, implementer, reviewer | (none) | lead -> implementer (mechanical) -> reviewer (verdict, rework -> implementer) |
+| `respond` | workdir | lead, researcher, writer, reviewer, actor | $20 | intake -> research -> draft -> review (verdict, rework -> draft) -> act |
+| `operate` | workdir | lead, monitor, operator, reviewer | $30 | watch -> propose (approval) -> act (mechanical) -> review (verdict) |
+| `routine` | workdir | lead, analyst, writer, reviewer | $15 | compile -> draft -> review (verdict, rework -> draft) |
 
-Omitting `--blueprint` (or passing `--blueprint software` explicitly) is exactly a plain
-`docket init` — same roster, same files, no behavior change. `research`/`content`/`ops` are
-**`workdir`-kind**: no codebase is assumed or auto-detected; the pod gets a shared working
-directory instead (auto-provisioned if you don't name one). `agentic-product` is `codebase`-kind
-like `software`, but its roster is the full Lead+Implementer+Reviewer set, so the gated
-review step actually reaches a hop at dispatch time instead of going unreached behind `software`'s lean
-default roster — the intended shape for a pod that ships its own agent to end users, where the
-review + test gate is warranted by default rather than opt-in. `--pod full`/`--with` only apply to
-the `software` roster — passing them against another blueprint warns and provisions that
-blueprint's own fixed roster instead of trying to combine the two.
+Omitting `--blueprint` (or passing `--blueprint build` explicitly) is exactly a plain
+`docket init` — the lean Lead + Implementer pod, same files, no behavior change; the `build` roster
+carries the Reviewer so the pipeline's review step reaches a hop once you widen the pod
+(`--pod full`). `respond`, `operate` and `routine` are **`workdir`-kind**: no codebase is assumed or
+auto-detected; the pod gets a shared working directory instead (auto-provisioned if you don't name
+one). `--pod full`/`--with` only apply to the `build` roster — passing them against another blueprint
+warns and provisions that blueprint's own fixed roster instead of trying to combine the two.
 
-A `workdir` pod has no repository behind it. Its members share one working directory, the pod's
-`workDir`, and its hop prompts speak of that directory rather than of code or git; a task that names
-a `baseRef` fails before any hop, since there is no branch to start from. The
-[`outward` recipe](recipes.md#outward) is a `workdir` team for work that acts outside the machine:
-a Researcher gathers, a Writer drafts into the working directory, a Reviewer vets, and an Actor is the
-only role that holds a `send` tool.
-
-The five built-ins above are the whole blueprint registry. To
-compose a custom shape today, provision the closest built-in and add roles by hand with
-`docket pod add <role>`. For a pre-built shape instead of composing by hand, use a
-**recipe**. Seventeen ship with docket: teams (`secure-build`, `research-review`,
-`ops-approval`, `intake`), policy packs that change no roster (`git-safety`, `no-egress`,
-`secrets-guard`, `prod-approval`), methodology pipelines that are the practice (`tdd`,
-`spec-first`, `spec-writer`, `reflexion`, `cross-family-review`, `frugal`), checks
-that fail a task whose tests prove nothing (`anti-tautology`, `mutation`), and a tool pack
-(`code-intel`). `docket pod recipes` shows what each brings, derived from
-its files; `docket init --recipe tdd` starts a new pod from one, `docket pod update
-git-safety` applies one onto a pod that already exists, and a directory under
-`~/.docket/config/recipes/<name>/` is addressable the same way. A recipe is the same directory shape as
-a repository's own `.docket/`, which plain `docket init` discovers, validates and applies when it
-is committed next to the code — see [the recipe library](recipes.md),
-[CONFIGURATION.md §3.10](CONFIGURATION.md#310-start-from-a-recipe) and
-[§3.11](CONFIGURATION.md#311-keep-the-team-in-the-repo).
-
----
-
-## Why this structure matters — three defects it fixes
-
-The pod model is not decoration. It rules out three concrete failures of a naive
-"one agent per project + a few shared workers" setup:
-
-1. **Two doers (no clear owner of completion).** If a project agent *and* a shared programmer
-   could both implement, neither would reliably finish a task. In a pod, the
-   **Implementer is the single doer** and the **Lead never edits code** — one writer, one owner.
-2. **Broken isolation.** A shared worker serving every project from *one* workspace and *one*
-   memory lets projects leak into each other. In a pod, **every member has its own workspace**;
-   the load-bearing guarantee is *no worker agent ever serves two projects.*
-3. **Delegation that isn't real.** A Lead's instructions can *say* "hand off to the
-   Implementer" while nothing runs the next agent. docket **really runs the pipeline**
-   (see below) — the hand-off executes.
-
----
-
-## Real dispatch — the pipeline actually runs
-
-The `docket run` command drives a pod's queued work through its pipeline, **one real agent turn per hop**:
-
-```
-Lead  →  Implementer  →  Reviewer (if present)
-```
-
-That is the built-in order when no pipeline is bound; a `kind: pipeline` in `.docket/` (or a
-recipe) sets the order, the gates and the rework instead. Only the roles a pod actually has take
-part (a lean pod runs two hops). docket stays the
-orchestrator — it invokes each hop through its own turn loop (`agent/loop.py`), captures the
-result, and threads it to the next role. This is the **real fix for "delegation wasn't real."**
-
-```bash
-docket task add "Fix the null-token login crash"   # queue a task
-docket task list                                        # see the queue + per-task status/cost
-docket run                                     # run the pipeline once, now
-docket start --dispatch                                       # background: drive every pod's queue each refresh
-```
-
-Each hop that isn't the Lead is **gated** before the pipeline advances past it:
-
-- **Implementer → mechanical gate.** If the Implementer has a `verifyCmd` set
-  (`docket pod add implementer --verify "<cmd>"` or
-  `docket pod set verify "<cmd>" --member <member-id>`), dispatch runs it after a successful hop and a nonzero exit fails the task, never
-  advancing to the Reviewer. An unset `verifyCmd` is never silently skipped — it's a visible
-  "verification skipped" line, so you can always tell "not configured" from "configured and
-  passing."
-- **Reviewer → verdict gate, with bounded rework.** The Reviewer closes with `handoff` and a
-  `verdict` of `APPROVE` or `REQUEST-CHANGES`; a reply ending with that marker line is still read, and
-  two different markers are unparseable. A `REQUEST-CHANGES` sends the task back to the
-  Implementer with the Reviewer's feedback attached, bounded by a rework budget (`maxReworkCycles`,
-  default 1); exhausting it — or a second rejection — fails the task.
-
-Three guarantees hold on every dispatch:
-
-- **Budget-gated.** Before *each* hop docket checks the pod's token-based dollar estimate against
-  the Lead's budget cap (`docket pod set budgetUsd N`) — docket's own turn loop
-  reports no billed spend, so the gate always runs off this labelled estimate. Over budget → the
-  task is left **blocked** (not run) and the pod's Lead is paused until you raise its cap or run
-  `docket run --resume`.
-- **Traced.** Every hop emits a Phase-8 trace event (`docket task trace`), on a per-task session
-  `agent:<project>:<task_id>` — so a run is fully auditable, with no manual Telegram relay.
-  An enabled trace exporter sends the same session to OpenTelemetry or Langfuse, at the privacy
-  level you set for it (`docket setup export`).
-- **Pod-local.** Dispatch only ever targets the project's own pod members. **There is no
-  cross-pod dispatch path** — one pod can never run another pod's agents.
-
-> Each hop is a real, costed LLM turn. That is why dispatch is explicit (`docket run`)
-> or opt-in (`docket start --dispatch`) — never silent. The read-only `docket start` monitor does
-> not dispatch.
-
-
-**Where the change lands.** The Lead plans without a write tool; the Implementer edits in a git
-worktree made for each task, on its own branch, its shell and verify command jailed once you run
-`docket setup sandbox on` (`docket setup sandbox status` names the backend). Your main checkout stays clean, and the change stays in the
-worktree until you merge it. The capture at the top of this guide is one real run.
-
-**What starts a run.** Nothing runs on its own. The same pipeline runs from `docket run`, a
-schedule (`@every 30m`, cron), an authenticated `POST /dispatch/<project>`, the MCP `dispatch`
-tool, or `docket start --dispatch`. `docket pod set approvalMode refuse` fails an unattended pod
-fast instead of parking it. For an external orchestrator, the HTTP routes enqueue an addressable
-task and follow it (see [Architecture](DOCKET.md#one-door-for-a-program)).
-
-**A hop that needs a human doesn't stall the other pods.** A pipeline `approval` step or a tool call an Implementer's own turn wants to `ask` about all
-move the task to `waiting_approval` rather than failing it. Under `docket start --dispatch`'s sweep or a
-non-interactive `docket run`, that `ask` **parks** — it records the exact call and moves on to the
-next pod in the same sweep, instead of blocking a thread for up to two minutes. Everything that
-needs you, across every pod, shows up in one place (`docket inbox`), and a notification channel you
-enable (`docket setup notify enable desktop`, `ntfy` or `telegram`; the default `console` sends
-nothing, and `docket setup` says so) can push it to you instead of waiting for you to look. Answer it the same way you'd answer any approval (`docket task answer <escalation-id> --option approve_once`/
-`--option deny`, or a channel that can `decide`) and the exact hop that parked re-runs, carrying a
-single-use pre-grant so the model's identical next call passes without asking twice. A pipeline
-can also pause a task to ask a genuine *question* rather than a permission — an `input` step, or
-the Lead's own typed intake brief when it decides it's missing something — which is `docket task answer
-<task-id>`'s job, with `--option` for an approval. See
-[SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s "operator loop" section for the full mechanism.
-
----
-
-## Routines and wait steps — work that starts itself, and work that waits
-
-A pod doesn't need someone to add every task. Two features cover the two cases.
-
-**A routine** is a pod's own standing order: a `kind: routine` document that enqueues one task on a
-schedule. It names a cron expression (or `@every 30m`), an IANA `tz` (default `UTC`), and the task:
-
-```yaml
-kind: routine
-name: weekly-brief
-description: Weekly brief from the working directory
-schedule: "0 9 * * 1"
-tz: Europe/Madrid
-task:
-  description: Draft this week's brief from the notes in the working directory.
-  priority: normal
-```
-
-`catchUp` (`skip`, the default, or `once`) decides whether a missed slot runs later, and
-`overlap: skip` (the default) fires nothing while an earlier task of the same routine is still open.
-A routine is read from a recipe's `routines/` directory once `docket pod update` applies it, or from
-the operator's `config/routines/`; `enabled: false` turns one off. `docket pod routine list` shows
-each routine's next and last slot in UTC, and reports a file that does not load, as
-`docket pod validate` does. Routines fire only while `docket start --dispatch` is running. They are
-separate from `docket pod set schedule`, which only dispatches a queue that already exists.
-
-**A wait step** parks a task in a pipeline until a time passes, or until a probe command exits `0`:
-
-```yaml
-steps:
-  - hold:
-      wait: "72h"
-      until: {run: "test -f ready.flag", every: "15m"}
-      on: {timeout: fail}
-```
-
-`wait` alone is a timer. With `until`, the timer is the probe's ceiling: the probe runs every `every`
-interval, and a task that reaches the ceiling without a passing probe goes to `blocked`, or follows
-the `on.timeout` route if the step declares one. A wait step runs no agent turn and asks nobody, so
-its task is not listed under what needs you. The periodic sweep of `docket start` wakes a timer when
-it is due; a probe runs only in a sweep that dispatches. A wait never fails a task by itself.
-`docket pod plan` shows the step as `waits 72h` or `waits up to 72h, probing '…' every 15m`.
-
----
-
-## Runtime-resource isolation per pod
-
-Two pods running work at once shouldn't fight over the same port or scratch file. At provisioning,
-a pod's Implementer can be allocated a disjoint **port range** and **scratch directory**
-(`portRangeStart`/`portRangeCount`, `scratchDir` in `.docket-meta.json`) — disjoint from every
-other pod's allocation. This isn't just prose in `TOOLS.md` for the agent to remember: dispatch
-injects it into the Implementer's real subprocess environment on every hop —
-
-```
-DOCKET_PORT_BASE=<port_range_start>
-DOCKET_PORT_COUNT=<port_range_count>
-DOCKET_SCRATCH_DIR=<scratch_dir>
-```
-
-— layered on top of the parent environment (which is never mutated). Every other hop (Lead,
-Reviewer, or an Implementer with no allocation) gets no override — today's
-inherit-the-parent-env behavior.
-
----
-
-## The durable task ledger
-
-A pod Lead's `HEARTBEAT.md` carries the same resume/durability contract every agent workspace
-has: in-flight work is written down before it starts, so a context reset can resume it. Dispatch
-maintains that ledger **mechanically**, so it is not only as honest as the agent's own compliance: a delimited, docket-owned region inside `## Active Tasks`
-(`teams/agent_memory.py`'s `sync_dispatch_tasks`) is rewritten from `TASK_LIST.json`'s `running` tasks at
-every claim, every hop completion, and every retry — the entry for a task exists before its first
-hop ever runs, whether or not the agent would have written it down itself. Everything outside that
-region — an agent's own hand-written notes, every other heading in the file — is never touched by
-the sync.
-
-`docket setup` flags any divergence between the two: a task `running` in `TASK_LIST.json` with no
-matching ledger entry, or a ledger entry naming a task that is not (or is no longer) running.
-`--fix` re-syncs the ledger from `TASK_LIST.json`, which is always the source of truth.
-
----
-
-## Identity — role first
-
-An agent's identity is a pure function of its metadata: its **role** (structural — "I am this pod's
-Implementer," from `SOUL.md`). Display names resolve from role; docket-managed workspaces never read
-self-authored `IDENTITY.md`. Identity in a docket-managed workspace is docket-owned, never self-written by the agent.
-
-A turn's system prompt is composed from, in order: `SOUL.md`, the operator-owned `INSTRUCTIONS.md`
-(docket never writes it, so `docket pod update` leaves it alone), the member's `AGENTS.md`, a fixed
-runtime contract, the project instructions, the skills index, `MEMORY.md` when it has content, and the
-pod's accepted memory last. Docket generates `SOUL.md` and `AGENTS.md` from the role's templates, and
-`docket pod update` re-renders them when they drift from the current archetype. The project
-instructions are the repository's `AGENTS.md` by default, or the codebase files named with
-`docket pod set projectInstructions <path,...>`, screened through the same `pre_input` policy hook as
-any other input and restricted to relative paths that can't escape the codebase root. The budget and
-each section's fate are in [CONFIGURATION.md](CONFIGURATION.md) §2, the full reference.
-
----
-
-## What a hop is sent, and what it returns
-
-A hop's turn is built from prompt **layers**, and each hop's record keeps the layers it used:
-
-- **identity**: the role's identity prompt, the text its `SOUL.md` is generated from. It is present
-  when a scope holds one.
-- **task**: the `## Task` section of a non-Lead hop, below.
-- **hop**: the hop's instruction: the pipeline step's own `instructions`, the role's hop prompt, or
-  the line generated from its gate.
-
-Each layer records its version and the scope it came from (shipped, operator, pod, repository,
-pipeline or generated). The Lead's message has no headings: its instruction, the task description,
-then the working-directory line and a repository map. Every other hop's message has two sections, in
-this order:
-
-- `## Task`: the task description, never shortened, and a repository map bounded to the paths the
-  Lead's brief names. Every non-Lead hop of one task gets the same bytes.
-- `## Hop`: the working-directory line, any operator answer, gate failure or rework note, the prior
-  hops' handoffs (each trimmed to the role's token budget, least valuable fields first), and the
-  role's instruction.
-
-No message carries an absolute path. A hop is told that its tools start at the repository root and
-to give paths relative to it, so the worktree's location stays out of every prompt.
-
-Each hop record carries a `promptManifest`: for every layer, its name, version, SHA-256, scope and
-estimated tokens, then the model, provider family, model class and model profile. Two hops'
-manifests show whether a prompt changed between them.
-
-### `handoff`: how a hop closes
-
-A hop is offered one tool, `handoff`, when its step has a verdict gate or its prompt declares
-`output: handoff/v1`. Every built-in hop prompt does, the Lead's included. Calling it once, as
-the last action, ends the turn, in place of a free-text closing line:
-
-- `summary` is what the next hop reads in place of your reply. Put the decisions, names and paths it
-  must use there; it is not a description of the work.
-- `verdict` is required on a verdict-gated step, and must be one of the gate's values.
-- `filesChanged`, `assumptions` and `questions` are optional. A question reaches the next hop and the
-  operator; it does not park the task.
-
-A reply that ends with the gate's marker line is still read when no `handoff` call was made. A
-verdict-gated hop with no verdict is asked once more before it fails.
-
-### Prompt tests and the floor
-
-A prompt can ship a `tests` file: cases, each an `input` and assertions (`contains`, `matchesSchema`,
-`calledHandoff`, `underTokens`). `docket pod test <layer>/<name> [--model <provider/model>]` sends each
-case to the model and records `pass` or `fail` against that model and the prompt's text, so a repeat
-reads the record; `--force` runs it again. Without `--model`, the model is the prompt's role's own
-model. It exits `0` on pass, `1` on fail and `2` when it cannot run.
-
-A role names the prompts it must run on in its `floor` (`floor: [hop/reviewer]`). It refuses a
-model whose recorded test for one of them failed: the task settles as `dispatch_refused`,
-naming the prompt and the fix (`docket pod test <ref> --force` after a change, or another model for
-the role). docket never falls back to another model.
-
----
-
-## Composing a team — how big should a pod be?
+A department is a shape plus your own prose, connectors and policy, not another blueprint. A
+`respond` pod needs the operator's role overlay to name the Actor's send tool; the `outward` recipe is
+the policy pack that asks before every send and caps them.
 
 Start lean and grow only when the work earns it:
 
@@ -441,7 +160,7 @@ Start lean and grow only when the work earns it:
 | Code that needs a correctness/security gate before it lands | add a **Reviewer** (`--with reviewer`) |
 | High-stakes or high-blast-radius work | **full** pod (`--pod full`) |
 | One Implementer is the bottleneck | `docket pod add implementer` (parallel doers) |
-| Non-software work (research, writing, ops) | pick a **blueprint** (`--blueprint research`) instead of building roles up by hand |
+| Non-software work (research, writing, ops) | pick a **blueprint** (`--blueprint respond`) instead of building roles up by hand |
 
 The Reviewer is the difference between "an agent changed the code" and "a change was
 reviewed before it landed" — the line between a prototype and a change you can let
@@ -488,8 +207,7 @@ docket init                               # lean pod for the cwd (id, path, stac
 docket init <project> [path]              # lean pod (Lead + Implementer)
 docket init <project> [path] --pod full   # + Reviewer
 docket init <project> [path] --with reviewer
-docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
-                                                   # | agentic-product
+docket init <project> [path] --blueprint <name>   # build (default) | respond | operate | routine
 docket pod recipes                      # the seventeen shipped recipes and your own, what each brings
 docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a methodology) or
                                          #   your own directory; a committed .docket/ is applied

@@ -496,9 +496,9 @@ class TestBlockedStaysBlocked:
 class TestRunCliPrologue:
     """The "Dispatching N pending task(s) through: <roles>" prologue must name the pod's
     own resolved pipeline, not the legacy four-role ``PIPELINE_ORDER`` filter a
-    non-``software`` pod never matches past "lead"."""
+    non-``build`` pod never matches past "lead"."""
 
-    def test_research_pod_prologue_names_its_blueprint_roles(
+    def test_respond_pod_prologue_names_its_blueprint_roles(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from typer.testing import CliRunner
@@ -511,11 +511,11 @@ class TestRunCliPrologue:
         with use_home(Home(home)):
             record_isolation_off(home)
 
-            _pod.build_pod_from_blueprint("rsch", "research", location="", description="")
+            _pod.build_pod_from_blueprint("rsch", "respond", location="", description="")
             _queue.enqueue_task_once("rsch", "look into it", channel="cli")
             monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
 
             _endpoint_ready(monkeypatch)
             result = CliRunner().invoke(app, ["run", "--pod", "rsch"])
 
-            assert "through: lead → researcher → analyst → writer → reviewer" in result.output
+            assert "through: lead → researcher → writer → reviewer → actor" in result.output

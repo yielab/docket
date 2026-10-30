@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 3.0.0
+**Version**: 4.0.0
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -9,8 +9,8 @@
 This specification defines the **pod blueprint**: a named, versioned pod shape composing an
 archetype roster (`role-archetypes.spec.md`), a default pipeline (`pipeline-format.spec.md`), a
 workspace kind, and an optional default budget cap. A blueprint generalizes pod *composition* the
-way `role-archetypes.spec.md` generalizes individual *roles*: a research pod, a content pod and an
-ops pod are one `docket init` away.
+way `role-archetypes.spec.md` generalizes individual *roles*: a pod that builds, one that responds,
+one that operates and one that runs a routine are one `docket init` away.
 
 It also defines how a team shape is applied to a pod that already exists, written back out of
 one, and reviewed before a repository's commands run on a machine: the pod manifest (`pod.yaml`),
@@ -23,7 +23,7 @@ This specification covers:
 - The blueprint schema: `name`, `version`, `workspaceKind`, `roles`, `defaultPipeline`,
   `defaultBudgetUsd`, and `description`, and which fields are closed enums and which are open. A
   blueprint has no file or wire form; these are its attribute names
-- The five built-in blueprints (`software`, `research`, `content`, `ops`, `agentic-product`)
+- The four built-in blueprints (`build`, `respond`, `operate`, `routine`), one per pipeline shape
 - The `workspaceKind` (`codebase` | `workdir`) distinction and how a `workdir` blueprint's shared
   working directory is resolved and provisioned
 - How `docket init --blueprint <name>` and `docket init --from <spec>` select and provision a
@@ -47,11 +47,11 @@ This specification does NOT cover:
 - Executing a pipeline: `pod-dispatch.spec.md`. A pod dispatched with no caller-supplied
   pipeline runs its bound pipeline, else its blueprint's `defaultPipeline` (named by the Lead's
   `blueprint` meta), else the built-in default pipeline; see "Pipeline order and participation"
-  there for the exact resolution order. A `research`, `content` or `ops` pod dispatched that way
+  there for the exact resolution order. A `respond`, `operate` or `routine` pod dispatched that way
   runs its full roster and gates
 - The document formats a directory holds (`kind:` envelope, short forms, schemas, `docket pod
   validate`): `config-format.spec.md`
-- Blueprint definitions authored by a user: none exist; the five built-ins are the whole
+- Blueprint definitions authored by a user: none exist; the four built-ins are the whole
   registry (see "User-authored blueprints")
 - Per-role org-vs-pod scope: scope is a property of the *archetype* a role name resolves to
   (`role-archetypes.spec.md`), inherited by a blueprint's roster
@@ -86,36 +86,45 @@ This specification does NOT cover:
 
 ### Built-in blueprints
 
-1. Five blueprints **MUST** ship: `software`, `research`, `content`, `ops`, `agentic-product` (see
-   Interface Contracts for their exact rosters, kinds and budgets).
-2. `software` **MUST** be the default pod: roster `lead`, `implementer` (the lean default roster),
-   `workspaceKind` `codebase`, no default budget cap, and a `defaultPipeline` that is exactly the
-   built-in default pipeline (`pipeline-format.spec.md`), not a second, independently hand-rolled
-   copy.
-3. `research`, `content`, and `ops` **MUST** be `workspaceKind: "workdir"`; none of the three
-   assumes a codebase. `research` and `content` gate their final step on the Reviewer archetype's
-   APPROVE/REQUEST-CHANGES verdict with a bounded rework edge back to the Writer step (at dispatch the pod's
-   `maxReworkCycles` setting sets the cycle count, `pod-dispatch.spec.md`); `ops` gates its
-   Operator step mechanically (deferring to that member's own `verifyCmd`, mirroring the
-   Implementer's convention) and its Monitor step on human approval. Each of the three **MUST**
-   declare `instructions` (`pipeline-format.spec.md`, "Steps") on its `lead` step naming that
-   pipeline's own next role (`research`: the Researcher; `content`: the Writer; `ops`: the
-   Operator) instead of the built-in `lead` archetype's generic Implementer text, which none of
-   these three pods has a member for. `software` and `agentic-product` declare no `instructions`
-   on their `lead` step and **MUST** stay identical to the built-in default pipeline.
-4. `docket init` with **no** `--blueprint` **MUST** resolve to `software`; omitting the flag and
-   passing `--blueprint software` explicitly **MUST** be behaviorally indistinguishable.
-5. `agentic-product` **MUST** be `workspaceKind: "codebase"` and its roster **MUST** be the full
-   pod roster (`lead`, `implementer`, `reviewer`): a product that ships an agent to end
-   users carries more risk than an internal tool, so the Reviewer runs by default rather
-   than being opt-in the way `software`'s `--pod full`/`--with` leaves them. Its `defaultPipeline`
-   **MUST** be the same built-in default pipeline `software` attaches (no second,
-   blueprint-specific pipeline): the difference from `software` is entirely in the roster, and the
-   Reviewer step that a lean `software` pod never reaches at dispatch time gates a hop here
-   because the role is present. It carries no `defaultBudgetUsd`, matching `software`, the other
-   `codebase`-kind blueprint. This blueprint is declarative data only: it does not scaffold
-   repository contents; a pod provisioned from it is expected (by convention, not mechanically
-   enforced) to embed the `docket-runtime` library as its own guardrail substrate.
+1. Four blueprints **MUST** ship, one per pipeline shape, and nothing else is in the registry:
+   `build`, `respond`, `operate`, `routine` (see Interface Contracts for their exact rosters, kinds
+   and budgets). A name the registry does not hold, including every name an earlier registry used (`software` and
+   `content` among them), is an unknown blueprint, and the error names the four.
+2. `build` **MUST** be the default pod: `workspaceKind` `codebase`, roster `lead`, `implementer`,
+   `reviewer`, no default budget cap, and a `defaultPipeline` that is exactly the built-in default
+   pipeline (`pipeline-format.spec.md`), not a second, independently hand-rolled copy. `docket init`
+   and `POST /pods` provision the lean subset `lead`, `implementer` unless `--pod full`, `--with` or
+   `pod: full` widens it, so the Reviewer step is reached only on a pod that has the role; an
+   entry of `docket init --from` names no roster and gets the blueprint's own.
+3. `respond`, `operate` and `routine` **MUST** be `workspaceKind: "workdir"`; none assumes a
+   codebase. Their `defaultPipeline`s are:
+   - `respond` (roster `lead`, `researcher`, `writer`, `reviewer`, `actor`): `intake` (Lead) ->
+     `research` (Researcher) -> `draft` (Writer) -> `review` (Reviewer, an APPROVE or
+     REQUEST-CHANGES verdict with a bounded rework edge back to `draft`) -> `act` (Actor). At
+     dispatch the pod's `maxReworkCycles` setting sets the cycle count (`pod-dispatch.spec.md`).
+   - `operate` (roster `lead`, `monitor`, `operator`, `reviewer`): `watch` (Lead) -> `propose`
+     (Monitor, an `ApprovalGate`: a person approves before the Monitor proposes and the Operator
+     acts) -> `act` (Operator, a `MechanicalGate` deferring to that member's own `verifyCmd`) ->
+     `review` (Reviewer, a verdict gate with no rework edge: an operational action is not redone
+     by itself).
+   - `routine` (roster `lead`, `analyst`, `writer`, `reviewer`): `compile` (Analyst) -> `draft`
+     (Writer) -> `review` (Reviewer, a verdict with a bounded rework edge back to `draft`).
+4. `respond` and `operate` **MUST** declare `instructions` (`pipeline-format.spec.md`, "Steps") on
+   their Lead step naming that pipeline's own next role (`respond`: the Researcher; `operate`: the
+   Monitor) instead of the built-in `lead` archetype's generic Implementer text, which neither pod
+   has a member for. `build` declares no `instructions` on its `lead` step and **MUST** stay
+   identical to the built-in default pipeline.
+5. `docket init` with **no** `--blueprint` **MUST** resolve to `build`; omitting the flag and
+   passing `--blueprint build` explicitly **MUST** be behaviorally indistinguishable.
+70. Every step of every built-in blueprint's `defaultPipeline` **MUST** target a role in that
+    blueprint's roster, and `respond`'s `act` step **MUST** target `actor`. `actor` is a starter
+    archetype (`role-archetypes.spec.md`, "Starter library" requirement 70), so the shape needs no
+    role file; the send tool the Actor holds is the operator's role overlay's to name.
+71. A shipped recipe **MUST** carry only what a blueprint cannot. `outward` is `respond`'s policy
+    pack (`ask` before every `send` tool, a send quota) and a README; it ships no pipeline, no
+    `roles/` directory and no members. `ops-approval` is an approval policy and a README for a pod
+    that wants a person to approve deploy-shaped operator commands; it ships no pipeline and no
+    members, because `operate` has the Operator. `intake` stays: an intake step on a `build` pod.
 
 ### Workspace kind and the working directory
 
@@ -154,10 +163,10 @@ This specification does NOT cover:
 ### CLI surface
 
 1. `docket init [project] [location] [--blueprint <name>]` **MUST** resolve the blueprint (default
-   `software`) before provisioning anything, and **MUST** fail cleanly (exit 1, nothing
+   `build`) before provisioning anything, and **MUST** fail cleanly (exit 1, nothing
    provisioned) if `<name>` is not a registered blueprint. Its inputs are never prompted for: the
    location defaults to the current directory and the project id to that directory's name.
-2. `--pod full` / `--with <roles>` **MUST** apply only to the `software` blueprint's roster;
+2. `--pod full` / `--with <roles>` **MUST** apply only to the `build` blueprint's roster;
    passing them against any other blueprint **MUST** warn and provision that blueprint's own fixed
    roster, not silently combine the two.
 3. `docket init --from <spec>` (a JSON or YAML file: a list of entries, an object with an
@@ -175,7 +184,7 @@ This specification does NOT cover:
 
 ### User-authored blueprints
 
-1. The five built-ins are the entire registry. No command, file or setting adds a blueprint.
+1. The four built-ins are the entire registry. No command, file or setting adds a blueprint.
    Composing a custom pod shape means provisioning from the closest built-in blueprint and adding
    roles with `docket pod add <role>`, or applying a team (see "Pod manifests: apply").
 
@@ -543,8 +552,8 @@ requirement 1). The shipped library groups by what a directory contains, not by 
 | --- | --- | --- |
 | Team | `secure-build` | roles (`security-vetter`, read-only) + policies + members + pipeline + skills (`security-review`) |
 | Team | `research-review` | members (`researcher`, `analyst`, `writer`, `reviewer`) + pipeline |
-| Team | `ops-approval` | policies + members (`operator`) + pipeline |
-| Team | `outward` | roles (`researcher`, `writer`, `reviewer`, `actor`) + a policy that asks before every `send` tool + members + pipeline (researcher -> writer -> reviewer, one rework -> actor) for a `workdir` pod; no MCP server ships, the README shows three server shapes |
+| Policy pack | `ops-approval` | policies only: an approval policy for a deploy- or production-shaped operator command (`operate` has the Operator and its approval step) |
+| Policy pack | `outward` | policies only: ask before every `send` tool, and a send quota, for a `respond` pod; no MCP server ships, the README shows the server shapes and how the operator's role overlay names the Actor's send tool |
 | Policy pack | `git-safety` | policies only |
 | Policy pack | `no-egress` | policies only |
 | Policy pack | `secrets-guard` | policies only |
@@ -618,17 +627,16 @@ The settable keys of `docket pod set` / `unset` are: `budgetUsd`, `maxReworkCycl
 
 | Name | workspaceKind | Roles | defaultBudgetUsd | Gated step(s) |
 | --- | --- | --- | --- | --- |
-| `software` | codebase | lead, implementer | (none) | implementer: mechanical (own `verifyCmd`) |
-| `research` | workdir | lead, researcher, analyst, writer, reviewer | 20.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> writer |
-| `content` | workdir | lead, writer, reviewer | 15.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> writer |
-| `ops` | workdir | lead, operator, monitor | 30.0 | operator: mechanical (own `verifyCmd`); monitor: approval |
-| `agentic-product` | codebase | lead, implementer, reviewer | (none) | implementer: mechanical (own `verifyCmd`); reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> implementer |
+| `build` | codebase | lead, implementer, reviewer | (none) | implementer: mechanical (own `verifyCmd`); reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> implementer |
+| `respond` | workdir | lead, researcher, writer, reviewer, actor | 20.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> draft |
+| `operate` | workdir | lead, monitor, operator, reviewer | 30.0 | monitor: approval; operator: mechanical (own `verifyCmd`); reviewer: verdict, no rework |
+| `routine` | workdir | lead, analyst, writer, reviewer | 15.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> draft |
 
-`software`'s `defaultPipeline` additionally declares a `reviewer` step (inherited verbatim
-from the built-in default pipeline) that a lean `software` pod never reaches at dispatch time;
-which roles a pod actually has is a runtime/executor concern (see `pipeline-format.spec.md`).
-`agentic-product` attaches the exact same `defaultPipeline`; its roster is the only difference, and
-it is precisely what makes the Reviewer step reachable.
+`build`'s `defaultPipeline` declares a `reviewer` step (inherited verbatim from the built-in default
+pipeline) that a lean `build` pod, the one `docket init` provisions, never reaches at dispatch time;
+which roles a pod actually has is a runtime/executor concern (see `pipeline-format.spec.md`). A pod
+that widens its roster (`--pod full`) reaches it. The `records` recipe adds `routine`'s set, its
+`capture` pipeline and its schedule.
 
 ### `.docket-meta.json` fields blueprints add (schema authority: `docket-meta.spec.md`)
 
@@ -648,11 +656,11 @@ it is precisely what makes the Reviewer step reachable.
 
 ## Examples
 
-### Provisioning a research pod
+### Provisioning a respond pod
 
 ```bash
-$ docket init my-market-scan /home/user/work/my-market-scan --blueprint research
--> Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, reviewer)...
+$ docket init my-market-scan /home/user/work/my-market-scan --blueprint respond
+-> Provisioning 'respond' pod 'my-market-scan' (lead, researcher, writer, reviewer, actor)...
 ```
 
 ### Provisioning a workdir pod declaratively
@@ -661,7 +669,7 @@ $ docket init my-market-scan /home/user/work/my-market-scan --blueprint research
 # spec.yaml
 agents:
   - id: launch-brief
-    blueprint: content
+    blueprint: routine
     workDir: /home/user/work/launch-brief
     description: product launch one-pager
     budgetUsd: "10"
@@ -675,7 +683,7 @@ docket init --from spec.yaml
 
 ```bash
 $ docket init myproj --blueprint wizard-pod
-x Error: unknown blueprint 'wizard-pod'; valid blueprints: software, research, content, ops, agentic-product
+x Error: unknown blueprint 'wizard-pod'; valid blueprints: build, respond, operate, routine
 ```
 
 ### Applying a shipped recipe
@@ -700,7 +708,7 @@ $ docket pod update secure-build --dry-run
 
 ### Post-conditions
 
-- After `docket init <project> --blueprint software` (or no flag at all), the resulting pod is the
+- After `docket init <project> --blueprint build` (or no flag at all), the resulting pod is the
   same either way (requirement 4 of "Built-in blueprints"), and its `.docket-meta.json` carries
   the `blueprint` key.
 - After provisioning a `workdir` blueprint, every member's `WORKFLOW_AUTO.md` **MUST** contain
