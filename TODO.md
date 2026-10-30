@@ -21,7 +21,7 @@
 > "Phase 54" in the follow-ups below. **Planned: Phase 55** (D-77,
 > [ADR 0036](docs/adr/0036-a-pod-works-outward.md)): a pod works outward, on its own schedule; twelve
 > cards P55-1..P55-12 over four waves, cut by file ownership. **Wave 1 merged 2026-10-30** (P55-1, P55-5,
-> P55-7, P55-11); Wave 2: P55-3 merged 2026-10-30, P55-6 in flight.
+> P55-7, P55-11); **Wave 2 merged 2026-10-30** (P55-3, P55-6); Wave 3 (P55-2, P55-4, P55-9) is next.
 > Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md));
 > its loose ends are under "Escalations". The integration branch is `develop`. A new phase starts from a
 > measured trigger or a maintainer request.
@@ -356,7 +356,7 @@ behaviour + data + spec + e2e
 
 ### P55-6 — a `wait` step: the task sleeps until a time or an event (absorbs P52-12)
 
-**Status:** TODO · ready, P55-7 merged 2026-10-30; shares `executor.py` · **Size:** L · **Model:** Sonnet · **Kind:**
+**Status:** DONE (2026-10-30, merged from `p55-6`) · **Size:** L · **Model:** Sonnet · **Kind:**
 behaviour + spec + contract
 
 - **Trigger:** ADR 0036 finding 6: no `wait` step (`pipeline/domain/step.py:88-136`), no
@@ -662,6 +662,15 @@ that already own the files.
   `ask` for every `send` tool belongs with P55-4. `--kind` stays an operator assertion, not verified against the server.
   A pipeline step that runs a role from the pod's existing registry (not in the applied directory) is not checked by
   the read/act rule.
+- *Phase 55 Wave 2, P55-6.* `docket task show` "Waiting on you", the foreground `run` progress view and Telegram
+  `/status` do not special-case a `wait`. `serve-read-api.spec.md` (the `kind` label list) and `a2a-binding.spec.md`
+  (`escalationKind`) still list five kinds. `docket_escalations_total` counts a probe-resolved wait as `by=person`. A
+  `stale_claim` between wake and claim drops the wait, so the next claim parks the step again. A monitor-only `docket
+  start` never runs a probe (only a dispatching sweep does). Tack's maintainer is told: `wait` is an additive
+  `EscalationKind`, `machine` an additive `EscalationPolicy`, the task is `waiting_input` with a2a state `WORKING`, a
+  timed-out wait with no route is `blocked` / `wait_expired`, and `POST /escalations/<id>` `{optionId: "resume"}` ends
+  it early. The e2e lane took 344 s once on this host against about 42 s measured before; its slowest tests are 13 s,
+  so it was host load, not a test; re-measure if it repeats.
 - *Live evidence owed.* The maintainer's browser probe (snapshot, click by ref) under `--lifetime hop` for P55-5.
 
 **Phase 54 (closed 2026-10-29).** Two items wait for their triggers.
