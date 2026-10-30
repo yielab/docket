@@ -109,7 +109,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pod Dispatch | 11.9.0 | Implemented |
 | Role Archetypes | 5.2.0 | Implemented |
 | Security Gates | 3.5.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
-| Service Client | 1.2.0 | Implemented in part (the tools, the call and the writes handling; the task and idempotency headers are not carried yet) |
+| Service Client | 1.3.0 | Implemented in part (the document, the tools, the call and the writes handling; not proven against a real service) |
 | Pod Records | 1.1.0 | Implemented in part (the store, the document and the CLI; the agent tools are not shipped) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
