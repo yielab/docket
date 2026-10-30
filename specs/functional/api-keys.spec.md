@@ -95,8 +95,9 @@ A `secret:<name>` reference resolves only a name something stored, so a name no 
 3. The value is stored by the one writer, `governance.secrets.store_secret`, on the backend
    Backends below name, and is audited by name only: `keys.add` for a new name, `keys.rotate` for a
    name already stored. Neither stdout, stderr nor the audit log **MUST** hold the value.
-4. `secret list` **MUST** print each stored name with its added (and, when set, rotated) time and
-   **MUST NOT** print a value; with nothing stored it exits 0 and says so.
+4. `secret list [--json]` **MUST** print each stored name with its added (and, when set, rotated)
+   time and **MUST NOT** print a value; with nothing stored it exits 0 and says so. `--json` prints
+   one array of `{name, added_at, rotated_at}`.
 5. `secret remove <name>` **MUST** delete the stored value (and clear the keyring entry under the
    keyring backend), drop its bookkeeping and audit `keys.remove`; a name not stored exits 1.
    There is no confirmation prompt, and the command does not check whether a document still
@@ -125,7 +126,7 @@ docket setup provider add <name> [url] [--credential KEY]   # Store, probe, regi
 docket setup provider rotate <name> [--credential KEY]      # Replace the stored value
 docket setup provider remove <name> [--yes]                 # Remove the provider and its credential
 docket setup secret set <name> [--stdin]                    # Store a secret under any name (value never an argument)
-docket setup secret list                                    # Names and dates, never values
+docket setup secret list [--json]                           # Names and dates, never values
 docket setup secret remove <name>                           # Delete a stored secret
 ```
 

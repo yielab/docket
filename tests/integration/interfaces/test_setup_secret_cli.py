@@ -10,7 +10,7 @@ nothing; `remove` deletes the value and its bookkeeping. See specs/functional/ap
 from __future__ import annotations
 
 import dataclasses
-import getpass
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -100,8 +100,7 @@ class TestSet:
 
     def test_a_terminal_gets_a_hidden_prompt(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(_contract, "is_tty", lambda: True)
-        monkeypatch.setattr(getpass, "getpass", lambda prompt="": _VALUE)
-        result = _secret("set", "svc-token")
+        result = _secret("set", "svc-token", stdin=_VALUE + "\n")
         assert result.exit_code == 0, result.output
         assert _secrets.secret_value("svc-token") == _VALUE
         assert _VALUE not in _everywhere(result)
@@ -113,6 +112,15 @@ class TestListAndRemove:
         result = _secret("list")
         assert result.exit_code == 0, result.output
         assert "svc-token" in result.stdout
+        assert _VALUE not in result.stdout + result.stderr
+
+    def test_list_json_is_names_and_dates_only(self) -> None:
+        _secret("set", "svc-token", "--stdin", stdin=_VALUE + "\n")
+        result = _secret("list", "--json")
+        assert result.exit_code == 0, result.output
+        rows = json.loads(result.stdout)
+        assert [r["name"] for r in rows] == ["svc-token"]
+        assert set(rows[0]) == {"name", "added_at", "rotated_at"}
         assert _VALUE not in result.stdout + result.stderr
 
     def test_list_with_nothing_stored_exits_0(self) -> None:

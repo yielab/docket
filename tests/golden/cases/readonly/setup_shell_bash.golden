@@ -9,7 +9,7 @@ _docket_verbs() {
     "pod memory") echo "list approve refuse revert reset" ;;
     "pod routine") echo "list" ;;
     "log") echo "verify" ;;
-    "setup") echo "profile shell provider model sandbox notify export mcp" ;;
+    "setup") echo "profile shell provider model sandbox notify export mcp secret" ;;
     "setup provider") echo "add list show remove export rotate" ;;
     "setup model") echo "list set preset reset" ;;
     "setup sandbox") echo "status on off backend network classes read" ;;
@@ -17,6 +17,7 @@ _docket_verbs() {
     "setup notify") echo "list show enable disable add remove export privacy test bind unbind flush" ;;
     "setup export") echo "list show enable disable test add remove export privacy preview" ;;
     "setup mcp") echo "list add remove" ;;
+    "setup secret") echo "set list remove" ;;
   esac
 }
 
@@ -120,6 +121,10 @@ _docket_options() {
     "setup mcp list") echo "--json --help" ;;
     "setup mcp add") echo "--env --secret --timeout --kind --tools --lifetime --help" ;;
     "setup mcp remove") echo "--help" ;;
+    "setup secret") echo "--help" ;;
+    "setup secret set") echo "--stdin --help" ;;
+    "setup secret list") echo "--json --help" ;;
+    "setup secret remove") echo "--help" ;;
   esac
 }
 

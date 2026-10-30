@@ -14,6 +14,7 @@ from docket.governance import secrets as _secrets
 from docket.interfaces.cli.app import app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import setup_notify as _setup_notify
+from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
 from docket.operator import channel as _chan
 from docket.operator import inbox as _inbox_module
@@ -92,7 +93,7 @@ class TestEnableTelegram:
         assert _bindings() == {}
 
     def test_the_function_keeps_a_stored_token_when_given_none(self, two_pods: list[str]) -> None:
-        _setup_notify.store_secret("TELEGRAM_BOT_TOKEN", "kept")
+        _secrets.store_secret("TELEGRAM_BOT_TOKEN", "kept")
         written = _setup_notify.enable_telegram(["7"], None, test=False)
         assert written.secret == "" and written.bindings == ["alpha-lead", "beta-lead"]
         assert _secrets.secret_value("TELEGRAM_BOT_TOKEN") == "kept"
@@ -137,8 +138,8 @@ class TestStoreSecretBackend:
         empty.mkdir()
         monkeypatch.setenv("PATH", str(empty))
         monkeypatch.setenv("DOCKET_SECRETS_BACKEND", "keyring")
-        with pytest.raises(_setup_notify.NotifySetupError, match="secret-tool"):
-            _setup_notify.store_secret("TELEGRAM_BOT_TOKEN", "123:plaintext-must-not-land")
+        with pytest.raises(Unavailable, match="secret-tool"):
+            _secrets.store_secret("TELEGRAM_BOT_TOKEN", "123:plaintext-must-not-land")
         assert _secrets.load_secrets() == {}
         assert not current_home().secrets_file.exists()
 

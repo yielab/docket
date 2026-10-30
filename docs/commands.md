@@ -867,6 +867,36 @@ Remove a configured server.
 
 Example: docket setup mcp remove playwright
 
+### setup secret
+
+**Usage:** `docket setup secret`
+
+Secrets stored under any name, for a secret:<name> reference to resolve.
+
+### setup secret set
+
+**Usage:** `docket setup secret set`
+
+Store a secret; the value comes from a hidden prompt or --stdin, never an argument.
+
+Example: printf '%s' "$TOKEN" | docket setup secret set service-token --stdin
+
+### setup secret list
+
+**Usage:** `docket setup secret list`
+
+List stored secrets: names and dates, never values.
+
+Example: docket setup secret list
+
+### setup secret remove
+
+**Usage:** `docket setup secret remove`
+
+Delete a stored secret.
+
+Example: docket setup secret remove service-token
+
 
 ---
 
