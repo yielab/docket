@@ -61,7 +61,7 @@ def _rows(pod: str = "demo") -> list[dict[str, Any]]:
     return _quota.quota_rows(pod, _policy.limits_for(None, pod))
 
 
-def _world() -> tuple[ToolRegistry, list[dict[str, Any]]]:
+def _world(*names: str) -> tuple[ToolRegistry, list[dict[str, Any]]]:
     sent: list[dict[str, Any]] = []
 
     def handler(args: dict[str, Any], _ctx: ToolContext) -> ToolOutcome:
@@ -69,20 +69,23 @@ def _world() -> tuple[ToolRegistry, list[dict[str, Any]]]:
         return ToolOutcome(ok=True, content="sent")
 
     registry = ToolRegistry()
-    registry.register(
-        Tool(SEND, "send", {"type": "object", "properties": {}}, handler, kind="send")
-    )
+    for name in names or (SEND,):
+        registry.register(
+            Tool(name, "send", {"type": "object", "properties": {}}, handler, kind="send")
+        )
     return registry, sent
 
 
-def _send(registry: ToolRegistry, ctx: ToolContext, n: int, *, grant: bool = True) -> Any:
-    """Send call number *n*, pre-granted by a person unless *grant* is False."""
+def _send(
+    registry: ToolRegistry, ctx: ToolContext, n: int, *, grant: bool = True, tool: str = SEND
+) -> Any:
+    """Send call number *n* of *tool*, pre-granted by a person unless *grant* is False."""
     args = {"to": "guest@example.test", "n": n}
     if grant:
-        digest = canonical_args_digest(SEND, args)
-        token = _pregrant.create_pregrant(ctx.project, ctx.role, SEND, digest, channel="cli")
-        ctx.pregrants = (*ctx.pregrants, Pregrant(token, SEND, digest))
-    return dispatch_tool(ToolCall(f"c{n}", SEND, json.dumps(args)), ctx, registry)
+        digest = canonical_args_digest(tool, args)
+        token = _pregrant.create_pregrant(ctx.project, ctx.role, tool, digest, channel="cli")
+        ctx.pregrants = (*ctx.pregrants, Pregrant(token, tool, digest))
+    return dispatch_tool(ToolCall(f"c{n}", tool, json.dumps(args)), ctx, registry)
 
 
 class TestTheClause:
@@ -91,6 +94,7 @@ class TestTheClause:
         [
             "{kind: send, count: 2, per: day}",
             "{tool: mcp__outbox__send, count: 5, per: hour}",
+            "{service: crm, count: 1, per: day}",
         ],
     )
     def test_a_valid_limit_passes_the_validator(self, limit: str) -> None:
@@ -107,6 +111,9 @@ class TestTheClause:
             ("limit: {kind: write, count: 2, per: day}", "kind"),
             ("limit: {count: 2, per: day}", "kind"),
             ("limit: {kind: send, tool: x, count: 2, per: day}", "kind"),
+            ("limit: {service: crm, tool: x, count: 2, per: day}", "service"),
+            ("limit: {service: crm, kind: send, count: 2, per: day}", "service"),
+            ("limit: {service: '', count: 2, per: day}", "service"),
             ("limit: {tool: '', count: 2, per: day}", "tool"),
             ("limit: {kind: send, count: 2, per: day, burst: 1}", "burst"),
             ("limit: 3", "limit"),
@@ -270,3 +277,55 @@ class TestTheCount:
             _gate.govern(call, _ctx())
 
         assert _rows()[0]["used"] == 0
+
+
+CRM_CREATE, CRM_UPDATE, ERP_CREATE = "svc__crm__create", "svc__crm__update", "svc__erp__create"
+LIMIT_CRM = "kind: policy\nname: crm-cap\nappliesTo: [actor]\nlimit: {service: crm, count: 1, per: day}\nthen: block\n"
+
+
+class TestPerService:
+    def test_a_service_limit_blocks_the_second_send_to_that_service_only(
+        self, clock: _Clock
+    ) -> None:
+        _policy_file(LIMIT_CRM)
+        registry, sent = _world(CRM_CREATE, CRM_UPDATE, ERP_CREATE)
+        ctx = _ctx()
+
+        first = _send(registry, ctx, 1, tool=CRM_CREATE)
+        second = _send(registry, ctx, 2, tool=CRM_UPDATE)  # another operation of the same service
+        other = _send(registry, ctx, 3, tool=ERP_CREATE)
+
+        assert first.executed and other.executed and not second.executed
+        assert len(sent) == 2
+        assert second.denied and "1/1 per day" in second.reason
+        assert second.policy_id == "crm-cap"
+
+    def test_a_service_limit_does_not_cover_a_send_that_is_no_service_tool(
+        self, clock: _Clock
+    ) -> None:
+        _policy_file(LIMIT_CRM)
+        registry, _sent = _world(SEND, "svc__crm")  # a plain send tool; a name without an operation
+        ctx = _ctx()
+
+        assert all(
+            _send(registry, ctx, n, tool=tool).executed
+            for n, tool in enumerate([SEND, "svc__crm", SEND, "svc__crm"], 1)
+        )
+        assert _rows() == [{"scope": "crm", "used": 0, "count": 1, "per": "day"}]
+
+    def test_the_status_row_names_the_service_and_counts_its_sends(self, clock: _Clock) -> None:
+        _policy_file(LIMIT_CRM)
+        registry, _sent = _world(CRM_CREATE, ERP_CREATE)
+        ctx = _ctx()
+        _send(registry, ctx, 1, tool=CRM_CREATE)
+        _send(registry, ctx, 2, tool=ERP_CREATE)
+
+        assert _rows() == [{"scope": "crm", "used": 1, "count": 1, "per": "day"}]
+        assert _quota.row_text(_rows()[0]) == "crm 1/1 today"
+
+    def test_a_service_limit_does_not_count_another_pod(self, clock: _Clock) -> None:
+        _policy_file(LIMIT_CRM)
+        registry, _sent = _world(CRM_CREATE)
+
+        assert _send(registry, _ctx("a"), 1, tool=CRM_CREATE).executed
+        assert _send(registry, _ctx("b"), 2, tool=CRM_CREATE).executed

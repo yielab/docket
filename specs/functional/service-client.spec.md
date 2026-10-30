@@ -1,10 +1,11 @@
 # Service Client Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Implemented in part: the document, its access rule, its registration and its scopes
 (`kernel/service.py`, `teams/services.py`, `docket setup service`, `docket pod update|export`). No
 operation is a tool yet and no call is made: the call and its perimeter, and the tools, are
-separate work.
+separate work. Requirements 40-41 hold at the gate for any tool named `svc__<service>__<operation>`
+(quota) or marked `deletes` (approval); the service tool that sets the mark is separate work.
 **Last Updated**: 2026-10-30
 
 ## Purpose
@@ -26,11 +27,12 @@ This specification covers:
   (`pod update`, `pod export`)
 - The rule that a service and an MCP server never share a name
 - `docket setup service add|list|remove`
+- How writing operations are handled apart: the quota per service and the approval of a `DELETE`
 
 This specification does NOT cover:
 
 - Making a call, resolving a secret, the host perimeter, the size and time bounds (the call)
-- Turning an operation into a tool, its quota or its approval (the tools)
+- Turning an operation into a tool (the tools)
 - Importing operations from an OpenAPI document
 - OAuth grants of any kind
 
@@ -90,6 +92,18 @@ This specification does NOT cover:
     the second name, naming both, and write nothing.
 16. `docket pod update` **MUST** record each `services/` file in `applied.lock` as kind `service`,
     so a change to one is drift (`config-format.spec.md`, "Scopes, references and the lockfile").
+
+### Writes
+
+40. A service's `send` operations **MUST** be counted per service. A policy `limit` with
+    `service: <name>` (`security-gates.spec.md`, Policy format v1 requirement 9) **MUST** cover
+    every `send` operation of that service, the tools named `svc__<name>__<operation>`, and no
+    tool of another service or of none: with `count: 1`, the second send to the service in the
+    window is blocked and a send to another service is not. A quota is never per operation.
+41. An approval of a `DELETE` operation **MUST** offer `approve_once` and `deny` only; `approve_task`
+    sent for it **MUST** be refused (`security-gates.spec.md`, in-turn tool-call gate 19). The tool
+    built from a `DELETE` operation **MUST** be marked `deletes`, the field the gate reads; a
+    `POST`, `PUT` or `PATCH` keeps the three options.
 
 ### Registration
 
