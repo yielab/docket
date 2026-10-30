@@ -161,6 +161,10 @@ class Tool:
     kind: ToolKind = "read"
     ends_turn: bool = False
     pregranted: bool = False
+    # Added to the audit row of this tool's `send` calls and refusals (a service: method and host).
+    audit_detail: str = ""
+    # A call that deletes (a service `DELETE`): its approval offers once-or-deny only.
+    deletes: bool = False
 
     @property
     def required_args(self) -> tuple[str, ...]:
@@ -276,7 +280,7 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         result.error = result.reason
         return result
 
-    gate_call = GateCall(tool, call.id, args)
+    gate_call = GateCall(tool, call.id, args, tool.audit_detail)
     decision = tool_gate.govern(gate_call, ctx)
     result.decision = decision.decision
     result.reason = decision.reason

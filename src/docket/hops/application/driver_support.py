@@ -24,6 +24,7 @@ from docket.agent.ports import (
 )
 from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
+from docket.agent.tools import service_tools as _service_tools
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.application.base_view import base_commit_view
@@ -41,6 +42,7 @@ from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _archetypes
+from docket.teams import services as _services
 from docket.teams.models import AgentMeta
 from docket.teams.roles import BUILTIN_TOOL_KINDS
 from docket.teams.workspace import repo_view as _repo_view
@@ -127,6 +129,25 @@ def _resolve_server_secrets(
                 _mcp.McpServerLoadResult(server.name, ok=False, kind=server.kind, error=str(exc))
             )
     return loadable, unavailable
+
+
+def _load_service_tools(registry: ToolRegistry, project: str = "") -> list[Any]:
+    """Fold the turn's declared services into *registry*, one tool per operation. One whose secret
+    is not stored is left out: a failed result and a ``service_client.unavailable`` audit event
+    naming the service, header and secret."""
+    loadable: list[_service_tools.ResolvedService] = []
+    unavailable: list[_service_tools.ServiceLoadResult] = []
+    for config in _services.load_services(project):
+        try:
+            headers, secrets = _services.resolve_auth(config)
+        except _services.ServiceSecretError as exc:
+            tool_gate.audit_event("service_client.unavailable", str(exc))
+            unavailable.append(
+                _service_tools.ServiceLoadResult(config.name, ok=False, error=str(exc))
+            )
+            continue
+        loadable.append(_service_tools.ResolvedService(config, headers, secrets))
+    return [*unavailable, *_service_tools.load_service_tools(registry, services=loadable)]
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:

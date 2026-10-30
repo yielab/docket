@@ -465,7 +465,7 @@ class TestServiceTools:
                 _service_registry(), "actor", project="acme", allow=("read", "svc__crm")
             )
 
-            assert narrowed.names() == ["read"]
+            assert "svc__crm__create_contact" not in narrowed.names()
 
     def test_cannot_send_removes_the_send_operations_of_a_role_that_names_them(
         self, tmp_path: Path

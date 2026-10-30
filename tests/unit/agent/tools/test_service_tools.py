@@ -190,3 +190,31 @@ def test_the_load_reports_what_it_registered() -> None:
         True,
         ("svc__crm__get_contact", "svc__crm__create_contact", "svc__crm__ping"),
     )
+
+
+def test_only_a_delete_operation_s_tool_deletes() -> None:
+    config = ServiceConfig.model_validate(
+        {
+            "name": "crm",
+            "baseUrl": "https://api.example.com",
+            "operations": [
+                {
+                    "name": "drop",
+                    "method": "DELETE",
+                    "path": "/c/{id}",
+                    "params": [{"name": "id", "in": "path"}],
+                },
+                {"name": "add", "method": "POST", "path": "/c"},
+                {"name": "get", "method": "GET", "path": "/c"},
+            ],
+        }
+    )
+    registry = ToolRegistry()
+    _st.load_service_tools(registry, services=[_st.ResolvedService(config)], call=_Recorder())
+
+    flags = {n: (_tool(registry, n).kind, _tool(registry, n).deletes) for n in registry.names()}
+    assert flags == {
+        "svc__crm__add": ("send", False),
+        "svc__crm__drop": ("send", True),
+        "svc__crm__get": ("read", False),
+    }
