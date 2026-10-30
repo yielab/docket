@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -34,6 +36,20 @@ def ctx(tmp_path: Path) -> ToolContext:
 def final(text: str = "done") -> ChatResponse:
     return ChatResponse(
         ok=True, message=assistant(text), finish_reason="stop", usage=TokenUsage(5, 5)
+    )
+
+
+def tool_calls(*names_and_arguments: tuple[str, dict[str, Any]]) -> ChatResponse:
+    """One model message that calls each ``(tool, arguments)`` in order."""
+    calls = [
+        ToolCall(id=f"c-{i}", name=name, arguments=json.dumps(arguments))
+        for i, (name, arguments) in enumerate(names_and_arguments)
+    ]
+    return ChatResponse(
+        ok=True,
+        message=assistant("", tool_calls=calls),
+        finish_reason="tool_calls",
+        usage=TokenUsage(5, 5),
     )
 
 

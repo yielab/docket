@@ -14,6 +14,9 @@ _NAME = r"^[a-z][a-z0-9_]*$"
 MAX_COLUMNS = 40
 
 RECORDS_TOOL_PREFIX = "rec__"
+# The allow-list entry that names every record tool of the pod.
+RECORDS_ALL_ENTRY = "rec"
+RECORDS_QUERY_TOOL = RECORDS_TOOL_PREFIX + "query"
 
 
 def records_tool_name(set_name: str = "", operation: str = "") -> str:

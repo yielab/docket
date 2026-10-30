@@ -12,12 +12,13 @@ from typing import Any
 import pytest
 from tests.support.llm import RecordingScriptedBackend as _ScriptedBackend
 from tests.support.llm import final as _final
+from tests.support.llm import tool_calls
 from tests.support.pods import write_meta_overrides as _write_meta
 from tests.support.roles import write_role_overlay
 from tests.support.trace import audit_entries
 from tests.support.turns import run_turn, tool_replies
 
-from docket.agent.ports import DOCKET_HOP_STEP, ChatResponse, TokenUsage, ToolCall, assistant
+from docket.agent.ports import DOCKET_HOP_STEP
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.hops.application.driver import DocketDriver
@@ -40,25 +41,18 @@ _LEADS = RecordSet(
 )
 
 
-def _calls(*names_and_arguments: tuple[str, dict[str, Any]]) -> ChatResponse:
-    calls = [
-        ToolCall(id=f"c-{i}", name=name, arguments=json.dumps(arguments))
-        for i, (name, arguments) in enumerate(names_and_arguments)
-    ]
-    return ChatResponse(
-        ok=True,
-        message=assistant("", tool_calls=calls),
-        finish_reason="tool_calls",
-        usage=TokenUsage(5, 5),
-    )
-
-
 @pytest.fixture
 def workdir(tmp_path: Path) -> Path:
     _fleet.disable_sandbox_isolation()
     work = tmp_path / "work"
     work.mkdir()
     _write_meta("impl-1", role="implementer", work_dir=str(work))
+    folder = current_home().pod_config_dir("acme") / "records"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "leads.yaml").write_text(
+        "kind: records\nname: leads\nkey: email\ncolumns:\n"
+        "  - {name: email, type: string, required: true}\n  - {name: score, type: integer}\n"
+    )
     _records.ensure_set("acme", _LEADS)
     return work
 
@@ -84,7 +78,7 @@ class TestAdd:
         self, workdir: Path
     ) -> None:
         backend = _ScriptedBackend(
-            [_calls(_add("a@b.test", score=3), _add("a@b.test", score=9)), _final()]
+            [tool_calls(_add("a@b.test", score=3), _add("a@b.test", score=9)), _final()]
         )
 
         _turn(backend, task="t-7", step="scan")
@@ -95,7 +89,7 @@ class TestAdd:
         assert _rows() == [("a@b.test", "t-7", "scan")]
 
     def test_a_column_docket_fills_is_refused_and_nothing_is_written(self, workdir: Path) -> None:
-        backend = _ScriptedBackend([_calls(_add("a@b.test", _task="forged")), _final()])
+        backend = _ScriptedBackend([tool_calls(_add("a@b.test", _task="forged")), _final()])
 
         _turn(backend)
 
@@ -104,7 +98,7 @@ class TestAdd:
         assert _rows() == []
 
     def test_a_missing_required_column_is_refused_naming_it(self, workdir: Path) -> None:
-        backend = _ScriptedBackend([_calls(("rec__leads__add", {"score": 1})), _final()])
+        backend = _ScriptedBackend([tool_calls(("rec__leads__add", {"score": 1})), _final()])
 
         _turn(backend)
 
@@ -116,7 +110,7 @@ class TestUpdate:
     def test_an_update_by_key_changes_the_row_and_stamps_the_hop(self, workdir: Path) -> None:
         backend = _ScriptedBackend(
             [
-                _calls(
+                tool_calls(
                     _add("a@b.test", score=1),
                     (
                         "rec__leads__update",
@@ -137,7 +131,7 @@ class TestQueryAndExport:
     def test_query_returns_the_rows(self, workdir: Path) -> None:
         backend = _ScriptedBackend(
             [
-                _calls(
+                tool_calls(
                     _add("a@b.test", score=3), ("rec__query", {"sql": "SELECT email FROM leads"})
                 ),
                 _final(),
@@ -151,7 +145,7 @@ class TestQueryAndExport:
 
     def test_a_statement_that_writes_is_refused(self, workdir: Path) -> None:
         backend = _ScriptedBackend(
-            [_calls(_add("a@b.test"), ("rec__query", {"sql": "DELETE FROM leads"})), _final()]
+            [tool_calls(_add("a@b.test"), ("rec__query", {"sql": "DELETE FROM leads"})), _final()]
         )
 
         _turn(backend)
@@ -162,7 +156,7 @@ class TestQueryAndExport:
     def test_export_writes_the_file_and_the_rows_stay_out_of_the_reply(self, workdir: Path) -> None:
         backend = _ScriptedBackend(
             [
-                _calls(
+                tool_calls(
                     _add("secret@b.test"),
                     ("rec__export", {"sql": "SELECT email FROM leads", "path": "report.csv"}),
                 ),
@@ -180,7 +174,7 @@ class TestQueryAndExport:
     def test_export_as_markdown(self, workdir: Path) -> None:
         backend = _ScriptedBackend(
             [
-                _calls(
+                tool_calls(
                     _add("a@b.test"),
                     (
                         "rec__export",
@@ -198,7 +192,7 @@ class TestQueryAndExport:
     def test_a_path_outside_the_workdir_is_refused_and_writes_nothing(self, workdir: Path) -> None:
         backend = _ScriptedBackend(
             [
-                _calls(
+                tool_calls(
                     _add("a@b.test"),
                     ("rec__export", {"sql": "SELECT email FROM leads", "path": "../x"}),
                 ),
@@ -272,7 +266,7 @@ class TestTheJail:
             base.register(Tool(name="probe", description="p", parameters={}, handler=probe))
             return base
 
-        backend = _ScriptedBackend([_calls(("probe", {})), _final()])
+        backend = _ScriptedBackend([tool_calls(("probe", {})), _final()])
         res = DocketDriver(
             backend_factory=lambda model: backend, registry_factory=registry
         ).run_turn("impl-1", "agent:impl-1:default", "go", 60, {}, trace_project="acme")

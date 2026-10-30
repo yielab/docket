@@ -55,6 +55,7 @@ from docket.hops.application.driver_support import (
     _consult_mode,
     _load_agent_meta,
     _load_mcp_tools,
+    _load_records_tools,
     _load_service_tools,
     _loop_config,
     _max_consultations,
@@ -281,7 +282,7 @@ class DocketDriver:
                 resolved_project, resolved_session_key, meta.role, trace_task_id or ""
             ),
         )
-        # MCP and service tools are folded in before the turn loop narrows by role, so a
+        # MCP, service and record tools are folded in before the turn loop narrows by role, so a
         # write-denying role cannot keep a write-capable one (teams/roles.py registry_for_role);
         # ``ctx.project`` is the pod whose `mcpServers` selection and services apply.
         registry = self.registry_factory()
@@ -289,6 +290,7 @@ class DocketDriver:
         register_closing_tool(registry, verdict_gate, offer)
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
         _load_service_tools(registry, ctx.project)
+        _load_records_tools(registry, ctx.project)
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
         loop_config = _loop_config(

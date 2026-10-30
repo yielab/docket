@@ -53,6 +53,7 @@ import yaml  # type: ignore[import-untyped]
 from docket.agent.tools.registry import ToolKind
 from docket.kernel.errors import CanonicalFormRefused
 from docket.kernel.home import current_home
+from docket.kernel.records import RECORDS_ALL_ENTRY, RECORDS_TOOL_PREFIX
 from docket.kernel.service import SERVICE_TOOL_PREFIX, service_of_tool
 from docket.platform import mkdir_private
 from docket.teams.builtin_roles import (
@@ -236,17 +237,18 @@ SEND_KIND = "send"
 
 
 def allow_list_names(allow: tuple[str, ...], tool_name: str) -> bool:
-    """Whether the allow-list *allow* names *tool_name*: the exact name, or, for an MCP tool, its
-    server (`mcp__<server>` names every tool of that server), or, for a service operation, its
-    service (`svc__<service>` names every operation of that service)."""
+    """Whether *allow* names *tool_name*: the exact name, or the server (`mcp__<server>`), service
+    (`svc__<service>`), record set (`rec__<set>`) or whole pod (`rec`) it belongs to."""
     return any(_entry_names(entry, tool_name) for entry in allow)
 
 
 def _entry_names(entry: str, tool_name: str) -> bool:
     if tool_name == entry:
         return True
-    if entry.startswith(MCP_TOOL_PREFIX):
+    if entry.startswith((MCP_TOOL_PREFIX, RECORDS_TOOL_PREFIX)):
         return tool_name.startswith(f"{entry}__")
+    if entry == RECORDS_ALL_ENTRY:
+        return tool_name.startswith(RECORDS_TOOL_PREFIX)
     service = entry[len(SERVICE_TOOL_PREFIX) :]
     return (
         entry.startswith(SERVICE_TOOL_PREFIX)
@@ -258,13 +260,10 @@ def _entry_names(entry: str, tool_name: str) -> bool:
 
 def unknown_allow_list_tools(tools: tuple[str, ...]) -> list[str]:
     """The names in a role's `tools` allow-list that docket ships no tool for: not built-in, not a
-    step tool and not in the MCP or service namespace."""
-    known = BUILTIN_TOOL_KINDS.keys() | set(STEP_TOOL_NAMES)
-    return [
-        t
-        for t in dict.fromkeys(tools)
-        if t not in known and not t.startswith((MCP_TOOL_PREFIX, SERVICE_TOOL_PREFIX))
-    ]
+    step tool and not in the MCP, service or records namespace."""
+    known = BUILTIN_TOOL_KINDS.keys() | set(STEP_TOOL_NAMES) | {RECORDS_ALL_ENTRY}
+    namespaces = (MCP_TOOL_PREFIX, SERVICE_TOOL_PREFIX, RECORDS_TOOL_PREFIX)
+    return [t for t in dict.fromkeys(tools) if t not in known and not t.startswith(namespaces)]
 
 
 def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
@@ -282,7 +281,9 @@ def validate_archetype_dict(name: str, doc: dict[str, Any]) -> list[str]:
         errors.append(
             f"archetype {name!r}: tools names no tool docket ships: {', '.join(unknown)} "
             f"(known: {', '.join(known)}; an MCP tool is {MCP_TOOL_PREFIX}<server>__<tool>, "
-            f"a service operation is {SERVICE_TOOL_PREFIX}<service>__<operation>)"
+            f"a service operation is {SERVICE_TOOL_PREFIX}<service>__<operation>; "
+            f"a record tool is {RECORDS_TOOL_PREFIX}<set>, {RECORDS_TOOL_PREFIX}query, "
+            f"{RECORDS_TOOL_PREFIX}export or {RECORDS_ALL_ENTRY})"
         )
 
     sample_variables = {

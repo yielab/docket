@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tests.support.registry import tool_named
+
 from docket.agent.tools import service_tools as _st
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.kernel.service import ServiceConfig
@@ -64,12 +66,6 @@ def _load(call: _Recorder | None = None) -> tuple[ToolRegistry, _Recorder]:
     return registry, recorder
 
 
-def _tool(registry: ToolRegistry, name: str) -> Tool:
-    tool = registry.get(name)
-    assert tool is not None
-    return tool
-
-
 def _run(tool: Tool, args: dict[str, Any]) -> ToolOutcome:
     return tool.handler(args, ToolContext())
 
@@ -82,20 +78,20 @@ def test_each_operation_is_one_tool_of_its_access() -> None:
         "svc__crm__get_contact",
         "svc__crm__ping",
     ]
-    assert [_tool(registry, n).kind for n in registry.names()] == ["send", "read", "send"]
+    assert [tool_named(registry, n).kind for n in registry.names()] == ["send", "read", "send"]
 
 
 def test_the_description_names_the_service_and_the_operation() -> None:
     registry, _ = _load()
 
-    assert _tool(registry, "svc__crm__get_contact").description == "[service:crm] One contact."
-    assert _tool(registry, "svc__crm__ping").description == "[service:crm] GET /ping"
+    assert tool_named(registry, "svc__crm__get_contact").description == "[service:crm] One contact."
+    assert tool_named(registry, "svc__crm__ping").description == "[service:crm] GET /ping"
 
 
 def test_the_schema_has_a_property_per_parameter_and_the_body() -> None:
     registry, _ = _load()
 
-    get = _tool(registry, "svc__crm__get_contact").parameters
+    get = tool_named(registry, "svc__crm__get_contact").parameters
     assert get["type"] == "object"
     assert get["properties"] == {
         "id": {"type": "integer"},
@@ -103,7 +99,7 @@ def test_the_schema_has_a_property_per_parameter_and_the_body() -> None:
         "q": {"type": "string"},
     }
     assert get["required"] == ["id"]
-    post = _tool(registry, "svc__crm__create_contact").parameters
+    post = tool_named(registry, "svc__crm__create_contact").parameters
     assert post["properties"]["body"]["properties"] == {"email": {"type": "string"}}
     assert post["required"] == ["body"]
 
@@ -111,7 +107,7 @@ def test_the_schema_has_a_property_per_parameter_and_the_body() -> None:
 def test_a_call_builds_the_request_from_the_document_and_the_resolved_header() -> None:
     registry, recorder = _load()
 
-    outcome = _run(_tool(registry, "svc__crm__get_contact"), {"id": 7, "verbose": True})
+    outcome = _run(tool_named(registry, "svc__crm__get_contact"), {"id": 7, "verbose": True})
 
     assert outcome == ToolOutcome(True, content="seen")
     (request,) = recorder.requests
@@ -131,7 +127,7 @@ def test_a_call_builds_the_request_from_the_document_and_the_resolved_header() -
 def test_a_body_is_sent_as_given() -> None:
     registry, recorder = _load()
 
-    _run(_tool(registry, "svc__crm__create_contact"), {"body": {"email": "a@b.test"}})
+    _run(tool_named(registry, "svc__crm__create_contact"), {"body": {"email": "a@b.test"}})
 
     assert recorder.requests[0].body == {"email": "a@b.test"}
 
@@ -139,7 +135,7 @@ def test_a_body_is_sent_as_given() -> None:
 def test_an_undeclared_argument_is_refused_before_any_call() -> None:
     registry, recorder = _load()
 
-    outcome = _run(_tool(registry, "svc__crm__get_contact"), {"id": 1, "extra": "x"})
+    outcome = _run(tool_named(registry, "svc__crm__get_contact"), {"id": 1, "extra": "x"})
 
     assert not outcome.ok and outcome.refusal == "service_bad_request"
     assert "extra" in outcome.error and recorder.requests == []
@@ -154,7 +150,7 @@ def test_an_argument_of_the_wrong_type_is_refused_naming_it() -> None:
         {"id": 1, "q": {"a": 1}},
         {"id": 1, "verbose": "y"},
     ):
-        outcome = _run(_tool(registry, "svc__crm__get_contact"), args)
+        outcome = _run(tool_named(registry, "svc__crm__get_contact"), args)
         assert not outcome.ok and outcome.refusal == "service_bad_request"
     assert recorder.requests == []
 
@@ -163,20 +159,21 @@ def test_the_audit_detail_names_the_method_and_host_only() -> None:
     registry, _ = _load()
 
     assert (
-        _tool(registry, "svc__crm__get_contact").audit_detail == "method=GET host='api.example.com'"
+        tool_named(registry, "svc__crm__get_contact").audit_detail
+        == "method=GET host='api.example.com'"
     )
-    assert _tool(registry, "svc__crm__create_contact").audit_detail == (
+    assert tool_named(registry, "svc__crm__create_contact").audit_detail == (
         "method=POST host='api.example.com'"
     )
 
 
 def test_a_name_already_registered_is_skipped_never_replaced() -> None:
     registry, _ = _load()
-    before = _tool(registry, "svc__crm__ping")
+    before = tool_named(registry, "svc__crm__ping")
 
     results = _st.load_service_tools(registry, services=[_SERVICE], call=_Recorder())
 
-    assert _tool(registry, "svc__crm__ping") is before
+    assert tool_named(registry, "svc__crm__ping") is before
     assert results[0].ok and results[0].registered == ()
 
 
@@ -212,7 +209,9 @@ def test_only_a_delete_operation_s_tool_deletes() -> None:
     registry = ToolRegistry()
     _st.load_service_tools(registry, services=[_st.ResolvedService(config)], call=_Recorder())
 
-    flags = {n: (_tool(registry, n).kind, _tool(registry, n).deletes) for n in registry.names()}
+    flags = {
+        n: (tool_named(registry, n).kind, tool_named(registry, n).deletes) for n in registry.names()
+    }
     assert flags == {
         "svc__crm__add": ("send", False),
         "svc__crm__drop": ("send", True),
@@ -257,15 +256,15 @@ def _ctx(task: str = "t-1", step: str = "build") -> ToolContext:
 
 def _key(tool: str, args: dict[str, Any], ctx: ToolContext, **kw: Any) -> str:
     registry, recorder = _identity_registry(**kw)
-    _tool(registry, tool).handler(args, ctx)
+    tool_named(registry, tool).handler(args, ctx)
     return recorder.requests[0].headers.get(_IDEM, "")
 
 
 def test_every_call_carries_the_task_id_from_the_hop() -> None:
     registry, recorder = _identity_registry()
 
-    _tool(registry, "svc__crm__get").handler({}, _ctx("t-9"))
-    _tool(registry, "svc__crm__get").handler({}, ToolContext())
+    tool_named(registry, "svc__crm__get").handler({}, _ctx("t-9"))
+    tool_named(registry, "svc__crm__get").handler({}, ToolContext())
 
     assert recorder.requests[0].headers["X-Docket-Task"] == "t-9"
     assert recorder.requests[0].headers["Authorization"] == "Bearer t"
@@ -276,7 +275,9 @@ def test_a_model_argument_cannot_name_or_override_either_header() -> None:
     registry, recorder = _identity_registry()
 
     for name in ("X-Docket-Task", _IDEM, "headers"):
-        outcome = _tool(registry, "svc__crm__add").handler({name: "forged", "body": {}}, _ctx())
+        outcome = tool_named(registry, "svc__crm__add").handler(
+            {name: "forged", "body": {}}, _ctx()
+        )
         assert not outcome.ok and outcome.refusal == "service_bad_request"
     assert recorder.requests == []
 
@@ -307,6 +308,6 @@ def test_a_read_and_a_service_without_the_header_carry_no_key() -> None:
 def test_the_documents_timeout_reaches_the_request() -> None:
     registry, recorder = _identity_registry(timeout=7.5)
 
-    _tool(registry, "svc__crm__get").handler({}, _ctx())
+    tool_named(registry, "svc__crm__get").handler({}, _ctx())
 
     assert recorder.requests[0].timeout == 7.5

@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from docket.kernel.records import RECORDS_ALL_ENTRY, RECORDS_QUERY_TOOL
 from docket.kernel.service import (
     SERVICE_TOOL_PREFIX,
     ServiceConfig,
@@ -119,13 +120,15 @@ def _entry_kinds(entry: str, kinds: Mapping[str, str]) -> set[str]:
 def _send_and_read(
     tools: Sequence[str], denied: Sequence[str], kinds: Mapping[str, str]
 ) -> tuple[list[str], list[str]]:
-    """The send tools and the read tools (`fetch`, a `read` server's or `read` operation) an
-    allow-list names."""
+    """The send tools and the read tools (`fetch`, a `read` server's or `read` operation, the
+    records query) an allow-list names."""
     sends: list[str] = []
     reads: list[str] = []
     for entry in dict.fromkeys(tools):
         if _server_of(entry) is None and not entry.startswith(SERVICE_TOOL_PREFIX):
             if entry == "fetch" and entry not in denied:
+                reads.append(entry)
+            if entry in (RECORDS_ALL_ENTRY, RECORDS_QUERY_TOOL) and "read" not in denied:
                 reads.append(entry)
             continue
         held = _entry_kinds(entry, kinds)

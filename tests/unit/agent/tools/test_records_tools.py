@@ -6,8 +6,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from tests.support.registry import tool_named
+
 from docket.agent.tools import records_tools as _rt
-from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
+from docket.agent.tools.registry import ToolContext, ToolRegistry
 from docket.kernel.records import RecordColumn, RecordSet
 from docket.platform import RecordsError
 from docket.platform.records_store import AddResult, QueryResult, RecordMeta
@@ -35,6 +37,7 @@ class _Store:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
         self.error: RecordsError | None = None
+        self.rows: list[tuple[Any, ...]] = [(1,)]
 
     def _note(self, name: str, *args: Any) -> None:
         self.calls.append((name, args))
@@ -53,7 +56,7 @@ class _Store:
 
     def query(self, sql: str, max_rows: int, max_chars: int, timeout_s: float = 5.0) -> QueryResult:
         self._note("query", sql, max_rows, max_chars)
-        return QueryResult(("n",), [(1,)], 0)
+        return QueryResult(("n",), list(self.rows), 0)
 
     def export(self, sql: str, path: Path, fmt: str, timeout_s: float = 30.0) -> int:
         self._note("export", sql, path, fmt)
@@ -65,12 +68,6 @@ def _load(store: _Store | None = None) -> tuple[ToolRegistry, _Store]:
     registry = ToolRegistry()
     _rt.load_records_tools(registry, store=held, sets=[_LEADS, _NOTES])  # type: ignore[arg-type]
     return registry, held
-
-
-def _tool(registry: ToolRegistry, name: str) -> Tool:
-    tool = registry.get(name)
-    assert tool is not None
-    return tool
 
 
 def _ctx(tmp_path: Path, **more: Any) -> ToolContext:
@@ -95,7 +92,7 @@ class TestNamesKindsAndSchemas:
     def test_reads_are_read_and_everything_that_writes_is_write(self) -> None:
         registry, _ = _load()
 
-        kinds = {name: _tool(registry, name).kind for name in registry.names()}
+        kinds = {name: tool_named(registry, name).kind for name in registry.names()}
 
         assert kinds["rec__query"] == "read"
         assert {k for n, k in kinds.items() if n != "rec__query"} == {"write"}
@@ -103,7 +100,7 @@ class TestNamesKindsAndSchemas:
     def test_add_takes_the_columns_and_requires_the_key_and_required_columns(self) -> None:
         registry, _ = _load()
 
-        schema = _tool(registry, "rec__leads__add").parameters
+        schema = tool_named(registry, "rec__leads__add").parameters
 
         assert schema["properties"] == {
             "email": {"type": "string"},
@@ -117,7 +114,7 @@ class TestNamesKindsAndSchemas:
     def test_update_takes_a_match_and_the_values(self) -> None:
         registry, _ = _load()
 
-        schema = _tool(registry, "rec__leads__update").parameters
+        schema = tool_named(registry, "rec__leads__update").parameters
 
         assert schema["required"] == ["match", "values"]
         assert sorted(schema["properties"]["match"]["properties"]) == ["_id", "email"]
@@ -125,18 +122,18 @@ class TestNamesKindsAndSchemas:
 
     def test_a_name_already_held_is_left_alone(self) -> None:
         registry, _ = _load()
-        before = _tool(registry, "rec__query")
+        before = tool_named(registry, "rec__query")
 
         _rt.load_records_tools(registry, store=_Store(), sets=[_LEADS])  # type: ignore[arg-type]
 
-        assert _tool(registry, "rec__query") is before
+        assert tool_named(registry, "rec__query") is before
 
 
 class TestAdd:
     def test_the_hop_fills_the_columns_docket_owns(self, tmp_path: Path) -> None:
         registry, store = _load()
 
-        out = _tool(registry, "rec__leads__add").handler(
+        out = tool_named(registry, "rec__leads__add").handler(
             {"email": "a@b.test", "score": 2}, _ctx(tmp_path, trace_session_key="s-9")
         )
 
@@ -149,7 +146,7 @@ class TestAdd:
     ) -> None:
         registry, store = _load()
 
-        _tool(registry, "rec__leads__add").handler({"email": "a", "score": 1}, _ctx(tmp_path))
+        tool_named(registry, "rec__leads__add").handler({"email": "a", "score": 1}, _ctx(tmp_path))
 
         assert store.calls[0][1][2].session == "agent:x:y"
 
@@ -159,7 +156,7 @@ class TestAdd:
         registry, store = _load()
 
         for name in ("_id", "_at", "_task", "_session", "_step", "_updated_at"):
-            out = _tool(registry, "rec__leads__add").handler(
+            out = tool_named(registry, "rec__leads__add").handler(
                 {"email": "a", "score": 1, name: "x"}, _ctx(tmp_path)
             )
             assert not out.ok
@@ -169,7 +166,7 @@ class TestAdd:
 
     def test_a_missing_or_null_required_column_is_refused_naming_it(self, tmp_path: Path) -> None:
         registry, store = _load()
-        add = _tool(registry, "rec__leads__add")
+        add = tool_named(registry, "rec__leads__add")
 
         missing = add.handler({"email": "a"}, _ctx(tmp_path))
         null = add.handler({"email": "a", "score": None}, _ctx(tmp_path))
@@ -182,7 +179,7 @@ class TestAdd:
         store.error = RecordsError("column 'score': 'x' is not a valid integer")
         registry, _ = _load(store)
 
-        out = _tool(registry, "rec__leads__add").handler(
+        out = tool_named(registry, "rec__leads__add").handler(
             {"email": "a", "score": "x"}, _ctx(tmp_path)
         )
 
@@ -194,7 +191,7 @@ class TestUpdate:
     def test_the_match_and_values_reach_the_store_with_the_hop(self, tmp_path: Path) -> None:
         registry, store = _load()
 
-        out = _tool(registry, "rec__leads__update").handler(
+        out = tool_named(registry, "rec__leads__update").handler(
             {"match": {"email": "a"}, "values": {"score": 4}}, _ctx(tmp_path)
         )
 
@@ -204,7 +201,7 @@ class TestUpdate:
     def test_a_value_docket_fills_is_refused(self, tmp_path: Path) -> None:
         registry, store = _load()
 
-        out = _tool(registry, "rec__leads__update").handler(
+        out = tool_named(registry, "rec__leads__update").handler(
             {"match": {"_id": 1}, "values": {"_step": "x"}}, _ctx(tmp_path)
         )
 
@@ -213,7 +210,7 @@ class TestUpdate:
 
     def test_a_match_or_values_that_is_not_an_object_is_refused(self, tmp_path: Path) -> None:
         registry, store = _load()
-        update = _tool(registry, "rec__leads__update")
+        update = tool_named(registry, "rec__leads__update")
 
         assert not update.handler({"match": 1, "values": {}}, _ctx(tmp_path)).ok
         assert not update.handler({"match": {"_id": 1}, "values": "x"}, _ctx(tmp_path)).ok
@@ -226,19 +223,35 @@ class TestQuery:
     ) -> None:
         registry, store = _load()
 
-        out = _tool(registry, "rec__query").handler(
+        out = tool_named(registry, "rec__query").handler(
             {"sql": "SELECT 1"}, _ctx(tmp_path, output_cap=2500)
         )
 
         assert json.loads(out.content) == {"columns": ["n"], "rows": [[1]], "cut": 0}
         _, (sql, rows, chars) = store.calls[0]
         assert (sql, rows) == ("SELECT 1", 50)
-        assert 0 < chars < 2500
+        assert chars == 2500
+
+    def test_rows_that_do_not_fit_the_cap_count_as_cut(self, tmp_path: Path) -> None:
+        store = _Store()
+        store.rows = [("x" * 100,)] * 40
+        registry, _ = _load(store)
+
+        out = tool_named(registry, "rec__query").handler(
+            {"sql": "SELECT 1"}, _ctx(tmp_path, output_cap=1000)
+        )
+
+        result = json.loads(out.content)
+        assert len(out.content) <= 1000
+        assert len(result["rows"]) + result["cut"] == 40
+        assert result["cut"] > 0
 
     def test_a_limit_above_the_ceiling_is_held_to_it(self, tmp_path: Path) -> None:
         registry, store = _load()
 
-        _tool(registry, "rec__query").handler({"sql": "SELECT 1", "limit": 5000}, _ctx(tmp_path))
+        tool_named(registry, "rec__query").handler(
+            {"sql": "SELECT 1", "limit": 5000}, _ctx(tmp_path)
+        )
 
         assert store.calls[0][1][1] == 200
 
@@ -246,7 +259,7 @@ class TestQuery:
         registry, store = _load()
 
         for limit in (0, -1, "x", True):
-            out = _tool(registry, "rec__query").handler(
+            out = tool_named(registry, "rec__query").handler(
                 {"sql": "SELECT 1", "limit": limit}, _ctx(tmp_path)
             )
             assert not out.ok
@@ -258,7 +271,7 @@ class TestQuery:
         store.error = RecordsError("the query was refused: not authorized")
         registry, _ = _load(store)
 
-        out = _tool(registry, "rec__query").handler({"sql": "DELETE FROM x"}, _ctx(tmp_path))
+        out = tool_named(registry, "rec__query").handler({"sql": "DELETE FROM x"}, _ctx(tmp_path))
 
         assert not out.ok and "refused" in out.error
 
@@ -267,7 +280,7 @@ class TestExport:
     def test_the_file_is_resolved_in_the_root_and_md_is_markdown(self, tmp_path: Path) -> None:
         registry, store = _load()
 
-        out = _tool(registry, "rec__export").handler(
+        out = tool_named(registry, "rec__export").handler(
             {"sql": "SELECT 1", "format": "md", "path": "out/r.md"}, _ctx(tmp_path)
         )
 
@@ -277,7 +290,9 @@ class TestExport:
     def test_the_format_defaults_to_csv(self, tmp_path: Path) -> None:
         registry, store = _load()
 
-        _tool(registry, "rec__export").handler({"sql": "SELECT 1", "path": "r.csv"}, _ctx(tmp_path))
+        tool_named(registry, "rec__export").handler(
+            {"sql": "SELECT 1", "path": "r.csv"}, _ctx(tmp_path)
+        )
 
         assert store.calls[0][1][2] == "csv"
 
@@ -286,7 +301,7 @@ class TestExport:
     ) -> None:
         registry, store = _load()
 
-        out = _tool(registry, "rec__export").handler(
+        out = tool_named(registry, "rec__export").handler(
             {"sql": "SELECT 1", "path": "../x"}, _ctx(tmp_path)
         )
 
@@ -297,7 +312,7 @@ class TestExport:
     def test_an_unknown_format_is_refused(self, tmp_path: Path) -> None:
         registry, store = _load()
 
-        out = _tool(registry, "rec__export").handler(
+        out = tool_named(registry, "rec__export").handler(
             {"sql": "SELECT 1", "format": "xml", "path": "r"}, _ctx(tmp_path)
         )
 

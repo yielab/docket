@@ -16,6 +16,7 @@ from docket.platform.records_store import (
     Column,
     EnsureResult,
     QueryResult,
+    RecordMeta,
     RecordsError,
     RecordsStore,
 )
@@ -41,6 +42,7 @@ __all__ = [
     "Column",
     "EnsureResult",
     "QueryResult",
+    "RecordMeta",
     "RecordsError",
     "RecordsStore",
     "ServiceRequest",
