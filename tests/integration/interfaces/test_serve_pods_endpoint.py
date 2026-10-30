@@ -172,7 +172,7 @@ class TestSuccess:
         assert status == 201
         assert body["ok"] is True
         assert body["project"] == "demo"
-        assert body["blueprint"] == "software"
+        assert body["blueprint"] == "build"
         ids = sorted(m["id"] for m in body["members"])
         assert ids == ["demo-implementer", "demo-lead"]
         for m in body["members"]:
@@ -191,10 +191,15 @@ class TestSuccess:
 
     def test_explicit_blueprint_is_honoured(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        status, body = _post(f"{url}/pods", {"name": "myops", "blueprint": "ops"}, token)
+        status, body = _post(f"{url}/pods", {"name": "myops", "blueprint": "operate"}, token)
         assert status == 201
-        assert body["blueprint"] == "ops"
-        assert sorted(m["role"] for m in body["members"]) == ["lead", "monitor", "operator"]
+        assert body["blueprint"] == "operate"
+        assert sorted(m["role"] for m in body["members"]) == [
+            "lead",
+            "monitor",
+            "operator",
+            "reviewer",
+        ]
 
 
 # ── idempotence ──────────────────────────────────────────────────────────────
@@ -205,7 +210,7 @@ class TestIdempotence:
         self, live_server: tuple[str, str]
     ) -> None:
         url, token = live_server
-        _pod.build_pod_from_blueprint("demo", "software", location="/src/demo")
+        _pod.build_pod_from_blueprint("demo", "build", location="/src/demo")
         before = sorted(_ids())
 
         status, body = _post(f"{url}/pods", {"name": "demo", "location": "/other/path"}, token)
@@ -248,7 +253,7 @@ class TestIdempotence:
         def provision() -> None:
             name = threading.current_thread().name
             try:
-                outcomes[name] = _pp.provision_pod("race", "software", location="/src/race")
+                outcomes[name] = _pp.provision_pod("race", "build", location="/src/race")
             except Exception as exc:
                 outcomes[name] = exc
 
@@ -264,7 +269,7 @@ class TestIdempotence:
         assert not loser.is_alive()
         assert isinstance(outcomes["winner"], _pp.PodProvisionResult)
         assert isinstance(outcomes["loser"], _pp.PodAlreadyExistsError)
-        assert sorted(_ids()) == ["race-implementer", "race-lead"]
+        assert sorted(_ids()) == ["race-implementer", "race-lead", "race-reviewer"]
         allocation = _store.read_json(current_home().port_alloc_file)
         assert "race" in allocation["allocations"]
         scratch = current_home().pod_scratch_dir("race")
@@ -302,7 +307,7 @@ class TestRollback:
         monkeypatch.setattr(_member_workspace, "write_member_workspace", flaky_write)
 
         with pytest.raises(_pp.PodProvisionError):
-            _pp.provision_pod("flaky", "software", location="/src/flaky")
+            _pp.provision_pod("flaky", "build", location="/src/flaky")
 
         assert calls["n"] == 2
         assert scratch_marker.read_text() == "preserve scratch"
@@ -328,7 +333,7 @@ class TestRollback:
         monkeypatch.setattr(_member_workspace, "write_member_workspace", flaky_write)
 
         with pytest.raises(_pp.PodProvisionError):
-            _pp.provision_pod("flaky", "software", location="/src/flaky")
+            _pp.provision_pod("flaky", "build", location="/src/flaky")
 
         # The Lead really was created (call #1 succeeded) and then rolled back.
         assert calls["n"] == 2
@@ -390,7 +395,7 @@ class TestSharedProvisioningPath:
         # flow (build_pod_from_blueprint is a thin rendering wrapper over
         # provision_pod).
         cli_created = _pod.build_pod_from_blueprint(
-            "cliproj", "software", location="/src/cliproj", source="interactive"
+            "cliproj", "build", location="/src/cliproj", source="interactive"
         )
         assert cli_created
 
@@ -407,6 +412,7 @@ class TestSharedProvisioningPath:
         assert sorted(_ids()) == [
             "cliproj-implementer",
             "cliproj-lead",
+            "cliproj-reviewer",
             "httpproj-implementer",
             "httpproj-lead",
         ]
@@ -431,7 +437,7 @@ class TestOverridesThreaded:
     def test_budget_overrides_blueprint_default(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, _body = _post(
-            f"{url}/pods", {"name": "myresearch", "blueprint": "research", "budget": 42}, token
+            f"{url}/pods", {"name": "myresearch", "blueprint": "respond", "budget": 42}, token
         )
         assert status == 201
         raw = json.loads((_ws("myresearch-lead") / ".docket-meta.json").read_text())
@@ -472,7 +478,7 @@ class TestEnsure:
 
     def test_the_adr_0027_body_creates_then_ensures(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
-        body = {"name": "web-dev", "location": "/src/web", "blueprint": "software", "ensure": True}
+        body = {"name": "web-dev", "location": "/src/web", "blueprint": "build", "ensure": True}
         first_status, first = _post(f"{url}/pods", body, token)
         status, again = _post(f"{url}/pods", body, token)
         assert (first_status, first["created"], first["project"]) == (201, True, "web-dev")

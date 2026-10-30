@@ -713,9 +713,7 @@ class TestAgentAddDeleteAudit:
         with use_home(Home(home)):
             spec_file = tmp_path / "spec.json"
             spec_file.write_text(
-                json.dumps(
-                    {"id": "declaredpod", "blueprint": "software", "codebase": str(tmp_path)}
-                )
+                json.dumps({"id": "declaredpod", "blueprint": "build", "codebase": str(tmp_path)})
             )
 
             rc = run_init(InitRequest(from_file=str(spec_file)))
@@ -723,7 +721,7 @@ class TestAgentAddDeleteAudit:
 
             entries = _entries("agent.add")
             assert len(entries) == 1
-            assert entries[0]["detail"].startswith("declaredpod blueprint=software")
+            assert entries[0]["detail"].startswith("declaredpod blueprint=build")
             assert entries[0]["detail"].endswith("source=declarative")
 
     def test_pod_delete_writes_one_entry(self, tmp_path: Path) -> None:

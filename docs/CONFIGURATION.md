@@ -224,7 +224,7 @@ never a fork. Find what you want to change, then read its section:
 | You want to change… | Layer | How |
 | --- | --- | --- |
 | A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/config/recipes/<name>/`, used by name like the shipped seventeen ([3.10](#310-start-from-a-recipe)) |
-| The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
+| The team shape a new pod gets | Blueprint | `docket init --blueprint build\|respond\|operate\|routine` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pod validate/plan`; run once with `docket run --pipeline <file>` or bind it with `docket pod set pipeline <file>` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
 | What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket pod update`; a step may name its own `model` ([3.4](#34-define-a-custom-role)) |
 | Your own words in front of an agent | Instructions | `INSTRUCTIONS.md`, which docket never writes; your repo's `AGENTS.md` is read by default, screened as untrusted; `docket pod set projectInstructions` names other files ([3.2](#32-change-what-an-agent-is-told), [3.12](#312-agentsmd-the-instructions-your-repository-already-keeps)) |
@@ -405,7 +405,7 @@ What is read **when**:
 ### 3.5 Change the orchestration: pipelines and blueprints
 
 **Blueprints** pick a pod's shape at creation: `docket init --blueprint
-software|research|content|ops|agentic-product`. Only these five exist, and the choice is stored as
+build|respond|operate|routine`. Only these four exist, and the choice is stored as
 `blueprint` in the Lead's meta. Dispatch uses the blueprint's built-in pipeline.
 
 **Pipeline files** declare your own hop order, gates and rework edges. This one runs the custom role
@@ -748,8 +748,8 @@ ship with docket, of five kinds; the full page, generated from the recipes thems
 
 | Kind | Recipes | What `apply` plans on a lean pod |
 |---|---|---|
-| Team | `secure-build`, `research-review`, `ops-approval`, `intake` | roles and members it needs, a pipeline, sometimes a policy |
-| Policy pack | `git-safety`, `no-egress`, `secrets-guard`, `prod-approval` | policy items only: no roster change, no pipeline change |
+| Team | `secure-build`, `research-review`, `intake` | roles and members it needs, a pipeline, sometimes a policy |
+| Policy pack | `git-safety`, `no-egress`, `secrets-guard`, `prod-approval`, `ops-approval`, `outward` | policy items only: no roster change, no pipeline change |
 | Methodology | `tdd`, `spec-first`, `spec-writer`, `reflexion`, `cross-family-review`, `frugal` | the members the practice needs from the built-in and starter roles, and the smallest pipeline that *is* the practice (`frugal` also sets a budget) |
 | Check | `anti-tautology`, `mutation` | a pipeline with a `run:` step that fails the task when its tests prove nothing (`mutation` needs mutmut installed) |
 | Tooling | `code-intel` | MCP servers for the pod (structural search, read-only language intelligence) |

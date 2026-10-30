@@ -17,12 +17,11 @@ from typing import Any
 import pytest
 
 from docket.agent.tools import mcp_client as _mcp_client
-from docket.kernel.templates import RECIPES_DIR
 from docket.sandbox.landlock import landlock_available
 from docket.sandbox.seatbelt import seatbelt_available
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import World
-from tests.support.e2e_workdir import add_workdir_pod, workdir_pod
+from tests.support.e2e_workdir import add_workdir_pod, outward_pack, workdir_pod
 from tests.support.model_server import FakeModel, Request, call, say, write_file
 
 BRIEF = "# Launch brief\n\nOne page, two claims.\n"
@@ -55,12 +54,12 @@ def _run(w: World, *flags: str) -> None:
     w.docket("run", "--pod", w.pod, "--timeout", "30", *flags)
 
 
-def test_a_content_pod_takes_a_task_to_done_with_its_output_in_the_working_directory(
+def test_a_routine_pod_compiles_drafts_and_reviews_to_done_with_its_output_in_the_working_directory(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
     model = fake_model(
         script={
-            "lead": [say("Plan: write brief.md.")],
+            "analyst": [say("Compiled: one page, two claims.")],
             "writer": [write_file("brief.md", BRIEF), say("brief.md is written.")],
             "reviewer": [say("APPROVE")],
         }
@@ -76,10 +75,17 @@ def test_a_content_pod_takes_a_task_to_done_with_its_output_in_the_working_direc
     assert shown.get("worktree") is None
     assert (work_dir / "brief.md").read_text(encoding="utf-8") == BRIEF
     oracles.assert_checkout_untouched(w, head_before)
-    lead = _first_request_text(model.by_role("lead")[0])
-    assert "working directory" in lead
+    assert [
+        (e, r, s) for (e, r, s) in oracles.trace_skeleton(w, w.pod, task_id) if e == "hop_started"
+    ] == [
+        ("hop_started", "analyst", "compile"),
+        ("hop_started", "writer", "draft"),
+        ("hop_started", "reviewer", "review"),
+    ]
+    analyst = _first_request_text(model.by_role("analyst")[0])
+    assert "working directory" in analyst
     for stale in ("repository root", "Implementer", "repository map"):
-        assert stale not in lead, stale
+        assert stale not in analyst, stale
     for request in model.requests:
         text = _first_request_text(request).lower()
         assert "repository map" not in text and "codebase readme" not in text, request.role
@@ -293,7 +299,7 @@ def test_a_pod_reaches_the_network_only_after_the_operators_recorded_yes(
 
     # 3. a second pod on the same machine holds no grant and is still cut off
     second = "e2e-work-two"
-    add_workdir_pod(w, second, "content")
+    add_workdir_pod(w, second, "routine")
     w.pod = second
     task_id, status, exits, hits = _run_reach(w, local_server)
     assert status != "done"
@@ -329,11 +335,12 @@ SEND_ARGS = {"to": "guest@example.test", "body": "The workshop is on Friday."}
 
 
 @pytest.mark.skipif(not _mcp_client._sdk_available(), reason="the optional mcp SDK is absent")
-def test_an_outward_pod_sends_once_and_only_after_a_person_approves(
+def test_a_respond_pod_with_the_outward_pack_sends_once_and_only_after_a_person_approves(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
     model = fake_model(
         script={
+            "lead": [say("Plan: invite the guest.")],
             "researcher": [
                 call("mcp__inbox__lookup", "r1", topic="venue"),
                 say("The venue holds 80 people."),
@@ -347,14 +354,14 @@ def test_an_outward_pod_sends_once_and_only_after_a_person_approves(
             ],
         }
     )
-    w, _work_dir = workdir_pod(world, model)
+    w, _work_dir = workdir_pod(world, model, blueprint="respond")
     script = w.root / "action_server.py"
     script.write_text(_ACTION_SERVER, encoding="utf-8")
     log = w.root / "actions.jsonl"
     server = ("--env", f"ACTION_LOG={log}", "--", sys.executable, str(script))
     w.docket("setup", "mcp", "add", "inbox", "--kind", "read", "--tools", "lookup", *server)
     w.docket("setup", "mcp", "add", "outbox", "--kind", "send", "--tools", "send", *server)
-    w.docket("pod", "update", str(RECIPES_DIR / "outward"), "--pod", w.pod)
+    w.docket("pod", "update", str(outward_pack(w, "mcp__outbox__send")), "--pod", w.pod)
     task_id = w.add_task("Invite the guest to the workshop")
 
     # the actor's send parks the task for a person; nothing has left the machine
@@ -401,6 +408,7 @@ def test_the_approver_of_a_send_sees_the_whole_call_and_every_other_copy_stays_r
 ) -> None:
     model = fake_model(
         script={
+            "lead": [say("Plan: invite the guest.")],
             "researcher": [say("Nothing to look up.")],
             "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
             "reviewer": [say("APPROVE")],
@@ -411,14 +419,14 @@ def test_the_approver_of_a_send_sees_the_whole_call_and_every_other_copy_stays_r
             ],
         }
     )
-    w, _work_dir = workdir_pod(world, model)
+    w, _work_dir = workdir_pod(world, model, blueprint="respond")
     script = w.root / "action_server.py"
     script.write_text(_DETAIL_SERVER, encoding="utf-8")
     log = w.root / "actions.jsonl"
     server = ("--env", f"ACTION_LOG={log}", "--", sys.executable, str(script))
     w.docket("setup", "mcp", "add", "inbox", "--kind", "read", "--tools", "lookup", *server)
     w.docket("setup", "mcp", "add", "outbox", "--kind", "send", "--tools", "send", *server)
-    w.docket("pod", "update", str(RECIPES_DIR / "outward"), "--pod", w.pod)
+    w.docket("pod", "update", str(outward_pack(w, "mcp__outbox__send")), "--pod", w.pod)
     task_id = w.add_task("Invite the guest to the workshop")
     w.docket("run", "--pod", w.pod, "--timeout", "30", check=False)
     assert w.task(task_id)["task"]["status"] == "waiting_approval", w.task(task_id)
@@ -480,6 +488,7 @@ def test_an_outward_pod_over_its_send_quota_is_refused_and_audited_and_status_sh
     first, second, third = _QUOTA_ARGS
     model = fake_model(
         script={
+            "lead": [say("Plan: invite the guest.")],
             "researcher": [say("Nothing to look up.")],
             "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
             "reviewer": [say("APPROVE")],
@@ -493,14 +502,14 @@ def test_an_outward_pod_over_its_send_quota_is_refused_and_audited_and_status_sh
             ],
         }
     )
-    w, _work_dir = workdir_pod(world, model)
+    w, _work_dir = workdir_pod(world, model, blueprint="respond")
     script = w.root / "action_server.py"
     script.write_text(_ACTION_SERVER, encoding="utf-8")
     log = w.root / "actions.jsonl"
     server = ("--env", f"ACTION_LOG={log}", "--", sys.executable, str(script))
     w.docket("setup", "mcp", "add", "inbox", "--kind", "read", "--tools", "lookup", *server)
     w.docket("setup", "mcp", "add", "outbox", "--kind", "send", "--tools", "send", *server)
-    w.docket("pod", "update", str(RECIPES_DIR / "outward"), "--pod", w.pod)
+    w.docket("pod", "update", str(outward_pack(w, "mcp__outbox__send")), "--pod", w.pod)
     quota = w.home / "config" / "policies" / "two-a-day.yaml"
     quota.parent.mkdir(parents=True, exist_ok=True)
     quota.write_text(

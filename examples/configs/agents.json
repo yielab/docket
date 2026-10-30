@@ -2,14 +2,14 @@
   "agents": [
     {
       "id": "webapp",
-      "blueprint": "software",
+      "blueprint": "build",
       "codebase": "~/Sites/webapp",
       "description": "Customer-facing web app.",
       "budgetUsd": 20
     },
     {
       "id": "research",
-      "blueprint": "research",
+      "blueprint": "respond",
       "description": "Web research and file automation."
     }
   ]

@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 6.5.0
+**Version**: 6.6.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-10-30
@@ -47,17 +47,17 @@ directly — see "Provider catalog" below.
 
 ### Roles and built-in policy
 
-1. The policy **MUST** know exactly eight roles, the archetype names: the three built-ins `lead`,
-   `implementer`, `reviewer` and the five starter archetypes `researcher`, `analyst`,
-   `writer`, `operator`, `monitor`. One vocabulary names a pod member, its archetype and
+1. The policy **MUST** know exactly nine roles, the archetype names: the three built-ins `lead`,
+   `implementer`, `reviewer` and the six starter archetypes `researcher`, `analyst`,
+   `writer`, `operator`, `monitor`, `actor`. One vocabulary names a pod member, its archetype and
    its model row; there is no separate policy name. There is no `task` role.
 2. Each role **MUST** belong to one of two built-in classes, chosen for token efficiency:
    - **cheap** (high-volume, low reasoning density): `lead`, `monitor`,
      `analyst`, `writer` → the economy rank anchor (default `anthropic/claude-haiku-4-5`)
-   - **strong** (reasoning-dense): `implementer`, `reviewer`, `operator`, `researcher` → the
+   - **strong** (reasoning-dense): `implementer`, `reviewer`, `operator`, `researcher`, `actor` → the
      standard rank anchor (default `anthropic/claude-sonnet-4-6`)
 
-   This table (`ROLE_CLASS`) is built from the `modelClass` of the eight archetypes, so
+   This table (`ROLE_CLASS`) is built from the `modelClass` of the nine archetypes, so
    `docket pod roles` and the policy report one class per role.
 3. Stronger models (opus-class) **MUST NOT** be a standing role default; they are reachable
    only through an explicit `docket setup model set <role> <provider/model>` override.
@@ -74,7 +74,7 @@ directly — see "Provider catalog" below.
    entry here nor a registered archetype in that registry **MUST** fall back to the registry's own
    `default` model (the one default of record; equal to `DEFAULT_MODEL` on a fresh install) —
    never to the compiled-in literal while an operator has set another default. No error, either
-   way. A pod overlay that redefines one of the eight named roles does not change its model: the
+   way. A pod overlay that redefines one of the nine named roles does not change its model: the
    named row wins.
 6. A project agent that is not a pod member **MUST** follow the `implementer` row.
 
@@ -128,18 +128,18 @@ directly — see "Provider catalog" below.
 ### Changing the policy (docket setup model)
 
 1. `docket setup model` (also `docket setup model list`, with `--json`) **MUST** list ROLE,
-   MODEL, PRICE, SOURCE (`builtin`/`user`), and WHY for all eight roles, in the order `lead`,
+   MODEL, PRICE, SOURCE (`builtin`/`user`), and WHY for all nine roles, in the order `lead`,
    `implementer`, `reviewer`, `researcher`, `analyst`, `writer`, `operator`,
-   `monitor`, plus the default model and the rank anchors (labeled "rank anchors", printed
+   `monitor`, `actor`, plus the default model and the rank anchors (labeled "rank anchors", printed
    premium → standard → economy; see "Rank anchors and tier names"). SOURCE is `user` when the
    registry's `roles` map holds the role's current model, else `builtin`. `--json` emits
    `{"roles": [{role, model, price, source, why}], "default": <model>}`.
 2. `docket setup model set <role|default> <provider/model>` **MUST** validate the model, persist
-   the override to the registry, and apply it live. A key that is neither one of the eight roles nor
+   the override to the registry, and apply it live. A key that is neither one of the nine roles nor
    `default` **MUST** fail naming the valid keys; a model that is not a well-formed
    `provider/model` id **MUST** fail naming the full-id form. Both exit 1 and write nothing.
 3. `docket setup model preset <name>` **MUST** map the preset's cheap/strong classes onto all
-   eight roles (economy rank to the four cheap roles, standard rank to the four strong roles) and
+   nine roles (economy rank to the four cheap roles, standard rank to the five strong roles) and
    persist them, plus the rank anchors and `default` (set to the standard rank). With no name it
    lists the presets (PRESET, COST, KEY NEEDED, NOTE); an unknown name exits 1 listing the valid
    ones.
@@ -648,7 +648,7 @@ rank anchors  local/qwen3-30b-a3b -> local/qwen3-30b-a3b -> local/qwen3-30b-a3b
 
 ### Pre-conditions
 
-- The key of `docket setup model set` **MUST** be one of the eight roles or `default`, and the model
+- The key of `docket setup model set` **MUST** be one of the nine roles or `default`, and the model
   a well-formed `provider/model` id.
 
 ### Post-conditions

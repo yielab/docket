@@ -546,7 +546,7 @@ route and the CLI cannot drift apart.
 
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name": "myapp", "location": "/srv/repos/myapp", "blueprint": "software"}' \
+  -d '{"name": "myapp", "location": "/srv/repos/myapp", "blueprint": "build"}' \
   http://127.0.0.1:7331/pods
 ```
 
@@ -555,9 +555,9 @@ Request body:
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `name` | string | Yes | The pod id (`docket init`'s project id, not a display name — a blueprint pod has no separate display-name field). `400` if absent, empty, not a string, or fails `validate_project_id` (`input-validation.spec.md` §1). |
-| `location` | string | No | The blueprint's `codebase` (a `codebase`-kind blueprint, e.g. `software`) or `workDir` (a `workdir`-kind blueprint, e.g. `research`/`content`/`ops`) — `provision_pod` picks which one it means from the blueprint's own workspace kind. Defaults to `""`: a `workdir`-kind blueprint then auto-provisions `workspaces/pods/<name>/workdir` under `DOCKET_HOME`, exactly as `docket init` with no path does. A non-string is `400`. |
-| `blueprint` | string | No | A blueprint registry name. Defaults to `"software"` (`DEFAULT_BLUEPRINT`, `docket init`'s own default). An empty or non-string value is `400`; an unknown name is `400` naming the invalid blueprint. |
-| `pod` | `"full"` | No | Mirrors `docket init --pod full` (case-insensitive) — the CLI's roster override, itself restricted to the `software` blueprint (a non-`software` blueprint provisions its own fixed roster; `pod` is ignored for one, as the CLI warns and ignores rather than erroring). Any other value is `400`. |
+| `location` | string | No | The blueprint's `codebase` (a `codebase`-kind blueprint, e.g. `build`) or `workDir` (a `workdir`-kind blueprint, e.g. `respond`/`operate`/`routine`) — `provision_pod` picks which one it means from the blueprint's own workspace kind. Defaults to `""`: a `workdir`-kind blueprint then auto-provisions `workspaces/pods/<name>/workdir` under `DOCKET_HOME`, exactly as `docket init` with no path does. A non-string is `400`. |
+| `blueprint` | string | No | A blueprint registry name. Defaults to `"build"` (`DEFAULT_BLUEPRINT`, `docket init`'s own default). An empty or non-string value is `400`; an unknown name is `400` naming the invalid blueprint. |
+| `pod` | `"full"` | No | Mirrors `docket init --pod full` (case-insensitive) — the CLI's roster override, itself restricted to the `build` blueprint (a non-`build` blueprint provisions its own fixed roster; `pod` is ignored for one, as the CLI warns and ignores rather than erroring). Any other value is `400`. |
 | `budget` | number \| numeric string | No | Overrides the blueprint's own default budget cap (applied to the Lead member only). `0`, omitted, or a non-positive value means no override (falls back to the blueprint default). A boolean or non-numeric value is `400`. |
 | `verifyCmd` | string | No | Applied to Implementer member(s) only, at creation time — the same verify command `docket pod add --verify` and `docket pod set verify --member` set after creation. Validated the same way (no NUL byte, no newline, length-capped); a non-string or failing value is `400`. |
 | `ensure` | boolean | No | Default `false`. On an existing pod the request **MUST** answer `200` `{"ok": true, "created": false, "project": p}` and change nothing; without `ensure` an existing pod is `409`. A non-boolean is `400`. |
@@ -569,7 +569,7 @@ Success response (`201`) — the created pod roster:
   "ok": true,
   "created": true,
   "project": "myapp",
-  "blueprint": "software",
+  "blueprint": "build",
   "members": [
     {"id": "myapp-lead", "role": "lead", "model": "anthropic/claude-haiku-4-5-20251001"},
     {"id": "myapp-implementer", "role": "implementer", "model": "anthropic/claude-sonnet-4-6"}

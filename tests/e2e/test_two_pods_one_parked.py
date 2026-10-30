@@ -107,7 +107,7 @@ def _provision_the_gallery(w: World) -> Path:
     (repo / "README.md").write_text("# gallery\n", encoding="utf-8")
     for args in (("init", "-q", "-b", "main"), ("add", "-A"), ("commit", "-q", "-m", "initial")):
         _git(repo, w, *args)
-    spec = {"id": FREE_POD, "blueprint": "agentic-product", "codebase": str(repo)}
+    spec = {"id": FREE_POD, "blueprint": "build", "codebase": str(repo)}
     spec_file = w.root / "gallery-pod.json"
     spec_file.write_text(json.dumps(spec), encoding="utf-8")
     w.docket("init", "--from", str(spec_file))

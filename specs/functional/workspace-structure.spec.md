@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 3.1.1
+**Version**: 3.1.2
 **Status**: Complete. `DOCKET_HOME` is the only root, split into `config/` (authored) and
 `state/` (written while running). Agent workspaces live under `~/.docket/state/workspaces/projects/`;
 a pod's runtime resources and learned memory live under `~/.docket/state/workspaces/pods/<pod>/`
@@ -106,9 +106,9 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
      it is: docket never reads, moves or deletes it, `docket pod reset` included, and `docket
      setup` never counts one as missing
 2. Every project agent has **either** a codebase path with auto-detected stack
-   (`workspaceKind: codebase` — every `software`-blueprint pod)
+   (`workspaceKind: codebase` — every `build`-blueprint pod)
    **or** a plain working directory with no codebase assumption (`workspaceKind: workdir` — a
-   `research`/`content`/`ops`-blueprint pod; see pod-blueprints.spec.md), never both.
+   `respond`/`operate`/`routine`-blueprint pod; see pod-blueprints.spec.md), never both.
 3. Pod members are project agents with ids `<project>-<role>[-N]`, each with its **own**
    workspace under `projects/`; the pod **Lead's** workspace additionally holds `TASK_LIST.json`,
    the pod's task queue (one queue per pod, owned by pod-dispatch.spec.md). `TASK_LIST.json` is

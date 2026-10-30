@@ -124,9 +124,9 @@ class TestEffectivePipelineBlueprint:
     ``teams/blueprints.py::get_blueprint`` before falling back to the built-in default -- see
     pod-dispatch.spec.md "Pipeline order and participation"."""
 
-    def test_research_pod_runs_its_blueprint_pipeline(self, pod_home: Path) -> None:
-        _write_meta("myapp-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "reviewer"):
+    def test_respond_pod_runs_its_blueprint_pipeline(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {"blueprint": "respond"})
+        for role in ("researcher", "writer", "reviewer", "actor"):
             _write_meta(f"myapp-{role}")
 
         spec = _steps.effective_pipeline("myapp", None)
@@ -134,27 +134,27 @@ class TestEffectivePipelineBlueprint:
         assert [step.role for step in spec.steps] == [
             "lead",
             "researcher",
-            "analyst",
             "writer",
             "reviewer",
+            "actor",
         ]
 
-    def test_research_pod_lead_message_names_the_researcher_not_the_implementer(
+    def test_respond_pod_lead_message_names_the_researcher_not_the_implementer(
         self, pod_home: Path
     ) -> None:
-        # A research pod has no Implementer -- its Lead must not tell the model
-        # to plan for one. The research blueprint's `lead` step declares its
+        # A respond pod has no Implementer -- its Lead must not tell the model
+        # to plan for one. The respond blueprint's `intake` step declares its
         # own `instructions` naming the Researcher, and `_hop_message` honors a
         # step override for `role: lead` (see role-archetypes.spec.md "Hop
         # instructions"), so this pipeline's Lead hop message never invents a
         # role the pod doesn't have.
-        _write_meta("myapp-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "reviewer"):
+        _write_meta("myapp-lead", {"blueprint": "respond"})
+        for role in ("researcher", "writer", "reviewer", "actor"):
             _write_meta(f"myapp-{role}")
 
         spec = _steps.effective_pipeline("myapp", None)
         raw_step_instructions = _pipeline.step_instructions_by_id(spec)
-        lead_instructions = raw_step_instructions.get("lead", "")
+        lead_instructions = raw_step_instructions.get("intake", "")
 
         message, _ = _compose._hop_message(
             TaskRecord(description="scan the market"),
@@ -167,7 +167,7 @@ class TestEffectivePipelineBlueprint:
         assert "Researcher" in message
         assert "Implementer" not in message
 
-    def test_software_pod_is_unaffected(self, pod_home: Path) -> None:
+    def test_build_pod_is_unaffected(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")
 
         spec = _steps.effective_pipeline("myapp", None)
@@ -200,26 +200,26 @@ class TestEffectivePipelineBlueprint:
     def test_pod_rework_budget_patches_the_blueprint_pipeline_rework_edge(
         self, pod_home: Path
     ) -> None:
-        _write_meta("myapp-lead", {"blueprint": "content", "maxReworkCycles": "3"})
-        for role in ("writer", "reviewer"):
+        _write_meta("myapp-lead", {"blueprint": "routine", "maxReworkCycles": "3"})
+        for role in ("analyst", "writer", "reviewer"):
             _write_meta(f"myapp-{role}")
 
         spec = _steps.effective_pipeline("myapp", None)
 
-        reviewer_step = next(step for step in spec.steps if step.id == "reviewer")
+        reviewer_step = next(step for step in spec.steps if step.id == "review")
         assert isinstance(reviewer_step.gate, _gates.VerdictGate)
         assert reviewer_step.gate.rework is not None
         assert reviewer_step.gate.rework.max_cycles == 3
 
-    def test_ops_pod_dispatch_reaches_waiting_approval_at_the_approval_step(
+    def test_operate_pod_dispatch_reaches_waiting_approval_at_the_approval_step(
         self, pod_home: Path
     ) -> None:
-        """The ``ops`` blueprint's Monitor step is gated by an ``ApprovalGate`` -- with a
-        caller-spec-free dispatch now resolving the blueprint pipeline, an ops pod actually
-        runs the Operator and then stops for sign-off, instead of running only the Lead."""
-        _write_meta("myapp-lead", {"blueprint": "ops"})
-        _write_meta("myapp-operator")
-        _write_meta("myapp-monitor")
+        """The ``operate`` blueprint's Monitor step is gated by an ``ApprovalGate`` -- with a
+        caller-spec-free dispatch resolving the blueprint pipeline, an operate pod runs the
+        Lead's watch and then stops for sign-off, instead of running only the Lead."""
+        _write_meta("myapp-lead", {"blueprint": "operate"})
+        for role in ("monitor", "operator", "reviewer"):
+            _write_meta(f"myapp-{role}")
 
         def _run(
             member_id: str,
@@ -362,11 +362,11 @@ class TestBoundPipeline:
     def test_effective_pipeline_source_names_the_blueprint_when_unbound(
         self, pod_home: Path
     ) -> None:
-        _write_meta("myapp-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "reviewer"):
+        _write_meta("myapp-lead", {"blueprint": "respond"})
+        for role in ("researcher", "writer", "reviewer", "actor"):
             _write_meta(f"myapp-{role}")
 
-        assert _steps.effective_pipeline_source("myapp") == "blueprint 'research'"
+        assert _steps.effective_pipeline_source("myapp") == "blueprint 'respond'"
 
     def test_effective_pipeline_source_names_the_built_in_default(self, pod_home: Path) -> None:
         _seed_lean_pod("myapp")

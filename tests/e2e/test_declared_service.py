@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import http.server
 import json
-import shutil
 import textwrap
 import threading
 from collections.abc import Callable, Iterator
@@ -13,10 +12,9 @@ from typing import Any
 
 import pytest
 
-from docket.kernel.templates import RECIPES_DIR
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import World
-from tests.support.e2e_workdir import workdir_pod
+from tests.support.e2e_workdir import outward_pack, workdir_pod
 from tests.support.model_server import FakeModel, call, say, write_file
 
 _DRAFT = "To: ana@example.test\n\nWelcome aboard.\n"
@@ -104,16 +102,9 @@ def _crm_document(server: http.server.HTTPServer) -> str:
 
 
 def _service_recipe(w: World) -> Path:
-    """The ``outward`` recipe with its Actor holding the service's POST in place of the MCP send,
+    """The ``outward`` pack with its Actor holding the service's POST in place of the MCP send,
     and its quota written the way its own comment says: ``service: crm``, one a day."""
-    recipe = w.root / "outward-service"
-    shutil.copytree(RECIPES_DIR / "outward", recipe)
-    (recipe / "roles" / "actor.yaml").write_text(
-        "kind: role\nname: actor\ndescription: posts the approved draft to the CRM\n"
-        "model: strong\ncannot: [write, edit, bash]\n"
-        "tools: [read, glob, svc__crm__create_contact]\ninstructions: actor.md\n",
-        encoding="utf-8",
-    )
+    recipe = outward_pack(w, "svc__crm__create_contact")
     (recipe / "policies" / "send-quota.yaml").write_text(
         "kind: policy\nname: outward-send-quota\nappliesTo: [actor]\n"
         "limit: {service: crm, count: 1, per: day}\nthen: block\n",
@@ -137,6 +128,7 @@ def test_an_outward_pod_reads_and_writes_through_a_declared_service_and_its_toke
     calls: list[dict[str, Any]] = crm_server.calls  # type: ignore[attr-defined]
     model = fake_model(
         script={
+            "lead": [say("Plan: add the guest.")],
             "researcher": [
                 call("svc__crm__get_contact", "r1", id=7),
                 say("The venue holds 80 people."),
@@ -151,7 +143,7 @@ def test_an_outward_pod_reads_and_writes_through_a_declared_service_and_its_toke
             ],
         }
     )
-    w, _work_dir = workdir_pod(world, model)
+    w, _work_dir = workdir_pod(world, model, blueprint="respond")
     w.docket("setup", "secret", "set", "crm", "--stdin", stdin=_SERVICE_TOKEN)
     document = w.root / "crm.yaml"
     document.write_text(_crm_document(crm_server), encoding="utf-8")

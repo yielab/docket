@@ -12,38 +12,18 @@ per-pod spend cap. Where a blueprint's default pipeline gates a step
 archetype ``gateContract`` exactly — there is no separate "default gates"
 field to drift from it.
 
-Built-ins (``BUILTIN_BLUEPRINTS``):
+Built-ins (``BUILTIN_BLUEPRINTS``) are the four pipeline shapes behind every department:
 
-- ``software`` — today's pod, unchanged: Lead + Implementer against a
-  codebase. Its ``default_pipeline`` is exactly ``pipeline.domain.spec.default_pipeline()``
-  (the same object the default dispatch order already matches) and it sets
-  no default budget cap — provisioning through this blueprint is behaviorally
-  identical to the plain default `docket init`.
-- ``research`` — Lead, Researcher, Analyst, Writer, Reviewer (workdir): gathers
-  and analyzes source material, drafts a deliverable, and gates it on the
-  Reviewer's APPROVE/REQUEST-CHANGES verdict (bounded rework back to the Writer).
-- ``content`` — Lead, Writer, Reviewer (workdir): drafts a content deliverable
-  and gates it the same way as ``research``, without the gather/analyze steps.
-- ``ops`` — Lead, Operator, Monitor (workdir): executes operational actions
-  behind a mechanical check (deferring to the Operator's own ``verifyCmd``,
-  mirroring the Implementer's convention), then requires human approval
-  before the Monitor's findings are considered actioned.
-- ``agentic-product`` — Lead, Implementer, Reviewer (codebase): the
-  pod shape for a product that itself ships an agent to end users, not just
-  an internal tool. Its ``default_pipeline`` is the same
-  ``pipeline.domain.spec.default_pipeline()`` object ``software`` attaches, but
-  because the roster carries the Reviewer (``teams/pod.py``'s existing
-  ``FULL_POD_ROLES``, not a new roster shape), that step actually gates a hop
-  at dispatch time instead of going unreached the way it does behind
-  ``software``'s lean default roster. That is a deliberate, data-only
-  difference in blast radius: an agent that ships to end users warrants the
-  review gate on by default; an internal tool does not. This is *not*
-  a scaffolding blueprint — it describes a pod shape, the same as the other
-  four, and provisions no repository contents. The convention a pod
-  provisioned from it is expected to follow is embedding the
-  ``docket-runtime`` library as its own guardrail substrate rather than
-  reinventing one; enforcing that is outside a blueprint's job (see
-  ``description`` below).
+- ``build`` — Lead, Implementer, Reviewer (codebase): ``pipeline.domain.spec.default_pipeline()``
+  verbatim, so provisioning through it is the plain default `docket init`; the lean pod `init`
+  provisions is this roster without the Reviewer, whose step a pod without the role never reaches.
+- ``respond`` — Lead, Researcher, Writer, Reviewer, Actor (workdir): intake -> research -> draft ->
+  review (APPROVE/REQUEST-CHANGES, bounded rework back to draft) -> act. Only the Actor can act
+  outside the machine.
+- ``operate`` — Lead, Monitor, Operator, Reviewer (workdir): watch -> propose (a person approves
+  first) -> act (mechanical check, deferring to the Operator's own ``verifyCmd``) -> review.
+- ``routine`` — Lead, Analyst, Writer, Reviewer (workdir): compile -> draft -> review (bounded
+  rework back to draft). The ``records`` recipe adds its set, pipeline and schedule.
 
 ``workspace_kind`` is a closed enum (``WORKSPACE_KINDS``) — same discipline
 as ``teams/roles.py``'s ``scope``/``modelClass``/``gateContract.kind``,
@@ -59,7 +39,7 @@ a blueprint's roster is actually provisioned.
 Blueprints are Python literals in this module (the same "workspace prose is
 generated inline in Python" convention ``teams/roles.py`` follows for its
 own built-ins) — there is no user-authored blueprint YAML format yet (unlike
-``docket pod update``); the five built-ins are the whole registry today.
+``docket pod update``); the four built-ins are the whole registry today.
 """
 
 from __future__ import annotations
@@ -130,146 +110,174 @@ class PodBlueprint:
             raise BlueprintError(f"blueprint {self.name!r}: default_budget_usd must be >= 0")
 
 
-def _research_pipeline() -> _pipeline.PipelineSpec:
+_VERDICT = r"^\s*(APPROVE|REQUEST-CHANGES)\b"
+
+
+def _review_gate(rework_to: str | None) -> _gates.VerdictGate:
+    """The Reviewer's APPROVE/REQUEST-CHANGES gate, with a bounded rework edge back to *rework_to*
+    when one is named."""
+    rework = (
+        _gates.ReworkEdge(to=rework_to, when=["request-changes"], max_cycles=1)
+        if rework_to
+        else None
+    )
+    return _gates.VerdictGate(pattern=_VERDICT, pass_values=["approve"], rework=rework)
+
+
+def _respond_pipeline() -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
-        name="research-default",
+        name="respond-default",
         description=(
-            "Lead -> Researcher -> Analyst -> Writer -> Reviewer, gated on an "
-            "APPROVE/REQUEST-CHANGES verdict (bounded rework back to the Writer)."
+            "Lead -> Researcher -> Writer -> Reviewer (APPROVE or REQUEST-CHANGES, one rework back "
+            "to the Writer) -> Actor, the only role that acts outside the machine."
         ),
         steps=[
             _step.Step(
-                id="lead",
+                id="intake",
                 role="lead",
                 instructions=(
                     "You are the pod Lead. Decompose this task into a concrete plan for "
-                    "the Researcher (you never gather or write the deliverable yourself):"
+                    "the Researcher (you never research, draft or send anything yourself):"
                 ),
             ),
-            _step.Step(id="researcher", role="researcher"),
-            _step.Step(id="analyst", role="analyst"),
-            _step.Step(id="writer", role="writer"),
             _step.Step(
-                id="reviewer",
-                role="reviewer",
-                gate=_gates.VerdictGate(
-                    pattern=r"^\s*(APPROVE|REQUEST-CHANGES)\b",
-                    pass_values=["approve"],
-                    rework=_gates.ReworkEdge(to="writer", when=["request-changes"], max_cycles=1),
+                id="research",
+                role="researcher",
+                instructions=(
+                    "Gather what the task needs from the sources you can read: the working "
+                    "directory and any server you are offered. Reply with the facts you found "
+                    "and where each came from. You cannot send anything."
                 ),
             ),
+            _step.Step(
+                id="draft",
+                role="writer",
+                instructions=(
+                    "Write the message the task asks for into draft.md in the working directory, "
+                    "using the Researcher's findings. Say who it goes to on the first line. "
+                    "Do not send it."
+                ),
+            ),
+            _step.Step(
+                id="review",
+                role="reviewer",
+                gate=_review_gate("draft"),
+                instructions=(
+                    "Read draft.md as its recipient would. APPROVE only a draft that is accurate, "
+                    "says what the task asked, and is safe to leave the machine; otherwise "
+                    "REQUEST-CHANGES and say what to change."
+                ),
+            ),
+            _step.Step(id="act", role="actor"),
         ],
     )
 
 
-def _content_pipeline() -> _pipeline.PipelineSpec:
+def _operate_pipeline() -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
-        name="content-default",
-        description="Lead -> Writer -> Reviewer, gated on an APPROVE/REQUEST-CHANGES verdict.",
-        steps=[
-            _step.Step(
-                id="lead",
-                role="lead",
-                instructions=(
-                    "You are the pod Lead. Decompose this task into a concrete plan for "
-                    "the Writer (you never draft the deliverable yourself):"
-                ),
-            ),
-            _step.Step(id="writer", role="writer"),
-            _step.Step(
-                id="reviewer",
-                role="reviewer",
-                gate=_gates.VerdictGate(
-                    pattern=r"^\s*(APPROVE|REQUEST-CHANGES)\b",
-                    pass_values=["approve"],
-                    rework=_gates.ReworkEdge(to="writer", when=["request-changes"], max_cycles=1),
-                ),
-            ),
-        ],
-    )
-
-
-def _ops_pipeline() -> _pipeline.PipelineSpec:
-    return _pipeline.PipelineSpec(
-        name="ops-default",
+        name="operate-default",
         description=(
-            "Lead -> Operator (mechanical check, deferring to its own verifyCmd) -> "
-            "Monitor (requires human approval before findings are considered actioned)."
+            "Lead -> Monitor (a person approves first) -> Operator (mechanical check, deferring to "
+            "its own verifyCmd) -> Reviewer."
         ),
         steps=[
             _step.Step(
-                id="lead",
+                id="watch",
                 role="lead",
                 instructions=(
-                    "You are the pod Lead. Decompose this task into a concrete plan for "
-                    "the Operator (you never execute operational actions yourself):"
+                    "You are the pod Lead. Read the signals this task names and decide what the "
+                    "Monitor should look at (you never act on them yourself):"
                 ),
             ),
-            _step.Step(id="operator", role="operator", gate=_gates.MechanicalGate(command=None)),
             _step.Step(
-                id="monitor",
+                id="propose",
                 role="monitor",
-                gate=_gates.ApprovalGate(message="Operator action awaiting sign-off."),
+                gate=_gates.ApprovalGate(
+                    message="Approve before the Monitor proposes and the Operator acts."
+                ),
+                instructions=(
+                    "Propose the smallest corrective action the signals call for, and say how to "
+                    "check that it worked. Do not act."
+                ),
             ),
+            _step.Step(id="act", role="operator", gate=_gates.MechanicalGate(command=None)),
+            _step.Step(
+                id="review",
+                role="reviewer",
+                gate=_review_gate(None),
+                instructions=(
+                    "Check that the Operator did what the proposal said and nothing else. "
+                    "APPROVE or REQUEST-CHANGES, and say why."
+                ),
+            ),
+        ],
+    )
+
+
+def _routine_pipeline() -> _pipeline.PipelineSpec:
+    return _pipeline.PipelineSpec(
+        name="routine-default",
+        description=(
+            "Analyst compiles -> Writer drafts -> Reviewer (APPROVE or REQUEST-CHANGES, one rework "
+            "back to the Writer)."
+        ),
+        steps=[
+            _step.Step(
+                id="compile",
+                role="analyst",
+                instructions=(
+                    "Compile what the task asks for from the working directory: the figures, "
+                    "the facts and where each came from. Reply with the compilation; do not "
+                    "draft the deliverable."
+                ),
+            ),
+            _step.Step(id="draft", role="writer"),
+            _step.Step(id="review", role="reviewer", gate=_review_gate("draft")),
         ],
     )
 
 
 BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
-    "software": PodBlueprint(
-        name="software",
-        version=1,
-        workspace_kind="codebase",
-        roles=_pod.DEFAULT_POD_ROLES,
-        default_pipeline=_pipeline.default_pipeline(),
-        default_budget_usd=None,
-        description="today's pod: Lead + Implementer against a codebase (unchanged default)",
-    ),
-    "research": PodBlueprint(
-        name="research",
-        version=1,
-        workspace_kind="workdir",
-        roles=("lead", "researcher", "analyst", "writer", "reviewer"),
-        default_pipeline=_research_pipeline(),
-        default_budget_usd=20.0,
-        description="gathers and analyzes sources, drafts a deliverable, gates it on veto",
-    ),
-    "content": PodBlueprint(
-        name="content",
-        version=1,
-        workspace_kind="workdir",
-        roles=("lead", "writer", "reviewer"),
-        default_pipeline=_content_pipeline(),
-        default_budget_usd=15.0,
-        description="drafts and vets a content deliverable",
-    ),
-    "ops": PodBlueprint(
-        name="ops",
-        version=1,
-        workspace_kind="workdir",
-        roles=("lead", "operator", "monitor"),
-        default_pipeline=_ops_pipeline(),
-        default_budget_usd=30.0,
-        description="executes operational actions with a mechanical check and human sign-off",
-    ),
-    "agentic-product": PodBlueprint(
-        name="agentic-product",
+    "build": PodBlueprint(
+        name="build",
         version=1,
         workspace_kind="codebase",
         roles=_pod.FULL_POD_ROLES,
         default_pipeline=_pipeline.default_pipeline(),
         default_budget_usd=None,
-        description=(
-            "a product that ships its own agent to end users; embeds docket-runtime "
-            "for the gated tool chokepoint, policy engine, approval store and audit "
-            "chain instead of reinventing them, and runs the reviewer by default "
-            "given the higher blast radius of an agent-facing release"
-        ),
+        description="Lead, Implementer and Reviewer against a codebase (the default pod)",
+    ),
+    "respond": PodBlueprint(
+        name="respond",
+        version=1,
+        workspace_kind="workdir",
+        roles=("lead", "researcher", "writer", "reviewer", "actor"),
+        default_pipeline=_respond_pipeline(),
+        default_budget_usd=20.0,
+        description="researches, drafts and vets a message, then acts on it outside the machine",
+    ),
+    "operate": PodBlueprint(
+        name="operate",
+        version=1,
+        workspace_kind="workdir",
+        roles=("lead", "monitor", "operator", "reviewer"),
+        default_pipeline=_operate_pipeline(),
+        default_budget_usd=30.0,
+        description="watches signals, proposes an action a person approves, acts, and reviews it",
+    ),
+    "routine": PodBlueprint(
+        name="routine",
+        version=1,
+        workspace_kind="workdir",
+        roles=("lead", "analyst", "writer", "reviewer"),
+        default_pipeline=_routine_pipeline(),
+        default_budget_usd=15.0,
+        description="compiles, drafts and reviews a recurring deliverable",
     ),
 }
 
 #: `docket init` with no `--blueprint` resolves to this — today's default pod.
-DEFAULT_BLUEPRINT = "software"
+DEFAULT_BLUEPRINT = "build"
 
 
 @dataclass(frozen=True)

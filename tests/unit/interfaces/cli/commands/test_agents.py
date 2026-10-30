@@ -59,7 +59,7 @@ class TestParsing:
                 "--with",
                 "reviewer",
                 "--blueprint",
-                "ops",
+                "operate",
                 "--recipe",
                 "tdd",
             ],
@@ -68,7 +68,7 @@ class TestParsing:
         assert (req.full, req.with_roles, req.blueprint, req.recipe) == (
             True,
             "reviewer",
-            "ops",
+            "operate",
             "tdd",
         )
         runner.invoke(app, ["init", "--no-apply"])
@@ -151,9 +151,7 @@ class TestInitTurnsIsolationOnWhereTheMachineCanJail:
         code = tmp_path / "code"
         code.mkdir()
         spec = tmp_path / "pod.json"
-        spec.write_text(
-            json.dumps({"id": "demo", "blueprint": "agentic-product", "codebase": str(code)})
-        )
+        spec.write_text(json.dumps({"id": "demo", "blueprint": "build", "codebase": str(code)}))
         with use_home(Home(tmp_path / "home")):
             bind_launcher(landlock=True, seatbelt=False)
             assert _agents.run_init(_agents.InitRequest(from_file=str(spec))) == 0
