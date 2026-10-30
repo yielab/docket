@@ -68,6 +68,7 @@ from docket.teams.apply.recipes import (
     _skill_digest,
     unresolvable_pipeline_steps,
 )
+from docket.teams.apply.records import plan_records
 from docket.teams.apply.review import (
     PlanReview,
     RunChange,
@@ -543,6 +544,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     mcp_items, mcp_write = plan_mcp_servers(directory, project)
     service_items, service_writes = plan_services(directory, project)
+    records_items, records_writes = plan_records(directory, project)
 
     all_settings = _settings_with_top_level(raw_settings, manifest)
     if "maxReworkCycles" in all_settings and (
@@ -561,6 +563,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         *skill_items,
         *mcp_items,
         *service_items,
+        *records_items,
         *member_items,
     ]
     if pipeline_item is not None:
@@ -583,6 +586,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         _skill_writes=tuple(skill_writes),
         _mcp_server_write=mcp_write,
         _service_writes=tuple(service_writes),
+        _records_writes=tuple(records_writes),
         _member_writes=tuple(member_writes),
         _pipeline_write=pipeline_write,
         _setting_writes=tuple(setting_writes),

@@ -24,6 +24,7 @@ from docket.teams.apply import lock as _lock
 from docket.teams.apply.external import export_services, write_services
 from docket.teams.apply.model import ApplyPlan, ApplyResult, PodApplyError
 from docket.teams.apply.recipes import _directory_files, _named_pipeline_files
+from docket.teams.apply.records import export_records, write_records
 from docket.teams.apply.routines import export_routines, write_routines
 
 
@@ -228,13 +229,14 @@ def export_pod(project: str, directory: Path) -> None:
     _export_skills(project, directory)
     _export_mcp_servers(project, directory)
     export_services(project, directory)
+    export_records(project, directory)
     _export_pipeline(project, directory)
     _export_manifest(project, directory)
     _export_schemas(directory)
 
 
 def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
-    """Write every non-``skip`` item in *plan* (role -> policy -> plugin -> skill -> mcp-server -> service -> member -> pipeline
+    """Write every non-``skip`` item in *plan* (role -> policy -> plugin -> skill -> mcp-server -> service -> records -> member -> pipeline
     -> setting order). Audits ``pod.apply`` only on change; records ``configSource``/
     ``configDigest`` every time, all-``skip`` included (see below)."""
     lead_id = pod.member_id(plan.project, "lead")
@@ -294,6 +296,7 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
         _mcp_servers.write_pod_mcp_servers(plan.project, list(plan._mcp_server_write.servers))
 
     write_services(plan.project, plan._service_writes)
+    write_records(plan.project, plan._records_writes)
 
     for member_write in plan._member_writes:
         ok, msg = _member_workspace.provision_member(

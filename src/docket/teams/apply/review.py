@@ -12,6 +12,7 @@ from docket.kernel.home import current_home
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import config_docs as _config_docs
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import records as _records
 from docket.teams import roles as _arch
 from docket.teams import services as _services
 from docket.teams.apply.recipes import _config_glob, _declared_servers, _named_pipeline_files
@@ -156,6 +157,7 @@ def classify_directory(directory: Path) -> PlanReview:
         adds.append(("pipeline", f"pipelines/{named.name}"))
     adds.extend(("routine", f"routines/{r.name}") for r in routine_files(directory))
     adds.extend(("service", f"services/{f.name}") for f in _services.service_files(directory))
+    adds.extend(("records", f"records/{f.name}") for f in _records.records_files(directory))
     for server in _declared_servers(directory):
         runs.append(RunItem("mcp-server", server.name, " ".join([server.command, *server.args])))
     plugins_dir = directory / "plugins"

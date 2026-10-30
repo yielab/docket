@@ -296,6 +296,22 @@ class RecordsStore:
                 self._declare(db, set_name, name, wanted[name], False)
             return EnsureResult(created=False, added=added)
 
+    def check_table(
+        self, set_name: str, columns: Sequence[Column], key: str | None = None
+    ) -> EnsureResult:
+        """What `ensure_table` would do, changing nothing; refuses what it would refuse."""
+        wanted = _check_declaration(set_name, columns, key)
+        if not self.path.exists():
+            return EnsureResult(created=True, added=())
+        with self._reader(_BUSY_S) as db:
+            current = _declared(db, set_name)
+        if current is None:
+            return EnsureResult(created=True, added=())
+        _refuse_unsafe_change(set_name, current, wanted, key)
+        return EnsureResult(
+            created=False, added=tuple(n for n in wanted if n not in current.columns)
+        )
+
     @staticmethod
     def _declare(db: sqlite3.Connection, set_name: str, name: str, kind: str, is_key: bool) -> None:
         db.execute(
