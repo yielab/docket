@@ -25,6 +25,7 @@ import pytest
 from tests.support import home as _support_home
 from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
+from docket import __main__ as docket_main
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.hops.application import driver as docket_runtime
 from docket.hops.application import sweep as _sweep
@@ -277,6 +278,22 @@ class TestPodDispatchExportsFromItsFirstRecord:
         assert sorted(c["parentSpanId"] for c in chats) == sorted(
             h["spanId"] for h in hops.values()
         )
+
+
+class TestTheCommandStartsTheExport:
+    def test_the_docket_entry_point_starts_the_enabled_exporters_before_its_command(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An answer given from the CLI writes its records outside any turn; they are exported."""
+        srv, url, _handler_cls = _recording_server()
+        try:
+            _enable_local_exporter(url)
+            monkeypatch.setattr("sys.argv", ["docket", "--version"])
+            with pytest.raises(SystemExit):
+                docket_main.main()
+            assert "local" in _telemetry._REGISTRY
+        finally:
+            srv.shutdown()
 
 
 class TestExporterPrivacyGatesToolArguments:
