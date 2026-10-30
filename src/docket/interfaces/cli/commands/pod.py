@@ -46,20 +46,16 @@ pod_app = typer.Typer(
 
 
 def pod_roles(full: bool, with_roles: str) -> tuple[str, ...]:
-    """The software pod's roster from `docket init`'s flags: lean (lead + implementer) by
-    default, the four-role pod for ``--pod full``, lean plus the named ``--with`` roles
-    otherwise. Unknown role names are ignored."""
+    """The software pod's roster from `docket init`'s flags: lean, ``--pod full``, or lean plus
+    the ``--with`` roles in the order given. An unknown name raises `pod.PodError`."""
     if full:
         return pod.FULL_POD_ROLES
     extras: list[str] = []
     for raw in with_roles.split(","):
         if not raw.strip():
             continue
-        try:
-            role = pod.normalize_role(raw)
-        except pod.PodError:
-            continue
-        if role not in ("lead", "implementer") and role not in extras:
+        role = pod.normalize_role(raw)
+        if role not in (*pod.DEFAULT_POD_ROLES, *extras):
             extras.append(role)
     return (*pod.DEFAULT_POD_ROLES, *extras)
 
