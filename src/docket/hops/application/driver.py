@@ -29,6 +29,7 @@ from docket.agent.ports import (
     DOCKET_APPROVAL_TIMEOUT,
     DOCKET_CONSULT_MODE,
     DOCKET_HANDOFF,
+    DOCKET_HOP_STEP,
     DOCKET_MAX_CONSULTATIONS,
     DOCKET_PREGRANTS,
     DOCKET_TURN_TOKEN_BUDGET,
@@ -269,6 +270,7 @@ class DocketDriver:
             consult_park=bool(trace_task_id),
             consult_mode=_consult_mode(agent_id, consult_mode_raw),
             task_id=trace_task_id or "",
+            step_id=tool_env.pop(DOCKET_HOP_STEP, ""),
             allow_commands=_resolve_allow_commands(agent_id),
             pregrants=pregrants,
             approval_expires_at=approval_expires_at,
@@ -279,14 +281,9 @@ class DocketDriver:
                 resolved_project, resolved_session_key, meta.role, trace_task_id or ""
             ),
         )
-        # Folded in before the turn loop narrows by role
-        # (teams.roles.registry_for_role, called once inside
-        # run_agent_turn) -- narrowing has to see whatever a configured MCP
-        # server contributed, or a write-denying role would keep a
-        # write-capable MCP tool. See teams/roles.py's registry_for_role
-        # docstring for the kind-based rule that makes this safe. ``ctx.project``
-        # (already resolved above) is also this turn's pod for `mcpServers`
-        # filtering -- the same value an in-turn approval gate files traces under.
+        # MCP and service tools are folded in before the turn loop narrows by role, so a
+        # write-denying role cannot keep a write-capable one (teams/roles.py registry_for_role);
+        # ``ctx.project`` is the pod whose `mcpServers` selection and services apply.
         registry = self.registry_factory()
         describe_tools(registry, ctx, profile.descriptions)
         register_closing_tool(registry, verdict_gate, offer)

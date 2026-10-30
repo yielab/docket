@@ -127,6 +127,9 @@ DOCKET_HANDOFF = "DOCKET_HANDOFF"
 # Popped by DocketDriver into ``LoopConfig.tool_allow`` and ``LoopConfig.max_tool_calls``.
 DOCKET_HOP_TOOLS = "DOCKET_HOP_TOOLS"
 DOCKET_HOP_MAX_TOOL_CALLS = "DOCKET_HOP_MAX_TOOL_CALLS"
+# The id of the pipeline step the hop runs; popped by DocketDriver into ``ToolContext.step_id``,
+# where a service tool reads it for its idempotency key.
+DOCKET_HOP_STEP = "DOCKET_HOP_STEP"
 
 
 @dataclass
