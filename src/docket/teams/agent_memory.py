@@ -219,7 +219,8 @@ def heartbeat_seed(name: str) -> str:
     )
 
 
-def _memory_md_seed(*, project: str, stack: str) -> str:
+def _memory_md_seed(*, project: str, stack: str, workdir: bool = False) -> str:
+    source = "the task and the notes in the working directory" if workdir else "the codebase README"
     lines = [
         f"# MEMORY.md — {project}",
         "",
@@ -228,15 +229,25 @@ def _memory_md_seed(*, project: str, stack: str) -> str:
         "",
         "## What this project is",
         f"_One paragraph: what {project} does and who it's for — the product, "
-        "not this agent's pod role. Fill from the codebase README on first run; "
+        f"not this agent's pod role. Fill from {source} on first run; "
         'this is the answer to "what is this project about"._',
         "",
     ]
     if stack.strip():
         lines += ["## Stack", f"- stack: {stack.strip()}", ""]
+    layout = (
+        (
+            "## Layout",
+            "_Fill on first run: what the working directory holds and how it is organised._",
+        )
+        if workdir
+        else (
+            "## Architecture",
+            "_Fill on first run: entry points, key modules, how it fits together._",
+        )
+    )
     lines += [
-        "## Architecture",
-        "_Fill on first run: entry points, key modules, how it fits together._",
+        *layout,
         "",
         "## Current state",
         "_What works, what's in flight, known issues._",
@@ -290,7 +301,7 @@ def seed_contract(
     mem_md = memory_md_path(ws)
     if not mem_md.exists():
         mem_md.write_text(
-            _memory_md_seed(project=project, stack=stack),
+            _memory_md_seed(project=project, stack=stack, workdir=bool(work_dir)),
             encoding="utf-8",
         )
     with contextlib.suppress(OSError):

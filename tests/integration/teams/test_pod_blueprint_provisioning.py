@@ -30,6 +30,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.kernel.home import Home, current_home
 from docket.teams import blueprints as _bp
+from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod as _pod_core
 
 SUBJECT = "docket.teams.blueprints"
@@ -100,6 +101,12 @@ class TestBuiltinBlueprintsProvision:
                     assert meta["workDir"]
                     assert "## Your working directory" in (ws / "WORKFLOW_AUTO.md").read_text()
                     assert "## Your codebase" not in (ws / "WORKFLOW_AUTO.md").read_text()
+                    for name in ("AGENTS.md", "MEMORY.md"):
+                        text = (ws / name).read_text().lower()
+                        assert "repository map" not in text, f"{mid}: {name}"
+                        assert "codebase readme" not in text, f"{mid}: {name}"
+                    assert _member_workspace.member_sync_status(mid) is not None
+                    assert not _member_workspace.member_sync_status(mid).stale  # type: ignore[union-attr]
                 else:
                     assert "workspaceKind" not in meta
                     assert "workDir" not in meta
