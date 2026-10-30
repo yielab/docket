@@ -897,6 +897,38 @@ Delete a stored secret.
 
 Example: docket setup secret remove service-token
 
+### setup service
+
+**Usage:** `docket setup service`
+
+External HTTP services: add a declared document, list and remove them.
+
+### setup service list
+
+**Usage:** `docket setup service list`
+
+List the stored services; an auth value is never shown, only its header and secret names.
+
+Example: docket setup service list
+
+### setup service add
+
+**Usage:** `docket setup service add`
+
+Store a service from its document and show what each operation may do.
+
+A credential belongs in the auth value as ${secret:NAME}, with the value stored by
+docket setup secret set NAME; the document and this command never hold it.
+Example: docket setup service add crm.yaml
+
+### setup service remove
+
+**Usage:** `docket setup service remove`
+
+Remove a stored service.
+
+Example: docket setup service remove crm
+
 
 ---
 

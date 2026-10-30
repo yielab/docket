@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.8.1
+**Version**: 11.9.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1243,8 +1243,8 @@ mechanically gated step.
 
 #### Verify tool
 
-8. The Implementer **MUST** be told how it will be judged: when the hop's step has a verify command
-   its instruction names it ("Hop instructions" in `role-archetypes.spec.md`), and the hop's turn
+8. A hop other than the Lead's **MUST** be told how it will be judged, whatever its role: when the hop's step has a verify
+   command its instruction names it ("Hop instructions" in `role-archetypes.spec.md`), and the hop's turn
    **MUST** be offered a `verify` tool. The tool is registered for that hop only when the step has
    a verify command; it takes no parameters and **MUST** run exactly that command, never another.
 9. `verify` **MUST** run through the gate's own execution path, so the model sees what the gate will
@@ -1439,8 +1439,8 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 1. Before a top-level step's gate or hop runs, dispatch **MUST** evaluate its `when` (if any):
    `changed` matches when any path matches the glob among the paths changed between the latest `ok`
-   Implementer hop's evidence `baseCommit` and `commit` together with the uncommitted paths git
-   reports, both read in the task's worktree (or the pod Lead's own codebase when the task runs in
+   hop's evidence (the latest hop that has any, whatever its role) `baseCommit` and `commit`
+   together with the uncommitted paths git reports, both read in the task's worktree (or the pod Lead's own codebase when the task runs in
    place, or the pod's working directory when the pod is `workdir`-kind, where a command step's
    command runs too), because the hop's own work is committed by then ("Task worktrees" requirement 8);
    `var`/`is` compares this run's resolved pipeline variable namespace (stringified) against the
@@ -1473,7 +1473,7 @@ parsing for any verdict-gated step (`parse_verdict`).
 4. A command step's process **MUST** receive the task's coordinates as environment variables, merged
    over the inherited environment: `DOCKET_TASK_ID`, and `DOCKET_BASE_COMMIT` /
    `DOCKET_HEAD_COMMIT` taken from the `evidence` (`baseCommit` / `commit`) of the latest `ok`
-   Implementer hop of the run. With no such hop, or a missing value, each **MUST** be the empty
+   hop of the run that has evidence, whatever its role. With no such hop, or a missing value, each **MUST** be the empty
    string, never absent. They **MUST NOT** be computed from git or from a worktree path: the
    recorded evidence is the one source, so a check recipe and the evidence it is judged against
    agree.
