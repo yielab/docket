@@ -21,7 +21,7 @@
 > "Phase 54" in the follow-ups below. **Planned: Phase 55** (D-77,
 > [ADR 0036](docs/adr/0036-a-pod-works-outward.md)): a pod works outward, on its own schedule; twelve
 > cards P55-1..P55-12 over four waves, cut by file ownership. **Wave 1 merged 2026-10-30** (P55-1, P55-5,
-> P55-7, P55-11); **Wave 2 merged 2026-10-30** (P55-3, P55-6); **Wave 3 merged 2026-10-30** (P55-2, P55-4, P55-9); **Wave 4 code merged 2026-10-30** (P55-8, P55-10); P55-12 (docs) and the phase close are next.
+> P55-7, P55-11); **Wave 2 merged 2026-10-30** (P55-3, P55-6); **Wave 3 merged 2026-10-30** (P55-2, P55-4, P55-9); **Wave 4 code merged 2026-10-30** (P55-8, P55-10); P55-12 merged; the phase close found two defects (P55-13, P55-14) and repeats its real run (P55-15). **Planned: Phase 56** (ADR 0036 decision 13, accepted 2026-10-30): an external service is declared, not programmed; nine cards P56-1..P56-9 over four waves, after Phase 55 closes.
 > Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md));
 > its loose ends are under "Escalations". The integration branch is `develop`. A new phase starts from a
 > measured trigger or a maintainer request.
@@ -671,7 +671,7 @@ spec
 
 ### P55-15 — the phase-close real run, repeated, with the sandbox grants named
 
-**Status:** TODO · after P55-13 and P55-14 (integrator, no code card) · **Size:** M · **Model:** Sonnet (run)
+**Status:** TODO (after P55-13 and P55-14; integrator, no code card) · **Size:** M · **Model:** Sonnet (run)
 
 - **Goal:** repeat the real run (scratch dir `/tmp/claude-1000/outward-run.RAdk` kept for reference): runs 1 park, 2
   approve (outbox log has exactly one entry), 3 `wait` step, 4 routine under `docket start --dispatch`, against the
@@ -687,6 +687,239 @@ spec
 | 2 | P55-3 · P55-6 | continues `kernel/mcp.py`, `mcp_tools.py` (after P55-5), owns `roles.py`, `pod_settings.py`, `registry.py`, the recipe · continues `executor.py` (after P55-7), owns `step.py`, `operator_contract.py`, `escalation_sweep.py`, `render.py` |
 | 3 | P55-2 · P55-4 · P55-9 | `model_selection.py` and `role-archetypes.spec.md` (after P55-3) · `gate.py`, `secrets.py`, `trace.py`, `render.py` (after P55-6) · `routines.py`, `config_docs.py`, `sweeps.py`, `pod-dispatch.spec.md` (after P55-6 and P55-7) |
 | 4 | P55-8 · P55-10 · P55-12 | `quota.py` (new), `gate.py`, `policy.py`, `status.py` (after P55-4) · `kernel/mcp.py`, `mcp_servers.py`, `driver_support.py`, the MCP and setup CLI (after P55-3, P55-5) · docs, after every merge |
+
+## ○ PHASE 56 PLANNED — an external service is declared, not programmed (D-77 amendment, ADR 0036 decision 13)
+
+> Planned 2026-10-30 from the maintainer's request after the Phase 55 real run: a pod reaches an external
+> service nobody programmed in advance, configured by a document or by commands, with no MCP bridge per
+> service and no further MCP implementation work. Scope accepted by the maintainer the same day
+> ([ADR 0036](docs/adr/0036-a-pod-works-outward.md) "Amendment", decision 13): a header token for auth
+> (OAuth later, see the amendment); JSON and text; the call runs in docket's process, not the jail; every
+> method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`); operations written by hand **and** imported from an
+> OpenAPI document; an MCP server and a service never share a name; the quota counts per service. Starts
+> after Phase 55 closes (P55-13..P55-15). Each card's trigger is that request; no metric is invented.
+
+### How a Phase 56 card runs (read before claiming one)
+
+- The rules of Phase 55's cards hold: spec first, RED test, smallest change, the spec row bumped in
+  `specs/README.md`, goldens edited by line and never regenerated, `uv run --all-extras mypy src` in a
+  worktree. The owning spec is new: `specs/functional/service-client.spec.md` (P56-3 creates it; the
+  other cards each own one section, named on the card).
+- **A tool named `svc__<service>__<operation>`.** Every card uses this name and the access rule:
+  `GET` defaults to `read` and may be declared `send`; `POST`, `PUT`, `PATCH` and `DELETE` are always
+  `send`, and a document that declares one of them `read` is refused naming the operation.
+- **Writes are handled apart (the maintainer: "las que editan tendrían un manejo especial").** A
+  writing operation is a `send`: it reaches only a role whose own `tools` list names it (the pipeline
+  puts it on one acting agent, as the `outward` actor), a person approves the whole call (P55-4),
+  it is audited `tool.send` and counted by its service's quota. A `DELETE` offers only `approve_once`
+  and `deny`, never "approve for this task". An agent that vets the call before the person (a critic
+  step) is a pipeline choice, as in the `outward` recipe, not code.
+- **Nothing leaves the machine in a test.** The fake service is `http.server` on `127.0.0.1` inside the
+  test, listed in the service document so the loopback refusal lets it through.
+
+### P56-1 — make room: `config_docs.py` and `apply/plan.py` lose their mcp-server code to a sibling
+
+**Status:** TODO (after Phase 55 closes) · **Size:** S · **Model:** Sonnet · **Kind:** pure move
+
+- **Trigger:** `teams/config_docs.py` is at 700 lines and `teams/apply/plan.py` at 699 (the module cap is
+  700, `tests/architecture/`); P56-3 must add a kind to both.
+- **Goal:** move the `mcp-server` validation (`config_docs.py:444-447`, the `_MODEL_FOR_KIND` entry stays)
+  and `plan.py::_plan_mcp_servers` (`:287-`) into `teams/apply/external.py` (new), callers unchanged in
+  behaviour; leave both modules under 650 lines.
+- **Non-goals:** any behaviour change; the `service` kind (P56-3).
+- **Acceptance:** `uv run pytest --co -q` collects the same ids; `tests/architecture/` and
+  `tests/unit/teams/` pass unchanged. A pure move adds no test.
+- **Gate:** static gates, `tests/unit/teams tests/integration/teams tests/architecture`.
+- **Contention:** Wave 1, parallel with P56-2.
+
+### P56-2 — `docket setup secret set|list|remove`: a secret stored under any name
+
+**Status:** TODO (after Phase 55 closes) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + CLI
+
+- **Trigger:** P55-10 follow-up: a `secret:<name>` reference resolves only names something writes;
+  `interfaces/cli/commands/setup_notify.py:125` `store_secret` is the one writer and only provider add and
+  notify call it, so a service token today needs `secrets.json` edited by hand.
+- **Goal:** `setup secret set <name>` reads the value from a hidden prompt or from stdin (`--stdin`), never
+  from an argument, never echoes it, and writes through the existing store (or the keyring backend);
+  `setup secret list` prints names and dates only; `setup secret remove <name>`. `store_secret` moves to
+  `governance/secrets.py` (one writer), `setup_notify.py` calls it there.
+- **Non-goals:** rotating, expiring or scoping a secret per pod.
+- **Spec:** `api-keys.spec.md` (MINOR), `cli-interface.spec.md` (MINOR).
+- **Change:** `interfaces/cli/commands/setup_secret.py` (new), `governance/secrets.py`, `setup_notify.py:125`,
+  the `setup` group registration, completion goldens (the new lines), `docs/commands.md` (generated).
+- **Acceptance (RED first):** `tests/integration/interfaces/test_setup_secret_cli.py`: a value piped with
+  `--stdin` is stored and `secret_value(name)` returns it; neither stdout, stderr nor the audit holds the
+  value; `list` shows the name and not the value; `remove` deletes it; a value passed as an argument is
+  refused (exit 2) and nothing is written.
+- **Gate:** the file, `tests/unit/governance`, goldens, `gen_cli_docs.py --check`.
+- **Contention:** Wave 1, parallel with P56-1.
+
+### P56-3 — the `kind: service` document and `docket setup service add|list|remove`
+
+**Status:** TODO (after P56-1) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + data + CLI
+
+- **Trigger:** ADR 0036 decision 13.
+- **Goal:** `kernel/service.py` holds the typed config (`ServiceConfig`: name, `baseUrl`, `auth:
+  {header, value}` where value may hold `${secret:<name>}`, `hosts` (extra hosts allowed, default none),
+  `timeout`, `operations`; `Operation`: name, method, path with `{param}` placeholders, `params` (name,
+  in: path|query, type string|integer|number|boolean, required), `body` (a JSON schema object or none),
+  `access`, description). `teams/services.py` loads and validates the document (the access rule above;
+  unknown keys refused; a `${secret:...}` reference kept as written, never resolved here), the global file
+  under the home (`kernel/home.py`, `services.json`, through `platform/store.py`) and a pod's
+  `services/` directory carried by `pod update` and `pod export`. `setup service add <file.yaml>`,
+  `list`, `remove <name>`. A service whose name equals an MCP server's, global or pod-scoped, is refused
+  in both directions (the maintainer's answer to question 1).
+- **Non-goals:** making a call (P56-4); tools (P56-5); OpenAPI (P56-7).
+- **Spec:** `service-client.spec.md` (new, 1.0.0: "The document", "Access"), `config-format.spec.md`
+  (MINOR: the kind), `cli-interface.spec.md` (MINOR).
+- **Change:** `kernel/service.py` (new), `teams/services.py` (new), `teams/config_docs.py` (the kind),
+  `teams/apply/external.py` (from P56-1), `kernel/home.py`, the schema in `templates/schemas` and
+  `docs/contracts/config-v1` (via `scripts/gen_config_schemas.py`), `interfaces/cli/commands/setup_service.py`
+  (new), goldens, `docs/commands.md`.
+- **Acceptance (RED first):** `tests/unit/teams/test_services.py`: a valid document round-trips; `POST`
+  declared `read` is refused naming the operation; a path placeholder without its param is refused; a
+  `${secret:crm}` value round-trips unresolved. `tests/integration/interfaces/test_setup_service_cli.py`:
+  `add`, `list`, `remove`; a name taken by an MCP server is refused and nothing is written; `pod update`
+  carries `services/` and `pod export` writes it back.
+- **Gate:** the files, `tests/unit/teams tests/integration/teams`, `gen_config_schemas.py --check`, goldens,
+  `gen_cli_docs.py --check`, `validate-specs.sh`.
+- **Contention:** Wave 2, parallel with P56-4.
+
+### P56-4 — the HTTP executor and its perimeter
+
+**Status:** TODO (after Phase 55 closes) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0036 decision 13: the call runs in docket's process (the maintainer: not the jail), so
+  the perimeter is the service's host.
+- **Goal:** `platform/service_http.py::call_operation(request) -> ToolOutcome`, where the request carries
+  the resolved method, URL, headers and body (the caller resolves the secret; `platform` imports no
+  `governance`). Guards: the host must be the `baseUrl` host or one listed in `hosts`; a redirect off them
+  is refused (the `fetch` handler, `platform/fetch.py:182-216`); the host's resolved addresses that are
+  private, loopback or link-local are refused unless that host is listed explicitly; path params are
+  percent-encoded, never concatenated; header values with CR/LF are refused; time and size bounded like
+  `fetch` (`Home.fetch_timeout_s`, `fetch_max_response_bytes`); a JSON response is returned as compact
+  JSON, any other as text; a non-2xx is a failed outcome with the status and the head of the body; the
+  auth header value never appears in the outcome (redacted if the server echoes it).
+- **Non-goals:** retries, pagination, multipart or binary bodies, OAuth.
+- **Spec:** `service-client.spec.md` ("The call", "The perimeter"); P56-3 creates the file, so this card's
+  RED test and section land on the merged spec; if it merges first it creates the file with only its
+  sections and P56-3 adds its own.
+- **Change:** `platform/service_http.py` (new), `platform/__init__.py` (the export).
+- **Acceptance (RED first):** `tests/integration/platform/test_service_http.py` against an `http.server`
+  on `127.0.0.1` listed in `hosts`: `GET` with a query returns the JSON; `POST` sends the JSON body and
+  the header; a `{id}` holding `../x` is encoded; a redirect to another host is refused; an unlisted
+  loopback host is refused before any socket; an oversized response is cut and says so; a 404 is a
+  failed outcome naming 404; a header with a newline is refused.
+- **Gate:** the file, `tests/unit/platform`, `tests/architecture`.
+- **Contention:** Wave 2, parallel with P56-3 (shares only the spec file, in separate sections).
+
+### P56-5 — a service's operations are tools a role names
+
+**Status:** TODO (after P56-3 and P56-4) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0036 decision 13.
+- **Goal:** `agent/tools/service_tools.py` builds one `Tool` per operation (`svc__<service>__<op>`, kind =
+  access, a JSON-schema of its params and body, description from the document), loaded per turn beside
+  `_load_mcp_tools` (`hops/application/driver_support.py:93-110`), with the secret resolved there through
+  `governance/secrets.py::secret_value`; an unknown secret leaves that service out for the turn, reported
+  like an unavailable MCP server and naming the header, never the value. Every call passes `dispatch_tool`.
+  A role's `tools` list names `svc__<service>__<op>` or `svc__<service>` (`teams/roles.py:228-251`,
+  `allow_list_names`, `unknown_allow_list_tools`); a `send` operation reaches only a role naming it
+  (`teams/role_composer.py`, the P55-3 rule) and the `minimal` surface keeps a named one (P55-13); the
+  read/act check (`teams/apply/check.py`) counts a service `read` operation like a read MCP tool.
+- **Non-goals:** the quota and approval options (P56-6).
+- **Spec:** `service-client.spec.md` ("Tools"), `role-archetypes.spec.md` (MINOR: the `svc__` name).
+- **Change:** `agent/tools/service_tools.py` (new), `hops/application/driver_support.py`, `teams/roles.py`,
+  `teams/role_composer.py`, `teams/apply/check.py`.
+- **Acceptance (RED first):** `tests/unit/teams/test_role_composer.py`: a role naming `svc__crm` sees its
+  read operations and the send ones it names; one without the name sees none.
+  `tests/integration/agent/tools/test_service_tools.py` through `DocketDriver` and a fake model against a
+  local service: a `read` call returns the body; the request carried the stored token; the token is in
+  neither the trace nor the audit; an unknown secret leaves the service out naming the header.
+- **Gate:** the files, `tests/unit/agent tests/unit/teams`, the e2e lane.
+- **Contention:** Wave 3, parallel with P56-6 and P56-7.
+
+### P56-6 — writes are handled apart: a quota per service and no blanket approval for `DELETE`
+
+**Status:** TODO (after P56-3) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** the maintainer's answers: the quota counts per service; writing operations get a handling
+  of their own.
+- **Goal:** a policy `limit` takes `service: <name>` beside `kind` and `tool` (`governance/quota.py:22-72`):
+  it counts that service's `send` operations; the outward recipe's `send-quota.yaml` shows it. An approval
+  of a `DELETE` operation offers `approve_once` and `deny` only (`governance/approval.py:49-53`, the
+  options built per call); `approve_task` sent for it is refused. The `tool.send` audit row of a service
+  call names the method and host.
+- **Non-goals:** a quota per operation; changing `approve_task` for other tools.
+- **Spec:** `security-gates.spec.md` (MINOR), `service-client.spec.md` ("Writes").
+- **Change:** `governance/quota.py`, `governance/approval.py`, `governance/gate.py` (the audit detail only),
+  `templates/recipes/outward/policies/send-quota.yaml`.
+- **Acceptance (RED first):** `tests/unit/governance/test_quota.py`: `service: crm, count: 1` blocks the
+  second crm send and not a send of another service; `tests/unit/governance/test_approval.py`: a `DELETE`
+  approval lists two options and refuses `approve_task`.
+- **Gate:** the files, `tests/unit/governance tests/integration/governance`.
+- **Contention:** Wave 3, parallel with P56-5 and P56-7.
+
+### P56-7 — operations imported from an OpenAPI document
+
+**Status:** TODO (after P56-3) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + CLI
+
+- **Trigger:** the maintainer's answer: operations by hand **and** from OpenAPI.
+- **Goal:** `setup service add <name> --from-openapi <file> [--operations id,id] [--base-url URL]
+  [--auth-header H --secret NAME]` reads an OpenAPI 3 document (JSON or YAML, a local file; no network)
+  and writes a `kind: service` document: one operation per selected `operationId`, params from path and
+  query parameters, the body from a JSON request body, `access` by the rule above. An operation it cannot
+  map (a non-JSON body, a `$ref` it cannot resolve locally, a missing `operationId`) is skipped and listed,
+  never guessed. The written document is ordinary: editable, applied by `pod update`.
+- **Non-goals:** OpenAPI 2, fetching the document over the network, auth schemes beyond a header.
+- **Spec:** `service-client.spec.md` ("From OpenAPI"), `cli-interface.spec.md` (PATCH).
+- **Change:** `teams/services_openapi.py` (new), `interfaces/cli/commands/setup_service.py`, goldens,
+  `docs/commands.md`.
+- **Acceptance (RED first):** `tests/unit/teams/test_services_openapi.py` on a small fixture
+  (`tests/fixtures/openapi/crm.yaml`): `GET /clients` becomes a read operation with its query params,
+  `POST /clients` a send with its body, a multipart operation is skipped and listed, `--operations`
+  narrows; the CLI writes a document that `teams/services.py` loads.
+- **Gate:** the files, goldens, `gen_cli_docs.py --check`.
+- **Contention:** Wave 3; continues `setup_service.py` after P56-3.
+
+### P56-8 — the e2e world: a pod reads from and writes to a declared service
+
+**Status:** TODO (after P56-5 and P56-6) · **Size:** M · **Model:** Sonnet · **Kind:** test + recipe
+
+- **Trigger:** ADR 0036 decision 13; the e2e lane is the oracle.
+- **Goal:** in `tests/e2e/test_workdir_pod.py`, a world with a local fake service (`http.server` on
+  `127.0.0.1`, listed in `hosts`) declared by a document with a read and a `POST` operation, its token
+  stored with `setup secret set --stdin`, and the `outward` pipeline: the researcher reads through the
+  service; the actor's `POST` parks; `task show` shows the whole call; `approve_once` and a run send it
+  once (the server's log has one entry carrying the token header); the token is in no trace, audit or
+  inbox line; a second `POST` over a `service:` quota of one is refused. The `outward` README gains the
+  service shape beside the MCP shapes.
+- **Spec:** none new (each card owns its section).
+- **Change:** `tests/e2e/test_workdir_pod.py`, `templates/recipes/outward/README.md`, `docs/recipes.md`
+  (generated by `scripts/gen_recipe_docs.py`).
+- **Gate:** the e2e lane, `gen_recipe_docs.py --check`.
+- **Contention:** Wave 4.
+
+### P56-9 — the docs say what shipped, and the real run
+
+**Status:** TODO (at the close) · **Size:** S · **Model:** Haiku (docs) and the integrator (run)
+**Kind:** docs + live evidence
+
+- **Goal:** `docs/AGENT-TEAMS.md` and `docs/SECURITY-SIMPLE.md` describe a declared service (the document,
+  the access rule, `DELETE`, the perimeter at the host, the secret never seen by the model);
+  `docs/CONFIGURATION.md` lists `services.json`. The integrator runs one real task against the local
+  model and a local fake service (park, approve, one call), as P55-15 does. No count, no saving.
+- **Gate:** the README agent-lane files on the committed tree, `gen_cli_docs.py --check`.
+- **Contention:** Wave 4, after every other card merged.
+
+### Phase 56 wave table
+
+| Wave | Cards | Boundary |
+| --- | --- | --- |
+| 1 | P56-1 · P56-2 | `config_docs.py`, `apply/plan.py` → `apply/external.py` · `setup_secret.py`, `secrets.py`, `setup_notify.py` |
+| 2 | P56-3 · P56-4 | `kernel/service.py`, `teams/services.py`, `config_docs.py`, `home.py`, `setup_service.py` · `platform/service_http.py` (shared: the new spec, separate sections) |
+| 3 | P56-5 · P56-6 · P56-7 | `service_tools.py`, `driver_support.py`, `roles.py`, `role_composer.py`, `apply/check.py` · `quota.py`, `approval.py`, `gate.py` · `services_openapi.py`, `setup_service.py` |
+| 4 | P56-8 · P56-9 | the e2e file and the recipe README · docs, then the real run |
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
@@ -750,13 +983,13 @@ that already own the files.
     `teams/config_docs.py` sits at 700 lines.
   - A flake, once: `test_consult_wait.py::TestAnsweredInPlace::test_an_answer_by_the_task_goes_through_the_same_record`
     failed in the full run and passed alone (the file's other test is already on the list above).
-- *To investigate, important, first after Phase 55: declarative external services.* The maintainer wants a pod to reach
+- *Declarative external services (planned as Phase 56).* The maintainer wants a pod to reach
   an external service from a `kind: service` document or commands (base URL, auth from the secret store, operations as
   read/send tools through `dispatch_tool`), with no program written per service and no more MCP implementation work. It
   reverses ADR 0036's "no native HTTP tool": written as decision 13 in the amendment of
   [ADR 0036](docs/adr/0036-a-pod-works-outward.md) (proposed 2026-10-30, not accepted; no new ADR). Sketch and open
-  questions in `internal-docs/design/site-credentials-for-a-pod.md` (Addendum). No card until the maintainer accepts
-  its scope.
+  questions in `internal-docs/design/site-credentials-for-a-pod.md` (Addendum). Scope accepted 2026-10-30: Phase 56
+  above.
 - *To investigate, important: a pod logging in to a site nobody configured.* Per-service MCP bridges and `secret:<name>`
   are fixed when a server is registered; a task that ends in a `send` at a new site that needs a login has no per-site
   credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
