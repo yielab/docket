@@ -1,6 +1,6 @@
 # API Key Management Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Complete
 **Last Updated**: 2026-10-30
 
@@ -17,6 +17,7 @@ This specification covers:
 - The supported key names
 - The storage backends (file and OS keyring)
 - A stored secret consumed by an MCP server's environment
+- Storing, listing and removing a secret under any name (`docket setup secret`)
 
 This specification does NOT cover credential format rules beyond the warning in Operations item 1
 (see input-validation.spec.md).
@@ -79,6 +80,30 @@ Credentials belong to a provider; there is no separate key command.
    so trace, audit and export redact it like a provider credential (Requirement 2 above); a name
    with no stored value makes that server unavailable for the turn and **MUST NOT** print a value.
 
+### A secret stored under any name (docket setup secret)
+
+A `secret:<name>` reference resolves only a name something stored, so a name no provider declares
+(a service token, an MCP server's key) has its own command.
+
+1. `secret set <name> [--stdin]` **MUST** read the value from `--stdin` (the whole of standard input,
+   surrounding whitespace removed) or, on a terminal, from a hidden prompt. Off a terminal without
+   `--stdin` it **MUST** exit 1 naming `--stdin` and write nothing. An empty value exits 1 and
+   writes nothing.
+2. The value **MUST NOT** be accepted as an argument: a second positional argument exits 2, writes
+   nothing and does not repeat that argument anywhere. A `<name>` outside `[A-Za-z0-9_.-]+` exits 1,
+   writes nothing and is not repeated either, because a pasted value is not a name.
+3. The value is stored by the one writer, `governance.secrets.store_secret`, on the backend
+   Backends below name, and is audited by name only: `keys.add` for a new name, `keys.rotate` for a
+   name already stored. Neither stdout, stderr nor the audit log **MUST** hold the value.
+4. `secret list [--json]` **MUST** print each stored name with its added (and, when set, rotated)
+   time and **MUST NOT** print a value; with nothing stored it exits 0 and says so. `--json` prints
+   one array of `{name, added_at, rotated_at}`.
+5. `secret remove <name>` **MUST** delete the stored value (and clear the keyring entry under the
+   keyring backend), drop its bookkeeping and audit `keys.remove`; a name not stored exits 1.
+   There is no confirmation prompt, and the command does not check whether a document still
+   references the name.
+6. Rotating on a schedule, expiring and scoping a secret per pod are not part of this command.
+
 ### Backends
 
 1. The default backend (`DOCKET_SECRETS_BACKEND` unset, or set to `file`) stores every value in
@@ -100,6 +125,9 @@ Credentials belong to a provider; there is no separate key command.
 docket setup provider add <name> [url] [--credential KEY]   # Store, probe, register, apply preset
 docket setup provider rotate <name> [--credential KEY]      # Replace the stored value
 docket setup provider remove <name> [--yes]                 # Remove the provider and its credential
+docket setup secret set <name> [--stdin]                    # Store a secret under any name (value never an argument)
+docket setup secret list [--json]                           # Names and dates, never values
+docket setup secret remove <name>                           # Delete a stored secret
 ```
 
 ### Return Codes
@@ -107,6 +135,7 @@ docket setup provider remove <name> [--yes]                 # Remove the provide
 - `0`: Success, and a `provider remove` the operator declines at the confirmation prompt
 - `1`: Any error (missing credential or confirmation, unreachable endpoint, unknown provider —
   CLI-wide convention, see ../api/cli-interface.spec.md)
+- `2`: `secret set` given its value as an argument
 
 ## Examples
 

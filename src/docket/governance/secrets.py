@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from docket.governance import secrets as _secrets
+from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
@@ -73,6 +74,27 @@ def store_backend() -> str:
             "Install libsecret-tools, or unset DOCKET_SECRETS_BACKEND to store in secrets.json",
         )
     return "keyring"
+
+
+def store_secret(name: str, value: str) -> None:
+    """Write one credential to the 0600 secret store (or the OS keyring when requested) and audit
+    it by name: ``keys.rotate`` for a name already stored, else ``keys.add``. Raises
+    ``Unavailable`` when the backend refuses, with nothing written."""
+    backend = store_backend()
+    secrets = load_secrets()
+    event = "rotate" if name in secrets else "add"
+    if backend == "keyring":
+        if not _process.secret_tool_store(current_home().keyring_service, name, value):
+            raise Unavailable(
+                f"the OS keyring refused {name}",
+                "Nothing was written; it is never stored in plaintext under DOCKET_SECRETS_BACKEND=keyring",
+            )
+        secrets[name] = ""
+    else:
+        secrets[name] = value
+    save_secrets(secrets)
+    touch_meta(name, "rotated" if event == "rotate" else "added")
+    audit_log(f"keys.{event}", name)
 
 
 def secret_values() -> list[str]:

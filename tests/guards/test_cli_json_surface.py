@@ -53,6 +53,7 @@ _ARGS: dict[tuple[str, ...], list[str]] = {
     ("setup", "export", "list"): [],
     ("setup", "export", "show"): ["langfuse"],
     ("setup", "mcp", "list"): [],
+    ("setup", "secret", "list"): [],
 }
 
 
