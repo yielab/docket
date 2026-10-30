@@ -28,6 +28,7 @@ from docket.agent import ports as _rd
 from docket.governance import audit as _audit
 from docket.governance import gate as _gate
 from docket.governance import policy as _policy
+from docket.hops.application import compose as _compose
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_settings as _commands_pod_settings
@@ -35,6 +36,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.tasks.application import queue as _queue
+from docket.tasks.domain.task import TaskRecord
 from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
@@ -167,6 +169,23 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(recipe_dir: Path, tmp_path: Pat
             units = node.children if isinstance(node, _orch.PlannedGroup) else (node,)
             skipped.extend(u.step_id for u in units if u.skipped)
         assert skipped == [], f"recipe {recipe_dir.name!r} leaves steps unresolvable: {skipped}"
+
+
+def test_web_research_validates_and_its_lead_is_not_told_to_plan_for_the_implementer() -> None:
+    """The recipe's Lead step declares its own instructions, so its request names no Implementer."""
+    recipe_dir = RECIPES_DIR / "web-research"
+    validated = invoke_pod(["validate", str(recipe_dir)])
+    assert validated.exit_code == 0, validated.output
+
+    spec = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8")).spec
+    assert spec is not None
+    lead = next(step for step in spec.steps if step.role == "lead")
+    assert lead.instructions
+    message, _ = _compose._hop_message(
+        TaskRecord(description="what is new in X"), "lead", [], step_instructions=lead.instructions
+    )
+    assert "Implementer" not in message
+    assert message.endswith("\n\nwhat is new in X")
 
 
 def test_pod_apply_resolves_a_shipped_recipe_by_name(tmp_path: Path) -> None:

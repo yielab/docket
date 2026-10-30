@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 4.6.0
+**Version**: 4.7.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -195,9 +195,17 @@ This specification does NOT cover:
    never listing the whole tree; and, to leave a note for later tasks, end the reply with
    `## Memory` and lines `- <kind>: <path or command> -- <fact>`, kind one of `generated`,
    `command`, `pitfall`, `convention`, facts only (workspace-structure.spec.md "Pod memory",
-   requirement 3). The block stays under 520 characters. A step prompt adds only its own output
+   requirement 3). The block stays under 520 characters. On a `workdir`-kind pod the rendered
+   `AGENTS.md` carries the working-directory variant instead (`workspaceKind` chooses it, at
+   provisioning and in `pod update`'s re-render alike): the first bullet delivers the working
+   directory and what the previous step produced, with no repository map; the second finds text
+   in the files with `grep` and never lists the whole tree; the third is unchanged. Its text
+   contains neither "repository" nor "code". A `codebase`-kind pod renders the block above, byte
+   for byte. The `MEMORY.md` seed makes the same choice: a `workdir` pod's asks for the task and
+   the notes in the working directory and has a `## Layout` section where a codebase's has
+   `## Architecture`. A step prompt adds only its own output
    contract. Both templates render to the same bytes for two tasks of one member, so the system
-   prompt carries no task data. `POD_TEMPLATE_VERSION` is 5.
+   prompt carries no task data. `POD_TEMPLATE_VERSION` is 6.
 
 ### Per-role tool sets
 
@@ -243,20 +251,27 @@ This specification does NOT cover:
    **MUST** degrade to "no additional pod-level denial" for that turn, because this function runs
    on every turn's live path and must never crash over a hand-edited settings file. The write
    path (`PodSettings.coerce`) refuses a bad value.
-8. The implementer's and the writer's rendered `SOUL.md`, and the `bash` tool's schema description
-   in `builtin_registry()`, **MUST** carry one sentence: create or change files with
-   `write`/`edit`, not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash`
-   to run things. This is guidance, not enforcement: `bash` stays available to both roles and its
-   classification is unchanged.
+8. The implementer's rendered `SOUL.md`, and the `bash` tool's schema description in
+   `builtin_registry()`, **MUST** carry one sentence: create or change files with `write`/`edit`,
+   not `cat >`, heredocs or `sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things.
+   This is guidance, not enforcement: `bash` stays available to the Implementer and its
+   classification is unchanged. The writer's `SOUL.md` carries the same sentence without the last
+   clause, because the writer's `deniedTools` is `["bash"]`: it holds `read`, `write`, `edit`,
+   `glob`, `grep`, `fetch`, `skill` and `consult`, and neither `bash` nor the two tools that only
+   serve it (requirement 9). A drafting role that needs to run something does so in a pipeline
+   `run:` step, which docket runs, not the role.
 9. A role that denies `bash`, by its own `deniedTools` or its pod's, **MUST NOT** be offered the
    tools that only serve a background `bash` process, `process_output` and `process_stop`:
    `registry_for_role` removes them with `bash`, by name, from the same union. The built-in Lead,
    Reviewer and writer therefore carry neither.
-10. The Lead's rendered `SOUL.md` **MUST** name one escalation channel: decide from the repository
-   and list every assumption at the top of the plan, and use the `consult` tool only for a
-   decision a person alone can make. It **MUST NOT** say the Lead cannot reach the human, and it
-   **MUST NOT** name a second channel such as a `NEEDS-INPUT` marker: that marker belongs to the
-   `intake` recipe's own step instructions, which replace the Lead's hop instruction.
+10. The Lead's rendered `SOUL.md` **MUST** name the work it hands on as the role that follows in
+    the pipeline and its subject as the workspace, never the Implementer, code or git, because a
+    pod need not have any (`pod-blueprints.spec.md` "Workspace kind and the working directory"
+    requirement 6). It **MUST** name one escalation channel: decide from the workspace and list
+    every assumption at the top of the plan, and use the `consult` tool only for a decision a
+    person alone can make. It **MUST NOT** say the Lead cannot reach the human, and it
+    **MUST NOT** name a second channel such as a `NEEDS-INPUT` marker: that marker belongs to the
+    `intake` recipe's own step instructions, which replace the Lead's hop instruction.
 
 ### Hop instructions
 

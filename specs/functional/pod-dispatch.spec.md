@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.4.0
+**Version**: 11.5.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -1329,7 +1329,8 @@ parsing for any verdict-gated step (`parse_verdict`).
    `changed` matches when any path matches the glob among the paths changed between the latest `ok`
    Implementer hop's evidence `baseCommit` and `commit` together with the uncommitted paths git
    reports, both read in the task's worktree (or the pod Lead's own codebase when the task runs in
-   place), because the hop's own work is committed by then ("Task worktrees" requirement 8);
+   place, or the pod's working directory when the pod is `workdir`-kind, where a command step's
+   command runs too), because the hop's own work is committed by then ("Task worktrees" requirement 8);
    `var`/`is` compares this run's resolved pipeline variable namespace (stringified) against the
    given value; `memberPresent` checks the role against `pod_full_roster`. Every predicate set on the
    step **MUST** be ANDed. A false predicate **MUST** emit a `step_skipped` trace event naming the
@@ -1936,7 +1937,13 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    archetype, exactly as for any custom role -- the built-in `lead` archetype carries a
    `hopInstruction`, so a pod with no `lead` overlay sees the built-in text. A step's own
    `instructions` (see `pipeline-format.spec.md`'s "Steps" Requirement 8) **MUST** override that
-   resolved text for a step targeting `role: lead`, the same as for every other role. The Lead's hop
+   resolved text for a step targeting `role: lead`, the same as for every other role. On a
+   `workdir`-kind pod, while the `lead` archetype still holds the shipped instruction, the Lead
+   reads the shipped `hop/lead-workdir` prompt instead of `hop/lead`: the same offer of `handoff`,
+   and "a concrete plan for the role that follows in the pipeline (you never do that work
+   yourself)" where `hop/lead` says "the Implementer". A `codebase`-kind pod's Lead message is
+   unchanged, byte for byte. The `web-research` recipe's Lead step declares its own `instructions`,
+   so a pod that applies it is never told to plan for the Implementer. The Lead's hop
    message **MUST** still be composed without the token budgeting of requirements 1-2 (it carries no
    prior-hop carryover): its instruction, then the task description, then the working-directory
    block, then any operator answers ("Operator input steps and answers" requirement 7).
@@ -1971,7 +1978,12 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
     directories the built-in `glob`/`grep` skip. A root that is not a git repository gets the line
     and no map. Neither the line nor the map is shed by the budget compiler; their estimated tokens
     are reserved before the carryover budget is computed. A pod's system prompt carries neither the
-    root nor the map, so it is identical between tasks.
+    root nor the map, so it is identical between tasks. On a `workdir`-kind pod
+    (`pod-blueprints.spec.md` "Workspace kind and the working directory") the line reads `Working
+    directory: the pod's working directory (your tools start there; give paths relative to it).`
+    and the message carries no map, for the Lead and every other role: a working directory is not a
+    repository, so the words "repository root" and "Repository map" never reach a model that has
+    none.
 11. **Two sections after the identity layer (ADR 0035).** A non-Lead hop's message **MUST** be two
     named sections in a fixed order. `## Task` holds the task description (never truncated) and the
     repository map bounded by relevance; `## Hop` holds the working-directory line, the operator's

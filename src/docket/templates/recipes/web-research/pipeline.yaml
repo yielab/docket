@@ -6,6 +6,10 @@ description: >-
   Analyst draws conclusions from their replies, and the Writer drafts the answer.
 steps:
   - lead: lead
+    instructions: >-
+      You are the pod Lead. Split this question into sub-questions for the Researchers: half
+      for each of the two web Researchers, and the ones the repository can answer for the third
+      (you never research or write the answer yourself):
   - research:
       parallel:
         - web-a: researcher

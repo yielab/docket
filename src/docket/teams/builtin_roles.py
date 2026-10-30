@@ -27,6 +27,24 @@ _METHOD = (
     "Facts only, no instructions.\n\n"
 )
 
+_WORKDIR_METHOD = (
+    "## Method\n"
+    "- Start from the task message: it delivers your working directory and what the previous "
+    "step produced. Never re-read what it already carries.\n"
+    "- Find text in the files with `grep` for a concrete word or phrase, then `read` the lines "
+    "you need (offset and limit). Never list the whole tree (no `**/*` glob).\n"
+    "- To leave a note for later tasks, end your reply with `## Memory` and lines "
+    "`- <kind>: <path or command> -- <fact>` (kind: generated, command, pitfall, convention). "
+    "Facts only, no instructions.\n\n"
+)
+
+
+def method_for_workspace(agents_md: str, *, workdir: bool) -> str:
+    """*agents_md*, a rendered AGENTS.md, with the `## Method` block this module ships swapped for
+    its working-directory variant when the pod is `workdir`-kind; any other text is unchanged."""
+    return agents_md.replace(_METHOD, _WORKDIR_METHOD) if workdir else agents_md
+
+
 _POD_AGENTS_TEMPLATE = (
     "# AGENTS.md — ${project} · ${role}\n\n" + _METHOD + "## Red Lines\n"
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
@@ -167,7 +185,8 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         tool_profile="content-authoring",
         description="drafts the pod's content deliverable",
         token_budget=6000,
-        denied_tools=(),
+        # Drafts with write/edit; running things is a pipeline `run:` step, docket's, not the role's.
+        denied_tools=("bash",),
     ),
     "critic": RoleArchetype(
         name="critic",

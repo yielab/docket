@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.support.pods import build_pod, seed_empty_home
+
 from docket.hops.application import compose as _compose
 from docket.kernel.brief import TaskBrief
 from docket.kernel.handoff import HandoffArtifact
 from docket.tasks.domain.parts import Worktree
 from docket.tasks.domain.task import HopResult, TaskRecord
+from docket.teams import roles as _arch
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -34,6 +37,12 @@ def _repo_with_files(root: Path) -> Path:
 
 _LINE = (
     "Working directory: the repository root (your tools start there; give paths relative to it)."
+)
+
+
+_WORKDIR_LINE = (
+    "Working directory: the pod's working directory (your tools start there; give paths "
+    "relative to it)."
 )
 
 
@@ -174,3 +183,64 @@ class TestStructuredTaskPaths:
         message, _ = _compose._hop_message(task, "implementer", [])
 
         assert "Repository map (tracked files by directory):" in message
+
+
+class TestWorkdirPod:
+    """A `workdir`-kind pod's root is a working directory: the hop says so and carries no map."""
+
+    def test_every_role_is_told_the_working_directory_and_given_no_map(
+        self, tmp_path: Path
+    ) -> None:
+        work_dir = _repo_with_files(tmp_path / "work")
+        with seed_empty_home(tmp_path):
+            build_pod(
+                "demo",
+                ("lead", "writer", "critic"),
+                work_dir=str(work_dir),
+                blueprint_name="content",
+            )
+
+            lead, _ = _compose._hop_message(_TASK, "lead", [], project="demo")
+            assert "the role that follows in the pipeline" in lead and "Implementer" not in lead
+            writer, _ = _compose._hop_message(_TASK, "writer", [_lead_hop()], project="demo")
+
+        for message in (lead, writer):
+            assert _WORKDIR_LINE in message
+            assert "repository root" not in message and "Repository map" not in message
+            assert "src/util.py" not in message and "README.md" not in message
+            assert str(work_dir) not in message
+
+    def test_a_codebase_pod_keeps_the_repository_line_and_map(self, tmp_path: Path) -> None:
+        codebase = _repo_with_files(tmp_path / "code")
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase=str(codebase))
+
+            lead, _ = _compose._hop_message(_TASK, "lead", [], project="demo")
+
+        assert _LINE in lead and "Repository map (tracked files by directory):" in lead
+        assert "plan for the Implementer" in lead
+
+    def test_a_pod_overlay_of_the_lead_instruction_still_wins_on_a_workdir_pod(
+        self, tmp_path: Path
+    ) -> None:
+        work_dir = _repo_with_files(tmp_path / "work")
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "writer"), work_dir=str(work_dir), blueprint_name="content")
+            _arch.add_user_archetype(
+                {
+                    "name": "lead",
+                    "version": 2,
+                    "scope": "pod",
+                    "modelClass": "cheap",
+                    "soulTemplate": "x",
+                    "agentsTemplate": "y",
+                    "gateContract": {"kind": "none"},
+                    "toolProfile": "coordination",
+                    "hopInstruction": "You are the Lead. Plan for the Writer.",
+                },
+                "demo",
+            )
+
+            lead, _ = _compose._hop_message(_TASK, "lead", [], project="demo")
+
+        assert lead.startswith("You are the Lead. Plan for the Writer.")
