@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from docket.teams import fleet as _fleet
+from docket.teams import pod_settings as _pod_settings
 
 NOT_ENFORCED = "not enforced: isolation off"
 
@@ -27,6 +28,8 @@ class NetworkPosture:
 def network_posture(mode: str, scope: str, *, isolation_on: bool) -> NetworkPosture:
     """Word ``mode``; only ``none`` with isolation on is enforced, egress is open otherwise."""
     if mode != "none":
+        if scope == _pod_settings.POD_GRANT_SCOPE:
+            return NetworkPosture(mode, scope, False, "open (pod grant)", "open (pod grant)")
         return NetworkPosture(mode, scope, False, "open", "open")
     if isolation_on:
         return NetworkPosture(
