@@ -8,6 +8,8 @@ from typing import Any
 import typer
 
 from docket.agent.ports import UsageDay
+from docket.governance import policy as _policy
+from docket.governance import quota as _quota
 from docket.governance import review as _reviewed
 from docket.hops.application import report as _pod_report
 from docket.hops.application import steps as _steps
@@ -184,6 +186,11 @@ def _project_summary(project: str) -> dict[str, Any]:
             else {}
         ),
         **({"budgetUnpriced": u} if (u := _unpriced_models(project)) else {}),
+        **(
+            {"quotas": rows}
+            if (rows := _quota.quota_rows(project, _policy.limits_for(None, project)))
+            else {}
+        ),
         **({"needsUpdate": n} if (n := _apply_lock.needs_update(project)) else {}),
         **(
             {"networkGrant": _pod_settings.NETWORK_GRANT_REACH}
@@ -334,6 +341,11 @@ def _render_current(summary: dict[str, Any]) -> None:
         *(
             [("Network", f"open by the operator's grant: {summary['networkGrant']}")]
             if summary.get("networkGrant")
+            else []
+        ),
+        *(
+            [("Sends", " · ".join(_quota.row_text(row) for row in summary["quotas"]))]
+            if summary.get("quotas")
             else []
         ),
         ("Approved, ready", str(tasks["approvedReady"])),

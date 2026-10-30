@@ -133,6 +133,16 @@ class PolicyWhen(BaseModel):
 PolicyWhen.model_rebuild()
 
 
+class PolicyLimit(BaseModel):
+    """A policy's send quota -- see security-gates.spec.md ("Policy format v1" requirement 9)."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["send"] | None = None
+    tool: str | None = None
+    count: int = Field(ge=1)
+    per: Literal["hour", "day"]
+
+
 class PolicyDocument(BaseModel):
     """The short-form policy document -- see security-gates.spec.md ("Policy format v1")."""
 
@@ -146,6 +156,7 @@ class PolicyDocument(BaseModel):
     when: PolicyWhen | None = None
     then: Literal["allow", "warn", "ask", "block", "redact"]
     message: str | None = None
+    limit: PolicyLimit | None = None
 
 
 class PodDocument(BaseModel):
