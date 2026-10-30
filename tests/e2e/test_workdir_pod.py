@@ -6,11 +6,18 @@ Every world here is a ``workdir``-kind pod built by ``workdir_pod``, which later
 
 from __future__ import annotations
 
+import http.server
 import json
-from collections.abc import Callable
+import sys
+import threading
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from docket.sandbox.landlock import landlock_available
+from docket.sandbox.seatbelt import seatbelt_available
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import World
 from tests.support.model_server import FakeModel, Request, say, write_file
@@ -34,18 +41,30 @@ def workdir_pod(
     *,
     blueprint: str = "content",
     pipeline_yaml: str | None = None,
+    isolation: str = "off",
 ) -> tuple[World, Path]:
     """A world whose pod is *blueprint* on a fresh, non-repository working directory, and that
-    directory. *pipeline_yaml* is written to ``w.pipeline``; without it the blueprint's runs."""
+    directory. *pipeline_yaml* is written to ``w.pipeline``; without it the blueprint's runs.
+    *isolation* ``on`` keeps what ``init`` detected; ``off`` turns the jail off."""
     w = world(model)
-    work_dir = w.root / "workdir"
-    work_dir.mkdir()
     w.pod = "e2e-work"
-    spec_file = w.root / "pod.json"
+    work_dir = add_workdir_pod(w, w.pod, blueprint)
+    if pipeline_yaml is not None:
+        w.pipeline.write_text(pipeline_yaml, encoding="utf-8")
+    if isolation == "off":
+        w.docket("setup", "sandbox", "off")
+    return w, work_dir
+
+
+def add_workdir_pod(w: World, pod: str, blueprint: str) -> Path:
+    """Register pod *pod* on a fresh working directory of its own and return that directory."""
+    work_dir = w.root / f"workdir-{pod}"
+    work_dir.mkdir()
+    spec_file = w.root / f"{pod}.json"
     spec_file.write_text(
         json.dumps(
             {
-                "id": w.pod,
+                "id": pod,
                 "blueprint": blueprint,
                 "workDir": str(work_dir),
                 "description": "A working-directory world.",
@@ -53,11 +72,8 @@ def workdir_pod(
         ),
         encoding="utf-8",
     )
-    if pipeline_yaml is not None:
-        w.pipeline.write_text(pipeline_yaml, encoding="utf-8")
     w.docket("init", "--from", str(spec_file))
-    w.docket("setup", "sandbox", "off")
-    return w, work_dir
+    return work_dir
 
 
 def _first_request_text(request: Request) -> str:
@@ -175,3 +191,106 @@ def test_a_base_ref_on_a_working_directory_pod_fails_the_task_before_any_hop(
     assert _queue_record(w, task_id)["failureKind"] == "base_ref"
     assert w.task(task_id)["evidence"]["hops"] == []
     assert model.requests == []
+
+
+BACKEND = "seatbelt" if sys.platform == "darwin" else "landlock"
+needs_jail = pytest.mark.skipif(
+    not (seatbelt_available() if sys.platform == "darwin" else landlock_available()),
+    reason=f"{BACKEND} is not available on this host",
+)
+
+
+class _Hits(http.server.BaseHTTPRequestHandler):
+    """Answers every GET with ``ok`` and counts it on the server."""
+
+    def do_GET(self) -> None:
+        self.server.hits += 1  # type: ignore[attr-defined]
+        body = b"ok"
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        """Keep the test output quiet."""
+
+
+@pytest.fixture()
+def local_server() -> Iterator[http.server.HTTPServer]:
+    """A stdlib HTTP server on 127.0.0.1 and an ephemeral port; ``hits`` counts its requests."""
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Hits)
+    server.hits = 0  # type: ignore[attr-defined]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield server
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
+def _reach_pipeline(server: http.server.HTTPServer) -> str:
+    """A pipeline whose one ``run:`` step fetches the local server from inside the pod."""
+    fetch = (
+        "import urllib.request as u; "
+        f"u.urlopen('http://127.0.0.1:{server.server_port}/', timeout=5).read()"
+    )
+    command = json.dumps(f'python3 -c "{fetch}"')
+    return f"name: reach\nsteps:\n  - plan: lead\n  - reach:\n      run: {command}\n"
+
+
+def _step_exits(w: World, task_id: str) -> list[int]:
+    return [
+        e["payload"]["exit"]
+        for e in oracles.trace_events(w, w.pod, task_id)
+        if e["event_type"] == "command_step"
+    ]
+
+
+def _run_reach(w: World, server: http.server.HTTPServer) -> tuple[str, str, list[int], int]:
+    """Queue and run one reach task: its id, its status, the run step's exits, the server hits."""
+    hits_before = server.hits  # type: ignore[attr-defined]
+    task_id = w.add_task("Fetch the local page")
+    w.docket("run", "--pod", w.pod, "--timeout", "30", "--pipeline", str(w.pipeline), check=False)
+    status = w.task(task_id)["task"]["status"]
+    return task_id, status, _step_exits(w, task_id), server.hits - hits_before  # type: ignore[attr-defined]
+
+
+@needs_jail
+def test_a_pod_reaches_the_network_only_after_the_operators_recorded_yes(
+    world: Callable[..., World],
+    fake_model: Callable[..., FakeModel],
+    local_server: http.server.HTTPServer,
+) -> None:
+    model = fake_model(script={"lead": [say("Plan: reach the page.")] * 4})
+    w, _work_dir = workdir_pod(world, model, isolation="on")
+    w.pipeline.write_text(_reach_pipeline(local_server), encoding="utf-8")
+    first_pod = w.pod
+    machine = w.docket("setup", "sandbox", "status", "--json").json()
+    assert machine["isolationEnabled"] is True and machine["backend"] == BACKEND
+    w.docket("setup", "sandbox", "network", "none")
+
+    # 1. the machine is at none and the pod holds no grant: the step fails and nothing arrives
+    task_id, status, exits, hits = _run_reach(w, local_server)
+    assert status != "done"
+    assert len(exits) == 1 and exits[0] != 0
+    assert hits == 0
+
+    # 2. the operator's recorded yes widens this pod: the same step now reaches the server
+    w.docket("pod", "set", "network", "open", "--widen", "--yes", "--pod", first_pod)
+    widened = [r["detail"] for r in oracles.audit_rows(w) if r["action"] == "pod.network_widen"]
+    assert len(widened) == 1 and first_pod in widened[0]
+    task_id, status, exits, hits = _run_reach(w, local_server)
+    assert status == "done", w.task(task_id)
+    assert exits == [0]
+    assert hits == 1
+
+    # 3. a second pod on the same machine holds no grant and is still cut off
+    second = "e2e-work-two"
+    add_workdir_pod(w, second, "content")
+    w.pod = second
+    task_id, status, exits, hits = _run_reach(w, local_server)
+    assert status != "done"
+    assert len(exits) == 1 and exits[0] != 0
+    assert hits == 0
+    machine = w.docket("setup", "sandbox", "status", "--json").json()
+    assert machine["isolationEnabled"] is True
