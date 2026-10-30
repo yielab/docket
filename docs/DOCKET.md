@@ -888,6 +888,19 @@ A `parallel` group lets a step fan out into concurrently-run child steps (for ex
 `--count N` duplicate role member); `pipeline/domain/plan.py`'s `run_group` runs them on a bounded
 thread pool and joins before the pipeline advances past that position.
 
+A `wait` step parks a task on a time or on a probe command instead of on a person. Dispatch runs no
+agent turn for it; it opens a `wait` escalation that asks nobody, and the periodic sweep of
+`docket start --dispatch` wakes the task when its due time passes or its probe exits 0. A task
+waiting that way is not listed under what needs you. A `kind: routine` document is the other
+time-based path: the sweep enqueues one task per due slot, under an idempotency key naming the
+routine and the slot. Routines fire only under `docket start --dispatch`, and `docket pod routine
+list` shows each one's next and last slot. There is still no external daemon: both paths run in the
+process you start.
+
+A pod whose workspace kind is `workdir` has no repository. Its members share one working directory,
+its hop prompts speak of that directory rather than of code or git, and a task that names a
+`baseRef` fails before any hop, because there is no repository to branch from.
+
 ### Retries and timeouts
 
 A hop whose agent turn fails with a *retryable* failure kind (`timeout` or `daemon_error` — the
