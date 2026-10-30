@@ -75,6 +75,8 @@ def payload(
         body["prompt"] = escalation.prompt
     if event_type in _BY:
         body["by"] = _BY[event_type]
+        # The settling process is often not the asking one; its exporter sends the whole pause.
+        body["prompt"] = escalation.prompt
     chosen = option_id or (resolution.option_id if resolution and resolution.option_id else "")
     if chosen and event_type in (RESOLVED, DECIDED):
         body["optionId"] = chosen

@@ -67,10 +67,14 @@ class TestPayload:
     def test_an_asked_without_a_deadline_omits_it(self) -> None:
         assert "expiresAt" not in _events.payload(_events.ASKED, _escalation(expiresAt=None))
 
-    def test_only_asked_carries_the_prompt_and_options(self) -> None:
+    def test_only_asked_carries_the_options(self) -> None:
         for event_type in _events.EVENT_TYPES - {_events.ASKED}:
-            payload = _events.payload(event_type, _escalation())
-            assert "prompt" not in payload and "options" not in payload
+            assert "options" not in _events.payload(event_type, _escalation())
+
+    def test_a_settlement_repeats_the_question_for_the_process_that_settles_it(self) -> None:
+        for event_type in (_events.RESOLVED, _events.EXPIRED, _events.DECIDED):
+            assert _events.payload(event_type, _escalation())["prompt"] == "Which store?"
+        assert "prompt" not in _events.payload(_events.DELIVERED, _escalation())
 
     def test_delivered_names_its_channel(self) -> None:
         payload = _events.payload(_events.DELIVERED, _escalation(), channel="telegram")

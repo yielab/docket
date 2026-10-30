@@ -272,7 +272,7 @@ class TestDecide:
         assert (payload["optionId"], payload["task"]) == ("sqlite", "t-1")
         assert payload["askedAt"] == list_escalations(state="decided")[0].asked_at
         assert (event["session_id"], event["task_id"]) == ("task:t-1", "t-1")
-        assert "Which store" not in json.dumps(payload)
+        assert payload["prompt"].startswith("Which store")
 
     def test_the_pause_nobody_waited_on_is_stored_decided_and_never_pending(self) -> None:
         self._decide()
