@@ -32,6 +32,7 @@ from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
+from docket.teams import roles as _roles
 from docket.teams.pod import TASK_PIPELINE_NAME
 from docket.teams.settings import (
     load_pod_settings,
@@ -64,7 +65,7 @@ def _bound_pipeline(project: str, pipeline_hash: str) -> _pipeline.PipelineSpec:
             f"pod '{project}'s bound pipeline copy at {path} no longer matches its recorded "
             f"hash (expected {pipeline_hash[:12]}..., found {actual_hash[:12]}...) -- {rebind_hint}"
         )
-    result = _pipeline.load_pipeline(text)
+    result = _pipeline.load_pipeline(text, roles=_roles.load_registry(project).names())
     if result.spec is None:
         raise DispatchError(
             f"pod '{project}'s bound pipeline copy at {path} no longer validates: "
@@ -92,7 +93,7 @@ def _blueprint_pipeline(project: str) -> tuple[_pipeline.PipelineSpec, str]:
             return _blueprints.get_blueprint(name).default_pipeline, f"blueprint '{name}'"
         except _blueprints.BlueprintError:
             pass  # absent/unknown blueprint -- fall through to the built-in default
-    builtin = _pipeline.load_pipeline(None).spec
+    builtin = _pipeline.load_pipeline(None, roles=_roles.load_registry(project).names()).spec
     assert builtin is not None  # load_pipeline(None) always succeeds
     return builtin, "built-in default"
 
@@ -176,7 +177,9 @@ def _task_pipeline(
         )
     path, source = found
     try:
-        loaded = _pipeline.load_pipeline(path.read_text(encoding="utf-8"))
+        loaded = _pipeline.load_pipeline(
+            path.read_text(encoding="utf-8"), roles=_roles.load_registry(project).names()
+        )
     except OSError as exc:
         raise TaskRunRefusal(f"pipeline {name!r} ({source}) is unreadable: {exc}") from exc
     if loaded.spec is None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 import pytest
+from tests.support.roles import ROLE_NAMES
 
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain.gates import MechanicalGate, VerdictGate
@@ -33,7 +34,7 @@ _CHILD = "      - c: reviewer\n"
 
 
 def _refused(body: str, *needles: str) -> None:
-    result = load_pipeline(_HEAD + body)
+    result = load_pipeline(_HEAD + body, roles=ROLE_NAMES)
     assert not result.ok, "the loader accepted a shape the executor cannot run"
     joined = " | ".join(result.errors)
     for needle in needles:
@@ -46,7 +47,7 @@ class TestZeroMigration:
     constants, not a hand-copied literal, so real drift fails this suite."""
 
     def test_no_text_returns_builtin_source(self) -> None:
-        result = load_pipeline(None)
+        result = load_pipeline(None, roles=ROLE_NAMES)
         assert result.source == "builtin"
         assert result.ok
 
@@ -106,32 +107,32 @@ class TestZeroMigration:
 
 class TestLoadPipeline:
     def test_yaml_parse_error(self) -> None:
-        result = load_pipeline("name: test\nsteps:\n  - {\n")
+        result = load_pipeline("name: test\nsteps:\n  - {\n", roles=ROLE_NAMES)
         assert not result.ok
         assert result.spec is None
         assert any("YAML parse error" in e for e in result.errors)
 
     def test_empty_document_is_an_error(self) -> None:
-        result = load_pipeline("")
+        result = load_pipeline("", roles=ROLE_NAMES)
         assert not result.ok
         assert result.source == "file"
 
     def test_non_mapping_document_is_an_error(self) -> None:
-        result = load_pipeline("- just\n- a\n- list\n")
+        result = load_pipeline("- just\n- a\n- list\n", roles=ROLE_NAMES)
         assert not result.ok
         assert any("mapping" in e for e in result.errors)
 
     def test_missing_name_rejected(self) -> None:
-        result = load_pipeline("steps:\n  - s1: lead\n")
+        result = load_pipeline("steps:\n  - s1: lead\n", roles=ROLE_NAMES)
         assert not result.ok
 
     def test_missing_steps_rejected(self) -> None:
-        result = load_pipeline("name: p\n")
+        result = load_pipeline("name: p\n", roles=ROLE_NAMES)
         assert not result.ok
 
     def test_missing_pyyaml_gives_actionable_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(sys.modules, "yaml", None)
-        result = load_pipeline("name: p\nsteps:\n  - s1: lead\n")
+        result = load_pipeline("name: p\nsteps:\n  - s1: lead\n", roles=ROLE_NAMES)
         assert not result.ok
         assert any("pyyaml" in e.lower() for e in result.errors)
 
@@ -151,7 +152,7 @@ steps:
     until: verify
     max: 2
 """
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert result.ok, result.errors
         assert result.spec is not None
         build = result.spec.steps[1]
@@ -174,7 +175,7 @@ steps:
       fail: stop
   - dead: implementer
 """
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert len(result.errors) == 1
         assert "dead" in result.errors[0]
@@ -191,7 +192,7 @@ steps:
         from: triage
         message: "Confirm the approach?"
 """
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert result.ok, result.errors
         assert result.spec is not None
         ask = result.spec.steps[1]
@@ -211,7 +212,7 @@ steps:
     input:
       from: triage
 """
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert len(result.errors) == 1
         assert "'ask'" in result.errors[0]
@@ -226,7 +227,7 @@ steps:
       input:
         from: no_such_step
 """
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert len(result.errors) == 1
         assert "ask" in result.errors[0]
@@ -242,7 +243,7 @@ steps:
         from: plan
   - plan: implementer
 """
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert len(result.errors) == 1
         assert "ask" in result.errors[0]
@@ -261,7 +262,7 @@ steps:
         answered: pass
         unknown_key: fail
 """
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert len(result.errors) == 1
         assert "ask" in result.errors[0]
@@ -301,7 +302,7 @@ class TestRefusedShapes:
             "  - a: implementer\n    verify: true\n"
             "    on:\n      fail: {goto: b, max: 2}\n" + _UNIT_B
         )
-        assert load_pipeline(_HEAD + body).ok
+        assert load_pipeline(_HEAD + body, roles=ROLE_NAMES).ok
 
     @pytest.mark.parametrize(
         ("child_yaml", "field"),
@@ -328,4 +329,4 @@ class TestRefusedShapes:
             + "        retries: 1\n        timeout: 30\n        model: cheap\n"
             + "        archetype: reviewer\n        verify: true\n"
         )
-        assert load_pipeline(_HEAD + body).ok
+        assert load_pipeline(_HEAD + body, roles=ROLE_NAMES).ok

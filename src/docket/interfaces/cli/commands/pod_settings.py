@@ -114,7 +114,7 @@ def _pod_config_set_pipeline(project: str, lead_id: str, path_str: str) -> None:
         )
         raise typer.Exit(2)
     text = path.read_text(encoding="utf-8")
-    result = _pipeline.load_pipeline(text)
+    result = _pipeline.load_pipeline(text, roles=_arch.load_registry(project).names())
     if result.spec is None:
         ui.error(f"Pipeline '{path_str}' is invalid:")
         for e in result.errors:

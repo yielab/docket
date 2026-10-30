@@ -203,7 +203,9 @@ def _catalog_service_kinds(project: str) -> dict[str, str]:
     return kinds
 
 
-def _directory_step_tools(directory: Path) -> dict[str, list[tuple[str, ...] | None]]:
+def _directory_step_tools(
+    directory: Path, role_names: frozenset[str]
+) -> dict[str, list[tuple[str, ...] | None]]:
     """The `tools` of each step, by the role it runs, over the directory's pipelines."""
     files = [directory / f"pipeline.{ext}" for ext in ("yaml", "yml")]
     files += sorted((directory / "pipelines").glob("*.y*ml"))
@@ -211,7 +213,7 @@ def _directory_step_tools(directory: Path) -> dict[str, list[tuple[str, ...] | N
     for path in files:
         if not path.is_file():
             continue
-        spec = _pipeline.load_pipeline(path.read_text(encoding="utf-8")).spec
+        spec = _pipeline.load_pipeline(path.read_text(encoding="utf-8"), roles=role_names).spec
         if spec is None:
             continue
         for step in spec.steps:
@@ -243,7 +245,8 @@ def directory_send_problems(directory: Path, project: str) -> list[str]:
             roles[str(doc["name"])] = _role_tools(doc)
         except _role_schema.ArchetypeError:
             continue  # the kind validator reports it
-    return send_conflicts(roles, kinds, _directory_step_tools(directory))
+    known = _roles.load_registry(project).names() | frozenset(roles)
+    return send_conflicts(roles, kinds, _directory_step_tools(directory, known))
 
 
 def role_file_send_problems(path: Path, project: str) -> list[str]:

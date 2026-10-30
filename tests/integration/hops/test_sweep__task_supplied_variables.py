@@ -8,6 +8,7 @@ import pytest
 from tests.support import pods as _support_pods
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
+from tests.support.roles import ROLE_NAMES
 
 from docket.hops.application import sweep as _sweep
 from docket.kernel.errors import DispatchError
@@ -30,7 +31,7 @@ steps:
 
 
 def _spec() -> PipelineSpec:
-    spec = load_pipeline(NEEDS_TICKET).spec
+    spec = load_pipeline(NEEDS_TICKET, roles=ROLE_NAMES).spec
     assert spec is not None
     return spec
 

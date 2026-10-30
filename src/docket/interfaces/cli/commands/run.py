@@ -111,14 +111,16 @@ def _parse_vars(values: list[str]) -> dict[str, str]:
     return out
 
 
-def _load_spec(path: Path) -> _pipeline.PipelineSpec:
+def _load_spec(path: Path, project: str) -> _pipeline.PipelineSpec:
     """Load and validate a pipeline file; a problem exits 1, a canonical step exits 2."""
     try:
         _config_docs.load_document(path, kind="pipeline")
     except _config_docs.ConfigDocError as exc:
         ui.error(f"Pipeline file is invalid: {exc}", f"Check it with docket pod validate {path}")
         raise typer.Exit(2 if isinstance(exc, CanonicalFormRefused) else 1) from exc
-    result = _pipeline.load_pipeline(path.read_text(encoding="utf-8"))
+    result = _pipeline.load_pipeline(
+        path.read_text(encoding="utf-8"), roles=_arch.load_registry(project).names()
+    )
     if result.spec is None or result.errors:
         for err in result.errors:
             ui.fail(f"  {err}")
@@ -341,7 +343,7 @@ def cmd_run(
 
     project = _contract.require_pod(pod)
     variables = _parse_vars(var)
-    spec = _load_spec(pipeline) if pipeline is not None else None
+    spec = _load_spec(pipeline, project) if pipeline is not None else None
     if dry_run:
         _dry_run(project, spec)
         return
