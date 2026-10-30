@@ -128,7 +128,7 @@ class TestCmdAdd:
             json.dumps(
                 {
                     "id": "myshop",
-                    "blueprint": "software",
+                    "blueprint": "build",
                     "codebase": str(tmp_path),
                     "stack": "Node.js",
                     "description": "Test shop agent",
@@ -166,7 +166,7 @@ class TestCmdAdd:
         home = _setup_bare(tmp_path)
         spec = self._spec_file(
             tmp_path,
-            json.dumps({"id": "test-agent", "blueprint": "software", "codebase": str(tmp_path)}),
+            json.dumps({"id": "test-agent", "blueprint": "build", "codebase": str(tmp_path)}),
         )
         assert _run(["init", "--from", str(spec)], home)[0] == 0
 
@@ -290,7 +290,7 @@ class TestCmdAdd:
     def test_from_list_of_pods(self, tmp_path: Path) -> None:
         home = _setup_bare(tmp_path)
         entries = [
-            {"id": name, "blueprint": "software", "codebase": str(tmp_path), "description": text}
+            {"id": name, "blueprint": "build", "codebase": str(tmp_path), "description": text}
             for name, text in (("pod-a", "First"), ("pod-b", "Second"))
         ]
         spec = self._spec_file(tmp_path, json.dumps(entries))

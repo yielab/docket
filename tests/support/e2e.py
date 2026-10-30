@@ -179,11 +179,11 @@ class World:
         return result
 
     def make_pod(self, pipeline_yaml: str, *, pod: str = "e2e", isolation: str = "off") -> None:
-        """Provision the four-member ``agentic-product`` pod and write its pipeline file."""
+        """Provision the full ``build`` pod (Lead, Implementer, Reviewer) and write its pipeline file."""
         self.pod = pod
         spec = {
             "id": pod,
-            "blueprint": "agentic-product",
+            "blueprint": "build",
             "codebase": str(self.repo),
             "stack": "shell",
             "description": "An end-to-end world.",

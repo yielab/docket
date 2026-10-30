@@ -114,12 +114,12 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
 BUILTIN_ROLE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer")
 
 
-# ── Starter library: five generic pod roles for non-coding objectives ──────────
+# ── Starter library: six generic pod roles for non-coding objectives ──────────
 #
-# These ship as data, proving "a research pod, a content pod, an ops pod" are
+# These ship as data, proving "a pod that responds, one that operates, one that runs a routine" are
 # expressible without a new hardcoded role string anywhere in teams/pod.py or
 # interfaces/cli/commands/pod.py. They participate in `docket pod roles`/`normalize_role`/`member_id`,
-# in pod composition presets (`teams/blueprints.py`'s research/content/ops
+# in pod composition presets (`teams/blueprints.py`'s respond/operate/routine
 # blueprints), and — via `gate_contract` — in the dispatch executor's gate
 # resolution (`pipeline/domain/plan.py`).
 
@@ -128,6 +128,15 @@ _STARTER_AGENTS_TEMPLATE = (
     "- Stay within the `${project}` pod; coordinate only within it (the Lead\n"
     "  routes work between members). No cross-project access.\n"
     "- Never take an irreversible action outside your stated role without HITL approval.\n"
+)
+
+_ACTOR_AGENTS_TEMPLATE = (
+    "# AGENTS.md — ${project} · ${role}\n\n" + _METHOD + "## Red Lines\n"
+    "- Stay within the `${project}` pod. Never access another project's files or secrets.\n"
+    "- One send per recipient. Never change the approved text, and never send a second attempt\n"
+    "  after a refusal.\n"
+    "- You hold no reading tool beyond the working directory on purpose: what you send was decided\n"
+    "  before you ran.\n"
 )
 
 STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
@@ -200,6 +209,22 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         # write/edit/exec at all.
         denied_tools=("write", "edit", "bash"),
     ),
+    "actor": RoleArchetype(
+        name="actor",
+        version=1,
+        scope="pod",
+        model_class="strong",
+        soul_template=_soul("actor"),
+        agents_template=_ACTOR_AGENTS_TEMPLATE,
+        gate_contract=GateContract(kind="none"),
+        tool_profile="send-only",
+        description="sends what the step before approved, nothing else",
+        token_budget=4000,
+        # Reads the approved draft and nothing else; the tool that acts is the one the operator's
+        # role overlay adds to this list (an MCP `send` tool or a declared service operation).
+        denied_tools=("write", "edit", "bash"),
+        tools=("read", "glob"),
+    ),
 }
 
 STARTER_ROLE_ORDER: tuple[str, ...] = (
@@ -208,4 +233,5 @@ STARTER_ROLE_ORDER: tuple[str, ...] = (
     "writer",
     "operator",
     "monitor",
+    "actor",
 )

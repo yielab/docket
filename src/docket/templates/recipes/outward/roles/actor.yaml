@@ -1,7 +1,0 @@
-kind: role
-name: actor
-description: sends the approved draft through the pod's send tool; reads nothing else
-model: strong
-cannot: [write, edit, bash]
-tools: [read, glob, mcp__outbox__send]
-instructions: actor.md

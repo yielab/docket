@@ -1,19 +1,22 @@
 # outward
 
-Researcher -> Writer -> Reviewer (APPROVE or REQUEST-CHANGES, one rework back to the Writer) -> Actor.
+The policy pack of a `respond` pod: ask a person before every `send` tool, and cap the pod's sends.
 
-A pod that acts outside the machine: it sends a message, submits a form, posts, books, pays, or
-asks another agent to. The Researcher gathers, the Writer drafts into the working directory, the
-Reviewer vets, and only the Actor holds a `send` tool. Reading and acting are kept apart: the roles
-that read cannot send, and the role that sends cannot read the web, so what leaves was decided
-before the Actor ran.
+A `respond` pod acts outside the machine: it sends a message, submits a form, posts, books, pays, or
+asks another agent to. Its pipeline (`docket init --blueprint respond`) is the Lead's intake, a
+Researcher who gathers, a Writer who drafts into the working directory, a Reviewer who vets
+(APPROVE or REQUEST-CHANGES, one rework back to the Writer), and only then the Actor, the one role
+that holds a `send` tool. Reading and acting are kept apart: the roles that read cannot send, and the
+role that sends cannot read the web, so what leaves was decided before the Actor ran. This recipe adds
+the policy half; it ships no pipeline, no role and no member, because the blueprint has them.
 
 ## How the separation holds
 
 - A `send` tool (a tool of an MCP server declared `--kind send`, or a write operation of a
   declared service) reaches a role only when the
   role's own `tools` list names it. The Researcher, Writer and Reviewer name none, so they are never
-  offered one. The Actor names `mcp__outbox__send` and nothing that reads the web.
+  offered one. The starter Actor holds `read` and `glob` only; your role overlay (see "Apply it")
+  adds its send tool, for example `mcp__outbox__send`, and nothing that reads the web.
 - `docket pod update` and `docket pod validate` refuse a role whose `tools` name a `send` tool
   and that still holds `fetch` or a tool of a `read` server. A step's `tools` can satisfy the rule
   when every step that runs the role declares them.
@@ -122,9 +125,8 @@ acts is declared twice, once for each. Four shapes with an MCP server and a fift
    docket setup service add crm.yaml
    ```
 
-   Then point the Actor at the operation: copy this recipe's directory, set `tools: [read, glob,
-   svc__crm__create_contact]` in the copy's `roles/actor.yaml` (or `svc__crm` for every operation)
-   and apply the copy with `docket pod update <directory>`. The Researcher needs no edit for the
+   Then point the Actor at the operation in your role overlay: set `tools: [read, glob,
+   svc__crm__create_contact]` (or `svc__crm` for every operation) as shown under "Apply it". The Researcher needs no edit for the
    `get_contact` read. Every call carries `X-Docket-Task`, the id of
    the task it serves; add `idempotencyHeader: Idempotency-Key` to the document for a key on each
    write. A `DELETE` is offered `approve_once` or `deny` only. An OpenAPI 3 file builds the document
@@ -133,26 +135,38 @@ acts is declared twice, once for each. Four shapes with an MCP server and a fift
 
 ## Apply it
 
-This recipe is for a pod without a repository (a `workdir` blueprint such as `content`), because
-the draft lives in its working directory:
+This recipe is for a pod without a repository: a `respond` pod, because the draft lives in its
+working directory.
 
 ```bash
+docket init my-pod --blueprint respond
 docket pod update outward
 ```
 
-`pod.yaml` names the four members this recipe adds: `researcher`, `writer`, `reviewer` and `actor`.
-`apply` validates the roster, the pipeline, the read/act rule and the policy before writing
-anything, and is safe to run again. `--dry-run` prints the plan without writing.
+The Actor's send tool is whatever your overlay names. Copy this recipe's directory, add
+`roles/actor.yaml` and `roles/actor.md` to the copy, and apply the copy with `docket pod update
+<directory>`:
+
+```yaml
+# roles/actor.yaml
+kind: role
+name: actor
+description: sends the approved draft through the pod's send tool
+model: strong
+cannot: [write, edit, bash]
+tools: [read, glob, mcp__outbox__send]
+instructions: actor.md
+```
+
+`actor.md` is the Actor's instructions: what it may send and when to stop. `apply` validates the
+roster, the read/act rule and the policy before writing anything, and is safe to run again.
+`--dry-run` prints the plan without writing.
 
 ## Files
 
-- `pod.yaml` - `members: [researcher, writer, reviewer, actor]`.
-- `pipeline.yaml` - `research` (Researcher) -> `draft` (Writer) -> `review` (Reviewer, APPROVE or
-  REQUEST-CHANGES, one rework to `draft`) -> `act` (Actor).
-- `roles/actor.yaml` and `roles/actor.md` - the Actor: `tools: [read, glob, mcp__outbox__send]`,
-  denied `write`, `edit` and `bash`.
+- `pod.yaml` - the recipe's manifest; it adds no member.
 - `policies/ask-before-send.yaml` - asks before the Actor's `send` tool, with the message the
-  person reads.
+  person reads. It names `mcp__outbox__send`; edit the name to match your tool.
 - `policies/send-quota.yaml` - the quota above.
 
 ## Limits
@@ -163,9 +177,6 @@ anything, and is safe to run again. `--dry-run` prints the plan without writing.
 ## Undo
 
 ```bash
-docket pod unset pipeline
-docket pod remove <project>-researcher
-docket pod remove <project>-writer
-docket pod remove <project>-reviewer
-docket pod remove <project>-actor
+rm ~/.docket/config/pods/<project>/policies/ask-before-send.yaml
+rm ~/.docket/config/pods/<project>/policies/send-quota.yaml
 ```

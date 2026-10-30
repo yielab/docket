@@ -230,12 +230,12 @@ class TestRender:
 
 
 class TestRegistryOverlay:
-    def test_load_registry_without_overlay_has_eight_roles(self, registry_file: Path) -> None:
+    def test_load_registry_without_overlay_has_nine_roles(self, registry_file: Path) -> None:
         registry = arch.load_registry("demo")
         assert set(registry.role_names()) == set(builtin_roles.BUILTIN_ARCHETYPES) | set(
             builtin_roles.STARTER_ARCHETYPES
         )
-        assert len(registry.role_names()) == 8
+        assert len(registry.role_names()) == 9
 
     def test_user_archetype_adds_new_role(self, registry_file: Path) -> None:
         doc = {

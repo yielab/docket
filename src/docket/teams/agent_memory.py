@@ -74,7 +74,7 @@ def memory_md_path(ws: Path) -> Path:
 def _workflow_auto_text(
     *, project: str, codebase: str, stack: str, origin: str, work_dir: str = ""
 ) -> str:
-    # A `workdir`-kind pod blueprint (research/content/ops) has no codebase
+    # A `workdir`-kind pod blueprint (respond/operate/routine) has no codebase
     # at all — routing to a dedicated sibling function (rather than branching
     # mid-string here) keeps the codebase-flavored text below byte-for-byte
     # unchanged for every caller that passes work_dir="".

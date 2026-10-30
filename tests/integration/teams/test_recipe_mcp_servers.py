@@ -271,8 +271,5 @@ def test_update_of_a_single_role_file_refuses_a_send_and_a_read_tool(tmp_path: P
 
     assert result.exit_code == 1
     assert "mcp__sender__send" in result.output
-    assert "actor" not in _arch_names("shop")
-
-
-def _arch_names(project: str) -> list[str]:
-    return [name for name, a in _roles.load_registry(project).items() if a.name == name]
+    actor = _roles.load_registry("shop").get("actor")
+    assert actor is not None and actor.tools == ("read", "glob")

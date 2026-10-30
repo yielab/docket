@@ -230,7 +230,7 @@ class TestPodResources:
 
     def test_provision_lock_dir_is_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pp.provision_pod("demo", "software", location="/src/demo")
+            _pp.provision_pod("demo", "build", location="/src/demo")
             lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
             assert lock_dir.is_dir()
             assert lock_dir.stat().st_mode & 0o777 == 0o700
@@ -238,7 +238,7 @@ class TestPodResources:
 
     def test_pod_delete_removes_provision_lock_dir(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
-            _pp.provision_pod("demo", "software", location="/src/demo")
+            _pp.provision_pod("demo", "build", location="/src/demo")
             lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
             assert lock_dir.is_dir()
             _pp.free_pod_resources("demo")

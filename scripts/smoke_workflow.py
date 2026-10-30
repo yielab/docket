@@ -1117,7 +1117,7 @@ def _write_inputs(world: Path, scenario: str) -> tuple[Path, Path, Path, Path]:
         json.dumps(
             {
                 "id": "smoke",
-                "blueprint": "agentic-product",
+                "blueprint": "build",
                 "codebase": str(codebase),
                 "stack": "Python",
                 "description": "Exercise the complete Docket workflow.",

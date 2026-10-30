@@ -247,7 +247,7 @@ def _write_inputs(base: Path, workspace: Path) -> tuple[Path, Path]:
         json.dumps(
             {
                 "id": PROJECT,
-                "blueprint": "agentic-product",
+                "blueprint": "build",
                 "codebase": str(workspace),
                 "stack": "Python",
                 "description": "Run the extractable Docket starter.",
