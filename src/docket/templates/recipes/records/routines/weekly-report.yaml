@@ -1,0 +1,9 @@
+kind: routine
+name: weekly-report
+description: Once a week, the pod writes report.md from the entries it holds.
+schedule: "0 8 * * 1"
+task:
+  description: >-
+    Write report.md in the working directory from the entries set: compile what it holds, then have
+    the Writer export the rows into report.md with rec__export (format md), ordered by ref, and the
+    Reviewer check that every row is there.
