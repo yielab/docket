@@ -327,6 +327,18 @@ class TestEscalationSpans:
         (span,) = _escalation_spans(spans)
         assert not any("option" in key.lower() for key in span.attributes)
 
+    def test_the_settled_option_is_the_answer_when_prompts_are_shared(self) -> None:
+        records = [
+            _esc_record("escalation_asked", "2026-10-25T10:00:00Z", prompt="Which store?"),
+            _esc_record("escalation_resolved", "2026-10-25T10:01:00Z", optionId="redis"),
+        ]
+        full = observability_spans.ExportPolicy(classes=privacy.LEVELS["full"], label="full")
+
+        (shared,) = _escalation_spans(_run(records, full))
+        (withheld,) = _escalation_spans(_run(records))
+        assert shared.attributes["docket.escalation.answer"] == "redis"
+        assert "docket.escalation.answer" not in withheld.attributes
+
     def test_a_settlement_within_the_ask_s_second_closes_the_span_at_its_start(self) -> None:
         spans = _run(
             [
@@ -434,3 +446,14 @@ class TestHopSpans:
         assert span.attributes["gen_ai.tool.call.arguments"] == "make test"
         (withheld,) = _run([verification])
         assert "gen_ai.tool.call.arguments" not in withheld.attributes
+
+
+class TestSessionRoot:
+    def test_a_root_starts_at_the_session_s_first_record_when_it_began_elsewhere(self) -> None:
+        state = observability_spans.ProjectionState(
+            started={"agent:demo:t-1": "2026-10-29T09:59:00Z"}
+        )
+        _run([_hop_record("session_start", "2026-10-29T10:00:00Z", "lead")], state=state)
+
+        (root,) = projection.flush_open(state)
+        assert root.start_ts == "2026-10-29T09:59:00Z"

@@ -28,7 +28,12 @@ _CLASS_ATTRIBUTES: dict[str, tuple[str, ...]] = {
     "errors": ("docket.error.message",),
     "toolResults": ("gen_ai.tool.call.result",),
     "completions": ("gen_ai.output.messages", "docket.session.output"),
-    "prompts": ("gen_ai.input.messages", "docket.session.input", "docket.escalation.prompt"),
+    "prompts": (
+        "gen_ai.input.messages",
+        "docket.session.input",
+        "docket.escalation.prompt",
+        "docket.escalation.answer",
+    ),
     "instructions": ("gen_ai.system_instructions",),
 }
 

@@ -125,11 +125,21 @@ class Pipeline:
             if admitted is None:
                 return
             with self._project_lock:
+                self._note_session_start(admitted)
                 spans = project(admitted, self._state, self._policy)
         except Exception:
             return
         for span in spans:
             self._enqueue(span)
+
+    def _note_session_start(self, record: dict[str, Any]) -> None:
+        """Before a session's root opens here, note where its local trace began."""
+        session_id = str(record.get("session_id", ""))
+        if session_id in self._state.stacks or session_id in self._state.started:
+            return
+        began = trace.first_ts(str(record.get("project", "")), session_id)
+        if began:
+            self._state.started[session_id] = began
 
     def _enqueue(self, item: Any) -> None:
         try:

@@ -974,7 +974,10 @@ hop a `docket.hop <role>` span holding its model calls and tool calls, under one
 open from the first hop to the last. A `gen_ai.chat` span carries the measured tokens, the cache
 reads and writes (`gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_creation.input_tokens`,
 both inside the input count) and, where the endpoint reported one, why the cache missed
-(`docket.cache_miss`). A background
+(`docket.cache_miss`). A pause for a person is a `docket.escalation` span lasting the wait; at a
+level that shares them it carries what was asked and the option answered, which Langfuse shows as
+its Input and Output. A session resumed in another process (after an approval) keeps one root
+that starts at the session's first record. A background
 pipeline delivers them to every enabled exporter as OTLP/HTTP JSON over the standard library
 (the `otlp-http` dialect; D-24's cut of the OpenTelemetry SDK stands, D-48). It holds a bounded
 queue, counts what it drops, and never raises into a turn. The pipelines start when a `docket`

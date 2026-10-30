@@ -60,6 +60,14 @@ class TestBuiltinCatalog:
         assert aliases["docket.session.input"] == "langfuse.observation.input"
         assert aliases["docket.session.output"] == "langfuse.observation.output"
 
+    def test_langfuse_reads_an_escalation_s_question_and_answer_as_its_input_and_output(
+        self,
+    ) -> None:
+        aliases = _exporter.load_catalog().get("langfuse").aliases
+        assert aliases["docket.escalation.prompt"] == "langfuse.observation.input"
+        assert aliases["docket.approval.action"] == "langfuse.observation.input"
+        assert aliases["docket.escalation.answer"] == "langfuse.observation.output"
+
 
 class TestLoadExporterDocument:
     def test_loads_a_minimal_no_auth_document(self, tmp_path: Path) -> None:

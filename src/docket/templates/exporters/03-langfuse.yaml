@@ -9,6 +9,9 @@ aliases:
   session.id: langfuse.session.id
   docket.session.input: langfuse.observation.input
   docket.session.output: langfuse.observation.output
+  docket.escalation.prompt: langfuse.observation.input
+  docket.approval.action: langfuse.observation.input
+  docket.escalation.answer: langfuse.observation.output
 privacy: minimal
 enabled: false
 note: >-
