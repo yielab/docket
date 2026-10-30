@@ -102,6 +102,8 @@ class ToolContext:
     consult_mode: str = "park"
     # The task this turn serves (a pod task id); stamps a consult's question.
     task_id: str = ""
+    # The pipeline step the hop runs ("" outside one); a service tool's idempotency key names it.
+    step_id: str = ""
 
     @property
     def consult_decides(self) -> bool:
