@@ -369,10 +369,10 @@ def _format_validation_error(exc: ValidationError) -> list[str]:
     return out
 
 
-def load_pipeline(text: str | None) -> PipelineLoadResult:
-    """Load a pipeline spec from YAML text. ``text is None`` is zero-migration (returns
-    :func:`default_pipeline`); ``""`` is a real validation error, not zero-migration. See
-    specs/functional/pipeline-format.spec.md ("Zero migration")."""
+def load_pipeline(text: str | None, *, roles: frozenset[str]) -> PipelineLoadResult:
+    """Load a pipeline spec from YAML text; ``None`` is zero-migration (:func:`default_pipeline`),
+    ``""`` a validation error. *roles* are the caller's role names, which the short form reads to
+    tell a member id from a role. See pipeline-format.spec.md ("Zero migration", "Short form")."""
     if text is None:
         return PipelineLoadResult(spec=default_pipeline(), errors=[], source="builtin")
 
@@ -390,7 +390,7 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
             )
         doc = {k: v for k, v in doc.items() if k != "kind"}
     try:
-        doc = normalize_pipeline(doc)
+        doc = normalize_pipeline(doc, roles)
     except _ShortFormError as exc:
         return PipelineLoadResult(
             spec=None,

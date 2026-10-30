@@ -228,7 +228,7 @@ def _load_role(path: Path) -> dict[str, Any]:
 
 
 def _validate_pipeline(path: Path, text: str) -> None:
-    result = _pipeline.load_pipeline(text)
+    result = _pipeline.load_pipeline(text, roles=_archetypes.load_registry().names())
     if not result.ok:
         error = CanonicalFormError if result.canonical else ConfigDocError
         raise error(path, "; ".join(result.errors))
@@ -499,7 +499,8 @@ class PathResult:
 
 def _step_model_error(document: Document) -> ConfigDocError | None:
     """A pipeline step whose own ``model`` names a provider absent from the catalog."""
-    spec = _pipeline.load_pipeline(document.path.read_text(encoding="utf-8")).spec
+    text = document.path.read_text(encoding="utf-8")
+    spec = _pipeline.load_pipeline(text, roles=_archetypes.load_registry().names()).spec
     if spec is None:
         return None
     for step in spec.steps:

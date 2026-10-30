@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 import yaml
 from tests.support.pods import unit_context as _unit_context
+from tests.support.roles import ROLE_NAMES
 
 from docket.hops.application import compose as _compose_c
 from docket.hops.application import executor as _executor_c
@@ -38,13 +39,13 @@ class TestLoading:
             "  - a:\n      run: echo a\n      env: {FOO: bar}\n"
             "  - b: {run: echo b, env: {BAZ: qux}}\n"
         )
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert result.spec is not None, result.errors
         assert [s.env for s in result.spec.steps] == [{"FOO": "bar"}, {"BAZ": "qux"}]
 
     def test_the_planned_unit_carries_env_and_a_reserved_name_fails_validation(self) -> None:
         loaded = load_pipeline(
-            "name: p\nsteps:\n  - a:\n      run: echo a\n      env: {FOO: bar}\n"
+            "name: p\nsteps:\n  - a:\n      run: echo a\n      env: {FOO: bar}\n", roles=ROLE_NAMES
         )
         assert loaded.spec is not None
         plan = _orch.resolve_plan(loaded.spec, {}, registry=_archetypes.load_registry())
@@ -52,13 +53,14 @@ class TestLoading:
         assert isinstance(unit, _orch.PlannedUnit)
         assert unit.env == {"FOO": "bar"}
         bad = load_pipeline(
-            "name: p\nsteps:\n  - a:\n      run: echo a\n      env: {DOCKET_BASE_COMMIT: x}\n"
+            "name: p\nsteps:\n  - a:\n      run: echo a\n      env: {DOCKET_BASE_COMMIT: x}\n",
+            roles=ROLE_NAMES,
         )
         assert bad.spec is None and "DOCKET_BASE_COMMIT" in "; ".join(bad.errors)
 
     def test_normalize_keeps_env_and_round_trips_through_yaml(self) -> None:
         doc = normalize_pipeline(
-            {"name": "p", "steps": [{"b": {"run": "echo b", "env": {"BAZ": "qux"}}}]}
+            {"name": "p", "steps": [{"b": {"run": "echo b", "env": {"BAZ": "qux"}}}]}, ROLE_NAMES
         )
         again = yaml.safe_load(yaml.safe_dump(doc))
         assert _pipeline.PipelineSpec.model_validate(again).steps[0].env == {"BAZ": "qux"}

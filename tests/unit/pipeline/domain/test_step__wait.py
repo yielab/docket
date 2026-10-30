@@ -4,6 +4,7 @@ See specs/functional/pipeline-format.spec.md ("Wait steps")."""
 from __future__ import annotations
 
 import pytest
+from tests.support.roles import ROLE_NAMES
 
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain.spec import load_pipeline
@@ -14,7 +15,7 @@ SUBJECT = "docket.pipeline.domain.step"
 
 
 def _load(steps: str) -> tuple[object, list[str]]:
-    result = load_pipeline(f"name: p\nsteps:\n{steps}")
+    result = load_pipeline(f"name: p\nsteps:\n{steps}", roles=ROLE_NAMES)
     return result.spec, result.errors
 
 

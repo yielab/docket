@@ -30,7 +30,6 @@ _STEP_SUGAR_KEYS = frozenset(
         "maxToolCalls",
     }
 )
-_BASE_ROLES = frozenset({"lead", "implementer", "reviewer"})
 _NO_ON = object()
 _EXTERNAL_GATE_KEYS = frozenset({"external", "timeout", "exitMap"})
 
@@ -55,21 +54,17 @@ def _get_on(entry: dict[Any, Any]) -> Any:
     return _NO_ON
 
 
-def _looks_like_member_id(value: str) -> bool:
+def _looks_like_member_id(value: str, roles: frozenset[str]) -> bool:
     # Shape check for a `pod.parse_member_id`-style id (e.g. "myshop-implementer" or
-    # "myshop-implementer-2") without importing `pod`, mirroring the slug-shape check
-    # this module already applies to `archetype`.
-    parts = value.split("-")
-    if len(parts) < 2:
-        return False
-    tail = parts[-1]
-    if tail.isdigit():
-        return len(parts) >= 3 and parts[-2] in _BASE_ROLES
-    return tail in _BASE_ROLES
+    # "myshop-implementer-2") against the role names the caller knows, without importing `pod`
+    # or checking that the member exists.
+    head, sep, tail = value.rpartition("-")
+    rest = head if sep and tail.isdigit() else value
+    return any(rest.endswith(f"-{role}") and len(rest) > len(role) + 1 for role in roles)
 
 
-def _assign_target(step: dict[str, Any], value: str) -> None:
-    if value in _BASE_ROLES or not _looks_like_member_id(value):
+def _assign_target(step: dict[str, Any], value: str, roles: frozenset[str]) -> None:
+    if value in roles or not _looks_like_member_id(value, roles):
         step["role"] = value
     else:
         step["agent"] = value
@@ -195,7 +190,9 @@ def _normalize_mapping_short_step(step_id: str, target: dict[Any, Any]) -> dict[
     return step
 
 
-def _normalize_parallel_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
+def _normalize_parallel_short_step(
+    step_id: str, target: dict[Any, Any], roles: frozenset[str]
+) -> dict[str, Any]:
     # `- reviews: {parallel: [{review-code: reviewer}, {review-risk: security-vetter}]}` -- a group
     # whose children are short unit steps; the group itself carries nothing else.
     children = target["parallel"]
@@ -213,7 +210,7 @@ def _normalize_parallel_short_step(step_id: str, target: dict[Any, Any]) -> dict
             raise _ShortFormError(f"step {step_id!r}: a parallel child must be a mapping")
         if "id" in child:
             raise CanonicalStepError(_canonical_step_message(child["id"]))
-        unit = _normalize_short_step(child, seen_children)
+        unit = _normalize_short_step(child, seen_children, roles)
         seen_children.append(str(unit["id"]))
         normalized.append(unit)
     return {"id": step_id, "parallel": normalized}
@@ -227,7 +224,9 @@ def _canonical_step_message(step_id: Any) -> str:
     )
 
 
-def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[str, Any]:
+def _normalize_short_step(
+    entry: dict[Any, Any], seen_ids: list[str], roles: frozenset[str]
+) -> dict[str, Any]:
     id_keys = [k for k in entry if k not in _STEP_SUGAR_KEYS and k is not True]
     if len(id_keys) != 1:
         raise _ShortFormError(
@@ -237,7 +236,7 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
     step_id: str = id_keys[0]
     target = entry[step_id]
     if isinstance(target, dict) and "parallel" in target:
-        return _normalize_parallel_short_step(step_id, target)
+        return _normalize_parallel_short_step(step_id, target, roles)
     if isinstance(target, dict) and ("run" in target or "input" in target or "wait" in target):
         return _normalize_mapping_short_step(step_id, target)
     if not isinstance(target, str):
@@ -246,7 +245,7 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
             "'run', 'input', 'wait' or 'parallel'"
         )
     step: dict[str, Any] = {"id": step_id}
-    _assign_target(step, target)
+    _assign_target(step, target, roles)
     for key in (
         "instructions",
         "timeout",
@@ -274,23 +273,23 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
     return step
 
 
-def _normalize_top_step(entry: Any, seen_ids: list[str]) -> Any:
+def _normalize_top_step(entry: Any, seen_ids: list[str], roles: frozenset[str]) -> Any:
     if not isinstance(entry, dict):
         return entry
     if "id" in entry:
         raise CanonicalStepError(_canonical_step_message(entry["id"]))
-    normalized = _normalize_short_step(entry, seen_ids)
+    normalized = _normalize_short_step(entry, seen_ids, roles)
     seen_ids.append(str(normalized["id"]))
     return normalized
 
 
-def normalize_pipeline(doc: dict[str, Any]) -> dict[str, Any]:
-    """Expand the short-form steps of *doc* into the in-memory canonical mapping
-    :class:`PipelineSpec` validates; a step written in the canonical form (an ``id:`` key) is
-    refused. Pure -- never mutates *doc*, never touches the filesystem."""
+def normalize_pipeline(doc: dict[str, Any], roles: frozenset[str]) -> dict[str, Any]:
+    """Expand the short-form steps of *doc* into the canonical mapping; a step with an ``id:`` key
+    is refused. *roles* are the caller's role names: ``<prefix>-<role>[-<n>]`` is an ``agent``.
+    Pure -- never mutates *doc*, never touches the filesystem."""
     doc = dict(doc)
     steps = doc.get("steps")
     if isinstance(steps, list):
         seen_ids: list[str] = []
-        doc["steps"] = [_normalize_top_step(s, seen_ids) for s in steps]
+        doc["steps"] = [_normalize_top_step(s, seen_ids, roles) for s in steps]
     return doc

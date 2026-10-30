@@ -27,6 +27,7 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import roles as _arch
+from docket.teams.apply import plan as _pod_apply
 
 SUBJECT = "docket.teams.pod"
 
@@ -161,3 +162,24 @@ class TestPodAddStarterRole:
             members = pod.members_of(all_ids, "demo")
             roles_in_order = [role for _mid, role, _idx in members]
             assert roles_in_order == ["lead", "implementer", "reviewer", "researcher"]
+
+
+class TestPipelineTargetingAStarterRoleMember:
+    def test_pod_update_plans_an_agent_step_for_a_starter_role_member_id(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed(tmp_path):
+            build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
+            _pod_members.add_members("demo", "researcher")
+            directory = tmp_path / "repo" / ".docket"
+            directory.mkdir(parents=True)
+            (directory / "pipeline.yaml").write_text(
+                "name: study\nsteps:\n  - look: demo-researcher\n  - build: implementer\n",
+                encoding="utf-8",
+            )
+
+            plan = _pod_apply.plan_apply("demo", directory)
+
+            assert [(i.kind, i.name) for i in plan.items if i.kind == "pipeline"] == [
+                ("pipeline", "pipeline.yaml")
+            ]
