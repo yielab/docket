@@ -50,11 +50,6 @@ class TestArchetypeDeniedToolsAreData:
             "bash",
         )
 
-    def test_tester_denies_write_edit_but_keeps_bash(self) -> None:
-        tester = _builtin_roles.BUILTIN_ARCHETYPES["tester"]
-        assert "bash" not in tester.denied_tools
-        assert "write" in tester.denied_tools and "edit" in tester.denied_tools
-
     def test_lead_denies_write_edit_bash(self) -> None:
         assert _builtin_roles.BUILTIN_ARCHETYPES["lead"].denied_tools == ("write", "edit", "bash")
 
@@ -62,8 +57,11 @@ class TestArchetypeDeniedToolsAreData:
         assert _builtin_roles.BUILTIN_ARCHETYPES["implementer"].denied_tools == ()
 
     def test_starter_read_only_roles_match_the_reviewer_pattern(self) -> None:
-        for name in ("critic", "monitor"):
-            assert _builtin_roles.STARTER_ARCHETYPES[name].denied_tools == ("write", "edit", "bash")
+        assert _builtin_roles.STARTER_ARCHETYPES["monitor"].denied_tools == (
+            "write",
+            "edit",
+            "bash",
+        )
 
     def test_starter_write_roles_have_full_access(self) -> None:
         for name in ("researcher", "analyst", "operator"):
@@ -151,15 +149,6 @@ class TestRegistryForRoleExcludesByKindToo:
         base = self._registry_with_a_write_kind_extra()
         narrowed = _role_composer.registry_for_role(base, "lead")
         assert "mcp__weather__overwrite_config" not in narrowed
-
-    def test_tester_loses_it_but_keeps_bash(self) -> None:
-        """Tester denies write/edit (kind `write`) but not bash (kind
-        `exec`) -- the kind-based exclusion only removes what that role's
-        own denied kinds cover, not every non-read tool."""
-        base = self._registry_with_a_write_kind_extra()
-        narrowed = _role_composer.registry_for_role(base, "tester")
-        assert "mcp__weather__overwrite_config" not in narrowed
-        assert "bash" in narrowed
 
     def test_implementer_keeps_the_namespaced_tool(self) -> None:
         """Contrast case: implementer denies nothing, so nothing is excluded

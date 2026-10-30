@@ -209,13 +209,11 @@ def trace_locked(*args: Any, **kwargs: Any) -> _trace.TraceStatus:
 
 def verdict_event_names(role: str) -> tuple[str, str, str]:
     """(rework_event, rejected_event, unparseable_event) names for a verdict gate's non-pass
-    outcome. Keeps the established names for ``reviewer``/``tester`` (pinned by
-    test_reviewer_gate.py/test_verify_gate.py) so gate logic stays generic without changing
+    outcome. Keeps the established names for ``reviewer`` (pinned by
+    test_reviewer_gate.py) so gate logic stays generic without changing
     operator-visible trace names; other roles get generic ``verdict_*`` names."""
     if role == "reviewer":
         return "rework_started", "review_rejected", "reviewer_verdict_unparseable"
-    if role == "tester":
-        return "verdict_rework_started", "tester_verdict_failed", "tester_verdict_failed"
     return "verdict_rework_started", "verdict_rejected", "verdict_unparseable"
 
 

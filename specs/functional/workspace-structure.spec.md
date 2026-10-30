@@ -1,6 +1,6 @@
 # Workspace Structure Specification
 
-**Version**: 3.1.0
+**Version**: 3.1.1
 **Status**: Complete. `DOCKET_HOME` is the only root, split into `config/` (authored) and
 `state/` (written while running). Agent workspaces live under `~/.docket/state/workspaces/projects/`;
 a pod's runtime resources and learned memory live under `~/.docket/state/workspaces/pods/<pod>/`
@@ -76,7 +76,7 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
    - `AGENTS.md` — session protocol and delegation rules
    - `TOOLS.md` — project-specific commands. Only an Implementer with allocated runtime resources
      or a `verifyCmd` gets one (allocated ports/scratch dir and the verify command, when set) —
-     a Lead, Reviewer, Tester, or any other pod role has nothing role-specific to document and
+     a Lead, Reviewer, or any other pod role has nothing role-specific to document and
      **MUST NOT** be flagged missing one by `docket setup`, and neither is an Implementer with
      neither resources nor a `verifyCmd`
    - `HEARTBEAT.md` — the durable task ledger (in-flight tasks written before starting;

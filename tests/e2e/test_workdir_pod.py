@@ -32,9 +32,9 @@ steps:
   - draft: writer
   - check:
       run: "cat brief.md"
-  - review: critic
-    verdict: [APPROVE, REJECT]
-    on: {REJECT: {goto: draft, max: 1}}
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: draft, max: 1}}
 """
 
 
@@ -103,7 +103,7 @@ def test_a_content_pod_takes_a_task_to_done_with_its_output_in_the_working_direc
         script={
             "lead": [say("Plan: write brief.md.")],
             "writer": [write_file("brief.md", BRIEF), say("brief.md is written.")],
-            "critic": [say("APPROVE")],
+            "reviewer": [say("APPROVE")],
         }
     )
     w, work_dir = workdir_pod(world, model)
@@ -130,7 +130,7 @@ def test_a_content_pod_takes_a_task_to_done_with_its_output_in_the_working_direc
     assert {"write", "edit"} <= set(writer.tools)
 
 
-def test_a_custom_pipeline_reworks_a_reject_and_runs_a_step_in_the_working_directory(
+def test_a_custom_pipeline_reworks_a_request_for_changes_and_runs_a_step_in_the_working_directory(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
     model = fake_model(
@@ -142,7 +142,7 @@ def test_a_custom_pipeline_reworks_a_reject_and_runs_a_step_in_the_working_direc
                 write_file("brief.md", BRIEF + "A third claim.\n"),
                 say("second draft"),
             ],
-            "critic": [say("REJECT: add a third claim"), say("APPROVE")],
+            "reviewer": [say("REQUEST-CHANGES: add a third claim"), say("APPROVE")],
         }
     )
     w, work_dir = workdir_pod(world, model, pipeline_yaml=DRAFT_AND_CHECK)
@@ -157,14 +157,14 @@ def test_a_custom_pipeline_reworks_a_reject_and_runs_a_step_in_the_working_direc
         ("hop_started", "writer", "draft"),
         ("hop_finished", "writer", "ok"),
         ("command_step", "check", "check"),
-        ("hop_started", "critic", "review"),
-        ("hop_finished", "critic", "reject"),
-        ("verdict_rework_started", "critic", ""),
+        ("hop_started", "reviewer", "review"),
+        ("hop_finished", "reviewer", "request-changes"),
+        ("rework_started", "reviewer", "cycle 1"),
         ("hop_started", "writer", "draft"),
         ("hop_finished", "writer", "ok"),
         ("command_step", "check", "check"),
-        ("hop_started", "critic", "review"),
-        ("hop_finished", "critic", "approve"),
+        ("hop_started", "reviewer", "review"),
+        ("hop_finished", "reviewer", "approve"),
         ("session_end", "lead", "done"),
     ]
     commands = [
@@ -196,11 +196,11 @@ def test_a_base_ref_on_a_working_directory_pod_fails_the_task_before_any_hop(
     assert model.requests == []
 
 
-WRITE_WAIT_CRITIC = """name: write-wait-critic
+WRITE_WAIT_REVIEWER = """name: write-wait-reviewer
 steps:
   - draft: writer
   - hold: {wait: 1h}
-  - review: critic
+  - review: reviewer
 """
 
 
@@ -210,10 +210,10 @@ def test_a_task_sleeps_at_a_wait_step_across_runs_and_wakes_on_a_service_tick(
     model = fake_model(
         script={
             "writer": [write_file("brief.md", BRIEF), say("brief.md is written.")],
-            "critic": [say("APPROVE")],
+            "reviewer": [say("APPROVE")],
         }
     )
-    w, work_dir = workdir_pod(world, model, pipeline_yaml=WRITE_WAIT_CRITIC)
+    w, work_dir = workdir_pod(world, model, pipeline_yaml=WRITE_WAIT_REVIEWER)
     task_id = w.add_task("Write the launch brief")
 
     _run(w, "--pipeline", str(w.pipeline))
@@ -228,7 +228,7 @@ def test_a_task_sleeps_at_a_wait_step_across_runs_and_wakes_on_a_service_tick(
     _run(w, "--pipeline", str(w.pipeline))
 
     assert w.task(task_id)["task"]["status"] == "waiting_input"
-    assert model.by_role("critic") == []
+    assert model.by_role("reviewer") == []
 
     w.env["DOCKET_CLOCK_OFFSET_S"] = "7200"
     with w.service(dispatch=True):
@@ -237,7 +237,7 @@ def test_a_task_sleeps_at_a_wait_step_across_runs_and_wakes_on_a_service_tick(
         )
     del w.env["DOCKET_CLOCK_OFFSET_S"]
 
-    assert len(model.by_role("critic")) == 1
+    assert len(model.by_role("reviewer")) == 1
     assert [e["kind"] for e in w.docket("inbox", "--peek", "--json").json()["escalations"]] == []
 
 
@@ -380,7 +380,7 @@ def test_an_outward_pod_sends_once_and_only_after_a_person_approves(
                 say("The venue holds 80 people."),
             ],
             "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
-            "critic": [say("APPROVE")],
+            "reviewer": [say("APPROVE")],
             "actor": [
                 call("mcp__outbox__send", "a1", **SEND_ARGS),
                 call("mcp__outbox__send", "a2", **SEND_ARGS),
@@ -413,7 +413,7 @@ def test_an_outward_pod_sends_once_and_only_after_a_person_approves(
     assert [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] == [
         SEND_ARGS
     ]
-    for role in ("researcher", "writer", "critic"):
+    for role in ("researcher", "writer", "reviewer"):
         requests = model.by_role(role)
         assert requests, role
         assert all("mcp__outbox__send" not in r.tools for r in requests), role
@@ -444,7 +444,7 @@ def test_the_approver_of_a_send_sees_the_whole_call_and_every_other_copy_stays_r
         script={
             "researcher": [say("Nothing to look up.")],
             "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
-            "critic": [say("APPROVE")],
+            "reviewer": [say("APPROVE")],
             "actor": [
                 call("mcp__outbox__send", "a1", **_DETAIL_ARGS),
                 call("mcp__outbox__send", "a2", **_DETAIL_ARGS),
@@ -523,7 +523,7 @@ def test_an_outward_pod_over_its_send_quota_is_refused_and_audited_and_status_sh
         script={
             "researcher": [say("Nothing to look up.")],
             "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
-            "critic": [say("APPROVE")],
+            "reviewer": [say("APPROVE")],
             "actor": [
                 call("mcp__outbox__send", "a1", **first),
                 call("mcp__outbox__send", "a2", **first),

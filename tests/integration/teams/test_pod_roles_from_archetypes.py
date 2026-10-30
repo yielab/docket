@@ -33,7 +33,7 @@ SUBJECT = "docket.teams.pod"
 
 class TestNormalizeRoleAgainstRegistry:
     def test_builtin_roles_normalize(self) -> None:
-        for role in ("lead", "implementer", "reviewer", "tester"):
+        for role in ("lead", "implementer", "reviewer"):
             assert pod.normalize_role(role) == role
 
     def test_starter_role_accepted(self) -> None:
@@ -87,8 +87,8 @@ class TestMemberIdUnaffected:
 class TestRegistryRoleNames:
     def test_registry_role_names_include_legacy_and_starter(self) -> None:
         names = set(_arch.load_registry().role_names())
-        assert {"lead", "implementer", "reviewer", "tester"} <= names
-        assert {"researcher", "analyst", "writer", "critic", "operator", "monitor"} <= names
+        assert {"lead", "implementer", "reviewer"} <= names
+        assert {"researcher", "analyst", "writer", "operator", "monitor"} <= names
 
 
 class TestModelClassFallback:
@@ -97,7 +97,6 @@ class TestModelClassFallback:
             "lead": "anthropic/claude-haiku-4-5",
             "implementer": "anthropic/claude-sonnet-4-6",
             "reviewer": "anthropic/claude-haiku-4-5",
-            "tester": "anthropic/claude-haiku-4-5",
         }
         assert _mp.resolve_role_model("lead", role_models) == "anthropic/claude-haiku-4-5"
         assert _mp.resolve_role_model("implementer", role_models) == "anthropic/claude-sonnet-4-6"
@@ -161,4 +160,4 @@ class TestPodAddStarterRole:
             all_ids = _ids(oc_dir)
             members = pod.members_of(all_ids, "demo")
             roles_in_order = [role for _mid, role, _idx in members]
-            assert roles_in_order == ["lead", "implementer", "reviewer", "tester", "researcher"]
+            assert roles_in_order == ["lead", "implementer", "reviewer", "researcher"]

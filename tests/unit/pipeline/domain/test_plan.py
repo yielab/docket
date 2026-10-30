@@ -171,12 +171,10 @@ class TestResolveGate:
     def test_starter_archetype_gate_contract_resolves(self) -> None:
         """A step targeting a non-legacy (starter-library) role with no gate of its own still resolves a real gate from that archetype's gateContract — the whole point of generalizing gate resolution."""
         registry = _archetypes.load_registry()
-        step = _step.Step(id="s", role="critic")
+        step = _step.Step(id="s", role="operator")
         gate = _orch.resolve_gate(step, registry)
-        assert isinstance(gate, _gates.VerdictGate)
-        assert gate.pass_values == ["APPROVE"]  # first regex = pass, per convention
-        assert _orch.parse_verdict(gate, "approve\nfine") == "approve"
-        assert _orch.parse_verdict(gate, "reject\nno") == "reject"
+        assert isinstance(gate, _gates.MechanicalGate)
+        assert gate.command is None
 
     def test_archetype_gate_contract_never_carries_rework(self) -> None:
         """An archetype's gateContract is descriptive marker data only — no rework edge. A pipeline step wanting bounded rework must declare its own VerdictGate with an explicit `rework` edge."""
@@ -283,7 +281,7 @@ class TestParseVerdictTolerance:
         assert _orch.parse_verdict(gate, "**APPROVED**") == "APPROVE"
         assert _orch.parse_verdict(gate, "approved") is None
 
-    def test_tester_markers_get_the_same_tolerance(self) -> None:
+    def test_other_marker_words_get_the_same_tolerance(self) -> None:
         gate = _gates.VerdictGate(pattern=r"^\s*(PASS|FAIL)\b", pass_values=["pass"])
         assert _orch.parse_verdict(gate, "- PASS: unit\n- FAIL: lint\n\n**PASS**") == "pass"
         assert _orch.parse_verdict(gate, "PASS: unit\n**FAIL**") == "fail"

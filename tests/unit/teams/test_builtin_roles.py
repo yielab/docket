@@ -77,7 +77,7 @@ class TestTheWriterHoldsNoShell:
 
 
 class TestTheMethodBlockFollowsTheWorkspaceKind:
-    @pytest.mark.parametrize("name", ["lead", "implementer", "writer", "critic"])
+    @pytest.mark.parametrize("name", ["lead", "implementer", "writer", "reviewer"])
     def test_a_workdir_method_names_no_repository_or_code(self, name: str) -> None:
         arch = {**BUILTIN_ARCHETYPES, **STARTER_ARCHETYPES}[name]
         rendered = render(arch.agents_template, {**_SAMPLE_VARIABLES, "role": name})

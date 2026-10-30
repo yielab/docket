@@ -19,8 +19,6 @@ steps:
     verify: "sh checks/verify.sh"
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
-  - test: tester
-    verdict: [PASS, FAIL]
 """
 
 NO_VERIFY = """name: no-verify
@@ -50,7 +48,6 @@ def test_the_implementer_runs_the_check_fixes_what_it_reports_and_the_gate_still
                 say("Ran the check: it passes."),
             ],
             "reviewer": [say("APPROVE")],
-            "tester": [say("PASS")],
         }
     )
     w = world(model)
@@ -83,8 +80,6 @@ def test_the_implementer_runs_the_check_fixes_what_it_reports_and_the_gate_still
         ("verification", "implementer", "passed"),
         ("hop_started", "reviewer", "review"),
         ("hop_finished", "reviewer", "approve"),
-        ("hop_started", "tester", "test"),
-        ("hop_finished", "tester", "pass"),
         ("session_end", "lead", "done"),
     ]
     assert w.task(task_id)["task"]["status"] == "done"
@@ -101,7 +96,6 @@ def test_the_gate_still_fails_a_model_that_claims_it_verified(
             "lead": [say("Plan: make app.txt say fixed.")],
             "implementer": [call("verify", "v1"), say("Verified, all good.")],
             "reviewer": [say("APPROVE")],
-            "tester": [say("PASS")],
         }
     )
     w = world(model)

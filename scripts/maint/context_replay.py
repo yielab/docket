@@ -405,7 +405,7 @@ def render_tool_surface() -> list[str]:
         f"policy {TOOL_SURFACE_POLICY} (tool schemas a hop is offered, measured on the real registry)",
         f"{'role':<13}{'profile':<9}{'tools':>6}{'bytes':>8}  names",
     ]
-    for role in ("lead", "implementer", "reviewer", "tester"):
+    for role in ("lead", "implementer", "reviewer"):
         for profile, surface, descriptions in (
             ("hosted", "full", "full"),
             ("local", "minimal", "compact"),

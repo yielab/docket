@@ -24,8 +24,10 @@ from docket.teams import fleet as _fleet
 
 SUBJECT = "docket.tasks.application.queue"
 
-_NOTE = "NOTE-SENTENCE-7731 the finding the critic must see"
-_PIPELINE = "name: research-then-critic\nsteps:\n  - researcher: researcher\n  - critic: critic\n"
+_NOTE = "NOTE-SENTENCE-7731 the finding the reviewer must see"
+_PIPELINE = (
+    "name: research-then-reviewer\nsteps:\n  - researcher: researcher\n  - reviewer: reviewer\n"
+)
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -50,8 +52,8 @@ def _seed_research_pod(tmp_path: Path, base_url: str) -> Iterator[None]:
         register_local_provider(
             home, "local", [{"id": "stub"}], base_url=base_url, toolSurface="full"
         )
-        build_pod("demo", ("lead", "researcher", "critic"), codebase=str(codebase))
-        for role in ("lead", "researcher", "critic"):
+        build_pod("demo", ("lead", "researcher", "reviewer"), codebase=str(codebase))
+        for role in ("lead", "researcher", "reviewer"):
             _fleet.meta_set(_pod.pod.member_id("demo", role), "model", "local/stub")
         path = _pod.pod.bound_pipeline_path("demo")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -80,31 +82,31 @@ def _run_pipeline(
         yield server, hops
 
 
-def test_critic_first_request_carries_the_researchers_note_once(
+def test_reviewer_first_request_carries_the_researchers_note_once(
     tmp_path: Path, fake_model: Any
 ) -> None:
     """The next hop's first request holds the note the previous hop wrote, exactly once."""
     with _run_pipeline(tmp_path, fake_model, _NOTE) as (server, _hops):
-        critic_first = json.dumps(server.requests[2].body)
+        reviewer_first = json.dumps(server.requests[2].body)
 
-        assert critic_first.count(_NOTE) == 1
+        assert reviewer_first.count(_NOTE) == 1
 
 
 def test_a_note_past_the_cap_is_cut_with_a_marker(tmp_path: Path, fake_model: Any) -> None:
-    """A 50k-character note reaches the critic cut at the cap, and the cut is announced."""
+    """A 50k-character note reaches the reviewer cut at the cap, and the cut is announced."""
     note = "\n".join(f"line-{i:05d}" for i in range(5000))
     assert len(note) > 50_000
     with _run_pipeline(tmp_path, fake_model, note) as (server, hops):
-        critic_first = json.dumps(server.requests[2].body)
+        reviewer_first = json.dumps(server.requests[2].body)
 
-        assert "line-00001" in critic_first
-        assert "line-04999" not in critic_first
-        assert "diff cut at" in critic_first
+        assert "line-00001" in reviewer_first
+        assert "line-04999" not in reviewer_first
+        assert "diff cut at" in reviewer_first
         assert len(hops[0].artifact.diff) < current_home().handoff_diff_max_chars + 200
 
 
 def test_a_hop_that_changed_nothing_adds_no_diff(tmp_path: Path, fake_model: Any) -> None:
-    """The writing hop's artifact carries the diff; the read-only critic after it carries none."""
+    """The writing hop's artifact carries the diff; the read-only reviewer after it carries none."""
     with _run_pipeline(tmp_path, fake_model, _NOTE) as (_server, hops):
         assert _NOTE in hops[0].artifact.diff
         assert hops[1].artifact.diff == ""

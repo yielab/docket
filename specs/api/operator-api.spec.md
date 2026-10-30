@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.5.0
+**Version**: 7.5.1
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-30
 
@@ -248,8 +248,8 @@ Two typed records are among the event types of `trace-store.spec.md`, written in
              "durationMs": 94012, "error": ""}}
 ```
 
-`cycle` is the rework cycle (0 before any `REQUEST-CHANGES`); `verdict` is the Reviewer's or
-Tester's label or `null`; `gate` is the step's gate label or `null`. `hop_started` names the
+`cycle` is the rework cycle (0 before any `REQUEST-CHANGES`); `verdict` is the Reviewer's
+label or `null`; `gate` is the step's gate label or `null`. `hop_started` names the
 *planned* model (the step's `model` override, else the member's configured model), and
 `hop_finished` names the *served* model the turn reported. `attempt` on `hop_started` is always `1`.
 

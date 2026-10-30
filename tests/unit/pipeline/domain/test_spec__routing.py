@@ -94,26 +94,8 @@ class TestZeroMigration:
         assert reviewer.gate.rework.when == ["request-changes"]
         assert reviewer.gate.rework.max_cycles == 1
 
-    def test_builtin_tester_pattern_matches_archetype_resolved_gate(self) -> None:
-        """See the reviewer test's docstring above."""
-        spec = default_pipeline()
-        tester = next(s for s in spec.steps if s.id == "tester")
-        assert isinstance(tester.gate, VerdictGate)
-        registry = _archetypes.load_registry()
-        bare_step = Step(id="probe", role="tester")  # no gate of its own
-        resolved = _orch.resolve_gate(bare_step, registry)
-        assert isinstance(resolved, VerdictGate)
-        assert tester.gate.pattern == resolved.pattern
-        assert [v.lower() for v in tester.gate.pass_values] == [
-            v.lower() for v in resolved.pass_values
-        ]
-        assert tester.gate.pass_values == ["pass"]
-
-    def test_builtin_tester_has_no_rework(self) -> None:
-        spec = default_pipeline()
-        tester = next(s for s in spec.steps if s.id == "tester")
-        assert isinstance(tester.gate, VerdictGate)
-        assert tester.gate.rework is None
+    def test_builtin_pipeline_ends_at_the_reviewer(self) -> None:
+        assert [s.id for s in default_pipeline().steps] == ["lead", "implementer", "reviewer"]
 
     def test_builtin_pipeline_itself_is_valid(self) -> None:
         # default_pipeline() must satisfy every validator PipelineSpec enforces
@@ -295,7 +277,7 @@ class TestRefusedShapes:
             "      run: echo hi\n",
             "      input:\n        from: a\n",
             "      when:\n        memberPresent: lead\n",
-            "      archetype: critic\n",
+            "      archetype: reviewer\n",
         ],
     )
     def test_parallel_group_carries_only_its_children(self, field_yaml: str) -> None:
@@ -344,6 +326,6 @@ class TestRefusedShapes:
             + "  - g:\n      parallel:\n"
             + _CHILD
             + "        retries: 1\n        timeout: 30\n        model: cheap\n"
-            + "        archetype: critic\n        verify: true\n"
+            + "        archetype: reviewer\n        verify: true\n"
         )
         assert load_pipeline(_HEAD + body).ok

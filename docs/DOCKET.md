@@ -34,9 +34,9 @@ memory, security and cost.
 
 docket's design for a team of autonomous agents aims at:
 - **Lower token usage** through per-pod context isolation
-- **Clean role separation** — Lead orchestrates, Implementer codes, Reviewer/Tester gate
+- **Clean role separation** — Lead orchestrates, Implementer codes, a Reviewer gates
 - **Layered, convention-based security** through a read-only reviewer veto + checklist
-- **Objective validation** through behavior-only testing
+- **Objective validation** through the Implementer's own verify command
 
 ### The Problem (Before docket)
 
@@ -70,9 +70,6 @@ Reviewer (optional): Read-only veto on the diff
         → Runs 6-point security checklist
         → Approves
         ↓
-Tester (optional): Runs reproduction steps (behaviour only)
-       → PASS
-       ↓
 Each project's work stays inside its own pod + workspace, so
 one project's context never bleeds into another's.
 ```
@@ -260,7 +257,6 @@ backing the ledger do use `store.py`.
   `HEARTBEAT.md`), not a shared cross-project history
 - The Implementer runs inside the project workspace, reading only the files it touches
 - The Reviewer reads the diff only, not the entire file
-- The Tester reads reproduction steps only, not code
 
 **Result:** no project's context bleeds into another's, so per-agent token counts stay scoped to one project
 
@@ -273,7 +269,7 @@ backing the ledger do use `store.py`.
 Pod size            Members                    When
 ─────────────────────────────────────────────────────
 Lean (default)      Lead + Implementer         most projects
-Full (--pod full)   + Reviewer + Tester        higher-stakes code
+Full (--pod full)   + Reviewer                 higher-stakes code
 Custom (--with ...) Lead + Implementer + any   pick the gates you want
 ```
 
@@ -284,15 +280,14 @@ Custom (--with ...) Lead + Implementer + any   pick the gates you want
 **Each role has ONE job. No overlapping work.**
 
 ```
-Lead → Implementer → Reviewer → Tester
-       (implement)   (veto)     (validate)
+Lead → Implementer → Reviewer
+       (implement)   (veto)
 ```
 
 NOT:
 ```
 Implementer ──┐
-Reviewer   ───┼→ All work in parallel
-Tester     ───┘   (wasteful, redundant)
+Reviewer   ───┴→ All work in parallel (wasteful, redundant)
 ```
 
 This pipeline is no longer just a convention in the templates — docket **actually executes it**,
@@ -328,26 +323,10 @@ This is the outline; the actual state machine also retries a hop that fails on a
 (a timeout or the model endpoint erroring — `TurnResult.failure_kind`'s `timeout`/`daemon_error`,
 a name that predates Phase 19 and now just means "the turn itself didn't complete cleanly," not a
 live external process), can stop a task at a human approval gate, and generalizes what "Reviewer"
-and "Tester" mean past those two hardcoded roles. See [Dispatch Internals](#dispatch-internals)
+means past that one hardcoded role. See [Dispatch Internals](#dispatch-internals)
 for the full mechanics.
 
 **Result:** No wasted parallel work — and the hand-off between roles actually executes.
-
-### 4. Behavior-Only Validation
-
-**Tester validates behavior, not code.**
-
-Tester does NOT read:
-- The Implementer's implementation
-- The Reviewer's analysis
-- How the fix was done
-
-Tester ONLY reads:
-- Reproduction steps
-- Expected behavior
-- Acceptance criteria
-
-**Why:** Prevents bias. Tester can't give false positive just because "code looks good."
 
 ---
 
@@ -383,8 +362,8 @@ Every agent is a **pod role**: project-scoped and created per project by
 ## Pod Roles
 
 Each project is an **isolated pod** with its own workspace and per-pod session key. A pod is a
-lean **Lead + Implementer** by default; add a Reviewer and Tester with `--pod full` or
-`--with reviewer,tester`.
+lean **Lead + Implementer** by default; add a Reviewer with `--pod full` or
+`--with reviewer`.
 
 ### Lead
 
@@ -435,7 +414,6 @@ registry is not the same thing as an unrestricted gate.
 
 **Cannot (by convention, not tool removal):**
 - Review security (reviewer's job)
-- Run validation tests (tester's job)
 - Commit or push
 
 **Model:** strong class (role policy) (code writing is reasoning-dense)
@@ -467,38 +445,12 @@ a SOUL.md-only instruction: a Reviewer that tries to call `edit` gets a tool-not
 - Execute tests
 - Commit
 
-**Model:** cheap class (role policy) (structural review, not reasoning-dense)
-
-### Tester (optional)
-
-**Role:** Behavior-only validation specialist
-
-**Capabilities:**
-- Executes reproduction steps
-- Runs test suites
-- Binary verdict: PASS or FAIL
-- Does NOT read code (stays objective)
-
-**Tools:** `read`, `glob`, `grep`, `bash`, `fetch`, `skill`, `consult` — `write`/`edit` are
-structurally absent
-(`denied_tools=("write", "edit")`); `bash` stays so the Tester can actually run the suite it
-reports PASS/FAIL on. Staying objective by not reading the implementation is a **convention**
-the Tester is instructed to follow (its prompt points it at reproduction steps, not the diff) —
-the `read` tool itself is not removed, since the Tester needs it to read expected-behavior/
-acceptance-criteria files.
-
-**Cannot (by convention, except write/edit which are structurally absent):**
-- Review security
-- Fix failing tests
-- Commit
-
-**Model:** cheap class (role policy) (validation is mechanical)
+**Model:** strong class (role policy) (a judge is not weaker than the worker it judges)
 
 **MCP tools.** Tools from configured external MCP servers (`docket setup mcp`) reach a live turn
 through the same chokepoint, namespaced `mcp__<server>__<tool>`. Denials apply by capability, not
 by name. Every MCP server is write-capable unless the operator declares it `--kind read` (an
-operator assertion, not something docket verifies). A role that denies `write` (Lead, Reviewer,
-Tester) gets no tools from a server left at the default and all the tools of a `--kind read`
+operator assertion, not something docket verifies). A role that denies `write` (Lead, Reviewer) gets no tools from a server left at the default and all the tools of a `--kind read`
 server; the Implementer gets both.
 
 ## Memory Management
@@ -633,8 +585,8 @@ reasoning-density) or the **strong class** (reasoning-dense):
 
 | Class  | Roles                                                    | Why                              |
 |--------|----------------------------------------------------------|----------------------------------|
-| Cheap  | Lead, Reviewer, Tester                                   | High-volume or mechanical work |
-| Strong | Implementer                                              | Code writing                     |
+| Cheap  | Lead                                                     | High-volume or mechanical work |
+| Strong | Implementer, Reviewer                                    | Code writing and judging it      |
 
 Change the policy for a role with `docket setup model set <role> <provider/model>`, or switch all
 roles at once with a provider preset (`docket setup model preset openai`). Override per-pod with a role overlay
@@ -673,7 +625,6 @@ instead of a full cross-project history — no worker is spawned.
 Lead:        ✓ Per-pod orchestrator (owns context/memory, never edits code)
 Implementer: ✓ Runs in the project workspace (full read/write)
 Reviewer:    ✓ Read-only veto (6-point checklist)
-Tester:      ✓ Behavior-only validation
 ```
 
 ### Features Implemented ✅
@@ -684,7 +635,6 @@ Tester:      ✓ Behavior-only validation
   `docket setup` re-seeding of a missing or stale one
 - [x] Per-pod context isolation (workspace + session key)
 - [x] Security checklist (6 points)
-- [x] Behavior-only validation
 - [x] HITL gate protocols
 - [x] Cost tracking & optimization
 - [x] Declarative role archetypes (`docket pod roles`) and pod blueprints (`docket init --blueprint <name>`)
@@ -710,7 +660,7 @@ Tester:      ✓ Behavior-only validation
 - [x] The team in the repository: `.docket/` is the pod's configuration of record
   (`docket pod update|export`, `docket init` applies it), with drift reported by
   `docket pod show`
-- [x] Recipes, project instructions and skills: eighteen shipped recipes (`docket pod recipes`), the
+- [x] Recipes, project instructions and skills: seventeen shipped recipes (`docket pod recipes`), the
   codebase's `AGENTS.md` composed by default, `skills/<name>/SKILL.md` read on demand
 - [x] Trace export: `kind: exporter` documents over a zero-dependency OTLP/HTTP projection
   (`docket setup export`), five destinations built in, all off
@@ -855,8 +805,8 @@ monotonic.
 
 ### Pipeline resolution and generalized gates
 
-Before the platform work, dispatch hardcoded a four-role Lead → Implementer → Reviewer → Tester
-order and its own Reviewer/Tester verdict parsing. Today `pipeline/domain/plan.py`'s `resolve_plan`
+Before the platform work, dispatch hardcoded a three-role Lead → Implementer → Reviewer
+order and its own Reviewer verdict parsing. Today `pipeline/domain/plan.py`'s `resolve_plan`
 takes a `PipelineSpec` (the docket-native YAML format — `docket pod validate`/`pod plan`/`run`,
 `pipeline/domain/spec.py`) plus a pod's live roster and the role-archetype registry (`teams/roles.py`
 — see `docket pod roles`), and produces a deterministic `ExecutionPlan`: the same spec, roster, and
@@ -874,8 +824,8 @@ step doesn't declare one — its role archetype's `gateContract`:
 - **`verdict`** — match the configured regex at the start of every non-blank line of a hop's
   output; exactly one distinct marker value is the verdict (zero or conflicting markers are
   unparseable); a match in the gate's `passValues` advances the pipeline. This generalizes the Reviewer's
-  APPROVE/REQUEST-CHANGES and the Tester's PASS/FAIL to an arbitrary marker vocabulary for any
-  archetype (the `critic` starter's APPROVE/REJECT, for instance). A verdict gate can carry a
+  APPROVE/REQUEST-CHANGES to an arbitrary marker vocabulary for any
+  archetype (a custom vetter's SHIP/HOLD, for instance). A verdict gate can carry a
   bounded `rework` edge — a REQUEST-CHANGES re-runs a target step (by default, back to the
   Implementer) up to a configured cycle budget (`maxReworkCycles`, default `1`) before a second
   rejection fails the task terminally. There is no fixed "3 retries then escalate to a human
@@ -955,7 +905,7 @@ A run can have more than one pid recorded at once when a `parallel` step has mul
 ### The policy engine on the dispatch path
 
 Declarative policies (`docket pod policies`, `governance/policy.py`) are evaluated at two points on the live
-dispatch path, not just in the CLI's own dry-run tester: `pre_input` once, at task enqueue (so the
+dispatch path, not just in the CLI's own dry-run check: `pre_input` once, at task enqueue (so the
 same task text doesn't re-trip a wildcard-scoped policy at every hop), and `pre_output` on every
 hop's real output, before it is embedded in the carried-forward artifact. A `block` verdict on
 `pre_input` rejects the task before it is ever queued; a `require_approval` verdict enqueues it
@@ -975,7 +925,7 @@ shell command allowlist.
 ### Q: Is docket an acronym?
 
 **A:** No, it is a name. The design rests on four ideas: **roles** (the Lead orchestrates, the
-Implementer codes, a Reviewer or Tester gates), **autonomy** within clear responsibilities,
+Implementer codes, a Reviewer gates), **autonomy** within clear responsibilities,
 **context isolation** per pod, and durable **knowledge** in each workspace's memory files.
 
 ### Q: Is this the same as the original DOCKET.md proposal?
@@ -997,7 +947,7 @@ that project's pod with the right templates. Everything else works the same.
 
 **A:** No. Templates are generated per-pod by `docket init` (and per member by `docket pod add`) and
 refreshed by `docket setup --fix`. A member's isolation:
-- Each project pod (lead + implementer, optionally reviewer/tester) is isolated
+- Each project pod (lead + implementer, optionally a reviewer) is isolated
 - Project agents are never touched by another project's setup (use `docket pod reset <member-id>` to rebuild a workspace)
 
 ### Q: How much will I save?

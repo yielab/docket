@@ -117,17 +117,14 @@ class TestHeartbeatLedgerLifecycle:
                 role = agent_id.rsplit("-", 1)[-1]
                 if role == "reviewer":
                     return _rd.TurnResult(True, "APPROVE looks good", 0.0, {})
-                if role == "tester":
-                    return _rd.TurnResult(True, "PASS all good", 0.0, {})
                 return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {})
 
             res = _sweep.dispatch_pod("demo", runner=runner)[0]
             assert res.status == "done"
-            assert len(seen) == 4
+            assert len(seen) == 3
             assert "0 hops run" in seen[0]  # before lead's hop, nothing persisted yet
             assert "1 hop run" in seen[1]  # lead's hop persisted before implementer runs
             assert "2 hops run" in seen[2]
-            assert "3 hops run" in seen[3]
             assert _mem.read_dispatch_task_ids(ws) == []
 
     def test_touch_claim_keeps_the_entry_and_refreshes_it(self, tmp_path: Path) -> None:

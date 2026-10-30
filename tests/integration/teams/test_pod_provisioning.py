@@ -99,14 +99,13 @@ class TestBuildPod:
             # No leftover shared-specialist language anywhere in the pod.
             assert "shared specialist" not in (lead + impl).lower()
 
-    def test_full_pod_has_four_members(self, tmp_path: Path) -> None:
+    def test_full_pod_has_three_members(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.FULL_POD_ROLES)
             assert set(_ids(home)) == {
                 "demo-lead",
                 "demo-implementer",
                 "demo-reviewer",
-                "demo-tester",
             }
 
 
@@ -165,11 +164,10 @@ class TestPodRoles:
         assert _pod.pod_roles(True, "") == _pod.pod.FULL_POD_ROLES
 
     def test_with_adds_roles(self) -> None:
-        assert _pod.pod_roles(False, "reviewer,tester") == (
+        assert _pod.pod_roles(False, "reviewer") == (
             "lead",
             "implementer",
             "reviewer",
-            "tester",
         )
 
     def test_unknown_and_lean_roles_are_ignored(self) -> None:

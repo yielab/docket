@@ -76,9 +76,9 @@ class _CrashOnRoleRunner:
 
 
 class _VerdictAwareRunner:
-    """Like FakeDriver, but Reviewer/Tester hops carry a real verdict so a
+    """Like FakeDriver, but Reviewer hops carry a real verdict so a
     full pod can finish `done` (the Reviewer's APPROVE/REQUEST-CHANGES first
-    line is parsed the same way the Tester's PASS/FAIL is)."""
+    line is parsed the same way the Reviewer's APPROVE is)."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str, int, dict[str, str] | None]] = []
@@ -93,12 +93,7 @@ class _VerdictAwareRunner:
     ) -> _rd.TurnResult:
         self.calls.append((agent_id, session_key, message, timeout, env))
         role = agent_id.rsplit("-", 1)[-1]
-        if role == "tester":
-            output = "PASS - looks good"
-        elif role == "reviewer":
-            output = "APPROVE - looks good"
-        else:
-            output = f"done by {agent_id}"
+        output = "APPROVE - looks good" if role == "reviewer" else f"done by {agent_id}"
         return _rd.TurnResult(True, output, 0.01, {"output": output})
 
 
@@ -207,7 +202,7 @@ class TestCrashRecovery:
                 # Only the hops that hadn't completed before the crash run again —
                 # lead and implementer are NOT re-invoked.
                 roles_called = [c[0].rsplit("-", 1)[-1] for c in resumer.calls]
-                assert roles_called == ["reviewer", "tester"]
+                assert roles_called == ["reviewer"]
 
                 final = TaskRepository.for_pod("demo").list()[0]
                 assert final.status == "done"
@@ -215,7 +210,6 @@ class TestCrashRecovery:
                     "lead",
                     "implementer",
                     "reviewer",
-                    "tester",
                 ]
                 assert final.claim_pid is None
 
@@ -524,4 +518,4 @@ class TestRunCliPrologue:
             _endpoint_ready(monkeypatch)
             result = CliRunner().invoke(app, ["run", "--pod", "rsch"])
 
-            assert "through: lead → researcher → analyst → writer → critic" in result.output
+            assert "through: lead → researcher → analyst → writer → reviewer" in result.output

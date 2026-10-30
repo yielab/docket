@@ -3042,8 +3042,8 @@
           "provider": ""
         },
         {
-          "role": "tester",
-          "member": "fab-dev-tester",
+          "role": "reviewer",
+          "member": "fab-dev-reviewer",
           "ok": true,
           "output": "All checks passed:\n\n- **`tsc --noEmit`**: no errors\n- **`eslint`** on the two new test files: no errors\n- **`vitest run`**: 147 test files, **2221 tests passed** (including the 3 new hash tests and 12 new slug tests)\n\nThe new test files `src/lib/story/hash.test.ts` (3 tests) and `src/lib/story/slug.test.ts` (12 tests) cover all specified cases:\n- `hash()`: deterministic, unsigned 32-bit range, differs for \"a\" vs \"b\"\n- `topicSlug()`: lowercase, accent stripping (Latin), non-Latin preservation, dash collapsing, 60-char cap without trailing dash, emoji fallback to `t-<hex>`\n- `slugFor()` / `idFromSlug()`: round-trip for UUID and hand-written id, bare id when no separator, null for empty and colon-containing strings\n- `storyPath()`: returns `/s/` + slug\n\nPASS",
           "costUsd": 0.0,
@@ -3292,8 +3292,8 @@
           "provider": "anthropic"
         },
         {
-          "role": "tester",
-          "member": "fab-dev-tester",
+          "role": "reviewer",
+          "member": "fab-dev-reviewer",
           "ok": true,
           "output": "**Verification of requirements:**\n\n1. **Two new test files created:** \u2705 `hash.test.ts` and `slug.test.ts`\n2. **No other files modified:** \u2705 Only those two files\n3. **hash() tests:**\n   - Deterministic \u2705 (lines 5-8)\n   - Unsigned 32-bit integer \u2705 (lines 10-17)\n   - Differs for \"a\" vs \"b\" \u2705 (lines 19-21)\n4. **topicSlug() tests:**\n   - Lowercases \u2705 (line 7)\n   - Strips Latin accents \u2705 (line 11)\n   - Keeps non-Latin letters (Japanese/Arabic) \u2705 (lines 15-16)\n   - Collapses punctuation/spaces into single dashes, none at ends \u2705 (lines 19-21)\n   - Caps at 60 chars without trailing dash \u2705 (lines 24-33)\n   - Falls back to \"t-<hex>\" for emoji-only \u2705 (lines 35-40)\n5. **slugFor() / idFromSlug() round-trip:**\n   - randomUUID-shaped id \u2705 (lines 44-49)\n   - Hand-written ref id \u2705 (lines 51-56)\n   - Returns bare id when no \"--\" separator \u2705 (lines 58-62)\n   - Returns null for empty string \u2705 (lines 64-66)\n   - Returns null for colon-containing value \u2705 (lines 68-70)\n6. **storyPath()** returns \"/s/\" + slug \u2705 (lines 73-78)\n7. **Checks passed:** eslint \u2705, tsc --noEmit \u2705, vitest run \u2705 (all 2221 tests pass including the 15 new ones)\n\nPASS",
           "costUsd": 0.0,
@@ -3719,8 +3719,8 @@
           "provider": "anthropic"
         },
         {
-          "role": "tester",
-          "member": "fab-dev-tester",
+          "role": "reviewer",
+          "member": "fab-dev-reviewer",
           "ok": true,
           "output": "PASS\nThe implementer created `src/lib/story/hash.test.ts` and `src/lib/story/slug.test.ts` covering all requested cases:\n- **`hash()`**: deterministic, unsigned 32-bit integer range, different outputs for \"a\" vs \"b\".\n- **`topicSlug()`**: lowercases, strips accents, keeps non-Latin, collapses separators, caps at 60 chars (no trailing dash), emoji fallback to `t-<hex>`.\n- **`idFromSlug()`**: round-trips randomUUID and ref ids, returns bare id without `--`, null for empty and colon-containing strings.\n- **`storyPath()`**: returns `/s/` + slug.\n\nI verified the checks passed as reported:\n1. `tsc --noEmit` - no errors.\n2. `vitest run src/lib/story/hash.test.ts src/lib/story/slug.test.ts` - all 15 new tests pass.\n3. `eslint src/lib/story/hash.test.ts src/lib/story/slug.test.ts` - no lint issues.\n\nThe implementation files were not modified. All constraints satisfied.",
           "costUsd": 0.0,

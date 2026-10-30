@@ -27,10 +27,9 @@ another project:
 - **Lead** (`<project>-lead`) — orchestrates the pod, owns its memory + human (Telegram) comms,
   decomposes work and dispatches it. **Never edits code.**
 - **Implementer** (`<project>-implementer`) — runs *inside* the project workspace and writes the code.
-- **Reviewer** *(optional)* — read-only veto on the diff (correctness + security gate).
-- **Tester** *(optional)* — behaviour-only PASS / FAIL validation.
+- **Reviewer** *(optional)* — read-only veto on the work of the step before (correctness + security gate).
 
-The default pod is **lean** (Lead + Implementer). Add Reviewer/Tester when the work warrants it.
+The default pod is **lean** (Lead + Implementer). Add a Reviewer when the work warrants it.
 
 
 ## Architecture Overview
@@ -49,8 +48,7 @@ The default pod is **lean** (Lead + Implementer). Add Reviewer/Tester when the w
         │  │ lead  (never edits)│  │
         │  └─────────┬──────────┘  │
         │            ▼             │
-        │  implementer → reviewer? │
-        │            → tester?     │  ← `docket run`
+        │  implementer → reviewer? │  ← `docket run`
         └──────────────────────────┘     one real agent turn per hop
 ```
 
@@ -98,18 +96,17 @@ run.
 
 ### Step 3 — Grow the pod when the work warrants it
 
-A login bug touching auth deserves a correctness/security gate and independent validation, so
-add a Reviewer and a Tester:
+A login bug touching auth deserves a correctness/security gate, so
+add a Reviewer:
 
 ```bash
 docket pod add reviewer     # adds myapp-reviewer (read-only veto on the diff)
-docket pod add tester       # adds myapp-tester  (behaviour-only PASS/FAIL)
 
-docket pod show                   # now: lead, implementer, reviewer, tester
+docket pod show                   # now: lead, implementer, reviewer
 ```
 
 > You could have provisioned this up front with `docket init myapp ~/code/myapp --pod full` or
-> `--with reviewer,tester`. From outside the repository, `docket pod add reviewer --pod myapp` does the same as
+> `--with reviewer`. From outside the repository, `docket pod add reviewer --pod myapp` does the same as
 > `docket pod add reviewer` run inside it. The pod also scales doers: `docket pod add implementer` adds
 > `myapp-implementer-2` for parallel work. A pod always has **exactly one Lead.**
 
@@ -150,16 +147,16 @@ The `docket run` command drives every pending task through the pod's pipeline, h
 real, costed agent turn per hop** — and only through the roles this pod actually has:
 
 ```
-Lead  →  Implementer  →  Reviewer  →  Tester
+Lead  →  Implementer  →  Reviewer
 ```
 
 ```
-→ Running 2 pending task(s) through: lead → implementer → reviewer → tester
+→ Running 2 pending task(s) through: lead → implementer → reviewer
   Pod budget cap: $5.00 (estimate so far ~$0.00, no cost recorded)
 verification skipped — verifyCmd not set for myapp-implementer
-✓   [task-9c745f95-984d-497b-abdd-1bed9ec9b0b0] done — 4 hop(s)
+✓   [task-9c745f95-984d-497b-abdd-1bed9ec9b0b0] done — 3 hop(s)
 verification skipped — verifyCmd not set for myapp-implementer
-✓   [task-6443ff59-cfca-41a5-9ca0-f8686233e0bf] done — 4 hop(s)
+✓   [task-6443ff59-cfca-41a5-9ca0-f8686233e0bf] done — 3 hop(s)
 ✓ 2 done · 0 failed · <n>k tokens (~$0.00 est.)
 → Next: docket status
 ```
@@ -177,8 +174,7 @@ how a human finds out and answers.
 
 The dispatch orchestrator invokes each hop through its own turn loop
 (`agent/loop.py`), captures the result, and threads it to the next role. The Lead plans,
-the Implementer is the **single writer**, the Reviewer can **veto** the diff, the Tester gives
-an independent PASS/FAIL.
+the Implementer is the **single writer**, the Reviewer can **veto** the diff.
 
 ### Step 7 — Budget gating in action
 
@@ -288,7 +284,7 @@ docket start               # READ-ONLY monitor — health checks only, never dis
 
 ## Pipelines: the one dialect
 
-Everything in Step 6 above — Lead → Implementer → Reviewer → Tester, one hop per role — is
+Everything in Step 6 above — Lead → Implementer → Reviewer, one hop per role — is
 docket's **built-in pipeline**. It is not hardcoded prose; it is a real, typed pipeline document
 (`pipeline/domain/spec.py`) that `docket run` runs whenever a pod has no pipeline
 file of its own. Writing a pipeline file lets you change the step order, add a parallel fan-out,
@@ -298,9 +294,8 @@ or swap in a different gate — without touching pod membership at all.
 
 A pod with no pipeline file behaves **exactly** like `pipeline/domain/spec.py`'s hardcoded `default_pipeline`
 always has: Lead (no gate) → Implementer (mechanical check against its own `verifyCmd`) →
-Reviewer (APPROVE/REQUEST-CHANGES, bounded rework back to the Implementer) → Tester
-(PASS/FAIL, hard gate, no rework). A lean pod without a Reviewer/Tester simply never reaches
-those steps — same skip-absent-roles behavior `docket run` always had.
+Reviewer (APPROVE/REQUEST-CHANGES, bounded rework back to the Implementer). A lean pod
+without a Reviewer simply never reaches that step — same skip-absent-roles behavior `docket run` always had.
 A pod runs its own pipeline only once you write a file and bind it (`docket pod set pipeline
 <file>`) or pass `--pipeline`.
 
@@ -332,10 +327,9 @@ Pipeline: default
   [lead] role=lead -> myapp-lead [gate: none]
   [implementer] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]
   [reviewer] role=reviewer -> myapp-reviewer [gate: verdict(approve, rework->implementer)]
-  [tester] role=tester -> myapp-tester [gate: verdict(pass)]
 ```
 
-A lean pod (no Reviewer/Tester) shows those two lines marked `(skipped — role not in pod)`
+A lean pod (no Reviewer) shows that line marked `(skipped — role not in pod)`
 instead of a resolved member id — `plan` always renders every step the spec declares, it just
 tells you honestly which ones this pod's current roster can run.
 
@@ -363,7 +357,7 @@ steps:
     verdict: [APPROVE, REQUEST-CHANGES]
     on: {REQUEST-CHANGES: {goto: fanout, max: 2}}
 
-  - ship: tester
+  - ship: lead
     approval: "Tests passed — ready to deploy?"
 ```
 
@@ -379,7 +373,7 @@ Pipeline: release
     - myapp-implementer -> myapp-implementer [gate: none]
     - myapp-implementer-2 -> myapp-implementer-2 [gate: none]
   [review] role=reviewer -> myapp-reviewer [gate: verdict(approve, rework->fanout)]
-  [ship] role=tester -> myapp-tester [gate: approval]
+  [ship] role=lead -> myapp-lead [gate: approval]
 
 $ docket run --pipeline workflows/release.yml
 ```
@@ -395,7 +389,7 @@ it asks a question before one runs — and what each does to the task:
 | Gate | Where it shows up | On failure |
 |---|---|---|
 | `mechanical` | Implementer's `verifyCmd` by default (or a `command` you set) | Task → **failed**, a `verification_failed` trace event, no advance to the next step. An unset command is never silently skipped — it prints `verification skipped — verifyCmd not set for <id>` and emits its own trace event |
-| `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework), Tester's PASS/FAIL (hard gate) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
+| `verdict` | Reviewer's APPROVE/REQUEST-CHANGES (bounded rework) | A rejected/unparseable verdict past the rework budget → task **failed**. Rework re-runs the named earlier step, up to `maxCycles` |
 | `approval` | A pipeline `approval` step | Task → **waiting_approval** — the hop doesn't run at all until a human decides. See [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md) for the approval channels |
 | `input` (not a gate — no hop runs) | `- ask: {input: {from: <step-id>}}`, or the richer per-question schema a Lead's own typed intake brief supplies (the `intake` recipe) | Task → **waiting_input** — a question, not a permission. Routes on `answered`/`declined` via the step's own `on:` map. Answer with `docket task answer <escalation-id> --option <id>` (or `<task-id>`); unanswered past its deadline → **blocked** (`blockedReason: "input_expired"`), never failed. See [CONFIGURATION.md §3.15](CONFIGURATION.md#315-notify-a-human-and-answer-without-blocking) |
 
@@ -573,12 +567,11 @@ Start lean; grow only when the work earns it.
 |-----------|-----|
 | Prototyping, low-risk changes, solo project | **lean** (Lead + Implementer) — the default |
 | Code that needs a correctness/security gate before it lands | add a **Reviewer** (`--with reviewer`) |
-| Behaviour you want validated independently of the diff | add a **Tester** (`--with tester`) |
 | Production-grade, regulated, or high-blast-radius work | **full** pod (`--pod full`) |
 | One Implementer is the bottleneck | `docket pod add implementer` (parallel doers) |
 
-The Reviewer and Tester are the line between "an agent changed the code" and "a change was
-reviewed and validated before it landed."
+The Reviewer is the line between "an agent changed the code" and "a change was
+reviewed before it landed."
 
 ---
 
@@ -650,8 +643,7 @@ policy-following agent re-resolves; override per-pod with a role overlay or per-
 |------|---------------|
 | Lead | cheap (coordination) |
 | Implementer | strong (reasoning-dense) |
-| Reviewer | cheap |
-| Tester | cheap |
+| Reviewer | strong |
 
 ```bash
 docket setup model                                   # show the role→model policy
@@ -733,19 +725,17 @@ Simple change (lean pod, 2 hops):
   implementer  ~2K   (small edit, strong model)
   ── total    ~4K · ~2 min
 
-Feature (full pod, 4 hops):
+Feature (full pod, 3 hops):
   lead         ~5K
   implementer ~20K   (multi-step logic, strong model)
   reviewer     ~5K   (veto on diff)
-  tester       ~3K   (PASS/FAIL)
-  ── total   ~33K · ~10 min
+  ── total   ~30K · ~10 min
 
 Refactor (full pod, high blast radius):
   lead        ~10K
   implementer ~50K   (multi-file)
   reviewer    ~10K   (security-critical)
-  tester       ~5K
-  ── total   ~75K · ~20 min
+  ── total   ~70K · ~20 min
 ```
 
 To bound the dollar cost of any of these, set a per-pod cap on the Lead
@@ -769,7 +759,7 @@ Telegram" sections — kept in one place rather than duplicated here.
 **Project pods** (`scope: project`, one per codebase):
 - Lead orchestrates and owns comms — **never edits code**.
 - Implementer is the **single writer**, inside the project workspace.
-- Reviewer/Tester are optional gates you add when the work warrants it.
+- The Reviewer is an optional gate you add when the work warrants it.
 - `docket task add` queues; `docket run` runs the real pipeline,
   one costed turn per hop, **budget-gated, traced, and pod-local**.
 
@@ -777,7 +767,7 @@ Telegram" sections — kept in one place rather than duplicated here.
 - Queues tasks, runs the pipeline, reviews diffs, commits, approves gates.
 
 ```
-task add → run → Lead → Implementer → (Reviewer) → (Tester) → you review + commit
+task add → run → Lead → Implementer → (Reviewer) → you review + commit
 ```
 
 **Pipelines** (`docket pod validate`, `docket pod plan`, `docket run`):

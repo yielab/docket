@@ -226,12 +226,12 @@ class TestHopRetryLoop:
         assert impl_hop.attempts == 1
         assert calls.count("myapp-implementer") == 1
 
-    def test_unparseable_tester_verdict_is_not_a_retry_case(self, tmp_path: Path) -> None:
-        """A bad *verdict* (the structural Tester gate) is a real answer too —
+    def test_unparseable_reviewer_verdict_is_not_a_retry_case(self, tmp_path: Path) -> None:
+        """A bad *verdict* (the structural Reviewer gate) is a real answer too —
         nothing about the retry loop should touch it (ok=True, just a bad verdict)."""
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
-        _write_meta("myapp-tester")
+        _write_meta("myapp-reviewer")
         calls: list[str] = []
 
         def _runner(
@@ -243,7 +243,7 @@ class TestHopRetryLoop:
         ) -> _rd.TurnResult:
             calls.append(agent_id)
             role = agent_id.rsplit("-", 1)[-1]
-            output = "garbage, no verdict" if role == "tester" else "done"
+            output = "garbage, no verdict" if role == "reviewer" else "done"
             return _rd.TurnResult(True, output, 0.0, {})
 
         task = TaskRecord(id="t4", description="work")
@@ -251,8 +251,8 @@ class TestHopRetryLoop:
         assert res.status == "failed"
         assert "unparseable" in res.reason
         # The single re-ask for a verdict line is not a retry: one attempt, one extra request.
-        assert calls.count("myapp-tester") == 2
-        assert next(h for h in res.hops if h.role == "tester").attempts == 1
+        assert calls.count("myapp-reviewer") == 2
+        assert next(h for h in res.hops if h.role == "reviewer").attempts == 1
 
     def test_retry_emits_hop_retry_trace_event_with_attempt_history(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead")

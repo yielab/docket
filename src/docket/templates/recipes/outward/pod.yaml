@@ -1,4 +1,4 @@
 kind: pod
 name: outward
 description: Research, draft, vet, then act outside the machine through a send tool that asks a person first.
-members: [researcher, writer, critic, actor]
+members: [researcher, writer, reviewer, actor]

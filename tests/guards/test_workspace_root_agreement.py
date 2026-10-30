@@ -108,7 +108,7 @@ def test_soul_and_agents_name_no_path(repo: Path) -> None:
         assert not re.search(r"(^|[\s`(])/[\w.-]+/", (ws / name).read_text()), name
 
 
-@pytest.mark.parametrize("role", ["lead", "implementer", "reviewer", "tester"])
+@pytest.mark.parametrize("role", ["lead", "implementer", "reviewer"])
 def test_the_task_message_names_no_path_and_its_root_is_one_the_tools_accept(
     repo: Path, role: str
 ) -> None:
@@ -172,7 +172,7 @@ def test_implementer_has_no_member_worktree(repo: Path) -> None:
 # ── the members that must NOT change ───────────────────────────────────────────
 
 
-@pytest.mark.parametrize("role", ["lead", "reviewer", "tester"])
+@pytest.mark.parametrize("role", ["lead", "reviewer"])
 def test_other_roles_are_told_the_codebase(repo: Path, role: str) -> None:
     """Every role's startup contract names the plain codebase."""
     member = _make_member(role)

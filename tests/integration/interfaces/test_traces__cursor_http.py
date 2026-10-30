@@ -122,13 +122,13 @@ class TestVerbatimPassthrough:
         session, leaving aggregation to the consumer (Tack)."""
         url, token = live_server
         _trace.trace_event("demo", "sess-a", "lead", "session_start", "{}")
-        _trace.trace_event("demo", "sess-b", "tester", "verdict_rejected", "{}")
+        _trace.trace_event("demo", "sess-b", "reviewer", "verdict_rejected", "{}")
         fake_clock.tick()
 
         status, body = _get(f"{url}/traces/demo", token=token)
         assert status == 200
         roles = {json.loads(e)["agent_role"] for e in body["events"]}
-        assert roles == {"lead", "tester"}
+        assert roles == {"lead", "reviewer"}
 
 
 class TestPollLoopBoundary:

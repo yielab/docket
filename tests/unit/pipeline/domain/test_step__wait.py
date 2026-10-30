@@ -40,7 +40,7 @@ class TestDuration:
 
 class TestShape:
     def test_a_timer_parses_from_the_short_form(self) -> None:
-        spec, errors = _load("  - writer: writer\n  - hold: {wait: 72h}\n  - critic: critic\n")
+        spec, errors = _load("  - writer: writer\n  - hold: {wait: 72h}\n  - reviewer: reviewer\n")
         assert errors == []
         step = spec.steps[1]  # type: ignore[attr-defined]
         assert (step.id, step.wait, step.until) == ("hold", "72h", None)
@@ -52,7 +52,7 @@ class TestShape:
             "      wait: 1h\n"
             "      until: {run: 'test -f ready', every: 15m}\n"
             "      on: {timeout: fail}\n"
-            "  - critic: critic\n"
+            "  - reviewer: reviewer\n"
         )
         assert errors == []
         step = spec.steps[1]  # type: ignore[attr-defined]
@@ -124,7 +124,7 @@ class TestTimeoutRoute:
         assert "timeout" in message
 
     def test_a_timeout_route_needs_a_probe(self) -> None:
-        message = _errors("  - hold: {wait: 1h, on: {timeout: fail}}\n  - critic: critic\n")
+        message = _errors("  - hold: {wait: 1h, on: {timeout: fail}}\n  - reviewer: reviewer\n")
         assert "hold" in message
 
     def test_a_backward_timeout_route_needs_max(self) -> None:
@@ -141,12 +141,12 @@ class TestPlan:
         assert errors == []
         return _orch.resolve_plan(
             spec,  # type: ignore[arg-type]
-            {"writer": "pod-writer", "critic": "pod-critic"},
+            {"writer": "pod-writer", "reviewer": "pod-reviewer"},
             registry=_archetypes.load_registry(),
         )
 
     def test_a_wait_step_is_planned_without_a_member_and_is_never_skipped(self) -> None:
-        plan = self._plan("  - hold: {wait: 90s}\n  - critic: critic\n")
+        plan = self._plan("  - hold: {wait: 90s}\n  - reviewer: reviewer\n")
         unit = plan.runnable_nodes()[0]
         assert isinstance(unit, _orch.PlannedUnit)
         assert (unit.wait, unit.member_id, unit.skipped) == ("90s", None, False)

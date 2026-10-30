@@ -12,7 +12,7 @@ A pod can also run another kind of team, for research, content or outward work w
 behind it, on demand or on a schedule that `docket start --dispatch` fires, under the same gate.
 
 You describe a task in plain words. A Lead agent plans it, an Implementer makes the change on its
-own git branch, and, if your team has them, a reviewer and a tester check the result before you
+own git branch, and, if your team has one, a reviewer checks the result before you
 merge anything. Every action an agent takes (reading a file, editing one, running a shell command)
 passes one checkpoint that applies your rules: `git status` runs, `git push origin production`
 waits for your approval, and anything a policy forbids is refused. Every decision is written to a
@@ -21,7 +21,7 @@ tamper-evident log you can verify.
 The team itself is a few YAML files in your repository, so changing who does what is editing a
 file and committing it. Roles, pipelines and policies combine freely, with no code: a Lead and an
 Implementer; the same pair behind a read-only security vetter that can send the change back once
-(`secure-build`); a Reviewer and a Critic judging the same change in parallel (`dual-review`); a
+(`secure-build`); a
 builder on one provider's model checked by a reviewer on another's (`cross-family-review`). A
 pipeline can also route on a step's outcome, skip a step on a condition, run a command, or stop
 and ask you. docket works with any model that speaks the OpenAI chat format, and with Anthropic's
@@ -48,12 +48,12 @@ Five ideas cover everything docket does:
 - **Pod.** A **pod** is the team of agents attached to one repository or, for work with no
   repository, one working directory: its members, its rules, its task queue and the git worktrees
   its agents work in. `docket init` creates one; inside the repository you never type its name.
-- **Role.** What an agent is (Lead, Implementer, Reviewer, Tester, or one you define), what it is
+- **Role.** What an agent is (Lead, Implementer, Reviewer, or one you define), what it is
   told, and which tools it lacks. A reviewer without a write tool *cannot* write; it is not merely
   asked not to.
 - **Pipeline.** The order in which roles work a task and the gate after each step: the exit code of
   your verify command or of an independent verifier you name, a reviewer's `APPROVE` or
-  `REQUEST-CHANGES`, a tester's `PASS` or `FAIL`. Each step closes with a structured handoff (a
+  `REQUEST-CHANGES`. Each step closes with a structured handoff (a
   summary, its verdict, the files it changed) that is all the next step reads of it.
 - **Policy.** A rule checked on every tool call, by every agent: allow it, ask a human, or deny it.
 - **Recipe.** A ready-made team, policy pack or working method you add with one command. A

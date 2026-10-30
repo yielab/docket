@@ -185,20 +185,6 @@ class TestReviewerNeverGainsAWriteCapableMcpTool:
         advertised = {spec.name for spec in backend.tools_seen[0]}
         assert not any(name.startswith("mcp__") for name in advertised)
 
-    def test_tester_loses_the_mcp_tool_but_keeps_bash(self) -> None:
-        """Tester denies only write/edit (kind `write`) -- bash (kind `exec`) stays so it can run the suite it reports on, but the MCP tool (kind `write`) is excluded by the same rule as `write`/`edit`."""
-        _write_meta("test-1", role="tester")
-        backend = _ScriptedBackend([_final()])
-        driver = DocketDriver(
-            backend_factory=lambda model: backend, mcp_loader=_fake_mcp_loader((_remote(),))
-        )
-
-        driver.run_turn("test-1", "agent:test-1:default", "run the suite", 30)
-
-        advertised = {spec.name for spec in backend.tools_seen[0]}
-        assert not any(name.startswith("mcp__") for name in advertised)
-        assert "bash" in advertised
-
     def test_implementer_does_get_the_mcp_tool(self) -> None:
         """Contrast case: the exclusion is role-specific (kind-implied by that role's own denied_tools), not a blanket ban on MCP tools -- an Implementer, already trusted with write/edit/bash, keeps it."""
         _write_meta("impl-2", role="implementer")

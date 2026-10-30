@@ -26,12 +26,10 @@ steps:
     max: 1
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
-  - test: tester
-    verdict: [PASS, FAIL]
 """
 
 BOARD_TOKEN = {"DOCKET_SERVE_TOKEN": "board-token-kept-across-restarts"}
-ROLES = ("lead", "implementer", "reviewer", "tester")
+ROLES = ("lead", "implementer", "reviewer")
 ASKED_COMMAND = "rm -rf build"
 SINCE = "2000-01-01T00:00:00Z"
 
@@ -49,8 +47,6 @@ PARKED_THEN_DONE = [
     ("verification", "implementer", "passed"),
     ("hop_started", "reviewer", "review"),
     ("hop_finished", "reviewer", "approve"),
-    ("hop_started", "tester", "test"),
-    ("hop_finished", "tester", "pass"),
     ("session_end", "lead", "done"),
 ]
 
@@ -61,7 +57,6 @@ def _team_script() -> dict[str, list[Reply]]:
         "lead": [say("Plan: make app.txt say fixed.")],
         "implementer": [asked, asked, write_file("app.txt", "fixed\n"), say("app.txt says fixed.")],
         "reviewer": [say("APPROVE")],
-        "tester": [say("PASS")],
     }
 
 
@@ -193,9 +188,9 @@ def test_a_parked_task_survives_a_service_restart_and_resumes_from_disk(
         second.post(f"/dispatch/{w.pod}")
         _wait_for_status(w, second, task_id, "done")
 
-    assert heard_before == {"lead": 1, "implementer": 1, "reviewer": 0, "tester": 0}
+    assert heard_before == {"lead": 1, "implementer": 1, "reviewer": 0}
     heard_after = {role: len(model.by_role(role)) for role in ROLES}
-    assert heard_after == {"lead": 1, "implementer": 4, "reviewer": 1, "tester": 1}
+    assert heard_after == {"lead": 1, "implementer": 4, "reviewer": 1}
     assert oracles.trace_skeleton(w, w.pod, task_id) == PARKED_THEN_DONE
     oracles.assert_checkout_untouched(w, head_before)
     oracles.assert_audit_covers_tool_calls(w, w.pod, task_id, refused=1)

@@ -250,7 +250,7 @@ class TestTheTurnLeavesNoOrphan:
 
 
 class TestEveryRoleGetsALogDirectory:
-    def test_an_unjailed_tester_with_no_scratch_dir_starts_a_process_and_reads_it_back(
+    def test_an_unjailed_operator_with_no_scratch_dir_starts_a_process_and_reads_it_back(
         self,
         fake_model: Callable[..., FakeModel],
         monkeypatch: pytest.MonkeyPatch,
@@ -286,15 +286,15 @@ class TestEveryRoleGetsALogDirectory:
             ]
         )
         _register_model(server)
-        _write_meta("bg-tester", role="tester", model="lab/m", codebase=str(workspace))
+        _write_meta("bg-operator", role="operator", model="lab/m", codebase=str(workspace))
 
         with use_home(dataclasses.replace(current_home(), tool_approval_timeout=0)):
             result = DocketDriver().run_turn(
-                "bg-tester", "agent:bg-tester:default", "start it", 60, {}
+                "bg-operator", "agent:bg-operator:default", "start it", 60, {}
             )
 
         assert result.ok, result.error
         found = _STARTED.search(seen["started"])
         assert found is not None, seen["started"]
-        assert Path(found.group(2)).parent == current_home().process_logs_dir("bg-tester")
+        assert Path(found.group(2)).parent == current_home().process_logs_dir("bg-operator")
         assert "done" in seen["output"]

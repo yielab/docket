@@ -218,7 +218,7 @@ class TestHopTools:
             assert not {"bash", "process_output", "process_stop"} & set(narrowed.names())
 
     def test_a_role_that_keeps_bash_keeps_them(self) -> None:
-        narrowed = registry_for_role(builtin_registry(), "tester")
+        narrowed = registry_for_role(builtin_registry(), "implementer")
 
         assert {"bash", "process_output", "process_stop"} <= set(narrowed.names())
 

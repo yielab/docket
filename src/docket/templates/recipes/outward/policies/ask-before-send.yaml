@@ -1,6 +1,6 @@
 kind: policy
 name: outward-ask-before-send
-description: The Actor's send tool asks a person before it runs, whatever the Critic approved
+description: The Actor's send tool asks a person before it runs, whatever the Reviewer approved
 appliesTo: [actor]
 when:
   anyOf:
