@@ -173,8 +173,8 @@ byte as today.
 
 ## Amendment, 2026-10-30: an external service is declared, not programmed
 
-**Status: proposed.** Written the day Phase 55's cards merged, from the maintainer's request after
-the phase-close real run, and not yet accepted. Decisions 1 to 12 are unchanged.
+**Status: accepted 2026-10-30** by the maintainer, the day Phase 55's cards merged, from a request
+made after the phase-close real run. Decisions 1 to 12 are unchanged.
 
 **Why.** Decision 11 reaches an API through an MCP server, which means a program per service,
 written or found before a task needs it. The maintainer wants a pod to reach a service nobody
@@ -197,15 +197,26 @@ implementation work. A task that ends in a `send` at a new service cannot wait f
     value by prompt or stdin, never echoed) comes with it, since a reference to a name nothing can
     write is unwired.
 
-    *Proposed scope, to be confirmed:* a header token (no OAuth, no refresh); JSON in and out with
-    text as the fallback; the jail not involved; operations written by hand first, generated from an
-    OpenAPI document as a later card. *Still open:* whether an MCP server and a service of the same
-    name may coexist in one pod, and whether a service's `access: send` operations count against one
-    quota or one per service.
+    *The maintainer's scope:* a header token now; JSON in and out, text otherwise; the jail not
+    involved; every method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`); operations written by hand and
+    imported from an OpenAPI document. An MCP server and a service never share a name. The quota
+    counts per service.
 
-*Cards, not yet cut:* the document and its commands with `setup secret set`; the HTTP executor and
-its guards; the registration and the role allow-list; the e2e against a local fake service and the
-docs. None starts before the maintainer accepts the scope above.
+14. **Writes are handled apart.** `GET` is `read` unless declared `send`; `POST`, `PUT`, `PATCH` and
+    `DELETE` are always `send`, so a write reaches only a role that names it (one acting agent in the
+    pipeline), is approved by a person who sees the whole call, is audited and is counted by its
+    service's quota. A `DELETE` is approved one call at a time: it never offers "approve for this
+    task". An agent that vets the call before the person is a pipeline step, as in `outward`.
+
+*OAuth, later, and what it brings.* A client-credentials grant (a machine token from a token URL
+with a client id and secret) needs no person: a token cache with its expiry, refreshed before it
+lapses, the client secret in the store. An authorization-code grant (acting as a person's account)
+needs that person once in a browser to consent, a local callback or a device code to receive the
+grant, a refresh token kept in the store and rotated, and a task that meets an expired or revoked
+grant parks for the person again. A site's own sign-in page (an SSO screen with a second factor) is
+neither: it is the browser case, a person's step. None of it is in Phase 56.
+
+*Cards:* Phase 56, P56-1..P56-9 on `TODO.md`.
 
 ## Not doing
 
