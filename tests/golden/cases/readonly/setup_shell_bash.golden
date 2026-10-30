@@ -128,7 +128,7 @@ _docket_options() {
     "setup secret remove") echo "--help" ;;
     "setup service") echo "--help" ;;
     "setup service list") echo "--json --help" ;;
-    "setup service add") echo "--help" ;;
+    "setup service add") echo "--from-openapi --operations --base-url --auth-header --secret --help" ;;
     "setup service remove") echo "--help" ;;
   esac
 }

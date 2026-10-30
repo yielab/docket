@@ -224,3 +224,74 @@ def test_pod_export_writes_the_service_back(tmp_path: Path) -> None:
     assert "${secret:crm}" in written.read_text()
     _update("other", exported)
     assert _services.load_services("other") == _services.load_services("shop")
+
+
+_CRM_OPENAPI = Path(__file__).parents[2] / "fixtures" / "openapi" / "crm.yaml"
+
+
+def test_from_openapi_stores_a_service_the_loader_reads(tmp_path: Path) -> None:
+    code, out = _svc(
+        "add", "crm", "--from-openapi", str(_CRM_OPENAPI), "--auth-header", "Authorization",
+        "--secret", "crm",
+    )  # fmt: skip
+
+    assert code == 0, out
+    assert "listClients" in out and "createClient" in out
+    assert "uploadAvatar" in out and "multipart/form-data" in out
+    (stored,) = _services.load_services()
+    assert stored.name == "crm" and stored.baseUrl == "https://api.example.test/v1"
+    assert {op.name: op.access for op in stored.operations} == {
+        "listClients": "read",
+        "createClient": "send",
+        "getClient": "read",
+        "deleteClient": "send",
+    }
+    assert stored.auth is not None and stored.auth.value == "${secret:crm}"
+    assert "no secret named 'crm'" in out
+    assert "services.add" in [e["action"] for e in _audit.read_audit()]
+    exported = tmp_path / "crm.yaml"
+    exported.write_text(
+        yaml.safe_dump({"kind": "service", **stored.model_dump(mode="json", by_alias=True)}),
+        encoding="utf-8",
+    )
+    assert _services.load_service_document(exported) == stored
+
+
+def test_from_openapi_operations_narrows(tmp_path: Path) -> None:
+    code, out = _svc(
+        "add", "crm", "--from-openapi", str(_CRM_OPENAPI), "--operations", "getClient,listClients"
+    )
+
+    assert code == 0, out
+    assert [op.name for op in _services.load_services()[0].operations] == [
+        "listClients",
+        "getClient",
+    ]
+    assert _svc("remove", "crm")[0] == 0
+    code, out = _svc("add", "crm", "--from-openapi", str(_CRM_OPENAPI), "--operations", "ghost")
+    assert code == 1 and "ghost" in out
+    assert _services.load_services() == []
+
+
+def test_from_openapi_refusals_write_nothing(tmp_path: Path) -> None:
+    junk = _file(tmp_path, "swagger: '2.0'\n", "old.yaml")
+
+    code, out = _svc("add", "crm", "--from-openapi", str(junk))
+
+    assert code == 1 and "OpenAPI 3" in out
+    assert _svc("add", "crm", "--from-openapi", str(_CRM_OPENAPI), "--secret", "x")[0] == 1
+    _mcp_servers.add_mcp_server(_mcp.McpServerConfig(name="crm", command="crm-mcp"))
+    code, out = _svc("add", "crm", "--from-openapi", str(_CRM_OPENAPI))
+    assert code == 1 and "MCP server" in out
+    assert not current_home().services_file.exists()
+
+
+def test_openapi_options_without_from_openapi_are_a_usage_error(tmp_path: Path) -> None:
+    for option in (
+        ["--operations", "a"],
+        ["--base-url", "https://x.example.test"],
+        ["--secret", "s"],
+    ):
+        code, _ = _svc("add", str(_file(tmp_path)), *option)
+        assert code == 2
+    assert not current_home().services_file.exists()
