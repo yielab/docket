@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.5.1
+**Version**: 5.6.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -632,7 +632,7 @@ the message naming it (`'abc' is not an entry count or a command. Usage: docket 
 #### docket setup
 **Purpose**: Set up this workstation. `docket setup` with no verb is the first run: a flow, not a
 catalog, idempotent, in two modes chosen by the terminal (the interaction contract's rule).
-**Syntax**: `docket setup [--json] [--fix]` · `docket setup profile|shell|provider|model|sandbox|notify|export|mcp ...`
+**Syntax**: `docket setup [--json] [--fix]` · `docket setup profile|shell|provider|model|sandbox|notify|export|mcp|secret|service ...`
 **Bare `setup`** always starts with a report: one line per piece with its state and the exact
 command that fixes it — the model endpoint (the only required piece: a provider, its credential,
 and `lead`/`implementer` resolving to a model), notifications (`console only (nobody is told)` is
@@ -837,6 +837,20 @@ tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client
   a bad or duplicate name exits 1 writing nothing; a missing command exits 2
 - `remove <name>`: Remove a configured server; an unknown name exits 1
 **Return**: 0 on success, 1 on a refused value, 2 on a usage error
+
+**`setup service`**
+**Purpose**: Register the external HTTP services a pod may reach, each declared by a `kind: service`
+document (`service-client.spec.md`); this registers and lists them, it makes no call
+**Syntax**: `docket setup service <add|list|remove>` (a real sub-app of `setup`)
+**Subcommands**:
+- `add <file.yaml>`: Load and store one document, audit `services.add`, and print its operations
+  with their access. A document that fails the format, a name already stored and a name an MCP
+  server holds exit 1 writing nothing; a `${secret:<name>}` reference whose secret is not stored
+  warns and succeeds
+- `list [--json]`: Each stored service's name, base URL, operation count and auth header; an auth
+  value that is not a reference is masked; `--json` prints the same as objects
+- `remove <name>`: Delete a stored service and audit `services.remove`; an unknown name exits 1
+**Return**: 0 on success, 1 on a refused document or name, 2 on a usage error
 
 #### docket start
 **Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and
@@ -1114,6 +1128,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/interfaces/cli/commands/setup_export.py`: `setup export`
 - `src/docket/interfaces/cli/commands/setup_mcp.py`: `setup mcp`
 - `src/docket/interfaces/cli/commands/setup_secret.py`: `setup secret`
+- `src/docket/interfaces/cli/commands/setup_service.py`: `setup service`
 - `src/docket/interfaces/cli/commands/service.py`: `docket start`, `docket stop`
 - `src/docket/interfaces/cli/render/ui.py`: `TAGLINE`, `guide`, `header`, `section`, `table`, `error`, `hint`, plain mode
 - `src/docket/tasks/domain/refs.py`: `resolve_task`
