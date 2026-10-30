@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 2.6.0
+**Version**: 2.6.1
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -68,9 +68,9 @@ This specification does NOT cover:
 1. `KINDS` **MUST** be the closed tuple `("role", "pipeline", "policy", "pod", "provider",
    "exporter", "channel", "mcp-server", "autonomy", "prompt")`, in that order. An `autonomy` document is
    `name`, an optional `description` and `rows`: a mapping from each escalation kind (`approval`,
-   `consult`, `input`, `gate`, `check_changed`) to a mapping from each level (`L3`, `L4`, `L5`) to
-   `{policy, onExpiry}`, where `policy` is `person`, `recommendation`, `deny` or `fail` and
-   `onExpiry` is `deny` or `block`. Every kind and every level **MUST** be present (fifteen cells)
+   `consult`, `input`, `gate`, `check_changed`, `wait`) to a mapping from each level (`L3`, `L4`, `L5`) to
+   `{policy, onExpiry}`, where `policy` is `person`, `recommendation`, `deny`, `fail` or `machine` and
+   `onExpiry` is `deny` or `block`. Every kind and every level **MUST** be present (eighteen cells)
    and any other key is an unknown-key error. The built-in document is
    `templates/autonomy/default.yaml`; it is the table of operator-loop.spec.md "Escalations"
    item 12 and the only one the runtime reads. An `mcp-server` document is `name`,

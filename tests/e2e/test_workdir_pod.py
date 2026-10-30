@@ -196,6 +196,51 @@ def test_a_base_ref_on_a_working_directory_pod_fails_the_task_before_any_hop(
     assert model.requests == []
 
 
+WRITE_WAIT_CRITIC = """name: write-wait-critic
+steps:
+  - draft: writer
+  - hold: {wait: 1h}
+  - review: critic
+"""
+
+
+def test_a_task_sleeps_at_a_wait_step_across_runs_and_wakes_on_a_service_tick(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(
+        script={
+            "writer": [write_file("brief.md", BRIEF), say("brief.md is written.")],
+            "critic": [say("APPROVE")],
+        }
+    )
+    w, work_dir = workdir_pod(world, model, pipeline_yaml=WRITE_WAIT_CRITIC)
+    task_id = w.add_task("Write the launch brief")
+
+    _run(w, "--pipeline", str(w.pipeline))
+
+    assert w.task(task_id)["task"]["status"] == "waiting_input"
+    assert (work_dir / "brief.md").read_text(encoding="utf-8") == BRIEF
+    inbox = w.docket("inbox", "--peek", "--json").json()
+    assert inbox["needsYou"] == []
+    (wait,) = inbox["escalations"]
+    assert (wait["kind"], wait["policy"], wait["task"]) == ("wait", "machine", task_id)
+
+    _run(w, "--pipeline", str(w.pipeline))
+
+    assert w.task(task_id)["task"]["status"] == "waiting_input"
+    assert model.by_role("critic") == []
+
+    w.env["DOCKET_CLOCK_OFFSET_S"] = "7200"
+    with w.service(dispatch=True):
+        w.wait_for(
+            lambda: w.task(task_id)["task"]["status"] == "done", what="the wait to end and run on"
+        )
+    del w.env["DOCKET_CLOCK_OFFSET_S"]
+
+    assert len(model.by_role("critic")) == 1
+    assert [e["kind"] for e in w.docket("inbox", "--peek", "--json").json()["escalations"]] == []
+
+
 BACKEND = "seatbelt" if sys.platform == "darwin" else "landlock"
 needs_jail = pytest.mark.skipif(
     not (seatbelt_available() if sys.platform == "darwin" else landlock_available()),

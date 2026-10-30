@@ -17,6 +17,19 @@ _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _MODEL_RANKS = frozenset({"cheap", "strong"})
 
 
+_DURATION_RE = re.compile(r"^([1-9][0-9]*)([smhd])$")
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def parse_duration(text: str) -> int:
+    """*text* (a positive integer and one unit ``s``, ``m``, ``h`` or ``d``) as seconds; a
+    ``ValueError`` naming the accepted spelling for anything else."""
+    found = _DURATION_RE.fullmatch(text) if isinstance(text, str) else None
+    if found is None:
+        raise InvalidInput(f"a duration is a positive count and a unit s, m, h or d (got {text!r})")
+    return int(found.group(1)) * _DURATION_UNITS[found.group(2)]
+
+
 def _is_slug(value: str) -> bool:
     return bool(_SLUG_RE.match(value))
 
@@ -60,6 +73,15 @@ class InputSpec(BaseModel):
     from_: str = Field(alias="from")
     message: str = ""
     expires_hours: int | None = Field(None, alias="expiresHours", gt=0)
+
+
+class WaitUntil(BaseModel):
+    """A wait step's probe: *run* is a command run every *every* until it exits ``0``."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    run: str
+    every: str
 
 
 _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -126,6 +148,10 @@ class Step(BaseModel):
     env: dict[str, str] | None = None
     # An operator-input step: pauses and asks for input, exclusive of role/agent/run.
     input: InputSpec | None = None
+    # A wait step: parks the task for this duration, or until the `until` probe exits 0. Typed
+    # loosely so a bare YAML number reaches `_check_wait`, whose error names the step.
+    wait: Any = None
+    until: WaitUntil | None = None
     parallel: list[Step] | None = None
     # Outcome routing: each key is a gate outcome label (a verdict marker, or
     # "pass"/"fail" for a mechanical gate), compared case-insensitively at
@@ -146,9 +172,112 @@ class Step(BaseModel):
             ("parallel' group", self.parallel is not None),
             ("run' (command) step", self.run is not None),
             ("input' step", self.input is not None),
+            ("wait' step", self.wait is not None),
         ):
             if present:
                 raise InvalidInput(f"step {self.id!r}: a '{kind} carries no 'tools'/'maxToolCalls'")
+
+    def _check_wait(self) -> Step:
+        """A wait step: a duration, an optional probe, ``when`` and a ``timeout`` route only."""
+        if self.wait is None:
+            raise InvalidInput(f"step {self.id!r}: 'until' requires 'wait' (a duration)")
+        try:
+            parse_duration(self.wait)
+        except ValueError as exc:
+            raise InvalidInput(f"step {self.id!r}: 'wait' {exc}") from exc
+        if self.until is not None:
+            if not self.until.run.strip():
+                raise InvalidInput(f"step {self.id!r}: 'until.run' must not be empty")
+            try:
+                parse_duration(self.until.every)
+            except ValueError as exc:
+                raise InvalidInput(f"step {self.id!r}: 'until.every' {exc}") from exc
+        for field_name, value in (
+            ("role", self.role),
+            ("agent", self.agent),
+            ("run", self.run),
+            ("input", self.input),
+            ("gate", self.gate),
+            ("retries", self.retries),
+            ("timeout", self.timeout),
+            ("instructions", self.instructions),
+            ("model", self.model),
+            ("archetype", self.archetype),
+            ("env", self.env),
+        ):
+            if value is not None:
+                raise InvalidInput(f"step {self.id!r}: a 'wait' step carries no {field_name!r}")
+        invalid = {str(k).lower() for k in self.on or {}} - {"timeout"}
+        if invalid:
+            raise InvalidInput(
+                f"step {self.id!r}: a wait step's 'on' keys must be a subset of ['timeout']; "
+                f"got invalid key(s): {sorted(invalid)}"
+            )
+        if self.on and self.until is None:
+            raise InvalidInput(
+                f"step {self.id!r}: 'on: timeout' needs 'until' (a timer alone never times out)"
+            )
+        return self
+
+    def _check_group(self) -> None:
+        """A ``parallel`` group: no hop fields of its own, and unit-step children with none of the
+        step kinds a group cannot run."""
+        assert self.parallel is not None
+        if self.role is not None or self.agent is not None:
+            raise InvalidInput(
+                f"step {self.id!r}: a 'parallel' group targets no role/agent of its own"
+            )
+        if self.gate is not None:
+            raise InvalidInput(f"step {self.id!r}: a 'parallel' group carries no gate of its own")
+        if self.retries is not None or self.timeout is not None:
+            raise InvalidInput(
+                f"step {self.id!r}: a 'parallel' group carries no retries/timeout of its own"
+            )
+        if self.instructions is not None:
+            raise InvalidInput(
+                f"step {self.id!r}: a 'parallel' group carries no instructions of its own"
+            )
+        if self.model is not None:
+            raise InvalidInput(f"step {self.id!r}: a 'parallel' group carries no model of its own")
+        if self.on is not None:
+            raise InvalidInput(
+                f"step {self.id!r}: a 'parallel' group carries no outcome routing of its own"
+            )
+        if self.env is not None:
+            raise InvalidInput(f"step {self.id!r}: a 'parallel' group carries no env of its own")
+        for group_field, group_value in (
+            ("run", self.run),
+            ("input", self.input),
+            ("when", self.when),
+            ("archetype", self.archetype),
+            ("wait", self.wait),
+            ("until", self.until),
+        ):
+            if group_value is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: a 'parallel' group carries no {group_field!r} of its own"
+                )
+        if not self.parallel:
+            raise InvalidInput(f"step {self.id!r}: 'parallel' must list at least one step")
+        for child in self.parallel:
+            for child_field, child_value in (
+                ("run", child.run),
+                ("input", child.input),
+                ("when", child.when),
+                ("on", child.on),
+                ("wait", child.wait),
+                ("until", child.until),
+            ):
+                if child_value is not None:
+                    raise InvalidInput(
+                        f"step {child.id!r}: a 'parallel' child carries no {child_field!r} "
+                        "(a group runs its children as plain role/agent hops)"
+                    )
+            if child.parallel is not None:
+                raise InvalidInput(
+                    f"step {self.id!r}: nested 'parallel' groups are not supported "
+                    f"(child {child.id!r} declares its own 'parallel')"
+                )
 
     @model_validator(mode="after")
     def _check_shape(self) -> Step:
@@ -162,64 +291,11 @@ class Step(BaseModel):
             )
 
         if self.parallel is not None:
-            if self.role is not None or self.agent is not None:
-                raise InvalidInput(
-                    f"step {self.id!r}: a 'parallel' group targets no role/agent of its own"
-                )
-            if self.gate is not None:
-                raise InvalidInput(
-                    f"step {self.id!r}: a 'parallel' group carries no gate of its own"
-                )
-            if self.retries is not None or self.timeout is not None:
-                raise InvalidInput(
-                    f"step {self.id!r}: a 'parallel' group carries no retries/timeout of its own"
-                )
-            if self.instructions is not None:
-                raise InvalidInput(
-                    f"step {self.id!r}: a 'parallel' group carries no instructions of its own"
-                )
-            if self.model is not None:
-                raise InvalidInput(
-                    f"step {self.id!r}: a 'parallel' group carries no model of its own"
-                )
-            if self.on is not None:
-                raise InvalidInput(
-                    f"step {self.id!r}: a 'parallel' group carries no outcome routing of its own"
-                )
-            if self.env is not None:
-                raise InvalidInput(
-                    f"step {self.id!r}: a 'parallel' group carries no env of its own"
-                )
-            for group_field, group_value in (
-                ("run", self.run),
-                ("input", self.input),
-                ("when", self.when),
-                ("archetype", self.archetype),
-            ):
-                if group_value is not None:
-                    raise InvalidInput(
-                        f"step {self.id!r}: a 'parallel' group carries no {group_field!r} of its own"
-                    )
-            if not self.parallel:
-                raise InvalidInput(f"step {self.id!r}: 'parallel' must list at least one step")
-            for child in self.parallel:
-                for child_field, child_value in (
-                    ("run", child.run),
-                    ("input", child.input),
-                    ("when", child.when),
-                    ("on", child.on),
-                ):
-                    if child_value is not None:
-                        raise InvalidInput(
-                            f"step {child.id!r}: a 'parallel' child carries no {child_field!r} "
-                            "(a group runs its children as plain role/agent hops)"
-                        )
-                if child.parallel is not None:
-                    raise InvalidInput(
-                        f"step {self.id!r}: nested 'parallel' groups are not supported "
-                        f"(child {child.id!r} declares its own 'parallel')"
-                    )
+            self._check_group()
             return self
+
+        if self.wait is not None or self.until is not None:
+            return self._check_wait()
 
         if self.run is not None:
             if not self.run.strip():

@@ -18,8 +18,10 @@ from typing import Any, Literal
 
 from docket.hops.application.executor import _record_task_run, _resolve_task_run, dispatch_task
 from docket.hops.application.steps import effective_pipeline
+from docket.hops.application.waits import probe_wait
 from docket.kernel.errors import DispatchError
 from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application.escalation_sweep import sweep_waits
 from docket.tasks.application.lifecycle import (
     finalize_task,
     reclaim_stale_running,
@@ -58,7 +60,9 @@ def dispatch_pod(
     Raises DispatchError if the pod has no Lead, or -- checked once, here, before any task is
     claimed or any hop runs -- if *variables* (the caller-supplied pipeline variable mapping;
     e.g. the serve webhook's resolved body, or ``docket run --var``) leaves any step's
-    own ``instructions`` with an unresolved ``${var}`` reference. *stop* is polled before each
+    own ``instructions`` with an unresolved ``${var}`` reference. A ``wait`` step's parked tasks
+    whose time has come or whose probe passes are woken before the first claim (pod-dispatch.spec.md
+    "Wait steps"). *stop* is polled before each
     claim, never inside a task. See
     specs/functional/pipeline-format.spec.md ("Variables"). A task's own ``variables`` are merged
     over these at its claim and win. *approval_default* is this caller's
@@ -77,6 +81,7 @@ def dispatch_pod(
             "variable(s): " + ", ".join(missing)
         )
     sweep_stale_claims(project)
+    sweep_waits(pod=project, probe=probe_wait)
     if resume:
         reclaim_stale_running(project)
 

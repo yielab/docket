@@ -1,10 +1,10 @@
 # Pipeline Format Specification
 
-**Version**: 4.3.0
+**Version**: 4.4.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
-operator-input steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
-**Last Updated**: 2026-10-28
+operator-input and wait steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -25,8 +25,8 @@ This specification covers:
 
 - The `PipelineSpec` document shape: `name`, `description`, `variables`, `steps`
 - Step targeting: a step names exactly one of a `role` or a specific `agent`, plus an optional
-  `archetype` reference; and the two targetless step kinds, `run` (a command) and `input` (an
-  operator question)
+  `archetype` reference; and the three targetless step kinds, `run` (a command), `input` (an
+  operator question) and `wait` (a pause until a time or an event)
 - Per-step `retries`, `timeout`, `instructions` and `model`
 - The four gate kinds a step may declare: `mechanical` (a command), `verdict` (regex-matched marker
   output), `approval` and `external` (an operator command mapped through an exit-code table)
@@ -130,8 +130,8 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    `parallel` group — a duplicate anywhere **MUST** be a validation error.
 2. A **unit step** (one not using `parallel`) **MUST** target exactly one of `role` (`str`) or
    `agent` (`str`) — declaring both, or neither, **MUST** be a validation error — unless it is a
-   command step (`run`, Requirement 9) or an operator-input step (`input`, "Operator input steps"),
-   which are exclusive of `role` and `agent`.
+   command step (`run`, Requirement 9), an operator-input step (`input`, "Operator input steps") or
+   a wait step (`wait`, "Wait steps"), which are exclusive of `role` and `agent`.
 3. `role` **MUST** be a lowercase slug (`^[a-z][a-z0-9_-]*$`). The format does **not** restrict
    `role` to the four built-in roles (`lead`/`implementer`/`reviewer`/`tester`); any slug-shaped
    value validates, since whether it names a role a given pod has is a plan-time concern.
@@ -473,6 +473,34 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    "pipeline"` and a `reason` naming the step ids, the level and the two ways out (lower the
    task's `autonomy` to `L3`, or take the step out). The pipeline file itself stays valid:
    `docket pod validate` and `docket pod plan --pipeline` have no task and do not apply the rule.
+
+### Wait steps
+
+1. `wait` is the wait step (ADR 0036 decision 5): `- <id>: {wait: "<duration>", until: {run:
+   "<command>", every: "<duration>"}, on: {timeout: <route>}}`. `wait` alone is a timer; with `until`
+   the step also asks a question of the world, and the timer is that question's ceiling. A
+   *duration* is a positive integer and one unit, `s`, `m`, `h` or `d` (`"90s"`, `"15m"`, `"72h"`,
+   `"3d"`); an empty value, a missing unit, a zero or any other spelling is a validation error
+   naming the step. `until` is `{run, every}`, both required: `run` a non-empty command string,
+   `every` a duration; an unknown key inside it is an error. `until` without `wait` is a validation
+   error naming the step.
+2. A wait step **MUST NOT** declare `role`, `agent`, `run`, `input`, `parallel`, `gate`, `retries`,
+   `timeout`, `instructions`, `model`, `archetype`, `tools`, `maxToolCalls` or `env`; each is a
+   validation error naming the step and the field. It **MAY** declare `when` (a false predicate skips
+   it like any step) and `on`. Its `on` keys, case-insensitive, **MUST** be a subset of `timeout`,
+   and `timeout` **MUST** be declared only with `until` (a timer alone never times out). The route
+   is validated like any other (a backward target needs `max`).
+3. A child of a `parallel` group **MUST NOT** declare `wait` or `until` (a group runs its children as
+   plain role/agent hops), and a group carries neither.
+4. The short form of a wait step is the mapping form `- hold: {wait: "72h", until: {...}, on: {...}}`
+   (`on` is written as in a `run` step); a mapping that carries `until` but no `wait` is refused,
+   naming the step.
+5. `docket pod plan` renders a wait step as `waits <duration>` or, with `until`, `waits up to
+   <duration>, probing '<command>' every <duration>`; the plan only describes the step, it never
+   waits.
+6. Execution - the pause, the probe, the wake-up and `timeout` - is `pod-dispatch.spec.md`, "Wait
+   steps". The `until.run` command is run as a `run:` step's command is (its classification, its
+   jail), so a plan review lists it among the commands a pod would run.
 
 ## Interface Contracts
 

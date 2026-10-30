@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.3.0
+**Version**: 7.4.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-30
 
@@ -431,6 +431,25 @@ consumer that polls for `done` does not see an unreviewed change to a check.
    escalation past its `expiresAt`) ends it `failed` with `failureKind: "check_changed"`, which is
    final until `POST .../retry`. `checkChanged` stays on the record either way.
 3. `checkChanged` and `failureKind: "check_changed"` are additive keys of version 6.
+
+## Wait
+
+A pipeline `wait` step (`pipeline-format.spec.md` "Wait steps") parks its task until a time or a
+probe; the sweep ends the wait, nobody is asked.
+
+1. The task is `waiting_input`, its view carries `escalation` and `a2aState` `WORKING`, and
+   `GET /escalations?task=<id>` lists the escalation of kind `wait`, `policy` `machine`,
+   `options` `resume`, `expiresAt` the due time.
+2. `GET /inbox` lists the wait under `escalations` and neither it nor its task under `needsYou`
+   (`operator-loop.spec.md` areas 5 and 11).
+3. `POST /escalations/<id>` with `optionId` `resume` ends the wait early; the task becomes `pending`
+   and the next sweep tick or `POST /dispatch/<pod>` runs the step after the wait. Any other
+   `optionId` answers `422`; a wait already ended answers `409`.
+4. A wait that times out with no `on.timeout` route blocks the task, `blockedReason:
+   "wait_expired"`, final until `POST .../retry` or an unblock; with a route the task runs on.
+5. The kind `wait` and the policy `machine` are additive values of the `operator-v2` contract
+   (`docs/contracts/operator-v2/`), not a new version. A client **MUST** ignore an escalation kind it
+   does not know, and **MUST NOT** answer one it does not render.
 
 ## Return
 

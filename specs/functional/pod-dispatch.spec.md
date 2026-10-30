@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.5.0
+**Version**: 11.6.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -899,6 +899,69 @@ wired agent's conversation current with the task it is working.
    `blocked`/`blockedReason: "input_expired"` and writes `escalation_expired` -- never `failed`. No hop
    was persisted for the parked attempt, so `retry_task`/`unblock_pod` reopening it to `pending`
    sends the next claim straight back to the same `input` step, which mints a new `Question`.
+
+### Wait steps (ADR 0036)
+
+1. **The pause.** When the pipeline reaches a planned unit whose `wait` is set (pipeline-format.spec.md,
+   "Wait steps") and its `when` holds, dispatch **MUST** run no agent turn. With `until`, the probe
+   command first passes the guard of a `run:` step ("Conditional steps and command steps" item 2): it
+   is classified, a non-`allow` verdict fails the step under `approvalMode: "refuse"` and otherwise
+   gates like a pipeline `approval` step at this pipeline position, and a task at a level that denies
+   approvals fails it `needs_human`. Then it opens the step's `wait` escalation (operator-loop.spec.md
+   area 11: `policy` `machine`, one option `resume`, `expiresAt` the due time, `onExpiry` `block`),
+   writes the task's `wait` (item 2) and returns a `waiting_input` outcome with reason `waiting until
+   <due> at step '<id>' (escalation=<id>)`. No hop is persisted for the attempt and no
+   `escalation_asked` is traced, because nobody is asked.
+2. **The task's wait.** `TaskRecord.wait` (key `wait`, absent while the task waits on no step) is
+   `{step, dueAt, until?, everyS?, nextProbeAt?, probes, routed, outcome?}`: the step id, the due
+   time (park time plus the step's `wait`), the probe command and interval, the next probe time
+   (park time plus `every`), how many probes ran, whether the step declares `on.timeout`, and, once
+   the task is woken, the `outcome` (`resumed` or `timeout`). It is written only through the task
+   store, with the status change that parks the task, and **MUST** be removed by every move to
+   `blocked`, `done`, `failed` or `cancelled` (`state.decide`); a move to `pending` or `running`
+   keeps it, because the claim still has to apply `outcome`.
+3. **The tick.** `sweep_waits(now, pod=None, probe=None)` (`tasks/application/escalation_sweep.py`)
+   visits every `pending` `wait` escalation whose task is `waiting_input` on it (a record whose pause
+   already ended is settled `expired` with no side effect). `sweep_escalations` calls it with no
+   probe, so a due timer wakes on every periodic sweep of `docket start`, dispatching or not; a probe
+   is a command, so it runs only in a sweep that dispatches: `dispatch_pod` calls it, with the probe
+   and its own pod, before it claims anything (`docket run`, the `docket start --dispatch` sweep,
+   `POST /dispatch/<pod>`). For each wait, in this order:
+   - **Probe due** (`nextProbeAt` reached, `until` set, a probe supplied): run it. Exit `0` settles
+     the wait by `resolve` (option `resume`, `by` `probe`, channel `sweep`) and wakes the task
+     `resumed`. Any other result, a timeout or a refusal of the jail counts as not met: `probes` grows
+     by one and `nextProbeAt` becomes now plus `every`. The probe's output is never stored.
+   - **Due time reached** (`dueAt <= now`): with no `until`, the record is settled `expired`
+     (`escalation_expired`) and the task woken `resumed`. With `until`, the timer was the probe's
+     ceiling: the record is settled `expired`; when the step declares `on.timeout` the task is woken
+     `timeout`; with no route it is moved to `blocked` with `blockedReason: "wait_expired"` and the
+     reason `wait at step '<id>' expired: '<command>' never exited 0`. A wait never fails a task.
+   - Waking a task sets `wait.outcome` and moves the task `waiting_input` to `pending` in one
+     update, and does so only while the task still waits on this escalation. Two sweeps over the same
+     wait wake it once.
+   `resolve` with `resume` (a person, `POST /escalations/<id>`) is the early exit: the same wake with
+   outcome `resumed`, the record stamped applied at once.
+4. **The claim applies the outcome.** Before the resume position is computed, and after the answers
+   of "Operator input steps and answers", a claimed task whose `wait.outcome` is set gets one
+   synthetic hop (`role` the step id, `member_id` `""`, `ok` true, `output` `waited: <outcome>`,
+   `artifact.verdict` the outcome, `step_id` the wait step's id, `next_step` the resolved target of
+   its `on.timeout` route when the outcome is `timeout`, else `None`) and loses its `wait`, both in
+   one task-store update, so a task claimed twice gains one hop. `resumed` continues at the next step.
+   A `timeout` route resolves as an `input` step's does (`fail` ends the task `failed`, `stop` ends it
+   `done`, a backward target is bounded by its `max`, counted from the hops on resume); the hops
+   before the wait are never re-run.
+5. **Blocked and retried.** A task blocked `wait_expired` has no `wait` and no hop for the step, so
+   `retry_task` or `unblock_pod` sends the next claim straight back to the wait step, which parks with
+   a new due time and a new escalation.
+6. **The probe runs where a `run:` step does.** Its working directory is the task's worktree, else the
+   Lead's codebase, else the pod's working directory; it runs under the pod's isolation posture (the
+   jail when isolation is on, refused when on and no backend is usable, the host otherwise), bounded by
+   the pod's `verifyTimeoutS`, with `DOCKET_TASK_ID`, `DOCKET_BASE_COMMIT` and `DOCKET_HEAD_COMMIT` set
+   as for a command step. There is no other way a wait runs a command.
+7. **Not a person.** A task parked on a wait is `waiting_input` for the state machine and the
+   operator contract's `escalation` link, but it is not waiting for anyone: the inbox lists it
+   neither in `needsYou` nor in `running` (its escalation is under `escalations`), and its
+   `a2aState` is `WORKING` (operator-loop.spec.md areas 1 and 5).
 
 ### Task brief (ADR 0016)
 
@@ -2027,7 +2090,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    never reclaimed by `--resume`. Any `failed` task can be put back on the queue by `retry_task`.
 5. `blocked` -- the pod's budget cap was reached before a hop could run, a brief named missing
    resources (`blockedReason: "resources"`), or a parked question's `expiresAt` passed unanswered
-   (`blockedReason: "input_expired"`). Not terminal -- re-enters `pending` only via `retry_task` or
+   (`blockedReason: "input_expired"`), or a `wait` step's deadline passed with a probe that never
+   exited `0` and no `timeout` route (`blockedReason: "wait_expired"`). Not terminal -- re-enters `pending` only via `retry_task` or
    `unblock_pod` (never automatically, never via a plain dispatch run). An expired question is never
    `failed`; `retry_task` accepts any `blockedReason`.
 6. `waiting_approval` -- a require_approval gate fired before a hop could run, a hop's in-turn tool
@@ -2051,10 +2115,12 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    successful response.
 8. `waiting_input` -- an `input` step parked the task, or a hop parked a `consult` question
    (operator-loop.spec.md), waiting on an operator's answer to the escalation that carries the
-   minted `Question`. Not terminal -- re-enters `pending` only via a resolution of that escalation
+   minted `Question`; or a `wait` step parked it ("Wait steps"), waiting on a time or a probe and
+   asking nobody. Not terminal -- re-enters `pending` only via a resolution of that escalation
    (`resolve`; the claim that follows may then settle it `failed`/`done` by the step's route, and
-   expiry moves it to `blocked` -- see "Operator input steps and answers"), never automatically, never via a
-   plain dispatch run, `retry_task`, or `unblock_pod`. Never claimable by any dispatch run, the same
+   expiry moves it to `blocked` -- see "Operator input steps and answers"), or, for a wait, the
+   sweep that finds its time or its probe met; never via a plain dispatch run's claim,
+   `retry_task`, or `unblock_pod`. Never claimable by any dispatch run, the same
    posture `waiting_approval` has.
 9. Failure kinds. A `failed` task's `failureKind` **MUST** be one of: `stale_claim`,
    `dispatch_refused`, `base_ref`, `pipeline`, `prepare`, `budget`, `rejected`, `gate_failed`,
@@ -2175,7 +2241,8 @@ hop records. It scores nothing and carries no dollar figure.
 
 ### An escalation for every park
 
-1. Each of the five ways a task stops for a person MUST open one escalation record
+1. Each of the five ways a task stops for a person (a `wait` step opens a sixth record, for nobody:
+   "Wait steps") MUST open one escalation record
    (`operator-loop.spec.md` "Escalations") when the pause is created, before the task is written
    `waiting_approval` or `waiting_input`, and append its id to the task's `escalations`: a parked
    in-turn tool call (`approval`), a parked `consult` (`consult`), an `input` step (`input`), the

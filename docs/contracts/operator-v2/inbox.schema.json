@@ -60,7 +60,8 @@
             "consult",
             "input",
             "gate",
-            "check_changed"
+            "check_changed",
+            "wait"
           ],
           "title": "Kind",
           "type": "string"
@@ -134,7 +135,8 @@
             "person",
             "recommendation",
             "deny",
-            "fail"
+            "fail",
+            "machine"
           ],
           "title": "Policy",
           "type": "string"
