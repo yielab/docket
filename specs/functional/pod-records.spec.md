@@ -1,9 +1,10 @@
 # Pod Records Specification
 
-**Version**: 1.0.0
-**Status**: The store is specified and implemented (`platform/records_store.py`). The `kind: records`
-document, the `rec__*` tools and the CLI are specified by their own cards and are not shipped yet:
-nothing in docket calls the store until they land.
+**Version**: 1.1.0
+**Status**: Implemented in part. The store (`platform/records_store.py`), the `kind: records` document
+(`pod update` and `pod export` carry it) and `docket pod records` are implemented. The `rec__*` tools
+are specified by their own card and are not shipped: a pod's agent still cannot read or write
+records, and only an operator reads them (`docket pod records`).
 **Last Updated**: 2026-10-30
 
 ## Purpose
@@ -21,11 +22,14 @@ This specification covers:
 - The implicit columns docket fills on every row
 - Queries: the read-only connection, the row, character and time bounds
 - Exporting a query's rows to CSV or Markdown
+- Checking a declaration without applying it
 - Which module may import `sqlite3`
+- The `kind: records` document, how `pod update` and `pod export` carry it, and `Home.pod_records_path`
+- `docket pod records`: listing a pod's sets and reading their rows
 
 This specification does NOT cover:
 
-- The `kind: records` document, `pod update`, the `rec__*` tools or any CLI (later cards)
+- The `rec__*` tools, which are the next card: nothing yet lets a pod's agent read or write a row
 - Deleting rows, or a set shared between pods (ADR 0036, "Not in this amendment")
 - docket's own state (tasks, trace, audit, approvals), which stays where it is
 
@@ -83,6 +87,65 @@ This specification does NOT cover:
     or `markdown` (a table, with `|` and newlines in a cell escaped), and return the number of rows
     written. Another `fmt` **MUST** raise `RecordsError`.
 
+### Checking a declaration
+
+14. `check_table(set, columns, key)` **MUST** do what `ensure_table` would do and change nothing: it
+    **MUST** raise the same `RecordsError` for the same refusals, return the same `EnsureResult`
+    (`created` true when the file or the set does not exist, else the columns it would add), open the
+    file read-only and **MUST NOT** create the file or the directory.
+
+### The document
+
+15. A `kind: records` document **MUST** declare one set: `name` (`^[a-z][a-z0-9_]*$`), an optional
+    `description`, an optional `key` and `columns`, at least one and at most 40, each with `name`
+    (`^[a-z][a-z0-9_]*$`, unique within the set), `type` (`string`, `integer`, `number`, `boolean` or
+    `date`), `required` (default false) and an optional `description`. `key`, when given, **MUST** name
+    one of the columns. Any other key is refused. A column name that starts with `_` **MUST** be
+    refused (`_id`, `_at`, `_task`, `_session`, `_step` and `_updated_at` are docket's), as **MUST** an
+    unknown type, a repeated column, a `key` that is no column and a 41st column, each naming the
+    file and the first failing field. `required` is carried and published; the store does not enforce
+    it (only the key column is non-null), and the tools will.
+16. A set belongs to one pod. The document is read from `records/*.yaml|yml` of the directory
+    `pod update` applies and from the pod's own overlay (`records/` beside `roles/`); no operator or
+    global file exists, and two files naming one set **MUST** be refused.
+17. `docket pod update <directory>` with a `records/` directory **MUST**, before writing anything,
+    validate every document and `check_table` each set against `Home.pod_records_path(pod)`, and plan
+    one item of kind `records` per set: `add` (note `creates the table`) when the set is not yet in
+    the file, `replace` (note `adds column x, y`) when it adds columns or the document differs from
+    the overlay's copy, `skip` otherwise. A document that omits a column the table declares, retypes
+    one or changes the key **MUST** make the whole update refuse, naming the set and the column, with
+    the overlay, the table and every other item unwritten. A `--dry-run` **MUST NOT** create the file.
+    Applying **MUST** copy each file byte for byte into the overlay's `records/` and call
+    `ensure_table`, so a second update plans every item `skip` and a column added to a document keeps
+    the rows. Each file **MUST** be an `applied.lock` item (kind `records`, applied as
+    `records/<file>`) and an add in the operator's review.
+18. `docket pod export` **MUST** write the pod's `records/` documents back byte for byte as
+    `records/<file>`. It **MUST NOT** write a row, and **MUST** say so: the records document is
+    exported, the rows stay in the pod's `records.sqlite`.
+19. `docket pod validate` **MUST** validate every `records/*.yaml|yml` file as a `kind: records`
+    document. `Home.pod_records_path(pod)` **MUST** be `pods/<pod>/records.sqlite`, beside
+    `memory.json`.
+
+### The CLI
+
+20. `docket pod records` with no set **MUST** list the sets the pod's `records/` documents declare,
+    one row each: name, rows (0 for a set whose table does not exist yet), columns, key (`-` for
+    none) and description. `--json` prints a list of `{name, rows, columns, key, description}`. A pod
+    with no set prints `No records in pod '<pod>'.` and exits 0; a document that no longer validates
+    is listed with its error and the command exits 1.
+21. `docket pod records <set>` **MUST** print the set's rows (`SELECT * FROM <set> ORDER BY _id`) as a
+    table, at most `--limit N` of them (default 50, N at least 1), and a line saying how many rows
+    were left out when there are some. `--sql "<SELECT>"` replaces that statement and **MUST** run
+    through `query` unchanged, so requirements 10-12 hold: a statement that is not a `SELECT`, a
+    second statement and a slow one exit 1 with the store's message and the rows remain. A set no
+    document declares exits 1 naming it and the sets there are. `--json` prints `{set, columns, rows,
+    cut}` with each row an object.
+22. `--csv FILE` **MUST** write every row of the statement, `--limit` ignored, to FILE through
+    `export` as CSV, print the number of rows and the file, and print no table.
+23. `docket pod records` **MUST** only read: it opens the file read-only, writes nothing and appends
+    nothing to the audit log. A pod that has written no row has no file, and reading it prints no
+    rows rather than failing for a set the document declares.
+
 ## Interface Contracts
 
 ### Module API
@@ -95,8 +158,15 @@ This specification does NOT cover:
 - `RecordsStore.update(set, match, values, meta) -> dict`
 - `RecordsStore.query(sql, max_rows, max_chars, timeout_s) -> QueryResult` (`columns`, `rows`, `cut`)
 - `RecordsStore.export(sql, path, fmt, timeout_s) -> int`
+- `RecordsStore.check_table(set_name, columns, key=None) -> EnsureResult`
 - `Column(name, type)`, `RecordMeta(task, session, step)`, `RecordsError(InvalidInput)`
 - `COLUMN_TYPES`, `check_value(column, value)`, `render_markdown(columns, rows)`
+
+`docket.kernel.records`: `RecordSet`, `RecordColumn`, `ColumnType` (the typed config, no I/O).
+
+`docket.teams.records`: `RecordsDocument`, `RecordsDocError`, `load_records_document(path)`,
+`records_files(directory)`, `pod_record_sets(project)`, `check_sets(project, sets)`,
+`ensure_sets(project, sets)`, `row_counts(project, sets)`, `read_rows(project, sql, limit)`.
 
 ### Environment
 
@@ -135,9 +205,15 @@ store.query("DELETE FROM listings", 200, 2500, 5.0)  # RecordsError, nothing del
 
 ## Implementation
 
-- `src/docket/platform/records_store.py`: everything above; `platform/__init__.py` exports it in the
-  card whose caller first imports it (a facade export nobody imports fails
-  `tests/architecture/test_import_contracts.py`)
+- `src/docket/platform/records_store.py`: the store; `platform/__init__.py` exports `RecordsStore`,
+  `Column` and `RecordsError`, which `teams/records.py` imports
+- `src/docket/kernel/records.py`: the typed config of the document
+- `src/docket/teams/records.py`: loading, validating and applying a pod's documents
+- `src/docket/teams/apply/external.py`: the `records/` plan, write and export
+- `src/docket/interfaces/cli/commands/pod_records.py`: `docket pod records`
 - `tests/architecture/test_records_writer.py`: requirement 1's import rule
 - `tests/integration/platform/test_records_store.py`: requirements 3-13 on a temporary file
 - `tests/unit/platform/test_records_store.py`: `check_value`, `render_markdown`, name checks
+- `tests/unit/teams/test_records_doc.py`: requirements 15-16 (the document)
+- `tests/integration/interfaces/test_pod_records_cli.py`: requirements 17-23 (`pod update`, `pod
+  export`, `pod records`)
