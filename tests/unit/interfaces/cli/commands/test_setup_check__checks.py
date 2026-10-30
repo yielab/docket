@@ -38,7 +38,7 @@ def _write_session(
     always ``0.0`` by design (see agent/ports.py)."""
     from urllib.parse import quote
 
-    sdir = home / "sessions" / quote(session_key, safe="")
+    sdir = home / "state" / "sessions" / quote(session_key, safe="")
     sdir.mkdir(parents=True, exist_ok=True)
     record = {
         "sessionKey": session_key,
@@ -79,11 +79,12 @@ class TestChecks:
     ) -> None:
         with _seed(tmp_path, monkeypatch) as home:
             # Add a channel binding so the agent hits the success (stdout) path.
-            fleet = json.loads((home / "fleet.json").read_text())
+            fleet = json.loads((home / "state" / "fleet.json").read_text())
             fleet["bindings"] = [
                 {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100"}
             ]
-            (home / "fleet.json").write_text(json.dumps(fleet))
+            (home / "state").mkdir(parents=True, exist_ok=True)
+            (home / "state" / "fleet.json").write_text(json.dumps(fleet))
             assert _setup_check._check_project_agents(["myshop"]) == 0
             out = capsys.readouterr().out
             assert "global fleet" in out
@@ -94,7 +95,7 @@ class TestChecks:
     ) -> None:
         """A pod Lead never gets a TOOLS.md (`interfaces/cli/commands/pod.py` writes one only for an Implementer) — `docket setup --fix` must not flag that as broken."""
         with _seed(tmp_path, monkeypatch, full_workspace=False) as home:
-            ws = home / "workspaces" / "projects" / "myshop"
+            ws = home / "state" / "workspaces" / "projects" / "myshop"
             for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
                 (ws / f).write_text(f"# {f}\n")
             meta_p = ws / ".docket-meta.json"
@@ -103,11 +104,11 @@ class TestChecks:
             meta_p.write_text(json.dumps(data))
             # Rename the workspace/agent so it resolves as a pod member (`pod_of`
             # requires the `<project>-<role>` shape).
-            pod_ws = home / "workspaces" / "projects" / "demo-lead"
+            pod_ws = home / "state" / "workspaces" / "projects" / "demo-lead"
             ws.rename(pod_ws)
-            fleet = json.loads((home / "fleet.json").read_text())
+            fleet = json.loads((home / "state" / "fleet.json").read_text())
             fleet["agents"][0]["id"] = "demo-lead"
-            (home / "fleet.json").write_text(json.dumps(fleet))
+            (home / "state" / "fleet.json").write_text(json.dumps(fleet))
 
             issues = _setup_check._check_project_agents(["demo-lead"])
             out = capsys.readouterr().out
@@ -117,17 +118,17 @@ class TestChecks:
     @staticmethod
     def _implementer_without_tools(home: Path, **extra_meta: object) -> None:
         """Rename the seeded agent to a pod Implementer holding no TOOLS.md, with *extra_meta*."""
-        ws = home / "workspaces" / "projects" / "myshop"
+        ws = home / "state" / "workspaces" / "projects" / "myshop"
         for f in ("SOUL.md", "AGENTS.md", "HEARTBEAT.md"):
             (ws / f).write_text(f"# {f}\n")
         meta_p = ws / ".docket-meta.json"
         data = json.loads(meta_p.read_text())
         data.update(role="implementer", **extra_meta)
         meta_p.write_text(json.dumps(data))
-        ws.rename(home / "workspaces" / "projects" / "demo-implementer")
-        fleet = json.loads((home / "fleet.json").read_text())
+        ws.rename(home / "state" / "workspaces" / "projects" / "demo-implementer")
+        fleet = json.loads((home / "state" / "fleet.json").read_text())
         fleet["agents"][0]["id"] = "demo-implementer"
-        (home / "fleet.json").write_text(json.dumps(fleet))
+        (home / "state" / "fleet.json").write_text(json.dumps(fleet))
 
     @pytest.mark.parametrize(
         "extra",
@@ -170,7 +171,7 @@ class TestChecks:
         """`setup --fix` rewrites no workspace file; `pod update` re-renders a missing one."""
         with _seed(tmp_path, monkeypatch, full_workspace=False) as home:
             self._implementer_without_tools(home)
-            (home / "workspaces" / "projects" / "demo-implementer" / "SOUL.md").unlink()
+            (home / "state" / "workspaces" / "projects" / "demo-implementer" / "SOUL.md").unlink()
 
             assert _setup_check._check_project_agents(["demo-implementer"]) == 1
 

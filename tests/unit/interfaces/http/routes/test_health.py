@@ -22,10 +22,8 @@ fake_home = _support_home.fake_home
 SUBJECT = "docket.interfaces.http.routes.health"
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
 }
 
@@ -35,8 +33,7 @@ FLEET_CONFIG: dict[str, Any] = {
     "bindings": [
         {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100123"}
     ],
-    "defaults": {"model": ""},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
@@ -85,7 +82,7 @@ class TestBuildStatus:
 
     def test_last_activity_never_when_empty(self, fake_home: Path) -> None:
         # Remove the agent's only session so last_activity falls back to the sentinel.
-        shutil.rmtree(fake_home / "sessions")
+        shutil.rmtree(fake_home / "state" / "sessions")
         assert health.build_status()["agents"][0]["lastActivity"] == "never"
 
     def test_timestamp_format(self, fake_home: Path) -> None:

@@ -708,8 +708,8 @@ class TestPodSettingsAudit:
 class TestAgentAddDeleteAudit:
     def test_agent_add_declarative_writes_one_entry(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             spec_file = tmp_path / "spec.json"
             spec_file.write_text(

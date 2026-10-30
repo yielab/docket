@@ -192,6 +192,33 @@ class TestCancelRun:
         assert lifecycle["source"] == "cli"
         assert persisted["futureField"] == {"preserve": True}
 
+    def test_the_cancellation_record_holds_the_known_keys_only(self) -> None:
+        record = _runs.create_run("cli", "myapp")
+
+        def _add_unknown_key(doc: dict[str, Any]) -> dict[str, Any]:
+            doc["runs"][0]["cancellation"] = {
+                "requestedAt": None,
+                "observedAt": None,
+                "stoppedAt": None,
+                "reason": "",
+                "source": "",
+                "futureKey": True,
+            }
+            return doc
+
+        _store.read_modify_write(current_home().runs_file, _add_unknown_key)
+        _runs.cancel_run(record["id"])
+
+        persisted = _runs.get_run(record["id"])
+        assert persisted is not None
+        assert set(persisted["cancellation"]) == {
+            "requestedAt",
+            "observedAt",
+            "stoppedAt",
+            "reason",
+            "source",
+        }
+
     def test_running_cancel_with_no_pids_remains_requested_not_stopped(self) -> None:
         record = _runs.create_run("cli", "myapp")
         _runs.mark_running(record["id"])

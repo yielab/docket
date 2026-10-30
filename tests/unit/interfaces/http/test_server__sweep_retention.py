@@ -88,7 +88,7 @@ class TestSweepRunsRetention:
         assert _store.read_escalation(live.id) is not None
 
     def test_sweep_expires_an_old_terminated_trace(self, swept_home: Path) -> None:
-        pdir = swept_home / "traces" / "myshop"
+        pdir = swept_home / "state" / "traces" / "myshop"
         tf = _write_trace(
             pdir,
             "ancient",
@@ -106,7 +106,7 @@ class TestSweepRunsRetention:
         import datetime as dt
 
         now = dt.datetime.now(dt.UTC)
-        pdir = swept_home / "traces" / "myshop"
+        pdir = swept_home / "state" / "traces" / "myshop"
         tf = _write_trace(
             pdir,
             "fresh",
@@ -133,7 +133,7 @@ class TestSweepRunsRetention:
         # exactly when someone would go looking for it, so this conservative behaviour
         # is deliberate: if this assertion ever flips, retention has started measuring
         # from last activity instead of session end.
-        pdir = swept_home / "traces" / "myshop"
+        pdir = swept_home / "state" / "traces" / "myshop"
         tf = _write_trace(
             pdir,
             "stale-open",
@@ -152,9 +152,10 @@ class TestSweepRunsRetention:
 
     def test_sweep_never_touches_the_audit_log(self, swept_home: Path) -> None:
         """Retention is telemetry-only; the audit log is not sampled or expired."""
-        audit = swept_home / "audit.log"
+        audit = swept_home / "state" / "audit.log"
+        audit.parent.mkdir(parents=True, exist_ok=True)
         audit.write_text("seed-entry\n", encoding="utf-8")
-        pdir = swept_home / "traces" / "myshop"
+        pdir = swept_home / "state" / "traces" / "myshop"
         _write_trace(
             pdir,
             "ancient",

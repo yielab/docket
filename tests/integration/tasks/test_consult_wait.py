@@ -54,8 +54,8 @@ _CONSULT = {
 @pytest.fixture(autouse=True)
 def _hermetic(tmp_path: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         with use_home(

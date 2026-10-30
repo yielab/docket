@@ -108,7 +108,8 @@ class TestRealSdkIntegration:
         # developer's actual docket home.
         home = tmp_path / ".docket"
         home.mkdir()
-        (home / "fleet.json").write_text(_json.dumps({"agents": [], "bindings": []}))
+        (home / "state").mkdir(parents=True, exist_ok=True)
+        (home / "state" / "fleet.json").write_text(_json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             server = _mcp._build_server()
 

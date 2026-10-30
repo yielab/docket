@@ -60,7 +60,7 @@ class TestPodRemove:
 
             assert code == 0
             assert _pp.pod_member_ids("demo") == ["demo-lead"]
-            assert not (home / "workspaces" / "projects" / "demo-implementer").exists()
+            assert not (home / "state" / "workspaces" / "projects" / "demo-implementer").exists()
 
     def test_a_name_outside_the_pod_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):

@@ -34,8 +34,8 @@ _TWO = "name: two\nsteps:\n  - kickoff: lead\n  - assemble: implementer\n"
 @pytest.fixture()
 def home(tmp_path: Path) -> Iterator[Path]:
     root = tmp_path / ".docket"
-    (root / "workspaces" / "projects").mkdir(parents=True)
-    (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (root / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (root / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
         record_isolation_off(root)
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))

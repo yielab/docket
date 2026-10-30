@@ -39,7 +39,7 @@ def oc_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 class TestExpireOldTraces:
     def test_old_terminated_trace_expires(self, oc_dir: Path) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         tf = _write_trace(
             pdir,
             "old",
@@ -56,7 +56,7 @@ class TestExpireOldTraces:
         assert report.bytes_reclaimed > 0
 
     def test_recent_terminated_trace_survives(self, oc_dir: Path) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         recent = _clock.stamp()
         tf = _write_trace(
             pdir,
@@ -74,7 +74,7 @@ class TestExpireOldTraces:
     def test_open_session_survives_regardless_of_age(self, oc_dir: Path) -> None:
         """No session_end at all means a live session could still be appending to this file, so
         it must be kept regardless of age, independent of the retention window."""
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         tf = _write_trace(
             pdir,
             "open",
@@ -89,7 +89,7 @@ class TestExpireOldTraces:
         assert report.kept_open == 1
 
     def test_dry_run_deletes_nothing(self, oc_dir: Path) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         tf = _write_trace(
             pdir,
             "old",
@@ -106,11 +106,12 @@ class TestExpireOldTraces:
         assert report.bytes_reclaimed == 0
 
     def test_audit_log_untouched_by_sweep(self, oc_dir: Path) -> None:
-        audit_log = oc_dir / "audit.log"
+        audit_log = oc_dir / "state" / "audit.log"
+        audit_log.parent.mkdir(parents=True, exist_ok=True)
         audit_log.write_text('{"seq": 1, "action": "keep-me"}\n', encoding="utf-8")
         before = audit_log.read_text(encoding="utf-8")
 
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         _write_trace(
             pdir,
             "old",
@@ -124,8 +125,8 @@ class TestExpireOldTraces:
         assert audit_log.read_text(encoding="utf-8") == before
 
     def test_project_filter_scopes_the_sweep(self, oc_dir: Path) -> None:
-        pdir_a = oc_dir / "traces" / "shopA"
-        pdir_b = oc_dir / "traces" / "shopB"
+        pdir_a = oc_dir / "state" / "traces" / "shopA"
+        pdir_b = oc_dir / "state" / "traces" / "shopB"
         tf_a = _write_trace(
             pdir_a,
             "old",
@@ -142,7 +143,7 @@ class TestExpireOldTraces:
         assert report.expired_count == 1
 
     def test_retention_override_wins_over_config_default(self, oc_dir: Path) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         recent = _clock.stamp()
         tf = _write_trace(
             pdir,
@@ -170,7 +171,7 @@ def _prune(*extra: str) -> int:
 
 class TestTaskPruneTraces:
     def test_prune_dry_run(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         _write_trace(
             pdir,
             "old",
@@ -183,7 +184,7 @@ class TestTaskPruneTraces:
         assert (pdir / "old.jsonl").exists()
 
     def test_prune_deletes(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         _write_trace(
             pdir,
             "old",
@@ -196,7 +197,7 @@ class TestTaskPruneTraces:
         assert not (pdir / "old.jsonl").exists()
 
     def test_prune_days_override(self, oc_dir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        pdir = oc_dir / "traces" / "myshop"
+        pdir = oc_dir / "state" / "traces" / "myshop"
         recent = _clock.stamp()
         _write_trace(
             pdir,
@@ -215,7 +216,7 @@ class TestTaskPruneTraces:
 
 class TestArtifactsExpireWithTheirTrace:
     def _artifact(self, oc_dir: Path) -> Path:
-        directory = oc_dir / "workspaces" / "pods" / "myshop" / "cache" / "artifacts"
+        directory = oc_dir / "state" / "workspaces" / "pods" / "myshop" / "cache" / "artifacts"
         directory.mkdir(parents=True)
         path = directory / ("a" * 64 + ".txt")
         path.write_text("the whole result")
@@ -223,7 +224,7 @@ class TestArtifactsExpireWithTheirTrace:
 
     def _trace(self, oc_dir: Path, artifact: Path, end: str) -> Path:
         return _write_trace(
-            oc_dir / "traces" / "myshop",
+            oc_dir / "state" / "traces" / "myshop",
             "old",
             [
                 {"ts": "2000-01-01T00:00:00Z", "event_type": "session_start"},

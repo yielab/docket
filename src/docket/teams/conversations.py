@@ -30,6 +30,7 @@ from docket.kernel import text as _text
 from docket.kernel.errors import Unavailable
 from docket.kernel.home import current_home
 from docket.platform import read_json, read_modify_write
+from docket.teams.models import unknown_keys_text
 
 
 class ConversationStatus(StrEnum):
@@ -44,7 +45,7 @@ class ConversationStatus(StrEnum):
 class Conversation(BaseModel):
     """One channel thread docket is tracking. ``id`` is stable per (agent, peer)."""
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str
     agent_id: str = Field("", alias="agentId")
@@ -60,8 +61,7 @@ class Conversation(BaseModel):
 
 
 class ConversationRegistry(BaseModel):
-    # Preserve forward-compatible registry fields during a durable mutation.
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     conversations: list[Conversation] = Field(default_factory=list)
 
@@ -260,6 +260,7 @@ def mutate(
         except ValidationError as exc:
             raise ConversationRegistryError(
                 f"Cannot mutate malformed conversation registry: {p}"
+                + (f" ({text})" if (text := unknown_keys_text(exc)) else "")
             ) from exc
         result, updated = fn(current)
         if updated is current:

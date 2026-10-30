@@ -52,7 +52,7 @@ def _write_lead_meta(project: str, denied_tools: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _store.write_json(
         path,
-        {"schemaVersion": 1, "kind": "project", "scope": "project", "deniedTools": denied_tools},
+        {"kind": "project", "scope": "project", "deniedTools": denied_tools},
     )
 
 

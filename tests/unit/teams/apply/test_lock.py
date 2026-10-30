@@ -153,10 +153,11 @@ def test_a_missing_source_directory_is_judged_by_its_overlay_alone(tmp_path: Pat
     assert _lock.drift("acme", str(gone), "0" * 64) == "no"
 
 
-def test_a_roles_json_from_before_is_reported_as_needing_an_update() -> None:
-    assert _lock.needs_update("acme") == ""
-    legacy = current_home().pod_config_dir("acme") / "roles.json"
-    legacy.parent.mkdir(parents=True)
-    legacy.write_text("{}")
+def test_a_roles_json_beside_the_overlay_is_ignored_and_is_not_drift() -> None:
+    _lock.write_lock("acme", ())
+    stray = current_home().pod_config_dir("acme") / "roles.json"
+    stray.write_text("{}")
 
-    assert "docket pod update" in _lock.needs_update("acme")
+    assert _lock.overlay_drifted("acme") is False
+    assert not hasattr(_lock, "needs_update")
+    assert stray.read_text() == "{}"

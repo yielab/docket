@@ -97,8 +97,8 @@ class TestDispatchVerifyCwd:
         monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
 
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
         with use_home(Home(home)):
             yield
@@ -180,8 +180,8 @@ class TestDispatchVerifyCwd:
 @contextmanager
 def _seed_pod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
     with use_home(Home(home)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)

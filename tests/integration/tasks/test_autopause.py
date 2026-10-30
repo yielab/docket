@@ -50,8 +50,8 @@ def _seed_pod(
     roles: tuple[str, ...] = _podcore.DEFAULT_POD_ROLES,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, roles, codebase=f"/src/{project}")
         yield home
@@ -172,7 +172,7 @@ class TestAutoPauseDispatch:
             tasks = {t.description: t.status for t in TaskRepository.for_pod("demo").list()}
             assert tasks["Two"] == "pending"
 
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             events = [
                 json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
             ]
