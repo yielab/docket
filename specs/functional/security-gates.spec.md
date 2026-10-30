@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -759,6 +759,22 @@ rewrite its own gate for the next turn.
     same rules as any allowed call (none for a plain allow). The tool takes no arguments, so the
     model cannot widen what it runs. The command itself still meets the high-risk classes in the
     runner that executes it (`run_command`), exactly as the mechanical gate does.
+16. **The capability table: four tool kinds.** A tool's kind says what it can reach, and the
+    command classifier reads it only for `exec`.
+
+    | Kind | What the tool does | Held by a role |
+    | --- | --- | --- |
+    | `read` | reads the workspace or the allowed web (`read`, `glob`, `grep`, `fetch`, a `read` MCP server) | by default |
+    | `write` | changes the workspace (`write`, `edit`, a `write` MCP server, the default) | by default, minus `cannot` |
+    | `exec` | runs a shell command (`bash`) | by default, minus `cannot` |
+    | `send` | acts outside the machine: sends, submits, posts, books, pays, or asks another agent to (a `send` MCP server) | only a role whose `tools` allow-list names it |
+
+    `send` is a kind of MCP tool only: no built-in tool acts outside the machine, so
+    `BUILTIN_TOOL_KINDS` has no `send` entry. A `send` call meets `dispatch_tool` and every
+    `pre_tool_call` policy like any tool; this requirement adds no approval of its own (a policy
+    `ask` on the tool's name is the lever, and the audit row and approval view for a `send` call
+    are a later requirement). `registry_for_role` (`role-archetypes.spec.md`, "Tools and calls per
+    hop" requirement 5) is where the opt-in is enforced.
 
 ### File-tool containment — symlinks
 

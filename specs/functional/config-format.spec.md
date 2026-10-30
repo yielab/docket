@@ -1,8 +1,8 @@
 # Configuration Document Format Specification
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Implemented
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -74,8 +74,8 @@ This specification does NOT cover:
    and any other key is an unknown-key error. The built-in document is
    `templates/autonomy/default.yaml`; it is the table of operator-loop.spec.md "Escalations"
    item 12 and the only one the runtime reads. An `mcp-server` document is `name`,
-   `command`, `args`, `env`, `timeout`, `access` (`read`|`write`, the server's declared kind;
-   the key is not `kind` because `kind:` is the envelope) and `tools`; any other key (an
+   `command`, `args`, `env`, `timeout`, `access` (`read`|`write`|`send`, the server's declared kind;
+   the key is not `kind` because `kind:` is the envelope), `tools` and `lifetime` (`call`|`hop`); any other key (an
    `isolate:` key, for instance) is an unknown-key error, because every stdio server starts in
    the turn's jail. It lives under a recipe's `mcp-servers/`, which `discover_config_paths`
    lists after `policies/`. A `prompt` document is a Markdown file, not YAML (the `prompt`
