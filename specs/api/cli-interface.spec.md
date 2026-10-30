@@ -847,8 +847,8 @@ document (`service-client.spec.md`); this registers and lists them, it makes no 
   with their access. A document that fails the format, a name already stored and a name an MCP
   server holds exit 1 writing nothing; a `${secret:<name>}` reference whose secret is not stored
   warns and succeeds
-- `list [--json]`: Each stored service's name, base URL, operation count and auth header; an auth
-  value that is not a reference is masked; `--json` prints the same as objects
+- `list [--json]`: Each stored service's name, base URL, operation count, auth header and the
+  secret names it references, never an auth value; `--json` prints the same as objects
 - `remove <name>`: Delete a stored service and audit `services.remove`; an unknown name exits 1
 **Return**: 0 on success, 1 on a refused document or name, 2 on a usage error
 

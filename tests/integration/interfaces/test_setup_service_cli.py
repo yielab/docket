@@ -49,7 +49,7 @@ operations:
 
 
 @pytest.fixture(autouse=True)
-def _home(tmp_path: Path) -> Iterator[None]:
+def _pods_home(tmp_path: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
     (home / "workspaces" / "projects").mkdir(parents=True)
     (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -72,10 +72,10 @@ def _svc(*args: str) -> tuple[int, str]:
 
 def _recipe(tmp_path: Path, *, mcp: bool = False) -> Path:
     directory = tmp_path / "recipe"
-    (directory / "services").mkdir(parents=True)
+    (directory / "services").mkdir(parents=True, exist_ok=True)
     (directory / "services" / "crm.yaml").write_text(_DOC, encoding="utf-8")
     if mcp:
-        (directory / "mcp-servers").mkdir()
+        (directory / "mcp-servers").mkdir(exist_ok=True)
         (directory / "mcp-servers" / "crm.yaml").write_text(
             "kind: mcp-server\nname: crm\ncommand: crm-mcp\n", encoding="utf-8"
         )
@@ -83,7 +83,7 @@ def _recipe(tmp_path: Path, *, mcp: bool = False) -> Path:
     return directory
 
 
-def _apply(project: str, directory: Path) -> _model.ApplyResult:
+def _update(project: str, directory: Path) -> _model.ApplyResult:
     return _write.apply(_pod_apply.plan_apply(project, directory))
 
 
@@ -196,7 +196,7 @@ def test_a_recipe_service_against_a_stored_mcp_server_or_service_is_refused(
 
 
 def test_pod_update_carries_services_into_that_pod_only(tmp_path: Path) -> None:
-    result = _apply("shop", _recipe(tmp_path))
+    result = _update("shop", _recipe(tmp_path))
 
     assert [(i.kind, i.name) for i in result.items if i.kind == "service"] == [("service", "crm")]
     assert [s.name for s in _services.load_services("shop")] == ["crm"]
@@ -207,7 +207,7 @@ def test_pod_update_carries_services_into_that_pod_only(tmp_path: Path) -> None:
 
 
 def test_pod_update_records_a_service_in_the_lock(tmp_path: Path) -> None:
-    _apply("shop", _recipe(tmp_path))
+    _update("shop", _recipe(tmp_path))
 
     lock = json.loads((current_home().pod_config_dir("shop") / "applied.lock").read_text())
     (item,) = [i for i in lock["items"] if i["kind"] == "service"]
@@ -215,12 +215,12 @@ def test_pod_update_records_a_service_in_the_lock(tmp_path: Path) -> None:
 
 
 def test_pod_export_writes_the_service_back(tmp_path: Path) -> None:
-    _apply("shop", _recipe(tmp_path))
+    _update("shop", _recipe(tmp_path))
     exported = tmp_path / "export"
     _write.export_pod("shop", exported)
 
     written = exported / "services" / "crm.yaml"
     assert yaml.safe_load(written.read_text())["name"] == "crm"
     assert "${secret:crm}" in written.read_text()
-    _apply("other", exported)
+    _update("other", exported)
     assert _services.load_services("other") == _services.load_services("shop")
