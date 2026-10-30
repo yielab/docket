@@ -63,7 +63,7 @@ _FRONT_PAGE_QUERY = {
     "attributesToHighlight": "none",
 }
 _COMMENTS_QUERY = {
-    "hitsPerPage": 8,
+    "hitsPerPage": 4,
     "attributesToRetrieve": "author,comment_text,points",
     "attributesToHighlight": "none",
 }

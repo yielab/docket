@@ -62,7 +62,7 @@ def test_the_hacker_news_recipe_digests_the_real_front_page_and_writes_both_repo
     env = {
         "DOCKET_LLM_BASE_URL": endpoint,
         "DOCKET_LLM_API_KEY": os.environ.get("DOCKET_LLM_API_KEY", "live"),
-        "DOCKET_TOOL_MAX_OUTPUT_CHARS": os.environ.get("DOCKET_TOOL_MAX_OUTPUT_CHARS", "2500"),
+        "DOCKET_TOOL_MAX_OUTPUT_CHARS": os.environ.get("DOCKET_TOOL_MAX_OUTPUT_CHARS", "4000"),
         "NO_PROXY": "127.0.0.1,localhost",
     }
     on_front_page = _front_page_titles()

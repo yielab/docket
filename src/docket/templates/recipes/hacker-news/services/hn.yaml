@@ -21,7 +21,7 @@ operations:
     method: GET
     path: /search
     description: >-
-      The comments of one story. Pass tags=comment,story_<objectID>, hitsPerPage=8,
+      The comments of one story. Pass tags=comment,story_<objectID>, hitsPerPage=4,
       attributesToRetrieve=author,comment_text,points and attributesToHighlight=none.
     params:
       - {name: tags, in: query, type: string}

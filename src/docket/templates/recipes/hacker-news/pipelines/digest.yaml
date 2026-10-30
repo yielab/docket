@@ -19,7 +19,7 @@ steps:
     instructions: >-
       Find the stories still without a summary with rec__query: SELECT id, title FROM stories WHERE
       summary IS NULL OR summary = ''. For each one read its comments with svc__hn__comments,
-      passing exactly tags=comment,story_<id>, hitsPerPage=8,
+      passing exactly tags=comment,story_<id>, hitsPerPage=4,
       attributesToRetrieve=author,comment_text,points and attributesToHighlight=none. Then call
       rec__stories__update with match {id} and values {summary, discussion}. The summary says what
       the story is about, from its title and from what the comments explain. The discussion says what
