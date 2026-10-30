@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the deterministic Wave 29 adversarial and recovery scenario matrix."""
+"""Run the deterministic adversarial and recovery scenario matrix."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+
+from docket.kernel.home import Home
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES = Path(__file__).with_name("cases")
@@ -124,9 +126,10 @@ def _trace(event_type: str, payload: dict[str, Any], *, tick: int) -> dict[str, 
 
 
 def _prepare_public_pipeline(home: Path, workspace: Path) -> None:
-    _write_json(home / "fleet.json", {"agents": [{"id": "demo-lead"}], "bindings": []})
+    layout = Home(home)
+    _write_json(layout.fleet_file, {"agents": [{"id": "demo-lead"}], "bindings": []})
     _write_json(
-        home / "workspaces" / "projects" / "demo-lead" / ".docket-meta.json",
+        layout.projects_dir / "demo-lead" / ".docket-meta.json",
         {
             "schemaVersion": 1,
             "kind": "project",
@@ -146,10 +149,11 @@ def _prepare_public_pipeline(home: Path, workspace: Path) -> None:
 def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
     token = "apr-00000000-0000-4000-8000-0000000000c4"
     escalation_id = "esc-0000000000c4"
-    approval_path = home / "approvals" / f"{token}.json"
+    layout = Home(home)
+    approval_path = layout.approvals_dir / f"{token}.json"
     # A person names the escalation; the approval record only points at the one it backs.
     _write_json(
-        home / "escalations" / f"{escalation_id}.json",
+        layout.escalations_dir / f"{escalation_id}.json",
         {
             "id": escalation_id,
             "task": "task-one",
@@ -189,7 +193,7 @@ def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
 
     audit = [
         json.loads(line)
-        for line in (home / "audit.log").read_text(encoding="utf-8").splitlines()
+        for line in layout.audit_log.read_text(encoding="utf-8").splitlines()
         if line
     ]
     action = f"approval.{'grant' if state == 'granted' else 'deny'}"
@@ -200,6 +204,7 @@ def _resolve_approval(home: Path, workspace: Path, state: str) -> None:
 
 
 def _durable_records(home: Path, case: dict[str, Any]) -> dict[str, Any]:
+    layout = Home(home)
     scenario_id = str(case["scenario_id"])
     completed = bool(case["completed"])
     malformed_handoff = bool(case["malformed_handoff"])
@@ -231,7 +236,7 @@ def _durable_records(home: Path, case: dict[str, Any]) -> dict[str, Any]:
         "claimId": None,
         "claimedAt": "2026-09-02T00:00:01+00:00",
     }
-    task_path = home / "workspaces" / "projects" / "demo-lead" / "TASK_LIST.json"
+    task_path = layout.projects_dir / "demo-lead" / "TASK_LIST.json"
     _write_json(task_path, {"tasks": [task]})
 
     run = {
@@ -255,7 +260,7 @@ def _durable_records(home: Path, case: dict[str, Any]) -> dict[str, Any]:
         },
     }
     runs_doc = {"runs": [run]}
-    runs_path = home / "docket-runs.json"
+    runs_path = layout.runs_file
     malformed_hash: str | None = None
     if scenario_id == "corrupt-primary-recovery":
         _write_json(runs_path.with_suffix(".json.bak"), runs_doc)
@@ -269,7 +274,7 @@ def _durable_records(home: Path, case: dict[str, Any]) -> dict[str, Any]:
 
     session_key = "agent:demo:task-one"
     _write_json(
-        home / "sessions" / quote(session_key, safe="") / "session.json",
+        layout.sessions_dir / quote(session_key, safe="") / "session.json",
         {
             "sessionKey": session_key,
             "created": "2026-09-02T00:00:00Z",
@@ -320,8 +325,8 @@ def _durable_records(home: Path, case: dict[str, Any]) -> dict[str, Any]:
     if not completed:
         end_payload["stop_reason"] = str(case["stop_reason"])
     trace.append(_trace("session_end", end_payload, tick=3))
-    _write_jsonl(home / "traces" / "demo" / f"{session_key}.jsonl", trace)
-    (home / "audit.log").touch(exist_ok=True)
+    _write_jsonl(layout.traces_dir / "demo" / f"{session_key}.jsonl", trace)
+    layout.audit_log.touch(exist_ok=True)
 
     recovery_path: str | None = None
     if recovery:

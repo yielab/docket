@@ -19,6 +19,7 @@ from typing import Any, NoReturn
 from urllib.parse import quote
 
 from docket.kernel.handoff import HandoffArtifact
+from docket.kernel.home import Home
 
 SCHEMA_VERSION = "1.0.0"
 MAX_INPUT_BYTES = 16 * 1024 * 1024
@@ -250,9 +251,10 @@ def _relative_path(home: Path, raw: object, label: str) -> tuple[Path, str]:
     return resolved, relative.as_posix()
 
 
-def _derived_path(home: Path, relative: Path, label: str) -> tuple[Path, str]:
+def _derived_path(home: Path, derived: Path, label: str) -> tuple[Path, str]:
+    """Resolve a path the `Home` layout derived; the locator stays relative to the home root."""
     try:
-        path = (home / relative).resolve(strict=True)
+        path = derived.resolve(strict=True)
         safe = path.relative_to(home).as_posix()
     except (OSError, ValueError) as exc:
         _fail(f"invalid {label}: {exc}")
@@ -418,7 +420,7 @@ def _audit_seq(record: dict[str, Any], label: str) -> int:
 
 
 def _load_audit(home: Path) -> tuple[list[dict[str, Any]], str]:
-    path, relative = _derived_path(home, Path("audit.log"), "audit log")
+    path, relative = _derived_path(home, Home(home).audit_log, "audit log")
     records = _read_jsonl(path, "audit log", allow_empty=True)
     seen: set[int] = set()
     for index, record in enumerate(records):
@@ -433,7 +435,7 @@ def _trace_evidence(
     home: Path, project: str, session_key: str, task_id: str
 ) -> tuple[dict[str, Any], str]:
     trace_path, relative = _derived_path(
-        home, Path("traces") / project / f"{session_key}.jsonl", "trace"
+        home, Home(home).traces_dir / project / f"{session_key}.jsonl", "trace"
     )
     records = _read_jsonl(trace_path, "trace")
     pending: dict[str, str] = {}
@@ -509,7 +511,7 @@ def _approval_latency(
     project: str,
     task_id: str,
 ) -> tuple[int | None, list[str], list[str]]:
-    approval_dir = home / "approvals"
+    approval_dir = Home(home).approvals_dir
     if not approval_dir.exists():
         return None, [], []
     relevant: list[dict[str, Any]] = []
@@ -668,7 +670,8 @@ def _attempt_identity(scenario: dict[str, Any], ordinal: int) -> str:
 def _build_attempt(
     home: Path, scenario: dict[str, Any], coordinate: dict[str, Any]
 ) -> dict[str, Any]:
-    run_path, run_relative = _derived_path(home, Path("docket-runs.json"), "run registry")
+    layout = Home(home)
+    run_path, run_relative = _derived_path(home, layout.runs_file, "run registry")
     runs_doc = _read_json(run_path, "run registry")
     if not isinstance(runs_doc, dict):
         _fail("run registry must be an object")
@@ -679,19 +682,15 @@ def _build_attempt(
     if not isinstance(task_ids, list) or coordinate["task_id"] not in task_ids:
         _fail("selected run does not reference selected task")
 
-    task_relative_path = (
-        Path("workspaces") / "projects" / f"{coordinate['project']}-lead" / "TASK_LIST.json"
-    )
-    task_path, task_relative = _derived_path(home, task_relative_path, "task list")
+    task_list = layout.projects_dir / f"{coordinate['project']}-lead" / "TASK_LIST.json"
+    task_path, task_relative = _derived_path(home, task_list, "task list")
     tasks_doc = _read_json(task_path, "task list")
     if not isinstance(tasks_doc, dict):
         _fail("task list must be an object")
     task = _find_unique(tasks_doc.get("tasks"), "id", coordinate["task_id"], "tasks")
 
-    session_relative_path = (
-        Path("sessions") / quote(coordinate["session_key"], safe="") / "session.json"
-    )
-    session_path, session_relative = _derived_path(home, session_relative_path, "session")
+    session_file = layout.sessions_dir / quote(coordinate["session_key"], safe="") / "session.json"
+    session_path, session_relative = _derived_path(home, session_file, "session")
     session = _read_json(session_path, "session")
     if not isinstance(session, dict) or session.get("sessionKey") != coordinate["session_key"]:
         _fail("session record identity does not match scenario")
