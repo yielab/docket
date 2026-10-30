@@ -1,0 +1,11 @@
+kind: routine
+name: weekly-report
+description: Every Monday the pod writes report.md and analysis.md from the stories it has recorded.
+schedule: "0 8 * * 1"
+task:
+  description: >-
+    Write report.md and analysis.md from the stories set. Analyst: compile with rec__query the
+    themes and the most commented stories. Writer: export the last week (WHERE _at >= date('now',
+    '-7 days'), ORDER BY comments DESC) with title, comments, points, url, summary and discussion
+    into report.md with rec__export (format md), then write analysis.md over all the set holds:
+    themes, how the discussion split, what recurred, naming its stories. Reviewer: check both files.
