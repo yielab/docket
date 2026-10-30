@@ -116,7 +116,7 @@ _docket_options() {
     "setup export preview") echo "--session --level --share --json --help" ;;
     "setup mcp") echo "--help" ;;
     "setup mcp list") echo "--json --help" ;;
-    "setup mcp add") echo "--env --timeout --kind --tools --help" ;;
+    "setup mcp add") echo "--env --timeout --kind --tools --lifetime --help" ;;
     "setup mcp remove") echo "--help" ;;
   esac
 }
