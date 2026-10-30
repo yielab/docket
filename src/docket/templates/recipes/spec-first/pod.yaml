@@ -3,4 +3,4 @@ name: spec-first
 description: >-
   Specification-first development as a pipeline: nothing is implemented until a written spec
   clears an explicit approval gate.
-members: [writer, critic, reviewer]
+members: [writer, reviewer]

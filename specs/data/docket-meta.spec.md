@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 5.5.1
+**Version**: 5.5.2
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
 **Last Updated**: 2026-10-30
@@ -56,7 +56,7 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 |-------|------|--------------------|----------|------------|-------------|
 | `kind` | enum | `project` | Yes (the only field `AgentMeta` requires) | provisioning | Always `project` |
 | `scope` | enum | `project` | No (`AgentMeta` defaults to `project`) | pod provisioning | Whose data the agent may see: `project` is pod-scoped, never shared across projects. Absent means `project`; nothing derives it from `kind` or `role` |
-| `role` | string | none | pod members | provisioning | Pod-member role (`lead`, `implementer`, `reviewer`, `tester`, or a blueprint's role such as `researcher`) |
+| `role` | string | none | pod members | provisioning | Pod-member role (`lead`, `implementer`, `reviewer`, or a blueprint's role such as `researcher`) |
 | `pod` | string | pod id | pod members | provisioning | The pod this member belongs to. Read first by `docket status`, the cwd-to-pod lookup and `pod_of`, which fall back to parsing the `<pod>-<role>` id only when it is absent. **Not an `AgentMeta` attribute**; it round-trips through `extra="allow"` |
 | `name` | string | none | Yes (written always; `AgentMeta` defaults it to empty) | provisioning | Human-readable display name |
 | `codebase` | string | path | pod members | provisioning | The project path with `~` expanded; empty for a `workdir`-kind member. `docket init` stores it absolute (a relative path is taken from the current directory) and refuses one that is not an existing directory; `POST /pods` stores it as given |

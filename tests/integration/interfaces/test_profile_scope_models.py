@@ -59,11 +59,10 @@ class TestCmdModels:
             "lead",
             "implementer",
             "reviewer",
-            "tester",
             "researcher",
             "analyst",
             "writer",
-            "critic",
+            "reviewer",
             "operator",
             "monitor",
         ):

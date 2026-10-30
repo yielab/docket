@@ -350,8 +350,8 @@ class TestLibraries:
     def test_roles_list_and_show(self) -> None:
         rows = json.loads(_pod_run("roles", "--json").output)
         assert {"lead", "implementer"} <= {r["name"] for r in rows}
-        shown = json.loads(_pod_run("roles", "tester", "--json").output)
-        assert shown["source"] and shown["name"] == "tester"
+        shown = json.loads(_pod_run("roles", "reviewer", "--json").output)
+        assert shown["source"] and shown["name"] == "reviewer"
         assert _pod_run("roles", "nonexistent").exit_code == 1
 
     def test_policies_list_show_and_plugins(self, tmp_path: Path) -> None:

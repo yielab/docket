@@ -220,7 +220,6 @@ class TestConfigSetPipeline:
                 "lead",
                 "implementer",
                 "reviewer",
-                "tester",
             ]
 
 

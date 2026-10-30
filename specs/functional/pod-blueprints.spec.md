@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 2.6.0
+**Version**: 3.0.0
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -93,8 +93,8 @@ This specification does NOT cover:
    built-in default pipeline (`pipeline-format.spec.md`), not a second, independently hand-rolled
    copy.
 3. `research`, `content`, and `ops` **MUST** be `workspaceKind: "workdir"`; none of the three
-   assumes a codebase. `research` and `content` gate their final step on the Critic archetype's
-   APPROVE/REJECT verdict with a bounded rework edge back to the Writer step (at dispatch the pod's
+   assumes a codebase. `research` and `content` gate their final step on the Reviewer archetype's
+   APPROVE/REQUEST-CHANGES verdict with a bounded rework edge back to the Writer step (at dispatch the pod's
    `maxReworkCycles` setting sets the cycle count, `pod-dispatch.spec.md`); `ops` gates its
    Operator step mechanically (deferring to that member's own `verifyCmd`, mirroring the
    Implementer's convention) and its Monitor step on human approval. Each of the three **MUST**
@@ -106,13 +106,13 @@ This specification does NOT cover:
 4. `docket init` with **no** `--blueprint` **MUST** resolve to `software`; omitting the flag and
    passing `--blueprint software` explicitly **MUST** be behaviorally indistinguishable.
 5. `agentic-product` **MUST** be `workspaceKind: "codebase"` and its roster **MUST** be the full
-   pod roster (`lead`, `implementer`, `reviewer`, `tester`): a product that ships an agent to end
-   users carries more risk than an internal tool, so Reviewer and Tester run by default rather
+   pod roster (`lead`, `implementer`, `reviewer`): a product that ships an agent to end
+   users carries more risk than an internal tool, so the Reviewer runs by default rather
    than being opt-in the way `software`'s `--pod full`/`--with` leaves them. Its `defaultPipeline`
    **MUST** be the same built-in default pipeline `software` attaches (no second,
    blueprint-specific pipeline): the difference from `software` is entirely in the roster, and the
-   Reviewer/Tester steps that a lean `software` pod never reaches at dispatch time gate a hop here
-   because the roles are present. It carries no `defaultBudgetUsd`, matching `software`, the other
+   Reviewer step that a lean `software` pod never reaches at dispatch time gates a hop here
+   because the role is present. It carries no `defaultBudgetUsd`, matching `software`, the other
    `codebase`-kind blueprint. This blueprint is declarative data only: it does not scaffold
    repository contents; a pod provisioned from it is expected (by convention, not mechanically
    enforced) to embed the `docket-runtime` library as its own guardrail substrate.
@@ -542,18 +542,17 @@ requirement 1). The shipped library groups by what a directory contains, not by 
 | Kind | Recipe | What `docket pod update` plans on a lean pod |
 | --- | --- | --- |
 | Team | `secure-build` | roles (`security-vetter`, read-only) + policies + members + pipeline + skills (`security-review`) |
-| Team | `research-review` | members (`researcher`, `analyst`, `writer`, `critic`) + pipeline |
+| Team | `research-review` | members (`researcher`, `analyst`, `writer`, `reviewer`) + pipeline |
 | Team | `ops-approval` | policies + members (`operator`) + pipeline |
-| Team | `outward` | roles (`researcher`, `writer`, `critic`, `actor`) + a policy that asks before every `send` tool + members + pipeline (researcher -> writer -> critic, one rework -> actor) for a `workdir` pod; no MCP server ships, the README shows three server shapes |
+| Team | `outward` | roles (`researcher`, `writer`, `reviewer`, `actor`) + a policy that asks before every `send` tool + members + pipeline (researcher -> writer -> reviewer, one rework -> actor) for a `workdir` pod; no MCP server ships, the README shows three server shapes |
 | Policy pack | `git-safety` | policies only |
 | Policy pack | `no-egress` | policies only |
 | Policy pack | `secrets-guard` | policies only |
 | Policy pack | `prod-approval` | policies only |
 | Tooling | `code-intel` | `mcp-servers` only: `ast-grep` and `language-intel`, both declared `access: read` with a tool allowlist |
-| Methodology | `tdd` | members (`tester`); skills (`test-first`); a pipeline: `red` (Implementer writes one failing test) -> `check-red` (a `run` command step routed `on: {pass: fail, fail: green}`, so an unexpectedly passing test fails the task outright) -> `green` (Implementer, its own verify command) -> `test` (Tester, PASS/FAIL) |
-| Methodology | `spec-first` | members (`writer`, `critic`, `reviewer`); skills (`writing-a-spec`); a pipeline: `spec` (Writer) -> `approve-spec` (Critic, APPROVE/REJECT, bounded rework to `spec`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
-| Methodology | `reflexion` | members (`critic`, `tester`); a pipeline: `build` (Implementer, its own verify command) -> `critique` (Critic, APPROVE/REQUEST-CHANGES, bounded rework to `build`, two cycles) -> `test` (Tester, PASS/FAIL) |
-| Methodology | `dual-review` | members (`reviewer`, `critic`); a pipeline: `build` (Implementer, its own verify command) -> a `parallel` group of a Reviewer and a Critic, each falling back to its own role's default verdict gate |
+| Methodology | `tdd` | no added members; skills (`test-first`); a pipeline: `red` (Implementer writes one failing test) -> `check-red` (a `run` command step routed `on: {pass: fail, fail: green}`, so an unexpectedly passing test fails the task outright) -> `green` (Implementer, its own verify command) |
+| Methodology | `spec-first` | members (`writer`, `reviewer`); skills (`writing-a-spec`); a pipeline: `spec` (Writer) -> `approve-spec` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `spec`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
+| Methodology | `reflexion` | members (`reviewer`); a pipeline: `build` (Implementer, its own verify command) -> `critique` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`, two cycles) |
 | Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build` by its own `on:` bound) |
 | Methodology | `spec-writer` | no added members; a pipeline: `write-tests` (Implementer, `model: openai/gpt-4.1-mini`, custom instructions for test writing) -> `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, its own verify command) |
 | Methodology | `cross-family-review` | members (`reviewer`); a pipeline: `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
@@ -620,16 +619,16 @@ The settable keys of `docket pod set` / `unset` are: `budgetUsd`, `maxReworkCycl
 | Name | workspaceKind | Roles | defaultBudgetUsd | Gated step(s) |
 | --- | --- | --- | --- | --- |
 | `software` | codebase | lead, implementer | (none) | implementer: mechanical (own `verifyCmd`) |
-| `research` | workdir | lead, researcher, analyst, writer, critic | 20.0 | critic: verdict (APPROVE\|REJECT), rework -> writer |
-| `content` | workdir | lead, writer, critic | 15.0 | critic: verdict (APPROVE\|REJECT), rework -> writer |
+| `research` | workdir | lead, researcher, analyst, writer, reviewer | 20.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> writer |
+| `content` | workdir | lead, writer, reviewer | 15.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> writer |
 | `ops` | workdir | lead, operator, monitor | 30.0 | operator: mechanical (own `verifyCmd`); monitor: approval |
-| `agentic-product` | codebase | lead, implementer, reviewer, tester | (none) | implementer: mechanical (own `verifyCmd`); reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> implementer; tester: verdict (PASS\|FAIL) |
+| `agentic-product` | codebase | lead, implementer, reviewer | (none) | implementer: mechanical (own `verifyCmd`); reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> implementer |
 
-`software`'s `defaultPipeline` additionally declares `reviewer`/`tester` steps (inherited verbatim
+`software`'s `defaultPipeline` additionally declares a `reviewer` step (inherited verbatim
 from the built-in default pipeline) that a lean `software` pod never reaches at dispatch time;
 which roles a pod actually has is a runtime/executor concern (see `pipeline-format.spec.md`).
 `agentic-product` attaches the exact same `defaultPipeline`; its roster is the only difference, and
-it is precisely what makes the Reviewer/Tester steps reachable.
+it is precisely what makes the Reviewer step reachable.
 
 ### `.docket-meta.json` fields blueprints add (schema authority: `docket-meta.spec.md`)
 
@@ -653,7 +652,7 @@ it is precisely what makes the Reviewer/Tester steps reachable.
 
 ```bash
 $ docket init my-market-scan /home/user/work/my-market-scan --blueprint research
--> Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, critic)...
+-> Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, reviewer)...
 ```
 
 ### Provisioning a workdir pod declaratively

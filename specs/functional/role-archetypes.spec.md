@@ -1,7 +1,7 @@
 # Role Archetypes Specification
 
-**Version**: 4.8.2
-**Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
+**Version**: 5.0.0
+**Status**: Implemented. Three built-in and five starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
 
@@ -9,9 +9,9 @@ adds or overrides roles; `deniedTools` is enforced by name and by capability on 
 
 This specification defines the **role archetype**: a versioned, declarative definition of a pod
 role. A role's name, scope, model class, identity prose, gate contract, tool profile, tool
-denylist, token budget and hop instruction are data. Built-in archetypes define the four software
-roles (`lead`, `implementer`, `reviewer`, `tester`), a starter library ships six more
-(`researcher`, `analyst`, `writer`, `critic`, `operator`, `monitor`), and an operator can define
+denylist, token budget and hop instruction are data. Built-in archetypes define the three
+roles (`lead`, `implementer`, `reviewer`), a starter library ships five more
+(`researcher`, `analyst`, `writer`, `operator`, `monitor`), and an operator can define
 or override an archetype with a YAML file (`docket pod update <file>`).
 
 ## Scope
@@ -28,8 +28,8 @@ This specification covers:
 - `hopInstruction` and `resolve_hop_instruction`, through which the Lead's and a custom role's
   hop message resolves its instruction text when a pipeline step declares none of its own; the
   hop-message builder is `pod-dispatch.spec.md`'s
-- The built-in archetypes (lead/implementer/reviewer/tester) and their byte-identity guarantee
-- The starter library (researcher/analyst/writer/critic/operator/monitor)
+- The built-in archetypes (lead/implementer/reviewer) and their byte-identity guarantee
+- The starter library (researcher/analyst/writer/operator/monitor)
 - The template rendering contract (`${var}` substitution, the guaranteed variable set)
 - The pod overlay (`<pod>/config/roles/`) and the operator's `config/roles/`, and their merge over the built-in and starter archetypes
 - How `modelClass` feeds the role→model policy (`model-profiles.spec.md`) without replacing it
@@ -50,7 +50,7 @@ This specification does NOT cover:
 - Gate *enforcement*: `resolve_gate`/`parse_verdict` and the mechanical/verdict/approval
   evaluation are `pod-dispatch.spec.md`'s "Generalized gate execution". This spec covers only the
   `gateContract` schema (the closed `kind` enum, `regexes`) and its agreement with the default
-  pipeline's gates for the four built-in roles
+  pipeline's gates for the three built-in roles
 - The role→model policy's own mechanics (rank anchors, presets, pinning, `docket setup model`);
   see `model-profiles.spec.md`
 - The per-member runtime fields (`portRangeStart`, `scratchDir`, `verifyCmd`, …) in
@@ -86,7 +86,7 @@ This specification does NOT cover:
    with no `regexes` resolves to no gate. `parse_verdict` applies that pattern at the start of
    every non-blank line of the complete reply and accepts exactly one distinct marker (see
    `pipeline-format.spec.md` "Gates" requirement 3). See "Built-in archetypes and legacy
-   fidelity" for the values the reviewer/tester archetypes carry.
+   fidelity" for the values the reviewer archetype carries.
 5. There is no `editRights` field (ADR 0012 §2 rule 7). `deniedTools` is the archetype schema's
    only capability statement; nothing computes it from anything else. `editRights` gets no
    special handling anywhere (`docket pod validate` prints no note for it).
@@ -134,25 +134,28 @@ This specification does NOT cover:
 
 ### Built-in archetypes and legacy fidelity
 
-1. The four software roles (`lead`, `implementer`, `reviewer`, `tester`) **MUST** ship as
+1. The three built-in roles (`lead`, `implementer`, `reviewer`) **MUST** ship as
    built-in archetypes (`BUILTIN_ARCHETYPES`) whose rendered SOUL.md and AGENTS.md are
    **byte-identical** to a frozen, independently written baseline for any
    project/codebase/stack/description input. The parity test embeds that baseline and diffs it
-   against the live renderer; it moves only with a deliberate, spec'd template change. Moving a
+   against the live renderer; it moves only with a deliberate, spec'd template change (the
+   reviewer's identity prose was re-frozen once, when the starter judge role was folded into it: it
+   judges "the work of the step before: code, text or data", so one judge serves a code pod and
+   a content or research pod). Moving a
    template into a shipped prompt file is not such a change: every built-in and starter
    `soulTemplate`, the Lead's `hopInstruction` and the three fixed hop instructions are the same
    bytes the Python literals held.
-2. The four built-in archetypes resolve their model through their own name's row (see
+2. The three built-in archetypes resolve their model through their own name's row (see
    "Role→model policy integration"). Their `modelClass` **MUST** match that row's class
-   (`lead`/`reviewer`/`tester` = cheap, `implementer` = strong). There is no `policyRole` field;
+   (`lead` = cheap, `implementer` and `reviewer` = strong: a judge is not weaker than the worker it judges). There is no `policyRole` field;
    a document that carries one is refused naming the key.
 3. Their `gateContract` **MUST** match the role's real gate behaviour: `lead` = `none`,
    `implementer` = `mechanical` (the per-member `verifyCmd`, configured separately; see
-   `docket-meta.spec.md`), `reviewer` = `verdict` with regexes `["APPROVE", "REQUEST-CHANGES"]`,
-   `tester` = `verdict` with regexes `["PASS", "FAIL"]`. Each **MUST** equal (case-insensitively)
-   the marker words `default_pipeline()` declares for that role's step and what `resolve_gate`
-   resolves for a bare `role: reviewer`/`role: tester` step with no gate of its own; tests check
-   that the three agree.
+   `docket-meta.spec.md`), `reviewer` = `verdict` with regexes `["APPROVE", "REQUEST-CHANGES"]`. The
+   reviewer's **MUST** equal (case-insensitively) the marker words `default_pipeline()` declares
+   for its step and what `resolve_gate` resolves for a bare `role: reviewer` step with no gate of
+   its own; tests check that the three agree. There is no second judge role: the implementer's
+   mechanical gate runs the suite, and a role that runs it again and opines is not a judge.
 4. `normalize_role`, `member_id`, `pod_prefix`, `parse_member_id`, `pod_of` and `members_of`
    **MUST** keep the member-id shape `<project>-<role>[-N]` and sort a pod's members Lead first.
    `normalize_role` accepts only registered archetype names (case-insensitive, including the
@@ -221,10 +224,9 @@ This specification does NOT cover:
 3. No caller **MUST** branch on a role's name (e.g. `if role == "reviewer"`) to decide what to
    narrow: the denylist is data on the archetype, and `registry_for_role` is the single generic
    function every caller uses.
-4. The four built-in archetypes' `denied_tools` **MUST** match their SOUL.md contract: `lead` and
+4. The three built-in archetypes' `denied_tools` **MUST** match their SOUL.md contract: `lead` and
    `reviewer` = `("write", "edit", "bash")` ("never edits code, runs git, or executes the build" /
-   "read-only: no write/edit/exec"); `tester` = `("write", "edit")` (read-only, but keeps `bash`
-   to run the suite it reports PASS/FAIL on); `implementer` = `()` (full-repo). See the
+   "read-only: no write/edit/exec"); `implementer` = `()` (full-repo). See the
    "Built-in archetypes" table below.
 5. `deniedTools` is the archetype schema's only capability statement ("Archetype schema"
    requirement 5); nothing else computes it or is computed from it.
@@ -285,18 +287,18 @@ This specification does NOT cover:
    mechanically before the pipeline advances"; an `approval` role gets a generic "a human must
    approve before the pipeline advances"; a `none` gate (or a `verdict` gate with no `regexes`)
    generates no instruction (`""`).
-3. The `implementer`/`reviewer`/`tester` built-in archetypes' `hopInstruction` **MUST** remain
-   unset: the hop-message builder never consults the registry for those three, and their hop
+3. The `implementer`/`reviewer` built-in archetypes' `hopInstruction` **MUST** remain
+   unset: the hop-message builder never consults the registry for those two, and their hop
    messages are the prompt files `hop/<role>` regardless of this field. The `lead` archetype
    **MUST** carry a `hopInstruction` equal to "You are the pod Lead. Decompose this task into a concrete plan for
    the Implementer (you never edit code yourself):", and the builder's Lead branch **MUST**
    resolve it through `resolve_hop_instruction` like a custom role, so a pod overlay of
    `lead` changes the Lead's hop message. A pod with no `lead` overlay **MUST** see exactly that
    text, which is the shipped prompt `hop/lead`. `resolve_hop_instruction` is reachable for `lead` and for any role the builder does not
-   special-case; it is never reachable for `implementer`/`reviewer`/`tester`. A role absent from
-   the registry gets no instruction. The text of those three is the prompts `hop/implementer`
+   special-case; it is never reachable for `implementer`/`reviewer`. A role absent from
+   the registry gets no instruction. The text of those two is the prompts `hop/implementer`
    (and `hop/implementer-rework`, the Implementer's text when a reviewer's `REQUEST-CHANGES` is
-   being addressed), `hop/reviewer` and `hop/tester`, resolved through `prompts.resolve_prompt`
+   being addressed), and `hop/reviewer`, resolved through `prompts.resolve_prompt`
    (`config-format.spec.md`, "The `prompt` kind"): the first of the task's base commit, the pod
    overlay, the operator's `config/prompts` and the shipped file that holds one, the file of the
    hop's model class before an `any` one. With no override they are the shipped text, so a
@@ -318,7 +320,7 @@ This specification does NOT cover:
 
 ### Starter library
 
-1. Six starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `critic`, `operator`,
+1. Five starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `operator`,
    `monitor` (`STARTER_ARCHETYPES`). Each **MUST** pass `docket pod validate` and render both
    templates against a representative variable set without error.
 2. Each starter archetype's model-policy key is its own name (see "Role→model policy
@@ -355,7 +357,7 @@ This specification does NOT cover:
    the library (`pod-blueprints.spec.md`).
 5. At least three recipes **MUST** ship: one gating an Implementer's change on a custom read-only
    reviewing role with a bounded rework cycle (`secure-build`), one over the research archetypes
-   with a critic veto (`research-review`), and one gating an `operator` step on a human `approval`
+   with the reviewer's veto (`research-review`), and one gating an `operator` step on a human `approval`
    gate (`ops-approval`). Each **MUST** carry a test that loads it from the shipped library (not a
    hand-copied transcription) and validates it the way `docket pod validate` would.
 
@@ -367,12 +369,12 @@ This specification does NOT cover:
    keyed by the archetype's own `name`); only when the role has no named entry there **MUST** it
    resolve through the archetype's `modelClass`, looked up in the member's pod registry, against
    the live rank anchors (`economy` for `cheap`, `standard` for `strong`). The named table holds
-   all ten built-in and starter names with their classes from `ROLE_CLASS`, so for those ten the
+   all eight built-in and starter names with their classes from `ROLE_CLASS`, so for those eight the
    table decides and the archetype's `modelClass` is not read, including a pod overlay that
    reuses one of those names with a different `modelClass`. `ROLE_CLASS` is built from the
-   `modelClass` of the four built-in and six starter archetypes, so each of the ten has one class.
+   `modelClass` of the three built-in and five starter archetypes, so each of the eight has one class.
 2. This fallback **MUST NOT** add a hardcoded entry to `ALL_ROLES`/`ROLE_CLASS` per archetype:
-   the archetype registry is the source of truth for any role beyond the ten named ones.
+   the archetype registry is the source of truth for any role beyond the eight named ones.
 3. A role name present in neither the named policy table nor the pod's archetype registry
    **MUST** fall back to the model registry's own `default` (`docket-models.json` `default`,
    equal to the compiled-in default on a fresh install), never to the compiled-in literal while an
@@ -554,7 +556,7 @@ version: 1
 scope: pod
 modelClass: cheap
 toolProfile: content-ops
-description: coordinates content production across writer/critic
+description: coordinates content production across writer/reviewer
 tokenBudget: 6000
 deniedTools: []   # optional; e.g. ["write", "edit", "bash"] for a read-only role
 hopInstruction: ""   # optional; unset + a gated role -> generated from gateContract
@@ -609,8 +611,7 @@ applies to the persisted wire object.
 | --- | --- | --- | --- | --- | --- |
 | `lead` | pod | cheap | none | 2000 | write, edit, bash |
 | `implementer` | pod | strong | mechanical | 8000 | *(none)* |
-| `reviewer` | pod | cheap | verdict (APPROVE\|REQUEST-CHANGES) | 6000 | write, edit, bash |
-| `tester` | pod | cheap | verdict (PASS\|FAIL) | 4000 | write, edit |
+| `reviewer` | pod | strong | verdict (APPROVE\|REQUEST-CHANGES) | 6000 | write, edit, bash |
 
 ### Starter archetypes
 
@@ -622,7 +623,6 @@ applies to the persisted wire object.
 | `researcher` | pod | strong | none | 8000 | *(none)* |
 | `analyst` | pod | cheap | none | 8000 | *(none)* |
 | `writer` | pod | cheap | none | 6000 | *(none)* |
-| `critic` | pod | strong | verdict (APPROVE\|REJECT) | 6000 | write, edit, bash |
 | `operator` | pod | strong | mechanical | 8000 | *(none)* |
 | `monitor` | pod | cheap | approval | 4000 | write, edit, bash |
 
@@ -673,7 +673,7 @@ docket pod validate ./producer.yaml
 - `docket pod update <file>` on a valid file leaves exactly one archetype added or overridden in
   the pod overlay's `roles/` (`<name>.yaml` and its instructions file); no other role file
   is touched
-- The four built-in archetypes' rendered SOUL.md/AGENTS.md remain byte-identical to the frozen
+- The three built-in archetypes' rendered SOUL.md/AGENTS.md remain byte-identical to the frozen
   baseline for any input, with no overlay present
 
 ### Invariants

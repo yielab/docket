@@ -1,5 +1,4 @@
-"""The five methodology recipes (`templates/recipes/{tdd,spec-first,reflexion,dual-review,
-frugal}/`) are real, validated pipelines -- the smallest shape that is the named practice
+"""The four methodology recipes (`templates/recipes/{tdd,spec-first,reflexion,frugal}/`) are real, validated pipelines -- the smallest shape that is the named practice
 (ADR 0013 section 2, "The recipe library"). See pipeline-format.spec.md ("Short form", "Outcome
 routing", "Parallel groups", "Conditional steps and command steps") and pod-blueprints.spec.md
 ("The recipe library").
@@ -32,7 +31,7 @@ from docket.teams.apply import write as _write
 SUBJECT = "docket.teams.apply.plan"
 
 RECIPES_DIR = _templates.RECIPES_DIR
-RECIPE_NAMES = ("tdd", "spec-first", "reflexion", "dual-review", "frugal")
+RECIPE_NAMES = ("tdd", "spec-first", "reflexion", "frugal")
 
 
 def _recipe_dir(name: str) -> Path:
@@ -111,41 +110,13 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
             skipped.extend(u.step_id for u in units if u.skipped)
         assert skipped == [], f"recipe {name!r} leaves steps unresolvable: {skipped}"
 
-        if name == "dual-review":
-            groups = [n for n in exec_plan.nodes if isinstance(n, _orch.PlannedGroup)]
-            assert len(groups) == 1, "dual-review's plan should carry exactly one PlannedGroup"
-            assert [c.step_id for c in groups[0].children] == ["review-code", "review-risk"]
-
         if name == "frugal":
             setting_items = [i for i in plan.items if i.kind == "setting"]
             assert len(setting_items) == 2, "frugal's plan should carry two setting items"
             assert {i.name for i in setting_items} == {"budgetUsd", "turnTimeoutS"}
 
 
-# ── dual-review / frugal: the two named shapes, checked without `plan_apply` ─────
-#
-# Both assertions are also covered inside the parametrized test above; these two build the
-# roster/settings input directly rather than through `plan_apply`.
-
-
-def test_dual_review_plan_has_one_planned_group(tmp_path: Path) -> None:
-    project = "dualcheck"
-    with _seed_fixture_pod(tmp_path, project):
-        _pod_members.add_members(project, "reviewer")
-        _pod_members.add_members(project, "critic")
-
-        text = (_recipe_dir("dual-review") / "pipeline.yaml").read_text(encoding="utf-8")
-        result = _pipeline.load_pipeline(text)
-        assert result.spec is not None, result.errors
-
-        roster = pod.pod_full_roster(project)
-        registry = _arch.load_registry(project)
-        exec_plan = _orch.resolve_plan(result.spec, roster, registry=registry)
-
-        groups = [n for n in exec_plan.nodes if isinstance(n, _orch.PlannedGroup)]
-        assert len(groups) == 1
-        assert [c.step_id for c in groups[0].children] == ["review-code", "review-risk"]
-        assert not any(c.skipped for c in groups[0].children)
+# ── frugal: the named shape, checked without `plan_apply` ────────────────────────
 
 
 def test_frugal_plan_carries_two_setting_items(tmp_path: Path) -> None:
@@ -165,8 +136,8 @@ def test_frugal_plan_carries_two_setting_items(tmp_path: Path) -> None:
 
 
 class _ReflexionRunner:
-    """REQUEST-CHANGES the critic's first pass, then APPROVE, then PASS the tester -- exercises
-    the recipe's own bounded rework edge, not just its happy path."""
+    """REQUEST-CHANGES the reviewer's first pass, then APPROVE -- exercises the recipe's own
+    bounded rework edge, not just its happy path."""
 
     def __init__(self, project: str) -> None:
         self._project = project
@@ -186,7 +157,7 @@ class _ReflexionRunner:
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
         role = self._role_of(member_id)
-        if role == "critic":
+        if role == "reviewer":
             self._critique_calls += 1
             if self._critique_calls == 1:
                 return _rd.TurnResult(
@@ -198,8 +169,6 @@ class _ReflexionRunner:
             return _rd.TurnResult(
                 ok=True, output="APPROVE - looks solid now", cost_usd=0.01, raw={}
             )
-        if role == "tester":
-            return _rd.TurnResult(ok=True, output="PASS - behavior verified", cost_usd=0.01, raw={})
         return FakeDriver()(member_id, session_id, message, timeout, env)
 
 
@@ -210,8 +179,7 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(tmp_path: Path)
 
         # Add this recipe's extra roster members through the ordinary `docket pod add <role>`
         # path; the recipe's own `pipeline.yaml` is exercised unmodified.
-        _pod_members.add_members(project, "critic")
-        _pod_members.add_members(project, "tester")
+        _pod_members.add_members(project, "reviewer")
 
         result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
         assert result.spec is not None, result.errors
@@ -225,14 +193,13 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(tmp_path: Path)
         assert outcome.status == "done", outcome.reason
         assert [h.role for h in outcome.hops] == [
             "implementer",
-            "critic",
+            "reviewer",
             "implementer",
-            "critic",
-            "tester",
+            "reviewer",
         ]
 
         events = _trace_events(project)
-        critic_events = [e for e in events if e.get("agent_role") == "critic"]
-        rework = [e for e in critic_events if e.get("event_type") == "verdict_rework_started"]
-        assert rework, "the critic's REQUEST-CHANGES rework was not traced"
+        reviewer_events = [e for e in events if e.get("agent_role") == "reviewer"]
+        rework = [e for e in reviewer_events if e.get("event_type") == "rework_started"]
+        assert rework, "the reviewer's REQUEST-CHANGES rework was not traced"
         assert "REQUEST-CHANGES" in rework[0]["payload"].get("output", "")  # type: ignore[union-attr]

@@ -92,8 +92,6 @@ steps:
   - reviewer: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
     on: {REQUEST-CHANGES: {goto: implementer, max: 1}}
-  - tester: tester
-    verdict: [PASS, FAIL]
 """
 
 

@@ -31,7 +31,6 @@ _CONTROL_FLOW = frozenset(
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",
-        "tester_verdict_failed",
         "reviewer_verdict_unparseable",
         "verification_failed",
         "approval_required",

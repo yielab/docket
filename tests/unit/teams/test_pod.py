@@ -7,6 +7,7 @@ from tests.support.roles import write_vetter_overlay
 
 from docket.kernel.home import current_home
 from docket.platform import store as _store
+from docket.teams import fleet as _fleet
 from docket.teams import pod
 
 SUBJECT = "docket.teams.pod"
@@ -26,8 +27,7 @@ def _write_meta(member_id: str, pod_name: str, role: str = "") -> None:
 _MODELS = {
     "lead": "anthropic/claude-haiku-4-5",
     "implementer": "anthropic/claude-sonnet-4-6",
-    "reviewer": "anthropic/claude-haiku-4-5",
-    "tester": "anthropic/claude-haiku-4-5",
+    "reviewer": "anthropic/claude-sonnet-4-6",
 }
 
 
@@ -131,9 +131,18 @@ class TestDefaultPod:
         keys = {m.session_key for m in members}
         assert keys == {"agent:shop:default"}
 
-    def test_full_pod_has_four_roles(self) -> None:
+    def test_full_pod_has_three_roles(self) -> None:
         members = pod.plan_pod("shop", pod.FULL_POD_ROLES, role_models=_MODELS)
-        assert [m.role for m in members] == ["lead", "implementer", "reviewer", "tester"]
+        assert [m.role for m in members] == ["lead", "implementer", "reviewer"]
+
+    def test_the_pipeline_of_a_full_pod_has_three_hops(self) -> None:
+        for m in pod.plan_pod("shop", pod.FULL_POD_ROLES, role_models=_MODELS):
+            _fleet.add_agent(m.member_id)
+        assert [role for role, _ in pod.pod_pipeline("shop")] == [
+            "lead",
+            "implementer",
+            "reviewer",
+        ]
 
 
 class TestDuplicateRoles:

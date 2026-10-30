@@ -19,9 +19,9 @@ SCRIPT = REPO / "scripts" / "maint" / "context_replay.py"
 FIXTURES = REPO / "tests" / "fixtures" / "context-replay" / "v1"
 REAL = Path(os.environ.get("CONTEXT_REPLAY_REAL_DIR", REPO / "internal-docs" / "context-replay"))
 
-STEPS = ["critic", "implementer-a", "implementer-b", "researcher"]
+STEPS = ["implementer-a", "implementer-b", "researcher", "reviewer"]
 COUNTED_OLD = {
-    "critic": 101_292,
+    "reviewer": 101_292,
     "implementer-a": 101_248,
     "implementer-b": 84_340,
     "researcher": 82_383,
@@ -61,18 +61,18 @@ def test_baseline_reproduces_the_measured_counted_tokens() -> None:
 def test_baseline_new_rule_subtracts_cache_reads() -> None:
     rows = _rows()
     assert {n: r.counted_new for n, r in rows.items()} == {
-        "critic": 101_292,
+        "reviewer": 101_292,
         "implementer-a": 31_229,
         "implementer-b": 18_664,
         "researcher": 18_641,
     }
-    assert rows["critic"].cached == 0
+    assert rows["reviewer"].cached == 0
 
 
 def test_baseline_budget_status_names_two_overruns_and_one_refused_next_call() -> None:
     status = {n: r.status_old for n, r in _rows().items()}
     assert status == {
-        "critic": "OVER",
+        "reviewer": "OVER",
         "implementer-a": "OVER",
         "implementer-b": "REFUSED-NEXT",
         "researcher": "ok",
@@ -80,9 +80,9 @@ def test_baseline_budget_status_names_two_overruns_and_one_refused_next_call() -
     assert {r.status_new for r in _rows().values()} <= {"ok", "OVER"}
 
 
-def test_critic_final_reply_is_reported_discarded_with_no_verdict() -> None:
+def test_reviewer_final_reply_is_reported_discarded_with_no_verdict() -> None:
     rows = _rows()
-    assert rows["critic"].final == "discarded"
+    assert rows["reviewer"].final == "discarded"
     assert rows["researcher"].final == "kept"
     assert all(r.verdict is None for r in rows.values())
 
@@ -95,7 +95,7 @@ def test_verdict_line_in_a_kept_final_reply_is_parsed() -> None:
         ],
         "usage": {},
     }
-    call = {"agent_role": "critic", "payload": {"inputTokens": 5, "outputTokens": 2}}
+    call = {"agent_role": "reviewer", "payload": {"inputTokens": 5, "outputTokens": 2}}
     step = BENCH.Step("s", session, [call])
     assert BENCH.measure([step])[0].verdict == "approve"
 
@@ -177,21 +177,21 @@ def _anon_one(tmp_path: Path, tag: str) -> tuple[dict, dict]:
     src = tmp_path / f"in-{tag}"
     src.mkdir()
     session = _synthetic_session()
-    (src / "secretproject--critic--x.session.json").write_text(json.dumps(session))
+    (src / "secretproject--reviewer--x.session.json").write_text(json.dumps(session))
     call = {
         "ts": "2026-01-01T00:00:00Z",
         "project": "secretproject",
         "session_id": "agent:secretproject:t",
-        "agent_role": "critic",
+        "agent_role": "reviewer",
         "event_type": "llm_call",
         "task_id": "t-1",
         "payload": {"model": "m", "inputTokens": 10, "outputTokens": 2, "cachedTokens": 4},
         "duration_ms": 5,
     }
-    (src / "secretproject--critic--x.llm_calls.jsonl").write_text(json.dumps(call) + "\n")
+    (src / "secretproject--reviewer--x.llm_calls.jsonl").write_text(json.dumps(call) + "\n")
     out = tmp_path / f"out-{tag}"
     BENCH.anonymize(src, out)
-    got = json.loads((out / "critic.session.json").read_text())
+    got = json.loads((out / "reviewer.session.json").read_text())
     return session, got
 
 
@@ -270,12 +270,14 @@ def test_the_finalization_policy_shares_the_whole_last_request_only_when_it_trai
 
 def test_the_tool_surface_policy_measures_the_real_registry_per_profile() -> None:
     """The local profile offers a hop fewer, smaller tool schemas than the hosted one, for each role."""
-    for role in ("lead", "implementer", "reviewer", "tester"):
+    for role in ("lead", "implementer", "reviewer"):
         hosted_names, hosted = BENCH.hop_tool_bytes(role, "full", "full")
         local_names, local = BENCH.hop_tool_bytes(role, "minimal", "compact")
         assert set(local_names) < set(hosted_names)
         assert local < hosted
-    assert "handoff" in local_names and "bash" in local_names and "write" not in local_names
+    implementer_names, _ = BENCH.hop_tool_bytes("implementer", "minimal", "compact")
+    assert "handoff" in implementer_names and "bash" in implementer_names
+    assert "write" not in local_names
     assert "implementer" in BENCH.render_projection([], [BENCH.TOOL_SURFACE_POLICY])
 
 

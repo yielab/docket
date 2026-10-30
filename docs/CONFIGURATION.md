@@ -39,7 +39,7 @@ register one first:
 docket setup provider add local http://127.0.0.1:8081/v1 --model qwen \
   --ctx 16384 --max-tokens 4096
 docket setup model preset local          # every role now resolves to local/qwen
-docket init --pod full              # Lead + Implementer + Reviewer + Tester
+docket init --pod full              # Lead + Implementer + Reviewer
 ```
 
 The result, with the moment each file appears. Files are `0600` and directories `0700` unless
@@ -105,8 +105,8 @@ the agent ran `git commit` itself, its changes stay **uncommitted** in the workt
 branch and merge it like any other. Your verify command's by-products (`__pycache__/`, caches) land
 there too. `docket pod delete` removes all task worktrees with the member
 and deletes the merged task branches (an unmerged branch is kept, with the removal command printed).
-A pod whose Implementer has no codebase, or whose worktree cannot be added, works in place. Reviewer and Tester run with the codebase root as
-their working directory, so a test run can leave caches in your checkout.
+A pod whose Implementer has no codebase, or whose worktree cannot be added, works in place. The Reviewer runs with the codebase root as
+its working directory, so a test run can leave caches in your checkout.
 
 To try any of this without touching your real setup, point `HOME` (or `DOCKET_HOME`) at a scratch
 directory. Every docket path resolves under it.
@@ -223,7 +223,7 @@ never a fork. Find what you want to change, then read its section:
 
 | You want to change… | Layer | How |
 | --- | --- | --- |
-| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/config/recipes/<name>/`, used by name like the shipped eighteen ([3.10](#310-start-from-a-recipe)) |
+| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/config/recipes/<name>/`, used by name like the shipped seventeen ([3.10](#310-start-from-a-recipe)) |
 | The team shape a new pod gets | Blueprint | `docket init --blueprint software\|research\|content\|ops\|agentic-product` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pod validate/plan`; run once with `docket run --pipeline <file>` or bind it with `docket pod set pipeline <file>` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
 | What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket pod update`; a step may name its own `model` ([3.4](#34-define-a-custom-role)) |
@@ -342,7 +342,7 @@ not ignored: `pod show` and `docket run` both refuse, naming the key. Confirm wi
 
 Roles are data. A role archetype carries its `SOUL.md`/`AGENTS.md` templates, the model class it
 resolves to, the tools it is denied, its gate contract and its context budget. Built-ins (`lead`,
-`implementer`, `reviewer`, `tester`, plus `researcher`, `analyst`, `writer`, `critic`, `operator`,
+`implementer`, `reviewer`, plus `researcher`, `analyst`, `writer`, `operator`,
 `monitor`) cannot be edited, only shadowed by name. See all of them with `docket pod roles`, and
 dump one as a starting point with `docket pod roles reviewer`.
 
@@ -399,7 +399,7 @@ What is read **when**:
   hop, from the merged registry.
 - A custom role gets **no built-in per-hop instruction line**, so everything it must do belongs in
   its instructions file.
-- The default pipeline only runs `lead → implementer → reviewer → tester`. A custom role joins a
+- The default pipeline only runs `lead → implementer → reviewer`. A custom role joins a
   dispatch **only through a pipeline file** (§3.5).
 
 ### 3.5 Change the orchestration: pipelines and blueprints
@@ -501,8 +501,8 @@ read|write`, default `write`; `--tools a,b` limits which of its tools register).
 - Denying a tool also denies every tool of its kind. That is how a read-only role gets **no** MCP
   tools from a server left at the default kind.
 - Built-in denials:
-  - `lead`, `reviewer`, `critic`, `monitor`: `write`, `edit`, `bash`.
-  - `tester`: `write`, `edit`.
+  - `lead`, `reviewer`, `monitor`: `write`, `edit`, `bash`.
+  - `writer`: `bash`.
 - Denials are per role, plus an optional per-pod list: `docket pod set deniedTools fetch`
   removes `fetch` from every role of that pod. To restrict one agent, give it a custom role.
 
@@ -542,7 +542,7 @@ statically, or a redirect outside the pod's roots, which still ask.
   with `approval_unavailable`, naming the tool and policy.
 - **This is not hypothetical.** Verifying this guide (pre-Phase-34, under the always-`wait`
   behavior), a real dispatch passed Lead, Implementer and Reviewer, then **failed the task** at
-  the Tester on three asks. The asks were for `cd <worktree> && python3 …`, which W37-C1 has
+  a later hop on three asks. The asks were for `cd <worktree> && python3 …`, which W37-C1 has
   since allowed. `pytest` and `uv` still ask — and today, an unattended run hits `park` on the
   very first one rather than accumulating three denials.
 
@@ -742,7 +742,7 @@ A recipe is a directory in the same shape as a repository's `.docket/` (§3.11):
 `roles/`, `prompts/<layer>/`, `pipeline.yaml`, `pipelines/`, `policies/`, `plugins/`, `skills/`, every part optional. **What a recipe
 brings is derived from what the directory holds, never declared**: `docket pod validate <dir>`,
 `docket pod update --dry-run`, `docket init --recipe` and `docket pod recipes` all print the
-same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). Eighteen
+same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). Seventeen
 ship with docket, of five kinds; the full page, generated from the recipes themselves, is
 [the recipe library](recipes.md).
 
@@ -750,7 +750,7 @@ ship with docket, of five kinds; the full page, generated from the recipes thems
 |---|---|---|
 | Team | `secure-build`, `research-review`, `ops-approval`, `intake` | roles and members it needs, a pipeline, sometimes a policy |
 | Policy pack | `git-safety`, `no-egress`, `secrets-guard`, `prod-approval` | policy items only: no roster change, no pipeline change |
-| Methodology | `tdd`, `spec-first`, `spec-writer`, `reflexion`, `dual-review`, `cross-family-review`, `frugal` | the members the practice needs from the built-in and starter roles, and the smallest pipeline that *is* the practice (`frugal` also sets a budget) |
+| Methodology | `tdd`, `spec-first`, `spec-writer`, `reflexion`, `cross-family-review`, `frugal` | the members the practice needs from the built-in and starter roles, and the smallest pipeline that *is* the practice (`frugal` also sets a budget) |
 | Check | `anti-tautology`, `mutation` | a pipeline with a `run:` step that fails the task when its tests prove nothing (`mutation` needs mutmut installed) |
 | Tooling | `code-intel` | MCP servers for the pod (structural search, read-only language intelligence) |
 
@@ -969,7 +969,7 @@ Every turn docket runs (a dispatch hop, a `docket start --dispatch` sweep) hands
 the records it writes to the local trace, already redacted, to `observability/telemetry.py`, which turns
 each session into spans: a `docket.session` root with `gen_ai.chat` and `execute_tool` children,
 their ids derived from the session id so a re-send lands on the same trace. A pod dispatch runs
-every hop in one session, so its lead, implementer, reviewer and tester appear as one trace, each
+every hop in one session, so its lead, implementer and reviewer appear as one trace, each
 hop a `docket.hop <role>` span holding its model calls and tool calls, under one root that stays
 open from the first hop to the last. A `gen_ai.chat` span carries the measured tokens, the cache
 reads and writes (`gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_creation.input_tokens`,

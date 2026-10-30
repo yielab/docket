@@ -98,40 +98,23 @@ BUILTIN_ARCHETYPES: dict[str, RoleArchetype] = {
         name="reviewer",
         version=1,
         scope="pod",
-        model_class="cheap",
+        model_class="strong",
         soul_template=_soul("reviewer"),
         agents_template=_POD_AGENTS_TEMPLATE,
         gate_contract=GateContract(kind="verdict", regexes=("APPROVE", "REQUEST-CHANGES")),
         tool_profile="read-only",
-        description="read-only veto on diffs",
+        description="read-only veto on the work of the step before",
         token_budget=6000,
         # "Read-only: no write/edit/exec" (see the `reviewer` identity prompt) — now
         # a genuine tool absence, not merely a SOUL.md instruction.
         denied_tools=("write", "edit", "bash"),
     ),
-    "tester": RoleArchetype(
-        name="tester",
-        version=1,
-        scope="pod",
-        model_class="cheap",
-        soul_template=_soul("tester"),
-        agents_template=_POD_AGENTS_TEMPLATE,
-        gate_contract=GateContract(kind="verdict", regexes=("PASS", "FAIL")),
-        tool_profile="read-only-exec",
-        description="behaviour-only PASS/FAIL",
-        # Only needs the Implementer's summary to validate behaviour, not a
-        # full review history.
-        token_budget=4000,
-        # "Read-only-exec": no write/edit, but `bash` stays so it can
-        # actually run the test suite it reports PASS/FAIL on.
-        denied_tools=("write", "edit"),
-    ),
 }
 
-BUILTIN_ROLE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
+BUILTIN_ROLE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer")
 
 
-# ── Starter library: six generic pod roles for non-coding objectives ──────────
+# ── Starter library: five generic pod roles for non-coding objectives ──────────
 #
 # These ship as data, proving "a research pod, a content pod, an ops pod" are
 # expressible without a new hardcoded role string anywhere in teams/pod.py or
@@ -188,20 +171,6 @@ STARTER_ARCHETYPES: dict[str, RoleArchetype] = {
         # Drafts with write/edit; running things is a pipeline `run:` step, docket's, not the role's.
         denied_tools=("bash",),
     ),
-    "critic": RoleArchetype(
-        name="critic",
-        version=1,
-        scope="pod",
-        model_class="strong",
-        soul_template=_soul("critic"),
-        agents_template=_STARTER_AGENTS_TEMPLATE,
-        gate_contract=GateContract(kind="verdict", regexes=("APPROVE", "REJECT")),
-        tool_profile="read-only",
-        description="vets the pod's output; veto power",
-        token_budget=6000,
-        # Mirrors the reviewer archetype: read-only means no write/edit/exec.
-        denied_tools=("write", "edit", "bash"),
-    ),
     "operator": RoleArchetype(
         name="operator",
         version=1,
@@ -237,7 +206,6 @@ STARTER_ROLE_ORDER: tuple[str, ...] = (
     "researcher",
     "analyst",
     "writer",
-    "critic",
     "operator",
     "monitor",
 )

@@ -1,4 +1,4 @@
-"""The four built-in pod roles render byte-identical SOUL.md/AGENTS.md.
+"""The three built-in pod roles render byte-identical SOUL.md/AGENTS.md.
 
 Compares `interfaces/cli/commands/pod.py`'s output against a frozen, independently hand-written
 baseline embedded here, across a range of inputs -- self-diffing the current
@@ -53,31 +53,21 @@ def _legacy_member_soul(
             "- Never push to main/master without HITL approval; never delete files "
             "without explicit instruction.\n"
         )
-    elif member.role == "reviewer":
+    else:  # reviewer
         body = (
             "## Role — Reviewer (veto power)\n"
-            "- You review the diff the task message delivers for correctness, security, and "
-            "requirement fit; read a file only for context the diff does not show.\n"
-            "- **Read-only**: no write/edit/exec. Bad code does not proceed.\n"
+            "- You judge the work of the step before: code, text or data. You review what the "
+            "task message delivers for correctness, security, and requirement fit; read a file "
+            "only for context the delivery does not show.\n"
+            "- **Read-only**: no write/edit/exec. Work that fails does not proceed.\n"
             "- **Marker convention:** the LAST line of your FINAL message must be exactly "
             "`APPROVE` or `REQUEST-CHANGES`, with nothing else on that line. Reasons go "
             "above it. A final message with no marker line is asked for once more, then "
             "blocks the pipeline the same as a rejection.\n"
-            "- A `REQUEST-CHANGES` verdict sends the task back to the Implementer "
-            "for a bounded rework cycle (once, by default) before it becomes a "
-            "hard failure — your review text is what the Implementer sees, so "
+            "- A `REQUEST-CHANGES` verdict sends the task back to the step that produced the "
+            "work for a bounded rework cycle (once, by default) before it becomes a "
+            "hard failure — your review text is what that step sees, so "
             "make it actionable.\n"
-        )
-    else:  # tester
-        body = (
-            "## Role — Tester\n"
-            "- You run the test suite and reproduction steps and report a binary "
-            "**PASS/FAIL** with evidence.\n"
-            "- Observe behaviour only — do not read or critique the implementation.\n"
-            "- **Marker convention:** the LAST line of your FINAL message must be exactly "
-            "`PASS` or `FAIL`, with nothing else on that line. Evidence goes above it. "
-            "A final message with no marker line is asked for once more, then blocks the "
-            "pipeline the same as a FAIL.\n"
         )
     return head + body
 
@@ -124,7 +114,7 @@ _CASES = [
     },
 ]
 
-_LEGACY_ROLES = ("lead", "implementer", "reviewer", "tester")
+_LEGACY_ROLES = ("lead", "implementer", "reviewer")
 
 
 class TestLegacyByteParity:

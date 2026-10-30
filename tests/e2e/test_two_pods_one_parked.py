@@ -25,14 +25,12 @@ steps:
   - implement: implementer
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
-  - test: tester
-    verdict: [PASS, FAIL]
 """
 
 PARKED_POD = "ledger"
 FREE_POD = "gallery"
 GATED = "rm -rf build"
-ROLES = ("lead", "implementer", "reviewer", "tester")
+ROLES = ("lead", "implementer", "reviewer")
 
 LEDGER_RUN = [
     ("hop_started", "lead", "plan"),
@@ -47,8 +45,6 @@ LEDGER_RUN = [
     ("verification", "implementer", "skipped"),
     ("hop_started", "reviewer", "review"),
     ("hop_finished", "reviewer", "approve"),
-    ("hop_started", "tester", "test"),
-    ("hop_finished", "tester", "pass"),
     ("session_end", "lead", "done"),
 ]
 GALLERY_RUN = [
@@ -59,8 +55,6 @@ GALLERY_RUN = [
     ("verification", "implementer", "skipped"),
     ("hop_started", "reviewer", "review"),
     ("hop_finished", "reviewer", "approve"),
-    ("hop_started", "tester", "test"),
-    ("hop_finished", "tester", "pass"),
     ("session_end", "lead", "done"),
 ]
 
@@ -92,7 +86,6 @@ def _team() -> dict[str, list[Step]]:
             )
         ],
         "reviewer": [by_pod(**{PARKED_POD: [say("APPROVE")], FREE_POD: [say("APPROVE")]})],
-        "tester": [by_pod(**{PARKED_POD: [say("PASS")], FREE_POD: [say("PASS")]})],
     }
 
 
@@ -175,7 +168,7 @@ def test_one_pod_waits_for_a_person_while_the_other_finishes(
         escalation = parked["escalations"][-1]
         assert escalation.startswith("esc-")
         heard = {role: len(model.by_role(role)) for role in ROLES}
-        assert heard == {"lead": 2, "implementer": 3, "reviewer": 1, "tester": 1}
+        assert heard == {"lead": 2, "implementer": 3, "reviewer": 1}
 
         w.docket("task", "answer", escalation, "--option", "approve_task", "--pod", PARKED_POD)
         w.wait_for(lambda: _status(svc, PARKED_POD, ledger) == "done", 30, "the ledger task")
@@ -209,7 +202,6 @@ def test_one_pod_waits_for_a_person_while_the_other_finishes(
         "lead": 2,
         "implementer": 6,
         "reviewer": 2,
-        "tester": 2,
     }
     oracles.assert_checkout_untouched(w, ledger_head)
     assert (_head(gallery_repo, w), _git(gallery_repo, w, "status", "--porcelain")) == (

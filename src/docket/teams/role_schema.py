@@ -22,7 +22,7 @@ class ArchetypeError(InvalidInput):
 @dataclass(frozen=True)
 class GateContract:
     """Closed typed union over the four gate-contract kinds; `regexes` applies only to
-    `kind == "verdict"` (e.g. reviewer APPROVE/REQUEST-CHANGES, tester PASS/FAIL). Real,
+    `kind == "verdict"` (e.g. reviewer APPROVE/REQUEST-CHANGES). Real,
     consumed data: `pipeline.domain.plan.resolve_gate` falls back to it when a step omits its own."""
 
     kind: str
@@ -227,7 +227,7 @@ def resolve_hop_prompt(archetype: RoleArchetype) -> _prompts.LoadedPrompt | None
     """*archetype*'s hop prompt: its own `hop_instruction` if declared, else one generated from its
     `gate_contract` (verdict/mechanical/approval) as a ``generated`` prompt; ``None`` for a
     `none`-kind gate. See specs/functional/role-archetypes.spec.md ("Hop instructions")."""
-    # `implementer`/`reviewer`/`tester` never reach this: `hops/application/compose.py`'s hop-message
+    # `implementer`/`reviewer` never reach this: `hops/application/compose.py`'s hop-message
     # builder keeps their own shipped text unconditionally. `lead` DOES reach this --
     # its built-in `hop_instruction` is the shipped `hop/lead` prompt, so this returns
     # it verbatim absent an overlay.

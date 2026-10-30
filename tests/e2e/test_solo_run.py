@@ -31,8 +31,6 @@ steps:
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
     on: {REQUEST-CHANGES: {goto: implement, max: 1}}
-  - test: tester
-    verdict: [PASS, FAIL]
 """
 
 REVIEW_NOTE = "REQUEST-CHANGES: record the fix in NOTES.md"
@@ -61,7 +59,6 @@ def test_a_team_takes_a_failing_check_to_done_through_a_retry_and_a_rework(
                 say("Recorded the fix in NOTES.md."),
             ],
             "reviewer": [say(REVIEW_NOTE), say("APPROVE")],
-            "tester": [say("PASS")],
         }
     )
     w = world(model)
@@ -90,8 +87,6 @@ def test_a_team_takes_a_failing_check_to_done_through_a_retry_and_a_rework(
         ("verification", "implementer", "passed"),
         ("hop_started", "reviewer", "review"),
         ("hop_finished", "reviewer", "approve"),
-        ("hop_started", "tester", "test"),
-        ("hop_finished", "tester", "pass"),
         ("session_end", "lead", "done"),
     ]
     assert statuses == ["pending", "done"]
@@ -113,7 +108,6 @@ def test_a_check_that_never_passes_fails_the_task_as_gate_failed(
             "lead": [say("Plan: make app.txt say fixed.")],
             "implementer": rewrite * 3,
             "reviewer": [say("APPROVE")],
-            "tester": [say("PASS")],
         }
     )
     w = world(model)
@@ -148,3 +142,27 @@ def test_a_check_that_never_passes_fails_the_task_as_gate_failed(
     oracles.assert_audit_covers_tool_calls(w, w.pod, task_id)
     oracles.assert_transitions_legal(["pending", "failed"])
     oracles.assert_log_verifies(w)
+
+
+def test_a_full_pod_ends_after_the_reviewers_approve_with_three_hops(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(
+        script={
+            "lead": [say("Plan: make app.txt say fixed.")],
+            "implementer": [write_file("app.txt", "fixed\n"), say("app.txt now says fixed.")],
+            "reviewer": [say("APPROVE")],
+        }
+    )
+    w = world(model)
+    w.make_pod(PIPELINE)
+    task_id = w.add_task("Make app.txt say fixed")
+
+    w.docket("run", "--timeout", "30")
+
+    assert w.task(task_id)["task"]["status"] == "done"
+    assert [e for e in oracles.trace_skeleton(w, w.pod, task_id) if e[0] == "hop_started"] == [
+        ("hop_started", "lead", "lead"),
+        ("hop_started", "implementer", "implementer"),
+        ("hop_started", "reviewer", "reviewer"),
+    ]

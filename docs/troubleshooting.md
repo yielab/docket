@@ -47,8 +47,8 @@ docket setup model set reviewer anthropic/claude-opus-4-6
 > so the change is validated, applied consistently, and audit-logged.
 
 **Valid model names (Anthropic defaults):**
-- `anthropic/claude-haiku-4-5` (cheap class — lead, reviewer, tester)
-- `anthropic/claude-sonnet-4-6` (strong class — implementer)
+- `anthropic/claude-haiku-4-5` (cheap class — lead)
+- `anthropic/claude-sonnet-4-6` (strong class — implementer, reviewer)
 - `anthropic/claude-opus-4-6` (strong class, premium)
 
 Check the live mapping anytime with `docket setup model`.
@@ -400,19 +400,19 @@ The command runs in the Implementer's git worktree when one exists, otherwise th
 codebase root — if it's failing only because it ran in the wrong directory, that's the first
 thing to check.
 
-### A task fails with "tester reported FAIL" (or an unparseable verdict)
+### A task fails with "reviewer rejected" or an unparseable verdict
 
-The Tester gate is a structural PASS/FAIL parse: exactly one distinct `PASS` or `FAIL` marker at
-the start of a non-blank line of its reply. `FAIL`, no marker, or both markers
-(`tester_verdict_failed`) fails the task outright —
-there is no rework cycle for a Tester verdict (only a Reviewer's `REQUEST-CHANGES` gets one):
+The Reviewer gate is a structural parse: exactly one distinct `APPROVE` or `REQUEST-CHANGES`
+marker at the start of a non-blank line of its reply. A `REQUEST-CHANGES` gets one rework cycle by
+default (`maxReworkCycles`); a second one, no marker, or both markers (`review_rejected`,
+`reviewer_verdict_unparseable`) fails the task:
 
 ```bash
 $ docket run
-  [task-91a2c410-...] failed — tester reported FAIL
+  [task-91a2c410-...] failed — reviewer rejected after 1 rework cycle(s): REQUEST-CHANGES
 ```
 
-Read the Tester's full reply via `docket task trace --tail`, fix the underlying issue, then queue it
+Read the Reviewer's full reply via `docket task trace --tail`, fix the underlying issue, then queue it
 again (`docket task retry` is for a task that is blocked or failed and keeps the hops it finished; a new `task add` starts clean):
 
 ```bash

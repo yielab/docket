@@ -24,8 +24,6 @@ steps:
   - implement: implementer
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
-  - test: tester
-    verdict: [PASS, FAIL]
 """
 
 NIGHTLY = """name: nightly-sweep
@@ -38,7 +36,6 @@ TEAM = {
     "lead": [say("Plan: make app.txt say fixed.")],
     "implementer": [write_file("app.txt", "fixed\n"), say("app.txt says fixed.")],
     "reviewer": [say("APPROVE")],
-    "tester": [say("PASS")],
 }
 
 

@@ -51,7 +51,7 @@ day:
 | Field | Type | Notes |
 |-------|------|-------|
 | `kind` | `"project"` \| `"specialist"` | required |
-| `role` | string | pod role (`lead`/`implementer`/`reviewer`/`tester`) |
+| `role` | string | pod role (`lead`/`implementer`/`reviewer`) |
 | `pod` | string | which pod this member belongs to |
 | `blueprint` | string | which pod shape provisioned it (`software`, `research`, ...) |
 | `model` / `modelSource` | string / `"policy"` \| `"pinned"` | `policy` follows the role→model table; `pinned` was set explicitly |

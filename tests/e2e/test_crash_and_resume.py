@@ -27,8 +27,6 @@ steps:
     max: 1
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
-  - test: tester
-    verdict: [PASS, FAIL]
 """
 
 RUN = ("--timeout", "30")
@@ -58,9 +56,7 @@ def background_run(world: World, *flags: str) -> Iterator[subprocess.Popen[bytes
 
 def requests_by_role(model: FakeModel) -> dict[str, int]:
     """How many requests each team role has made to the fake so far."""
-    return {
-        role: len(model.by_role(role)) for role in ("lead", "implementer", "reviewer", "tester")
-    }
+    return {role: len(model.by_role(role)) for role in ("lead", "implementer", "reviewer")}
 
 
 def test_a_run_killed_mid_hop_resumes_at_that_hop_without_repeating_earlier_ones(
@@ -72,7 +68,6 @@ def test_a_run_killed_mid_hop_resumes_at_that_hop_without_repeating_earlier_ones
             "lead": [say("Plan: make app.txt say fixed.")],
             "implementer": [write_file("app.txt", "fixed\n"), say("app.txt now says fixed.")],
             "reviewer": [hold(release, then=say("APPROVE")), say("APPROVE")],
-            "tester": [say("PASS")],
         }
     )
     w = world(model)
@@ -91,14 +86,14 @@ def test_a_run_killed_mid_hop_resumes_at_that_hop_without_repeating_earlier_ones
     finally:
         release.set()
     killed_at = requests_by_role(model)
-    assert killed_at == {"lead": 1, "implementer": 2, "reviewer": 1, "tester": 0}
+    assert killed_at == {"lead": 1, "implementer": 2, "reviewer": 1}
     statuses.append(w.task(task_id)["task"]["status"])
 
     w.docket("run", "--resume", "--pipeline", str(w.pipeline), *RUN)
 
     statuses.append(w.task(task_id)["task"]["status"])
     assert statuses == ["pending", "running", "running", "done"]
-    assert requests_by_role(model) == {**killed_at, "reviewer": 2, "tester": 1}
+    assert requests_by_role(model) == {**killed_at, "reviewer": 2}
     hop = ("hop_started", "reviewer", "review")
     assert oracles.trace_skeleton(w, w.pod, task_id) == [
         ("hop_started", "lead", "plan"),
@@ -110,8 +105,6 @@ def test_a_run_killed_mid_hop_resumes_at_that_hop_without_repeating_earlier_ones
         ("stale_claim", "lead", ""),
         hop,
         ("hop_finished", "reviewer", "approve"),
-        ("hop_started", "tester", "test"),
-        ("hop_finished", "tester", "pass"),
         ("session_end", "lead", "done"),
     ]
     reclaimed = [r for r in oracles.audit_rows(w) if r["action"] == "task.reclaimed"]
@@ -136,7 +129,6 @@ def test_a_running_task_cancelled_from_another_terminal_stops(
                 say("app.txt now says fixed."),
             ],
             "reviewer": [say("APPROVE")],
-            "tester": [say("PASS")],
         }
     )
     w = world(model)
@@ -170,7 +162,7 @@ def test_a_running_task_cancelled_from_another_terminal_stops(
         ("hop_finished", "implementer", "fail"),
         ("session_end", "lead", "cancelled"),
     ]
-    assert requests_by_role(model) == {"lead": 1, "implementer": 1, "reviewer": 0, "tester": 0}
+    assert requests_by_role(model) == {"lead": 1, "implementer": 1, "reviewer": 0}
     actions = [r["action"] for r in oracles.audit_rows(w)]
     assert actions.count("runs.cancel") == 1 and actions.count("task.cancel") == 1
     oracles.assert_checkout_untouched(w, head_before)

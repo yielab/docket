@@ -1153,10 +1153,10 @@ steps:
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
     on: {{REQUEST-CHANGES: {{goto: implement, max: 1}}}}
-  - release-check: tester
+  - release-check: reviewer
     approval: "Approve the smoke release checkpoint."
-  - final-check: tester
-    verdict: [PASS, FAIL]
+  - final-check: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
 """,
         encoding="utf-8",
     )
@@ -1443,7 +1443,9 @@ def _verify_final_state(
     )
     _require(all(isinstance(hop.get("artifact"), dict) for hop in hops), "typed handoff missing")
     _require(hops[2]["artifact"].get("verdict") == "approve", "Reviewer verdict not persisted")
-    _require(hops[4]["artifact"].get("verdict") == "pass", "Tester verdict not persisted")
+    _require(
+        hops[4]["artifact"].get("verdict") == "approve", "final Reviewer verdict not persisted"
+    )
 
     memory_scenario = scenario == _MEMORY_SCENARIO
     _verify_sessions(home, memory_scenario=memory_scenario)
@@ -1502,7 +1504,7 @@ def _configure_live_model(repo: Path, env: dict[str, str], live: _LiveModel) -> 
     _run_cli(repo, env, *provider_args, process_timeout=None)
 
     model_ref = f"{live.provider}/{live.model_id}"
-    for role in ("lead", "implementer", "reviewer", "tester"):
+    for role in ("lead", "implementer", "reviewer"):
         _run_cli(repo, env, "setup", "model", "set", role, model_ref, process_timeout=None)
     _run_cli(repo, env, "setup", "model", "set", "default", model_ref, process_timeout=None)
 
@@ -1567,8 +1569,8 @@ def _run(
     project_agents = [
         agent for agent in fleet.get("agents", []) if str(agent.get("id", "")).startswith("smoke-")
     ]
-    _require(len(project_agents) == 4, "full pod did not provision four members")
-    print("[check] full pod provisioned: lead, implementer, reviewer, tester")
+    _require(len(project_agents) == 3, "full pod did not provision three members")
+    print("[check] full pod provisioned: lead, implementer, reviewer")
 
     if scenario == _MEMORY_SCENARIO:
         _seed_operator_memory(home)

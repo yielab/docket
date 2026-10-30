@@ -316,7 +316,7 @@ class TestBrokenPolicyFailsClosed:
             },
         )
         assert (
-            _policy.policy_eval_detail("tester", "pre_output", "nothing to see").action == "block"
+            _policy.policy_eval_detail("reviewer", "pre_output", "nothing to see").action == "block"
         )
 
     def test_empty_pattern_blocks(self, policies_dir: Path) -> None:

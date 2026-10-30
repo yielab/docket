@@ -1,6 +1,6 @@
 # MCP Server Contract Specification
 
-**Version**: 2.0.0
+**Version**: 2.0.1
 **Status**: Implemented
 **Last Updated**: 2026-10-25
 
@@ -24,8 +24,8 @@ This specification covers:
 
 It does NOT cover:
 
-- The pod dispatch state machine (hop order, budget gating, retries, the Reviewer/Tester verdict
-  gates) — see `pod-dispatch.spec.md`
+- The pod dispatch state machine (hop order, budget gating, retries, the Reviewer verdict
+  gate) — see `pod-dispatch.spec.md`
 - The run registry's own schema and lifecycle — see `serve-read-api.spec.md`'s `/runs` section
 - The approval lifecycle itself (`pending → granted/denied/expired`) — see
   `security-gates.spec.md`; and what resolving an escalation does — `operator-loop.spec.md` area 10
@@ -181,7 +181,7 @@ available over MCP.
 ### `dispatch`
 
 **Purpose**: Trigger a pod's real dispatch pipeline — one real, costed agent turn per hop
-(Lead → Implementer → optional Reviewer/Tester).
+(Lead → Implementer → optional Reviewer).
 **Arguments**:
 
 - `project` (string, required)
@@ -190,7 +190,7 @@ available over MCP.
   run only; MUST be a positive integer if given
 
 **Gating**: calls `dispatch_pod` directly — the pod budget cap, the Implementer's
-`verifyCmd` gate, the Reviewer verdict gate, and the Tester PASS/FAIL gate all apply exactly as
+`verifyCmd` gate, and the Reviewer verdict gate all apply exactly as
 they do for the CLI and the `docket start` webhook. There is no MCP-specific dispatch path.
 **Output**: `{"ok": true, "run": "run-...", "project": "myapp", "status": "dispatched"}` —
 byte-for-byte the same shape as `POST /dispatch/<project>`'s response body. A run record (source

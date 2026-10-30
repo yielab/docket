@@ -1,4 +1,4 @@
-"""Pod pipeline dispatch: drives queued tasks through lead -> implementer -> reviewer -> tester,
+"""Pod pipeline dispatch: drives queued tasks through lead -> implementer -> reviewer,
 one real agent turn per present role, with a trace event and budget check per hop. Always within
 a single pod; invoked only by an explicit trigger or the opt-in ``serve --dispatch`` loop.
 Behavioral contract: specs/functional/pod-dispatch.spec.md (claiming, crash recovery, retries,

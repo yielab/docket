@@ -109,7 +109,7 @@ def _role_prompt(
         return _prompts.resolve_prompt(
             "hop", name, project=project, view=view, model_class=model_class
         )
-    if role in ("reviewer", "tester"):
+    if role == "reviewer":
         return _prompts.resolve_prompt(
             "hop", role, project=project, view=view, model_class=model_class
         )

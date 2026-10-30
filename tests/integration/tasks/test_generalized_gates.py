@@ -19,6 +19,7 @@ from tests.support import home as _support_home
 from tests.support.approvals import pending_token, resolve_token
 from tests.support.fakes import FakeGit
 from tests.support.pods import write_meta as _write_meta
+from tests.support.roles import write_vetter_overlay
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
@@ -123,38 +124,44 @@ class TestVerdictGateGeneralized:
             name="content",
             steps=[
                 _step.Step(id="plan", role="lead"),
-                # No gate declared -> falls back to the "critic" starter
-                # archetype's own gateContract (verdict: APPROVE/REJECT).
-                _step.Step(id="review", role="critic"),
+                _step.Step(
+                    id="review",
+                    role="vetter",
+                    gate=_gates.VerdictGate(
+                        pattern=r"^\s*(APPROVE|REJECT)\b", pass_values=["approve"]
+                    ),
+                ),
             ],
         )
 
-    def test_approve_advances_and_completes(self) -> None:
+    @staticmethod
+    def _members() -> None:
         _write_meta("myapp-lead")
-        _write_meta("myapp-critic")
-        runner = _RoleRunner({"critic": "APPROVE\nlooks good"})
+        write_vetter_overlay("myapp", ["write", "edit", "bash"])
+        _write_meta("myapp-vetter", {"role": "vetter", "pod": "myapp"})
+
+    def test_approve_advances_and_completes(self) -> None:
+        self._members()
+        runner = _RoleRunner({"vetter": "APPROVE\nlooks good"})
         task = TaskRecord(id="v1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "done"
 
     def test_reject_fails_the_task_with_generic_event(self) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-critic")
-        runner = _RoleRunner({"critic": "REJECT\nneeds work"})
+        self._members()
+        runner = _RoleRunner({"vetter": "REJECT\nneeds work"})
         task = TaskRecord(id="v2", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "failed"
         assert "REJECT" in res.reason
         events = _trace_events("myapp")
         assert any(e["event_type"] == "verdict_rejected" for e in events)
-        # The two built-in-only legacy event names must never leak onto a
-        # non-built-in role's verdict outcome.
+        # The reviewer's own event names must never leak onto another role's verdict outcome.
         assert not any(e["event_type"] == "review_rejected" for e in events)
 
     def test_unparseable_output_fails_with_generic_event(self) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-critic")
-        runner = _RoleRunner({"critic": "not sure about this one"})
+        self._members()
+        runner = _RoleRunner({"vetter": "not sure about this one"})
         task = TaskRecord(id="v3", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=self._spec())
         assert res.status == "failed"
@@ -240,7 +247,7 @@ class TestParallelGroupThroughDispatch:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
         _write_meta("myapp-implementer-2", {"role": "implementer"})
-        _write_meta("myapp-tester")
+        _write_meta("myapp-reviewer")
         spec = _pipeline.PipelineSpec(
             name="fanout",
             steps=[
@@ -254,13 +261,13 @@ class TestParallelGroupThroughDispatch:
                 ),
                 _step.Step(
                     id="check",
-                    role="tester",
+                    role="reviewer",
                     gate=_gates.VerdictGate(pattern=r"^(PASS|FAIL)\b", pass_values=["pass"]),
                 ),
             ],
         )
         _queue.enqueue_task_once("myapp", "Ship it", channel="cli")
-        runner = _RoleRunner({"tester": "PASS\nall good"})
+        runner = _RoleRunner({"reviewer": "PASS\nall good"})
         results = _sweep.dispatch_pod("myapp", runner=runner, spec=spec)
         assert results[0].status == "done"
 
@@ -270,8 +277,8 @@ class TestParallelGroupThroughDispatch:
         agents_called = [c[0] for c in runner.calls]
         assert agents_called.count("myapp-implementer") == 1
         assert agents_called.count("myapp-implementer-2") == 1
-        # ... and only *after* the group joined does the tester run.
-        assert agents_called[-1] == "myapp-tester"
+        # ... and only *after* the group joined does the reviewer run.
+        assert agents_called[-1] == "myapp-reviewer"
 
         persisted = TaskRepository.for_pod("myapp").list()[0]
         assert [h.step_id for h in persisted.hops] == [
@@ -412,7 +419,7 @@ class TestOutcomeRoutingThroughDispatch:
         instead of failing the task, the pipeline jumps forward to `escalate`, a later
         approval step, which then gates pre-hop exactly as it always does."""
         _write_meta("myapp-lead")
-        _write_meta("myapp-critic")
+        _write_meta("myapp-reviewer")
         _write_meta("myapp-implementer")
         spec = _pipeline.PipelineSpec(
             name="escalation",
@@ -420,7 +427,7 @@ class TestOutcomeRoutingThroughDispatch:
                 _step.Step(id="plan", role="lead"),
                 _step.Step(
                     id="review",
-                    role="critic",
+                    role="reviewer",
                     gate=_gates.VerdictGate(
                         pattern=r"^\s*(APPROVE|FAIL)\b", pass_values=["approve"]
                     ),
@@ -433,12 +440,12 @@ class TestOutcomeRoutingThroughDispatch:
                 ),
             ],
         )
-        runner = _RoleRunner({"critic": "FAIL\nneeds a human look"})
+        runner = _RoleRunner({"reviewer": "FAIL\nneeds a human look"})
         task = TaskRecord(id="r1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
 
         assert res.status == "waiting_approval"
-        assert [h.role for h in res.hops] == ["lead", "critic"]
+        assert [h.role for h in res.hops] == ["lead", "reviewer"]
 
         events = _trace_events("myapp")
         route_events = [e for e in events if e["event_type"] == "route_taken"]

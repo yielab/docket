@@ -25,7 +25,6 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`anti-tautology`](#anti-tautology) | pipeline `anti-tautology` | Fails a task whose new or changed tests already pass on the code from before the task. |
 | [`code-intel`](#code-intel) | 2 MCP servers | Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers. |
 | [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
-| [`dual-review`](#dual-review) | 2 members, pipeline `dual-review` | Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass. |
 | [`explore-then-edit`](#explore-then-edit) | 3 members, pipeline `explore-then-edit` | Researcher, Implementer and Reviewer as a pipeline, with the Researcher on a cheap model and one bounded rework cycle back to the Implementer. |
 | [`frugal`](#frugal) | 1 member, 2 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
 | [`git-safety`](#git-safety) | 2 policies | Block unattended-unsafe git commands and ask before a push that touches a protected branch. |
@@ -36,14 +35,14 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`outward`](#outward) | 1 role, 2 policies, 4 members, pipeline `outward` | Research, draft, vet, then act outside the machine through a send tool that asks a person first. |
 | [`parallel-explore`](#parallel-explore) | 2 members, pipeline `parallel-explore` | Two cheap-tier Researchers mapping disjoint parts of the code in parallel, then an Implementer gated on its verify command, with one retry back to the Lead. |
 | [`prod-approval`](#prod-approval) | 1 policy | Ask before an implementer or operator runs a deploy/production-shaped command. |
-| [`reflexion`](#reflexion) | 2 members, pipeline `reflexion` | Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the Tester has the final word. |
-| [`research-review`](#research-review) | 4 members, pipeline `research-review` | Lead, Researcher, Analyst, Writer and Critic as a pipeline, gated on the Critic's APPROVE/REJECT with one rework cycle back to the Writer. |
+| [`reflexion`](#reflexion) | 1 member, pipeline `reflexion` | Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the task is done. |
+| [`research-review`](#research-review) | 4 members, pipeline `research-review` | Lead, Researcher, Analyst, Writer and Reviewer as a pipeline, gated on the Reviewer's APPROVE/REQUEST-CHANGES with one rework cycle back to the Writer. |
 | [`secrets-guard`](#secrets-guard) | 3 policies | Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output. |
 | [`secure-build`](#secure-build) | 1 role, 1 policy, 1 member, 1 skill, pipeline `secure-build` | A read-only security vetter gates the Implementer's change behind an explicit APPROVE, with one bounded rework cycle. |
-| [`spec-first`](#spec-first) | 3 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
+| [`spec-first`](#spec-first) | 2 members, 1 skill, pipeline `spec-first` | Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate. |
 | [`spec-writer`](#spec-writer) | pipeline `spec-writer` | Tests from the brief as a two-step pipeline on two different models: one writes failing tests, the other makes them pass. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`strong-plan-cheap-edit`](#strong-plan-cheap-edit) | 1 member, pipeline `strong-plan-cheap-edit` | Implementer as the cheap-tier editor of a strong-tier plan, gated on its verify command with one retry. |
-| [`tdd`](#tdd) | 1 member, 1 skill, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
+| [`tdd`](#tdd) | 1 skill, pipeline `tdd` | Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists. |
 | [`web-research`](#web-research) | 3 members, pipeline `web-research` | Three cheap-tier Researchers in parallel (two over the web through a search server and fetch, one over the repository), then Analyst and Writer. |
 
 ## anti-tautology
@@ -209,59 +208,6 @@ and pipeline before writing anything, and is safe to run again (a second run pla
 ```bash
 docket pod unset pipeline
 docket pod remove <project>-reviewer
-```
-
-## dual-review
-
-Independent double review as a pipeline: a Reviewer and a Critic evaluate the same change concurrently, and both must pass.
-
-**Brings:** 2 members, pipeline `dual-review`. **Summary line:** `roles 0 · policies 0 · members 2 · pipeline dual-review · plugins 0 · skills 0 · settings 0`
-
-```bash
-docket init --recipe dual-review
-docket pod update dual-review
-```
-
-**Practice:** dual (independent) review — two reviewers, no cross-talk.
-
-**Source idea:** two independent reviewers catch more than one, and reviewing concurrently
-without seeing each other's verdict avoids one anchoring on the other — the same rationale
-behind requiring two approvals on a pull request.
-
-**What docket's gates make structural:** `reviews` is a real `parallel` group — the Reviewer and
-the Critic run as two independent, concurrently-dispatched agent turns, each gated on its own
-role's own verdict contract (Reviewer's `APPROVE`/`REQUEST-CHANGES`, Critic's `APPROVE`/`REJECT`),
-neither seeing the other's output before its own turn completes. The group's outcome is a
-priority merge — any child failing fails the whole group — so a "quiet" reviewer cannot let a
-change through on the other's approval alone.
-
-### Apply it
-
-For a new pod, or onto one that already has its `lead` and `implementer`:
-
-```bash
-docket init --recipe dual-review          # a new pod for the current repository
-docket pod update dual-review    # onto an existing pod
-```
-
-`pod.yaml` names the two members this recipe adds (`reviewer`, `critic`); `apply` validates the
-roster and `pipeline.yaml` before writing anything, and is safe to run again (a second run plans
-every item `skip`). `--dry-run` prints the plan without writing.
-
-### Files
-
-- `pod.yaml` — what `apply` reads: `kind: pod`, `name: dual-review`, `members: [reviewer,
-  critic]`.
-- `pipeline.yaml` — `build` (Implementer, gated on its own verify command) -> `reviews`, a
-  `parallel` group of `review-code` (Reviewer) and `review-risk` (Critic), each falling back to
-  its own role's default verdict gate since neither step declares one explicitly.
-
-### Undo
-
-```bash
-docket pod unset pipeline
-docket pod remove <project>-reviewer
-docket pod remove <project>-critic
 ```
 
 ## explore-then-edit
@@ -686,18 +632,18 @@ docket init --recipe outward
 docket pod update outward
 ```
 
-Researcher -> Writer -> Critic (APPROVE or REJECT, one rework back to the Writer) -> Actor.
+Researcher -> Writer -> Reviewer (APPROVE or REQUEST-CHANGES, one rework back to the Writer) -> Actor.
 
 A pod that acts outside the machine: it sends a message, submits a form, posts, books, pays, or
 asks another agent to. The Researcher gathers, the Writer drafts into the working directory, the
-Critic vets, and only the Actor holds a `send` tool. Reading and acting are kept apart: the roles
+Reviewer vets, and only the Actor holds a `send` tool. Reading and acting are kept apart: the roles
 that read cannot send, and the role that sends cannot read the web, so what leaves was decided
 before the Actor ran.
 
 ### How the separation holds
 
 - A `send` tool (a tool of an MCP server declared `--kind send`) reaches a role only when the
-  role's own `tools` list names it. The Researcher, Writer and Critic name none, so they are never
+  role's own `tools` list names it. The Researcher, Writer and Reviewer name none, so they are never
   offered one. The Actor names `mcp__outbox__send` and nothing that reads the web.
 - `docket pod update` and `docket pod validate` refuse a role whose `tools` name a `send` tool
   and that still holds `fetch` or a tool of a `read` server. A step's `tools` can satisfy the rule
@@ -788,15 +734,15 @@ the draft lives in its working directory:
 docket pod update outward
 ```
 
-`pod.yaml` names the four members this recipe adds: `researcher`, `writer`, `critic` and `actor`.
+`pod.yaml` names the four members this recipe adds: `researcher`, `writer`, `reviewer` and `actor`.
 `apply` validates the roster, the pipeline, the read/act rule and the policy before writing
 anything, and is safe to run again. `--dry-run` prints the plan without writing.
 
 ### Files
 
-- `pod.yaml` - `members: [researcher, writer, critic, actor]`.
-- `pipeline.yaml` - `research` (Researcher) -> `draft` (Writer) -> `review` (Critic, APPROVE or
-  REJECT, one rework to `draft`) -> `act` (Actor).
+- `pod.yaml` - `members: [researcher, writer, reviewer, actor]`.
+- `pipeline.yaml` - `research` (Researcher) -> `draft` (Writer) -> `review` (Reviewer, APPROVE or
+  REQUEST-CHANGES, one rework to `draft`) -> `act` (Actor).
 - `roles/actor.yaml` and `roles/actor.md` - the Actor: `tools: [read, glob, mcp__outbox__send]`,
   denied `write`, `edit` and `bash`.
 - `policies/ask-before-send.yaml` - asks before the Actor's `send` tool, with the message the
@@ -814,7 +760,7 @@ anything, and is safe to run again. `--dry-run` prints the plan without writing.
 docket pod unset pipeline
 docket pod remove <project>-researcher
 docket pod remove <project>-writer
-docket pod remove <project>-critic
+docket pod remove <project>-reviewer
 docket pod remove <project>-actor
 ```
 
@@ -924,9 +870,9 @@ rm ~/.docket/config/pods/<project>/policies/prod-approval-high-risk.yaml
 
 ## reflexion
 
-Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the Tester has the final word.
+Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the task is done.
 
-**Brings:** 2 members, pipeline `reflexion`. **Summary line:** `roles 0 · policies 0 · members 2 · pipeline reflexion · plugins 0 · skills 0 · settings 0`
+**Brings:** 1 member, pipeline `reflexion`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline reflexion · plugins 0 · skills 0 · settings 0`
 
 ```bash
 docket init --recipe reflexion
@@ -941,8 +887,8 @@ Agents with Verbal Reinforcement Learning").
 
 **What docket's gates make structural:** `critique`'s `REQUEST-CHANGES` verdict is a real rework
 edge back to `build`, bounded to two cycles by `maxCycles: 2` — not a suggestion an Implementer
-can ignore, and not an unbounded loop either. The Tester's PASS/FAIL verdict runs only once the
-Critic is satisfied, and is an independent gate from it.
+can ignore, and not an unbounded loop either. The pipeline ends at the Reviewer's `APPROVE`; the Implementer's own verify command is the
+gate that runs the suite.
 
 ### Apply it
 
@@ -953,28 +899,26 @@ docket init --recipe reflexion          # a new pod for the current repository
 docket pod update reflexion    # onto an existing pod
 ```
 
-`pod.yaml` names the two members this recipe adds (`critic`, `tester`); `apply` validates the
+`pod.yaml` names the one member this recipe adds (`reviewer`); `apply` validates the
 roster and `pipeline.yaml` before writing anything, and is safe to run again (a second run plans
 every item `skip`). `--dry-run` prints the plan without writing.
 
 ### Files
 
-- `pod.yaml` — what `apply` reads: `kind: pod`, `name: reflexion`, `members: [critic, tester]`.
-- `pipeline.yaml` — `build` (Implementer, gated on its own verify command) -> `critique` (Critic,
-  APPROVE/REQUEST-CHANGES verdict, rework -> build, maxCycles 2) -> `test` (Tester, PASS/FAIL
-  verdict).
+- `pod.yaml` — what `apply` reads: `kind: pod`, `name: reflexion`, `members: [reviewer]`.
+- `pipeline.yaml` — `build` (Implementer, gated on its own verify command) -> `critique` (Reviewer,
+  APPROVE/REQUEST-CHANGES verdict, rework -> build, maxCycles 2).
 
 ### Undo
 
 ```bash
 docket pod unset pipeline
-docket pod remove <project>-critic
-docket pod remove <project>-tester
+docket pod remove <project>-reviewer
 ```
 
 ## research-review
 
-Lead, Researcher, Analyst, Writer and Critic as a pipeline, gated on the Critic's APPROVE/REJECT with one rework cycle back to the Writer.
+Lead, Researcher, Analyst, Writer and Reviewer as a pipeline, gated on the Reviewer's APPROVE/REQUEST-CHANGES with one rework cycle back to the Writer.
 
 **Brings:** 4 members, pipeline `research-review`. **Summary line:** `roles 0 · policies 0 · members 4 · pipeline research-review · plugins 0 · skills 0 · settings 0`
 
@@ -983,9 +927,9 @@ docket init --recipe research-review
 docket pod update research-review
 ```
 
-Lead -> Researcher -> Analyst -> Writer -> Critic, gated on the Critic's APPROVE/REJECT
+Lead -> Researcher -> Analyst -> Writer -> Reviewer, gated on the Reviewer's APPROVE/REQUEST-CHANGES
 verdict with one bounded rework cycle back to the Writer. `researcher`, `analyst`, `writer`
-and `critic` are all built-in starter archetypes (`docket pod roles`) — no role YAML to add,
+are starter archetypes and `reviewer` is a built-in one (`docket pod roles`) — no role YAML to add,
 just roster and pipeline.
 
 This is the same pipeline shape as the built-in `research` pod blueprint
@@ -1007,8 +951,8 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
 
 ### Files
 
-- `pod.yaml` — what `apply` reads: `members: [researcher, analyst, writer, critic]`.
-- `pipeline.yaml` — `lead -> researcher -> analyst -> writer -> critic (verdict gate,
+- `pod.yaml` — what `apply` reads: `members: [researcher, analyst, writer, reviewer]`.
+- `pipeline.yaml` — `lead -> researcher -> analyst -> writer -> reviewer (verdict gate,
   rework -> writer, maxCycles 1)`.
 
 ### Undo
@@ -1143,7 +1087,7 @@ rm -r ~/.docket/config/pods/<project>/skills/security-review
 
 Specification-first development as a pipeline: nothing is implemented until a written spec clears an explicit approval gate.
 
-**Brings:** 3 members, 1 skill, pipeline `spec-first`. **Summary line:** `roles 0 · policies 0 · members 3 · pipeline spec-first · plugins 0 · skills 1 · settings 0`
+**Brings:** 2 members, 1 skill, pipeline `spec-first`. **Summary line:** `roles 0 · policies 0 · members 2 · pipeline spec-first · plugins 0 · skills 1 · settings 0`
 
 ```bash
 docket init --recipe spec-first
@@ -1155,9 +1099,9 @@ docket pod update spec-first
 **Source idea:** write the specification and get it approved before any implementation exists,
 so a design mistake is caught on paper rather than in a diff.
 
-**What docket's gates make structural:** `approve-spec` is a real verdict gate — a Critic's
-`REJECT` sends the task back to `spec` (bounded to one rework cycle), and `build` cannot run
-until that gate passes `APPROVE`. The Reviewer's own `APPROVE`/`REQUEST-CHANGES` gate after
+**What docket's gates make structural:** `approve-spec` is a real verdict gate — a Reviewer's
+`REQUEST-CHANGES` sends the task back to `spec` (bounded to one rework cycle), and `build` cannot run
+until that gate passes `APPROVE`. The same Reviewer's `APPROVE`/`REQUEST-CHANGES` gate after
 `build` is a separate, independent gate: an approved spec does not itself excuse a bad diff.
 
 ### Apply it
@@ -1169,26 +1113,25 @@ docket init --recipe spec-first          # a new pod for the current repository
 docket pod update spec-first    # onto an existing pod
 ```
 
-`pod.yaml` names the three members this recipe adds (`writer`, `critic`, `reviewer`); `apply`
+`pod.yaml` names the two members this recipe adds (`writer`, `reviewer`); `apply`
 validates the roster and `pipeline.yaml` before writing anything, and is safe to run again (a
 second run plans every item `skip`). `--dry-run` prints the plan without writing.
 
 ### Files
 
-- `pod.yaml` — what `apply` reads: `kind: pod`, `name: spec-first`, `members: [writer, critic,
+- `pod.yaml` — what `apply` reads: `kind: pod`, `name: spec-first`, `members: [writer,
   reviewer]`.
-- `pipeline.yaml` — `spec` (Writer drafts the specification) -> `approve-spec` (Critic,
-  APPROVE/REJECT verdict, rework -> spec, maxCycles 1) -> `build` (Implementer, gated on its own
+- `pipeline.yaml` — `spec` (Writer drafts the specification) -> `approve-spec` (Reviewer,
+  APPROVE/REQUEST-CHANGES verdict, rework -> spec, maxCycles 1) -> `build` (Implementer, gated on its own
   verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES verdict, rework -> build,
   maxCycles 1).
-- `skills/writing-a-spec/SKILL.md` -- the shape of a spec a Critic can approve and an Implementer can build from; listed in the prompt, read on demand with the `skill` tool.
+- `skills/writing-a-spec/SKILL.md` -- the shape of a spec a Reviewer can approve and an Implementer can build from; listed in the prompt, read on demand with the `skill` tool.
 
 ### Undo
 
 ```bash
 docket pod unset pipeline
 docket pod remove <project>-writer
-docket pod remove <project>-critic
 docket pod remove <project>-reviewer
 ```
 
@@ -1289,7 +1232,7 @@ docket pod remove <project>-implementer
 
 Test-driven development as a pipeline: a failing test is written and mechanically confirmed to fail before any implementation exists.
 
-**Brings:** 1 member, 1 skill, pipeline `tdd`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline tdd · plugins 0 · skills 1 · settings 0`
+**Brings:** 1 skill, pipeline `tdd`. **Summary line:** `roles 0 · policies 0 · members 0 · pipeline tdd · plugins 0 · skills 1 · settings 0`
 
 ```bash
 docket init --recipe tdd
@@ -1304,8 +1247,7 @@ Beck's red-green-refactor cycle).
 **What docket's gates make structural:** `check-red` is not advice — it is a `run` command step
 that actually executes the test suite and fails the whole task if the new test does not fail, so
 an Implementer cannot skip "red" and go straight to "green". `green`'s own verify command is a
-second, independent mechanical gate, and the Tester's PASS/FAIL verdict is a third; nothing here
-counts as done on an agent's own say-so.
+second, independent mechanical gate; nothing here counts as done on an agent's own say-so.
 
 ### Apply it
 
@@ -1316,17 +1258,16 @@ docket init --recipe tdd          # a new pod for the current repository
 docket pod update tdd    # onto an existing pod
 ```
 
-`pod.yaml` names the one member this recipe adds (`tester`); `apply` validates the roster and
-`pipeline.yaml` before writing anything, and is safe to run again (a second run plans every item
+`pod.yaml` adds no member (the pipeline needs only the pod's `lead` and `implementer`); `apply`
+validates the roster and `pipeline.yaml` before writing anything, and is safe to run again (a second run plans every item
 `skip`). `--dry-run` prints the plan without writing.
 
 ### Files
 
-- `pod.yaml` — what `apply` reads: `kind: pod`, `name: tdd`, `members: [tester]`.
+- `pod.yaml` — what `apply` reads: `kind: pod`, `name: tdd`, no members.
 - `pipeline.yaml` — `red` (Implementer writes exactly one failing test) -> `check-red` (a `run`
   command step, routed `on: {pass: fail, fail: green}` so the task fails outright if the new test
-  does not actually fail) -> `green` (Implementer, gated on its own verify command) -> `test`
-  (Tester, PASS/FAIL verdict). `check-red`'s command is the literal `python3 -m pytest -q` — the
+  does not actually fail) -> `green` (Implementer, gated on its own verify command). `check-red`'s command is the literal `python3 -m pytest -q` — the
   pipeline format's `run` field carries no `${var}`-style interpolation (only a step's
   `instructions` does), so edit this line by hand if the project's test runner is something else.
 - `skills/test-first/SKILL.md` -- how to write the one failing test and make it pass without widening scope; listed in the prompt, read on demand with the `skill` tool.
@@ -1335,7 +1276,6 @@ docket pod update tdd    # onto an existing pod
 
 ```bash
 docket pod unset pipeline
-docket pod remove <project>-tester
 ```
 
 ## web-research

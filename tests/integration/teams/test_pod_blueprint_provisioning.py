@@ -50,10 +50,10 @@ class TestBuiltinBlueprintsProvision:
         "blueprint_name,expected_roles",
         [
             ("software", ("lead", "implementer")),
-            ("research", ("lead", "researcher", "analyst", "writer", "critic")),
-            ("content", ("lead", "writer", "critic")),
+            ("research", ("lead", "researcher", "analyst", "writer", "reviewer")),
+            ("content", ("lead", "writer", "reviewer")),
             ("ops", ("lead", "operator", "monitor")),
-            ("agentic-product", ("lead", "implementer", "reviewer", "tester")),
+            ("agentic-product", ("lead", "implementer", "reviewer")),
         ],
     )
     def test_provisions_expected_members_and_files(
@@ -269,7 +269,7 @@ class TestDoctorAcceptsWorkdirBlueprint:
             assert _setup_check._check_project_agents(sorted(created)) == 0
 
     def test_agentic_product_pod_passes_doctor_clean(self, tmp_path: Path) -> None:
-        # codebase-kind, full (lead/implementer/reviewer/tester) roster —
+        # codebase-kind, full (lead/implementer/reviewer) roster —
         # same doctor path software's full pod (`--pod full`) already
         # exercises, just reached via a blueprint name.
         with _seed(tmp_path):
@@ -280,7 +280,6 @@ class TestDoctorAcceptsWorkdirBlueprint:
                 "implementer",
                 "lead",
                 "reviewer",
-                "tester",
             ]
             assert _setup_check._check_project_agents(sorted(created)) == 0
 
@@ -346,7 +345,7 @@ class TestFromSpecBlueprint:
 
             assert rc == 0
             ids = _ids(oc_dir)
-            for role in ("lead", "researcher", "analyst", "writer", "critic"):
+            for role in ("lead", "researcher", "analyst", "writer", "reviewer"):
                 assert f"myresearch-{role}" in ids
 
             meta = _meta(oc_dir, "myresearch-lead")

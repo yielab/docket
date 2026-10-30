@@ -1,6 +1,6 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 2.1.0
+**Version**: 2.1.1
 **Status**: Active
 **Last Updated**: 2026-10-25
 
@@ -130,8 +130,8 @@ The surface is `docket pod reset <member>`.
       (`test_members_have_correct_meta_and_shared_base_session_key`)
 - [ ] `docket pod show --pod myapp` lists the members with their roles and models
 - [ ] `docket status --pod myapp` counts the members immediately after creation *(untested)*
-- [ ] `docket init myapp ~/code/myapp --pod full` also creates `myapp-reviewer` and `myapp-tester`
-      (`test_full_pod_has_four_members`)
+- [ ] `docket init myapp ~/code/myapp --pod full` also creates `myapp-reviewer`
+      (`test_full_pod_has_three_members`)
 - [ ] A second `docket init myapp` fails with "A project or pod 'myapp' already exists." (exit 1)
       and does not touch the existing members *(untested)*
 - [ ] `docket pod delete --confirm myapp` removes every member, workspace, session and trace and
@@ -148,18 +148,18 @@ The surface is `docket pod reset <member>`.
 
 **As a** developer
 **I want** to queue a task and dispatch it through the pod pipeline
-**So that** the Lead, Implementer and optional Reviewer and Tester execute in sequence
+**So that** the Lead, Implementer and optional Reviewer execute in sequence
 
 **Acceptance Criteria:**
 - [ ] `docket task add "<task>"` queues a task on the pod (`test_queues_from_the_pod_in_the_environment`)
 - [ ] `docket task list` shows the task as `pending`, with a dash in the COST column because no
       cost is recorded *(untested)*
-- [ ] `docket run` runs Lead, Implementer, then Reviewer and Tester when the pod has them, one
+- [ ] `docket run` runs Lead, Implementer, then the Reviewer when the pod has one, one
       real agent turn per hop (`test_traces_written_per_hop`)
 - [ ] A Reviewer `REQUEST-CHANGES` sends the task back to the Implementer for one rework cycle by
-      default (`maxReworkCycles`); a second one fails the task; a Tester `FAIL` is terminal
+      default (`maxReworkCycles`); a second one fails the task
       (`test_request_changes_triggers_one_rework_then_approves`,
-      `test_second_request_changes_fails_the_task`, `test_builtin_tester_has_no_rework`)
+      `test_second_request_changes_fails_the_task`)
 - [ ] Each hop is budget-gated against the pod's `budgetUsd` using the labelled estimate. Over the
       cap the task is set to `blocked` (never rewritten to `pending`) and the pod is paused
       (`test_cap_breach_pauses_lead_and_blocks_task`,

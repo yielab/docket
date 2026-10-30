@@ -3,10 +3,10 @@
 Covers: closed-enum rejection (scope/modelClass/gateContract kind), the built-in and
 starter-library archetypes validating, the pod-overlay pattern (built-ins + starter library
 overlaid by a pod's own `config/roles/` files, the pod wins by name),
-`docket pod roles` list/show and `pod update <file>`, and that reviewer/tester gate-contract data resolved
+`docket pod roles` list/show and `pod update <file>`, and that the reviewer's gate-contract data resolved
 through `pipeline.domain.plan` matches `pipeline/domain/spec.py`'s own hardcoded `default_pipeline()`
 verdict gates -- gate execution is generic, not a cross-check against a dispatch-private regex
-constant (see `core/dispatch.py`'s docstring note on `_REVIEWER_VERDICT_RE`/`_TESTER_VERDICT_RE`).
+constant (see `core/dispatch.py`'s docstring note on `_REVIEWER_VERDICT_RE`).
 """
 
 from __future__ import annotations
@@ -16,9 +16,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from tests.support.cli import invoke_pod
 
 from docket.kernel.home import current_home
+from docket.kernel.templates import RECIPES_DIR
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
@@ -105,26 +107,23 @@ class TestClosedEnums:
 
 class TestBuiltinAndStarterArchetypes:
     def test_builtin_role_order(self) -> None:
-        assert builtin_roles.BUILTIN_ROLE_ORDER == ("lead", "implementer", "reviewer", "tester")
+        assert builtin_roles.BUILTIN_ROLE_ORDER == ("lead", "implementer", "reviewer")
 
     def test_starter_role_order(self) -> None:
         assert builtin_roles.STARTER_ROLE_ORDER == (
             "researcher",
             "analyst",
             "writer",
-            "critic",
             "operator",
             "monitor",
         )
 
-    @pytest.mark.parametrize("name", ["lead", "implementer", "reviewer", "tester"])
+    @pytest.mark.parametrize("name", ["lead", "implementer", "reviewer"])
     def test_builtin_validates(self, name: str) -> None:
         found = builtin_roles.BUILTIN_ARCHETYPES[name]
         assert arch.validate_archetype_dict(name, found.to_wire()) == []
 
-    @pytest.mark.parametrize(
-        "name", ["researcher", "analyst", "writer", "critic", "operator", "monitor"]
-    )
+    @pytest.mark.parametrize("name", ["researcher", "analyst", "writer", "operator", "monitor"])
     def test_starter_validates(self, name: str) -> None:
         found = builtin_roles.STARTER_ARCHETYPES[name]
         assert arch.validate_archetype_dict(name, found.to_wire()) == []
@@ -159,20 +158,31 @@ class TestBuiltinAndStarterArchetypes:
             v.lower() for v in reviewer_step.gate.pass_values
         ]
 
-    def test_tester_gate_matches_pipeline_default_verdict_gate(self) -> None:
-        """See the reviewer test's docstring above."""
-        found = builtin_roles.BUILTIN_ARCHETYPES["tester"]
-        assert found.gate_contract.kind == "verdict"
-        resolved = _orch._gate_from_contract(found.gate_contract)
-        assert isinstance(resolved, _gates.VerdictGate)
+    def test_the_registry_holds_exactly_the_eight_roles(self) -> None:
+        assert set(arch.load_registry("demo").role_names()) == {
+            "lead",
+            "implementer",
+            "reviewer",
+            "researcher",
+            "analyst",
+            "writer",
+            "operator",
+            "monitor",
+        }
 
-        spec = _pipeline.default_pipeline()
-        tester_step = next(s for s in spec.steps if s.id == "tester")
-        assert isinstance(tester_step.gate, _gates.VerdictGate)
-        assert resolved.pattern == tester_step.gate.pattern
-        assert [v.lower() for v in resolved.pass_values] == [
-            v.lower() for v in tester_step.gate.pass_values
-        ]
+    def test_the_reviewer_is_strong_and_judges_code_text_or_data(self) -> None:
+        found = builtin_roles.BUILTIN_ARCHETYPES["reviewer"]
+        assert found.model_class == "strong"
+        assert "code, text or data" in found.soul_template
+
+    def test_every_shipped_recipe_names_only_registered_roles(self) -> None:
+        registry = set(arch.load_registry("demo").role_names())
+        for pod_yaml in sorted(RECIPES_DIR.glob("*/pod.yaml")):
+            members = yaml.safe_load(pod_yaml.read_text(encoding="utf-8")).get("members", [])
+            own = {p.stem for p in pod_yaml.parent.glob("roles/*.yaml")}
+            assert set(members) <= registry | own, pod_yaml.parent.name
+        for pipeline_yaml in sorted(RECIPES_DIR.glob("*/pipeline.yaml")):
+            assert _pipeline.load_pipeline(pipeline_yaml.read_text(encoding="utf-8")).errors == []
 
     def test_lead_gate_is_none(self) -> None:
         assert builtin_roles.BUILTIN_ARCHETYPES["lead"].gate_contract.kind == "none"
@@ -194,12 +204,12 @@ class TestRender:
 
 
 class TestRegistryOverlay:
-    def test_load_registry_without_overlay_has_ten_roles(self, registry_file: Path) -> None:
+    def test_load_registry_without_overlay_has_eight_roles(self, registry_file: Path) -> None:
         registry = arch.load_registry("demo")
         assert set(registry.role_names()) == set(builtin_roles.BUILTIN_ARCHETYPES) | set(
             builtin_roles.STARTER_ARCHETYPES
         )
-        assert len(registry.role_names()) == 10
+        assert len(registry.role_names()) == 8
 
     def test_user_archetype_adds_new_role(self, registry_file: Path) -> None:
         doc = {
@@ -321,10 +331,10 @@ class TestRolesCli:
         assert self._run("roles", "nonexistent").exit_code == 1
 
     def test_show_known_prints_definition(self, registry_file: Path) -> None:
-        result = self._run("roles", "tester")
+        result = self._run("roles", "reviewer")
         assert result.exit_code == 0
-        assert "tester" in result.output
-        assert "PASS" in result.output or "regexes" in result.output.lower()
+        assert "reviewer" in result.output
+        assert "APPROVE" in result.output or "regexes" in result.output.lower()
 
     def test_apply_then_list(self, registry_file: Path, tmp_path: Path, seeded_pod: str) -> None:
         p = tmp_path / "producer.yaml"

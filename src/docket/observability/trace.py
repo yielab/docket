@@ -62,7 +62,6 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "budget_warning",
         "budget_exceeded",
         "verification_failed",
-        "tester_verdict_failed",
         "reviewer_verdict_unparseable",
         "rework_started",
         "review_rejected",
@@ -76,11 +75,9 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "approval_unused",  # a hop ended ok without issuing the call a person approved for it
         "run_cancellation_observed",  # execution first observed a persisted run request
         "run_cancelled",  # dispatch fully stopped and terminalized the requested run
-        # Generic verdict-gate outcomes for any role/archetype beyond the two
-        # built-in ones (which keep emitting their own names above —
-        # rework_started/review_rejected/reviewer_verdict_unparseable for
-        # reviewer, tester_verdict_failed for tester — see
-        # tasks/application/record.py's _verdict_event_names).
+        # Generic verdict-gate outcomes for any role/archetype beyond the reviewer (which keeps
+        # emitting its own names above: rework_started/review_rejected/
+        # reviewer_verdict_unparseable — see tasks/application/record.py's verdict_event_names).
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",

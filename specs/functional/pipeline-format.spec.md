@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 4.4.0
+**Version**: 4.5.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
 operator-input and wait steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
@@ -15,7 +15,7 @@ also define. The format owns *shape and validation*: what loads, and what a docu
 happens when a loaded pipeline runs belongs to `pod-dispatch.spec.md`.
 
 The **zero-migration contract** is this specification's central guarantee: a pod with no pipeline
-file runs the built-in pipeline, lead -> implementer -> reviewer -> tester with the gates this
+file runs the built-in pipeline, lead -> implementer -> reviewer with the gates this
 document lists. Installing the format changes nothing for an existing pod until an operator writes
 a pipeline file.
 
@@ -133,7 +133,7 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    command step (`run`, Requirement 9), an operator-input step (`input`, "Operator input steps") or
    a wait step (`wait`, "Wait steps"), which are exclusive of `role` and `agent`.
 3. `role` **MUST** be a lowercase slug (`^[a-z][a-z0-9_-]*$`). The format does **not** restrict
-   `role` to the four built-in roles (`lead`/`implementer`/`reviewer`/`tester`); any slug-shaped
+   `role` to the three built-in roles (`lead`/`implementer`/`reviewer`); any slug-shaped
    value validates, since whether it names a role a given pod has is a plan-time concern.
 4. `agent` **MUST** be a non-empty string (a specific member id, e.g. `myapp-implementer-2`); the
    format does not check that the id exists or belongs to any pod.
@@ -235,7 +235,7 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    (`list[str]`, non-empty: the verdict marker values that trigger the edge) and a `maxCycles`
    (`int`, `>= 0`, default `1`).
 2. `maxCycles: 0` **MUST** be a valid, meaningful value: it declares the edge but disables it (the
-   gate is a hard block on every `when` value, as the built-in Tester gate is). A gate with no
+   gate is a hard block on every `when` value). A gate with no
    rework at all simply omits `rework`; both are valid, distinct ways to say "no rework".
 3. The field is named `when`, not `on`, deliberately: YAML 1.1's implicit-boolean resolver (PyYAML's
    `safe_load`) parses a bare `on:` key as the boolean `True` unless quoted. Naming the field `when`
@@ -279,21 +279,19 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    gate) -> Implementer (`mechanical` gate, `command: None`, deferring to the target's own
    `verifyCmd`) -> Reviewer (`verdict` gate, pattern `^\s*(APPROVE|REQUEST-CHANGES)\b`,
    `passValues: [approve]`, a `rework` edge to `implementer` on `request-changes` with
-   `maxCycles: 1`) -> Tester (`verdict` gate, pattern `^\s*(PASS|FAIL)\b`, `passValues: [pass]`, no
-   rework).
+   `maxCycles: 1`). The pipeline ends at the Reviewer's `APPROVE`: three steps, three hops.
 2. This built-in pipeline **MUST** agree with what the dispatcher treats as the default pod
    pipeline: its role order **MUST** equal the dispatcher's built-in role order, and a bare
-   `role: reviewer` or `role: tester` step with no `gate` of its own **MUST** resolve (through the
+   `role: reviewer` step with no `gate` of its own **MUST** resolve (through the
    role archetype's `gateContract`) to a verdict gate with the byte-identical `pattern` and
    case-insensitively equal `passValues` that the built-in pipeline's explicit gates declare. Both
    equivalences are drift-guarded by tests, not merely documented.
 3. Loading an explicitly **empty** string (an existing but empty file) **MUST NOT** be treated as
    the zero-migration case — it **MUST** be a validation error (an empty document), distinct from
    "no file at all".
-4. A pod whose roster lacks a role the built-in pipeline names (a lean pod with no Reviewer or
-   Tester) is unaffected by the format: a step whose role has no member is skipped when the plan is
+4. A pod whose roster lacks a role the built-in pipeline names (a lean pod with no Reviewer) is unaffected by the format: a step whose role has no member is skipped when the plan is
    built (`pod-dispatch.spec.md`, "Pipeline order and participation"); the built-in pipeline always
-   names the full four-role sequence.
+   names the full three-role sequence.
 
 ### Loading and validation
 
@@ -330,10 +328,9 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    **MUST** be a load error naming the step. A command or input step's mapping carries the
    canonical step's own keys unchanged (an unknown key is rejected by validation); a `parallel`
    group's mapping carries only `parallel`.
-3. The target string **MUST** become `role:` when it is one of `lead`/`implementer`/`reviewer`/
-   `tester`, or when it is not shaped like a pod member id; it **MUST** become `agent:` when it is
+3. The target string **MUST** become `role:` when it is one of `lead`/`implementer`/`reviewer`, or when it is not shaped like a pod member id; it **MUST** become `agent:` when it is
    shaped like one — `<prefix>-<role>` or `<prefix>-<role>-<index>` where `<role>` is one of the
-   four base roles — recognized by shape alone, as the `archetype` field's slug shape is, without
+   three base roles — recognized by shape alone, as the `archetype` field's slug shape is, without
    consulting any registry. `security-vetter` is therefore a `role:` (its last segment, `vetter`, is
    not a base role); `myshop-implementer` and `myshop-implementer-2` are `agent:`.
 4. The recognized sugar keys, each optional, **MUST** be mapped as follows:
@@ -671,9 +668,9 @@ steps:
 - Every level of the model (`PipelineSpec`, `Step`, `MechanicalGate`, `VerdictGate`, `ApprovalGate`,
   `ExternalGate`, `ReworkEdge`, `Variable`, `When`, `InputSpec`) rejects unknown keys.
 - `default_pipeline()`'s role order **MUST** equal the dispatcher's built-in role order, checked
-  directly by a test rather than against a hand-copied literal. Its Reviewer and Tester gates
-  **MUST** equal the gates the role archetypes' `gateContract` resolve to for a bare `reviewer` and
-  `tester` step (same pattern, case-insensitively equal `passValues`, both `caseSensitive: false`).
+  directly by a test rather than against a hand-copied literal. Its Reviewer gate
+  **MUST** equal the gate the role archetype's `gateContract` resolves to for a bare `reviewer`
+  step (same pattern, case-insensitively equal `passValues`, both `caseSensitive: false`).
 - Loading contains no executor, CLI command or plan renderer: those are the dispatcher, the
   orchestrator's plan functions and the `pod` commands.
 

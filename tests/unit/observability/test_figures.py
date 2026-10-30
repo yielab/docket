@@ -53,10 +53,10 @@ class TestFoldCacheHits:
         assert folded.total.ratio == 250 / 1100
 
     def test_a_record_without_a_task_counts_for_its_role_only(self) -> None:
-        folded = figures.fold_cache_hits([_call("tester", None, 100, 10)])
+        folded = figures.fold_cache_hits([_call("reviewer", None, 100, 10)])
 
         assert folded.by_task == {}
-        assert folded.by_role["tester"].ratio == 0.1
+        assert folded.by_role["reviewer"].ratio == 0.1
 
     def test_skips_other_events_and_malformed_payloads(self) -> None:
         records: list[dict[str, Any]] = [

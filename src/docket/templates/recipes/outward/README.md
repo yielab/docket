@@ -1,17 +1,17 @@
 # outward
 
-Researcher -> Writer -> Critic (APPROVE or REJECT, one rework back to the Writer) -> Actor.
+Researcher -> Writer -> Reviewer (APPROVE or REQUEST-CHANGES, one rework back to the Writer) -> Actor.
 
 A pod that acts outside the machine: it sends a message, submits a form, posts, books, pays, or
 asks another agent to. The Researcher gathers, the Writer drafts into the working directory, the
-Critic vets, and only the Actor holds a `send` tool. Reading and acting are kept apart: the roles
+Reviewer vets, and only the Actor holds a `send` tool. Reading and acting are kept apart: the roles
 that read cannot send, and the role that sends cannot read the web, so what leaves was decided
 before the Actor ran.
 
 ## How the separation holds
 
 - A `send` tool (a tool of an MCP server declared `--kind send`) reaches a role only when the
-  role's own `tools` list names it. The Researcher, Writer and Critic name none, so they are never
+  role's own `tools` list names it. The Researcher, Writer and Reviewer name none, so they are never
   offered one. The Actor names `mcp__outbox__send` and nothing that reads the web.
 - `docket pod update` and `docket pod validate` refuse a role whose `tools` name a `send` tool
   and that still holds `fetch` or a tool of a `read` server. A step's `tools` can satisfy the rule
@@ -102,15 +102,15 @@ the draft lives in its working directory:
 docket pod update outward
 ```
 
-`pod.yaml` names the four members this recipe adds: `researcher`, `writer`, `critic` and `actor`.
+`pod.yaml` names the four members this recipe adds: `researcher`, `writer`, `reviewer` and `actor`.
 `apply` validates the roster, the pipeline, the read/act rule and the policy before writing
 anything, and is safe to run again. `--dry-run` prints the plan without writing.
 
 ## Files
 
-- `pod.yaml` - `members: [researcher, writer, critic, actor]`.
-- `pipeline.yaml` - `research` (Researcher) -> `draft` (Writer) -> `review` (Critic, APPROVE or
-  REJECT, one rework to `draft`) -> `act` (Actor).
+- `pod.yaml` - `members: [researcher, writer, reviewer, actor]`.
+- `pipeline.yaml` - `research` (Researcher) -> `draft` (Writer) -> `review` (Reviewer, APPROVE or
+  REQUEST-CHANGES, one rework to `draft`) -> `act` (Actor).
 - `roles/actor.yaml` and `roles/actor.md` - the Actor: `tools: [read, glob, mcp__outbox__send]`,
   denied `write`, `edit` and `bash`.
 - `policies/ask-before-send.yaml` - asks before the Actor's `send` tool, with the message the
@@ -128,6 +128,6 @@ anything, and is safe to run again. `--dry-run` prints the plan without writing.
 docket pod unset pipeline
 docket pod remove <project>-researcher
 docket pod remove <project>-writer
-docket pod remove <project>-critic
+docket pod remove <project>-reviewer
 docket pod remove <project>-actor
 ```

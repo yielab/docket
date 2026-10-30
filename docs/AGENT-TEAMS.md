@@ -20,7 +20,7 @@ makes naive multi-agent setups fall apart.
 | Axis | Values | Meaning |
 |------|--------|---------|
 | **scope** | `project` | Owned by exactly one project; no agent is shared between pods |
-| **role** | lead, implementer, reviewer, tester, … | What the agent is *for* |
+| **role** | lead, implementer, reviewer, … | What the agent is *for* |
 
 Every team member lives in a **project pod** — `scope: project`, a self-contained team **per project**, never shared.
 
@@ -37,7 +37,7 @@ Each member is a distinct registered agent with its **own permission-locked work
 (`700`/`600`, with `SOUL.md`, `AGENTS.md`, `HEARTBEAT.md`, `.docket-meta.json`, and a `memory/`
 log) — so **no role is ever shared between two projects.**
 
-The default pod is **lean — a Lead and an Implementer.** You add Reviewer, Tester, or extra
+The default pod is **lean — a Lead and an Implementer.** You add a Reviewer, or extra
 Implementers when the work warrants it.
 
 <p align="center">
@@ -48,16 +48,15 @@ Implementers when the work warrants it.
 |----------|:-----------:|----------------|---------------------|
 | **Lead** | **never** | Orchestrates the pod, owns its context and memory, decomposes work, dispatches to workers; surfaces architectural decisions and risky actions at the top of the plan with assumptions and open questions listed | cheap (coordination) |
 | **Implementer** | **yes** | Runs *inside* the project workspace and writes the code | strong (reasoning-dense) |
-| **Reviewer** *(optional)* | no (read-only) | Veto on the diff — correctness + security gate | cheap |
-| **Tester** *(optional)* | no | Behaviour-only validation: PASS / FAIL | cheap |
+| **Reviewer** *(optional)* | no (read-only) | Veto on the work of the step before — correctness + security gate | strong |
 
 Member ids are predictable: `myapp-lead`, `myapp-implementer`, `myapp-implementer-2`,
-`myapp-reviewer`, `myapp-tester`. Because each is an ordinary registered agent,
+`myapp-reviewer`. Because each is an ordinary registered agent,
 `docket status --all` and `docket setup` cover every pod member for free.
 
 ```bash
 docket init myapp ~/code/myapp       # lean pod: myapp-lead + myapp-implementer
-docket init myapp ~/code/myapp --pod full        # full pod: + reviewer + tester
+docket init myapp ~/code/myapp --pod full        # full pod: + reviewer
 docket init myapp ~/code/myapp --with reviewer   # lean pod + a reviewer
 cd ~/code/myapp && docket init       # same lean pod, id/path/stack derived from the cwd;
                                      # a committed .docket/ is validated and applied
@@ -88,18 +87,16 @@ docket pod update ./producer.yaml  # register a custom archetype from a YAML fil
 docket pod validate ./producer.yaml   # dry-run the schema + template render
 ```
 
-Four **built-in** archetypes cover the everyday roster. A **starter library**
-ships six more you can drop into any pod without writing a line of YAML:
+Three **built-in** archetypes cover the everyday roster. A **starter library**
+ships five more you can drop into any pod without writing a line of YAML:
 
 | Name | Class | Gate | Denied tools |
 |---|---|---|---|
 | `lead` *(built-in)* | cheap | none | write, edit, bash |
 | `implementer` *(built-in)* | strong | mechanical (`verifyCmd`) | none |
-| `reviewer` *(built-in)* | cheap | verdict (APPROVE / REQUEST-CHANGES) | write, edit, bash |
-| `tester` *(built-in)* | cheap | verdict (PASS / FAIL) | write, edit |
+| `reviewer` *(built-in)* | strong | verdict (APPROVE / REQUEST-CHANGES) | write, edit, bash |
 | `researcher`, `analyst` *(starter)* | strong | none | none |
 | `writer` *(starter)* | cheap | none | none |
-| `critic` *(starter)* | cheap | verdict (APPROVE / REJECT) | write, edit, bash |
 | `operator` *(starter)* | strong | mechanical | none |
 | `monitor` *(starter)* | cheap | approval | write, edit, bash |
 
@@ -130,23 +127,23 @@ pipeline, a workspace kind, and an optional default budget cap — provisioned i
 
 ```bash
 docket init my-market-scan --blueprint research
-# Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, critic)...
+# Provisioning 'research' pod 'my-market-scan' (lead, researcher, analyst, writer, reviewer)...
 ```
 
 | Blueprint | Workspace kind | Roster | Default budget | Gated step |
 |---|---|---|---|---|
 | `software` *(default)* | codebase | lead, implementer | (none) | implementer: mechanical |
-| `research` | workdir | lead, researcher, analyst, writer, critic | $20 | critic: verdict, rework -> writer |
-| `content` | workdir | lead, writer, critic | $15 | critic: verdict, rework -> writer |
+| `research` | workdir | lead, researcher, analyst, writer, reviewer | $20 | reviewer: verdict, rework -> writer |
+| `content` | workdir | lead, writer, reviewer | $15 | reviewer: verdict, rework -> writer |
 | `ops` | workdir | lead, operator, monitor | $30 | operator: mechanical; monitor: approval |
-| `agentic-product` | codebase | lead, implementer, reviewer, tester | (none) | implementer: mechanical; reviewer: verdict, rework -> implementer; tester: verdict, hard fail |
+| `agentic-product` | codebase | lead, implementer, reviewer | (none) | implementer: mechanical; reviewer: verdict, rework -> implementer |
 
 Omitting `--blueprint` (or passing `--blueprint software` explicitly) is exactly a plain
 `docket init` — same roster, same files, no behavior change. `research`/`content`/`ops` are
 **`workdir`-kind**: no codebase is assumed or auto-detected; the pod gets a shared working
 directory instead (auto-provisioned if you don't name one). `agentic-product` is `codebase`-kind
-like `software`, but its roster is the full Lead+Implementer+Reviewer+Tester set, so both gated
-steps actually reach a hop at dispatch time instead of going unreached behind `software`'s lean
+like `software`, but its roster is the full Lead+Implementer+Reviewer set, so the gated
+review step actually reaches a hop at dispatch time instead of going unreached behind `software`'s lean
 default roster — the intended shape for a pod that ships its own agent to end users, where the
 review + test gate is warranted by default rather than opt-in. `--pod full`/`--with` only apply to
 the `software` roster — passing them against another blueprint warns and provisions that
@@ -156,16 +153,16 @@ A `workdir` pod has no repository behind it. Its members share one working direc
 `workDir`, and its hop prompts speak of that directory rather than of code or git; a task that names
 a `baseRef` fails before any hop, since there is no branch to start from. The
 [`outward` recipe](recipes.md#outward) is a `workdir` team for work that acts outside the machine:
-a Researcher gathers, a Writer drafts into the working directory, a Critic vets, and an Actor is the
+a Researcher gathers, a Writer drafts into the working directory, a Reviewer vets, and an Actor is the
 only role that holds a `send` tool.
 
 The five built-ins above are the whole blueprint registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
 `docket pod add <role>`. For a pre-built shape instead of composing by hand, use a
-**recipe**. Eighteen ship with docket: teams (`secure-build`, `research-review`,
+**recipe**. Seventeen ship with docket: teams (`secure-build`, `research-review`,
 `ops-approval`, `intake`), policy packs that change no roster (`git-safety`, `no-egress`,
 `secrets-guard`, `prod-approval`), methodology pipelines that are the practice (`tdd`,
-`spec-first`, `spec-writer`, `reflexion`, `dual-review`, `cross-family-review`, `frugal`), checks
+`spec-first`, `spec-writer`, `reflexion`, `cross-family-review`, `frugal`), checks
 that fail a task whose tests prove nothing (`anti-tautology`, `mutation`), and a tool pack
 (`code-intel`). `docket pod recipes` shows what each brings, derived from
 its files; `docket init --recipe tdd` starts a new pod from one, `docket pod update
@@ -200,7 +197,7 @@ The pod model is not decoration. It rules out three concrete failures of a naive
 The `docket run` command drives a pod's queued work through its pipeline, **one real agent turn per hop**:
 
 ```
-Lead  →  Implementer  →  Reviewer (if present)  →  Tester (if present)
+Lead  →  Implementer  →  Reviewer (if present)
 ```
 
 That is the built-in order when no pipeline is bound; a `kind: pipeline` in `.docket/` (or a
@@ -221,7 +218,7 @@ Each hop that isn't the Lead is **gated** before the pipeline advances past it:
 - **Implementer → mechanical gate.** If the Implementer has a `verifyCmd` set
   (`docket pod add implementer --verify "<cmd>"` or
   `docket pod set verify "<cmd>" --member <member-id>`), dispatch runs it after a successful hop and a nonzero exit fails the task, never
-  advancing to Reviewer/Tester. An unset `verifyCmd` is never silently skipped — it's a visible
+  advancing to the Reviewer. An unset `verifyCmd` is never silently skipped — it's a visible
   "verification skipped" line, so you can always tell "not configured" from "configured and
   passing."
 - **Reviewer → verdict gate, with bounded rework.** The Reviewer closes with `handoff` and a
@@ -229,10 +226,6 @@ Each hop that isn't the Lead is **gated** before the pipeline advances past it:
   two different markers are unparseable. A `REQUEST-CHANGES` sends the task back to the
   Implementer with the Reviewer's feedback attached, bounded by a rework budget (`maxReworkCycles`,
   default 1); exhausting it — or a second rejection — fails the task.
-- **Tester → verdict gate, hard fail.** The Tester closes with `handoff` and a `verdict` of `PASS` or
-  `FAIL`; a reply ending with exactly one of those markers at the start of a line is still read.
-  Unlike the Reviewer, there is no rework loop here — a `FAIL` or unparseable output fails the
-  task outright.
 
 Three guarantees hold on every dispatch:
 
@@ -340,7 +333,7 @@ DOCKET_SCRATCH_DIR=<scratch_dir>
 ```
 
 — layered on top of the parent environment (which is never mutated). Every other hop (Lead,
-Reviewer, Tester, or an Implementer with no allocation) gets no override — today's
+Reviewer, or an Implementer with no allocation) gets no override — today's
 inherit-the-parent-env behavior.
 
 ---
@@ -446,13 +439,12 @@ Start lean and grow only when the work earns it:
 |-----------|-----|
 | Prototyping, low-risk changes, solo project | **lean** (Lead + Implementer) — the default |
 | Code that needs a correctness/security gate before it lands | add a **Reviewer** (`--with reviewer`) |
-| Behaviour you want validated independently of the diff | add a **Tester** (`--with tester`) |
 | High-stakes or high-blast-radius work | **full** pod (`--pod full`) |
 | One Implementer is the bottleneck | `docket pod add implementer` (parallel doers) |
 | Non-software work (research, writing, ops) | pick a **blueprint** (`--blueprint research`) instead of building roles up by hand |
 
-The Reviewer and Tester are the difference between "an agent changed the code" and "a change was
-reviewed and validated before it landed" — the line between a prototype and a change you can let
+The Reviewer is the difference between "an agent changed the code" and "a change was
+reviewed before it landed" — the line between a prototype and a change you can let
 into a real codebase.
 
 ---
@@ -481,8 +473,7 @@ for what class a given role carries.
 |------|---------------|
 | Lead | cheap |
 | Implementer | strong |
-| Reviewer | cheap |
-| Tester | cheap |
+| Reviewer | strong |
 
 See [Architecture (DOCKET)](DOCKET.md) for the routing internals and
 [Command Reference](commands.md) for every flag.
@@ -495,11 +486,11 @@ See [Architecture (DOCKET)](DOCKET.md) for the routing internals and
 # Provision / resize a pod
 docket init                               # lean pod for the cwd (id, path, stack derived from it)
 docket init <project> [path]              # lean pod (Lead + Implementer)
-docket init <project> [path] --pod full   # + Reviewer + Tester
-docket init <project> [path] --with reviewer,tester
+docket init <project> [path] --pod full   # + Reviewer
+docket init <project> [path] --with reviewer
 docket init <project> [path] --blueprint <name>   # software (default) | research | content | ops
                                                    # | agentic-product
-docket pod recipes                      # the eighteen shipped recipes and your own, what each brings
+docket pod recipes                      # the seventeen shipped recipes and your own, what each brings
 docket init --recipe <name|dir>          # + a recipe (a team, a policy pack, a methodology) or
                                          #   your own directory; a committed .docket/ is applied
                                          #   by plain `docket init`

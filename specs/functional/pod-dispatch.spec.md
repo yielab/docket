@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.8.0
+**Version**: 11.8.1
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -380,10 +380,10 @@ wired agent's conversation current with the task it is working.
    unpatched; otherwise the Lead's `blueprint` is looked up (`get_blueprint`) and, when it names a
    known blueprint, that blueprint's `defaultPipeline` is the base pipeline; when it is absent,
    empty, or names an unknown blueprint, the base pipeline is `default_pipeline()` -- Lead ->
-   Implementer -> Reviewer -> Tester. Only the blueprint or built-in base pipeline is then patched
+   Implementer -> Reviewer. Only the blueprint or built-in base pipeline is then patched
    so every `VerdictGate` step with a rework edge reflects this pod's own `maxReworkCycles` (see
    "Reviewer verdict gate and bounded rework") -- for a blueprint pipeline this reaches whichever
-   step declares the rework edge (e.g. the `research`/`content` blueprints' Critic step), not only a
+   step declares the rework edge (e.g. the `research`/`content` blueprints' Reviewer step), not only a
    step named `reviewer`. A bound pipeline is caller-supplied-like and is **never** patched this way
    -- an operator who hand-wrote a rework edge's own `maxCycles` did not ask for the pod setting to
    override it, the same as a `docket run --pipeline` file. A role-targeted step whose role the pod
@@ -417,10 +417,10 @@ wired agent's conversation current with the task it is working.
    counts are tracked per *gated step id*, not one pod-wide counter, since a custom pipeline may
    declare more than one independent rework-capable gate (the built-in pipeline has one -- the
    Reviewer's).
-5. A custom `PipelineSpec` **MAY** target a role outside the built-in four (`PIPELINE_ORDER`), e.g.
-   a starter-library `researcher`/`critic`, or a role defined only in this pod's own overlay --
+5. A custom `PipelineSpec` **MAY** target a role outside the built-in three (`PIPELINE_ORDER`), e.g.
+   a starter-library `researcher`/`writer`, or a role defined only in this pod's own overlay --
    `pod_full_roster` resolves *every* role the pod's members carry (first member per role), not
-   just the four built-in ones `pod_pipeline` considers. The pod's roster resolution **MUST**
+   just the three built-in ones `pod_pipeline` considers. The pod's roster resolution **MUST**
    resolve a role against the pod's own archetype overlay as well as the global registry, so a
    pod-only custom role is a real roster member, not only visible to `docket pod roles --pod`.
 6. `docket pod set pipeline <file>` **MUST** validate *file* (`load_pipeline`) and plan it against
@@ -468,13 +468,13 @@ wired agent's conversation current with the task it is working.
    cost, as specified under "Runtime driver resolution" below.
 2. The message handed to each role **MUST** thread prior hops' output so a later role sees what
    earlier roles produced, subject to the per-role token budget (see "Bounded hop prompts" below);
-   the Reviewer and Tester messages additionally state their required verdict-marker reply
+   the Reviewer's message additionally states their required verdict-marker reply
    convention verbatim, and a non-Implementer verdict-gated hop with a task worktree is reminded
    that its final message must end with the marker as its last line.
 3. An **Implementer** hop with an allocated pod port range (`portRangeStart` set) **MUST** receive
    `DOCKET_PORT_BASE`, `DOCKET_PORT_COUNT`, and `DOCKET_SCRATCH_DIR` in its tool subprocesses' real
    environment (layered on top of the parent environment, which is never mutated). Every other hop
-   (Lead, Reviewer, Tester, or an Implementer with no allocation) **MUST** receive no such override.
+   (Lead, Reviewer, or an Implementer with no allocation) **MUST** receive no such override.
    See `docket-meta.spec.md` for the fields themselves.
    A **jailed** command (a hop's `bash`, a `verifyCmd`, a gate command or a `run:` step, with a
    sandbox backend resolved for it) **MUST** additionally run with `HOME`, `XDG_CACHE_HOME`,
@@ -558,8 +558,8 @@ wired agent's conversation current with the task it is working.
    "Cancellation"). A successful turn carries no `failure_kind`. The `daemon_error` spelling is
    persisted API vocabulary; it does not imply an external process dependency.
 2. Only `timeout` and `daemon_error` **MUST** be treated as retryable -- a transient hiccup, not a
-   real answer. `nonzero_exit` and `invalid_output` (and, separately, a bad Reviewer or Tester
-   verdict -- see those gates) **MUST NEVER** be retried: retrying a real failure risks masking it
+   real answer. `nonzero_exit` and `invalid_output` (and, separately, a bad Reviewer
+   verdict -- see that gate) **MUST NEVER** be retried: retrying a real failure risks masking it
    as transient and burns budget for nothing.
 3. A retryable failure **MUST** be retried in place, up to a per-role budget
    (`DISPATCH_RETRIES_PER_ROLE`, default 2 additional attempts -- 3 total tries -- for each of the
@@ -1227,14 +1227,14 @@ mechanically gated step.
    budget.
 4. A verification failure **MUST** transition the task to `failed` (reason `verifyCmd failed:
    '<cmd>'`), emit a `verification_failed` trace event with the command and its redacted output, and
-   **MUST NOT** advance to Reviewer/Tester.
+   **MUST NOT** advance to the Reviewer.
 5. If `verifyCmd` is unset or empty, dispatch **MUST NOT** silently skip without a visible record
    (an operator can tell whether a gate was configured, never guess): it emits a `tool_result` trace
    event (`{"verification": "skipped", "member": <id>}`) and sets the hop's own in-memory
    `HopResult.verification_skipped` flag, which `docket run` prints as `verification skipped —
    verifyCmd not set for <id>`.
-6. In the built-in pipeline only the Implementer step carries a mechanical gate; a Reviewer or
-   Tester step runs no verify command unless its own pipeline step declares one.
+6. In the built-in pipeline only the Implementer step carries a mechanical gate; a Reviewer
+   step runs no verify command unless its own pipeline step declares one.
 7. With isolation recorded on, the verify command **MUST** run inside the same jail a `bash` call of
    the pod takes (`security-gates.spec.md` Exec sandbox): cwd the task worktree, the worktree its
    read-write root, the pod's network, and every prepared cache entry the worktree links into as a
@@ -1263,7 +1263,7 @@ mechanically gated step.
    `verifyCmd` or the mechanical gate's own `command` field.
 2. When `requireVerify` is `true` and an Implementer hop's mechanical gate finds no command,
    dispatch **MUST** transition the task to `failed` (reason: `"verifyCmd required but not set"`)
-   and **MUST NOT** advance to Reviewer/Tester.
+   and **MUST NOT** advance to the Reviewer.
 3. A `verification_failed` trace event **MUST** be emitted with `{"reason": "verification_missing",
    "member": <implementer_id>}` when this rule triggers.
 4. When `requireVerify` is `false` (the default), an unset `verifyCmd` behaves as documented in
@@ -1281,7 +1281,6 @@ parsing for any verdict-gated step (`parse_verdict`).
    verdict, a marker embedded later in prose does not count, and zero marker lines is
    unparseable. The Reviewer's instruction **MUST** say that the last line of its final message is
    exactly `APPROVE` or `REQUEST-CHANGES`, with nothing else on that line and reasons above it.
-   The same generic parser and instruction convention apply to the Tester's PASS/FAIL gate.
 2. An `APPROVE` verdict **MUST** allow the pipeline to advance past the Reviewer normally.
 3. A `REQUEST-CHANGES` verdict **MUST NOT** immediately fail the task. Instead, while the pod's
    rework budget (`maxReworkCycles`, a pod setting, default `1`; `0` disables rework entirely,
@@ -1300,7 +1299,7 @@ parsing for any verdict-gated step (`parse_verdict`).
    (`reviewer rejected after N rework cycle(s): REQUEST-CHANGES`).
 5. Reviewer output with zero recognized marker lines, after the one re-ask of "Generalized gate
    execution", **MUST** be treated as unparseable -- distinct from an explicit `REQUEST-CHANGES` rejection,
-   mirroring the Tester gate's FAIL-vs-unparseable distinction. This **MUST** emit a
+   so a verdict is never guessed. This **MUST** emit a
    `reviewer_verdict_unparseable` trace event and fail the task immediately (unparseable output is
    never given a rework cycle).
 6. Every rework cycle's hops (the re-run Implementer, the re-run Reviewer) **MUST** persist into the
@@ -1309,25 +1308,6 @@ parsing for any verdict-gated step (`parse_verdict`).
    persistence and crash recovery").
 7. This gate **MUST NOT** affect pods with no Reviewer member -- the check only runs when a Reviewer
    hop is part of the pipeline for that pod.
-
-### Tester PASS/FAIL gate
-
-1. After a **successful** Tester hop (`run_turn` returned `ok`), dispatch **MUST** read the verdict
-   with `parse_verdict` against `^\s*(PASS|FAIL)\b` case-insensitively, under the same rule as the
-   Reviewer's: decoration stripped, the last marker line is the verdict, zero marker lines is
-   unparseable. Marker words embedded later in a prose line do not count.
-2. A `PASS` verdict **MUST** allow the pipeline to advance normally.
-3. A `FAIL` verdict, or unparseable output (empty or no recognized marker line, after the one
-   re-ask), **MUST** block pipeline advancement: the task transitions to `failed`
-   with a distinct reason (`"tester reported FAIL"` vs `tester output unparseable (expected one
-   unambiguous recognized verdict marker at the start of a line)`), and a `tester_verdict_failed`
-   trace event **MUST** be emitted carrying the parsed verdict (`"fail"` or `"unparseable"`) and the
-   redacted output. FAIL and unparseable **MUST** remain distinguishable in the reason and are never
-   conflated.
-4. This gate **MUST NOT** affect pods with no Tester member. Unlike the Reviewer gate, there is no
-   rework loop on a Tester FAIL -- it is a hard terminal gate.
-5. This gate is structural, not textual advice: a successful turn alone (`ok=True`) is insufficient
-   for the pipeline to advance past a Tester hop -- the reply content itself is inspected.
 
 ### Generalized gate execution
 
@@ -1391,13 +1371,12 @@ parsing for any verdict-gated step (`parse_verdict`).
      waiting_approval") -- by the time a hop's turn has run, an `ApprovalGate` simply advances.
      Outcome routing (item 5) does not apply to an approval gate.
    - An `ExternalGate` is evaluated as item 6 describes.
-3. **Byte-identical behaviour for the four built-in roles is a hard requirement.** In the built-in
+3. **Byte-identical behaviour for the three built-in roles is a hard requirement.** In the built-in
    `default_pipeline()`, every step declares its own explicit gate (Lead: none; Implementer:
-   `MechanicalGate(command=None)`; Reviewer/Tester: `VerdictGate(...)`), so the archetype-fallback
+   `MechanicalGate(command=None)`; Reviewer: `VerdictGate(...)`), so the archetype-fallback
    path in requirement 1 never fires for any of them. Trace event *names* for a verdict outcome come
    from a lookup by role, not a decision branch: `reviewer` emits
-   `rework_started`/`review_rejected`/`reviewer_verdict_unparseable`; `tester` emits
-   `tester_verdict_failed` for both a rejected and an unparseable verdict; any other role or
+   `rework_started`/`review_rejected`/`reviewer_verdict_unparseable`; any other role or
    archetype emits the generic names `verdict_rework_started`/`verdict_rejected`/
    `verdict_unparseable`.
 4. A step **MAY** declare its own `retries`/`timeout`, overriding the pod's role-based retry budget
@@ -2015,8 +1994,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    malformed, cross-pod, or unregistered path **MUST** be ignored; it is never a caller-controlled
    arbitrary root expansion.
 3. The coordinate **MUST** be removed before constructing the tool subprocess environment.
-   Reviewer and Tester tool capabilities remain role-narrowed; this changes which checkout they can
-   read and test, not whether they can write.
+   The Reviewer's tool capabilities remain role-narrowed; this changes which checkout they can
+   read, not whether they can write.
 4. The path note is bounded context, not copied session history. The typed artifact remains the only
    prior-hop content carried into the downstream session.
 
@@ -2152,7 +2131,7 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    a route ended it with `stop`, and, for a task with a worktree, its diff touched no protected path
    or a person granted it ("A change that edits its own check"). Terminal.
 4. `failed` -- a hop failed (after exhausting any retries), a gate failed (`verifyCmd`, an external
-   or task gate, a Tester FAIL or unparseable verdict, a Reviewer's exhausted rework budget or
+   or task gate, a Reviewer's exhausted rework budget or
    unparseable verdict), a route went to `fail`, a claim-time or in-run refusal settled it, a stale
    claim was swept, or an approval was denied. Terminal for this dispatch attempt, **except** that a
    `failureKind` in `RESUMABLE_FAILURE_KINDS` (`stale_claim`, `dispatch_refused`) is reclaimable via
@@ -2364,7 +2343,6 @@ budget_warning               # action "unpriced_model": the hop's model has no p
                              #   cannot stop it; the hop runs (cost-tracking.spec.md)
 verification_failed          # a mechanical or external gate did not pass (any role); an external
                              #   gate's payload carries its label and `source: "task"` for a task gate
-tester_verdict_failed        # the Tester's reply was FAIL or unparseable
 rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle
 review_rejected              # a REQUEST-CHANGES after the rework budget was exhausted
 verdict_reasked              # a verdict-gated hop's reply had no marker; one more request was sent
@@ -2410,12 +2388,12 @@ ok 1 done · 0 failed · 6.1k tokens (~$0.00 est.)
 -> Next: docket status
 ```
 
-### A full pod stopped by a Tester FAIL
+### A full pod stopped by an exhausted rework budget
 
 ```text
 $ docket run
--> Running 1 pending task(s) through: lead → implementer → reviewer → tester
-x   [task-91a2c410-...] failed — tester reported FAIL
+-> Running 1 pending task(s) through: lead → implementer → reviewer
+x   [task-91a2c410-...] failed — reviewer rejected after 1 rework cycle(s): REQUEST-CHANGES
 x 0 done · 1 failed · 18.4k tokens (~$0.00 est.)
 -> Next: docket inbox
 ```
@@ -2427,14 +2405,14 @@ x 0 done · 1 failed · 18.4k tokens (~$0.00 est.)
 
 ```text
 $ docket run
--> Running 1 pending task(s) through: lead → implementer → reviewer → tester
-ok   [task-7c1e2b90-...] done — 6 hop(s)
+-> Running 1 pending task(s) through: lead → implementer → reviewer
+ok   [task-7c1e2b90-...] done — 5 hop(s)
 ok 1 done · 0 failed · 31.0k tokens (~$0.00 est.)
 -> Next: docket status
 ```
 
 (`hops[]` for this task shows: lead, implementer, reviewer [REQUEST-CHANGES], implementer [rework],
-reviewer [APPROVE], tester [PASS] -- six hops, because the one rework cycle re-ran the Implementer
+reviewer [APPROVE] -- five hops, because the one rework cycle re-ran the Implementer
 and Reviewer once each.)
 
 ### A pod blocked on budget, auto-paused, then resumed

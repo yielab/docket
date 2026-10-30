@@ -75,10 +75,10 @@ class TestRunTurn:
         codebase.mkdir()
         ws = _write_meta(
             "runtime-prompt-agent",
-            role="tester",
+            role="reviewer",
             codebase=str(codebase),
         )
-        (ws / "SOUL.md").write_text("# SOUL\nTESTER-ROLE-RULE\n", encoding="utf-8")
+        (ws / "SOUL.md").write_text("# SOUL\nREVIEWER-ROLE-RULE\n", encoding="utf-8")
         _memory.seed_contract(ws, project="runtime-project", codebase=str(codebase))
         (ws / "AGENTS.md").write_text(
             "# AGENTS\n\n"
@@ -121,7 +121,7 @@ class TestRunTurn:
         system = backend.calls[0][0]
         assert system.role == "system"
         assert str(codebase) not in system.content
-        assert "TESTER-ROLE-RULE" in system.content
+        assert "REVIEWER-ROLE-RULE" in system.content
         assert "CURRENT-ACTIVE-STATE" not in system.content
         assert "SAFE-RED-LINE" in system.content
         assert "CUSTOM-RUNTIME-RULE" in system.content

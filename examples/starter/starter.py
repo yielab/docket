@@ -227,11 +227,9 @@ def _configure(docket: Path, endpoint: str, *, cwd: Path, env: dict[str, str]) -
         "lead",
         "implementer",
         "reviewer",
-        "tester",
         "researcher",
         "analyst",
         "writer",
-        "critic",
         "operator",
         "monitor",
     ):

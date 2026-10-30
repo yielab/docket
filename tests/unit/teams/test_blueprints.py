@@ -184,7 +184,7 @@ class TestPipelineGateFidelity:
 class TestAgenticProduct:
     """`agentic-product` is a fifth row of data, not new machinery: same
     `default_pipeline()` as `software`, a `codebase` workspace kind, and one
-    difference -- a full pod roster so the pipeline's Reviewer/Tester gates engage."""
+    difference -- a full pod roster so the pipeline's Reviewer gate engages."""
 
     def test_roster_is_full_pod_roles(self) -> None:
         assert bp.get_blueprint("agentic-product").roles == _pod.FULL_POD_ROLES
