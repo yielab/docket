@@ -21,7 +21,7 @@
 > "Phase 54" in the follow-ups below. **Planned: Phase 55** (D-77,
 > [ADR 0036](docs/adr/0036-a-pod-works-outward.md)): a pod works outward, on its own schedule; twelve
 > cards P55-1..P55-12 over four waves, cut by file ownership. **Wave 1 merged 2026-10-30** (P55-1, P55-5,
-> P55-7, P55-11); Wave 2 (P55-3, P55-6) is next.
+> P55-7, P55-11); Wave 2: P55-3 merged 2026-10-30, P55-6 in flight.
 > Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md));
 > its loose ends are under "Escalations". The integration branch is `develop`. A new phase starts from a
 > measured trigger or a maintainer request.
@@ -210,7 +210,7 @@ behaviour + data + spec + e2e
 
 ### P55-3 — `send`: a fourth tool kind for actions outside the machine, held only by a role that names it
 
-**Status:** TODO · ready, P55-5 merged 2026-10-30; shares `kernel/mcp.py` and `mcp_tools.py` · **Size:** L ·
+**Status:** DONE (2026-10-30, merged from `p55-3`; `lifetime` now loads from the `mcp-server` document) · **Size:** L ·
 **Model:** Sonnet (Haiku for the recipe files) · **Kind:** behaviour + spec + data
 
 - **Trigger:** ADR 0036 finding 3: `ToolKind = Literal["read", "write", "exec"]`
@@ -645,11 +645,8 @@ jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was g
 `docket setup sandbox read add`. Trigger: a second pod whose first jailed gate fails that way. Next:
 `docket setup` proposes the grants for the toolchains it finds.
 
-**Phase 55 Wave 1 (merged 2026-10-30).** Loose ends, none a card yet; the first three belong to the Wave 2 and 4 cards
+**Phase 55 Wave 1 (merged 2026-10-30).** Loose ends, none a card yet; the first two belong to the later cards
 that already own the files.
-- *`lifetime` in the document form.* `teams/mcp_servers.py` (`McpServerDocument`, `to_config`),
-  `templates/schemas/mcp-server.schema.json` and the config docs do not carry `lifetime`, so a recipe cannot declare a
-  `hop` server. Belongs to P55-3.
 - *Specs that lag.* `trace-store.spec.md` items 30-32 say every `process_*` payload carries `pgid`; MCP events carry
   none. `audit.spec.md` (~line 77) omits `pod.network_widen` / `pod.network_narrow`. P55-12 or the next card that
   edits either spec.
@@ -660,6 +657,11 @@ that already own the files.
 - *Flakes under load, seen once each and passing alone:* `test_run.py::TestForegroundApprovalPrompt` (two tests),
   `test_consult_wait.py::TestAnsweredInPlace::test_an_option_answer_goes_back_to_the_model_in_the_same_turn`,
   `test_end_to_end.py` approval-mode tests. A second failure of the same test is its trigger.
+- *Phase 55 Wave 2, P55-3.* The `outward` recipe's policy `ask` names one tool, `mcp__outbox__send`
+  (`when.tool` matches an exact name), so a send tool of another name is not asked about: a kind predicate or a default
+  `ask` for every `send` tool belongs with P55-4. `--kind` stays an operator assertion, not verified against the server.
+  A pipeline step that runs a role from the pod's existing registry (not in the applied directory) is not checked by
+  the read/act rule.
 - *Live evidence owed.* The maintainer's browser probe (snapshot, click by ref) under `--lifetime hop` for P55-5.
 
 **Phase 54 (closed 2026-10-29).** Two items wait for their triggers.
