@@ -66,8 +66,8 @@ class McpServerDocError(InvalidInput):
 
 
 class McpServerDocument(BaseModel):
-    """A ``kind: mcp-server`` document: the global server fields, with the read/write assertion
-    under ``access`` because ``kind`` is the envelope."""
+    """A ``kind: mcp-server`` document: the global server fields, with the read/write/send
+    assertion under ``access`` because ``kind`` is the envelope."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -77,8 +77,9 @@ class McpServerDocument(BaseModel):
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
     timeout: float = 0.0
-    access: Literal["read", "write"] = "write"
+    access: Literal["read", "write", "send"] = "write"
     tools: list[str] = Field(default_factory=list)
+    lifetime: Literal["call", "hop"] = "call"
 
     def to_config(self) -> McpServerConfig:
         return McpServerConfig(
@@ -89,6 +90,7 @@ class McpServerDocument(BaseModel):
             timeout=self.timeout,
             kind=self.access,
             tools=self.tools,
+            lifetime=self.lifetime,
         )
 
 
@@ -104,6 +106,8 @@ def mcp_server_document(config: McpServerConfig) -> dict[str, Any]:
     doc["access"] = config.kind
     if config.tools:
         doc["tools"] = list(config.tools)
+    if config.lifetime != "call":
+        doc["lifetime"] = config.lifetime
     return doc
 
 

@@ -40,7 +40,12 @@ from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
 from docket.teams.apply import lock as _lock
-from docket.teams.apply.check import member_names, unresolved_members, unsupplied_inputs
+from docket.teams.apply.check import (
+    directory_send_problems,
+    member_names,
+    unresolved_members,
+    unsupplied_inputs,
+)
 from docket.teams.apply.model import (
     ApplyAction,
     ApplyItem,
@@ -557,6 +562,9 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     unsupplied = unsupplied_inputs(directory)
     if unsupplied:
         raise PodApplyError("; ".join(unsupplied))
+    conflicting = directory_send_problems(directory, project)
+    if conflicting:
+        raise PodApplyError("; ".join(conflicting))
 
     prompt_items, prompt_writes = _plan_prompts(directory, project)
 

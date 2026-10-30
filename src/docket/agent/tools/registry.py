@@ -35,7 +35,7 @@ from docket.kernel.gate import (
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 from docket.kernel.tool_outcome import artifact_scope
 
-ToolKind = Literal["read", "write", "exec"]
+ToolKind = Literal["read", "write", "exec", "send"]
 
 
 @dataclass(frozen=True)

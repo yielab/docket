@@ -434,6 +434,9 @@ class TestPodSettingsDeniedTools:
     def test_coerce_accepts_a_known_tool_name(self) -> None:
         assert pod_settings.PodSettings.coerce("deniedTools", "fetch") == "fetch"
 
+    def test_coerce_accepts_the_send_kind(self) -> None:
+        assert pod_settings.PodSettings.coerce("deniedTools", "send, fetch") == "send,fetch"
+
     def test_coerce_rejects_an_unknown_tool_name(self) -> None:
         with pytest.raises(pod_settings.PodSettingsError, match="deniedTools"):
             pod_settings.PodSettings.coerce("deniedTools", "zzz")
