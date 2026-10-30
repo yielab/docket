@@ -1,10 +1,10 @@
 # Observability Export Specification
 
-**Version**: 3.0.0
+**Version**: 3.1.0
 **Status**: Implemented and live. Trace records project into vendor-neutral spans and are sent,
 off the turn's thread, to every enabled `kind: exporter` destination over the one `otlp-http`
 dialect; what a destination receives beyond structure is set by its own privacy level.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -81,13 +81,19 @@ This specification does NOT cover:
    other handled record for a session with no open root **MUST** open that root first, from the
    same record's fields.
 8. An `llm_call` record **MUST** produce one complete child span named `gen_ai.chat`, parented
-   to the session root, with `start_ts` computed as the record's `ts` minus its `duration_ms`,
+   to the innermost open hop span of the record's session (requirement 108), else to the session
+   root, with `start_ts` computed as the record's `ts` minus its `duration_ms`,
    and attributes `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`,
-   `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`, and `docket.iteration`. Its
+   `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`, and `docket.iteration`. It
+   also carries `gen_ai.usage.cache_read.input_tokens` (payload `cachedTokens`) and
+   `gen_ai.usage.cache_creation.input_tokens` (payload `cacheWriteTokens`) when positive -- both
+   already counted in `gen_ai.usage.input_tokens` -- and `docket.cache_miss` (payload `cacheMiss`)
+   when non-empty and `docket.cache_missed_tokens` (payload `cacheMissedTokens`) when positive. Its
    `status` **MUST** be `"error"` when the payload's `ok` field is `false`, and `"ok"`
    otherwise. Its `span_id` key is fixed by requirement 103.
 9. A `tool_call` record **MUST** open a span named `execute_tool <tool>` (`execute_tool` when
-   the payload names no tool), with attributes `gen_ai.tool.name` and `gen_ai.tool.call.id`; the
+   the payload names no tool), parented like requirement 8's span, with attributes
+   `gen_ai.tool.name` and `gen_ai.tool.call.id`; the
    matching `tool_result` record (same `callId`) **MUST** close it with status `"unset"`, adding
    `docket.tool.ok` when the payload carries `ok` and, when the payload names a blocking policy
    (`policyId`), `docket.tool.blocked_by`. A `tool_result` whose `callId` matches no open span
@@ -113,7 +119,9 @@ This specification does NOT cover:
     closes. It also closes every open escalation span, at the last timestamp seen for the session
     that asked it (its `start_ts` when that session has ended), with status `"unset"`; the
     settlement that follows sends the span whole under the same `span_id`, so a destination that
-    upserts ends with the real wait.
+    upserts ends with the real wait. An escalation span's `end_ts` is never before its
+    `start_ts`: a record's `ts` has whole seconds while `askedAt` has microseconds, so a closing
+    timestamp earlier than the start closes the span at its start.
 14. A record whose `event_type` this layer does not recognise **MUST** be ignored: it
     **MUST NOT** raise, and **MUST NOT** mutate `state`.
 
@@ -290,7 +298,10 @@ This specification does NOT cover:
 54. `health()` **MUST** return one entry per registered `Pipeline`, in `exporters-health.json`'s
     shape (requirement 32); it performs no I/O itself -- writing the file is the caller's job.
 55. `DocketDriver.run_turn` **MUST** call `start(load_enabled_exporters(), sink_for)` before
-    running the turn, and **MUST**, in a `finally` block covering every return path of
+    running the turn, and pod dispatch (`dispatch_task`) **MUST** call it before writing the
+    task's first record, so what a process writes before its first turn (`session_start`, the
+    first hop's marker, an escalation settlement applied at the claim) is exported too.
+    `run_turn` **MUST**, in a `finally` block covering every return path of
     `run_turn` (including an early return before the turn itself starts), call
     `flush($EXPORT_FLUSH_TIMEOUT_S)` and then write `health()` to `exporters-health.json`
     through the docket-owned JSON store.
@@ -580,7 +591,8 @@ the end of each of them. These requirements keep that session one complete trace
      `langfuse.observation.input` and `docket.session.output` to `langfuse.observation.output`,
      so Langfuse derives the trace's Input and Output from the root observation.
 108. A `tool_call` record without a `callId` -- the marker pod dispatch writes when a hop starts
-     (payload `hop`/`agent`) -- **MUST** key its span (requirement 4) as `<role>|<ts>`. A
+     (payload `hop`/`agent`) -- **MUST** open a span named `docket.hop <hop>` (`docket.hop` when
+     the payload names no hop) carrying `docket.hop`, and key it (requirement 4) as `<role>|<ts>`. A
      `tool_result` without a `callId` (the hop's reply, `text`) **MUST** close the most recent
      open span of the same role that has no `callId`; one with no such span open (the
      implementer's verification result) **MUST** become its own span keyed

@@ -448,6 +448,7 @@ def dispatch_task(
     task_id = task.id
     session_id = f"agent:{project}:{task_id}"
 
+    _dr.start_export()
     _trace.trace_event(
         project,
         session_id,

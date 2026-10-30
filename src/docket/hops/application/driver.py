@@ -92,6 +92,11 @@ def _close_telemetry() -> None:
             write_json(current_home().exporters_health_file, final)
 
 
+def start_export() -> None:
+    """Start the enabled exporters for this process; a no-op once started."""
+    _telemetry.start(_telemetry.load_enabled_exporters(), _exporters.sink_for)
+
+
 # Runs once per process at import time. `telemetry.close()` returns `{}` when nothing was
 # ever started, so this is harmless in every test process and CLI invocation that never
 # enables an exporter.
@@ -141,7 +146,7 @@ class DocketDriver:
         before the turn and flushes it (recording ``telemetry.health()``) in a ``finally``, so
         both run on every return path -- see ``_run_turn_body`` for the turn itself."""
         _process.make_non_dumpable()
-        _telemetry.start(_telemetry.load_enabled_exporters(), _exporters.sink_for)
+        start_export()
         try:
             return self._run_turn_body(
                 agent_id,

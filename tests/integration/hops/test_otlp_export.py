@@ -23,14 +23,17 @@ from typing import Any, ClassVar
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
 from docket.agent.ports import ChatMessage, ChatResponse, TokenUsage, ToolCall, ToolSpec, assistant
 from docket.hops.application import driver as docket_runtime
+from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import current_home, use_home
 from docket.observability import exporter as _exporter
 from docket.observability import telemetry as _telemetry
 from docket.platform import store as _store
+from docket.tasks.application import queue as _queue
 
 _isolate_stores = _support_home.isolate_stores
 
@@ -242,6 +245,38 @@ class TestRealPost:
             assert _telemetry._UNSUBSCRIBE is unsubscribe_after_first
         finally:
             srv.shutdown()
+
+
+class TestPodDispatchExportsFromItsFirstRecord:
+    def test_each_hop_is_one_span_holding_its_turn(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The first hop's marker is written before any turn starts; it still reaches the wire."""
+        srv, url, handler_cls = _recording_server()
+        try:
+            with _seed_pod(tmp_path):
+                _enable_local_exporter(url)
+                backend = _ScriptedBackend([_final_response("plan"), _final_response("done")])
+                driver = DocketDriver(backend_factory=lambda model: backend)
+                monkeypatch.setattr(docket_runtime, "default_driver", lambda: driver)
+                _queue.enqueue_task_once("demo", "Export every hop", channel="cli")
+
+                assert _sweep.dispatch_pod("demo")[0].status == "done"
+                docket_runtime._close_telemetry()
+        finally:
+            srv.shutdown()
+
+        spans = [
+            span
+            for body in handler_cls.bodies
+            for span in body["resourceSpans"][0]["scopeSpans"][0]["spans"]
+        ]
+        hops = {s["name"]: s for s in spans if s["name"].startswith("docket.hop")}
+        assert set(hops) == {"docket.hop lead", "docket.hop implementer"}
+        chats = [s for s in spans if s["name"] == "gen_ai.chat"]
+        assert sorted(c["parentSpanId"] for c in chats) == sorted(
+            h["spanId"] for h in hops.values()
+        )
 
 
 class TestExporterPrivacyGatesToolArguments:

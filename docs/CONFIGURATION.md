@@ -970,11 +970,15 @@ the records it writes to the local trace, already redacted, to `observability/te
 each session into spans: a `docket.session` root with `gen_ai.chat` and `execute_tool` children,
 their ids derived from the session id so a re-send lands on the same trace. A pod dispatch runs
 every hop in one session, so its lead, implementer, reviewer and tester appear as one trace, each
-model call its own span, under one root that stays open from the first hop to the last. A background
+hop a `docket.hop <role>` span holding its model calls and tool calls, under one root that stays
+open from the first hop to the last. A `gen_ai.chat` span carries the measured tokens, the cache
+reads and writes (`gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_creation.input_tokens`,
+both inside the input count) and, where the endpoint reported one, why the cache missed
+(`docket.cache_miss`). A background
 pipeline delivers them to every enabled exporter as OTLP/HTTP JSON over the standard library
 (the `otlp-http` dialect; D-24's cut of the OpenTelemetry SDK stands, D-48). It holds a bounded
 queue, counts what it drops, and never raises into a turn. The pipelines start with the first
-turn of a process and keep that set of exporters and levels for its life, so a change made with
+turn or task dispatch of a process and keep that set of exporters and levels for its life, so a change made with
 the commands below reaches the next `docket run` at once and a running
 `docket start` only after a restart. `DOCKET_NO_EXPORT=1` turns export off for one process;
 `DOCKET_NO_TRACE=1` stops the local write and, with it, the export.

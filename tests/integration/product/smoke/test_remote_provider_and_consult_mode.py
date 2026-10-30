@@ -255,12 +255,12 @@ def test_a_declared_output_cap_travels_to_the_remote_provider_registration(
     ) in recorder.calls
 
 
-def test_a_named_exporter_is_enabled_in_the_world_before_the_run(
+def test_a_named_exporter_is_enabled_at_full_privacy_in_the_world_before_the_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     recorder = _drive_run(monkeypatch, tmp_path, _local(), exporters=("langfuse",))
 
-    enable = ("setup", "export", "enable", "langfuse", "--yes")
+    enable = ("setup", "export", "enable", "langfuse", "--privacy", "full", "--yes")
     assert enable in recorder.calls
     assert recorder.calls.index(enable) < recorder.calls.index(
         ("run", "--pod", "smoke", "--pipeline", str(tmp_path / "smoke.pipeline.yaml"))

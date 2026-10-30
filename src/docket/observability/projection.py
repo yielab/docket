@@ -97,6 +97,12 @@ def _shift_ts(ts: str, delta_ms: int) -> str:
     return _format_ts((_clock.parse_iso(ts) or _clock.now()) + timedelta(milliseconds=delta_ms))
 
 
+def _not_before(end_ts: str, start_ts: str) -> str:
+    """*end_ts*, or *start_ts* when *end_ts* is earlier (whole-second ``ts`` against a finer start)."""
+    end, start = _clock.parse_iso(end_ts), _clock.parse_iso(start_ts)
+    return start_ts if end is not None and start is not None and end < start else end_ts
+
+
 def _close(open_span: _OpenSpan, trace_id: str, end_ts: str, status: str) -> Span:
     return Span(
         trace_id=trace_id,
@@ -180,6 +186,14 @@ def _fold_session_content(root: _OpenSpan, payload: dict[str, Any], policy: Expo
             )
 
 
+_CACHE_ATTRIBUTES = {
+    "cachedTokens": "gen_ai.usage.cache_read.input_tokens",
+    "cacheWriteTokens": "gen_ai.usage.cache_creation.input_tokens",
+    "cacheMiss": "docket.cache_miss",
+    "cacheMissedTokens": "docket.cache_missed_tokens",
+}
+
+
 def _handle_llm_call(
     state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
 ) -> list[Span]:
@@ -198,6 +212,10 @@ def _handle_llm_call(
         "gen_ai.response.finish_reasons": str(payload.get("finishReason", "")),
         "docket.iteration": iteration if isinstance(iteration, int) else str(iteration),
     }
+    for key, attribute in _CACHE_ATTRIBUTES.items():
+        value = payload.get(key)
+        if (isinstance(value, int) and value > 0) or (isinstance(value, str) and value):
+            attributes[attribute] = value
     input_messages = _filter_input_messages(payload.get("inputMessages"), policy)
     if input_messages is not None:
         attributes["gen_ai.input.messages"] = json.dumps(input_messages)
@@ -236,7 +254,7 @@ def _handle_llm_call(
         Span(
             trace_id=_trace_id(session_id),
             span_id=_span_id(session_id, "llm_call", key),
-            parent_id=root.span_id,
+            parent_id=_hop_parent(state, session_id),
             name="gen_ai.chat",
             start_ts=_shift_ts(ts, -duration_ms),
             end_ts=ts,
@@ -250,22 +268,28 @@ def _handle_tool_call(
     state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
 ) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    root = _ensure_root(state, session_id, record, policy)
+    _ensure_root(state, session_id, record, policy)
     payload = record.get("payload") or {}
     tool = str(payload.get("tool", ""))
     call_id = str(payload.get("callId", ""))
     key = call_id or f"{record.get('agent_role', '')}|{record.get('ts', '')}"
     attributes: Attributes = {"gen_ai.tool.name": tool, "gen_ai.tool.call.id": call_id}
+    name = f"execute_tool {tool}" if tool else "execute_tool"
+    hop = payload.get("hop")
+    if not call_id and isinstance(hop, str):
+        name = f"docket.hop {hop}" if hop else "docket.hop"
+        attributes["docket.hop"] = hop
     arguments = payload.get("arguments")
     if _granted(policy, "toolArguments") and isinstance(arguments, str) and arguments:
         attributes["gen_ai.tool.call.arguments"] = _text.cut_chars(
             arguments, policy.content_max_chars
         )
+    parent_id = _hop_parent(state, session_id)
     state.stacks[session_id].append(
         _OpenSpan(
             span_id=_span_id(session_id, "tool_call", key),
-            parent_id=root.span_id,
-            name=f"execute_tool {tool}" if tool else "execute_tool",
+            parent_id=parent_id,
+            name=name,
             start_ts=str(record.get("ts", "")),
             kind="tool_call",
             key=key,
@@ -295,7 +319,7 @@ def _handle_tool_result(
     state: ProjectionState, record: dict[str, Any], policy: ExportPolicy
 ) -> list[Span]:
     session_id = str(record.get("session_id", ""))
-    root = _ensure_root(state, session_id, record, policy)
+    _ensure_root(state, session_id, record, policy)
     payload = record.get("payload") or {}
     tool = str(payload.get("tool", ""))
     call_id = str(payload.get("callId", ""))
@@ -306,7 +330,7 @@ def _handle_tool_result(
         key = call_id or f"{role}|{ts}|result"
         open_span = _OpenSpan(
             span_id=_span_id(session_id, "tool_call", key),
-            parent_id=root.span_id,
+            parent_id=_hop_parent(state, session_id),
             name=f"execute_tool {tool}" if tool else "execute_tool",
             start_ts=ts,
             kind="tool_call",
@@ -437,7 +461,7 @@ def _escalation_attributes(payload: dict[str, Any], policy: ExportPolicy) -> Att
     return attributes
 
 
-def _escalation_parent(state: ProjectionState, session_id: str) -> str:
+def _hop_parent(state: ProjectionState, session_id: str) -> str:
     """The innermost open hop span of *session_id*, else that session's root (open or not)."""
     for span in reversed(state.stacks.get(session_id, [])[1:]):
         if _is_hop_span(span):
@@ -456,7 +480,7 @@ def _handle_escalation_asked(
         session_id,
         _OpenSpan(
             span_id=_span_id(session_id, "escalation", escalation_id),
-            parent_id=_escalation_parent(state, session_id),
+            parent_id=_hop_parent(state, session_id),
             name="docket.escalation",
             start_ts=str(payload.get("askedAt") or record.get("ts", "")),
             kind="escalation",
@@ -499,7 +523,7 @@ def _handle_escalation_settled(
             parent_id=open_span.parent_id,
             name=open_span.name,
             start_ts=open_span.start_ts,
-            end_ts=ts,
+            end_ts=_not_before(ts, open_span.start_ts),
             status=status,
             attributes=attributes,
             events=tuple(open_span.events),
@@ -598,7 +622,8 @@ def flush_open(state: ProjectionState) -> list[Span]:
         # A later settlement sends the whole span again under the same id, so a destination that
         # upserts ends with the real wait.
         asked_ts = state.last_ts.get(asked_in) or pending.start_ts
-        closed.append(_close(pending, _trace_id(asked_in), asked_ts, "unset"))
+        end_ts = _not_before(asked_ts, pending.start_ts)
+        closed.append(_close(pending, _trace_id(asked_in), end_ts, "unset"))
         del state.escalations[escalation_id]
     for session_id in list(state.stacks):
         stack = state.stacks.pop(session_id)
