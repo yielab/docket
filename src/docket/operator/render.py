@@ -35,6 +35,7 @@ _TITLES: dict[EscalationKind, str] = {
     "check_changed": "task changed its own check",
     "consult": "consultation",
     "input": "input requested",
+    "wait": "waiting",
 }
 # A question's own decline is answered by its own verb (`--decline`), never by naming an option.
 _DECLINE = "decline"

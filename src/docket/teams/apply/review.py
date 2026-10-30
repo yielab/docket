@@ -56,6 +56,8 @@ def _run_steps(steps: list[Any], prefix: str = "") -> list[RunItem]:
         if step.run is not None:
             env = "".join(f" {k}={v}" for k, v in sorted((step.env or {}).items()))
             found.append(RunItem("pipeline-step", prefix + step.id, f"{step.run}{env}"))
+        if step.until is not None:
+            found.append(RunItem("pipeline-step", prefix + step.id, step.until.run))
         command = getattr(step.gate, "command", None)
         if command:
             kind = "gate" if step.gate.type == "external" else "verify"

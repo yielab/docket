@@ -7,7 +7,7 @@ from typing import Any
 #
 # The one authored form of a step: `<id>: <role-or-agent>` plus optional `verify`/`verdict`/
 # `approval`/`gate`/`instructions`/`timeout`/`retries`/`model`/`archetype`/`when`/`on`/`until`/
-# `max` keys, `<id>: {run: ...}`, `<id>: {input: ...}` or `<id>: {parallel: [...]}`. A step
+# `max` keys, `<id>: {run: ...}`, `<id>: {input: ...}`, `<id>: {wait: ...}` or `<id>: {parallel: [...]}`. A step
 # written with an `id:` key (the canonical form, which is the in-memory model) is refused. See
 # specs/functional/pipeline-format.spec.md ("Short form", "Outcome routing").
 
@@ -184,8 +184,9 @@ def _build_until_route(
 
 
 def _normalize_mapping_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
-    # `- lint: {run: "ruff check ."}` / `- ask: {input: {from: triage}}` -- a one-key mapping
-    # whose value is itself a mapping carrying `run` or `input`. The step's own keys live inside
+    # `- lint: {run: "ruff check ."}` / `- ask: {input: {from: triage}}` /
+    # `- hold: {wait: 72h}` -- a one-key mapping whose value is itself a mapping carrying `run`,
+    # `input` or `wait`. The step's own keys live inside
     # *target*, not beside the id (unlike a role/agent short step), and pass through to the
     # canonical step unchanged, so the step model rejects any it does not define.
     step: dict[str, Any] = {"id": step_id}
@@ -221,8 +222,8 @@ def _normalize_parallel_short_step(step_id: str, target: dict[Any, Any]) -> dict
 def _canonical_step_message(step_id: Any) -> str:
     return (
         f"step {step_id!r} is written in the canonical form (an 'id:' key); write the id as the "
-        f"key: '- {step_id}: <role>', '- {step_id}: {{run: ...}}', '- {step_id}: {{input: ...}}' "
-        f"or '- {step_id}: {{parallel: [...]}}'"
+        f"key: '- {step_id}: <role>', '- {step_id}: {{run: ...}}', '- {step_id}: {{input: ...}}', "
+        f"'- {step_id}: {{wait: ...}}' or '- {step_id}: {{parallel: [...]}}'"
     )
 
 
@@ -237,12 +238,12 @@ def _normalize_short_step(entry: dict[Any, Any], seen_ids: list[str]) -> dict[st
     target = entry[step_id]
     if isinstance(target, dict) and "parallel" in target:
         return _normalize_parallel_short_step(step_id, target)
-    if isinstance(target, dict) and ("run" in target or "input" in target):
+    if isinstance(target, dict) and ("run" in target or "input" in target or "wait" in target):
         return _normalize_mapping_short_step(step_id, target)
     if not isinstance(target, str):
         raise _ShortFormError(
             f"step {step_id!r}: expected a role or agent name, or a mapping carrying "
-            "'run', 'input' or 'parallel'"
+            "'run', 'input', 'wait' or 'parallel'"
         )
     step: dict[str, Any] = {"id": step_id}
     _assign_target(step, target)

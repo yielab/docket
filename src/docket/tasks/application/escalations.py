@@ -27,6 +27,7 @@ from docket.kernel.operator_contract import (
     EscalationExpiry,
     EscalationKind,
     EscalationLevel,
+    EscalationPolicy,
     Option,
     Question,
     QuestionV11,
@@ -60,7 +61,9 @@ __all__ = [
     "decided_consult",
     "open_for_approval",
     "open_for_question",
+    "open_for_wait",
     "resolve",
+    "wake_wait",
 ]
 
 _DECLINE = Option(id="decline", label="Decline", description="Refuse without choosing an option.")
@@ -70,6 +73,10 @@ _DENY = "deny"
 # The elicitation vocabulary has `decline` and `cancel`; docket has one outcome, and `cancel` is
 # its alias.
 _CANCEL = "cancel"
+_RESUME = Option(id="resume", label="Resume", description="End the wait now and run the next step.")
+# How a `wait` ends: the step after it runs, or its probe's ceiling passed.
+WAIT_RESUMED = "resumed"
+WAIT_TIMEOUT = "timeout"
 _APPROVAL_KINDS: frozenset[EscalationKind] = frozenset({"approval", "gate", "check_changed"})
 
 # The table's row for a kind: a pipeline `approval` gate is asked like a tool call.
@@ -227,6 +234,64 @@ def open_for_question(
         ),
         token,
     )
+
+
+def open_for_wait(*, pod: str, task_id: str, step: str, prompt: str, due_at: str) -> Escalation:
+    """Open the ``wait`` escalation of the step *step* parked until *due_at*. Nobody is asked, so
+    nothing is traced as asked: the record is the pause, and the sweep (``wake_wait``) ends it."""
+    level = _level_of(pod, task_id)
+    policy, on_expiry = _autonomy.policy_for("wait", level or "L3")
+    return _persist(
+        Escalation(
+            id=new_escalation_id(),
+            task=task_id,
+            pod=pod,
+            step=step,
+            role="",
+            kind="wait",
+            caused_by=step,
+            prompt=_redact(prompt),
+            options=[_RESUME],
+            asked_at=_clock.iso(),
+            expires_at=due_at,
+            on_expiry=cast(EscalationExpiry, on_expiry),
+            policy=cast(EscalationPolicy, policy),
+            level=level,
+        )
+    )
+
+
+def wake_wait(record: Escalation, outcome: str) -> bool:
+    """Wake the task waiting on the ``wait`` escalation *record*: stamp *outcome* and reopen it
+    ``pending``, or block it ``wait_expired`` on a ``timeout`` with no route. Whether this call
+    woke it; a task no longer waiting on the record is left alone."""
+    woken: list[bool] = []
+
+    def _wake(task: TaskRecord) -> bool:
+        wait = task.wait
+        if (
+            task.status != _state.Status.waiting_input
+            or record.id not in task.escalations
+            or wait is None
+            or wait.step != record.step
+            or wait.outcome is not None
+        ):
+            return False
+        if outcome == WAIT_TIMEOUT and not wait.routed:
+            _transitions.apply_to_task(
+                task,
+                _state.Status.blocked,
+                reason=f"wait at step {wait.step!r} expired: {wait.until!r} never exited 0",
+                blocked_reason="wait_expired",
+            )
+        else:
+            wait.outcome = outcome
+            _transitions.apply_to_task(task, _state.Status.pending)
+        woken.append(True)
+        return True
+
+    TaskRepository.for_pod(record.pod).update(record.task, _wake)
+    return bool(woken)
 
 
 def decided_consult(
@@ -427,6 +492,15 @@ def _receive_question(
         )
 
 
+def _receive_wait(escalation: Escalation) -> None:
+    """Resume the task parked on the ``wait`` *escalation* early. A task that no longer waits on
+    it is ``EscalationNotPending``."""
+    if not wake_wait(escalation, WAIT_RESUMED):
+        raise EscalationNotPending(
+            f"task {escalation.task!r} is not waiting on escalation {escalation.id}"
+        )
+
+
 def _wake_waiting_turn(
     token: str, option: str | None, *, project: str, channel: str, content: dict[str, Any] | None
 ) -> None:
@@ -504,6 +578,8 @@ def resolve(
         )
     elif token:
         _wake_waiting_turn(token, option, project=escalation.pod, channel=channel, content=body)
+    elif escalation.kind == "wait":
+        _receive_wait(escalation)
     else:
         _receive_question(escalation, option, body, by, channel)
         applied = False

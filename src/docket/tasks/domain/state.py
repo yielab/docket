@@ -143,7 +143,9 @@ def decide(
             fields["pending_approval_index"] = pending_index
         elif to == Status.blocked:
             fields["blocked_reason"] = blocked_reason
+            drop.append("wait")
         elif to != Status.waiting_input:
+            drop.append("wait")
             if not stale:
                 fields["completed_at"] = now
             if failure_kind:
