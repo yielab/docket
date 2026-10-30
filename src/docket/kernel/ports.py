@@ -1,25 +1,26 @@
-"""The ports docket binds at its edges: git, the host's process tools, the sandbox launcher and the tracer.
+"""The ports docket binds at its edges: git, the host's process tools, the sandbox launcher, the
+tracer and a pod's records.
 
 A port is a ``Protocol`` here plus a ``Binding``: ``bootstrap`` binds the real adapter once per
-entry (``bind_git``, ``bind_process``, ``bind_jail``, ``bind_tracer``), and a test swaps in a fake for a block
-with ``<port>_port.use(fake)``, the shape ``clock.use_clock`` gives the clock. The object a
-caller imports (``git``, ``process``, ``jail``) forwards each attribute to whatever its binding
-holds at call time, so a caller keeps writing ``git.git_head_sha(cwd)`` and never names an
-adapter. Everything is in one module because ``kernel`` modules import nothing from docket.
+entry (``bind_git``, ``bind_process``, ``bind_jail``, ``bind_tracer``, ``bind_records``), and a
+test swaps in a fake for a block with ``<port>_port.use(fake)``. A caller imports ``git``,
+``process``, ``jail`` or ``records``, which forward to whatever the binding holds at call time, and
+never names an adapter. One module because ``kernel`` modules import nothing from docket.
 
-Real adapters: ``platform.git``, ``platform.process``, ``sandbox.launch.Launcher`` and
-``observability.adapters.local_tracer.LocalTracer``. Fakes:
-``tests/support/fakes.py``.
-"""
+Real adapters: ``platform.git``, ``platform.process``, ``sandbox.launch.Launcher``,
+``observability.adapters.local_tracer.LocalTracer``, ``platform.records_sqlite``. Fakes:
+``tests/support/fakes.py``."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, Literal, Protocol, TypeVar, cast
+
+from docket.kernel.records_port import RecordStore
 
 T = TypeVar("T")
 
@@ -356,3 +357,23 @@ tracer: Tracer = tracer_port.proxy()
 
 def bind_tracer(adapter: Tracer) -> None:
     tracer_port.bind(adapter)
+
+
+# ── records ──────────────────────────────────────────────────────────────────
+
+
+# The backend is per pod, so the binding holds a factory (pod name to store), never a store.
+records_port: Binding[Callable[[str], RecordStore]] = Binding("records")
+
+
+class _PodRecords:
+    def open(self, project: str) -> RecordStore:
+        """*project*'s records, in whatever backend the bound factory chooses."""
+        return records_port.current()(project)
+
+
+records = _PodRecords()
+
+
+def bind_records(factory: Callable[[str], RecordStore]) -> None:
+    records_port.bind(factory)

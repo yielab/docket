@@ -8,8 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from docket.kernel.home import current_home
-from docket.kernel.records import RecordSet
-from docket.platform import RecordsError, mkdir_private
+from docket.kernel.records import RecordsError, RecordSet
+from docket.platform import mkdir_private
 from docket.teams import records as _records
 from docket.teams.apply.model import ApplyAction, ApplyItem, PodApplyError, _RecordsWrite
 

@@ -8,8 +8,8 @@ from tests.support import http as _support_http
 from tests.support import pods as _support_pods
 from tests.support.http import get as _get
 
-from docket.kernel.home import current_home
-from docket.platform.records_store import RecordMeta, RecordsStore
+from docket.kernel.ports import records
+from docket.kernel.records_port import ReadLimits, RecordOrigin
 from docket.teams import pod_provisioning as _pp
 from docket.teams import records as _records
 
@@ -36,14 +36,15 @@ def _pod_with_leads(name: str = "demo", rows: int = 2) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "leads.yaml").write_text(_LEADS, encoding="utf-8")
     _records.ensure_set(name, _records.pod_record_sets(name)[0][0])
-    store = RecordsStore(current_home().pod_records_path(name))
+    store = records.open(name)
     for i in range(rows):
-        store.add("leads", {"email": f"p{i}@x.test", "score": i}, RecordMeta(task="t1"))
+        store.add("leads", {"email": f"p{i}@x.test", "score": i}, RecordOrigin(task="t1"))
 
 
 def _count(name: str = "demo") -> int:
-    store = RecordsStore(current_home().pod_records_path(name))
-    return int(store.query("SELECT count(*) FROM leads", 5, 1000).rows[0][0])
+    return int(
+        records.open(name).read("SELECT count(*) FROM leads", ReadLimits(5, 1000)).rows[0][0]
+    )
 
 
 def test_list_names_the_set_with_columns_and_row_count(live_server: tuple[str, str]) -> None:

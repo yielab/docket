@@ -32,9 +32,10 @@ from docket.hops.application.base_view import base_commit_view
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
+from docket.kernel.ports import records as _pod_records
 from docket.models.catalog import ModelProfile
 from docket.observability import trace as _trace
-from docket.platform import RecordsStore, read_json
+from docket.platform import read_json
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.queue import touch_claim
 from docket.tasks.application.repository import TaskRepository
@@ -160,8 +161,7 @@ def _load_records_tools(registry: ToolRegistry, project: str = "") -> list[str]:
     sets, problems = _records.pod_record_sets(project)
     for problem in problems:
         tool_gate.audit_event("records.unavailable", problem)
-    store = RecordsStore(current_home().pod_records_path(project))
-    return _records_tools.load_records_tools(registry, store=store, sets=sets)
+    return _records_tools.load_records_tools(registry, store=_pod_records.open(project), sets=sets)
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:

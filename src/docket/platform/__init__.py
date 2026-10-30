@@ -12,14 +12,6 @@ from docket.platform.parked_questions import (
     parked_question,
     write_parked,
 )
-from docket.platform.records_store import (
-    Column,
-    EnsureResult,
-    QueryResult,
-    RecordMeta,
-    RecordsError,
-    RecordsStore,
-)
 from docket.platform.redirects import open_same_origin
 from docket.platform.service_http import ServiceRequest, call_operation
 from docket.platform.store import (
@@ -39,12 +31,6 @@ from docket.platform.store import (
 
 __all__ = [
     "PARK_TOKEN_PREFIX",
-    "Column",
-    "EnsureResult",
-    "QueryResult",
-    "RecordMeta",
-    "RecordsError",
-    "RecordsStore",
     "ServiceRequest",
     "call_operation",
     "fetch_url",
