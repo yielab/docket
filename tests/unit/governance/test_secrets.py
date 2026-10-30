@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from docket.governance import audit as _audit
 from docket.governance import secrets
 from docket.governance import secrets as _secrets
 from docket.kernel.home import current_home, use_home
@@ -30,6 +31,22 @@ def test_the_store_follows_the_current_home(tmp_path: Path) -> None:
     assert two.secrets_file.exists() and not two.secrets_meta_file.exists()
     with use_home(one):
         assert _secrets.secret_value("A_KEY") == "one"
+
+
+class TestStoreSecret:
+    def test_a_new_name_is_stored_and_audited_as_added(self) -> None:
+        _secrets.store_secret("SVC_TOKEN", "one-value-1234")
+        assert _secrets.secret_value("SVC_TOKEN") == "one-value-1234"
+        assert [(e["action"], e["detail"]) for e in _audit.read_audit()] == [
+            ("keys.add", "SVC_TOKEN")
+        ]
+
+    def test_a_stored_name_is_replaced_and_audited_as_rotated(self) -> None:
+        _secrets.store_secret("SVC_TOKEN", "one-value-1234")
+        _secrets.store_secret("SVC_TOKEN", "two-value-5678")
+        assert _secrets.secret_value("SVC_TOKEN") == "two-value-5678"
+        assert "rotated_at" in _secrets.load_secrets_meta()["SVC_TOKEN"]
+        assert [e["action"] for e in _audit.read_audit()] == ["keys.add", "keys.rotate"]
 
 
 class TestRedactPerformance:

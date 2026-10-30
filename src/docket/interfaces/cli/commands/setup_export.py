@@ -14,11 +14,11 @@ from rich.markup import escape
 
 from docket import bootstrap as _bootstrap
 from docket.governance import privacy as _privacy
+from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
-from docket.interfaces.cli.commands.setup_notify import NotifySetupError, store_secret
 from docket.interfaces.cli.render import ui
-from docket.kernel.errors import InvalidInput
+from docket.kernel.errors import InvalidInput, Unavailable
 from docket.kernel.home import current_home
 from docket.observability import exporter as _exp
 from docket.observability import projection as _projection
@@ -236,9 +236,9 @@ def cmd_enable(
             ui.error(f"'{cred}' was not stored", f"Exporter '{name}' was not enabled")
             raise typer.Exit(1)
         try:
-            store_secret(cred, value)
-        except NotifySetupError as exc:
-            ui.error(str(exc))
+            _secrets.store_secret(cred, value)
+        except Unavailable as exc:
+            ui.error(exc.message, exc.hint)
             raise typer.Exit(1) from exc
 
     overrides: dict[str, Any] = {}

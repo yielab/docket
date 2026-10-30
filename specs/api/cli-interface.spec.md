@@ -819,7 +819,8 @@ endpoint, a refused widening, or (`preview`) an unknown session
   from an argument; a value given as a second positional exits 2 and is not echoed. Off a terminal
   without `--stdin`, an empty value, a name outside `[A-Za-z0-9_.-]+` or a refused backend exits 1
   writing nothing
-- `list`: Each stored name with its added and rotated times; never a value
+- `list [--json]`: Each stored name with its added and rotated times; never a value; `--json`
+  prints an array of `{name, added_at, rotated_at}`
 - `remove <name>`: Delete a stored secret; a name not stored exits 1
 **Return**: 0 on success, 1 on a refused name, value or backend, 2 on a value given as an argument
 
