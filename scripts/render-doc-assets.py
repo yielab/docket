@@ -228,7 +228,7 @@ _ISOLATION = [
     "docket - member myapp-implementer",
     "  Role: implementer",
     "  Pod: myapp",
-    "  Workspace: ~/.docket/workspaces/projects/myapp-implementer",
+    "  Workspace: ~/.docket/state/workspaces/projects/myapp-implementer",
     "  Model: local/local-model (policy)",
     "⋯",
     "$ docket setup sandbox",
@@ -239,11 +239,11 @@ _ISOLATION = [
     "ok Network: none (default); jailed tool calls have no network",
     "$ git worktree list",
     "~/code/myapp  ⋯  0854d50 [main]",
-    "~/.docket/workspaces/projects/myapp-implementer/tasks/task-6e046891-e910-4778-92ce-4560364bfaa9  "
+    "~/.docket/state/workspaces/projects/myapp-implementer/tasks/task-6e046891-e910-4778-92ce-4560364bfaa9  "
     "0854d50 [docket/myapp/task-6e046891-e910-4778-92ce-4560364bfaa9]",
     "$ git status --short                       # your checkout: only the exported team",
     "?? .docket/",
-    "$ git -C ~/.docket/workspaces/projects/myapp-implementer/tasks/task-6e046891-e910-4778-92ce-4560364bfaa9 diff main",
+    "$ git -C ~/.docket/state/workspaces/projects/myapp-implementer/tasks/task-6e046891-e910-4778-92ce-4560364bfaa9 diff main",
     "⋯",
     "@@ -1,2 +1,2 @@",
     " def add(a, b):",
