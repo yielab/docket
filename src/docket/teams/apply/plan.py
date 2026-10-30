@@ -21,7 +21,6 @@ from typing import Any, Literal
 from docket.governance import policy as _policy
 from docket.governance import review as _reviewed
 from docket.governance.review import RunItem
-from docket.kernel import mcp as _mcp
 from docket.kernel import protected_paths as _protected
 from docket.kernel.errors import CanonicalFormRefused, DispatchError
 from docket.kernel.home import current_home
@@ -31,7 +30,6 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
-from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import model_selection as _mp
 from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
@@ -46,13 +44,13 @@ from docket.teams.apply.check import (
     unresolved_members,
     unsupplied_inputs,
 )
+from docket.teams.apply.external import plan_mcp_servers
 from docket.teams.apply.model import (
     ApplyAction,
     ApplyItem,
     ApplyPlan,
     PodApplyError,
     PodApplyRefused,
-    _McpServerWrite,
     _MemberWrite,
     _NamedPipelineWrite,
     _PipelineWrite,
@@ -67,7 +65,6 @@ from docket.teams.apply.recipes import (
     _config_glob,
     _directory_files,
     _named_pipeline_files,
-    _server_files,
     _skill_digest,
     unresolvable_pipeline_steps,
 )
@@ -282,45 +279,6 @@ def _plan_skills(directory: Path, project: str) -> tuple[list[ApplyItem], list[_
             writes.append(_SkillWrite(name=name, files=source_files))
         items.append(ApplyItem(kind="skill", name=name, action=action))
     return items, writes
-
-
-def _plan_mcp_servers(
-    directory: Path, project: str
-) -> tuple[list[ApplyItem], _McpServerWrite | None]:
-    """Plan ``mcp-servers/*`` into *project*'s own pod-scoped server file. A name equal to a
-    global server is refused (never shadowed); a server already stored identically plans
-    ``skip``; servers the recipe does not name are kept."""
-    items: list[ApplyItem] = []
-    declared: dict[str, _mcp.McpServerConfig] = {}
-    for path in _server_files(directory):
-        try:
-            config = _mcp_servers.load_mcp_server_document(path)
-        except _mcp_servers.McpServerDocError as exc:
-            raise PodApplyError(str(exc)) from exc
-        if config.name in declared:
-            raise PodApplyError(f"{path}: MCP server {config.name!r} is declared twice")
-        declared[config.name] = config
-    if not declared:
-        return items, None
-    global_names = {s.name for s in _mcp_servers.load_mcp_servers()}
-    for name in declared:
-        if name in global_names:
-            raise PodApplyError(
-                f"mcp-servers: {name!r} collides with a global MCP server; "
-                "rename it or remove the global one"
-            )
-    current = {s.name: s for s in _mcp_servers.load_pod_mcp_servers(project)}
-    changed = False
-    for name, config in declared.items():
-        if name in current and current[name] == config:
-            action: ApplyAction = "skip"
-        else:
-            action = "replace" if name in current else "add"
-            changed = True
-        items.append(ApplyItem(kind="mcp-server", name=name, action=action))
-    if not changed:
-        return items, None
-    return items, _McpServerWrite(servers=tuple({**current, **declared}.values()))
 
 
 def _plan_members(
@@ -583,7 +541,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         directory, pipeline_name, project, roster_after, augmented
     )
 
-    mcp_items, mcp_write = _plan_mcp_servers(directory, project)
+    mcp_items, mcp_write = plan_mcp_servers(directory, project)
 
     all_settings = _settings_with_top_level(raw_settings, manifest)
     if "maxReworkCycles" in all_settings and (
