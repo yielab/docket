@@ -127,7 +127,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly report for a routine pod) and `hacker-news` (a team that reads the Hacker News search API, keeps the most
   commented stories with a summary and the discussion of each, and writes a weekly report and an analysis;
   `tests/live/test_hacker_news_live.py` runs it against the real site and the operator's model). The published
-  adoption baseline was regenerated from a commit with the new home layout.
+  adoption baseline was regenerated from a commit with the new home layout. A pod's records sit behind a
+  `RecordStore` port (`kernel/records_port.py`, shared rules in `kernel/records_rules.py`); SQLite is the one
+  adapter (`platform/records_sqlite.py`), chosen per pod by a factory `bootstrap` binds, and a conformance suite
+  holds any backend to the same behaviour. A remote backend needs an ADR amendment first (`send`).
 
 - **`when.command` in a policy** matches the parsed command: `program`, `verb` (found past
   options), `args` (short and long spellings, globs) and `writes` (redirect targets and the
