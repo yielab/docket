@@ -14,6 +14,7 @@ from docket.teams import config_docs as _config_docs
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import roles as _arch
 from docket.teams.apply.recipes import _config_glob, _declared_servers, _named_pipeline_files
+from docket.teams.apply.routines import routine_files
 from docket.teams.workspace import prepare as _prepare
 
 # `allowCommands` and `network` are run items; `networkGrant` is never applied from a repository.
@@ -152,6 +153,7 @@ def classify_directory(directory: Path) -> PlanReview:
         spec = _pipeline.load_pipeline(named.read_text(encoding="utf-8")).spec
         runs.extend(_run_steps(spec.steps if spec is not None else [], f"{named.stem}/"))
         adds.append(("pipeline", f"pipelines/{named.name}"))
+    adds.extend(("routine", f"routines/{r.name}") for r in routine_files(directory))
     for server in _declared_servers(directory):
         runs.append(RunItem("mcp-server", server.name, " ".join([server.command, *server.args])))
     plugins_dir = directory / "plugins"
