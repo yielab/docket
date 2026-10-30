@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.6.0
+**Version**: 11.7.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -105,8 +105,8 @@ refuse, exiting 1 without enqueueing, an empty text or a text longer than 500 ch
 
 #### Enqueue channel
 
-`enqueue_task_once` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram` or
-`mcp`, persist it on the task as `channel` beside `source`, and append `task.enqueue` to the audit
+`enqueue_task_once` **MUST** take a required keyword `channel`, one of `cli`, `http`, `telegram`,
+`mcp` or `routine` (a task a routine created, "Routines"), persist it on the task as `channel` beside `source`, and append `task.enqueue` to the audit
 log naming the project, the task and the channel. `source` stays the origin class (`operator`,
 `reviewer` for a rework task) and alone drives the `pre_input` trust default; `channel` never
 changes trust. The detail names no description text. `POST /dispatch/<project>` **MUST** append
@@ -393,7 +393,11 @@ wired agent's conversation current with the task it is working.
    cycles (see below); a `research`, `content`, or `ops` pod runs its blueprint's full roster and
    gates. Before any task is claimed, `dispatch_pod` **MUST** refuse (`DispatchError`) a run whose
    variables leave a step's `instructions` with an unresolved reference (`pipeline-format.spec.md`
-   "Variables").
+   "Variables"), or a `required` variable missing, unless a task still in the queue carries its own
+   `variables` or names its own `pipeline`: those variables are the task's to supply, so the check
+   waits for the claim. A task claimed under that deferral with neither its own `variables`, nor a
+   `pipeline`, nor a kept `pipelineSpec` **MUST** settle `failed` with `failureKind: "pipeline"`
+   and the same reason, before any hop (requirement 7).
 2. A pod **MUST** have a Lead to be dispatchable at all; dispatching a project with no pod, or a pod
    with no Lead, **MUST** raise a `DispatchError` rather than attempt any hop.
 3. Dispatch **MUST NOT** send a task to any agent outside the target project's own pod -- each
@@ -729,6 +733,58 @@ wired agent's conversation current with the task it is working.
    no failure kind, trace event, or task status is involved.
 5. The schedule spec vocabulary is `@every`, `HH:MM` and 5-field cron; validation only makes an
    unrecognized spec loud, it adds no format.
+
+### Routines (ADR 0036)
+
+A routine is a pod's own standing order: on a schedule the service enqueues a task, so a pod
+works with nobody adding one. It is separate from `docket pod set schedule`, which only
+dispatches the queue that already exists and is unchanged.
+
+1. A routine **MUST** be a `kind: routine` document (config-format.spec.md "The `routine` kind")
+   resolved by name from `Home.scopes("routines", pod)`: the pod's overlay `routines/` directory,
+   then the operator's `config/routines/`. The nearer scope wins a name. `docket pod update` writes a
+   recipe's `routines/*.yaml` byte-for-byte into the pod overlay, as it does a named pipeline. A file
+   that does not load is ignored by the sweep and reported by `docket pod routine list` and
+   `docket pod validate`. A routine with `enabled: false` never fires.
+2. Slots are evaluated in the routine's `tz` (an IANA name, default `UTC`) on the kernel clock.
+   A cron `schedule` has a slot at every local minute its five fields match; a local time that
+   does not exist that day (the clock jumped over it) has no slot, and one that occurs twice
+   (the clock fell back) has one slot, the first. `0 9 * * 1-5` in `Europe/Madrid` is therefore 09:00
+   local before and after a change of offset. `@every <N><s|m|h>` has a slot every N seconds, the
+   first at the moment the service first sees the routine. `HH:MM` is not accepted. The due slots
+   of a routine are those after the last fired (or first seen) moment up to now; at most the last
+   31 days are examined.
+3. The first sighting of a routine **MUST** record `seen` (now) and fire nothing for a cron
+   `schedule`: history is never replayed. When several slots are due at once, `catchUp: skip` (the
+   default) **MUST** fire the latest only and drop the earlier; `catchUp: once` **MUST** fire one task
+   for all of them: the same latest slot, with `(catch-up: N scheduled runs were missed; this one
+   run stands for all of them)` appended to the task's description. Either way every due slot is
+   consumed, so the next tick sees none of them.
+4. A fire **MUST** be `enqueue_task_once(pod, description, priority, channel="routine",
+   idempotency_key="routine:<name>:<slot>", pipeline=..., variables=...)`, where `<slot>` is the
+   slot in UTC as `YYYY-MM-DDTHH:MM:SSZ`: the task carries the document's `task.description`,
+   `task.priority` (default `normal`), `task.pipeline` and `task.variables`, and two fires of one
+   slot create one task. The enqueue audits `task.enqueue` with `channel=routine`, and the fire
+   also audits `routine.fire` naming the pod, the routine, the slot and the task id.
+5. `overlap: skip` (the default) **MUST** fire nothing while a task of the same routine (an
+   idempotency key starting `routine:<name>:`) is not terminal, so `pending`, `running`, `blocked`
+   and every `waiting_*` status all hold it; `overlap: queue` fires regardless. A slot that is not
+   fired because of overlap, or because its enqueue was refused, is consumed and **MUST** append a
+   `step_skipped` trace event to the session `routine:<pod>:<name>` with the payload `{routine,
+   slot, reason}`, reason `overlap` or `refused: <why>`; so does a `catchUp: skip` that dropped
+   earlier slots, reason `missed N earlier slot(s)`, beside the fire.
+6. The last fired slot and the first-seen moment per pod and routine **MUST** persist in
+   `Home.routines_state_file` (`state/docket-routines.json`, written only through `platform/store.py`), updated after the enqueue,
+   so a restart does not fire a slot again, and a crash between the enqueue and the update fires
+   it again as the same key, hence once. A slot older than the saved one is never fired.
+7. `fire_due(now=None)` in `tasks/application/routines.py` **MUST** do the above for every
+   dispatchable pod and return the task ids it created. The `docket start --dispatch` sweep calls
+   it once per pass, in `check_schedules`, before it checks schedules; a failure is reported on
+   the sweep's own line and never stops the sweep. `docket run` and a service without `--dispatch`
+   **MUST NOT** fire routines: firing needs the service, and precision is the sweep interval.
+8. `docket pod routine list [--json]` **MUST** print, per routine in the pod's scopes, its name,
+   schedule, tz, next slot, last fired slot and whether it is enabled, and read nothing it could
+   change (cli-interface.spec.md "docket pod").
 
 ### Unattended approval posture (`approvalMode`)
 
