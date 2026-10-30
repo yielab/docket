@@ -97,9 +97,7 @@ class TestResolution:
         lead = _pod.member_id(project, "lead")
         path = current_home().meta_path(lead)
         path.parent.mkdir(parents=True, exist_ok=True)
-        _store.write_json(
-            path, {"schemaVersion": 1, "kind": "project", "role": "lead", "pod": project, **meta}
-        )
+        _store.write_json(path, {"kind": "project", "role": "lead", "pod": project, **meta})
 
     @pytest.mark.parametrize(
         ("glob", "pod_value", "mode", "scope"),

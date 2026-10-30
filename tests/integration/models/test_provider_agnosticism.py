@@ -188,10 +188,8 @@ class TestHostedGatewayPreset:
 # ---------------------------------------------------------------------------
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
@@ -208,11 +206,11 @@ FLEET_CONFIG: dict[str, Any] = {
 def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     home = tmp_path / ".docket"
     home.mkdir()
-    ws = home / "workspaces" / "projects" / agent_id
+    ws = home / "state" / "workspaces" / "projects" / agent_id
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "SOUL.md").write_text("# SOUL\n")
-    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+    (home / "state" / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
     return home
 
 

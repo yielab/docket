@@ -36,8 +36,8 @@ def _checkout(path: Path) -> Path:
 @pytest.fixture
 def pod_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(_checkout(tmp_path / "origin")))
         yield home
@@ -70,7 +70,7 @@ def test_tool_schemas_do_not_depend_on_the_worktree() -> None:
 def test_a_pod_task_prompt_holds_no_heartbeat_or_tools_text_and_no_roots(
     tmp_path: Path, pod_home: Path
 ) -> None:
-    ws = pod_home / "workspaces" / "projects" / _MEMBER
+    ws = pod_home / "state" / "workspaces" / "projects" / _MEMBER
     (ws / "HEARTBEAT.md").write_text("## Active Tasks\nLEDGER-SENTINEL\n")
     (ws / "TOOLS.md").write_text("TOOLS-SENTINEL\n")
 
@@ -82,7 +82,7 @@ def test_a_pod_task_prompt_holds_no_heartbeat_or_tools_text_and_no_roots(
 
 
 def test_layers_run_stable_first(tmp_path: Path, pod_home: Path) -> None:
-    ws = pod_home / "workspaces" / "projects" / _MEMBER
+    ws = pod_home / "state" / "workspaces" / "projects" / _MEMBER
     (ws / "MEMORY.md").write_text("## Facts\nMEMORY-SENTINEL\n")
 
     composition = _identity.compose_agent_prompt(

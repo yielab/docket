@@ -174,7 +174,7 @@ def _config_of_record_report(
     settings: _pod_settings.PodSettings | None, project: str
 ) -> dict[str, str]:
     """``configSource``/``configDigest`` and ``drift`` (``applied.lock``: the source's lock or an
-    applied overlay file no longer matches), plus ``needsUpdate`` for a pod with a ``roles.json``."""
+    applied overlay file no longer matches)."""
     report = {"configSource": "", "configDigest": "", "drift": ""}
     if settings is not None and settings.config_source:
         report = {
@@ -182,8 +182,7 @@ def _config_of_record_report(
             "configDigest": settings.config_digest,
             "drift": _lock.drift(project, settings.config_source, settings.config_digest),
         }
-    needs_update = _lock.needs_update(project) if project else ""
-    return {**report, "needsUpdate": needs_update} if needs_update else report
+    return report
 
 
 def _provider_report(model: str) -> dict[str, Any]:

@@ -25,7 +25,6 @@ _runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
     "model": "anthropic/claude-sonnet-4-6",
@@ -41,8 +40,7 @@ FLEET_CONFIG: dict[str, Any] = {
     "bindings": [
         {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-999"}
     ],
-    "defaults": {"model": ""},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
@@ -54,12 +52,12 @@ def _setup_agent(
     """Create a minimal project workspace.  Returns the docket home dir."""
     oc_dir = tmp_path / ".docket"
     oc_dir.mkdir(exist_ok=True)
-    ws = oc_dir / "workspaces" / "projects" / agent_id
+    ws = oc_dir / "state" / "workspaces" / "projects" / agent_id
     ws.mkdir(parents=True, exist_ok=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     for fname in workspace_files or []:
         (ws / fname).write_text(f"# {agent_id}\n")
-    (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+    (oc_dir / "state" / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
     return oc_dir
 
 
@@ -148,7 +146,7 @@ class TestCmdSnapshot:
 
     def test_leftover_shared_directory_not_included(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        spec_ws = oc_dir / "workspaces" / "knowledge"
+        spec_ws = oc_dir / "state" / "workspaces" / "knowledge"
         spec_ws.mkdir(parents=True)
         (spec_ws / ".docket-meta.json").write_text(json.dumps({"kind": "project"}))
         rc, out, _ = _run(["status", "--all", "--json"], oc_dir)

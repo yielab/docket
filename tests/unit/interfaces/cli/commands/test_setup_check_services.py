@@ -25,9 +25,7 @@ SUBJECT = "docket.interfaces.cli.commands.setup_check_services"
 # ── seed helpers ───────────────────────────────────────────────────────────────
 
 _FULL_META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
-    "type": "repo",
     "name": "My Shop",
     "model": "anthropic/claude-sonnet-4-6",
     "stack": "Node.js",
@@ -40,8 +38,7 @@ _FULL_META: dict[str, Any] = {
 _FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [],
-    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 

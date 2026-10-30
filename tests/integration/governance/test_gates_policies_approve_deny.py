@@ -41,8 +41,7 @@ _FLEET_CONFIG: dict[str, Any] = {
     "bindings": [
         {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100"}
     ],
-    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
@@ -52,9 +51,9 @@ def oc_dir(
 ) -> Iterator[Path]:
     """Temp DOCKET_HOME with config paths repointed; docker stubbed off PATH."""
     d = tmp_path / ".docket"
-    (d / "policies").mkdir(parents=True)
-    (d / "approvals").mkdir(parents=True)
-    fleet_file = d / "fleet.json"
+    (d / "config" / "policies").mkdir(parents=True)
+    (d / "state" / "approvals").mkdir(parents=True)
+    fleet_file = d / "state" / "fleet.json"
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
 
@@ -70,7 +69,7 @@ def _seed_policies(oc_dir: Path) -> None:
     since the baseline templates ship as short-form YAML."""
     for pattern in ("*.json", "*.yaml", "*.yml"):
         for f in _templates.POLICY_TEMPLATES_DIR.glob(pattern):
-            shutil.copy(f, oc_dir / "policies" / f.name)
+            shutil.copy(f, oc_dir / "config" / "policies" / f.name)
 
 
 # ── high-risk action classes ─────────────────────────────────────────────────────
@@ -314,7 +313,7 @@ class TestPolicies:
 
     def test_validate_checks_every_installed_file(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        result = _pod_cli("validate", str(oc_dir))
+        result = _pod_cli("validate", str(oc_dir / "config"))
         assert result.exit_code == 0
         assert "block-destructive.yaml" in result.output
 
@@ -348,8 +347,10 @@ class TestPolicies:
         assert "then" in result.output
 
     def test_validate_reports_invalid_installed_file(self, oc_dir: Path) -> None:
-        (oc_dir / "policies" / "bad.json").write_text(json.dumps({"kind": "policy", "name": "bad"}))
-        result = _pod_cli("validate", str(oc_dir))
+        (oc_dir / "config" / "policies" / "bad.json").write_text(
+            json.dumps({"kind": "policy", "name": "bad"})
+        )
+        result = _pod_cli("validate", str(oc_dir / "config"))
         assert result.exit_code == 1
         assert "then" in result.output
 
@@ -371,11 +372,11 @@ class TestPolicyEngine:
 
     def test_validate_good_policy(self, oc_dir: Path) -> None:
         _seed_policies(oc_dir)
-        f = oc_dir / "policies" / "block-destructive.yaml"
+        f = oc_dir / "config" / "policies" / "block-destructive.yaml"
         assert _policy.validate_policy(f) == ""
 
     def test_validate_bad_policy(self, oc_dir: Path) -> None:
-        f = oc_dir / "policies" / "broken.json"
+        f = oc_dir / "config" / "policies" / "broken.json"
         f.write_text(json.dumps({"name": "x", "on": "input"}))
         msg = _policy.validate_policy(f)
         assert "missing fields" in msg
@@ -409,7 +410,8 @@ class TestApprove:
         assert result.exit_code == 2
         assert "No such command" in result.stderr
         assert (
-            json.loads((oc_dir / "approvals" / f"{token}.json").read_text())["state"] == "pending"
+            json.loads((oc_dir / "state" / "approvals" / f"{token}.json").read_text())["state"]
+            == "pending"
         )
 
     def test_grant_transitions_state(self, oc_dir: Path) -> None:
@@ -417,7 +419,7 @@ class TestApprove:
         result = _answer(escalation, "--option", "approve_once")
         assert result.exit_code == 0
         assert "Approved" in result.stdout
-        rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
+        rec = json.loads((oc_dir / "state" / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "granted"
 
     def test_grant_already_granted_warns(self, oc_dir: Path) -> None:
@@ -439,7 +441,7 @@ class TestDeny:
         result = _answer(escalation, "--option", "deny")
         assert result.exit_code == 0
         assert "Denied" in result.stdout
-        rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
+        rec = json.loads((oc_dir / "state" / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "denied"
 
     def test_the_retired_deny_verb_is_an_unknown_command(self, oc_dir: Path) -> None:
@@ -466,7 +468,7 @@ class TestSweep:
     def test_sweep_expires_old_pending(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
         # Backdate the record well past the timeout.
-        path = oc_dir / "approvals" / f"{token}.json"
+        path = oc_dir / "state" / "approvals" / f"{token}.json"
         rec = json.loads(path.read_text())
         rec["created"] = "2000-01-01T00:00:00Z"
         rec["expiresAt"] = rec["created"]
@@ -480,7 +482,7 @@ class TestSweep:
     def test_sweep_leaves_fresh(self, oc_dir: Path) -> None:
         token = _create(oc_dir)
         assert _escalation_sweep.sweep_escalations() == 0
-        rec = json.loads((oc_dir / "approvals" / f"{token}.json").read_text())
+        rec = json.loads((oc_dir / "state" / "approvals" / f"{token}.json").read_text())
         assert rec["state"] == "pending"
 
 
@@ -498,13 +500,13 @@ class TestBrokenPolicyStoreCli:
     }
 
     def test_validate_flags_uncompilable_regex(self, oc_dir: Path) -> None:
-        (oc_dir / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
-        result = _pod_cli("validate", str(oc_dir))
+        (oc_dir / "config" / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
+        result = _pod_cli("validate", str(oc_dir / "config"))
         assert result.exit_code == 1
         assert "pattern" in result.output
 
     def test_check_reports_broken_store_as_deny(self, oc_dir: Path) -> None:
-        (oc_dir / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
+        (oc_dir / "config" / "policies" / "zz-broken.json").write_text(json.dumps(self._BROKEN))
         result = _pod_cli("check", "ls src", "--role", "implementer")
         assert result.exit_code == 0
         assert "deny" in result.output
@@ -525,7 +527,7 @@ class TestPoliciesTestToolKind:
     }
 
     def test_non_exec_tool_skips_the_classifier(self, oc_dir: Path) -> None:
-        (oc_dir / "policies" / "watch-mainpy.json").write_text(json.dumps(self._WARN))
+        (oc_dir / "config" / "policies" / "watch-mainpy.json").write_text(json.dumps(self._WARN))
         result = _pod_cli(
             "check", 'write path="main.py"', "--role", "implementer", "--tool", "write"
         )

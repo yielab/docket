@@ -26,9 +26,9 @@ _TOKEN = "test-serve-token-pods-config"
 @pytest.fixture()
 def server(tmp_path: Path):  # type: ignore[no-untyped-def]
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    (home / "approvals").mkdir()
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "approvals").mkdir()
     with use_home(Home(home)):
 
         class _Handler(_DocketHandler):

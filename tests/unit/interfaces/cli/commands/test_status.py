@@ -112,7 +112,7 @@ class TestCurrentPod:
         import os
 
         with _seed(tmp_path) as home:
-            (home / "serve.pid").write_text(str(os.getpid()))
+            (home / "state" / "serve.pid").write_text(str(os.getpid()))
             assert _json("--pod", "demo")["running"] is True
 
     def test_no_pod_for_the_directory_exits_1(

@@ -684,8 +684,8 @@ def test_export_default_dir_refuses_a_non_empty_codebase_docket_without_force(
     codebase = tmp_path / "codebase"
     codebase.mkdir()
     home = tmp_path / "home" / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, pod.DEFAULT_POD_ROLES, codebase=str(codebase))
 
@@ -710,6 +710,7 @@ def test_recipe_member_follows_the_fleets_rank_anchors_not_the_compiled_default(
     """A recipe's own role, applied into the pod, gets the fleet's model, never the literal."""
     project = "fixture"
     with _seed_fixture_pod(tmp_path, project):
+        current_home().model_registry_file.parent.mkdir(parents=True, exist_ok=True)
         current_home().model_registry_file.write_text(
             json.dumps(
                 {

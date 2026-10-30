@@ -22,16 +22,20 @@ def _write_private_oracle_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     world = tmp_path / "world"
     home = world / ".docket"
     codebase = world / "codebase"
-    worktree = home / "workspaces" / "projects" / "smoke-implementer" / "tasks" / "task-fixture"
+    worktree = (
+        home / "state" / "workspaces" / "projects" / "smoke-implementer" / "tasks" / "task-fixture"
+    )
     codebase.mkdir(parents=True)
     worktree.mkdir(parents=True)
-    meta_path = home / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
+    meta_path = (
+        home / "state" / "workspaces" / "projects" / "smoke-implementer" / ".docket-meta.json"
+    )
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(
         json.dumps({"codebase": str(codebase)}),
         encoding="utf-8",
     )
-    task_list = home / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+    task_list = home / "state" / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
     task_list.parent.mkdir(parents=True, exist_ok=True)
     task_list.write_text(
         json.dumps(
@@ -50,7 +54,7 @@ def _write_private_oracle_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
         ),
         encoding="utf-8",
     )
-    session_path = home / "sessions" / "safe" / "session.json"
+    session_path = home / "state" / "sessions" / "safe" / "session.json"
     session_path.parent.mkdir(parents=True)
     session_path.write_text(
         json.dumps(
@@ -75,7 +79,7 @@ def _write_private_oracle_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
         ),
         encoding="utf-8",
     )
-    trace_path = home / "traces" / "smoke" / "agent:smoke:dispatch.jsonl"
+    trace_path = home / "state" / "traces" / "smoke" / "agent:smoke:dispatch.jsonl"
     trace_path.parent.mkdir(parents=True)
     return home, trace_path, worktree
 
@@ -134,7 +138,7 @@ def test_private_oracle_checks_retained_session_calls(tmp_path: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
-    session_path = home / "sessions" / "safe" / "session.json"
+    session_path = home / "state" / "sessions" / "safe" / "session.json"
     record = json.loads(session_path.read_text(encoding="utf-8"))
     record["messages"][0]["toolCalls"][0] = {
         "id": "retained-private-call",
@@ -173,7 +177,7 @@ def test_private_oracle_rejects_missing_known_tool_arguments(tmp_path: Path) -> 
 
 def test_allowed_roots_reject_broadened_task_worktree_record(tmp_path: Path) -> None:
     home, _, _ = _write_private_oracle_fixture(tmp_path)
-    task_path = home / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+    task_path = home / "state" / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
     document = json.loads(task_path.read_text(encoding="utf-8"))
     document["tasks"][0]["worktree"]["dir"] = str(home)
     task_path.write_text(json.dumps(document), encoding="utf-8")
@@ -321,7 +325,7 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
         + "\n",
         encoding="utf-8",
     )
-    approvals = home / "approvals"
+    approvals = home / "state" / "approvals"
     approvals.mkdir()
     (approvals / "approval-private.json").write_text(
         json.dumps(
@@ -336,7 +340,7 @@ def test_live_approval_disqualification_cancels_denies_and_aborts_once(
         ),
         encoding="utf-8",
     )
-    (home / "docket-runs.json").write_text(
+    (home / "state" / "docket-runs.json").write_text(
         json.dumps({"runs": [{"id": "run-live", "project": "smoke", "state": "running"}]}),
         encoding="utf-8",
     )
@@ -406,7 +410,7 @@ def test_live_approval_grants_only_typed_allowed_call(
         + "\n",
         encoding="utf-8",
     )
-    approvals = home / "approvals"
+    approvals = home / "state" / "approvals"
     approvals.mkdir()
     (approvals / "approval-allowed.json").write_text(
         json.dumps(
@@ -421,7 +425,7 @@ def test_live_approval_grants_only_typed_allowed_call(
         ),
         encoding="utf-8",
     )
-    (home / "docket-runs.json").write_text(
+    (home / "state" / "docket-runs.json").write_text(
         json.dumps({"runs": [{"id": "run-live", "project": "smoke", "state": "running"}]}),
         encoding="utf-8",
     )
@@ -545,11 +549,19 @@ def test_full_workflow_against_real_local_model(tmp_path: Path) -> None:
     assert "SMOKE PASS" in result.stdout
     task_list = json.loads(
         (
-            world / ".docket" / "workspaces" / "projects" / "smoke-lead" / "TASK_LIST.json"
+            world
+            / ".docket"
+            / "state"
+            / "workspaces"
+            / "projects"
+            / "smoke-lead"
+            / "TASK_LIST.json"
         ).read_text()
     )
     assert Path(task_list["tasks"][0]["worktree"]["dir"], "src", "checkout.py").is_file()
     assert (
         "cobalt-7"
-        in (world / ".docket" / "workspaces" / "projects" / "smoke-lead" / "MEMORY.md").read_text()
+        in (
+            world / ".docket" / "state" / "workspaces" / "projects" / "smoke-lead" / "MEMORY.md"
+        ).read_text()
     )

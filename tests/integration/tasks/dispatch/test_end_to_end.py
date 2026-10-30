@@ -63,7 +63,7 @@ class TestEndToEnd:
             assert len(backend.calls) == 2  # one turn per pod hop (lead, implementer)
             tasks = TaskRepository.for_pod("demo").list()
             assert tasks[0].status == "done"
-            assert (oc_dir / "traces" / "demo").is_dir()
+            assert (oc_dir / "state" / "traces" / "demo").is_dir()
 
     def test_agent_loop_trace_records_carry_the_claimed_tasks_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -82,7 +82,7 @@ class TestEndToEnd:
             results = _sweep.dispatch_pod("demo")
             assert results[0].status == "done"
 
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
             events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             llm_events = [e for e in events if e["event_type"] == "llm_call"]
@@ -137,7 +137,7 @@ class TestEndToEnd:
             tasks = TaskRepository.for_pod("demo").list()
             assert tasks[0].status == "failed"
             assert "approval_unavailable" in tasks[0].reason
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             assert trace_files
             trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             assert any(
@@ -191,7 +191,7 @@ class TestEndToEnd:
             # `parked: true`, not silently dropped.
             assert tasks[0].hops[-1].role == "implementer"
             assert tasks[0].hops[-1].parked is True
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             assert trace_files
             trace_events = [
                 json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
@@ -379,7 +379,11 @@ class TestEndToEnd:
         carries it."""
         with (
             _seed_pod(tmp_path) as home,
-            use_home(dataclasses.replace(current_home(), sessions_dir_override=home / "sessions")),
+            use_home(
+                dataclasses.replace(
+                    current_home(), sessions_dir_override=home / "state" / "sessions"
+                )
+            ),
         ):
             backend = _ScriptedBackend(
                 [
@@ -435,13 +439,13 @@ class TestEndToEnd:
             assert _session.load_messages(legacy_task_key) == [legacy_message]
             assert [s.session_id for s in driver.list_sessions("demo")] == [legacy_task_key]
 
-            trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((home / "state" / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
             trace_events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             assert trace_events[0]["session_id"] == f"agent:demo:{task.id}"
             assert all(e["session_id"] == f"agent:demo:{task.id}" for e in trace_events)
             assert sum(e["event_type"] == "session_compaction" for e in trace_events) == 2
-            assert {path.name for path in (home / "traces").iterdir()} == {"demo"}
+            assert {path.name for path in (home / "state" / "traces").iterdir()} == {"demo"}
 
     def test_step_history_key_encodes_custom_step_ids_without_collisions(self) -> None:
         colon = _runner.step_session_key("member", "demo", "task-1", "review:security")

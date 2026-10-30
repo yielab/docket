@@ -28,7 +28,8 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with all docket-owned store paths repointed."""
     d = tmp_path / ".docket"
     d.mkdir()
-    (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (d / "state").mkdir(parents=True, exist_ok=True)
+    (d / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
         monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
         monkeypatch.delenv("DOCKET_SECRETS_BACKEND", raising=False)
@@ -41,7 +42,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 class TestApprovalTrace:
     def _events_for(self, home: Path, project: str) -> list[dict[str, object]]:
         events: list[dict[str, object]] = []
-        for tf in (home / "traces" / project).glob("*.jsonl"):
+        for tf in (home / "state" / "traces" / project).glob("*.jsonl"):
             events.extend(_trace.read_trace(tf))
         return events
 
@@ -88,19 +89,19 @@ class TestStoredSecretRedaction:
     def test_redacts_stored_secret_value(self, home: Path) -> None:
         # File-backend secrets.json maps KEY -> value.
         secret = "supersecretvalue1234567890"
-        (home / "secrets.json").write_text(json.dumps({"MY_TOKEN": secret}))
+        (home / "state" / "secrets.json").write_text(json.dumps({"MY_TOKEN": secret}))
         out = _secrets.redact(f"the token is {secret} ok")
         assert secret not in out
         assert "[REDACTED]" in out
 
     def test_short_stored_value_not_redacted(self, home: Path) -> None:
         # redact.sh only redacts stored values longer than 8 chars.
-        (home / "secrets.json").write_text(json.dumps({"SHORT": "abc123"}))
+        (home / "state" / "secrets.json").write_text(json.dumps({"SHORT": "abc123"}))
         assert _secrets.redact("value abc123 here") == "value abc123 here"
 
     def test_redaction_in_trace_event(self, home: Path) -> None:
         secret = "anothersecretvalue0987654321"
-        (home / "secrets.json").write_text(json.dumps({"K": secret}))
+        (home / "state" / "secrets.json").write_text(json.dumps({"K": secret}))
         _trace.trace_event("p", "s", "r", "tool_call", json.dumps({"text": f"x {secret} y"}))
-        events = _trace.read_trace(home / "traces" / "p" / "s.jsonl")
+        events = _trace.read_trace(home / "state" / "traces" / "p" / "s.jsonl")
         assert secret not in json.dumps(events)

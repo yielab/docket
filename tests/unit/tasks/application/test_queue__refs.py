@@ -25,8 +25,8 @@ SUBJECT = "docket.tasks.application.queue"
 @pytest.fixture()
 def home(tmp_path: Path) -> Iterator[Path]:
     h = tmp_path / ".docket"
-    (h / "workspaces" / "projects").mkdir(parents=True)
-    (h / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (h / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (h / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(h)):
         yield h
 
@@ -36,7 +36,6 @@ def _lead(project: str) -> None:
     ws = current_home().projects_dir / member
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
-        "schemaVersion": 1,
         "kind": "project",
         "scope": "project",
         "role": "lead",

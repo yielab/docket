@@ -28,7 +28,6 @@ from docket.teams import roles as _roles
 from docket.teams.apply.recipes import _directory_files, _skill_digest
 
 LOCK_NAME = "applied.lock"
-LEGACY_ROLES_FILE = "roles.json"
 
 SCOPE_REPOSITORY = "repository"
 SCOPE_SHIPPED = "shipped"
@@ -213,16 +212,6 @@ def overlay_drifted(project: str) -> bool:
         return False
     overlay = current_home().pod_config_dir(project)
     return any(item.applied and _applied_digest(item, overlay) != item.sha256 for item in items)
-
-
-def needs_update(project: str) -> str:
-    """What `docket pod show` tells a pod applied before the lock: ``""`` when it has none."""
-    if (current_home().pod_config_dir(project) / LEGACY_ROLES_FILE).is_file():
-        return (
-            f"{LEGACY_ROLES_FILE} is no longer read: run `docket pod update <directory>` "
-            "to apply this pod's roles again"
-        )
-    return ""
 
 
 def drift(project: str, source: str, recorded: str) -> str:

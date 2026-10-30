@@ -25,7 +25,6 @@ SUBJECT = "docket.interfaces.http.server"
 # ── test fixtures (mirrors test_serve.py fake_home) ───────────────────────
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "Api Test Agent",
     "scope": "project",
@@ -36,8 +35,7 @@ META: dict[str, Any] = {
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "apitest"}],
     "bindings": [],
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
-    "defaults": {"model": ""},
+    "security": {},
 }
 
 
@@ -62,7 +60,8 @@ class TestStatusJsonPublishesNoPeerIds:
                 "peerId": "-100123",
             }
         ]
-        (api_home / "fleet.json").write_text(json.dumps(fleet))
+        (api_home / "state").mkdir(parents=True, exist_ok=True)
+        (api_home / "state" / "fleet.json").write_text(json.dumps(fleet))
 
         class _Handler(_DocketHandler):
             serve_token = "test-serve-token-p40-9"

@@ -25,10 +25,8 @@ SUBJECT = "docket.interfaces.cli.commands.setup_model"
 _runner = CliRunner()
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
@@ -38,7 +36,8 @@ META: dict[str, Any] = {
 
 
 def _register_openai(oc_dir: Path) -> None:
-    (oc_dir / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (oc_dir / "state").mkdir(parents=True, exist_ok=True)
+    (oc_dir / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     register_local_provider(oc_dir, "openai", [{"id": "gpt-4.1-mini"}])
 
 
@@ -49,7 +48,7 @@ def _run(args: list[str], oc_dir: Path, input_text: str | None = None) -> tuple[
 
 
 def _audit_entries(oc_dir: Path, action: str) -> list[dict[str, Any]]:
-    logf = oc_dir / "audit.log"
+    logf = oc_dir / "state" / "audit.log"
     if not logf.is_file():
         return []
     out: list[dict[str, Any]] = []

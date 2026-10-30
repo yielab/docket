@@ -166,7 +166,7 @@ class TestOperatorInputStepsPark:
             assert (question.requested_schema or {})["properties"] == {"answer": {"type": "string"}}
             assert (question.requested_schema or {})["required"] == ["answer"]
 
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             events = [
                 json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
             ]

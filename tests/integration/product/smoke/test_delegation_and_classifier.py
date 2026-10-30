@@ -84,9 +84,9 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
 
     home = tmp_path / ".docket"
     codebase = tmp_path / "codebase"
-    (home / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
     codebase.mkdir()
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         build_pod(
@@ -215,7 +215,15 @@ def test_smoke_tool_verdict_distinguishes_allowed_private_and_opaque(
 
 def test_private_project_tool_classifier_normalizes_allowed_worktree(tmp_path: Path) -> None:
     codebase = tmp_path / "codebase"
-    worktree = tmp_path / ".docket" / "workspaces" / "projects" / "smoke-implementer" / "worktree"
+    worktree = (
+        tmp_path
+        / ".docket"
+        / "state"
+        / "workspaces"
+        / "projects"
+        / "smoke-implementer"
+        / "worktree"
+    )
     reviewer_workspace = worktree.parent.parent / "smoke-reviewer"
     (codebase / "src").mkdir(parents=True)
     (codebase / "safe.txt").write_text("SAFE_ROOT_CONTENT", encoding="utf-8")
@@ -332,7 +340,15 @@ def test_private_project_tool_classifier_normalizes_allowed_worktree(tmp_path: P
 
 def test_private_classifier_fails_closed_for_inline_interpreter_code(tmp_path: Path) -> None:
     codebase = tmp_path / "codebase"
-    worktree = tmp_path / ".docket" / "workspaces" / "projects" / "smoke-implementer" / "worktree"
+    worktree = (
+        tmp_path
+        / ".docket"
+        / "state"
+        / "workspaces"
+        / "projects"
+        / "smoke-implementer"
+        / "worktree"
+    )
     reviewer_workspace = worktree.parent.parent / "smoke-reviewer"
     codebase.mkdir()
     worktree.mkdir(parents=True)
@@ -501,7 +517,15 @@ def test_private_classifier_allows_only_the_published_regression_entrypoint(
     tmp_path: Path,
 ) -> None:
     codebase = tmp_path / "codebase"
-    worktree = tmp_path / ".docket" / "workspaces" / "projects" / "smoke-implementer" / "worktree"
+    worktree = (
+        tmp_path
+        / ".docket"
+        / "state"
+        / "workspaces"
+        / "projects"
+        / "smoke-implementer"
+        / "worktree"
+    )
     codebase.mkdir()
     worktree.mkdir(parents=True)
     allowed = "PYTHONPATH=src python -m unittest discover -s tests -v"
@@ -529,8 +553,18 @@ def test_private_classifier_allows_only_the_published_regression_entrypoint(
 
 def test_private_classifier_rejects_universal_selector_escape(tmp_path: Path) -> None:
     codebase = tmp_path / "codebase"
-    worktree = tmp_path / ".docket" / "workspaces" / "projects" / "smoke-implementer" / "worktree"
-    private_log = tmp_path / ".docket" / "workspaces" / "projects" / "smoke-lead" / "memory"
+    worktree = (
+        tmp_path
+        / ".docket"
+        / "state"
+        / "workspaces"
+        / "projects"
+        / "smoke-implementer"
+        / "worktree"
+    )
+    private_log = (
+        tmp_path / ".docket" / "state" / "workspaces" / "projects" / "smoke-lead" / "memory"
+    )
     codebase.mkdir()
     worktree.mkdir(parents=True)
     private_log.mkdir(parents=True)

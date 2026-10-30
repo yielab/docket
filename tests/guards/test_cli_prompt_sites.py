@@ -99,8 +99,8 @@ def _seed_documents(tmp_path: Path) -> None:
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     root = tmp_path / ".docket"
-    (root / "workspaces" / "projects").mkdir(parents=True)
-    (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (root / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (root / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
         record_isolation_off(root)
         code = tmp_path / "code"

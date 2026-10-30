@@ -32,7 +32,7 @@ _runner = CliRunner()
 
 
 def _seed_workspace(home: Path, agent_id: str = "demo") -> Path:
-    ws = home / "workspaces" / "projects" / agent_id
+    ws = home / "state" / "workspaces" / "projects" / agent_id
     ws.mkdir(parents=True)
     (ws / ".docket-meta.json").write_text('{"model": "anthropic/claude-sonnet-4-6"}')
     return ws

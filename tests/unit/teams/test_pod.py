@@ -19,7 +19,7 @@ def _write_meta(member_id: str, pod_name: str, role: str = "") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _store.write_json(
         path,
-        {"schemaVersion": 1, "kind": "project", "scope": "project", "role": role, "pod": pod_name},
+        {"kind": "project", "scope": "project", "role": role, "pod": pod_name},
     )
 
 
@@ -73,7 +73,7 @@ class TestPodOf:
     def test_falls_back_to_string_parsing_when_meta_has_no_pod_field(self) -> None:
         path = current_home().meta_path("demo-lead")
         path.parent.mkdir(parents=True, exist_ok=True)
-        _store.write_json(path, {"schemaVersion": 1, "kind": "project", "role": "lead"})
+        _store.write_json(path, {"kind": "project", "role": "lead"})
         assert pod.pod_of("demo-lead") == "demo"
 
     def test_alien_id_still_refused_even_with_unrelated_meta_present(self) -> None:

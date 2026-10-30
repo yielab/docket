@@ -46,8 +46,6 @@ def render_pod(report: dict[str, Any]) -> None:
             "Config source:",
             f"{report['configSource']} (digest {report['configDigest'][:12]}..., drift: {drift})",
         )
-    if report.get("needsUpdate"):
-        ui.warn(report["needsUpdate"])
 
 
 def _render_endpoint(report: dict[str, Any]) -> None:
@@ -125,8 +123,6 @@ def render_member(report: dict[str, Any]) -> None:
             "Config source:",
             f"{report['configSource']} (digest {report['configDigest'][:12]}..., drift: {drift})",
         )
-    if report.get("needsUpdate"):
-        ui.warn(report["needsUpdate"])
     if report["podSettings"] is not None:
         ui.section("Pod settings")
         ui.table(

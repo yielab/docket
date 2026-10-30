@@ -43,7 +43,8 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Temp DOCKET_HOME with all docket-owned store paths repointed."""
     d = tmp_path / ".docket"
     d.mkdir()
-    (d / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (d / "state").mkdir(parents=True, exist_ok=True)
+    (d / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(d)), use_home(dataclasses.replace(current_home(), approval_timeout=900)):
         monkeypatch.delenv("DOCKET_NO_TRACE", raising=False)
         monkeypatch.delenv("DOCKET_NO_AUDIT", raising=False)
@@ -68,7 +69,7 @@ def live_server(home: Path):
 
 def _trace_events(home: Path, project: str) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
-    for tf in (home / "traces" / project).glob("*.jsonl"):
+    for tf in (home / "state" / "traces" / project).glob("*.jsonl"):
         events.extend(_trace.read_trace(tf))
     return events
 
@@ -365,7 +366,7 @@ class TestAuditFailureNeverBreaksApproval:
         the entry -- nothing external bootstraps DOCKET_HOME, so a missing parent just means
         "first write" (see `governance/audit.py`'s `audit_log()` docstring)."""
         missing = dataclasses.replace(
-            current_home(), root=home / "nope", approvals_dir_override=home / "approvals"
+            current_home(), root=home / "nope", approvals_dir_override=home / "state" / "approvals"
         )
         with use_home(missing):
             token = _ap.approval_create("proj-missing-dir", "implementer", "x")

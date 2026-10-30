@@ -45,7 +45,8 @@ class TestNoPods:
     ) -> None:
         home = tmp_path / ".docket"
         home.mkdir()
-        (home / "fleet.json").write_text(json.dumps({"agents": []}))
+        (home / "state").mkdir(parents=True, exist_ok=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": []}))
         with use_home(Home(home)):
             assert _setup_check_budget._check_dispatch_ledger(do_fix=False) == 0
             assert "Dispatch task ledger" not in capsys.readouterr().out

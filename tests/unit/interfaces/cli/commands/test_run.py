@@ -50,8 +50,8 @@ def _seed_pod(
     roles: tuple[str, ...] | None = None,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         build_pod(project, roles or _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
@@ -172,7 +172,7 @@ class TestForegroundApprovalPrompt:
 
                 tasks = TaskRepository.for_pod("demo").list()
                 assert tasks[0].status == "done"  # the model accepted the denial and finished
-                trace_files = list((home / "traces" / "demo").glob("*.jsonl"))
+                trace_files = list((home / "state" / "traces" / "demo").glob("*.jsonl"))
                 events = [
                     json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
                 ]
@@ -502,8 +502,8 @@ def _repo_pod(tmp_path: Path, run: str = "make migrate") -> Iterator[Path]:
     from docket.teams.apply import write as _write
 
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         code = tmp_path / "code"

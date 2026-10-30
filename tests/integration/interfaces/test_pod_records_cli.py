@@ -41,8 +41,8 @@ _LEADS_WITHOUT_SCORE = _LEADS.replace("  - {name: score, type: integer}\n", "")
 @pytest.fixture(autouse=True)
 def _pods_home(tmp_path: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod("shop", pod.DEFAULT_POD_ROLES, codebase="/src/shop")
         yield

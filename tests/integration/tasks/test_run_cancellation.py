@@ -196,7 +196,14 @@ class TestCancelRun:
         record = _runs.create_run("cli", "myapp")
 
         def _add_unknown_key(doc: dict[str, Any]) -> dict[str, Any]:
-            doc["runs"][0]["cancellation"] = {"futureKey": True}
+            doc["runs"][0]["cancellation"] = {
+                "requestedAt": None,
+                "observedAt": None,
+                "stoppedAt": None,
+                "reason": "",
+                "source": "",
+                "futureKey": True,
+            }
             return doc
 
         _store.read_modify_write(current_home().runs_file, _add_unknown_key)

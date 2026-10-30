@@ -35,8 +35,7 @@ _runner = CliRunner()
 _FLEET_CONFIG: dict[str, Any] = {
     "agents": [],
     "bindings": [],
-    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
@@ -46,7 +45,8 @@ def _seed(
 ) -> Iterator[Path]:
     home = root / ".docket"
     home.mkdir(parents=True)
-    fleet_file = home / "fleet.json"
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    fleet_file = home / "state" / "fleet.json"
     fleet_file.write_text(json.dumps(_FLEET_CONFIG))
     fleet_file.chmod(0o600)
     with use_home(Home(home)):
@@ -54,7 +54,7 @@ def _seed(
 
 
 def _providers(home: Path) -> dict[str, Any]:
-    catalog_file = home / "docket-providers.json"
+    catalog_file = home / "config" / "docket-providers.json"
     if not catalog_file.is_file():
         return {}
     cfg = json.loads(catalog_file.read_text())
@@ -158,7 +158,7 @@ def test_add_refuses_on_transport_failure_and_does_not_persist(tmp_path: Path) -
         )
         assert result.exit_code == 1
         assert _providers(home) == {}
-        assert not (home / "docket-providers.json").exists()
+        assert not (home / "config" / "docket-providers.json").exists()
         assert "Could not reach" in result.stderr
         assert "Nothing was registered" in result.stderr
 

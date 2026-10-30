@@ -247,8 +247,8 @@ class TestHopRecordRoundTrip:
 @contextmanager
 def _seed_pod(tmp_path: Path, project: str = "demo", *, full: bool = False) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         roles = _pod.pod.FULL_POD_ROLES if full else _pod.pod.DEFAULT_POD_ROLES
         build_pod(project, roles, codebase=f"/src/{project}")

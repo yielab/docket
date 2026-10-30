@@ -51,8 +51,8 @@ def _seed_pod(
     roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, roles, codebase=f"/src/{project}")
         yield home

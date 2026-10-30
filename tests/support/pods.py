@@ -71,10 +71,8 @@ def build_pod(
 
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
@@ -120,15 +118,12 @@ message: canary
 _FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [],
-    "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
 _FULL_META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
-    "type": "repo",
     "name": "My Shop",
     "model": "anthropic/claude-sonnet-4-6",
     "stack": "Node.js",
@@ -186,7 +181,6 @@ def write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
-        "schemaVersion": 1,
         "kind": "project",
         "scope": "project",
         "role": member_id.split("-")[-1],
@@ -206,8 +200,8 @@ def write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
 @contextmanager
 def seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield home
@@ -227,8 +221,8 @@ def seed_pod_isolation_off(
     roles: tuple[str, ...] = _pod.pod.DEFAULT_POD_ROLES,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         build_pod(project, roles, codebase=f"/src/{project}")
@@ -315,7 +309,7 @@ def members() -> list[str]:
 def setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
-    ws = oc_dir / "workspaces" / "projects" / agent_id
+    ws = oc_dir / "state" / "workspaces" / "projects" / agent_id
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "SOUL.md").write_text("# SOUL\n")
@@ -327,8 +321,8 @@ def seed_empty_home(
     tmp_path: Path,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         yield home
 
@@ -351,8 +345,8 @@ def section(*lines: str) -> str:
 @contextmanager
 def seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield
@@ -361,9 +355,9 @@ def seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
 @pytest.fixture()
 def pod_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    (home / "approvals").mkdir()
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "approvals").mkdir()
     with use_home(Home(home)):
         yield home
 
@@ -425,8 +419,8 @@ def unit(step_id: str, **extra: Any) -> _orch.PlannedUnit:
 def pod_home_bare(tmp_path: Path) -> Iterator[Path]:
     """A hermetic DOCKET_HOME with the directories enqueue_task_once touches."""
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
     with use_home(Home(home)):
         yield home
@@ -478,8 +472,8 @@ def planned_unit(
 @contextmanager
 def seed_lead_implementer_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, ("lead", "implementer"), codebase=f"/src/{project}")
         yield home
@@ -500,7 +494,7 @@ def seed_setup_check_home(
     """Create a temp DOCKET_HOME with one myshop agent and repoint config; a healthy home
     has a channel that delivers beyond the console, so `desktop` is enabled unless asked not to."""
     home = tmp_path / ".docket"
-    ws = home / "workspaces" / "projects" / "myshop"
+    ws = home / "state" / "workspaces" / "projects" / "myshop"
     (ws / "memory").mkdir(parents=True)
 
     meta = {**_FULL_META, "model": meta_model}
@@ -515,12 +509,13 @@ def seed_setup_check_home(
     fleet = json.loads(json.dumps(_FLEET_CONFIG))
     if not register:
         fleet["agents"] = []
-    fleet_file = home / "fleet.json"
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    fleet_file = home / "state" / "fleet.json"
     fleet_file.write_text(json.dumps(fleet))
     fleet_file.chmod(0o600)
 
     if secrets is not None:
-        sfile = home / "secrets.json"
+        sfile = home / "state" / "secrets.json"
         sfile.write_text(json.dumps(secrets))
         sfile.chmod(0o600)
 
@@ -587,8 +582,8 @@ def parked_task_in_pod(
 @contextmanager
 def seed_pod_at_codebase(tmp_path: Path, codebase: Path) -> Iterator[None]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod("demo", pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         yield

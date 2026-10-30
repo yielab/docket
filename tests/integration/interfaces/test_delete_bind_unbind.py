@@ -28,10 +28,8 @@ _runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
@@ -42,8 +40,7 @@ META: dict[str, Any] = {
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [],
-    "defaults": {"model": ""},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 FLEET_CONFIG_WITH_BINDING: dict[str, Any] = {
@@ -51,8 +48,7 @@ FLEET_CONFIG_WITH_BINDING: dict[str, Any] = {
     "bindings": [
         {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-123456789"}
     ],
-    "defaults": {"model": ""},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
@@ -63,12 +59,12 @@ def _setup_agent(
 ) -> Path:
     home = tmp_path / ".docket"
     home.mkdir()
-    ws = home / "workspaces" / "projects" / agent_id
+    ws = home / "state" / "workspaces" / "projects" / agent_id
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
     (ws / "SOUL.md").write_text("# SOUL\n")
     fleet_cfg = FLEET_CONFIG_WITH_BINDING if with_binding else FLEET_CONFIG
-    (home / "fleet.json").write_text(json.dumps(fleet_cfg))
+    (home / "state" / "fleet.json").write_text(json.dumps(fleet_cfg))
     return home
 
 
@@ -107,7 +103,7 @@ class TestCmdUnbind:
         rc, _, _ = _run(["setup", "notify", "unbind", "myshop"], home, "n\n")
         assert rc == 0
         # Binding must still be there
-        fleet = json.loads((home / "fleet.json").read_text())
+        fleet = json.loads((home / "state" / "fleet.json").read_text())
         myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert len(myshop_bindings) == 1
 
@@ -115,7 +111,7 @@ class TestCmdUnbind:
         home = _setup_agent(tmp_path, with_binding=True)
         rc, _, err = _run(["setup", "notify", "unbind", "myshop"], home, "y\n")
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        fleet = json.loads((home / "fleet.json").read_text())
+        fleet = json.loads((home / "state" / "fleet.json").read_text())
         myshop_bindings = [b for b in fleet["bindings"] if b["agentId"] == "myshop"]
         assert not myshop_bindings
 
@@ -167,7 +163,7 @@ class TestCmdBind:
             assert result.exit_code == 0, result.output
             assert "/wire A1B2C3" in result.output
             assert "My Shop Team" in result.output
-            fleet = json.loads((home / "fleet.json").read_text())
+            fleet = json.loads((home / "state" / "fleet.json").read_text())
             assert fleet["bindings"][0]["peerId"] == "-100456"
 
     def test_bind_unknown_agent_exits_1(self, tmp_path: Path) -> None:
@@ -182,7 +178,7 @@ class TestCmdBind:
         assert rc == 0
         combined = out + err
         assert "aborted" in combined.lower()
-        fleet = json.loads((home / "fleet.json").read_text())
+        fleet = json.loads((home / "state" / "fleet.json").read_text())
         assert not fleet["bindings"]
 
     def test_bind_manual_entry_records_binding(self, tmp_path: Path) -> None:
@@ -193,7 +189,7 @@ class TestCmdBind:
             stdin_text="-999888777\n",
         )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        fleet = json.loads((home / "fleet.json").read_text())
+        fleet = json.loads((home / "state" / "fleet.json").read_text())
         binding = next((b for b in fleet["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
         assert binding["peerId"] == "-999888777"
@@ -219,7 +215,7 @@ class TestCmdBind:
             stdin_text="-1001234567890\n",
         )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        fleet = json.loads((home / "fleet.json").read_text())
+        fleet = json.loads((home / "state" / "fleet.json").read_text())
         binding = next((b for b in fleet["bindings"] if b["agentId"] == "myshop"), None)
         assert binding is not None
         assert binding["peerId"] == "-1001234567890"
