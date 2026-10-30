@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json as _json
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from docket.governance import approval as _ap
@@ -188,6 +189,72 @@ def pregrants_for(task_id: str) -> list[dict[str, str]]:
         {"token": c.token, "tool": c.tool, "argsDigest": c.args_digest}
         for c in _approval_pregrant.pending_pregrants(task_id)
     ]
+
+
+@dataclass(frozen=True)
+class ParkedCall:
+    """A call a hop parked on an approval: what the hop re-run after the decision is told about it."""
+
+    token: str
+    escalation: str
+    tool: str
+    summary: str
+
+
+_CALL_MARK = "; call="
+_SUMMARY_CHARS = 300
+
+
+def _parked_call(record: dict[str, object], tool: str) -> ParkedCall:
+    """The call of the parked approval *record*: its tool and the redacted one-line summary the
+    gate stored in ``action`` (``tool call 'x': <reason>; call=<rendered call>``)."""
+    action = " ".join(str(record.get("action", "")).split())
+    _, found, rendered = action.partition(_CALL_MARK)
+    return ParkedCall(
+        token=str(record.get("token", "")),
+        escalation=str(record.get("escalation", "")),
+        tool=tool,
+        summary=(rendered if found else action)[:_SUMMARY_CHARS],
+    )
+
+
+def approved_calls_for(task_id: str, role: str) -> list[ParkedCall]:
+    """The calls a person approved for *role* after a hop of *task_id* parked them, which no hop
+    has spent yet: what the re-run hop is told to issue again. A call approved ahead
+    (``task pregrant``) is not one: nobody refused it."""
+    found: list[ParkedCall] = []
+    for granted in _approval_pregrant.pending_pregrants(task_id):
+        if granted.role != role:
+            continue
+        try:
+            record = _ap.approval_get(granted.token)
+        except _ap.ApprovalError:
+            continue
+        context = record.get("context")
+        if isinstance(context, dict) and context.get("parked"):
+            found.append(_parked_call(record, granted.tool))
+    return found
+
+
+def refused_call_for(task_id: str, role: str) -> ParkedCall | None:
+    """The latest call *role* parked on *task_id* when a person denied it, else ``None``: a hop
+    re-run after the denial (a retried task) is told not to issue it again."""
+    parked = [
+        record
+        for record in _ap.list_records()
+        if isinstance(record.get("context"), dict)
+        and record["context"].get("parked")
+        and record["context"].get("taskId") == task_id
+        and record.get("role") == role
+    ]
+    if not parked:
+        return None
+    latest = max(parked, key=lambda record: str(record.get("created", "")))
+    if latest.get("state") != "denied":
+        return None
+    context = latest.get("context")
+    assert isinstance(context, dict)
+    return _parked_call(latest, str(context.get("tool", "")))
 
 
 def approved_ready(record: TaskRecord) -> bool:

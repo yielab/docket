@@ -18,7 +18,12 @@ from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
-from docket.tasks.application.actions import mint_task_grant_pregrants, pregrants_for
+from docket.tasks.application.actions import (
+    approved_calls_for,
+    mint_task_grant_pregrants,
+    pregrants_for,
+    refused_call_for,
+)
 from docket.tasks.application.answers import answers_of, consult_note
 from docket.tasks.application.record import (
     UnitContext,
@@ -477,6 +482,27 @@ def _render_operator_answers(answers: list[Answer]) -> str:
     return capped
 
 
+def _approval_note(task_id: str, role: str) -> str:
+    """What a hop re-run after a person decided on a call it parked is told: the session still holds
+    the refusal that parked it. An approved call is to be issued again; a refused one is not."""
+    approved = approved_calls_for(task_id, role)
+    if approved:
+        calls = "\n".join(f"- {call.tool}: {call.summary}" for call in approved)
+        return (
+            "\n\nA person approved the call you were refused earlier in this conversation:\n"
+            f"{calls}\n"
+            "The refusal no longer applies. Issue the same call again now, with the same arguments; "
+            "it runs once without asking.\n"
+        )
+    refused = refused_call_for(task_id, role)
+    if refused is not None:
+        return (
+            f"\n\nA person refused your call: {refused.tool}: {refused.summary}\n"
+            "Do not issue it again.\n"
+        )
+    return ""
+
+
 def _compose_hop(
     ctx: UnitContext,
     node: _orch.PlannedUnit,
@@ -500,7 +526,7 @@ def _compose_hop(
         verify_cmd=verify_plan.command if verify_plan is not None else "",
         model_class=_models.model_class_of(_hop_model(node, member_id)),
     )
-    message += consult_note(ctx.task, node.step_id)
+    message += consult_note(ctx.task, node.step_id) + _approval_note(ctx.task_id, role)
     pipeline_worktree = ""
     if role != "lead":
         pipeline_worktree = claimed_worktree_dir(ctx.task)
