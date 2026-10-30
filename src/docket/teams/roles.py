@@ -228,6 +228,22 @@ STEP_TOOL_NAMES: tuple[str, ...] = ("verify", "handoff")
 MCP_TOOL_PREFIX = "mcp__"
 
 
+# The one tool kind a `cannot`/`deniedTools` entry may name that is not a built-in tool: it denies
+# every MCP tool whose server is declared `send`. `BUILTIN_TOOL_KINDS` has no entry for it because
+# no built-in tool acts outside the machine.
+SEND_KIND = "send"
+
+
+def allow_list_names(allow: tuple[str, ...], tool_name: str) -> bool:
+    """Whether the allow-list *allow* names *tool_name*: the exact name, or, for an MCP tool, its
+    server (`mcp__<server>` names every tool of that server)."""
+    return any(
+        tool_name == entry
+        or (entry.startswith(MCP_TOOL_PREFIX) and tool_name.startswith(f"{entry}__"))
+        for entry in allow
+    )
+
+
 def unknown_allow_list_tools(tools: tuple[str, ...]) -> list[str]:
     """The names in a role's `tools` allow-list that docket ships no tool for: not built-in, not a
     step tool and not in the MCP namespace."""

@@ -11,6 +11,7 @@ all. No real subprocess.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -96,3 +97,37 @@ class TestScopeOrder:
             "operator-cmd",
             "operator-t",
         ]
+
+
+class TestServerDocument:
+    """A ``kind: mcp-server`` document carries the declared kind (``access``) and the lifetime."""
+
+    def test_access_send_and_lifetime_hop_load_and_round_trip(self, tmp_path: Path) -> None:
+        path = tmp_path / "browser.yaml"
+        path.write_text(
+            "kind: mcp-server\nname: browser\ncommand: browse\naccess: send\nlifetime: hop\n"
+        )
+
+        config = _mcp_servers.load_mcp_server_document(path)
+
+        assert (config.kind, config.lifetime) == ("send", "hop")
+        again = _mcp_servers.McpServerDocument.model_validate(
+            _mcp_servers.mcp_server_document(config)
+        ).to_config()
+        assert again == config
+
+    def test_a_document_without_them_is_a_write_server_per_call(self, tmp_path: Path) -> None:
+        path = tmp_path / "plain.yaml"
+        path.write_text("kind: mcp-server\nname: plain\ncommand: run\n")
+
+        config = _mcp_servers.load_mcp_server_document(path)
+
+        assert (config.kind, config.lifetime) == ("write", "call")
+        assert "lifetime" not in _mcp_servers.mcp_server_document(config)
+
+    def test_an_access_outside_the_three_kinds_is_refused(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.yaml"
+        path.write_text("kind: mcp-server\nname: bad\ncommand: run\naccess: post\n")
+
+        with pytest.raises(_mcp_servers.McpServerDocError, match="access"):
+            _mcp_servers.load_mcp_server_document(path)

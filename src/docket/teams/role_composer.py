@@ -136,11 +136,20 @@ def registry_for_role(
     if surface == "minimal":
         narrowed = _keeping(narrowed, lambda t: t.name in MINIMAL_SURFACE or t.ends_turn)
     if allowed is not None:
-        narrowed = _keeping(narrowed, lambda t: t.name in allowed or t.ends_turn)
+        narrowed = _keeping(
+            narrowed, lambda t: _roles.allow_list_names(allowed, t.name) or t.ends_turn
+        )
+    held = archetype.tools if archetype is not None and archetype.tools else ()
+    if any((tool := narrowed.get(n)) is not None and tool.kind == "send" for n in narrowed.names()):
+        narrowed = _keeping(
+            narrowed, lambda t: t.kind != "send" or _roles.allow_list_names(held, t.name)
+        )
     if not denied:
         return narrowed
     narrowed = narrowed.without(*denied)
-    denied_kinds = {kind for name in named if (kind := BUILTIN_TOOL_KINDS.get(name))}
+    denied_kinds: set[str] = {kind for name in named if (kind := BUILTIN_TOOL_KINDS.get(name))}
+    if _roles.SEND_KIND in named:
+        denied_kinds.add(_roles.SEND_KIND)
     if denied_kinds:
         extra = [
             name

@@ -29,8 +29,9 @@ class McpServerConfig(BaseModel):
     # Operator assertion, never inferred by connecting to the server (see
     # specs/functional/mcp-client.spec.md Requirement 32). "write" is the
     # fail-closed default -- a config from before this field existed loads
-    # as "write", matching 1.1.0-1.4.0's unconditional behavior exactly.
-    kind: Literal["read", "write"] = "write"
+    # as "write", matching 1.1.0-1.4.0's unconditional behavior exactly. "send" marks a server
+    # whose tools act outside the machine; only a role naming one holds it.
+    kind: Literal["read", "write", "send"] = "write"
     # Non-empty = the exhaustive allow-list of this server's remote tool
     # names to register; every other advertised tool is skipped (recorded
     # in McpServerLoadResult.skipped), never silently dropped. Empty (the

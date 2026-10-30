@@ -172,6 +172,13 @@ class TestServersAdd:
         assert rc == 1
         assert _mcp_servers.load_mcp_servers() == []
 
+    def test_kind_send_is_stored_and_listed(self) -> None:
+        assert _mcp_run(["add", "mailer", "--kind", "send", "--", "cmd"])[0] == 0
+        assert _mcp_run(["add", "mailbox", "--kind", "read", "--", "cmd"])[0] == 0
+        stored = {s.name: s.kind for s in _mcp_servers.load_mcp_servers()}
+        assert stored == {"mailer": "send", "mailbox": "read"}
+        assert "send" in _mcp_run(["list"])[1]
+
     def test_a_bad_lifetime_is_rejected(self) -> None:
         rc, _, err = _mcp_run(["add", "s", "--lifetime", "forever", "--", "cmd"])
         assert rc == 1 and "--lifetime" in err
