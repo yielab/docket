@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 5.2.0
+**Version**: 5.3.0
 **Status**: Implemented. Three built-in and five starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
@@ -128,7 +128,9 @@ This specification does NOT cover:
    not a capability). A name of the form `mcp__<server>__<tool>` (the MCP namespace) **MUST** be
    accepted, because it can be checked only against a live server; so **MUST** a name of the form
    `svc__<service>__<operation>` or `svc__<service>` (a declared service's operations,
-   `service-client.spec.md` "Tools"). The refusal sits in
+   `service-client.spec.md` "Tools"), and a name of the form `rec__<set>`, `rec__<set>__add`,
+   `rec__query`, `rec__export` or `rec` (a pod's record tools, `pod-records.spec.md` "The tools").
+   The refusal sits in
    `validate_archetype_dict`, so `pod validate` and `pod update <file|dir>` (apply plans a role
    through `load_document`) refuse alike. `from_wire` and the registry load stay lenient: the turn
    path keeps the no-op of "Tools and calls per hop" requirement 2, so a recipe or an older
@@ -505,7 +507,7 @@ docket pod validate <file.yaml>
 2. `registry_for_role(base, role, project="", *, surface="full", allow=None)` is the one place
    that decides what a hop sees, in this order: (a) the model profile's *surface* (`full` keeps
    every tool; `minimal` keeps `bash`, `read`, `glob`, `edit`, `write`, `verify`, any tool that ends the turn, so
-   the closing tool is kept without being named here, and any MCP or service tool the allow-list in force names, as
+   the closing tool is kept without being named here, and any MCP, service or record tool the allow-list in force names, as
    `model-profiles.spec.md` requirement 7 says), then (b) the allow-list, *allow* when the
    step declared one, else the archetype's `tools`, keeping the names it lists and any tool that ends
    the turn (the closing tool is the step's contract, not a capability), then (c) the
@@ -540,7 +542,17 @@ docket pod validate <file.yaml>
    both. A server's kind is read from the directory's `mcp-servers/` documents, the pod's and the
    global catalog, and a service operation's access from the directory's `services/` documents,
    the pod's and the global catalog (`svc__<service>` counts as every operation of the service);
-   a name no catalog holds is not checked.
+   a name no catalog holds is not checked. `rec__query`, and `rec`, which holds it, count as a read
+   tool for this rule (a role denying `read` holds none), so a role that names a `send` tool and
+   `rec__query` is refused like one that holds `fetch`.
+7. **A pod's record tools are named by the allow-list and narrowed by kind.** The tools
+   `rec__<set>__add`, `rec__<set>__update`, `rec__query` and `rec__export` (`pod-records.spec.md`
+   "The tools") reach a role by the same allow-list as an MCP or service tool: a role's `tools` names
+   `rec__<set>` (the set's add and update), `rec__query`, `rec__export` or `rec` (all of the pod's);
+   a role with no allow-list holds them all, and a step's `tools` narrows them. `rec__query` is
+   a `read` tool; the others are `write`. A role that denies `write`, by its own `deniedTools` or its
+   pod's, therefore loses add, update and export by requirement 6 of "Per-role tool sets" and keeps
+   `rec__query`. None is `send`.
 
 ### Wire format (the one authored role file, and the persisted wire object)
 
@@ -628,7 +640,7 @@ applies to the persisted wire object.
 | --- | --- | --- | --- | --- | --- |
 | `researcher` | pod | strong | none | 8000 | *(none)* |
 | `analyst` | pod | cheap | none | 8000 | *(none)* |
-| `writer` | pod | cheap | none | 6000 | *(none)* |
+| `writer` | pod | cheap | none | 6000 | bash |
 | `operator` | pod | strong | mechanical | 8000 | *(none)* |
 | `monitor` | pod | cheap | approval | 4000 | write, edit, bash |
 

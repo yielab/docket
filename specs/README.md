@@ -107,25 +107,25 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pipeline Format | 4.5.0 | Implemented |
 | Pod Blueprints | 3.0.0 | Implemented |
 | Pod Dispatch | 11.9.0 | Implemented |
-| Role Archetypes | 5.2.0 | Implemented |
+| Role Archetypes | 5.3.0 | Implemented |
 | Security Gates | 3.5.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
-| Service Client | 1.3.0 | Implemented in part (the document, the tools, the call and the writes handling; not proven against a real service) |
-| Pod Records | 1.1.0 | Implemented in part (the store, the document and the CLI; the agent tools are not shipped) |
+| Service Client | 1.4.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
+| Pod Records | 1.3.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
 | Trace Store | 5.0.0 | Implemented and live |
 | Workspace Structure | 3.1.1 | Complete |
-| CLI Interface | 5.7.0 | Complete |
+| CLI Interface | 5.7.1 | Complete |
 | MCP Client | 3.1.0 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 2.0.1 | Implemented |
 | CLI JSON Shapes | 4.6.1 | Complete |
 | docket-meta schema | 5.5.2 | Complete |
 | Docket Store | 3.1.0 | Implemented |
-| Operator API | 7.5.1 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.6.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.2.0 | Implemented |
-| Serve Read API | 5.2.0 | Stable |
+| Serve Read API | 5.3.0 | Stable |
 | Adoption Benchmark | 2.2.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.4.0 | Active |
