@@ -1,0 +1,19 @@
+kind: pipeline
+name: capture
+description: >-
+  The Analyst adds a row to the entries set for each entry in the task's input, then the Reviewer
+  counts the set against the input.
+steps:
+  - capture: analyst
+    instructions: >-
+      Add one row to the entries set for every distinct entry in the task's input, with
+      rec__entries__add. Use the input's own identifier as ref and copy the title and amount as
+      written. An entry that repeats a ref is already in the set: the add says so, so do not add
+      it again. Reply with the refs you added and the refs that were already there.
+  - check: reviewer
+    instructions: >-
+      Count the distinct refs in the task's input, then count the rows of the entries set that this
+      task added with rec__query (the _task column holds the task id). APPROVE only when the two
+      counts agree and each title and amount matches the input; otherwise REQUEST-CHANGES and
+      name the ref that is missing, extra or wrong. You cannot add or change a row.
+    verdict: [APPROVE, REQUEST-CHANGES]
