@@ -220,11 +220,10 @@ neither: it is the browser case, a person's step. None of it is in Phase 56.
 
 ## Second amendment, 2026-10-30: a pod keeps records, and a call that leaves names its task
 
-**Status: proposed 2026-10-30**, from the maintainer's request the same day to fold the standard
+**Status: accepted 2026-10-30** by the maintainer, as written (the three choices the cards took by default stand), from the maintainer's request the same day to fold the standard
 teams work into Phase 56 without oversizing it, and to give pods "somewhere to store" the data of
 the business: reports, listings, compilations, a register, captured data. Not docket's own state:
-tasks, trace, audit and approvals stay where they are. Decisions 1 to 14 are unchanged. The open
-choices are in ROADMAP §7.1.
+tasks, trace, audit and approvals stay where they are. Decisions 1 to 14 are unchanged. The three choices that were open (records belong to one pod, `rec__query` takes a read-only `SELECT`, an update overwrites the row) were settled by accepting it.
 
 **Why.** Nothing in `src/docket` stores tabular data: there is no `sqlite3` import, pod memory
 (`memory.json`) holds verified facts about the workspace, and a workdir pod that keeps a register
@@ -251,7 +250,7 @@ only needs a table should not need a server.
     with a key derived from the task, the step, the operation and the canonical body, so the service
     can recognize a repeated call, such as the call a resumed hop issues again after its approval.
 
-*Not in this amendment:* a set shared between pods, records read over the HTTP API, deleting rows,
+*Not in this amendment's decisions:* a set shared between pods, deleting rows,
 vector search, an HTTP MCP transport (still deferred, above), a second store for docket's own tasks.
 
 *Team composition, in the same phase and under no new decision.* The maintainer's request of the same
