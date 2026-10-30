@@ -36,6 +36,15 @@ _GIT_IDENTITY = {
     "GIT_COMMITTER_EMAIL": "e2e@example.test",
     "GIT_CONFIG_NOSYSTEM": "1",
 }
+# Auto-maintenance can outlive the `git commit` that starts it (macOS CI), and then races a test
+# that removes the repo it just made: no e2e repo runs it.
+_GIT_NO_MAINTENANCE = {
+    "GIT_CONFIG_COUNT": "2",
+    "GIT_CONFIG_KEY_0": "maintenance.auto",
+    "GIT_CONFIG_VALUE_0": "false",
+    "GIT_CONFIG_KEY_1": "gc.auto",
+    "GIT_CONFIG_VALUE_1": "0",
+}
 
 
 @dataclass(frozen=True)
@@ -100,6 +109,7 @@ class World:
         self.env: dict[str, str] = {
             **{k: os.environ[k] for k in _PASSTHROUGH if k in os.environ},
             **_GIT_IDENTITY,
+            **_GIT_NO_MAINTENANCE,
             "DOCKET_HOME": str(self.home),
             "HOME": str(self.user_home),
             "DOCKET_LLM_BASE_URL": model.base_url,
