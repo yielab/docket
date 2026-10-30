@@ -1,0 +1,89 @@
+openapi: 3.0.3
+info:
+  title: Example CRM
+  version: "1.0"
+servers:
+  - url: https://api.example.test/v1/
+paths:
+  /clients:
+    get:
+      operationId: listClients
+      summary: List clients.
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer}
+        - $ref: "#/components/parameters/Status"
+        - name: X-Request-Id
+          in: header
+          schema: {type: string}
+      responses:
+        "200": {description: ok}
+    post:
+      operationId: createClient
+      summary: Create a client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewClient"
+      responses:
+        "201": {description: created}
+  /clients/{clientId}:
+    parameters:
+      - name: clientId
+        in: path
+        required: true
+        schema: {type: integer}
+    get:
+      operationId: getClient
+      summary: One client.
+      responses:
+        "200": {description: ok}
+    delete:
+      operationId: deleteClient
+      summary: Remove a client.
+      responses:
+        "204": {description: gone}
+  /clients/{clientId}/avatar:
+    parameters:
+      - name: clientId
+        in: path
+        required: true
+        schema: {type: integer}
+    post:
+      operationId: uploadAvatar
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        "200": {description: ok}
+  /health:
+    get:
+      summary: No operation id.
+      responses:
+        "200": {description: ok}
+components:
+  parameters:
+    Status:
+      name: status
+      in: query
+      required: true
+      schema: {type: string}
+  schemas:
+    Address:
+      type: object
+      properties:
+        city: {type: string}
+    NewClient:
+      type: object
+      required: [email]
+      properties:
+        email: {type: string}
+        address:
+          $ref: "#/components/schemas/Address"

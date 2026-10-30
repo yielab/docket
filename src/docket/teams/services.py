@@ -41,13 +41,23 @@ def load_service_document(path: str | Path) -> ServiceConfig:
         raise ServiceDocError(f"{p}: cannot read document: {exc}") from exc
     if not isinstance(raw, dict):
         raise ServiceDocError(f"{p}: document must be a mapping")
+    return service_from_mapping(raw, str(p))
+
+
+def first_error(exc: ValidationError) -> str:
+    """``field: message`` for the first failing field of a validation error."""
+    first = exc.errors()[0]
+    field = ".".join(str(part) for part in first["loc"])
+    return f"{field}: {str(first['msg']).removeprefix('Value error, ')}"
+
+
+def service_from_mapping(raw: dict[str, Any], source: str) -> ServiceConfig:
+    """Validate a ``kind: service`` mapping read from *source*; raises ``ServiceDocError`` naming
+    *source* and the first failing field."""
     try:
         document = ServiceDocument.model_validate(raw)
     except ValidationError as exc:
-        first = exc.errors()[0]
-        field = ".".join(str(part) for part in first["loc"])
-        message = str(first["msg"]).removeprefix("Value error, ")
-        raise ServiceDocError(f"{p}: {field}: {message}") from exc
+        raise ServiceDocError(f"{source}: {first_error(exc)}") from exc
     return ServiceConfig.model_validate(document.model_dump(by_alias=True, exclude={"kind"}))
 
 
