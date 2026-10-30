@@ -6,12 +6,13 @@ through `POST /v1/messages` on the fake model server, and driven by `DocketDrive
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from tests.support import pods as _support_pods
-from tests.support.model_server import FakeModel, call, say
+from tests.support.model_server import FakeModel, Reply, call, fail, say
 from tests.support.pods import write_meta_overrides as _write_meta
 from tests.support.trace import trace_events
 
@@ -27,6 +28,17 @@ workspace = _support_pods.workspace
 SUBJECT = "docket.models.adapters.openai_http"
 
 _KEY = "sk-ant-test-0123456789"
+
+_RECORDED = Path(__file__).resolve().parents[3] / "fixtures" / "anthropic-messages"
+
+
+def _recorded(name: str) -> Reply:
+    """A real `/v1/messages` reply, served byte for byte."""
+    return Reply(raw_body=(_RECORDED / f"{name}.json").read_text(encoding="utf-8"))
+
+
+def _id(name: str) -> str:
+    return str(json.loads((_RECORDED / f"{name}.json").read_text(encoding="utf-8"))["id"])
 
 
 def _register(server: FakeModel, **model_row: object) -> None:
@@ -115,6 +127,42 @@ class TestTheClient:
         assert messages.url == "http://127.0.0.1:9999/v1/messages"
         assert chat.url == "http://127.0.0.1:9999/v1/chat/completions"
 
+    def test_each_request_names_the_previous_reply_and_a_failed_call_keeps_it(
+        self, fake_model: Callable[..., FakeModel]
+    ) -> None:
+        server = fake_model(
+            sequence=[_recorded("tool-use"), fail(400), _recorded("end-turn-cached"), say("x")]
+        )
+        _register(server, maxTokens=512)
+        client = adapter.client_for("lab/m")
+        assert client is not None
+
+        for _ in range(4):
+            client.complete([user("hi")], timeout=5)
+
+        sent = [r.raw["diagnostics"] for r in server.requests]
+        assert sent == [
+            {"previous_message_id": None},
+            {"previous_message_id": _id("tool-use")},
+            {"previous_message_id": _id("tool-use")},
+            {"previous_message_id": _id("end-turn-cached")},
+        ]
+
+    def test_the_openai_chat_wire_sends_no_diagnostics(
+        self, fake_model: Callable[..., FakeModel]
+    ) -> None:
+        server = fake_model(sequence=[say("a"), say("b")])
+        client = adapter.client_for_endpoint(
+            Endpoint(base_url=server.base_url, model_id="m"), "openai-chat"
+        )
+        assert client is not None
+
+        client.complete([user("hi")], timeout=5)
+        got = client.complete([user("hi")], timeout=5)
+
+        assert got.ok and got.cache_miss == ""
+        assert all("diagnostics" not in r.raw for r in server.requests)
+
     def test_a_dialect_with_no_adapter_gives_no_client(self) -> None:
         endpoint = Endpoint(base_url="http://127.0.0.1:1/v1", model_id="m")
 
@@ -157,3 +205,26 @@ class TestTheTurn:
         assert len(calls) == 2
         assert [e["payload"]["cachedTokens"] for e in calls] == [300, 300]
         assert [e["payload"]["inputTokens"] for e in calls] == [315, 315]
+
+    def test_the_trace_carries_the_divergence_the_endpoint_reported(
+        self,
+        fake_model: Callable[..., FakeModel],
+        workspace: Path,
+    ) -> None:
+        server = fake_model(
+            sequence=[_recorded("diagnostics-not-found"), _recorded("diagnostics-system-changed")]
+        )
+        _register(server, maxTokens=1024)
+        _write_meta("diag-agent", role="implementer", model="lab/m", codebase=str(workspace))
+
+        result = DocketDriver().run_turn("diag-agent", "agent:diag-agent:default", "ls", 60, {})
+
+        assert result.ok, result.error
+        calls = [e["payload"] for e in trace_events("diag-agent") if e["event_type"] == "llm_call"]
+        assert [(c.get("cacheMiss"), c.get("cacheMissedTokens")) for c in calls] == [
+            ("previous_message_not_found", None),
+            ("system_changed", 11262),
+        ]
+        assert server.requests[1].raw["diagnostics"] == {
+            "previous_message_id": _id("diagnostics-not-found")
+        }

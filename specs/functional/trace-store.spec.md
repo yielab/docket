@@ -1,10 +1,10 @@
 # Trace Store Specification
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -219,6 +219,9 @@ This specification does NOT cover:
     An `llm_call` record **MUST** also carry `cacheWriteTokens` (the part of `inputTokens` the
     endpoint reported writing to a cache, `TokenUsage.cache_write_tokens`) when it is positive,
     and no such key otherwise, so a record of an endpoint that reports none carries no such key.
+    It **MUST** carry `cacheMiss` (`ChatResponse.cache_miss`: where the request diverged from the
+    previous one, as the endpoint reported it) only when that value is non-empty, and
+    `cacheMissedTokens` (`ChatResponse.cache_missed_tokens`) only when it is positive.
 
 ### Process lifecycle events
 

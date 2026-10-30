@@ -139,6 +139,11 @@ def build_payload(
     return payload
 
 
+def link_previous(payload: dict[str, Any], previous_id: str | None) -> None:
+    """Ask the endpoint to compare this request with the reply *previous_id* answered."""
+    payload["diagnostics"] = {"previous_message_id": previous_id}
+
+
 def request_part_bytes(payload: dict[str, Any]) -> dict[str, int]:
     """Bytes of each part of an encoded request body; trace-store requirement 28. ``tool_result``
     blocks count as ``toolResults``, the other blocks by their message's role."""
@@ -174,6 +179,16 @@ def _decode_usage(raw: Any) -> TokenUsage:
     )
 
 
+def _cache_miss(raw: Any) -> tuple[str, int]:
+    """The divergence type and its missed-token estimate; ``pending`` while the comparison ran."""
+    if not isinstance(raw, dict):
+        return "", 0
+    reason = raw.get("cache_miss_reason")
+    if not isinstance(reason, dict):
+        return "pending", 0
+    return str(reason.get("type") or ""), _as_int(reason.get("cache_missed_input_tokens"))
+
+
 def decode_response(data: dict[str, Any]) -> ChatResponse:
     """Translate a decoded reply body into a ``ChatResponse``."""
     if data.get("type") == "error" or isinstance(data.get("error"), dict):
@@ -207,10 +222,14 @@ def decode_response(data: dict[str, Any]) -> ChatResponse:
                 )
             )
     stop = str(data.get("stop_reason") or "")
+    miss, missed = _cache_miss(data.get("diagnostics"))
     return ChatResponse(
         ok=True,
         message=ChatMessage(role="assistant", content="".join(texts), tool_calls=calls),
         finish_reason=_FINISH_REASON.get(stop, stop),
         usage=_decode_usage(data.get("usage")),
         raw=data,
+        response_id=str(data.get("id") or ""),
+        cache_miss=miss,
+        cache_missed_tokens=missed,
     )

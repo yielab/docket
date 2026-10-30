@@ -316,3 +316,44 @@ class TestRequestBytes:
         results = payload["messages"][2]["content"]
         assert sizes["toolResults"] == sum(size(b) for b in results if b["type"] == "tool_result")
         assert sizes["user"] == size(payload["messages"][0]["content"][0]) + size(results[2])
+
+
+class TestCacheDiagnostics:
+    def test_a_request_names_the_previous_reply_or_null_on_the_first_call(self) -> None:
+        first = wire.build_payload(_ENDPOINT, [user("hi")])
+        later = wire.build_payload(_ENDPOINT, [user("hi")])
+
+        wire.link_previous(first, None)
+        wire.link_previous(later, "msg_01")
+
+        assert first["diagnostics"] == {"previous_message_id": None}
+        assert later["diagnostics"] == {"previous_message_id": "msg_01"}
+
+    def test_a_reported_divergence_gives_its_type_and_the_missed_tokens(self) -> None:
+        data = _recorded("diagnostics-system-changed")
+
+        got = wire.decode_response(data)
+
+        assert (got.cache_miss, got.cache_missed_tokens) == ("system_changed", 11262)
+        assert got.response_id == data["id"]
+
+    def test_a_reason_without_a_token_estimate_gives_the_type_only(self) -> None:
+        got = wire.decode_response(_recorded("diagnostics-not-found"))
+
+        assert (got.cache_miss, got.cache_missed_tokens) == ("previous_message_not_found", 0)
+
+    def test_no_divergence_gives_no_cache_miss_but_keeps_the_id(self) -> None:
+        data = _recorded("end-turn-cached")
+
+        got = wire.decode_response(data)
+
+        assert (got.cache_miss, got.cache_missed_tokens) == ("", 0)
+        assert got.response_id == data["id"]
+
+    def test_a_comparison_still_running_is_pending(self) -> None:
+        data = {
+            **_recorded("diagnostics-system-changed"),
+            "diagnostics": {"cache_miss_reason": None},
+        }
+
+        assert wire.decode_response(data).cache_miss == "pending"

@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 6.3.0
+**Version**: 6.4.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-10-29
@@ -410,6 +410,9 @@ directly — see "Provider catalog" below.
     | reply `content[]` | `text` blocks joined into the message `content`; `tool_use` blocks into `ToolCall`s whose `arguments` are the compact JSON of `input` |
     | `usage` | `input_tokens` = `input_tokens` + `cache_read_input_tokens` + `cache_creation_input_tokens`; `cached_tokens` = the read count; `cache_write_tokens` = the creation count (both subsets of the input, as `TokenUsage` says); `output_tokens` as sent |
     | cache markers | `cache_control: {"type": "ephemeral"}` on the last `system` block and on the last block of the last message, for every model on this dialect |
+    | cache diagnostics | every request carries `diagnostics: {"previous_message_id": <the id of the last reply this client decoded, else null>}`; a failed call leaves the remembered id as it was |
+    | reply `id` | `ChatResponse.response_id` |
+    | reply `diagnostics` | `null` or absent: no `cache_miss`; `{"cache_miss_reason": null}` (the comparison was still running): `cache_miss` = `pending`; otherwise `cache_miss` = `cache_miss_reason.type` and `cache_missed_tokens` = its `cache_missed_input_tokens` when present (an estimate the endpoint derives from bytes, not a billed count) |
 
     An `{"type": "error"}` body is a failed response carrying its `error.message`. Encoding the same
     conversation twice **MUST** give the same bytes, and a `tool_use` decoded and encoded again in
@@ -418,6 +421,9 @@ directly — see "Provider catalog" below.
     as `system`, the tools as `tools`, `tool_result` blocks as `toolResults`, and the other blocks
     by their message's role. Streaming, thinking blocks, structured outputs, server tools and
     images are not part of this dialect.
+    The client is one per turn (`DocketDriver` builds it for each turn), so the previous reply is the
+    turn's previous call, whatever its purpose: a compaction call and the call after it each compare
+    against the request before them. `openai-chat` sends no `diagnostics` key and decodes none.
 
 ### Model profiles
 

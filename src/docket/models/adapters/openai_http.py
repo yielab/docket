@@ -55,6 +55,8 @@ class _Wire:
     decode_response: Callable[[dict[str, Any]], ChatResponse]
     request_part_bytes: Callable[[dict[str, Any]], dict[str, int]]
     request_problem: Callable[[Endpoint, int | None], str | None]
+    #: Names the previous reply in a request body; ``None`` when the wire has no such link.
+    link_previous: Callable[[dict[str, Any], str | None], None] | None = None
 
 
 _DIALECTS: dict[str, _Wire] = {
@@ -71,6 +73,7 @@ _DIALECTS: dict[str, _Wire] = {
         _anthropic_wire.decode_response,
         _anthropic_wire.request_part_bytes,
         _anthropic_wire.request_problem,
+        _anthropic_wire.link_previous,
     ),
 }
 
@@ -78,13 +81,14 @@ _DIALECTS: dict[str, _Wire] = {
 class OpenAIChatClient:
     """``ChatBackend`` over a provider's chat endpoint, in the wire its ``dialect`` names.
 
-    Stateless apart from its ``Endpoint`` — safe to construct per call or hold
-    for the life of a loop.
+    Holds its ``Endpoint`` and the id of the last reply it decoded, which the next request names
+    when the wire links requests; ``DocketDriver`` builds one per turn.
     """
 
     def __init__(self, endpoint: Endpoint, dialect: str = "openai-chat") -> None:
         self.endpoint = endpoint
         self._wire = _DIALECTS[dialect]
+        self._previous_id: str | None = None
 
     @property
     def url(self) -> str:
@@ -165,6 +169,8 @@ class OpenAIChatClient:
         payload = self._wire.build_payload(
             self.endpoint, messages, tools, max_tokens, temperature, top_p, tool_choice
         )
+        if self._wire.link_previous is not None:
+            self._wire.link_previous(payload, self._previous_id)
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8", errors="replace")
         request = urllib.request.Request(
             self.url, data=body, headers=self._headers(), method="POST"
@@ -252,8 +258,10 @@ class OpenAIChatClient:
                 provider=self.endpoint.provider,
                 latency_ms=_elapsed_ms(),
             )
+        decoded = self._wire.decode_response(data)
+        self._previous_id = decoded.response_id or self._previous_id
         return replace(
-            self._wire.decode_response(data),
+            decoded,
             model=self.endpoint.model_id,
             provider=self.endpoint.provider,
             latency_ms=_elapsed_ms(),
