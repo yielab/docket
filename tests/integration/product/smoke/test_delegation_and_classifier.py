@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from tests.support.pods import build_pod
+from tests.support.roles import ROLE_NAMES
 from tests.support.smoke_script import (
     _smoke,
 )
@@ -25,7 +26,7 @@ SUBJECT = "docket.__main__"
 
 def test_basic_smoke_mechanical_gate_is_byte_exact(tmp_path: Path) -> None:
     _, codebase, _, pipeline_path = _smoke._write_inputs(tmp_path, _smoke._BASIC_SCENARIO)
-    loaded = load_pipeline(pipeline_path.read_text(encoding="utf-8"))
+    loaded = load_pipeline(pipeline_path.read_text(encoding="utf-8"), roles=ROLE_NAMES)
     assert loaded.errors == [] and loaded.spec is not None
     gate = loaded.spec.steps[1].gate
     assert isinstance(gate, MechanicalGate) and gate.command is not None

@@ -147,12 +147,15 @@ def classify_directory(directory: Path) -> PlanReview:
     runs: list[RunItem] = []
     adds: list[tuple[str, str]] = []
     pipeline_file = directory / str(manifest.get("pipeline") or "pipeline.yaml")
+    role_names = _arch.load_registry().names()
     if pipeline_file.is_file():
-        spec = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8")).spec
+        spec = _pipeline.load_pipeline(
+            pipeline_file.read_text(encoding="utf-8"), roles=role_names
+        ).spec
         runs.extend(_run_steps(spec.steps if spec is not None else []))
         adds.append(("pipeline", pipeline_file.name))
     for named in _named_pipeline_files(directory):
-        spec = _pipeline.load_pipeline(named.read_text(encoding="utf-8")).spec
+        spec = _pipeline.load_pipeline(named.read_text(encoding="utf-8"), roles=role_names).spec
         runs.extend(_run_steps(spec.steps if spec is not None else [], f"{named.stem}/"))
         adds.append(("pipeline", f"pipelines/{named.name}"))
     adds.extend(("routine", f"routines/{r.name}") for r in routine_files(directory))

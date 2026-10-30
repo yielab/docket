@@ -226,7 +226,7 @@ def _plan_plugins(directory: Path, project: str) -> tuple[list[ApplyItem], list[
 
 
 def _plan_named_pipelines(
-    directory: Path, project: str
+    directory: Path, project: str, registry: _arch.ArchetypeRegistry
 ) -> tuple[list[ApplyItem], list[_NamedPipelineWrite]]:
     """Plan ``pipelines/<name>.yaml`` into *project*'s own ``config/pipelines/``, the directory
     dispatch resolves a task's ``pipeline`` in, by bytes. A file dispatch could not run (an
@@ -243,7 +243,7 @@ def _plan_named_pipelines(
             raise PodApplyError(f"{rel}: two files name pipeline {pipeline_file.stem!r}")
         seen.add(pipeline_file.stem)
         source = pipeline_file.read_bytes()
-        loaded = _pipeline.load_pipeline(source.decode("utf-8"))
+        loaded = _pipeline.load_pipeline(source.decode("utf-8"), roles=registry.names())
         if loaded.spec is None:
             refused = PodApplyRefused if loaded.canonical else PodApplyError
             raise refused(f"{rel}: {'; '.join(loaded.errors)}")
@@ -358,7 +358,7 @@ def _plan_pipeline(
         return None, None
 
     text = pipeline_file.read_text(encoding="utf-8")
-    result = _pipeline.load_pipeline(text)
+    result = _pipeline.load_pipeline(text, roles=registry.names())
     if result.spec is None:
         refused = PodApplyRefused if result.canonical else PodApplyError
         raise refused(f"{pipeline_file}: invalid pipeline: {'; '.join(result.errors)}")
@@ -532,7 +532,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
 
     plugin_items, plugin_writes = _plan_plugins(directory, project)
 
-    named_items, named_writes = _plan_named_pipelines(directory, project)
+    named_items, named_writes = _plan_named_pipelines(directory, project, augmented)
     routine_items, routine_writes = plan_routines(directory, project)
     skill_items, skill_writes = _plan_skills(directory, project)
 

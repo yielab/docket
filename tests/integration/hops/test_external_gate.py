@@ -20,6 +20,7 @@ from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off
 from tests.support.llm import implementer_messages as _implementer_messages
 from tests.support.pods import build_pod
+from tests.support.roles import ROLE_NAMES
 
 from docket.governance import secrets as _secrets
 from docket.hops.application import sweep as _sweep
@@ -70,7 +71,9 @@ def _script(tmp_path: Path, body: str) -> Path:
 
 
 def _spec(script: Path, on: str = "", timeout: str = "") -> _pipeline.PipelineSpec:
-    loaded = _pipeline.load_pipeline(_PLAIN.format(script=script, on=on, timeout=timeout))
+    loaded = _pipeline.load_pipeline(
+        _PLAIN.format(script=script, on=on, timeout=timeout), roles=ROLE_NAMES
+    )
     assert loaded.ok, loaded.errors
     assert loaded.spec is not None
     return loaded.spec
@@ -159,7 +162,8 @@ class TestExitMapping:
         with _seed(tmp_path):
             spec = _pipeline.load_pipeline(
                 "name: g\nsteps:\n  - build: implementer\n"
-                "    gate: {external: 'definitely-not-a-command-zz9'}\n"
+                "    gate: {external: 'definitely-not-a-command-zz9'}\n",
+                roles=ROLE_NAMES,
             ).spec
             assert spec is not None
             _queue.enqueue_task_once("demo", "Ship it", channel="cli")

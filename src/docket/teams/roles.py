@@ -101,6 +101,10 @@ class ArchetypeRegistry:
     def role_names(self) -> tuple[str, ...]:
         return tuple(self.archetypes.keys())
 
+    def names(self) -> frozenset[str]:
+        """The role names as a set: what a pipeline load reads to tell a member id from a role."""
+        return frozenset(self.archetypes)
+
     def items(self) -> list[tuple[str, RoleArchetype]]:
         return list(self.archetypes.items())
 

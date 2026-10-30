@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from tests.support.roles import ROLE_NAMES
 
 from docket.pipeline.domain.spec import input_refusal, load_pipeline
 
@@ -25,7 +26,7 @@ PLAIN = "name: plain\nsteps:\n  - plan: lead\n  - implement: implementer\n"
 
 
 def _spec(text: str):  # type: ignore[no-untyped-def]
-    loaded = load_pipeline(text)
+    loaded = load_pipeline(text, roles=ROLE_NAMES)
     assert loaded.spec is not None, loaded.errors
     return loaded.spec
 
