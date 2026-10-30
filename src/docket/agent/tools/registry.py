@@ -152,7 +152,8 @@ class Tool:
     ``exec`` goes through the classifier, ``write`` is a mutating record, ``read`` is the cheap case.
     ``ends_turn`` marks a tool whose successful call closes the turn (the agent loop's own rule).
     ``pregranted`` marks an ``exec`` tool whose command the pipeline already authorises: it skips
-    the classifier and nothing else."""
+    the classifier and nothing else. ``deletes`` marks a tool that deletes something outside the
+    machine: its approval offers ``approve_once`` and ``deny`` only."""
 
     name: str
     description: str
@@ -161,6 +162,7 @@ class Tool:
     kind: ToolKind = "read"
     ends_turn: bool = False
     pregranted: bool = False
+    deletes: bool = False
 
     @property
     def required_args(self) -> tuple[str, ...]:

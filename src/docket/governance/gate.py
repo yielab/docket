@@ -284,6 +284,7 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
         rationale=rationale,
         rationale_blocked=blocked,
         call=whole,
+        deletes=call.tool.deletes,
     )
     _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
     return _wait(token, ctx, tool.name, digest, verdict)
@@ -322,6 +323,7 @@ def _park(
         rationale=rationale,
         rationale_blocked=blocked,
         call=whole,
+        deletes=call.tool.deletes,
     )
     _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
     return token
