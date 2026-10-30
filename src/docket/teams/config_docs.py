@@ -24,6 +24,7 @@ from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import model_selection as _models_policy
 from docket.teams import prompts as _prompts
+from docket.teams import records as _records
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
 from docket.teams import services as _services
@@ -49,6 +50,7 @@ KINDS: tuple[str, ...] = (
     "prompt",
     "routine",
     "service",
+    "records",
 )
 
 _LOCATION_KIND: dict[str, str] = {
@@ -56,6 +58,7 @@ _LOCATION_KIND: dict[str, str] = {
     "policies": "policy",
     "mcp-servers": "mcp-server",
     "services": "service",
+    "records": "records",
     "pipelines": "pipeline",
     "routines": "routine",
 }
@@ -71,10 +74,11 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "prompt": _prompts.PromptDocument,
     "routine": RoutineDocument,
     "service": _services.ServiceDocument,
+    "records": _records.RecordsDocument,
 }
 
 
-# The kinds whose failure is refined by their short-form model; `exporter`, `mcp-server` and `service` keep
+# The kinds whose failure is refined by their short-form model; `exporter`, `mcp-server`, `service` and `records` keep
 # the plain message of their own parser (their models exist for schema generation only).
 _REFINED_KINDS: frozenset[str] = frozenset({"role", "pipeline", "policy", "pod"})
 
@@ -284,6 +288,13 @@ def _validate_service(path: Path) -> None:
         raise ConfigDocError(path, str(exc)) from exc
 
 
+def _validate_records(path: Path) -> None:
+    try:
+        _records.load_records_document(path)
+    except _records.RecordsDocError as exc:
+        raise ConfigDocError(path, str(exc)) from exc
+
+
 def _validate_routine(path: Path, doc: dict[str, Any]) -> None:
     try:
         RoutineDocument.model_validate({"kind": "routine", **doc})
@@ -386,6 +397,8 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             _validate_mcp_server(p)
         elif effective_kind == "service":
             _validate_service(p)
+        elif effective_kind == "records":
+            _validate_records(p)
         elif effective_kind == "autonomy":
             _validate_autonomy(p)
         elif effective_kind == "routine":
@@ -437,18 +450,18 @@ def prompt_payload(directory: str | Path) -> list[Path]:
 
 
 def discover_config_paths(directory: str | Path) -> list[Path]:
-    """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``services/*``,
+    """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``services/*``, ``records/*``,
     ``pipelines/*`` and ``routines/*`` (``.yaml|yml``), ``prompts/*.md`` and ``prompts/<layer>/*.md``, ``pipeline.yaml``/``.yml``, and
     ``pod.yaml``/``.yml`` directly under *directory*, in that order."""
     base = Path(directory)
     paths: list[Path] = []
-    for sub in ("roles", "policies", "mcp-servers", "services", "pipelines", "routines"):
+    for sub in ("roles", "policies", "mcp-servers", "services", "records", "pipelines", "routines"):
         sub_dir = base / sub
         if not sub_dir.is_dir():
             continue
         patterns = (
             ("*.yaml", "*.yml")
-            if sub in ("pipelines", "routines", "services")
+            if sub in ("pipelines", "routines", "services", "records")
             else ("*.yaml", "*.yml", "*.json")
         )
         for pattern in patterns:

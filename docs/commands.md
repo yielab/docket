@@ -233,6 +233,17 @@ Destroy the pod: every member, workspace, session and trace. The audit log stays
 
 Example: docket pod delete --confirm demo
 
+### pod records
+
+**Usage:** `docket pod records`
+
+List the pod's record sets with their row counts, or show one set's rows.
+
+Reads only: --sql runs on a read-only connection, so anything but one SELECT is refused.
+--csv FILE writes every row, whatever --limit says.
+
+Example: docket pod records leads --sql "SELECT email FROM leads" --limit 20
+
 ### pod set
 
 **Usage:** `docket pod set`

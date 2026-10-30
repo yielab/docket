@@ -12,6 +12,13 @@ from docket.platform.parked_questions import (
     parked_question,
     write_parked,
 )
+from docket.platform.records_store import (
+    Column,
+    EnsureResult,
+    QueryResult,
+    RecordsError,
+    RecordsStore,
+)
 from docket.platform.redirects import open_same_origin
 from docket.platform.store import (
     list_escalations,
@@ -30,6 +37,11 @@ from docket.platform.store import (
 
 __all__ = [
     "PARK_TOKEN_PREFIX",
+    "Column",
+    "EnsureResult",
+    "QueryResult",
+    "RecordsError",
+    "RecordsStore",
     "fetch_url",
     "is_question_id",
     "list_escalations",

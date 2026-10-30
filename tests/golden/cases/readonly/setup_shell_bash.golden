@@ -5,7 +5,7 @@ _docket_verbs() {
   case "$1" in
     "") echo "init status inbox run start stop task pod log setup" ;;
     "task") echo "add list show diff trace prune pregrant answer retry cancel" ;;
-    "pod") echo "show add remove reset delete set unset update export validate plan check recipes roles policies test memory routine" ;;
+    "pod") echo "show add remove reset delete records set unset update export validate plan check recipes roles policies test memory routine" ;;
     "pod memory") echo "list approve refuse revert reset" ;;
     "pod routine") echo "list" ;;
     "log") echo "verify" ;;
@@ -48,6 +48,7 @@ _docket_options() {
     "pod remove") echo "--yes --pod --help" ;;
     "pod reset") echo "--yes --pod --help" ;;
     "pod delete") echo "--confirm --pod --help" ;;
+    "pod records") echo "--sql --limit --csv --json --pod --help" ;;
     "pod set") echo "--member --widen --yes --pod --help" ;;
     "pod unset") echo "--member --pod --help" ;;
     "pod update") echo "--pod --dry-run --json --accept --help" ;;
@@ -135,7 +136,7 @@ _docket_options() {
 
 _docket_takes_pod() {
   case "$1" in
-    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task pregrant"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod test"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset"|"pod routine list") echo yes ;;
+    "status"|"run"|"task add"|"task list"|"task show"|"task diff"|"task trace"|"task prune"|"task pregrant"|"task answer"|"task retry"|"task cancel"|"pod show"|"pod add"|"pod remove"|"pod reset"|"pod delete"|"pod records"|"pod set"|"pod unset"|"pod update"|"pod export"|"pod plan"|"pod check"|"pod roles"|"pod policies"|"pod test"|"pod memory list"|"pod memory approve"|"pod memory refuse"|"pod memory revert"|"pod memory reset"|"pod routine list") echo yes ;;
   esac
 }
 
