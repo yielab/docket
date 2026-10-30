@@ -13,6 +13,7 @@ from docket.platform.parked_questions import (
     write_parked,
 )
 from docket.platform.redirects import open_same_origin
+from docket.platform.service_http import ServiceRequest, call_operation
 from docket.platform.store import (
     list_escalations,
     mark_escalation_applied,
@@ -30,6 +31,8 @@ from docket.platform.store import (
 
 __all__ = [
     "PARK_TOKEN_PREFIX",
+    "ServiceRequest",
+    "call_operation",
     "fetch_url",
     "is_question_id",
     "list_escalations",

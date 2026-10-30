@@ -166,7 +166,8 @@ This specification does NOT cover:
     (`kernel.service.service_tool_name`; `service_of_tool` reads the service back), with the
     `Tool.kind` the operation's resolved `access` (`read` or `send`), never re-derived from the
     method. Its description **MUST** begin `[service:<name>]` followed by the operation's
-    `description`, or `<METHOD> <path>` when it has none.
+    `description`, or `<METHOD> <path>` when it has none. The tool of a `DELETE` operation
+    **MUST** carry `deletes=True` (its approval offers once-or-deny only); no other method does.
 34. The tool's parameters **MUST** be a JSON Schema object with one property per declared
     parameter (its `type`, path and query alike) and, when the operation declares a `body`, a
     `body` property holding that schema. `required` lists the required parameters and `body` when

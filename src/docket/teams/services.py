@@ -10,9 +10,10 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from docket.governance import secrets as _secrets
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.kernel.service import ServiceConfig, ServiceRegistry
+from docket.kernel.service import ServiceConfig, ServiceRegistry, secret_names
 from docket.platform import read_json, read_modify_write
 from docket.teams import mcp_servers as _mcp_servers
 
@@ -49,6 +50,31 @@ def load_service_document(path: str | Path) -> ServiceConfig:
         message = str(first["msg"]).removeprefix("Value error, ")
         raise ServiceDocError(f"{p}: {field}: {message}") from exc
     return ServiceConfig.model_validate(document.model_dump(by_alias=True, exclude={"kind"}))
+
+
+class ServiceSecretError(InvalidInput):
+    """A service's ``auth`` value references a secret that is not stored; the message names the
+    service, the header and the secret, never a value."""
+
+
+def resolve_auth(config: ServiceConfig) -> tuple[dict[str, str], tuple[str, ...]]:
+    """The headers a call to *config* carries and the secret values they hold: its ``auth`` value
+    with each ``${secret:<name>}`` replaced by the stored secret. The stored config is untouched.
+    Raises ``ServiceSecretError`` naming the first secret that is missing or empty."""
+    if config.auth is None:
+        return {}, ()
+    value = config.auth.value
+    secrets: list[str] = []
+    for name in secret_names(value):
+        stored = _secrets.secret_value(name)
+        if stored is None:
+            raise ServiceSecretError(
+                f"service {config.name!r}: header {config.auth.header}: "
+                f"no secret named {name!r} is stored"
+            )
+        value = value.replace("${secret:" + name + "}", stored)
+        secrets.append(stored)
+    return {config.auth.header: value}, tuple(secrets)
 
 
 def service_files(directory: Path) -> list[Path]:

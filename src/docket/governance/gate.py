@@ -164,7 +164,8 @@ def govern(call: GateCall, ctx: GateContext) -> GateDecision:
             "tool.send",
             call.tool.name,
             ctx,
-            f"decision={decision.decision} call={render_tool_call(call.tool.name, call.args)}",
+            f"decision={decision.decision} call={render_tool_call(call.tool.name, call.args)}"
+            + (f" {call.audit_detail}" if call.audit_detail else ""),
             policy_id=verdict.policy_id,
             policy_action=verdict.policy_action,
         )
@@ -403,8 +404,11 @@ def _task_pregrant(
 
 
 def audit_refusal(call: GateCall, ctx: GateContext, kind: str) -> None:
-    """Audit a refusal a handler made itself: tool, kind and the attempted path or host only."""
-    if kind == "fetch_not_allowed":
+    """Audit a refusal a handler made itself: tool, kind and the attempted path or host only (a
+    service call: the method and host its tool names)."""
+    if kind in ("service_not_allowed", "service_bad_request"):
+        target = call.audit_detail
+    elif kind == "fetch_not_allowed":
         host = urllib.parse.urlsplit(str(call.args.get("url", ""))).hostname or "?"
         target = f"host={host.lower()!r}"
     else:
