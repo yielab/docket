@@ -113,6 +113,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **An external service is declared, and a pod keeps records (D-77, ADR 0036, Phase 56).** A `kind: service`
+  document (or `docket setup service add`, or `--from-openapi` for an OpenAPI 3 or 2 file) turns a service's
+  operations into tools a role names. A write is always `send`, a `DELETE` is approved one call at a time, a
+  quota counts per service, the call runs in docket's process with its perimeter at the service's host, names its
+  task in `X-Docket-Task`, and the credential is a `${secret:<name>}` the model never sees (`docket setup secret
+  set|list|remove`). A `kind: records` document gives a pod typed tables in one SQLite file it owns, with
+  `rec__<set>__add|update`, a read-only `rec__query`, an export the model does not carry, `docket pod records` and
+  two `GET` routes. The blueprints are the four team shapes (`build`, `respond`, `operate`, `routine`), `critic` and
+  `tester` are gone (one `strong` reviewer), the old home layout and the `roles.json` shim are deleted (a home is
+  `config/`, `state/` and `token`), the short form and `init --with` know every role, and a mechanical gate tells
+  its step and hands on its evidence whatever the role. New recipes: `records` (a set, a capture pipeline and a
+  weekly report for a routine pod) and `hacker-news` (a team that reads the Hacker News search API, keeps the most
+  commented stories with a summary and the discussion of each, and writes a weekly report and an analysis;
+  `tests/live/test_hacker_news_live.py` runs it against the real site and the operator's model). The published
+  adoption baseline was regenerated from a commit with the new home layout.
+
 - **`when.command` in a policy** matches the parsed command: `program`, `verb` (found past
   options), `args` (short and long spellings, globs) and `writes` (redirect targets and the
   operands of the programs that write), on every segment after unwrapping. `matches` stays for

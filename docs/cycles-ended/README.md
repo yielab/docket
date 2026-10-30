@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (82 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (83 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
@@ -23,6 +23,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 | Date | Section | File | Bytes |
 |---|---|---|---|
 | 2026-10-30 | ▶ PHASE 55 — a pod works outward, on its own schedule (D-77, ADR 0036) · CLOSED 2026-10-30 | `todo-waves.md` | 49,236 |
+| 2026-10-30 | ▶ PHASE 56 — an external service is declared, a pod keeps records (D-77 amendments, ADR 0036 decisions 13-16) · CLOSED 2026-10-30 | `todo-waves.md` | 58,780 |
 | 2026-10-29 | ▶ PHASE 54 — the native Anthropic Messages dialect (D-76) · CLOSED 2026-10-29 | `todo-waves.md` | 14,193 |
 | 2026-10-25 | ◇ PHASE 50 — closed 2026-10-25 — end-to-end tests that run the product (D-71) | `todo-waves.md` | 44,862 |
 | 2026-10-25 | ◇ PHASE 51 — closed 2026-10-25 — one escalation: ask, resolve, decide (D-72, ADR 0032) | `todo-waves.md` | 36,805 |

@@ -9,7 +9,7 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-30.** Phases 0–55 are complete; none is active. **Phase 55** (D-77,
+**Last updated: 2026-10-30.** Phases 0–56 are complete; none is active. **Phase 55** (D-77,
 [ADR 0036](docs/adr/0036-a-pod-works-outward.md)) closed 2026-10-30: a pod works outward, on its own schedule. A pod
 can do work other than code in a working directory, and act outside the machine through a `send` tool no role holds
 unless it names it (always audited, approved by a person who sees the whole call while every kept copy stays redacted,
@@ -18,13 +18,18 @@ step parks a task until a time or a probe; variables belong to the task; a routi
 widens the machine's network only with the operator's recorded yes. Fourteen cards: the twelve planned and two the
 phase-close real run found (the `minimal` surface dropped every MCP tool; a resumed hop was not told its call was
 approved). The repeated real run against the local model passed park, approve-and-send-once, a `wait` step and a
-routine; what it leaves open is under "Phase 55" in `TODO.md`'s follow-ups. **Phase 56 is planned** (ADR 0036
-decisions 13-14, accepted 2026-10-30; 15-16 proposed the same day): an external service is declared in a document
-or by commands, not programmed; a pod keeps the data of the business in declared records, readable over the HTTP
-API; a mechanical gate belongs to its step; one judge, a `strong` reviewer, with `critic` and `tester` deleted; the
-old home layout and every compatibility shim deleted (docket has no users); the short form and `init --with` know
-every role; OpenAPI 2 imports; the blueprints are the four team shapes (`build`, `respond`, `operate`, `routine`) and a
-recipe carries only what a blueprint cannot; twenty-one cards start on the maintainer's go.
+routine; what it leaves open is under "Phase 55" in `TODO.md`'s follow-ups. **Phase 56 closed 2026-10-30** (ADR 0036 decisions 13-14, accepted 2026-10-30; 15-16 proposed the same
+day, still awaiting the maintainer, §7.1): an external service is declared in a document or by commands, not
+programmed (writes always `send`, a `DELETE` approved one call at a time, a quota per service, the perimeter at
+the service's host); a pod keeps the data of the business in declared records, readable over the HTTP API; a
+mechanical gate belongs to its step; one judge, a `strong` reviewer, with `critic` and `tester` deleted; the old
+home layout and every compatibility shim deleted (docket has no users); the short form and `init --with` know
+every role; OpenAPI 2 imports; the blueprints are the four team shapes (`build`, `respond`, `operate`, `routine`)
+and a recipe carries only what a blueprint cannot. Twenty-two cards: the twenty-one planned and the `hacker-news`
+recipe the maintainer asked for at the close. The real run against the local model and the real Hacker News search
+API kept five stories with a summary and a discussion each and wrote a weekly report and an analysis; its first
+three runs found three defects, fixed. A declared service that sends has not yet been run against a real model;
+what the phase leaves open is under "Phase 56" in `TODO.md`'s follow-ups.
 Phases 52 and 53 ran as one schedule in five waves and closed 2026-10-29; Phase 54 closed the same day.
 **Phase 52** (D-73, [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md); D-74,
 [ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)): the harness adapts to the model by
@@ -112,7 +117,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 53 | Prompts as versioned configuration: one `prompt` kind and loader, four scopes with one order, `applied.lock`, a hash and a manifest on every hop; the `handoff` tool replaces the free-text close; `Task` and `Hop` layers, a map bounded by the Lead's paths and no absolute path; prompt variants by class, `docket pod test` and a role `floor`; a structured `task` on `POST /tasks/<pod>` | D-75 · [0035](docs/adr/0035-prompts-are-versioned-configuration.md) | **complete** 2026-10-29: nine cards, P53-1..P53-9; the Lead's locators (P53-4 goal 3) wait for P52-1's figure; follow-ups under "Phases 52 and 53" in `TODO.md` |
 | 54 | The native Anthropic Messages dialect: `dialect: anthropic-messages` beside `openai-chat`, one chat client whose request path, payload, decoding and per-part sizes come from the dialect, the built-in `anthropic` document moved to it (two cache markers, cache reads and writes in the measured usage, a call without an output cap fails before sending), recorded real response bodies as decoder fixtures | D-76 · [0011](docs/adr/0011-provider-catalog.md) amendment | **complete** 2026-10-29: P54-1, P54-2; follow-ups under "Phase 54" in `TODO.md` |
 | 55 | A pod works outward, on its own schedule: the hop's text follows the workspace kind and the first workdir e2e; a custom role pins its model; `send` as a fourth tool kind held only by a role that names it, always audited, approved by a person who sees the whole call while kept copies stay redacted, under a per-pod quota; an MCP server with `lifetime: hop` and credentials from the secret store; a `wait` step settled by the sweep; variables on the task; routines that create tasks; a pod's network widened only by the operator's recorded yes; the `outward` recipe | D-77 · [0036](docs/adr/0036-a-pod-works-outward.md) | **complete** 2026-10-30: fourteen cards (twelve planned, two from the phase-close real run), the real run repeated and passed |
-| 56 | An external service is declared, not programmed: a `kind: service` document and `docket setup service`, operations by hand or from OpenAPI, each a tool through `dispatch_tool`; writes always `send`, a `DELETE` approved one call at a time, a quota per service; the call runs in docket's process with its perimeter at the service's host, and names its task; `docket setup secret set`; a pod's records (declared tables in one SQLite file the pod owns, typed add and update, a read-only query, an export the model does not carry; `docket pod records`, two `GET` routes) and the `records` recipe; a mechanical gate tells and hands on its evidence whatever the role; one judge (`reviewer`, `strong`; `critic` and `tester` deleted), the full pod lead-implementer-reviewer; the old home layout, the `roles.json` shim and lenient metadata deleted; the short form and `init --with` resolve every registered role; OpenAPI 2 imports beside 3; four blueprints, one per team shape (`build`, `respond`, `operate`, `routine`), `actor` a starter, a recipe only what a blueprint cannot carry | D-77 · [0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16 | **planned** 2026-10-30: twenty-one cards P56-1..P56-21 over five waves on `TODO.md` (decisions 15-16 proposed, §7.1) |
+| 56 | An external service is declared, not programmed: a `kind: service` document and `docket setup service`, operations by hand or from OpenAPI, each a tool through `dispatch_tool`; writes always `send`, a `DELETE` approved one call at a time, a quota per service; the call runs in docket's process with its perimeter at the service's host, and names its task; `docket setup secret set`; a pod's records (declared tables in one SQLite file the pod owns, typed add and update, a read-only query, an export the model does not carry; `docket pod records`, two `GET` routes) and the `records` recipe; a mechanical gate tells and hands on its evidence whatever the role; one judge (`reviewer`, `strong`; `critic` and `tester` deleted), the full pod lead-implementer-reviewer; the old home layout, the `roles.json` shim and lenient metadata deleted; the short form and `init --with` resolve every registered role; OpenAPI 2 imports beside 3; four blueprints, one per team shape (`build`, `respond`, `operate`, `routine`), `actor` a starter, a recipe only what a blueprint cannot carry | D-77 · [0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16 | **complete** 2026-10-30: twenty-two cards P56-1..P56-22, archived; decisions 15-16 still proposed (§7.1) |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
 [docs/cycles-ended/todo-waves.md](docs/cycles-ended/todo-waves.md).
