@@ -187,6 +187,54 @@ class TestOneRoleVocabulary:
             ).get("roles", {})
 
 
+class TestCustomRolePin:
+    """A role a pod's overlay defines pins its model through the registry like a built-in."""
+
+    def _define_actor(self, pod: str) -> None:
+        from docket.teams import config_docs as _config_docs
+        from docket.teams import roles as _arch
+
+        role_file = _templates.RECIPES_DIR / "secure-build" / "roles" / "security-vetter.yaml"
+        doc = dict(_config_docs.load_document(role_file).doc)
+        doc["name"] = "actor"
+        _arch.add_user_archetype(doc, pod)
+
+    def _registry(self) -> dict[str, object]:
+        data: dict[str, object] = json.loads(current_home().model_registry_file.read_text())
+        return data
+
+    def test_pin_for_an_overlay_role_is_kept_and_resolves(self, tmp_path: Path) -> None:
+        with _point_at(tmp_path):
+            self._define_actor("p")
+            assert _mp.is_role("actor")
+
+            _mp.write_registry({"role.actor": "openai/gpt-4.1"})
+
+            assert self._registry()["roles"] == {"actor": "openai/gpt-4.1"}
+            assert _mp.resolve_role_model("actor", project="p") == "openai/gpt-4.1"
+            assert _mp.find_registry_problems() == []
+
+    def test_unknown_role_is_not_a_role_and_is_not_written(self, tmp_path: Path) -> None:
+        with _point_at(tmp_path):
+            self._define_actor("p")
+            assert not _mp.is_role("nobody")
+
+            _mp.write_registry({"role.nobody": "openai/gpt-4.1"})
+
+            assert not current_home().model_registry_file.exists() or (
+                "nobody" not in self._registry().get("roles", {})
+            )
+
+    def test_a_built_in_pin_is_unchanged(self, tmp_path: Path) -> None:
+        with _point_at(tmp_path):
+            self._define_actor("p")
+            _mp.write_registry({"role.implementer": "openai/gpt-4.1"})
+
+            assert self._registry()["roles"] == {"implementer": "openai/gpt-4.1"}
+            assert _mp.resolve_role_model("implementer") == "openai/gpt-4.1"
+            assert _mp.is_role("implementer")
+
+
 class TestReapplyRolePolicy:
     """Re-resolution follows the same rule as a fresh resolution: the registry default, never
     the compiled-in model, for a pod-scoped archetype with no row."""

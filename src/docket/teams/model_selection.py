@@ -176,9 +176,11 @@ def load_registry() -> tuple[dict[str, str], dict[str, str], str]:
 
     role_models = _init_role_models(tiers)
 
-    # Explicit per-role overrides win.
+    # Explicit per-role overrides win. The name is not checked here (that would read every
+    # overlay on each load): a pin for a role nobody defines is inert, and `find_registry_problems`
+    # reports it.
     for role, m in reg.get("roles", {}).items():
-        if role in ROLE_CLASS and isinstance(m, str) and _MODEL_ID_RE.match(m):
+        if isinstance(m, str) and _MODEL_ID_RE.match(m):
             role_models[role] = m
 
     return role_models, tiers, default_model
@@ -216,8 +218,9 @@ def find_registry_problems() -> list[tuple[str, str]]:
 
     roles = reg.get("roles", {})
     if isinstance(roles, dict):
+        known = known_role_names()
         for role, m in roles.items():
-            if role not in ROLE_CLASS:
+            if role not in known:
                 problems.append((f"roles.{role}", "unknown role"))
             elif not (isinstance(m, str) and _MODEL_ID_RE.match(m)):
                 problems.append((f"roles.{role}", f"not a valid model id: {m!r}"))
@@ -310,8 +313,20 @@ def role_why(role: str) -> str:
     return arch.description if arch is not None else ""
 
 
+def known_role_names() -> frozenset[str]:
+    """Every role name a registry defines: the built-ins and starters, the operator's roles and
+    the role files of every pod's overlay -- the names ``role.<name>`` may pin."""
+    names = set(_arch.load_registry().role_names())
+    pods_dir = current_home().config_dir / "pods"
+    if pods_dir.is_dir():
+        for pod_dir in sorted(pods_dir.iterdir()):
+            if pod_dir.is_dir():
+                names.update(_arch.load_registry(pod_dir.name).role_names())
+    return frozenset(names)
+
+
 def is_role(role: str) -> bool:
-    return role in ROLE_CLASS
+    return role in known_role_names()
 
 
 def agent_role(agent_id: str) -> str:
@@ -414,7 +429,8 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
     Key format: 'default', 'role.<name>', 'rank.<economy|standard|premium>'.
     'rank.*' persists a registry-overridable anchor so a non-Anthropic
     preset also replaces displayed anchors, not just roles. reset=True
-    clears all user overrides."""
+    clears all user overrides. A 'role.<name>' update is kept only for a role some registry
+    defines (``known_role_names``), so a built-in, starter, operator or pod-overlay role pins."""
     path = current_home().model_registry_file
     try:
         reg: dict[str, Any] = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -429,7 +445,7 @@ def write_registry(updates: dict[str, str], reset: bool = False) -> None:
                 reg["default"] = v
             elif k.startswith("role."):
                 role = k[5:]
-                if role in ROLE_CLASS:
+                if role in known_role_names():
                     reg.setdefault("roles", {})[role] = v
             elif k.startswith("rank."):
                 anchor = k[5:]

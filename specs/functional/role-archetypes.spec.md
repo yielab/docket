@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 4.8.0
+**Version**: 4.8.1
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
@@ -583,7 +583,9 @@ The authored short form of a role:
 kind: role
 name: security-vetter
 model: strong                        # cheap | strong -- a model id is rejected, naming
-                                      # `docket setup model set security-vetter <id>` instead
+                                      # `docket setup model set security-vetter <id>` (pins the
+                                      # role; works for any role a pod overlay defines) or a
+                                      # pipeline step's `model:` (one hop) instead
 description: read-only security pass over the implementer's change
 cannot: [write, edit, bash]          # -> deniedTools; the sole capability statement
 verdict: [APPROVE, REQUEST-CHANGES]  # or verify: true | approval: true | omitted (-> gateContract
