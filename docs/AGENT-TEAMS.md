@@ -152,6 +152,13 @@ review + test gate is warranted by default rather than opt-in. `--pod full`/`--w
 the `software` roster — passing them against another blueprint warns and provisions that
 blueprint's own fixed roster instead of trying to combine the two.
 
+A `workdir` pod has no repository behind it. Its members share one working directory, the pod's
+`workDir`, and its hop prompts speak of that directory rather than of code or git; a task that names
+a `baseRef` fails before any hop, since there is no branch to start from. The
+[`outward` recipe](recipes.md#outward) is a `workdir` team for work that acts outside the machine:
+a Researcher gathers, a Writer drafts into the working directory, a Critic vets, and an Actor is the
+only role that holds a `send` tool.
+
 The five built-ins above are the whole blueprint registry. To
 compose a custom shape today, provision the closest built-in and add roles by hand with
 `docket pod add <role>`. For a pre-built shape instead of composing by hand, use a
@@ -270,6 +277,51 @@ can also pause a task to ask a genuine *question* rather than a permission — a
 the Lead's own typed intake brief when it decides it's missing something — which is `docket task answer
 <task-id>`'s job, with `--option` for an approval. See
 [SECURITY-SIMPLE.md](SECURITY-SIMPLE.md)'s "operator loop" section for the full mechanism.
+
+---
+
+## Routines and wait steps — work that starts itself, and work that waits
+
+A pod doesn't need someone to add every task. Two features cover the two cases.
+
+**A routine** is a pod's own standing order: a `kind: routine` document that enqueues one task on a
+schedule. It names a cron expression (or `@every 30m`), an IANA `tz` (default `UTC`), and the task:
+
+```yaml
+kind: routine
+name: weekly-brief
+description: Weekly brief from the working directory
+schedule: "0 9 * * 1"
+tz: Europe/Madrid
+task:
+  description: Draft this week's brief from the notes in the working directory.
+  priority: normal
+```
+
+`catchUp` (`skip`, the default, or `once`) decides whether a missed slot runs later, and
+`overlap: skip` (the default) fires nothing while an earlier task of the same routine is still open.
+A routine is read from a recipe's `routines/` directory once `docket pod update` applies it, or from
+the operator's `config/routines/`; `enabled: false` turns one off. `docket pod routine list` shows
+each routine's next and last slot in UTC, and reports a file that does not load, as
+`docket pod validate` does. Routines fire only while `docket start --dispatch` is running. They are
+separate from `docket pod set schedule`, which only dispatches a queue that already exists.
+
+**A wait step** parks a task in a pipeline until a time passes, or until a probe command exits `0`:
+
+```yaml
+steps:
+  - hold:
+      wait: "72h"
+      until: {run: "test -f ready.flag", every: "15m"}
+      on: {timeout: fail}
+```
+
+`wait` alone is a timer. With `until`, the timer is the probe's ceiling: the probe runs every `every`
+interval, and a task that reaches the ceiling without a passing probe goes to `blocked`, or follows
+the `on.timeout` route if the step declares one. A wait step runs no agent turn and asks nobody, so
+its task is not listed under what needs you. The periodic sweep of `docket start` wakes a timer when
+it is due; a probe runs only in a sweep that dispatches. A wait never fails a task by itself.
+`docket pod plan` shows the step as `waits 72h` or `waits up to 72h, probing '…' every 15m`.
 
 ---
 
