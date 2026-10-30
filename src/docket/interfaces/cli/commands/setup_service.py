@@ -15,6 +15,7 @@ from docket.kernel import service as _service
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.teams import services as _services
+from docket.teams import services_openapi as _openapi
 
 service_app = typer.Typer(
     name="service",
@@ -70,15 +71,44 @@ def cmd_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -
 
 @service_app.command("add")
 def cmd_add(
-    file: Path = typer.Argument(..., help="A kind: service document (YAML or JSON)"),
+    target: str = typer.Argument(
+        ..., help="A kind: service document (YAML or JSON), or the service name with --from-openapi"
+    ),
+    from_openapi: Path | None = typer.Option(
+        None, "--from-openapi", help="Build the service from this local OpenAPI 3 file"
+    ),
+    operations: str = typer.Option(
+        "", "--operations", help="operationIds to import, comma-separated"
+    ),
+    base_url: str = typer.Option("", "--base-url", help="Override the document's server URL"),
+    auth_header: str = typer.Option("", "--auth-header", help="Header that carries the secret"),
+    secret: str = typer.Option("", "--secret", help="Stored secret the header references"),
 ) -> None:
-    """Store a service from its document and show what each operation may do.
+    """Store a service from its document, or from an OpenAPI 3 file, and show what each operation may do.
 
     A credential belongs in the auth value as ${secret:NAME}, with the value stored by
-    docket setup secret set NAME; the document and this command never hold it.
-    Example: docket setup service add crm.yaml"""
+    docket setup secret set NAME; the document and this command never hold it. An OpenAPI
+    operation that cannot be mapped is skipped and listed.
+    Example: docket setup service add crm.yaml
+    Example: docket setup service add crm --from-openapi crm-openapi.yaml --auth-header Authorization --secret crm"""
+    if from_openapi is None and (operations or base_url or auth_header or secret):
+        raise typer.BadParameter(
+            "--operations, --base-url, --auth-header and --secret need --from-openapi"
+        )
+    built: _openapi.OpenApiImport | None = None
     try:
-        config = _services.load_service_document(file)
+        if from_openapi is None:
+            config = _services.load_service_document(target)
+        else:
+            built = _openapi.import_openapi(
+                from_openapi,
+                target,
+                operations=[o.strip() for o in operations.split(",") if o.strip()],
+                base_url=base_url,
+                auth_header=auth_header,
+                secret=secret,
+            )
+            config = built.config
         _services.add_service(config)
     except InvalidInput as exc:
         ui.error(str(exc))
@@ -99,6 +129,11 @@ def cmd_add(
             [[op.name, op.method, op.path, str(op.access)] for op in config.operations],
             ["OPERATION", "METHOD", "PATH", "ACCESS"],
         )
+    if built is not None:
+        for line in built.notes:
+            ui.dim(f"  note {line}")
+        for line in built.skipped:
+            ui.warn(f"skipped {line}")
     _contract.next_step("docket setup service list")
 
 
