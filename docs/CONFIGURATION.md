@@ -977,8 +977,9 @@ both inside the input count) and, where the endpoint reported one, why the cache
 (`docket.cache_miss`). A background
 pipeline delivers them to every enabled exporter as OTLP/HTTP JSON over the standard library
 (the `otlp-http` dialect; D-24's cut of the OpenTelemetry SDK stands, D-48). It holds a bounded
-queue, counts what it drops, and never raises into a turn. The pipelines start with the first
-turn or task dispatch of a process and keep that set of exporters and levels for its life, so a change made with
+queue, counts what it drops, and never raises into a turn. The pipelines start when a `docket`
+command starts (embedded, with the first turn or task dispatch) and keep that set of exporters and
+levels for the process's life, so a change made with
 the commands below reaches the next `docket run` at once and a running
 `docket start` only after a restart. `DOCKET_NO_EXPORT=1` turns export off for one process;
 `DOCKET_NO_TRACE=1` stops the local write and, with it, the export.

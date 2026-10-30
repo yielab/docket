@@ -300,7 +300,10 @@ This specification does NOT cover:
 55. `DocketDriver.run_turn` **MUST** call `start(load_enabled_exporters(), sink_for)` before
     running the turn, and pod dispatch (`dispatch_task`) **MUST** call it before writing the
     task's first record, so what a process writes before its first turn (`session_start`, the
-    first hop's marker, an escalation settlement applied at the claim) is exported too.
+    first hop's marker, an escalation settlement applied at the claim) is exported too. The
+    `docket` command (`docket.__main__.main`) **MUST** call it before running its command, so a
+    record a command writes outside any turn (an approval's `approval_resumed` and
+    `escalation_resolved`, written by the process that answers) is exported as well.
     `run_turn` **MUST**, in a `finally` block covering every return path of
     `run_turn` (including an early return before the turn itself starts), call
     `flush($EXPORT_FLUSH_TIMEOUT_S)` and then write `health()` to `exporters-health.json`
