@@ -862,7 +862,7 @@ document (`service-client.spec.md`); this registers and lists them, it makes no 
 **Subcommands**:
 - `add <file.yaml>`: Load and store one document, audit `services.add`, and print its operations
   with their access. `add <name> --from-openapi <file> [--operations id,id] [--base-url URL]
-  [--auth-header H --secret NAME]` builds the document from a local OpenAPI 3 file instead and
+  [--auth-header H --secret NAME]` builds the document from a local OpenAPI 3 or 2 (Swagger) file instead and
   lists the operations it skipped (`service-client.spec.md`, "From OpenAPI"); those four options
   without `--from-openapi` exit 2. A document that fails the format, a name already stored and a name an MCP
   server holds exit 1 writing nothing; a `${secret:<name>}` reference whose secret is not stored

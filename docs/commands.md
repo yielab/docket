@@ -926,7 +926,7 @@ Example: docket setup service list
 
 **Usage:** `docket setup service add`
 
-Store a service from its document, or from an OpenAPI 3 file, and show what each operation may do.
+Store a service from its document, or from an OpenAPI 3 or 2 file, and show what each operation may do.
 
 A credential belongs in the auth value as ${secret:NAME}, with the value stored by
 docket setup secret set NAME; the document and this command never hold it. An OpenAPI
