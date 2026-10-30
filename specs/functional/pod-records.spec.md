@@ -146,6 +146,27 @@ This specification does NOT cover:
     nothing to the audit log. A pod that has written no row has no file, and reading it prints no
     rows rather than failing for a set the document declares.
 
+### Over HTTP
+
+50. `GET /pods/<pod>/records` **MUST** answer `200` with `{"records": [...], "problems": [...]}`:
+    one object per set the pod's `records/` documents declare -- `name`, `description`, `key` (null
+    for none), `rows` (0 for a set whose table does not exist yet) and `columns`, each `{name, type,
+    required}` -- and one message for each document that does not validate. The set list is
+    `pod_record_sets` and the count is `row_count`, the functions `docket pod records` calls.
+51. `GET /pods/<pod>/records/<set>` **MUST** answer `200` with `{"set", "columns", "rows", "cut"}`,
+    the shape `docket pod records <set> --json` prints (`columns` the names, each row an object),
+    through `read_rows`: with no `sql` the statement is `SELECT * FROM <set> ORDER BY _id`, with
+    `sql=<SELECT>` it runs through `query` unchanged, so requirements 10-12 hold over HTTP. `limit`
+    defaults to 50, is at least 1 and at most 1000; any other value is `400`. A pod that has
+    written no row reads as no rows.
+52. A statement `query` refuses (not one `SELECT`, a second statement, a slow one) **MUST** be `400`
+    with `{"ok": false, "error": <the store's message>}` and the rows remain. A set no document of
+    the pod declares is `404` naming it and the sets there are; a pod that is not dispatchable is
+    `404`; a pod id that fails `validate_project_id` is `400`; a missing or wrong Bearer token is
+    `401` before anything is read.
+53. Both routes **MUST** only read: nothing is written to the records file or the audit log, and a
+    set is read from the one pod the path names, never from another pod's file.
+
 ## Interface Contracts
 
 ### Module API
@@ -166,7 +187,9 @@ This specification does NOT cover:
 
 `docket.teams.records`: `RecordsDocument`, `RecordsDocError`, `load_records_document(path)`,
 `records_files(directory)`, `pod_record_sets(project)`, `check_sets(project, sets)`,
-`ensure_sets(project, sets)`, `row_counts(project, sets)`, `read_rows(project, sql, limit)`.
+`ensure_sets(project, sets)`, `row_counts(project, sets)`, `read_rows(project, sql, limit)`,
+`find_set(project, name)` (the declared set or None) and `rows_payload(record_set, result)` (the
+`{set, columns, rows, cut}` object the CLI's `--json` and `GET /pods/<pod>/records/<set>` share).
 
 ### Environment
 
@@ -211,9 +234,11 @@ store.query("DELETE FROM listings", 200, 2500, 5.0)  # RecordsError, nothing del
 - `src/docket/teams/records.py`: loading, validating and applying a pod's documents
 - `src/docket/teams/apply/records.py`: the `records/` plan, write and export
 - `src/docket/interfaces/cli/commands/pod_records.py`: `docket pod records`
+- `src/docket/interfaces/http/routes/pod_records.py`: `GET /pods/<pod>/records[/<set>]`
 - `tests/architecture/test_records_writer.py`: requirement 1's import rule
 - `tests/integration/platform/test_records_store.py`: requirements 3-13 on a temporary file
 - `tests/unit/platform/test_records_store.py`: `check_value`, `render_markdown`, name checks
 - `tests/unit/teams/test_records__doc.py`: requirements 15-16 (the document)
 - `tests/integration/interfaces/test_pod_records_cli.py`: requirements 17-23 (`pod update`, `pod
   export`, `pod records`)
+- `tests/integration/interfaces/test_pod_records_api.py`: requirements 50-53 (the two routes)
