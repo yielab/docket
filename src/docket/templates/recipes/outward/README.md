@@ -10,7 +10,8 @@ before the Actor ran.
 
 ## How the separation holds
 
-- A `send` tool (a tool of an MCP server declared `--kind send`) reaches a role only when the
+- A `send` tool (a tool of an MCP server declared `--kind send`, or a write operation of a
+  declared service) reaches a role only when the
   role's own `tools` list names it. The Researcher, Writer and Reviewer name none, so they are never
   offered one. The Actor names `mcp__outbox__send` and nothing that reads the web.
 - `docket pod update` and `docket pod validate` refuse a role whose `tools` name a `send` tool
@@ -32,8 +33,8 @@ before the Actor ran.
 
 ## Prerequisites
 
-The recipe ships no MCP server. Declare yours first; a server that both reads and acts is declared
-twice, once for each. Four shapes:
+The recipe ships no MCP server and no service. Declare yours first; a server that both reads and
+acts is declared twice, once for each. Four shapes with an MCP server and a fifth with none:
 
 1. A mailbox and its sender.
 
@@ -93,6 +94,42 @@ twice, once for each. Four shapes:
    document carries the same reference under `env:` (`API_TOKEN: secret:crm`). A literal token
    under `--env` still works, and `docket setup --fix` warns about it. Token refresh and OAuth are
    the wrapping server's job.
+
+5. An HTTP API declared as a service, with no program in between. A `kind: service` document
+   names the address, the header that carries the token and each operation with its method; docket
+   turns every operation into a tool `svc__<service>__<operation>`. A `GET` is `read`, so the
+   Researcher is offered it with no further step; a `POST`, `PUT`, `PATCH` or `DELETE` is `send`,
+   so only a role whose own `tools` list names it is offered it, and every call parks for a
+   person. The token is stored once and referenced, never written into the document:
+
+   ```yaml
+   # crm.yaml
+   kind: service
+   name: crm
+   baseUrl: https://api.example.com/v1
+   hosts: []              # extra hosts a call may reach; a loopback or private address must be listed
+   auth: {header: Authorization, value: "Bearer ${secret:crm}"}
+   operations:
+     - {name: get_contact, method: GET, path: "/contacts/{id}", params: [{name: id, in: path, type: integer}]}
+     - name: create_contact
+       method: POST
+       path: /contacts
+       body: {type: object, properties: {email: {type: string}}, required: [email]}
+   ```
+
+   ```bash
+   printf '%s' "$CRM_TOKEN" | docket setup secret set crm --stdin
+   docket setup service add crm.yaml
+   ```
+
+   Then point the Actor at the operation: copy this recipe's directory, set `tools: [read, glob,
+   svc__crm__create_contact]` in the copy's `roles/actor.yaml` (or `svc__crm` for every operation)
+   and apply the copy with `docket pod update <directory>`. The Researcher needs no edit for the
+   `get_contact` read. Every call carries `X-Docket-Task`, the id of
+   the task it serves; add `idempotencyHeader: Idempotency-Key` to the document for a key on each
+   write. A `DELETE` is offered `approve_once` or `deny` only. An OpenAPI 3 file builds the document
+   for you: `docket setup service add crm --from-openapi crm.yaml --auth-header Authorization
+   --secret crm`. `tests/e2e/test_workdir_pod.py` runs this whole path against a local fake service.
 
 ## Apply it
 
