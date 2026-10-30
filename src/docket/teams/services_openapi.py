@@ -1,4 +1,4 @@
-"""Operations imported from an OpenAPI 3 document into a ``kind: service`` configuration
+"""Operations imported from an OpenAPI 3 or 2 (Swagger) document into a ``kind: service`` configuration
 (specs/functional/service-client.spec.md, "From OpenAPI"). The mapping is built as a plain
 ``kind: service`` mapping and validated by the same model a written document passes through; an
 operation that cannot be mapped is skipped and listed, never guessed. No network is touched and a
@@ -45,11 +45,15 @@ def _read(path: Path) -> dict[str, Any]:
         raise InvalidInput(f"{path}: cannot read document: {exc}") from exc
     if not isinstance(raw, dict):
         raise InvalidInput(f"{path}: document must be a mapping")
-    if "swagger" in raw:
-        raise InvalidInput(f"{path}: OpenAPI 2 is not supported; give an OpenAPI 3 document")
-    if not str(raw.get("openapi", "")).startswith("3."):
-        raise InvalidInput(f"{path}: not an OpenAPI 3 document (no 'openapi: 3.x')")
+    if not (_is_v2(raw) or str(raw.get("openapi", "")).startswith("3.")):
+        raise InvalidInput(
+            f"{path}: not an OpenAPI 3 or Swagger 2 document (needs 'openapi: 3.x' or 'swagger: 2.0')"
+        )
     return raw
+
+
+def _is_v2(doc: dict[str, Any]) -> bool:
+    return str(doc.get("swagger", "")).startswith("2.")
 
 
 def _pointer(doc: dict[str, Any], ref: str) -> Any:
@@ -81,23 +85,34 @@ def _deref(node: Any, doc: dict[str, Any], trail: tuple[str, ...] = ()) -> Any:
     return {key: _deref(value, doc, trail) for key, value in node.items()}
 
 
-def _params(
-    item: dict[str, Any], op: dict[str, Any], doc: dict[str, Any], label: str
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """The operation's path and query parameters and the notes for what was dropped."""
+def _merged(
+    item: dict[str, Any], op: dict[str, Any], doc: dict[str, Any]
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """The path item's parameters overridden by the operation's, keyed by name and location."""
     merged: dict[tuple[str, str], dict[str, Any]] = {}
     for raw in [*item.get("parameters", []), *op.get("parameters", [])]:
         param = _deref(raw, doc)
         merged[(str(param.get("name")), str(param.get("in")))] = param
+    return merged
+
+
+def _params(
+    merged: dict[tuple[str, str], dict[str, Any]], v2: bool, label: str
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """The operation's path and query parameters and the notes for what was dropped."""
     mapped: list[dict[str, Any]] = []
     notes: list[str] = []
     for (name, where), param in merged.items():
+        if v2 and where == "body":
+            continue
+        if where == "formData":
+            raise _Skip(f"formData parameter {name!r} cannot be sent as JSON")
         if where not in ("path", "query"):
             if param.get("required"):
                 raise _Skip(f"required {where} parameter {name!r} cannot be sent")
             notes.append(f"{label}: optional {where} parameter {name!r} dropped")
             continue
-        kind = (param.get("schema") or {}).get("type", "string")
+        kind = (param if v2 else param.get("schema") or {}).get("type", "string")
         if kind not in _SCALARS:
             raise _Skip(f"parameter {name!r} is of type {kind}, not a scalar")
         mapped.append(
@@ -106,14 +121,34 @@ def _params(
     return mapped, notes
 
 
+def _is_json(media: Any) -> bool:
+    kind = str(media).split(";")[0].strip().lower()
+    return kind == "application/json" or kind.endswith("+json")
+
+
+def _body_v2(
+    merged: dict[tuple[str, str], dict[str, Any]], op: dict[str, Any], doc: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The schema of the ``in: body`` parameter, when the operation accepts JSON."""
+    found = [param for (_, where), param in merged.items() if where == "body"]
+    if not found:
+        return None
+    media = op.get("consumes") or doc.get("consumes") or []
+    if media and not any(_is_json(kind) for kind in media):
+        raise _Skip(f"request body has no JSON form ({', '.join(map(str, media))})")
+    schema = found[0].get("schema")
+    if not isinstance(schema, dict):
+        raise _Skip(f"body parameter {found[0].get('name')!r} has no schema")
+    return dict(schema)
+
+
 def _body(op: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any] | None:
     request = _deref(op.get("requestBody"), doc) if op.get("requestBody") else {}
     content = request.get("content") or {}
     if not content:
         return None
     for media, entry in content.items():
-        kind = str(media).split(";")[0].strip().lower()
-        if kind == "application/json" or kind.endswith("+json"):
+        if _is_json(media):
             return dict((entry or {}).get("schema") or {"type": "object"})
     raise _Skip(f"request body has no JSON form ({', '.join(map(str, content))})")
 
@@ -128,7 +163,9 @@ def _map(
 ) -> tuple[dict[str, Any], list[str]]:
     """One ``operations`` entry (checked by the ``Operation`` model) and its notes."""
     label = str(op["operationId"])
-    params, notes = _params(item, op, doc, label)
+    v2 = _is_v2(doc)
+    merged = _merged(item, op, doc)
+    params, notes = _params(merged, v2, label)
     entry: dict[str, Any] = {
         "name": label,
         "method": method.upper(),
@@ -136,7 +173,7 @@ def _map(
         "params": params,
         "description": _summary(op),
     }
-    body = _body(op, doc)
+    body = _body_v2(merged, op, doc) if v2 else _body(op, doc)
     if body is not None:
         entry["body"] = body
     try:
@@ -157,11 +194,24 @@ def _candidates(doc: dict[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any
     return found
 
 
+def _server_url(doc: dict[str, Any]) -> str:
+    servers = doc.get("servers") or []
+    return str(servers[0].get("url", "")) if servers and isinstance(servers[0], dict) else ""
+
+
+def _swagger_url(doc: dict[str, Any]) -> str:
+    """``scheme://host/basePath`` from an OpenAPI 2 document, or empty when it cannot be built."""
+    schemes = [str(kind).lower() for kind in doc.get("schemes") or []]
+    scheme = next((kind for kind in schemes if kind in ("http", "https")), "")
+    host = str(doc.get("host") or "")
+    base = str(doc.get("basePath") or "").strip("/")
+    return f"{scheme}://{host}/{base}" if scheme and host else ""
+
+
 def _base_url(doc: dict[str, Any], given: str, source: Path) -> str:
     if given:
         return given.rstrip("/")
-    servers = doc.get("servers") or []
-    url = str(servers[0].get("url", "")) if servers and isinstance(servers[0], dict) else ""
+    url = _swagger_url(doc) if _is_v2(doc) else _server_url(doc)
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname or "{" in url:
         raise InvalidInput(f"{source}: no absolute server URL in the document; give --base-url")
@@ -183,7 +233,7 @@ def import_openapi(
     auth_header: str = "",
     secret: str = "",
 ) -> OpenApiImport:
-    """Build service *name* from the OpenAPI 3 document at *path*. *operations* narrows to those
+    """Build service *name* from the OpenAPI 3 or 2 document at *path*. *operations* narrows to those
     ``operationId`` values. Raises ``InvalidInput`` for an unreadable document, an unknown id, no
     usable base URL, no mappable operation or a configuration the service model refuses."""
     source = Path(path)

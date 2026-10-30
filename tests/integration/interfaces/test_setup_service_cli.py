@@ -274,7 +274,7 @@ def test_from_openapi_operations_narrows(tmp_path: Path) -> None:
 
 
 def test_from_openapi_refusals_write_nothing(tmp_path: Path) -> None:
-    junk = _file(tmp_path, "swagger: '2.0'\n", "old.yaml")
+    junk = _file(tmp_path, "swagger: '1.2'\n", "old.yaml")
 
     code, out = _svc("add", "crm", "--from-openapi", str(junk))
 

@@ -1,0 +1,89 @@
+{
+  "swagger": "2.0",
+  "info": {"title": "Example PostgREST", "version": "12.0"},
+  "host": "db.example.test:3000",
+  "basePath": "/api/",
+  "schemes": ["wss", "https", "http"],
+  "consumes": ["application/json", "application/vnd.pgrst.object+json", "text/csv"],
+  "produces": ["application/json", "text/csv"],
+  "paths": {
+    "/leads": {
+      "get": {
+        "operationId": "listLeads",
+        "summary": "Leads, filtered and ordered by query parameters.",
+        "parameters": [
+          {"$ref": "#/parameters/rowFilter.leads.id"},
+          {"$ref": "#/parameters/select"},
+          {"$ref": "#/parameters/order"},
+          {"$ref": "#/parameters/limit"},
+          {"$ref": "#/parameters/preferCount"}
+        ],
+        "responses": {"200": {"description": "OK", "schema": {"type": "array", "items": {"$ref": "#/definitions/leads"}}}}
+      },
+      "post": {
+        "operationId": "createLead",
+        "summary": "Insert a lead.",
+        "parameters": [
+          {"$ref": "#/parameters/body.leads"},
+          {"$ref": "#/parameters/select"}
+        ],
+        "responses": {"201": {"description": "Created"}}
+      }
+    },
+    "/notes": {
+      "get": {
+        "operationId": "listNotes",
+        "summary": "Notes, filtered and ordered by query parameters.",
+        "parameters": [
+          {"$ref": "#/parameters/select"},
+          {"$ref": "#/parameters/order"}
+        ],
+        "responses": {"200": {"description": "OK"}}
+      }
+    },
+    "/rpc/refund": {
+      "post": {
+        "operationId": "refund",
+        "summary": "Refund an order.",
+        "parameters": [
+          {
+            "name": "args",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "required": ["order_id"],
+              "properties": {
+                "order_id": {"type": "integer"},
+                "reason": {"type": "string"}
+              }
+            }
+          },
+          {"$ref": "#/parameters/preferCount"}
+        ],
+        "responses": {"200": {"description": "OK"}}
+      }
+    }
+  },
+  "parameters": {
+    "rowFilter.leads.id": {"name": "id", "in": "query", "required": false, "type": "string"},
+    "select": {"name": "select", "in": "query", "required": false, "type": "string"},
+    "order": {"name": "order", "in": "query", "required": false, "type": "string"},
+    "limit": {"name": "limit", "in": "query", "required": false, "type": "integer"},
+    "preferCount": {"name": "Prefer", "in": "header", "required": false, "type": "string"},
+    "body.leads": {"name": "leads", "in": "body", "required": false, "schema": {"$ref": "#/definitions/leads"}}
+  },
+  "definitions": {
+    "leads": {
+      "type": "object",
+      "required": ["email"],
+      "properties": {
+        "id": {"type": "integer"},
+        "email": {"type": "string"},
+        "owner": {"$ref": "#/definitions/people"}
+      }
+    },
+    "people": {"type": "object", "properties": {"name": {"type": "string"}}},
+    "notes": {"type": "object", "properties": {"body": {"type": "string"}}}
+  }
+}

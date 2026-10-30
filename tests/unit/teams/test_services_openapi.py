@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from docket.teams import services_openapi as _openapi
 SUBJECT = "docket.teams.services_openapi"
 
 _FIXTURE = Path(__file__).parents[2] / "fixtures" / "openapi" / "crm.yaml"
+_POSTGREST = Path(__file__).parents[2] / "fixtures" / "openapi" / "postgrest.json"
 
 
 def _document(**paths: Any) -> dict[str, Any]:
@@ -173,7 +175,7 @@ def test_nothing_mappable_is_refused_listing_why(tmp_path: Path) -> None:
 
 
 def test_openapi_2_and_unreadable_files_are_refused(tmp_path: Path) -> None:
-    old = _write(tmp_path, {"swagger": "2.0", "paths": {}}, "old.yaml")
+    old = _write(tmp_path, {"swagger": "1.2", "paths": {}}, "old.yaml")
     junk = tmp_path / "junk.yaml"
     junk.write_text("- just\n- a list\n", encoding="utf-8")
 
@@ -186,8 +188,6 @@ def test_openapi_2_and_unreadable_files_are_refused(tmp_path: Path) -> None:
 
 
 def test_a_json_document_reads_the_same(tmp_path: Path) -> None:
-    import json
-
     path = tmp_path / "crm.json"
     path.write_text(json.dumps(_document()), encoding="utf-8")
 
@@ -195,3 +195,111 @@ def test_a_json_document_reads_the_same(tmp_path: Path) -> None:
         _openapi.import_openapi(path, "crm").config
         == _openapi.import_openapi(_FIXTURE, "crm").config
     )
+
+
+def _swagger(**changes: Any) -> dict[str, Any]:
+    doc = json.loads(_POSTGREST.read_text(encoding="utf-8"))
+    doc.update(changes)
+    return doc
+
+
+def test_swagger_2_get_with_query_params_is_a_read() -> None:
+    result = _openapi.import_openapi(_POSTGREST, "db")
+
+    op = _ops(result)["listLeads"]
+    assert (op.method, op.path, op.access, op.body) == ("GET", "/leads", "read", None)
+    assert [(p.name, p.in_, p.type, p.required) for p in op.params] == [
+        ("id", "query", "string", False),
+        ("select", "query", "string", False),
+        ("order", "query", "string", False),
+        ("limit", "query", "integer", False),
+    ]
+    assert any("listLeads" in line and "Prefer" in line for line in result.notes)
+
+
+def test_swagger_2_body_parameter_is_the_json_body() -> None:
+    ops = _ops(_openapi.import_openapi(_POSTGREST, "db"))
+
+    refund = ops["refund"]
+    assert (refund.method, refund.path, refund.access) == ("POST", "/rpc/refund", "send")
+    assert refund.body == {
+        "type": "object",
+        "required": ["order_id"],
+        "properties": {"order_id": {"type": "integer"}, "reason": {"type": "string"}},
+    }
+    assert [p.name for p in refund.params] == []
+    create = ops["createLead"]
+    assert create.body is not None and create.body["required"] == ["email"]
+    assert create.body["properties"]["owner"] == {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+    }
+    assert [p.name for p in create.params] == ["select"]
+
+
+def test_swagger_2_form_data_skips_the_operation_and_lists_it(tmp_path: Path) -> None:
+    doc = _swagger()
+    doc["paths"]["/rpc/import_csv"] = {
+        "post": {
+            "operationId": "importCsv",
+            "parameters": [{"name": "file", "in": "formData", "type": "file"}],
+        }
+    }
+    doc["paths"]["/rpc/tag"] = {
+        "post": {
+            "operationId": "tag",
+            "parameters": [
+                {"name": "label", "in": "formData", "required": False, "type": "string"}
+            ],
+        }
+    }
+    path = tmp_path / "api.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+    result = _openapi.import_openapi(path, "db")
+
+    assert "importCsv" not in _ops(result) and "tag" not in _ops(result)
+    assert any("importCsv" in line and "formData" in line for line in result.skipped)
+    assert any("tag" in line and "formData" in line for line in result.skipped)
+    assert "listLeads" in _ops(result)
+
+
+def test_swagger_2_body_needs_a_json_consumes(tmp_path: Path) -> None:
+    doc = _swagger(consumes=["text/csv"])
+    doc["paths"]["/rpc/refund"]["post"]["consumes"] = ["application/vnd.api+json"]
+    path = tmp_path / "api.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+    result = _openapi.import_openapi(path, "db")
+
+    assert "refund" in _ops(result)
+    assert "createLead" not in _ops(result)
+    assert any("createLead" in line and "text/csv" in line for line in result.skipped)
+
+
+def test_swagger_2_base_url_is_scheme_host_and_base_path(tmp_path: Path) -> None:
+    assert (
+        _openapi.import_openapi(_POSTGREST, "db").config.baseUrl
+        == "https://db.example.test:3000/api"
+    )
+    flagged = _openapi.import_openapi(_POSTGREST, "db", base_url="https://other.example.com/x/")
+    assert flagged.config.baseUrl == "https://other.example.com/x"
+    root = _swagger(basePath="/", schemes=["http"], host="db.example.test")
+    path = tmp_path / "root.json"
+    path.write_text(json.dumps(root), encoding="utf-8")
+    assert _openapi.import_openapi(path, "db").config.baseUrl == "http://db.example.test"
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"host": None}, {"host": "{env}.example.test"}, {"schemes": ["ws"]}, {"schemes": None}],
+)
+def test_swagger_2_without_a_usable_server_asks_for_a_base_url(
+    tmp_path: Path, changes: dict[str, Any]
+) -> None:
+    doc = {k: v for k, v in {**_swagger(), **changes}.items() if v is not None}
+    path = tmp_path / "api.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+    with pytest.raises(InvalidInput, match="--base-url"):
+        _openapi.import_openapi(path, "db")
