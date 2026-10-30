@@ -183,9 +183,13 @@ that already own the files.
     `README.md` line 11 ("research, content or outward work"), `builtin_roles.py:68` ("forward-compat"), and
     `config-format.spec.md` (~line 115, `load_pipeline(text)`); `_blueprint_pipeline` loads a registry only to call
     `load_pipeline(None, ...)`; `conversations.load` returns an empty registry for an invalid file.
+  - Records port (P56-23, merged): a second backend is one adapter module, one line in
+    `bootstrap._open_records` and one `BACKENDS` entry in the conformance suite; a remote one needs the ADR
+    amendment on `send` first, and S3 is an export destination, not a backend. `teams/records.py` quotes a set name
+    in ANSI double quotes (each backend would quote its own); `ReadLimits` serves `read` and `export` though
+    `export` honours only `timeout_s` (a possible `ExportLimits`).
   - Records and services: `pod update` does not check that a `rec__<set>` allow-list entry names a declared set;
-    real PostgREST documents carry no `operationId`; the pod-records spec "Module API" names differ from
-    `teams/records.py`; `setup service list` shows secret names; the `ask-before-send` custom message is not shown
+    real PostgREST documents carry no `operationId`; `setup service list` shows secret names; the `ask-before-send` custom message is not shown
     for service sends; service results are not screened as untrusted; `pod records --csv` overwrites silently; the
     idempotency key also hashes path and query arguments; `pod-blueprints.spec.md` should list `services/`.
   - Code: `setup_model_credentials._write_credential` duplicates store logic; `config_docs.py` imports itself;
