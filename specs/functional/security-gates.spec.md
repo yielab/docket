@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 2.6.0
+**Version**: 3.0.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -1085,14 +1085,30 @@ material, may be read as saying otherwise.
    (`fetch.result_warn`). `allow`, or no hit, passes the outcome unchanged with no audit entry.
 7. **The network lockdown mode (ADR 0020, default `none` per ADR 0024).** `none` is the default: a
    fresh home reports network `none`, `open` is an operator grant (`docket setup sandbox network
-   open`), and a pod's `network` can only narrow it. The refusal below fires only when `none` was
-   recorded explicitly (global or pod); the unrecorded default with isolation off runs, with the
-   network open, because nothing can cut it. The global mode (`docket setup sandbox network
-   none|open`, `fleet.json` `security.networkMode`, audited `gates.network`) and the pod setting
-   `network` (`none`|`open`; `open` means follow the global mode) resolve through
-   `effective_network`: `none` when either says `none`, so a pod's `open` never widens a global
-   `none` and a pod's `none` narrows a global `open`; unreadable pod settings fail closed to
-   `none`. Under `none`, `landlock_argv(..., network=False)` passes `--net none`, the seatbelt
+   open`), and a pod's `network` can only narrow it, with one exception: a recorded pod grant
+   (below). The refusal below fires only when `none` was recorded explicitly (global or pod); the
+   unrecorded default with isolation off runs, with the network open, because nothing can cut it.
+   The global mode (`docket setup sandbox network none|open`, `fleet.json` `security.networkMode`,
+   audited `gates.network`) and the pod setting `network` (`none`|`open`; `open` means follow the
+   global mode) resolve through `effective_network`: `none` when either says `none`, so a pod's
+   `open` never widens a global `none` and a pod's `none` narrows a global `open`; unreadable pod
+   settings fail closed to `none`. **The pod grant.** When the global mode is `none` (recorded or
+   the unrecorded default) and the pod's `network` is `open`, a pod holding `networkGrant:
+   {at, by}` in its Lead's settings resolves to `("open", "pod-grant")`, so that pod's `bash`,
+   `run:` steps, checks and MCP servers run in a jail with the network, while every other pod
+   stays `none`; a pod's `none` always wins, a grant that does not parse is unreadable settings
+   (fail closed to `none`), and a grant with isolation off is refused at the command (nothing to
+   widen). Only `docket pod set network open --widen` writes the grant: it prints what opens ("this
+   pod's `bash`, `run:` steps, checks and MCP servers can reach any host"), asks `[y/N]` through
+   the shared confirm (`--yes` for scripts; off a terminal without `--yes` it refuses), and on yes
+   records the grant through the settings store and audits `pod.network_widen` naming the pod and
+   the scope it overrides. An answer other than yes writes and audits nothing. `pod set network
+   none`, or `pod set network open` without `--widen`, removes the grant and audits
+   `pod.network_narrow` (only when a grant existed). `networkGrant` is never settable through
+   `pod set networkGrant`, never exported, and never written by `pod update` or `POST
+   /pods/<p>/apply`: a `networkGrant` key in a repository's `.docket/` is ignored and reported as a
+   skipped `setting` item, never a run-on-this-machine item. `docket setup` (health report) and
+   `docket status` name each pod running with a grant. Under `none`, `landlock_argv(..., network=False)` passes `--net none`, the seatbelt
    profile denies `network*`, and `docker_run_argv(..., network=False)` adds `--network none`;
    `ToolContext.network` carries it to `run_bash`. Only the sandbox can enforce it, so a turn whose
    effective mode is a recorded `none` with isolation off **MUST** be refused before any model

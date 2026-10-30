@@ -25,7 +25,7 @@ from docket.interfaces.cli.commands.pod_members import (
     remove_member,
     reset_member,
 )
-from docket.interfaces.cli.commands.pod_settings import set_setting, unset_setting
+from docket.interfaces.cli.commands.pod_settings import set_network, set_setting, unset_setting
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import DispatchError
@@ -329,12 +329,25 @@ def cmd_set(
     key: str = typer.Argument(..., help="A pod setting (see docket pod show), or verify"),
     value: str = typer.Argument(..., help="The new value"),
     member: str | None = typer.Option(None, "--member", help="Member id, for verify"),
+    widen: bool = typer.Option(
+        False,
+        "--widen",
+        help="With network open: let this pod reach the network on a machine at none (asks first)",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the --widen confirmation"),
     pod_name: str | None = pod_option(),
 ) -> None:
     """Set a pod setting; with --member, set an implementer's verify command.
 
     Example: docket pod set budgetUsd 5"""
-    set_setting(_contract.require_pod(pod_name), key, value, member=member)
+    project = _contract.require_pod(pod_name)
+    if key == "network":
+        set_network(project, value, widen=widen, yes=yes)
+    elif widen:
+        ui.error("--widen applies only to network", "Example: docket pod set network open --widen")
+        raise typer.Exit(1)
+    else:
+        set_setting(project, key, value, member=member)
     _contract.next_step("docket pod show")
 
 
