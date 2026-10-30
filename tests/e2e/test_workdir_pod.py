@@ -421,3 +421,52 @@ def test_an_outward_pod_sends_once_and_only_after_a_person_approves(
     assert all("mcp__outbox__send" in r.tools for r in model.by_role("actor"))
     assert not any("mcp__inbox__lookup" in r.tools for r in model.by_role("actor"))
     oracles.assert_log_verifies(w)
+
+
+ROUTINE_PIPELINE = """name: heartbeat
+steps:
+  - plan: lead
+"""
+
+ROUTINE = """kind: routine
+name: heartbeat
+schedule: "@every 1h"
+task:
+  description: Write the heartbeat note
+"""
+
+
+def test_a_routine_creates_its_task_and_the_service_runs_it_to_done(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(script={"lead": [say("Heartbeat noted.")]})
+    w, _work_dir = workdir_pod(world, model, pipeline_yaml=ROUTINE_PIPELINE)
+    w.docket("pod", "set", "pipeline", str(w.pipeline), "--pod", w.pod)
+    folder = w.home / "config" / "pods" / w.pod / "routines"
+    folder.mkdir(parents=True)
+    (folder / "heartbeat.yaml").write_text(ROUTINE, encoding="utf-8")
+
+    def listed() -> list[dict[str, str]]:
+        tasks = w.docket("task", "list", "--pod", w.pod, "--json").json()["tasks"]
+        assert isinstance(tasks, list)
+        return tasks
+
+    with w.service(interval=1):
+        w.wait_for(lambda: listed() and listed()[0]["status"] == "done", 60, "the routine's task")
+
+    (summary,) = listed()
+    task = _queue_record(w, summary["id"])
+    assert task["channel"] == "routine"
+    assert task["idempotencyKey"].startswith("routine:heartbeat:")
+    (row,) = w.docket("pod", "routine", "list", "--pod", w.pod, "--json").json()
+    assert row["last"] is not None and task["idempotencyKey"] == f"routine:heartbeat:{row['last']}"
+    actions = {(e["action"], e["detail"]) for e in oracles.audit_rows(w)}
+    assert any(
+        a == "routine.fire" and f"task={summary['id']}" in d and f"slot={row['last']}" in d
+        for a, d in actions
+    )
+    assert any(
+        a == "task.enqueue" and f"task={summary['id']}" in d and "channel=routine" in d
+        for a, d in actions
+    )
+    oracles.assert_log_verifies(w)
