@@ -357,7 +357,7 @@ class TestOneSessionAcrossHops:
     def test_hop_markers_without_a_call_id_get_one_span_each(self) -> None:
         records = _hop_markers()
         spans = _project_all(records)
-        tools = [s for s in spans if s.name.startswith(("docket.hop", "execute_tool"))]
+        tools = [s for s in spans if s.name.startswith(("docket.hop", "docket.verification"))]
         assert len(tools) == 3
         assert len({s.span_id for s in tools}) == 3
         lead = next(s for s in tools if s.start_ts == "2026-09-28T00:00:01Z")

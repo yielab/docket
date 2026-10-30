@@ -599,7 +599,9 @@ the end of each of them. These requirements keep that session one complete trace
      `tool_result` without a `callId` (the hop's reply, `text`) **MUST** close the most recent
      open span of the same role that has no `callId`; one with no such span open (the
      implementer's verification result) **MUST** become its own span keyed
-     `<role>|<ts>|result`. So each hop is one span, from its start to its reply, and each
+     `<role>|<ts>|result`. A verification result (payload `verification`) is named
+     `docket.verification` and carries `docket.verification` (`passed`, `failed` or `skipped`)
+     and, when `toolArguments` is granted, its `cmd` as `gen_ai.tool.call.arguments`. So each hop is one span, from its start to its reply, and each
      verification is its own, in a destination that upserts by span id, and a replayed record
      still derives the same id.
 109. `close()` **MUST** return the closed pipelines' final counters in `health()`'s shape (`{}`
