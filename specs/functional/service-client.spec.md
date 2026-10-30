@@ -1,14 +1,14 @@
 # Service Client Specification
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented in part: the document, its access rule, its registration, its scopes and
 its import from an OpenAPI document (`kernel/service.py`, `teams/services.py`,
 `teams/services_openapi.py`, `docket setup service`, `docket pod update|export`), the call with its
 perimeter (`platform/service_http.py::call_operation`), the tools (each operation is a tool a role
 names, loaded each turn: `agent/tools/service_tools.py`) and the handling of writes apart (the quota
-per service and the delete approval, `governance/`). Not shipped: the `X-Docket-Task` header, the
-idempotency key of a `send` operation and the service's own `timeout` are not yet carried into the
-call, and nothing proves the whole path against a real service.
+per service and the delete approval, `governance/`), and the task identity of a call (the
+`X-Docket-Task` header, the idempotency key of a `send` operation and the service's own `timeout`
+are carried into every call). Not shipped: nothing proves the whole path against a real service.
 **Last Updated**: 2026-10-30
 
 ## Purpose
@@ -155,7 +155,8 @@ This specification does NOT cover:
 30. A header name **MUST** be an HTTP token and a header value **MUST NOT** contain CR, LF or NUL; a
     header named `Host`, `Content-Length` or `Transfer-Encoding` **MUST** be refused. A violation is
     refused (`refusal="service_bad_request"`) before any socket is opened.
-31. The call **MUST** be bounded in time by `Home.fetch_timeout_s` (the whole call, headers and body)
+31. The call **MUST** be bounded in time by `Home.fetch_timeout_s`, or by the request's own `timeout`
+    when it has one (requirement 60) (the whole call, headers and body)
     and in size by `Home.fetch_max_response_bytes`: a body over the cap is cut at it and the content
     ends with `[truncated: response exceeded <N> bytes]`, so a cut body is returned as text, never as
     JSON.
@@ -253,6 +254,25 @@ This specification does NOT cover:
     `services.add`); the skipped operations are printed after it. `--operations`, `--base-url`,
     `--auth-header` and `--secret` without `--from-openapi` exit 2.
 
+### Task identity
+
+58. Every call of a service tool made inside a task **MUST** carry the header `X-Docket-Task` whose
+    value is the id of the task the hop serves (`ToolContext.task_id`); a call outside a task
+    carries none. The tool builds the header from the hop's context, never from the model's
+    arguments: no argument names a header, and the header **MUST** overwrite a same-named header of
+    the document.
+59. A `send` operation of a service whose document declares `idempotencyHeader` **MUST** carry that
+    header with the first 32 hexadecimal digits of the SHA-256 of the canonical JSON (sorted keys,
+    compact separators) of the task id, the step id (`ToolContext.step_id`, set from the pipeline
+    step the hop runs; empty outside a step), the service, the operation, the path and query
+    arguments and the body. Two identical calls in one step carry the same key; the same call from
+    another task or step carries another. A `read` operation, and a service with no
+    `idempotencyHeader`, carry none. The key is built from the hop and the validated arguments, so a
+    model argument cannot supply or override it.
+60. `ServiceRequest` **MUST** carry `timeout` (seconds; `0`, the default, meaning
+    `Home.fetch_timeout_s`), and `call_operation` **MUST** bound the whole call by it (requirement
+    31's bound otherwise unchanged). A service tool **MUST** pass the document's `timeout`.
+
 ## Interface Contracts
 
 ### Python API
@@ -284,6 +304,7 @@ class ServiceRequest:
     body: object | None = None
     hosts: tuple[str, ...] = ()
     secrets: tuple[str, ...] = ()
+    timeout: float = 0.0
 
 def call_operation(request: ServiceRequest) -> ToolOutcome: ...
 ```

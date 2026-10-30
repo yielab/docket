@@ -14,12 +14,12 @@ from tests.support.llm import RecordingScriptedBackend as _ScriptedBackend
 from tests.support.llm import final as _final
 from tests.support.pods import write_meta_overrides as _write_meta
 from tests.support.trace import audit_entries, trace_events
+from tests.support.turns import run_turn, tool_replies, trace_text
 
 from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.agent.tools import mcp_client as _client
 from docket.governance import audit as _audit
 from docket.governance import secrets as _secrets
-from docket.hops.application.driver import DocketDriver
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.teams import fleet as _fleet
@@ -79,23 +79,6 @@ def world(tmp_path: Path) -> Path:
     return script
 
 
-def _turn(backend: _ScriptedBackend) -> None:
-    res = DocketDriver(backend_factory=lambda model: backend).run_turn(
-        "impl-1", "agent:impl-1:default", "go", 60
-    )
-    assert res.ok, res.error
-
-
-def _replies(backend: _ScriptedBackend) -> list[str]:
-    return [m.content for call in backend.calls[1:] for m in call if m.role == "tool"]
-
-
-def _trace_text() -> str:
-    return "\n".join(
-        p.read_text(errors="replace") for p in current_home().traces_dir.rglob("*.jsonl")
-    )
-
-
 class TestAStoredSecretReachesTheServer:
     def test_the_server_sees_the_value_and_neither_the_config_nor_the_trace_holds_it(
         self, world: Path
@@ -103,9 +86,9 @@ class TestAStoredSecretReachesTheServer:
         _mcp_servers.add_mcp_server(_server(world, "api", {"API_TOKEN": "secret:crm"}))
         backend = _ScriptedBackend([_call("api"), _final("done")])
 
-        _turn(backend)
+        run_turn(backend)
 
-        assert _VALUE in _replies(backend)[0]
+        assert _VALUE in tool_replies(backend)[0]
         stored = json.loads(current_home().mcp_servers_file.read_text())
         assert stored["servers"][0]["env"] == {"API_TOKEN": "secret:crm"}
         assert _VALUE not in current_home().mcp_servers_file.read_text()
@@ -113,8 +96,8 @@ class TestAStoredSecretReachesTheServer:
         assert [(e["payload"]["tool"], e["payload"]["ok"]) for e in results] == [
             ("mcp__api__read_env", True)
         ]
-        assert _VALUE not in _secrets.redact(_replies(backend)[0])
-        assert _VALUE not in _trace_text()
+        assert _VALUE not in _secrets.redact(tool_replies(backend)[0])
+        assert _VALUE not in trace_text()
         assert _VALUE not in str(_audit.read_audit())
 
 
@@ -126,9 +109,9 @@ class TestAnUnknownSecret:
         _mcp_servers.add_mcp_server(_server(world, "good", {"API_TOKEN": "literal-token-value"}))
         backend = _ScriptedBackend([_call("good"), _final("done")])
 
-        _turn(backend)
+        run_turn(backend)
 
-        assert "seen=literal-token-value" in _replies(backend)[0]
+        assert "seen=literal-token-value" in tool_replies(backend)[0]
         down = audit_entries("mcp_client.unavailable")
         assert len(down) == 1
         assert "api" in down[0]["detail"] and "API_TOKEN" in down[0]["detail"]
