@@ -10,6 +10,23 @@ Release notes for users stay in the root `CHANGELOG.md`.
 
 ## Entries since the archive
 
+- **2026-10-30 (D-77 recorded, ADR 0036, Phase 55 planned) — a pod works outward, on its own
+  schedule.** The maintainer asked for pods that do work other than code, act outside the machine
+  (messages, web sites, external APIs, other agents, MCP servers) and run on a schedule, without
+  changing how code pods are governed. Three e2e probes on a `content` workdir pod and one
+  Playwright MCP probe answered what assumes code and what cannot be expressed. A workdir pod runs
+  (rework, `run:` step, approval park and resume all work without git), but the Lead reads "the
+  repository root", the writer carries `bash` and "repository map", an approval shows addresses as
+  `[REDACTED]`, an allowed call leaves no audit row, nothing tells an outward action from a write,
+  an MCP credential sits in clear, time has no step, field or task-creating schedule, and a
+  browser's element refs die with docket's per-call MCP subprocess while the page survives, and an
+  outward pod's MCP servers have no network on a machine at `none`. Twelve cards: workspace-kind text and the first workdir e2e, a custom role's model pin, a `send` kind
+  held only by a role that names it with the `outward` recipe, sends audited and approved with
+  an approver who sees the whole call while kept copies stay redacted, `lifetime: hop`, a `wait` step (absorbing P52-12), task `variables`, a send
+  quota, routines, MCP credentials from the secret store, a pod's network widened only by the
+  operator's recorded yes, docs. Refused: native outward tools,
+  methods on `fetch`, HTTP MCP, per-host rules inside the jail, an unredacted copy outside the
+  pending approval.
 - **2026-10-25 (D-74 recorded, ADR 0034, Phase 52 extended to twelve cards) — the turn owns its
   processes and its time; the network stays a tool.** A reading of the live path, one recorded run
   and two probes answered whether the synchronous tool call, the timeouts and the closed network
