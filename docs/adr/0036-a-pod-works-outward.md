@@ -159,7 +159,8 @@ byte as today.
     to an API is governed like any other outward action. An MCP server's `env` value may be
     `secret:<name>`, resolved from docket's secret store when a turn loads its servers, never
     written to `mcp-servers.json` and scrubbed from traces like every stored secret. `fetch` stays
-    a GET for reading pages. (P55-10)
+    a GET for reading pages. (P55-10) Amended 2026-10-30 by decision 13: an MCP server stays a valid
+    way to reach an API, but it is no longer the only one.
 12. **A pod widens the machine's network only with the operator's recorded yes.** A machine whose
     recorded network mode is `none` stays `none` for every pod, except a pod the operator widened
     with `docket pod set network open --widen`: the command says what opens (the pod's `bash`,
@@ -170,11 +171,48 @@ byte as today.
     This amends the rule "a pod's `network` can only narrow it" (`security-gates.spec.md` item 7).
     (P55-11)
 
+## Amendment, 2026-10-30: an external service is declared, not programmed
+
+**Status: proposed.** Written the day Phase 55's cards merged, from the maintainer's request after
+the phase-close real run, and not yet accepted. Decisions 1 to 12 are unchanged.
+
+**Why.** Decision 11 reaches an API through an MCP server, which means a program per service,
+written or found before a task needs it. The maintainer wants a pod to reach a service nobody
+programmed in advance, configured by commands or by a document, and does not want further MCP
+implementation work. A task that ends in a `send` at a new service cannot wait for a bridge.
+
+13. **A service is a document, and its operations are tools.** A `kind: service` document (name,
+    `baseUrl`, an `auth` header whose value may be `${secret:<name>}`, and `operations`, each with a
+    method, a path with typed parameters, an optional JSON body and `access: read | send`) is
+    registered with `docket setup service add` or by a pod's `services/` directory, as
+    `kind: mcp-server` is. Each operation becomes one tool through `dispatch_tool`: its kind is the
+    operation's `access`, so a `send` operation is approved by a person who sees the whole call,
+    audited `tool.send`, counted by the quota and redacted in every kept copy, exactly as decision 2,
+    3 and 7 say, and a role holds it only by naming it in its allow-list. The secret is resolved when
+    the call runs and never reaches the model, the trace or the audit. The caller is docket's own
+    process, not the jail (as `fetch` is), so the perimeter is the service's host alone: a call to any
+    other host, a redirect off it and a private, loopback or link-local address are refused unless
+    the document lists them, and a path parameter is encoded, never concatenated. Response size and
+    time are bounded as `fetch`'s are. A command to store a named secret (`docket setup secret set`,
+    value by prompt or stdin, never echoed) comes with it, since a reference to a name nothing can
+    write is unwired.
+
+    *Proposed scope, to be confirmed:* a header token (no OAuth, no refresh); JSON in and out with
+    text as the fallback; the jail not involved; operations written by hand first, generated from an
+    OpenAPI document as a later card. *Still open:* whether an MCP server and a service of the same
+    name may coexist in one pod, and whether a service's `access: send` operations count against one
+    quota or one per service.
+
+*Cards, not yet cut:* the document and its commands with `setup secret set`; the HTTP executor and
+its guards; the registration and the role allow-list; the e2e against a local fake service and the
+docs. None starts before the maintainer accepts the scope above.
+
 ## Not doing
 
-- Native browser, mail, chat, CRM or HTTP-client tools, and methods, headers or bodies on `fetch`:
-  capability comes from MCP servers, docket keeps the gate (the reasoning that refused a native
-  search tool, ADR 0034). OAuth flows and token refresh belong to the server that wraps the API.
+- Native browser, mail, chat or CRM tools, and methods, headers or bodies on `fetch`: capability comes
+  from MCP servers or from a declared service (decision 13), docket keeps the gate (the reasoning that
+  refused a native search tool, ADR 0034). A declared service is configuration, not a tool per product.
+  OAuth flows and token refresh belong to the server that wraps the API.
 - An HTTP or SSE MCP transport, a `task`-long MCP session, a per-pod `fetch` allowlist (deferred).
 - Per-host network rules inside the jail: it is all or nothing (finding 8), which is why a widened
   pod's outward roles hold no `exec`.
