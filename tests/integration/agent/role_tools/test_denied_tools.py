@@ -66,8 +66,11 @@ class TestArchetypeDeniedToolsAreData:
             assert _builtin_roles.STARTER_ARCHETYPES[name].denied_tools == ("write", "edit", "bash")
 
     def test_starter_write_roles_have_full_access(self) -> None:
-        for name in ("researcher", "analyst", "writer", "operator"):
+        for name in ("researcher", "analyst", "operator"):
             assert _builtin_roles.STARTER_ARCHETYPES[name].denied_tools == ()
+
+    def test_the_starter_writer_denies_bash_and_nothing_else(self) -> None:
+        assert _builtin_roles.STARTER_ARCHETYPES["writer"].denied_tools == ("bash",)
 
     def test_denied_tools_round_trips_through_wire_format(self) -> None:
         reviewer = _builtin_roles.BUILTIN_ARCHETYPES["reviewer"]
