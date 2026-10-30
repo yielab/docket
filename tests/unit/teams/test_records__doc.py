@@ -10,7 +10,8 @@ import pytest
 import yaml
 
 from docket.kernel import records as _kernel_records
-from docket.platform.records_store import COLUMN_TYPES, QueryResult
+from docket.kernel.records import COLUMN_TYPES
+from docket.kernel.records_port import Rows
 from docket.teams import config_docs as _config_docs
 from docket.teams import records as _records
 
@@ -139,7 +140,7 @@ def test_rows_payload_keys_each_row_by_column_name() -> None:
     record_set = _kernel_records.RecordSet.model_validate(
         {"name": "leads", "columns": [{"name": "email", "type": "string"}]}
     )
-    result = QueryResult(columns=("_id", "email"), rows=[(1, "a@x.test")], cut=3)
+    result = Rows(columns=("_id", "email"), rows=[(1, "a@x.test")], cut=3)
 
     assert _records.rows_payload(record_set, result) == {
         "set": "leads",

@@ -15,7 +15,8 @@ from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
 from docket.kernel.home import Home, current_home, use_home
-from docket.platform.records_store import RecordMeta, RecordsStore
+from docket.kernel.ports import records
+from docket.kernel.records_port import ReadLimits, RecordOrigin, RecordStore
 from docket.teams import pod
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
@@ -60,17 +61,17 @@ def _update(directory: Path) -> _model.ApplyResult:
     return _write.apply(_pod_apply.plan_apply("shop", directory))
 
 
-def _store() -> RecordsStore:
-    return RecordsStore(current_home().pod_records_path("shop"))
+def _store() -> RecordStore:
+    return records.open("shop")
 
 
 def _count() -> int:
-    return int(_store().query("SELECT count(*) FROM leads", 5, 1000).rows[0][0])
+    return int(_store().read("SELECT count(*) FROM leads", ReadLimits(5, 1000)).rows[0][0])
 
 
 def _fill(n: int) -> None:
     for i in range(n):
-        _store().add("leads", {"email": f"p{i}@x.test", "score": i}, RecordMeta("t", "s", "scan"))
+        _store().add("leads", {"email": f"p{i}@x.test", "score": i}, RecordOrigin("t", "s", "scan"))
 
 
 def _records(*args: str) -> tuple[int, str]:
@@ -109,7 +110,7 @@ def test_a_column_added_to_the_document_keeps_the_rows(tmp_path: Path) -> None:
     _update(wider)
 
     assert _count() == 3
-    assert _store().query("SELECT agent FROM leads", 5, 1000).columns == ("agent",)
+    assert _store().read("SELECT agent FROM leads", ReadLimits(5, 1000)).columns == ("agent",)
 
 
 def test_a_column_removed_is_refused_and_nothing_changes(tmp_path: Path) -> None:
@@ -121,7 +122,7 @@ def test_a_column_removed_is_refused_and_nothing_changes(tmp_path: Path) -> None
         _pod_apply.plan_apply("shop", _recipe(tmp_path, _LEADS_WITHOUT_SCORE, "narrower"))
 
     assert _count() == 2
-    assert _store().query("SELECT * FROM leads", 5, 1000).columns[-1] == "score"
+    assert _store().read("SELECT * FROM leads", ReadLimits(5, 1000)).columns[-1] == "score"
     assert (current_home().pod_config_dir("shop") / "records" / "leads.yaml").read_bytes() == before
 
 

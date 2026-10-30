@@ -21,15 +21,17 @@ from docket.governance import gate as _gate
 from docket.governance import security as _security
 from docket.governance.ports import bind_approval_escalations, bind_approval_follow_up
 from docket.hops.application import driver as _driver
-from docket.kernel.home import Home
+from docket.kernel.home import Home, current_home
 from docket.kernel.ports import (
     SandboxAvailability,
     bind_git,
     bind_jail,
     bind_process,
+    bind_records,
     bind_tracer,
 )
 from docket.kernel.ports import jail as _jail
+from docket.kernel.records_port import RecordStore
 from docket.models import catalog as _catalog
 from docket.models.adapters import openai_http as _openai_http
 from docket.models.ports import bind_endpoint_prober
@@ -41,6 +43,7 @@ from docket.operator.ports import bind_task_reader
 from docket.platform import git as _git_adapter
 from docket.platform import process as _process_adapter
 from docket.platform import store as _store
+from docket.platform.records_sqlite import SqliteRecordStore
 from docket.sandbox.launch import Launcher
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import escalations as _escalations
@@ -70,6 +73,11 @@ class _QueueTaskReader:
         ]
 
 
+def _open_records(project: str) -> RecordStore:
+    """The records backend of a pod; the one place a backend is chosen."""
+    return SqliteRecordStore(current_home().pod_records_path(project))
+
+
 def bind_adapters() -> None:
     """Bind the real adapters of every port; every entry calls this before it runs."""
     bind_role_composer(TeamsRoleComposer())
@@ -82,6 +90,7 @@ def bind_adapters() -> None:
     bind_channel_documents(_channel)
     bind_git(_git_adapter)
     bind_process(_process_adapter)
+    bind_records(_open_records)
     bind_jail(
         Launcher(
             recorded_backend=_fleet.get_sandbox_backend,

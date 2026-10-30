@@ -23,9 +23,10 @@ from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.hops.application.driver import DocketDriver
 from docket.kernel.home import current_home
+from docket.kernel.ports import records
 from docket.kernel.records import RecordColumn, RecordSet
+from docket.kernel.records_port import ReadLimits, RecordStore
 from docket.kernel.tool_outcome import ToolOutcome
-from docket.platform import RecordsStore
 from docket.teams import fleet as _fleet
 from docket.teams import records as _records
 
@@ -57,12 +58,16 @@ def workdir(tmp_path: Path) -> Path:
     return work
 
 
-def _store() -> RecordsStore:
-    return RecordsStore(current_home().pod_records_path("acme"))
+def _store() -> RecordStore:
+    return records.open("acme")
 
 
 def _rows() -> list[tuple[Any, ...]]:
-    return _store().query("SELECT email, _task, _step FROM leads ORDER BY _id", 50, 9999).rows
+    return (
+        _store()
+        .read("SELECT email, _task, _step FROM leads ORDER BY _id", ReadLimits(50, 9999))
+        .rows
+    )
 
 
 def _turn(backend: _ScriptedBackend, task: str = "t-1", step: str = "scan") -> None:
