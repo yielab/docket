@@ -20,6 +20,7 @@ _OPERATOR_DIRS = {
     "roles": "roles_dir",
     "prompts": "prompts_dir",
     "pipelines": "pipelines_dir",
+    "routines": "routines_dir",
     "skills": "skills_dir",
     "policies": "policies_dir",
     "plugins": "plugins_dir",
@@ -377,6 +378,10 @@ class Home:
         return self.config_dir / "pipelines"
 
     @property
+    def routines_dir(self) -> Path:
+        return self.config_dir / "routines"
+
+    @property
     def approvals_dir(self) -> Path:
         if self.approvals_dir_override is not None:
             return self.approvals_dir_override
@@ -403,6 +408,11 @@ class Home:
         if self.schedule_file_override is not None:
             return self.schedule_file_override
         return self.state_dir / "docket-schedules.json"
+
+    # The last slot each pod's routines fired, so a restart does not fire one twice.
+    @property
+    def routines_state_file(self) -> Path:
+        return self.state_dir / "docket-routines.json"
 
     # One record per dispatch run, whatever triggered it.
     @property

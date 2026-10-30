@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/routine.schema.json",
+  "title": "RoutineDocument",
+  "$defs": {
+    "RoutineTask": {
+      "additionalProperties": false,
+      "description": "What a routine enqueues each time it fires -- see pod-dispatch.spec.md \"Routines\".",
+      "properties": {
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "pipeline": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pipeline"
+        },
+        "variables": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "minLength": 1
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Variables"
+        },
+        "priority": {
+          "default": "normal",
+          "enum": [
+            "high",
+            "normal",
+            "low"
+          ],
+          "title": "Priority",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "title": "RoutineTask",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The ``kind: routine`` document, parsed by this model alone -- see config-format.spec.md\n(\"The `routine` kind\"). ``schedule`` is a 5-field cron expression or ``@every``; ``tz`` an\nIANA zone name.",
+  "properties": {
+    "kind": {
+      "const": "routine",
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "type": "string"
+    },
+    "tz": {
+      "default": "UTC",
+      "title": "Tz",
+      "type": "string"
+    },
+    "task": {
+      "$ref": "#/$defs/RoutineTask"
+    },
+    "catchUp": {
+      "default": "skip",
+      "enum": [
+        "skip",
+        "once"
+      ],
+      "title": "Catchup",
+      "type": "string"
+    },
+    "overlap": {
+      "default": "skip",
+      "enum": [
+        "skip",
+        "queue"
+      ],
+      "title": "Overlap",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "kind",
+    "name",
+    "schedule",
+    "task"
+  ],
+  "type": "object"
+}

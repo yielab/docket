@@ -23,6 +23,7 @@ from docket.teams import roles as _arch
 from docket.teams.apply import lock as _lock
 from docket.teams.apply.model import ApplyPlan, ApplyResult, PodApplyError
 from docket.teams.apply.recipes import _directory_files, _named_pipeline_files
+from docket.teams.apply.routines import export_routines, write_routines
 
 
 def _dump_yaml_file(path: Path, doc: dict[str, Any], *, schema_header: str = "") -> None:
@@ -222,6 +223,7 @@ def export_pod(project: str, directory: Path) -> None:
     _export_policies(project, directory)
     _export_plugins(project, directory)
     _export_named_pipelines(project, directory)
+    export_routines(project, directory)
     _export_skills(project, directory)
     _export_mcp_servers(project, directory)
     _export_pipeline(project, directory)
@@ -269,6 +271,8 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
             dest = pipelines_dir / named_write.name
             dest.write_bytes(named_write.source)
             dest.chmod(0o600)
+
+    write_routines(plan.project, plan._routine_writes)
 
     if plan._skill_writes:
         skills_dir = current_home().pod_config_dir(plan.project) / "skills"
