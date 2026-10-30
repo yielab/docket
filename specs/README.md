@@ -94,32 +94,32 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
-| Agent Lifecycle | 4.0.0 | Complete |
+| Agent Lifecycle | 4.0.1 | Complete |
 | Agent Loop | 3.10.1 | Implemented and live |
-| API Keys | 2.1.0 | Complete |
-| Audit | 3.3.1 | Implemented |
+| API Keys | 2.2.0 | Complete |
+| Audit | 3.3.2 | Implemented |
 | Config Format | 2.8.0 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
-| Model Profiles | 6.4.2 | Complete |
-| Observability Export | 3.1.0 | Implemented and live |
-| Pipeline Format | 4.4.0 | Implemented |
-| Pod Blueprints | 2.6.0 | Implemented |
-| Pod Dispatch | 11.8.0 | Implemented |
-| Role Archetypes | 4.8.2 | Implemented |
+| Model Profiles | 6.5.0 | Complete |
+| Observability Export | 3.1.1 | Implemented and live |
+| Pipeline Format | 4.5.0 | Implemented |
+| Pod Blueprints | 3.0.0 | Implemented |
+| Pod Dispatch | 11.8.1 | Implemented |
+| Role Archetypes | 5.0.0 | Implemented |
 | Security Gates | 3.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
-| Trace Store | 4.4.0 | Implemented and live |
-| Workspace Structure | 3.1.0 | Complete |
-| CLI Interface | 5.4.0 | Complete |
+| Trace Store | 5.0.0 | Implemented and live |
+| Workspace Structure | 3.1.1 | Complete |
+| CLI Interface | 5.5.1 | Complete |
 | MCP Client | 3.1.0 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
-| MCP Server | 2.0.0 | Implemented |
+| MCP Server | 2.0.1 | Implemented |
 | CLI JSON Shapes | 4.6.1 | Complete |
-| docket-meta schema | 5.5.1 | Complete |
+| docket-meta schema | 5.5.2 | Complete |
 | Docket Store | 3.1.0 | Implemented |
-| Operator API | 7.5.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.5.1 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.2.0 | Implemented |
 | Serve Read API | 5.2.0 | Stable |
 | Adoption Benchmark | 2.2.0 | Implemented |

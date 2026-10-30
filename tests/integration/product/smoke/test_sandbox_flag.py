@@ -40,7 +40,7 @@ class _Recorder:
         if args[:1] == ("init",):
             home = self.world / ".docket"
             home.mkdir(parents=True, exist_ok=True)
-            agents = [{"id": f"smoke-{role}"} for role in ("lead", "implementer", "r", "t")]
+            agents = [{"id": f"smoke-{role}"} for role in ("lead", "implementer", "reviewer")]
             (home / "fleet.json").write_text(json.dumps({"agents": agents}), encoding="utf-8")
         if args[:1] == ("run",):
             raise _smoke.SmokeFailure("stopped at the pipeline run")
