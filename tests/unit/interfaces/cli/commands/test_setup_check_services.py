@@ -17,6 +17,8 @@ from tests.support.pods import seed_setup_check_home as _seed
 from docket.interfaces.cli.commands import setup_check as _setup_check
 from docket.interfaces.cli.commands import setup_check_services as _setup_check_services
 from docket.kernel.home import current_home
+from docket.kernel.mcp import McpServerConfig
+from docket.teams import mcp_servers as _mcp_servers
 
 SUBJECT = "docket.interfaces.cli.commands.setup_check_services"
 
@@ -41,6 +43,32 @@ _FLEET_CONFIG: dict[str, Any] = {
     "defaults": {"model": "anthropic/claude-sonnet-4-6"},
     "security": {"gatesEnabled": False, "isolationEnabled": False},
 }
+
+
+class TestMcpLiteralCredentials:
+    def test_a_literal_token_warns_once_naming_the_server_and_variable_but_not_the_value(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _mcp_servers.add_mcp_server(
+            McpServerConfig(
+                name="crm",
+                command="run",
+                env={"API_TOKEN": "literal-value-1234", "OK_TOKEN": "secret:ok"},
+            )
+        )
+
+        _setup_check_services.check_mcp_literals([])
+        out = capsys.readouterr().out
+
+        assert out.count("API_TOKEN") == 1 and "crm" in out
+        assert "--secret" in out
+        assert "OK_TOKEN" not in out and "literal-value-1234" not in out
+
+    def test_no_literal_credentials_prints_nothing(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert _setup_check_services.check_mcp_literals([]) == 0
+        assert capsys.readouterr().out == ""
 
 
 class TestNotifications:

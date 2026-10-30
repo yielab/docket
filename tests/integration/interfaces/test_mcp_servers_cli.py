@@ -28,6 +28,7 @@ from typer.testing import CliRunner
 
 from docket.agent.tools import mcp_tools as _mt
 from docket.governance import audit as _audit
+from docket.governance import secrets as _secrets
 from docket.interfaces.cli.app import app
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import Home, current_home, use_home
@@ -189,6 +190,45 @@ class TestServersAdd:
         assert _mcp_run(["add", "plain", "--", "cmd"])[0] == 0
         stored = {s.name: s.lifetime for s in _mcp_servers.load_mcp_servers()}
         assert stored == {"kept": "hop", "plain": "call"}
+
+    def test_secret_writes_the_reference_and_never_reads_the_value(self) -> None:
+        _secrets.save_secrets({"crm": "crm-live-0123456789"})
+
+        rc, out, _ = _mcp_run(
+            ["add", "crm", "--secret", "API_TOKEN=crm", "--env", "REGION=eu", "--", "cmd"]
+        )
+
+        assert rc == 0
+        assert _mcp_servers.load_mcp_servers()[0].env == {
+            "API_TOKEN": "secret:crm",
+            "REGION": "eu",
+        }
+        raw = current_home().mcp_servers_file.read_text()
+        assert "secret:crm" in raw and "crm-live-0123456789" not in raw + out
+        assert "crm-live-0123456789" not in " ".join(_audit_details("mcp_servers.add"))
+
+    def test_a_secret_not_yet_stored_is_added_with_a_warning(self) -> None:
+        rc, out, err = _mcp_run(["add", "crm", "--secret", "API_TOKEN=later", "--", "cmd"])
+
+        assert rc == 0
+        assert "API_TOKEN" in out + err and "later" in out + err
+
+    @pytest.mark.parametrize(
+        "args",
+        [["--secret", "API_TOKEN"], ["--secret", "=crm"], ["--secret", "API_TOKEN=a b"]],
+    )
+    def test_a_malformed_secret_is_rejected(self, args: list[str]) -> None:
+        rc, _, err = _mcp_run(["add", "s", *args, "--", "cmd"])
+
+        assert rc == 1 and "--secret" in err
+        assert _mcp_servers.load_mcp_servers() == []
+
+    def test_a_variable_given_to_env_and_secret_is_rejected(self) -> None:
+        rc, _, err = _mcp_run(
+            ["add", "s", "--env", "API_TOKEN=x", "--secret", "API_TOKEN=crm", "--", "cmd"]
+        )
+
+        assert rc == 1 and "API_TOKEN" in err
 
     def test_no_args_at_all_is_rejected(self) -> None:
         assert _mcp_run(["add"])[0] != 0
