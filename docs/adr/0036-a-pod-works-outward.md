@@ -218,6 +218,60 @@ neither: it is the browser case, a person's step. None of it is in Phase 56.
 
 *Cards:* Phase 56, P56-1..P56-9 on `TODO.md`.
 
+## Second amendment, 2026-10-30: a pod keeps records, and a call that leaves names its task
+
+**Status: proposed 2026-10-30**, from the maintainer's request the same day to fold the standard
+teams work into Phase 56 without oversizing it, and to give pods "somewhere to store" the data of
+the business: reports, listings, compilations, a register, captured data. Not docket's own state:
+tasks, trace, audit and approvals stay where they are. Decisions 1 to 14 are unchanged. The open
+choices are in ROADMAP §7.1.
+
+**Why.** Nothing in `src/docket` stores tabular data: there is no `sqlite3` import, pod memory
+(`memory.json`) holds verified facts about the workspace, and a workdir pod that keeps a register
+today writes a file the model must re-read whole, against a tool-output bound of 2,500 characters on
+the local model. A declared service (decision 13) reaches a database someone runs, but a pod that
+only needs a table should not need a server.
+
+15. **A pod's records are declared tables in one SQLite file the pod owns.** A `kind: records`
+    document in a pod's `records/` directory names a set, its typed columns (`string`, `integer`,
+    `number`, `boolean`, `date`) and an optional `key` column. `pod update` creates the table or adds
+    a column; it never removes, renames or retypes one. The file is `pods/<pod>/records.sqlite`,
+    beside `memory.json`, outside the roots the jail may write, and one module writes it
+    (`platform/records_store.py`, pinned like the task queue's writer). The tools follow the
+    methodology "operations, not tables": `rec__<set>__add` and `rec__<set>__update` are `write`
+    tools whose parameters are the declared columns, and an `add` whose key exists returns the
+    existing row, so a resumed hop that repeats its call writes once; `rec__query` is a `read` tool
+    that runs a `SELECT` on a read-only connection with an authorizer, a row bound and a time bound;
+    `rec__export` writes a query's rows as CSV or Markdown into the hop's working directory without
+    passing them through the model. docket fills `_task`, `_session`, `_step` and `_at` on every row
+    from the hop, never from the model's arguments. Records never leave the machine, so no record
+    tool is `send`.
+16. **A service call names its task.** Every declared-service call carries `X-Docket-Task: <task
+    id>`, and a `send` operation of a document that declares `idempotencyHeader` carries that header
+    with a key derived from the task, the step, the operation and the canonical body, so the service
+    can recognize a repeated call, such as the call a resumed hop issues again after its approval.
+
+*Not in this amendment:* a set shared between pods, records read over the HTTP API, deleting rows,
+vector search, an HTTP MCP transport (still deferred, above), a second store for docket's own tasks.
+
+*Team composition, in the same phase and under no new decision.* The maintainer's request of the same
+day also folds in what the standard-teams review found in the code team, each a card that amends an
+earlier decision's data rather than this ADR, under the maintainer's rule that docket has no users and
+keeps nothing for compatibility: one judge, `reviewer`, `strong`, judging code, text or data, with
+`critic` and `tester` deleted outright (ADR 0012's archetypes are data; the tester ran the suite the
+implementer's gate had run and could add no test); the full pod is lead, implementer, reviewer; the old
+single-level home layout, its migration, the `roles.json` shim and the metadata models that kept unknown
+keys are deleted; the short form and `docket init --with` resolve every registered role rather than the
+four software ones; a pod's records are read over the HTTP API by the plan of record (how another pod
+reads them without a shared file); an OpenAPI 2 document imports beside 3 (PostgREST publishes 2.0); and
+the blueprints become the four team shapes the standard-teams review found behind every department
+(`build`, `respond`, `operate`, `routine`: a roster, a pipeline, a workspace kind), with `actor` a
+starter archetype and a recipe carrying only what a blueprint cannot (a policy pack, a records set, a
+schedule), so nothing ships twice. A department (support, finance, …) is a shape plus the operator's
+prose, connectors and policy, documented, never shipped as a blueprint.
+
+*Cards:* Phase 56, P56-10..P56-20 on `TODO.md`; P56-3 and P56-5 carry decision 16.
+
 ## Not doing
 
 - Native browser, mail, chat or CRM tools, and methods, headers or bodies on `fetch`: capability comes

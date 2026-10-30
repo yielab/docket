@@ -104,7 +104,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 6.5.0 | Complete |
 | Observability Export | 3.1.1 | Implemented and live |
-| Pipeline Format | 4.5.0 | Implemented |
+| Pipeline Format | 4.6.0 | Implemented |
 | Pod Blueprints | 3.0.0 | Implemented |
 | Pod Dispatch | 11.9.0 | Implemented |
 | Role Archetypes | 5.3.0 | Implemented |
