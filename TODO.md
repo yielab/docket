@@ -696,6 +696,11 @@ that already own the files.
     `teams/config_docs.py` sits at 700 lines.
   - A flake, once: `test_consult_wait.py::TestAnsweredInPlace::test_an_answer_by_the_task_goes_through_the_same_record`
     failed in the full run and passed alone (the file's other test is already on the list above).
+- *To investigate, important: a pod logging in to a site nobody configured.* Per-service MCP bridges and `secret:<name>`
+  are fixed when a server is registered; a task that ends in a `send` at a new site that needs a login has no per-site
+  credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
+  path (ADR first, then `docket setup secret set`, then a per-site grant like the network grant, then a real run with a
+  throwaway account) are in `internal-docs/design/site-credentials-for-a-pod.md`. No card yet.
 - *Live evidence, P55-5 (2026-10-30).* A real Playwright MCP server (0.0.83, headless system Chrome) driven through
   docket's MCP layer against a local page: under `lifetime: hop` navigate, snapshot and click by ref keep one session
   (the click ran, the page title changed); under `call` the snapshot after a navigate is `about:blank` and no ref
