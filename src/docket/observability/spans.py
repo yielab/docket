@@ -173,6 +173,7 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
     "approval_required": ("role", "escalation", "pipelineIndex", "policy"),
     "approval_resumed": ("task", "escalation"),
     "approval_task_denied": ("task", "escalation"),
+    "approval_unused": ("task", "role", "tool", "escalation"),
     "run_cancellation_observed": ("run", "source"),
     "run_cancelled": ("run", "source"),
     "step_skipped": ("step",),
