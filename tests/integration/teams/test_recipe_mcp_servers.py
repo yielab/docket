@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests.support.cli import invoke_pod
 from tests.support.pods import build_pod
 
 import docket.kernel.templates as _templates
@@ -28,6 +29,7 @@ from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import roles as _roles
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
 from docket.teams.apply import recipes as _recipes
@@ -228,3 +230,49 @@ def test_code_intel_servers_declare_no_isolate_key() -> None:
     directory = _templates.RECIPES_DIR / "code-intel"
     for path in (directory / "mcp-servers").glob("*.yaml"):
         assert "isolate" not in path.read_text(encoding="utf-8")
+
+
+def _acting_recipe(tmp_path: Path, tools: str) -> Path:
+    """A recipe with a read server, a send server and a role whose allow-list is *tools*."""
+    directory = _recipe(tmp_path, doc=_SERVER_DOC.replace("fakesrv", "reader"))
+    (directory / "mcp-servers" / "sender.yaml").write_text(
+        "kind: mcp-server\nname: sender\ncommand: send-it\naccess: send\n", encoding="utf-8"
+    )
+    (directory / "roles").mkdir()
+    (directory / "roles" / "actor.yaml").write_text(
+        f"kind: role\nname: actor\nmodel: cheap\ntools: {tools}\n", encoding="utf-8"
+    )
+    (directory / "roles" / "actor.md").write_text("Act.\n", encoding="utf-8")
+    (directory / "pod.yaml").write_text("kind: pod\nname: r\nmembers: [actor]\n", encoding="utf-8")
+    return directory
+
+
+def test_apply_refuses_a_role_that_names_a_send_tool_and_still_reads(tmp_path: Path) -> None:
+    directory = _acting_recipe(tmp_path, "[mcp__sender__send, mcp__reader__lookup]")
+
+    with pytest.raises(
+        _model.PodApplyError, match=r"actor.*mcp__sender__send.*mcp__reader__lookup"
+    ):
+        _pod_apply.plan_apply("shop", directory)
+
+    assert _mcp_servers.load_mcp_servers("shop") == []
+
+
+def test_apply_installs_a_role_that_names_a_send_tool_alone(tmp_path: Path) -> None:
+    result = _apply("shop", _acting_recipe(tmp_path, "[read, mcp__sender__send]"))
+
+    assert {i.name for i in result.items if i.kind == "mcp-server"} == {"reader", "sender"}
+
+
+def test_update_of_a_single_role_file_refuses_a_send_and_a_read_tool(tmp_path: Path) -> None:
+    directory = _acting_recipe(tmp_path, "[mcp__sender__send, mcp__reader__lookup]")
+
+    result = invoke_pod(["update", str(directory / "roles" / "actor.yaml"), "--pod", "shop"])
+
+    assert result.exit_code == 1
+    assert "mcp__sender__send" in result.output
+    assert "actor" not in _arch_names("shop")
+
+
+def _arch_names(project: str) -> list[str]:
+    return [name for name, a in _roles.load_registry(project).items() if a.name == name]

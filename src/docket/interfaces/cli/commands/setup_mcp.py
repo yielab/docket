@@ -70,7 +70,9 @@ def cmd_add(
     command: list[str] = typer.Argument(..., help="Launch command and arguments, after --"),
     env: list[str] = typer.Option([], "--env", "-e", help="KEY=VALUE for the server (repeatable)"),
     timeout: float = typer.Option(0.0, "--timeout", help="Seconds before a call gives up"),
-    kind: str = typer.Option("write", "--kind", help="read or write: the server's trust level"),
+    kind: str = typer.Option(
+        "write", "--kind", help="read, write or send: the server's trust level"
+    ),
     tools: str = typer.Option("", "--tools", help="Allow-list of the server's tool names"),
     lifetime: str = typer.Option(
         "call", "--lifetime", help="call: a process per call; hop: one session per hop"
@@ -79,10 +81,12 @@ def cmd_add(
     """Configure a server; everything after -- is its launch command, verbatim.
 
     A role that denies write gets tools only from a server declared --kind read.
+    A server whose tools act outside the machine (send, post, book, pay) is --kind send;
+    only a role whose tools list names one is given it.
     A server that keeps state between calls (a browser) wants --lifetime hop.
     Example: docket setup mcp add playwright --lifetime hop -- npx -y @playwright/mcp@latest"""
-    if kind not in ("read", "write"):
-        ui.error(f"--kind must be 'read' or 'write', got '{kind}'")
+    if kind not in ("read", "write", "send"):
+        ui.error(f"--kind must be 'read', 'write' or 'send', got '{kind}'")
         raise typer.Exit(1)
     if lifetime not in ("call", "hop"):
         ui.error(f"--lifetime must be 'call' or 'hop', got '{lifetime}'")

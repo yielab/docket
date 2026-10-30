@@ -196,3 +196,52 @@ def test_a_prompt_using_an_undeclared_input_makes_validate_exit_one_and_name_it(
     assert "${nobody}" in out
     assert "good.md" in out
     assert out.index("bad.md") < out.index("good.md")
+
+
+_SENDER = "kind: mcp-server\nname: mailer\ncommand: send-mail\naccess: send\n"
+_READER = "kind: mcp-server\nname: mailbox\ncommand: read-mail\naccess: read\n"
+
+
+def _acting_directory(tmp_path: Path, tools: str) -> Path:
+    """A directory with a read server, a send server and one role whose allow-list is *tools*."""
+    (tmp_path / "mcp-servers").mkdir()
+    (tmp_path / "mcp-servers" / "mailer.yaml").write_text(_SENDER, encoding="utf-8")
+    (tmp_path / "mcp-servers" / "mailbox.yaml").write_text(_READER, encoding="utf-8")
+    roles_dir = tmp_path / "roles"
+    roles_dir.mkdir()
+    _put_role(
+        roles_dir,
+        "actor.yaml",
+        f"kind: role\nname: actor\nscope: pod\nmodel: cheap\ntools: {tools}\n",
+    )
+    return tmp_path
+
+
+def test_a_role_naming_a_send_tool_and_fetch_is_refused_naming_the_role_and_both_tools(
+    tmp_path: Path,
+) -> None:
+    rc, out = _validate(_acting_directory(tmp_path, "[mcp__mailer__send, fetch]"))
+
+    assert rc == 1
+    assert "actor" in out and "mcp__mailer__send" in out and "fetch" in out
+
+
+def test_a_role_naming_a_send_tool_and_a_read_servers_tool_is_refused(tmp_path: Path) -> None:
+    rc, out = _validate(_acting_directory(tmp_path, "[mcp__mailer__send, mcp__mailbox__list]"))
+
+    assert rc == 1
+    assert "mcp__mailbox__list" in out
+
+
+def test_a_role_naming_only_a_send_tool_validates(tmp_path: Path) -> None:
+    rc, _out = _validate(_acting_directory(tmp_path, "[read, mcp__mailer__send]"))
+
+    assert rc == 0
+
+
+def test_a_single_role_file_naming_a_send_and_a_read_tool_is_refused(tmp_path: Path) -> None:
+    directory = _acting_directory(tmp_path, "[mcp__mailer__send, fetch]")
+
+    rc, out = _validate(directory / "roles" / "actor.yaml")
+
+    assert rc == 1 and "fetch" in out
