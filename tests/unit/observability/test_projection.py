@@ -339,6 +339,16 @@ class TestEscalationSpans:
         assert shared.attributes["docket.escalation.answer"] == "redis"
         assert "docket.escalation.answer" not in withheld.attributes
 
+    def test_a_settlement_seen_without_its_ask_carries_the_question_and_answer(self) -> None:
+        full = observability_spans.ExportPolicy(classes=privacy.LEVELS["full"], label="full")
+        settled = _esc_record(
+            "escalation_resolved", "2026-10-25T10:01:00Z", prompt="Which store?", optionId="redis"
+        )
+
+        (span,) = _escalation_spans(_run([settled], full))
+        assert span.attributes["docket.escalation.prompt"] == "Which store?"
+        assert span.attributes["docket.escalation.answer"] == "redis"
+
     def test_a_settlement_within_the_ask_s_second_closes_the_span_at_its_start(self) -> None:
         spans = _run(
             [

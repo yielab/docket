@@ -1,9 +1,9 @@
 # Operator Loop Specification
 
-**Version**: 3.0.1
+**Version**: 3.1.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-29
 
 ## Purpose
 
@@ -787,11 +787,14 @@ keeps no copy of it, and every surface prints from it.
    | --- | --- | --- |
    | `escalation_asked` | the record is opened (item 1) | `causedBy`, `onExpiry`, `expiresAt` when set, `options` (the option ids), `prompt` (already redacted) |
    | `escalation_delivered` | a channel delivered it to a person | `channel` |
-   | `escalation_resolved` | a person settled it | `by: "person"`, `optionId`, `channel` |
-   | `escalation_expired` | an expiry sweep settled it (item 5) | `by: "timeout"` |
-   | `escalation_decided` | the pod settled it without a person | `by: "policy"`, `optionId` |
+   | `escalation_resolved` | a person settled it | `by: "person"`, `optionId`, `channel`, `prompt` |
+   | `escalation_expired` | an expiry sweep settled it (item 5) | `by: "timeout"`, `prompt` |
+   | `escalation_decided` | the pod settled it without a person | `by: "policy"`, `optionId`, `prompt` |
 
-   Every payload also carries `level` (item 1) when the record has one.
+   Every payload also carries `level` (item 1) when the record has one. The settling events
+   repeat the question (`prompt`), because the process that settles a pause is often not the one
+   that asked it, and an exporter there sends the whole pause (observability-export.spec.md
+   requirement 111).
 
    `escalation_asked` is written by the store's opener after the record and the task link exist,
    and its approval link (item 4) is already made, so a surface that sees the event can tell what
