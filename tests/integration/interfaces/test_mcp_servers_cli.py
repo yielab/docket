@@ -172,6 +172,17 @@ class TestServersAdd:
         assert rc == 1
         assert _mcp_servers.load_mcp_servers() == []
 
+    def test_a_bad_lifetime_is_rejected(self) -> None:
+        rc, _, err = _mcp_run(["add", "s", "--lifetime", "forever", "--", "cmd"])
+        assert rc == 1 and "--lifetime" in err
+        assert _mcp_servers.load_mcp_servers() == []
+
+    def test_lifetime_hop_is_stored_and_call_is_the_default(self) -> None:
+        assert _mcp_run(["add", "kept", "--lifetime", "hop", "--", "cmd"])[0] == 0
+        assert _mcp_run(["add", "plain", "--", "cmd"])[0] == 0
+        stored = {s.name: s.lifetime for s in _mcp_servers.load_mcp_servers()}
+        assert stored == {"kept": "hop", "plain": "call"}
+
     def test_no_args_at_all_is_rejected(self) -> None:
         assert _mcp_run(["add"])[0] != 0
 

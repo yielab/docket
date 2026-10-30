@@ -113,7 +113,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Trace Store | 4.3.0 | Implemented and live |
 | Workspace Structure | 3.1.0 | Complete |
 | CLI Interface | 5.3.0 | Complete |
-| MCP Client | 2.0.1 | Implemented and wired to the live turn path |
+| MCP Client | 2.1.0 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 2.0.0 | Implemented |
 | CLI JSON Shapes | 4.6.1 | Complete |
