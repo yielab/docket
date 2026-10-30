@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from tests.support.cli import invoke_pod
 
+from docket.kernel.templates import RECIPES_DIR
 from docket.teams import roles as _roles
 
 SUBJECT = "docket.interfaces.cli.commands.pod_config"
@@ -245,3 +246,9 @@ def test_a_single_role_file_naming_a_send_and_a_read_tool_is_refused(tmp_path: P
     rc, out = _validate(directory / "roles" / "actor.yaml")
 
     assert rc == 1 and "fetch" in out
+
+
+def test_the_shipped_outward_recipe_validates() -> None:
+    rc, out = _validate(RECIPES_DIR / "outward")
+
+    assert rc == 0, out
