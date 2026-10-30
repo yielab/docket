@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 3.3.0
+**Version**: 3.3.1
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
@@ -50,7 +50,9 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      call the gate settles writes one, `allow` or `deny`, with the same `detail` then
      `decision=<allow|deny>` and the call redacted as the rest of the log is (an address stays
      redacted here); a parked call writes it when it is re-issued
-     (`security-gates.spec.md` In-turn tool-call gate 17).
+     (`security-gates.spec.md` In-turn tool-call gate 17). A `send` the pod's quota refused writes
+     it with `decision=deny` and `policy_action='block'`, beside the `tool.deny` entry
+     (`security-gates.spec.md` In-turn tool-call gate 18).
    - **Untrusted-text screens.** The `pre_input` screen of remote or repository text writes
      `<family>_blocked` when it blocks and `<family>_warn` when it warns or redacts, for the
      families `fetch.result`, `mcp_client.tool_result`, `mcp_client.tool_description`,
