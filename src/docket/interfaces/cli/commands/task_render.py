@@ -8,6 +8,7 @@ from typing import Any
 
 from rich.markup import escape
 
+from docket.governance.approval import approval_call
 from docket.hops.application import interruptions as _interruptions
 from docket.hops.application import report as _report
 from docket.interfaces.cli.render import ui
@@ -163,6 +164,18 @@ def _render_waiting(found: TaskRef) -> None:
             _say(line)
 
 
+def _render_outward(found: TaskRef) -> None:
+    """The whole call of each pending outward approval: what a person is asked to let leave."""
+    shown = [(v.id, approval_call(v.id)) for v in _waiting_on(found) if v.outward]
+    calls = [(esc_id, call) for esc_id, call in shown if call is not None]
+    if not calls:
+        return
+    ui.section("What leaves")
+    for esc_id, call in calls:
+        _say(f"  {esc_id}:")
+        _say("    " + call.replace("\n", "\n    "))
+
+
 def _render_decided(found: TaskRef) -> None:
     views = _decided_for(found)
     if not views:
@@ -205,6 +218,7 @@ def _render_show(
         _say(f"  diff:   {wt['diff']}")
         _say(f"  merge:  {wt['merge']}")
     _render_waiting(found)
+    _render_outward(found)
     _render_decided(found)
     if notes:
         ui.section("Corrections")

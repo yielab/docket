@@ -132,7 +132,7 @@ def touch_meta(name: str, event: str) -> None:
 # Capping the quantifier bounds that search to a constant per position without narrowing
 # which real secrets match -- an env-var name or an email local-part/domain never actually
 # runs to thousands of characters, so the cap only ever rejects noise, not a real value.
-_REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
+_CREDENTIAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"(?<![A-Za-z0-9])(?:sk|pk|api|key|tok|secret|bearer|auth|Basic|Bearer)[=:\s]+[A-Za-z0-9/_\-+.]{20,}",
         re.IGNORECASE,
@@ -161,6 +161,10 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
         r"-----BEGIN [A-Z ]{0,30}PRIVATE KEY-----(?:[\s\S]{0,8192}?-----END [A-Z ]{0,30}PRIVATE KEY-----)?"
     ),
     re.compile(r"\bAuthorization\s*:\s*(?:Bearer|Basic|Token)\s+\S{8,512}", re.IGNORECASE),
+)
+
+# Personal data hidden by default and kept by ``redact(personal=False)``: an e-mail address.
+_PERSONAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.\-]{1,255}\.[a-zA-Z]{2,24}", re.IGNORECASE),
 )
 
@@ -184,13 +188,17 @@ def _stored_secret_values() -> list[str]:
     return values
 
 
-def redact(text: str) -> str:
-    """Strip secret-shaped substrings from *text*. Applies the always-on
-    regex patterns, then redacts the exact VALUES of any stored secrets
-    (replaced after the regex pass)."""
+def redact(text: str, *, personal: bool = True) -> str:
+    """Strip secret-shaped substrings from *text*. Applies the always-on credential patterns,
+    then redacts the exact VALUES of any stored secrets (replaced after the regex pass).
+
+    ``personal=True`` (the default) also hides an e-mail address. ``personal=False`` keeps every
+    piece of personal data (an address, a phone number, a name) and removes credentials only: it is
+    for the one copy a person approves a call from."""
     if not text:
         return text
-    for pat in _REDACT_PATTERNS:
+    patterns = _CREDENTIAL_PATTERNS + _PERSONAL_PATTERNS if personal else _CREDENTIAL_PATTERNS
+    for pat in patterns:
         text = pat.sub("[REDACTED]", text)
     for value in _stored_secret_values():
         text = text.replace(value, "[REDACTED]")
