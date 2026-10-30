@@ -1,8 +1,8 @@
 # Service Client Specification
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: Implemented in part: the document, its access rule, its registration, its scopes and
-its import from an OpenAPI document (`kernel/service.py`, `teams/services.py`,
+its import from an OpenAPI 3 or 2 (Swagger) document (`kernel/service.py`, `teams/services.py`,
 `teams/services_openapi.py`, `docket setup service`, `docket pod update|export`), the call with its
 perimeter (`platform/service_http.py::call_operation`), the tools (each operation is a tool a role
 names, loaded each turn: `agent/tools/service_tools.py`) and the handling of writes apart (the quota
@@ -44,7 +44,8 @@ This specification does NOT cover:
 
 - Resolving a secret (the caller does, before it builds the request)
 - Retries, pagination, multipart or binary bodies
-- OpenAPI 2, fetching an OpenAPI document over the network, auth schemes beyond one header
+- Fetching an OpenAPI document over the network, OpenAPI 3.1 differences, auth schemes beyond one
+  header
 - OAuth grants of any kind
 
 ## Requirements
@@ -226,7 +227,7 @@ This specification does NOT cover:
     (JSON or YAML, a local file; nothing is fetched) and store a service named `<name>` built from
     it. The built mapping **MUST** pass through the same `ServiceDocument` validation as a written
     document, so every rule above holds and a failure refuses the whole import writing nothing. A
-    document with a `swagger` key (OpenAPI 2) or no `openapi: 3.x` is refused naming the file.
+    document with neither `openapi: 3.x` nor `swagger: 2.x` is refused naming the file.
 51. Each selected operation of the document, found by `operationId`, **MUST** become one operation:
     its name is the `operationId` and its method and path are the document's; its `params` are the
     path and query parameters (the path item's, overridden by the operation's), with their `type`
@@ -245,8 +246,8 @@ This specification does NOT cover:
 54. `--operations a,b` **MUST** import only those operations; an id the document does not have
     exits 1 naming it and writes nothing.
 55. The service's `baseUrl` **MUST** be `--base-url`, else the document's first `servers` URL when it
-    is absolute and has no `{variable}`, with no trailing `/`; otherwise the import exits 1 asking
-    for `--base-url`.
+    is absolute and has no `{variable}`, with no trailing `/` (for OpenAPI 2, requirement 63);
+    otherwise the import exits 1 asking for `--base-url`.
 56. `--auth-header H --secret NAME` (both or neither) **MUST** write `auth` as header `H` and value
     `${secret:NAME}`, the reference and never a resolved value; a secret not stored warns as
     requirement 17 says. Without them the service has no `auth`.
@@ -272,6 +273,24 @@ This specification does NOT cover:
 60. `ServiceRequest` **MUST** carry `timeout` (seconds; `0`, the default, meaning
     `Home.fetch_timeout_s`), and `call_operation` **MUST** bound the whole call by it (requirement
     31's bound otherwise unchanged). A service tool **MUST** pass the document's `timeout`.
+
+### From OpenAPI 2
+
+61. A document with `swagger: "2.x"` **MUST** be read as OpenAPI 2 and import under requirements 50
+    to 57 (`--operations`, `--auth-header`, the skipped list and the stored result are the same),
+    except as requirements 62 and 63 say. A `$ref` into `#/definitions` or `#/parameters` is
+    resolved as requirement 52 says.
+62. An OpenAPI 2 parameter carries its `type` on the parameter itself (`string`, `integer`,
+    `number`, `boolean`; `string` when absent); `path` and `query` parameters map as requirement 51
+    says and an optional `header` parameter is dropped and listed. A parameter `in: body` with a
+    `schema` **MUST** be the operation's `body` (its schema, resolved), provided the operation's
+    `consumes`, else the document's, when declared, includes `application/json` or a `+json` type;
+    otherwise the operation is skipped as requirement 53 says. A parameter `in: formData`
+    **MUST** skip its operation, listed with the reason, whether required or not.
+63. The `baseUrl` of an OpenAPI 2 document, when `--base-url` is absent, **MUST** be
+    `<scheme>://<host><basePath>` with no trailing `/`, where `scheme` is the first of `schemes`
+    that is `http` or `https`, and `basePath` is empty when absent or `/`. A missing `host`, a host
+    with a `{variable}` or no `http`/`https` scheme exits 1 asking for `--base-url`.
 
 ## Interface Contracts
 
