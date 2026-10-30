@@ -118,7 +118,7 @@ def test_a_short_form_role_with_a_bad_model_reports_the_model_not_a_missing_kind
     assert exc_info.value.valid == ("cheap", "strong")
 
 
-def test_the_model_class_error_points_at_the_pipeline_step_not_at_setup_model(
+def test_the_model_class_error_points_at_setup_model_and_at_the_pipeline_step(
     tmp_path: Path,
 ) -> None:
     from docket.teams import roles as archetypes
@@ -126,7 +126,7 @@ def test_the_model_class_error_points_at_the_pipeline_step_not_at_setup_model(
     with pytest.raises(_role_schema.ArchetypeError) as exc_info:
         archetypes.normalize_role({"name": "vetter", "model": "gpt-5"}, tmp_path)
 
-    assert "docket setup model set" not in str(exc_info.value)
+    assert "docket setup model set vetter" in str(exc_info.value)
     assert "pipeline step" in str(exc_info.value)
 
 
