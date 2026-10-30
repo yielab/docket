@@ -1,9 +1,9 @@
 # Operator Loop Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -71,6 +71,9 @@ This specification does NOT cover:
    | `failed` | any other kind (including none) | `FAILED` |
    | `cancelled` | — | `CANCELED` |
 
+   A task that waits on a `wait` escalation (area 11) is `waiting_input` but asks nobody: a view
+   that knows its escalation is a `wait` (`task_view`) reports `a2aState` `WORKING`, so a client
+   polling for `INPUT_REQUIRED` is not told to act. `a2a_state` itself keeps the table.
 2. `a2a_state` MUST raise `ValueError` for a `status` outside this table. It MUST NOT guess or
    fall back to a default state.
 3. `A2AState` MUST be a `Literal` of exactly these eight names: `SUBMITTED`, `WORKING`,
@@ -153,7 +156,9 @@ caller's current time and cursor as data and performs no writes and no clock rea
 2. For every pod, `build_inbox` MUST read its task list and sort each task into exactly one of
    `needsYou`, `failed`, `doneSince` or `running` by its `status`, or omit it (`pending`,
    `cancelled`):
-   - `needsYou`: any status starting `waiting_`, plus `blocked`.
+   - `needsYou`: any status starting `waiting_`, plus `blocked`, except a task that waits on a
+     `wait` escalation (area 11), which is listed in none of the four (its escalation is under
+     `escalations`).
    - `failed`: `status == "failed"`.
    - `doneSince`: `status == "done"` and, when `since` is given, only a task whose timestamp
      (below) is strictly later than `since`; every `done` task when `since` is omitted.
@@ -161,7 +166,8 @@ caller's current time and cursor as data and performs no writes and no clock rea
 3. `build_inbox` MUST read every pending escalation whose pause is still live (area 11 item 7)
    and add one `EscalationView` to `needsYou` for each **unless** a task already in `needsYou`
    waits on it — a pause already surfaced through its task MUST NOT also appear standalone, so
-   nothing needing a decision is shown (or notified) twice. A task that waits (`waiting_*`) MUST
+   nothing needing a decision is shown (or notified) twice. A `wait` escalation is never added: it
+   needs no decision, so it is listed under `escalations` and nowhere in `needsYou`. A task that waits (`waiting_*`) MUST
    carry the id of its newest pending escalation as `escalation`. A parked in-turn call MUST
    record its task on the escalation when the turn serves a task.
 4. Each `TaskView` MUST carry its `a2aState` via `a2a_state`, passing the task's own
@@ -693,7 +699,7 @@ keeps no copy of it, and every surface prints from it.
    approval, otherwise the step id; empty for `check_changed`), `prompt` (redacted when the
    record is created, with the same redaction approvals use), `options` (`Option` list), `recommendation`, `requestedSchema`
    (`null` when the pause asks no structured answer), `askedAt`, `expiresAt`, `onExpiry`
-   (`deny | block`), `policy` (`person | recommendation | deny | fail`), `level` (`L3 | L4 | L5`,
+   (`deny | block`), `policy` (`person | recommendation | deny | fail | machine`), `level` (`L3 | L4 | L5`,
    the autonomy level of the record's task when the pause was created, item 12; absent for a
    pause that names no queued task), `state`, `resolution`
    (`{optionId, content, by, channel, at, appliedAt?}` or `null`; `appliedAt` is when the
@@ -707,6 +713,7 @@ keeps no copy of it, and every surface prints from it.
    | `input` | an `input` step minted a question | `decline`; the question's `requestedSchema` | `block` |
    | `gate` | a pipeline `approval` gate fires before a hop | `approve_once`, `deny` | `deny` |
    | `check_changed` | a finished task's diff edits what checks it | `approve_once`, `deny` | `deny` |
+   | `wait` | a `wait` step parked the task (`pod-dispatch.spec.md` "Wait steps") | `resume` | `block` |
 
    `policy` and `onExpiry` are not fixed per kind: they are the autonomy table's row for the
    kind at the task's level (item 12), so the `onExpiry` column above is the L3 value, which is
@@ -733,7 +740,8 @@ keeps no copy of it, and every surface prints from it.
    such task carries (an approval a running turn waits on, one whose task is outside the pod's
    queue) is a `needsYou` item as an `EscalationView`, so a pause is listed once. `escalations`
    holds every live pending record, and the scan of every task remains for `failed`, `doneSince`,
-   `running` and `next`.
+   `running` and `next`. A `wait` is the exception to both halves: it needs no one, so a task that
+   waits on one is not a `needsYou` item and its record is not either (it is in `escalations`).
 7. **The view.** `EscalationView` (operator contract, camelCase, `extra="forbid"`) is an
    `Escalation` plus `affordances`: `{options: [<option id>], acceptsText: bool, resolveUrl:
    "/escalations/<id>"}`. It holds no command string; each surface prints its own. Its `state` is
@@ -823,8 +831,11 @@ keeps no copy of it, and every surface prints from it.
     | `input` | `person`, `block` | `fail`, `block` | `fail`, `block` |
     | `gate` | `person`, `deny` | `fail`, `deny` | `fail`, `deny` |
     | `check_changed` | `person`, `deny` | `person`, `deny` | `person`, `deny` |
+    | `wait` | `machine`, `block` | `machine`, `block` | `machine`, `block` |
 
-    `person` is what every pause did before levels existed. `recommendation` applies the model's own
+    `person` is what every pause did before levels existed. `machine` is a pause nobody is asked
+    about: a `wait` is the same at every level, because a time or a probe ends it, so the row is
+    identical at `L3`, `L4` and `L5` and no level refuses a pipeline for holding one. `recommendation` applies the model's own
     recommendation in the turn (Consult item 7). `deny` ends the call with the
     `approval_unavailable` denial, fails the task `needs_human` and writes a `decided` record, so
     nothing waits and a person is told. `fail` refuses what would ask a person: an `input` step is
@@ -844,7 +855,8 @@ keeps no copy of it, and every surface prints from it.
     names no approval blocks and a `block` that names one denies. A `pending` record whose pause
     already ended (its task was cancelled) is settled `expired` with no side effect. Then it
     expires any approval record past its deadline that no escalation names, and prunes unconsumed
-    pre-grants past their deadline. It returns how many pauses it ended, runs on the periodic sweep
+    pre-grants past their deadline. A `wait` record is not ended by this rule but by the wait sweep
+    (item 15), which `sweep_escalations` runs after it. It returns how many pauses it ended, runs on the periodic sweep
     of `docket start` and writes `escalation_expired` once per record it moved.
 14. **Humans are informed.** `escalation.decided` is a channel event kind (`EVENT_KINDS`; a channel
     subscribes with `on: [escalation.decided]`, it is not part of `needs_you`). `diff_events`
@@ -854,6 +866,20 @@ keeps no copy of it, and every surface prints from it.
     omitted from the document while empty; `docket inbox` prints them under `Done` and `docket
     task show` prints a `Decided without you` section with each decision and its option.
     `docket_escalations_total` carries `level` (`serve-read-api.spec.md`).
+
+15. **Waits (ADR 0036).** A `wait` escalation is the pause of a pipeline `wait` step
+    (`pod-dispatch.spec.md` "Wait steps"). It is written by the opener without `escalation_asked`
+    (nobody is asked), with `policy` `machine`, the single option `resume`, `requestedSchema` `null`,
+    `expiresAt` the due time and `onExpiry` `block`; it is listed on its task like any other and by
+    `GET /escalations`. `sweep_waits(now=None, *, pod=None, probe=None)` settles it: a probe that
+    exits `0` through `resolve` (`by` `probe`, channel `sweep`), a due time through `expired`
+    (`escalation_expired`, `by` `timeout`), and `resolve` with `resume` from a person or a client is
+    the early exit. A wait's `resolve` reopens its task `pending` with the outcome `resumed`, writes no
+    answer and no correction, screens no content (it takes none) and stamps the record applied at
+    once; the claim applies the outcome from the task's `wait`, not from the record. A task that no
+    longer waits on the record answers `409`. A client **MUST** ignore an escalation `kind` it does
+    not know (the kind is additive in `operator-v2`); one that renders it gets the title
+    `waiting` and no prompt below `actions`.
 
 ### Profile lines (ADR 0025 D2)
 
@@ -910,7 +936,7 @@ class TaskView(BaseModel): ...         # id/pod/status/a2aState/reason/descripti
 class InboxView(BaseModel): ...        # needsYou (TaskView | EscalationView)/failed/doneSince/
                                         # running/next/escalations/decided
 
-EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed"]
+EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed", "wait"]
 class Resolution(BaseModel): ...       # optionId/content/by/channel/at/appliedAt
 class Escalation(BaseModel): ...       # requirement area 11's fields
 class EscalationAffordances(BaseModel): ...  # options/acceptsText/resolveUrl
