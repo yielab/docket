@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-30
@@ -701,7 +701,8 @@ keeps no copy of it, and every surface prints from it.
    (`null` when the pause asks no structured answer), `askedAt`, `expiresAt`, `onExpiry`
    (`deny | block`), `policy` (`person | recommendation | deny | fail | machine`), `level` (`L3 | L4 | L5`,
    the autonomy level of the record's task when the pause was created, item 12; absent for a
-   pause that names no queued task), `state`, `resolution`
+   pause that names no queued task), `outward` (`true` for an `approval` of a `send` call,
+   `security-gates.spec.md` In-turn tool-call gate 17; omitted while false), `state`, `resolution`
    (`{optionId, content, by, channel, at, appliedAt?}` or `null`; `appliedAt` is when the
    continuation was applied, absent while it has not been) and `seq`.
 2. **Kinds, options, expiry.**
@@ -760,7 +761,8 @@ keeps no copy of it, and every surface prints from it.
    the same document (`next` is the highest `seq` returned, else `since`, else `0`).
 9. **One render.** `render_escalation(view, level) -> RenderedEscalation(title, prompt | None,
    options, expires_at)` (operator context, pure) is what every surface prints from.
-   `title` is fixed text per kind and never holds model or tool text. `prompt` is the view's
+   `title` is fixed text per kind and never holds model or tool text; an `approval` that is
+   `outward` is titled `action leaves the pod`, the other approvals `tool call needs approval`. `prompt` is the view's
    prompt, `None` below the level that allows it: for `approval`, `gate` and `check_changed` any
    level above `minimal`, for `consult` and `input` `conversation` or `full` (the same lines
    area 6 item 11 draws). `options` are `(id, label, recommended)` tuples: ids are present at
@@ -783,7 +785,8 @@ keeps no copy of it, and every surface prints from it.
     a digit resolves that option and `d` resolves `decline`); both go through `resolve`
     (`channel="cli"`), so the record settles, and an answer that lost to a decision made elsewhere
     prints `(already resolved elsewhere)`. Telegram `/status` and notifications render from the
-    same function (area 5 item 10, area 6 item 11).
+    same function (area 5 item 10, area 6 item 11). `docket task show` also takes an escalation id
+    for its task, and shows the call of a pending `outward` approval (item 16).
 11. **Escalation events.** Five trace event types carry one payload for every kind of pause; no
    other event describes a pause. Each is written to the task's session (`agent:<pod>:<task>`;
    `<pod>-approval` when the pause names no task), with the record's `task` as the event's task id
@@ -880,6 +883,19 @@ keeps no copy of it, and every surface prints from it.
     longer waits on the record answers `409`. A client **MUST** ignore an escalation `kind` it does
     not know (the kind is additive in `operator-v2`); one that renders it gets the title
     `waiting` and no prompt below `actions`.
+
+16. **What leaves (ADR 0036 decision 3).** The approval of a `send` call keeps the whole call
+    (`security-gates.spec.md` In-turn tool-call gate 17) while it is pending. Only two views show
+    it, and only while the approval is `pending`: `docket task show <task | esc-id>` prints it
+    under a `What leaves` section, one block per pending `outward` escalation of the task, after
+    `Waiting on you`; and `EscalationView` carries it as `call` when it is the answer of
+    `GET /escalations/<id>` (`operator-api.spec.md`). `call` is the text with credentials and
+    stored secret values removed and nothing else, uncut; it is absent from a view once the
+    approval is settled, and absent from every view that is not the one-escalation answer.
+    `docket inbox`, `GET /escalations`, `GET /inbox`, notifications, Telegram, the MCP
+    `inbox` and `escalations` tools and the `prompt` of every view keep the redacted, cut text,
+    and none of them carries `call`. `outward` is additive in `operator-v2`; a client that does
+    not know it ignores it.
 
 ### Profile lines (ADR 0025 D2)
 

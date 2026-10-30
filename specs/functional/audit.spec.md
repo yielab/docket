@@ -1,10 +1,10 @@
 # Audit Log Specification
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -42,11 +42,15 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      (a single-use pre-grant was minted), `approval.consume` (a pre-grant was spent),
      `approval.task_grant` (a task-wide grant was recorded) and `approval.task_grant_refused`
      (the per-task cap was reached; the call was approved once only).
-   - **Tool gate.** `tool.deny`, `tool.ask`, `tool.warn`, `tool.redact` and `tool.refused`, one
+   - **Tool gate.** `tool.deny`, `tool.ask`, `tool.warn`, `tool.redact`, `tool.refused` and `tool.send`, one
      entry per gated call that is not a plain `allow` (`tool.refused` is a refusal a tool handler
      made itself: its `detail` carries the kind and the attempted path or host only). `detail`
      names the tool, agent, role and project, a fixed `policy_id='...' policy_action='...'` pair,
-     and the redacted call.
+     and the redacted call. `tool.send` is the exception to "not a plain `allow`": every `send`
+     call the gate settles writes one, `allow` or `deny`, with the same `detail` then
+     `decision=<allow|deny>` and the call redacted as the rest of the log is (an address stays
+     redacted here); a parked call writes it when it is re-issued
+     (`security-gates.spec.md` In-turn tool-call gate 17).
    - **Untrusted-text screens.** The `pre_input` screen of remote or repository text writes
      `<family>_blocked` when it blocks and `<family>_warn` when it warns or redacts, for the
      families `fetch.result`, `mcp_client.tool_result`, `mcp_client.tool_description`,
