@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.3.0
+**Version**: 5.4.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -441,7 +441,7 @@ configured, `2` on an unknown flag or a `--var` that is not `key=value`.
 #### docket pod
 
 **Purpose**: The pod: its roster, its settings and its configuration of record
-**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|update|export|validate|plan|check|recipes|roles|policies|memory> [args] [--pod <p>]`
+**Syntax**: `docket pod <show|add|remove|reset|set|unset|delete|update|export|validate|plan|check|recipes|roles|policies|memory|routine> [args] [--pod <p>]`
 
 A real Typer sub-app: every verb declares its arguments and options, a
 bare `docket pod` prints help, an unknown verb or flag is a usage error (exit 2), and every leaf's
@@ -476,6 +476,13 @@ Each state-changing verb ends with one `Next:` line on stderr.
   an entry in the wrong state prints one line naming it and exits 1; an unknown `--status` exits
   1. Each state-changing leaf ends with a `Next:` line and is audited as `pod.memory.<action>`
   with actor `cli`.
+
+- `routine list [--json]`: the pod's routines (pod-dispatch.spec.md "Routines"), a sub-group of
+  `pod`, read-only: one row per routine with its name, schedule, tz, next slot (UTC), last fired
+  slot (`-` when it never fired) and `enabled`, nearest scope first; a file in the pod's scopes that
+  does not load is listed with its error and exits 1. `--json` prints a list of `{name, schedule,
+  tz, scope, enabled, catchUp, overlap, next, last}`. A pod with none prints `No routines in
+  pod '<pod>'.` and exits 0. A routine fires only under `docket start --dispatch`.
 
 **Return**: `0` on success, `1` on any refusal or error (unknown pod, member or role; Lead
 removal; missing confirmation), `2` on a usage error.

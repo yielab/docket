@@ -401,6 +401,20 @@ Remove every memory entry of the pod after confirmation.
 
 Example: docket pod memory reset --yes
 
+### pod routine
+
+**Usage:** `docket pod routine`
+
+What this pod creates for itself on a schedule: list its routines.
+
+### pod routine list
+
+**Usage:** `docket pod routine list`
+
+List the pod's routines with their next and last slot (UTC).
+
+Example: docket pod routine list --json
+
 
 ---
 

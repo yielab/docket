@@ -258,6 +258,52 @@ class TestPodLocalPipelines:
         assert [(r.path.name, r.error) for r in results] == [("fast.yaml", None)]
 
 
+_MORNING = (
+    "kind: routine\nname: morning\nschedule: '0 9 * * 1-5'\ntz: America/Bogota\n"
+    "task:\n  description: read the tickets\n"
+)
+
+
+class TestPodLocalRoutines:
+    """``routines/<name>.yaml`` travels with ``update`` and ``export``; the sweep reads the copy."""
+
+    def test_update_copies_the_file_where_the_pod_resolves_it_and_export_writes_it_back(
+        self, tmp_path: Path
+    ) -> None:
+        from docket.tasks.application import routines as _routines
+
+        with _seed_fixture_pod(tmp_path, "demo"):
+            root = _repo_dir(tmp_path, {"routines/morning.yaml": _MORNING})
+            plan = _pod_apply.plan_apply("demo", root)
+            assert ("routine", "routines/morning.yaml", "add") in {
+                (i.kind, i.name, i.action) for i in plan.items
+            }
+            _write.apply(plan, channel="cli")
+
+            (found,), problems = _routines.load_routines("demo")
+            assert (found.name, found.scope, problems) == ("morning", "pod", [])
+            assert oct(Path(found.path).stat().st_mode & 0o777) == "0o600"
+            again = _pod_apply.plan_apply("demo", root)
+            assert ("routine", "routines/morning.yaml", "skip") in {
+                (i.kind, i.name, i.action) for i in again.items
+            }
+            out = tmp_path / "exported"
+            _write.export_pod("demo", out)
+            assert (out / "routines" / "morning.yaml").read_text() == _MORNING
+
+    def test_a_file_that_is_not_a_routine_is_refused_and_a_routine_is_only_an_add(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_fixture_pod(tmp_path, "demo"):
+            bad = _repo_dir(tmp_path, {"routines/bad.yaml": _MORNING.replace("0 9", "99 9")})
+            with pytest.raises(_model.PodApplyError, match=r"routines/bad\.yaml"):
+                _pod_apply.plan_apply("demo", bad)
+        review = _review.classify_directory(
+            _repo_dir(tmp_path / "ok", {"routines/m.yaml": _MORNING})
+        )
+        assert ("routine", "routines/m.yaml") in review.adds and review.runs == ()
+
+
 class TestSkippedSettingsSayWhy:
     """A setting the pod already holds by default plans ``skip`` with the reason."""
 

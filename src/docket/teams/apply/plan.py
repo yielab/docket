@@ -79,6 +79,7 @@ from docket.teams.apply.review import (
     review_decision,
     runs_changed,
 )
+from docket.teams.apply.routines import plan_routines
 from docket.teams.apply.write import apply
 from docket.teams.config_docs import _MANIFEST_KEYS
 
@@ -573,7 +574,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     plugin_items, plugin_writes = _plan_plugins(directory, project)
 
     named_items, named_writes = _plan_named_pipelines(directory, project)
-
+    routine_items, routine_writes = plan_routines(directory, project)
     skill_items, skill_writes = _plan_skills(directory, project)
 
     member_items, member_writes, roster_after = _plan_members(project, member_roles, augmented)
@@ -605,6 +606,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     if pipeline_item is not None:
         items.append(pipeline_item)
     items.extend(named_items)
+    items.extend(routine_items)
     items.extend(setting_items)
 
     return ApplyPlan(
@@ -617,6 +619,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         _policy_writes=tuple(policy_writes),
         _plugin_writes=tuple(plugin_writes),
         _named_pipeline_writes=tuple(named_writes),
+        _routine_writes=tuple(routine_writes),
         _skill_writes=tuple(skill_writes),
         _mcp_server_write=mcp_write,
         _member_writes=tuple(member_writes),

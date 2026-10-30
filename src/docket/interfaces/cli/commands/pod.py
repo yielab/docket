@@ -25,6 +25,7 @@ from docket.interfaces.cli.commands.pod_members import (
     remove_member,
     reset_member,
 )
+from docket.interfaces.cli.commands.pod_routines import routine_app
 from docket.interfaces.cli.commands.pod_settings import set_network, set_setting, unset_setting
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
@@ -217,6 +218,7 @@ memory_app = typer.Typer(
     no_args_is_help=True,
 )
 pod_app.add_typer(memory_app)
+pod_app.add_typer(routine_app)
 
 _MEMORY_STATUSES = ("accepted", "pending", "refused")
 
