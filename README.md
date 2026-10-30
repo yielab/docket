@@ -21,7 +21,8 @@ Implementer; the same pair behind a read-only security vetter that can send the 
 (`secure-build`); a Reviewer and a Critic judging the same change in parallel (`dual-review`); a
 builder on one provider's model checked by a reviewer on another's (`cross-family-review`). A
 pipeline can also route on a step's outcome, skip a step on a condition, run a command, or stop
-and ask you. docket works with any OpenAI-compatible model, hosted or running on your own machine.
+and ask you. docket works with any model that speaks the OpenAI chat format, and with Anthropic's
+Messages API natively, hosted or running on your own machine.
 
 [Website](https://yielab.com/docket) · [Documentation](docs/README.md) ·
 [Quick start](docs/QUICK-START-DOCKET.md) · [Recipes](docs/recipes.md) ·
@@ -29,7 +30,7 @@ and ask you. docket works with any OpenAI-compatible model, hosted or running on
 [Changelog](CHANGELOG.md)
 
 > [!WARNING]
-> docket is beta software (`v0.2.0-beta.6`). Core contracts are spec-first and test-backed, but the
+> docket is beta software. Core contracts are spec-first and test-backed, but the
 > project has not been hardened against large deployments or adversarial public-host workloads.
 > Expect breaking changes between beta releases and verify consequential outcomes yourself.
 
@@ -49,10 +50,11 @@ Five ideas cover everything docket does:
   asked not to.
 - **Pipeline.** The order in which roles work a task and the gate after each step: the exit code of
   your verify command or of an independent verifier you name, a reviewer's `APPROVE` or
-  `REQUEST-CHANGES`, a tester's `PASS` or `FAIL`.
+  `REQUEST-CHANGES`, a tester's `PASS` or `FAIL`. Each step closes with a structured handoff (a
+  summary, its verdict, the files it changed) that is all the next step reads of it.
 - **Policy.** A rule checked on every tool call, by every agent: allow it, ask a human, or deny it.
-- **Recipe.** A ready-made team, policy pack or working method you add with one command. Eighteen
-  ship with docket.
+- **Recipe.** A ready-made team, policy pack or working method you add with one command. A
+  library of them ships with docket.
 
 Day to day you use a handful of commands: `init` creates the team, `task add` queues work, `run`
 takes the next task through the pipeline, `status` and `inbox` show where things stand and what
@@ -64,6 +66,11 @@ assistant helps you in a session, under its own permission prompts; docket takes
 through a team, under one set of rules for every member and every step. It has no web UI of its own; `/status.json` and `/metrics`
 feed your own board, and docket does not ship one.
 
+Agents work with the tools a role allows: reading, searching and editing files, shell commands
+(which can run in the background under a handle the turn stops when it ends), and `fetch`, which
+reads a web page as text from hosts you allow and nowhere else. The `web-research` recipe
+searches the web through a search server you declare.
+
 ## Install
 
 With Homebrew (macOS and Linux):
@@ -74,17 +81,14 @@ brew trust yielab/docket-cli            # Homebrew 7 loads a third-party tap onl
 brew install docket-cli
 ```
 
-Or with the version-pinned installer, which needs no `sudo`:
+Or with the installer, which needs no `sudo`: the [quick start](docs/QUICK-START-DOCKET.md#1-install)
+gives the command, pinned to a release tag so the script you run cannot change after you read it.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/yielab/docket/v0.2.0-beta.6/install.sh \
-  | DOCKET_VERSION=0.2.0-beta.6 bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-You need Python 3.11+, Git, Bash, and a chat-completions endpoint that speaks the OpenAI format
-with function tools. Hosted providers (Anthropic, OpenAI, Google, OpenRouter, Vercel AI Gateway
-and others) and local servers (llama.cpp, vLLM, LM Studio, Ollama) both work.
+You need Python 3.11+, Git, Bash, and a model endpoint with function tools: one that speaks the
+OpenAI chat-completions format, or Anthropic's Messages API. Hosted providers (Anthropic, OpenAI,
+Google, OpenRouter, Vercel AI Gateway and others) and local servers (llama.cpp, vLLM, LM Studio,
+Ollama) both work. With Anthropic, docket marks the prompt cache, so the part of a turn that
+does not change is read from the cache instead of being sent fresh on every call.
 
 ## Quick start
 
@@ -142,6 +146,29 @@ apply it with `docket pod update .docket`. Commit the directory and a plain `doc
 the same team on any machine. [Configuration](docs/CONFIGURATION.md) covers every file and
 setting; the [recipe library](docs/recipes.md) shows what each recipe adds.
 
+**Prompts are versioned configuration.** Every message a hop is sent is built from named prompt
+files, and the nearest of four places wins: your repository, the pod, your own configuration,
+then the ones docket ships. `docket pod update` records each file it applied, with its SHA-256,
+in a lock file, and every hop records the name, version, SHA-256 and source of each prompt it
+was built from, so two runs show whether a prompt changed between them. A prompt can carry its
+own test cases: `docket pod test <prompt>` runs them against a model, and a role can refuse a
+model that failed them.
+
+## See what happened
+
+Every task leaves a trace of each model call and tool call, and every decision goes to the audit
+log. `docket task trace <id>` shows one task step by step; `docket log --summary` shows the tokens
+per accepted task and how much of the input was read from the model's cache, both measured.
+
+To look at runs in a tracing tool, `docket setup export enable langfuse` (or `otel-collector`,
+`jaeger`, `honeycomb`, `phoenix`) sends each run as OpenTelemetry spans: one trace per task, a
+span per hop holding its model calls (with tokens and cache reads and writes) and tool calls, and
+a span for each pause that waited on a person, with what it asked and what was answered. Nothing
+leaves your machine until you enable an exporter, and its privacy level decides what does: the
+structure alone by default, up to the full conversation with
+`docket setup export privacy <name> full`; `docket setup export preview <name>` shows the exact
+payload first.
+
 ## Known limits
 
 Read these before trusting docket with anything consequential:
@@ -153,6 +180,8 @@ Read these before trusting docket with anything consequential:
 - **The audit log is tamper-evident, not tamper-proof.** Deleting it is visible, not impossible.
 - **Costs are estimates.** Token counts are measured; docket records no dollar spend, and its
   budget limit works on a labelled estimate.
+- **An exporter shares what you allow.** At `conversation` or `full`, the destination receives
+  prompts, replies and tool output, which can include your code.
 - **Models vary.** A small local model can give different results run to run; a tool-calling
   endpoint is required for real work.
 
@@ -167,6 +196,8 @@ service and [COMPATIBILITY.md](COMPATIBILITY.md) before relying on a model endpo
 | Go from install to a first governed run | [Quick start](docs/QUICK-START-DOCKET.md) |
 | Understand roles, pods, pipelines and gates | [Agent teams](docs/AGENT-TEAMS.md) |
 | Change any file or setting | [Configuration](docs/CONFIGURATION.md) |
+| Write, version and test prompts | [Agent teams](docs/AGENT-TEAMS.md#what-a-hop-is-sent-and-what-it-returns) |
+| Send runs to Langfuse or OpenTelemetry | [Export traces](docs/CONFIGURATION.md#314-export-traces-to-opentelemetry-or-langfuse) |
 | Pick a ready-made team or method | [Recipe library](docs/recipes.md) |
 | Look up a command or flag | [Command reference](docs/commands.md) |
 | Connect a hosted or local model | [Models and gateways](docs/MODEL-GATEWAYS.md) |
