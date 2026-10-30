@@ -98,23 +98,18 @@ def test_at_least_three_recipes_are_shipped() -> None:
 
 
 def test_every_recipe_has_a_readme_and_some_content() -> None:
-    """A recipe's scope is derived from what it holds: a policy pack ships no pipeline or
-    roles, so every recipe still needs a README, and at least one of pipeline / roles /
-    policies / members / mcp-servers, or a records / pipelines / routines document."""
+    """A policy pack ships no pipeline or roles, so every recipe needs a README and some content: a
+    pipeline, roles, policies, members, or an mcp-servers / records / pipelines / routines file."""
     for recipe_dir in _recipe_dirs():
         assert (recipe_dir / "README.md").is_file(), recipe_dir
         has_pipeline = (recipe_dir / "pipeline.yaml").is_file()
-        has_roles = bool(_role_yaml_files(recipe_dir))
-        has_policies = bool(_policy_yaml_files(recipe_dir))
+        has_roles = bool(_role_yaml_files(recipe_dir) or _policy_yaml_files(recipe_dir))
         has_members = bool(_pod_manifest_members(recipe_dir))
-        has_servers = bool(list((recipe_dir / "mcp-servers").glob("*.yaml")))
-        has_documents = any(
-            list((recipe_dir / folder).glob("*.yaml"))
-            for folder in ("records", "pipelines", "routines")
+        has_servers = any(
+            any((recipe_dir / d).glob("*.yaml"))
+            for d in ("mcp-servers", "records", "pipelines", "routines")
         )
-        assert (
-            has_pipeline or has_roles or has_policies or has_members or has_servers or has_documents
-        ), recipe_dir
+        assert has_pipeline or has_roles or has_members or has_servers, recipe_dir
 
 
 def test_web_research_readme_states_both_prerequisites() -> None:
