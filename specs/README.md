@@ -104,13 +104,13 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 3.1.0 | Implemented and live |
 | Pipeline Format | 4.4.0 | Implemented |
 | Pod Blueprints | 2.6.0 | Implemented |
-| Pod Dispatch | 11.7.0 | Implemented |
+| Pod Dispatch | 11.8.0 | Implemented |
 | Role Archetypes | 4.8.1 | Implemented |
-| Security Gates | 3.3.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.4.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
-| Trace Store | 4.3.0 | Implemented and live |
+| Trace Store | 4.4.0 | Implemented and live |
 | Workspace Structure | 3.1.0 | Complete |
 | CLI Interface | 5.4.0 | Complete |
 | MCP Client | 3.1.0 | Implemented and wired to the live turn path |

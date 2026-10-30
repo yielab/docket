@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.3.0
+**Version**: 3.4.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1270,6 +1270,13 @@ of that exact call needs a way to reach a later, re-entered turn without asking 
    `stop_reason == "approval_parked"`, rendered by `approval_parked_error` in the same key=value
    shape `approval_unavailable_error` uses, plus `approval_token` (agent-loop.spec.md, "The
    approval_parked stop").
+8. **The re-entered turn is told to issue the call again.** The grant is consumed only when the
+   model issues the identical call again (requirement 5), and the session it resumes holds the
+   earlier `approval_parked` refusal. So the dispatch of the re-entered hop **MUST** say, in the
+   hop's message, which granted call is waiting (pod-dispatch.spec.md, "require_approval gate and
+   waiting_approval", item 4), built from the record's redacted `action`, never from the `call` a
+   pending `send` approval keeps. A grant no hop spends is reported (`approval_unused`); the gate
+   itself neither runs the call nor treats an unspent grant differently.
 
 ### Approval tokens and approval packs
 
