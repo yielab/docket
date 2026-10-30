@@ -8,21 +8,25 @@ from __future__ import annotations
 
 import difflib
 import re
+import zoneinfo
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic_core import PydanticCustomError
 
 from docket.governance import policy as _policy
 from docket.kernel.errors import CanonicalFormRefused, DocumentError, InvalidInput
 from docket.models import catalog as _provider
 from docket.observability import exporter as _exporter
+from docket.pipeline.application import schedule as _schedule
 from docket.pipeline.domain import spec as _pipeline
 from docket.teams import autonomy as _autonomy
 from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import model_selection as _models_policy
+from docket.teams import pod as _pod
 from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
@@ -39,6 +43,7 @@ KINDS: tuple[str, ...] = (
     "mcp-server",
     "autonomy",
     "prompt",
+    "routine",
 )
 
 _LOCATION_KIND: dict[str, str] = {
@@ -46,6 +51,7 @@ _LOCATION_KIND: dict[str, str] = {
     "policies": "policy",
     "mcp-servers": "mcp-server",
     "pipelines": "pipeline",
+    "routines": "routine",
 }
 
 
@@ -158,6 +164,64 @@ class PodDocument(BaseModel):
     protects: list[str] | None = None
 
 
+class RoutineTask(BaseModel):
+    """What a routine enqueues each time it fires -- see pod-dispatch.spec.md "Routines"."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(min_length=1)
+    pipeline: str | None = Field(None, pattern=_pod.TASK_PIPELINE_NAME.pattern)
+    variables: dict[Annotated[str, Field(min_length=1)], str] | None = None
+    priority: Literal["high", "normal", "low"] = "normal"
+
+    @field_validator("description")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise PydanticCustomError("blank", "must not be blank")
+        return value
+
+
+class RoutineDocument(BaseModel):
+    """The ``kind: routine`` document, parsed by this model alone -- see config-format.spec.md
+    ("The `routine` kind"). ``schedule`` is a 5-field cron expression or ``@every``; ``tz`` an
+    IANA zone name."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["routine"]
+    name: str = Field(pattern=_pod.TASK_PIPELINE_NAME.pattern)
+    description: str | None = None
+    schedule: str
+    tz: str = "UTC"
+    task: RoutineTask
+    catchUp: Literal["skip", "once"] = "skip"
+    overlap: Literal["skip", "queue"] = "skip"
+    enabled: bool = True
+
+    @field_validator("schedule")
+    @classmethod
+    def _known_schedule(cls, value: str) -> str:
+        if _schedule.parse_interval(value) is None and _schedule.parse_cron(value) is None:
+            raise PydanticCustomError(
+                "schedule",
+                "{value} is neither a 5-field cron expression nor '@every <N><s|m|h>'",
+                {"value": repr(value)},
+            )
+        return value
+
+    @field_validator("tz")
+    @classmethod
+    def _known_zone(cls, value: str) -> str:
+        try:
+            zoneinfo.ZoneInfo(value)
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError, OSError):
+            raise PydanticCustomError(
+                "tz", "{value} is not an IANA time zone name", {"value": repr(value)}
+            ) from None
+        return value
+
+
 _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "role": RoleDocument,
     "pipeline": PipelineDocument,
@@ -166,6 +230,7 @@ _MODEL_FOR_KIND: dict[str, type[BaseModel]] = {
     "exporter": _exporter.ExporterSpec,
     "mcp-server": _mcp_servers.McpServerDocument,
     "prompt": _prompts.PromptDocument,
+    "routine": RoutineDocument,
 }
 
 
@@ -195,16 +260,22 @@ def _refine_with_model(
     try:
         model.model_validate(doc)
     except ValidationError as exc:
-        first = exc.errors()[0]
-        field = ".".join(str(p) for p in first["loc"]) if first["loc"] else ""
-        valid: tuple[str, ...] = ()
-        expected = (first.get("ctx") or {}).get("expected")
-        if isinstance(expected, str):
-            valid = tuple(
-                v.strip("'\" ") for v in re.split(r"\s+or\s+|,\s*", expected) if v.strip("'\" ")
-            )
-        return ConfigDocError(path, first["msg"], field=field, valid=valid)
+        return _model_error(path, exc)
     return plain
+
+
+def _model_error(path: Path, exc: ValidationError) -> ConfigDocError:
+    """The first failure of *exc* as a ``ConfigDocError`` naming its field and, for a closed
+    vocabulary, the valid values."""
+    first = exc.errors()[0]
+    field = ".".join(str(p) for p in first["loc"]) if first["loc"] else ""
+    valid: tuple[str, ...] = ()
+    expected = (first.get("ctx") or {}).get("expected")
+    if isinstance(expected, str):
+        valid = tuple(
+            v.strip("'\" ") for v in re.split(r"\s+or\s+|,\s*", expected) if v.strip("'\" ")
+        )
+    return ConfigDocError(path, first["msg"], field=field, valid=valid)
 
 
 @dataclass(frozen=True)
@@ -366,6 +437,13 @@ def _validate_mcp_server(path: Path) -> None:
         raise ConfigDocError(path, str(exc)) from exc
 
 
+def _validate_routine(path: Path, doc: dict[str, Any]) -> None:
+    try:
+        RoutineDocument.model_validate({"kind": "routine", **doc})
+    except ValidationError as exc:
+        raise _model_error(path, exc) from exc
+
+
 def _load_prompt_document(path: Path) -> Document:
     """A ``.md`` file is a ``prompt``: parsed by ``teams.prompts``, never as YAML."""
     try:
@@ -461,6 +539,8 @@ def load_document(path: str | Path, *, kind: str | None = None) -> Document:
             _validate_mcp_server(p)
         elif effective_kind == "autonomy":
             _validate_autonomy(p)
+        elif effective_kind == "routine":
+            _validate_routine(p, doc)
     except ConfigDocError as exc:
         raise _refine_with_model(p, effective_kind, {"kind": effective_kind, **doc}, exc) from exc
 
@@ -509,15 +589,19 @@ def prompt_payload(directory: str | Path) -> list[Path]:
 
 def discover_config_paths(directory: str | Path) -> list[Path]:
     """Every ``roles/*``, ``policies/*``, ``mcp-servers/*`` (``.yaml|yml|json``), ``pipelines/*``
-    (``.yaml|yml``), ``prompts/*.md`` and ``prompts/<layer>/*.md``, ``pipeline.yaml``/``.yml``, and
+    and ``routines/*`` (``.yaml|yml``), ``prompts/*.md`` and ``prompts/<layer>/*.md``, ``pipeline.yaml``/``.yml``, and
     ``pod.yaml``/``.yml`` directly under *directory*, in that order."""
     base = Path(directory)
     paths: list[Path] = []
-    for sub in ("roles", "policies", "mcp-servers", "pipelines"):
+    for sub in ("roles", "policies", "mcp-servers", "pipelines", "routines"):
         sub_dir = base / sub
         if not sub_dir.is_dir():
             continue
-        patterns = ("*.yaml", "*.yml") if sub == "pipelines" else ("*.yaml", "*.yml", "*.json")
+        patterns = (
+            ("*.yaml", "*.yml")
+            if sub in ("pipelines", "routines")
+            else ("*.yaml", "*.yml", "*.json")
+        )
         for pattern in patterns:
             paths.extend(sorted(sub_dir.glob(pattern)))
     paths.extend(prompt_files(base))

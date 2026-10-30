@@ -10,6 +10,7 @@ from docket.hops.application import sweep as _sweep
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
+from docket.tasks.application import routines as _routines
 from docket.tasks.application import runs as _runs
 
 _SWEEP_LOCK = threading.Lock()
@@ -25,8 +26,13 @@ def check_schedules(now_ts: float) -> None:
     timestamp is read from, and written back into, ``Home.schedule_file`` itself rather than an
     in-memory dict, so a restart does not re-fire every schedule on its first sweep. Each due
     project's run record is created before its daemon-thread dispatch starts, so the sweep loop
-    is never blocked and no outcome is silently discarded."""
+    is never blocked and no outcome is silently discarded. Routines (pod-dispatch.spec.md
+    "Routines") fire first, on the same tick: they only enqueue, and the next sweep drains them."""
 
+    try:
+        _routines.fire_due(now_ts)
+    except Exception as exc:
+        print(f"[serve] sweep: routines failed: {exc}")
     schedules = _sched.load_schedules(current_home().schedule_file)
     last_run_map = _sched.load_last_run(current_home().schedule_file)
     for project, spec in schedules.items():
