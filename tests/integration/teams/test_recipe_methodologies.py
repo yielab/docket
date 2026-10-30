@@ -45,8 +45,8 @@ def _seed_fixture_pod(tmp_path: Path, project: str) -> Iterator[None]:
     import json
 
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, pod.DEFAULT_POD_ROLES, codebase=f"/src/{project}")
         yield

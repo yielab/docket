@@ -41,12 +41,12 @@ class TestGlobalPluginDrivesAPolicy:
     def test_a_global_plugin_returning_true_makes_ask_fire(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         with use_home(Home(home)):
-            plugins_dir = home / "plugins"
+            plugins_dir = home / "config" / "plugins"
             plugins_dir.mkdir(parents=True)
             (plugins_dir / "migrations.py").write_text(_MIGRATION_PLUGIN, encoding="utf-8")
 
             _write_policy(
-                home / "policies",
+                home / "config" / "policies",
                 "touches-migrations.json",
                 {
                     "kind": "policy",
@@ -78,7 +78,7 @@ class TestUnappliedPluginFailsClosed:
             assert "touches_migrations" not in _plugins.discover()
 
             _write_policy(
-                home / "policies",
+                home / "config" / "policies",
                 "touches-migrations.json",
                 {
                     "kind": "policy",
@@ -101,12 +101,12 @@ class TestARaisingPluginFailsClosedAndAudits:
     def test_a_raising_plugin_blocks_and_audits_one_deny(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         with use_home(Home(home)):
-            plugins_dir = home / "plugins"
+            plugins_dir = home / "config" / "plugins"
             plugins_dir.mkdir(parents=True)
             (plugins_dir / "boom.py").write_text(_RAISING_PLUGIN, encoding="utf-8")
 
             _write_policy(
-                home / "policies",
+                home / "config" / "policies",
                 "boom.json",
                 {
                     "kind": "policy",

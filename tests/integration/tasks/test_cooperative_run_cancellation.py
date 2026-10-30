@@ -41,8 +41,8 @@ def _seed_pod(
     tmp_path: Path,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
@@ -81,7 +81,7 @@ class _BarrierBackend:
 
 def _events(home: Path) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    for trace_file in (home / "traces" / "demo").glob("*.jsonl"):
+    for trace_file in (home / "state" / "traces" / "demo").glob("*.jsonl"):
         events.extend(_trace.read_trace(trace_file))
     return events
 
@@ -216,8 +216,8 @@ def test_docket_task_cancel_reaches_a_real_bash_sleep(tmp_path: Path) -> None:
     driver, terminalizes a run whose hop is sitting inside a real `bash
     sleep`-shaped command."""
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
 

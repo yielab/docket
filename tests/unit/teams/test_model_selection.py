@@ -254,7 +254,6 @@ class TestReapplyRolePolicy:
             _store.write_json(
                 path,
                 {
-                    "schemaVersion": 1,
                     "kind": "project",
                     "scope": "project",
                     "role": "security-vetter",

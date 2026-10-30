@@ -33,8 +33,8 @@ _TOKEN = "test-serve-token-evidence-p36-4"
 @contextmanager
 def _seed(tmp_path: Path) -> Iterator[str]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     approvals = tmp_path / "approvals"
     approvals.mkdir()
     with use_home(dataclasses.replace(Home(home), approvals_dir_override=approvals)):

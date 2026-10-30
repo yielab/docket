@@ -30,7 +30,6 @@ _runner = CliRunner()
 FLEET_EMPTY: dict[str, Any] = {"agents": [], "bindings": []}
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "Test Agent",
     "model": "anthropic/claude-sonnet-4-6",
@@ -70,7 +69,7 @@ def _setup_agent(
     """Create a minimal project workspace. Returns DOCKET_HOME."""
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
-    ws = home / "workspaces" / "projects" / agent_id
+    ws = home / "state" / "workspaces" / "projects" / agent_id
     ws.mkdir(parents=True, exist_ok=True)
 
     meta = {**META, "sessionKey": f"agent:{agent_id}:default"}
@@ -99,14 +98,16 @@ def _setup_agent(
         "agents": [{"id": agent_id}],
         "bindings": [],
     }
-    (home / "fleet.json").write_text(json.dumps(fleet_config))
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    (home / "state" / "fleet.json").write_text(json.dumps(fleet_config))
     return home
 
 
 def _setup_bare(tmp_path: Path) -> Path:
     home = tmp_path / ".docket"
     home.mkdir(exist_ok=True)
-    (home / "fleet.json").write_text(json.dumps(FLEET_EMPTY))
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    (home / "state" / "fleet.json").write_text(json.dumps(FLEET_EMPTY))
     return home
 
 

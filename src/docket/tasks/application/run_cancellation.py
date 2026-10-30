@@ -103,11 +103,8 @@ def _cancellation_lifecycle(
 
 
 def _set_cancellation_lifecycle(rec: dict[str, Any], lifecycle: CancellationLifecycle) -> None:
-    """Update known lifecycle fields while preserving forward-compatible keys."""
-    raw = rec.get("cancellation")
-    cancellation = dict(raw) if isinstance(raw, dict) else {}
-    cancellation.update(lifecycle.to_record())
-    rec["cancellation"] = cancellation
+    """Write the lifecycle's known keys as the record's cancellation."""
+    rec["cancellation"] = lifecycle.to_record()
 
 
 def _emit_cancellation_trace(project: str, run_id: str, source: str, event_type: str) -> None:

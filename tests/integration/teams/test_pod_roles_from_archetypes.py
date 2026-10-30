@@ -126,7 +126,7 @@ class TestPodAddStarterRole:
             _pod_members.add_members("demo", "researcher")
 
             assert "demo-researcher" in _ids(oc_dir)
-            ws = oc_dir / "workspaces" / "projects" / "demo-researcher"
+            ws = oc_dir / "state" / "workspaces" / "projects" / "demo-researcher"
             assert (ws / "SOUL.md").is_file()
             assert (ws / "AGENTS.md").is_file()
             soul = (ws / "SOUL.md").read_text()

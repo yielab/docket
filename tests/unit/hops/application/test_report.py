@@ -19,7 +19,7 @@ class TestTaskCounts:
         self, tmp_path: Path
     ) -> None:
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
         with use_home(Home(home)):
             repo = TaskRepository.for_pod("demo")
             for index, status in enumerate(Status):

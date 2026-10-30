@@ -41,7 +41,8 @@ def _seed(
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         yield home
 
@@ -186,7 +187,7 @@ class TestPodShowExporters:
     ) -> None:
 
         with _seed(tmp_path):
-            (current_home().root / "workspaces" / "projects").mkdir(parents=True)
+            (current_home().root / "state" / "workspaces" / "projects").mkdir(parents=True)
             build_pod("demo", ("lead",), codebase="/src/demo")
             _store_langfuse_keys()
 
@@ -306,7 +307,7 @@ def _seed_session(
     """Write one hand-built trace file with a canary in a tool call's arguments -- enough to
     open and close a `gen_ai.chat` span with no content and an `execute_tool` span carrying a
     `toolArguments`-class attribute. Returns *session_id*."""
-    pdir = home / "traces" / project
+    pdir = home / "state" / "traces" / project
     pdir.mkdir(parents=True)
     records = [
         {

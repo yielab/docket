@@ -35,11 +35,11 @@ _FAKE_SMOKE = textwrap.dedent(
     world = Path(sys.argv[sys.argv.index("--workdir") + 1])
     key = "@KEY@"
     home = world / ".docket"
-    (home / "traces" / "smoke").mkdir(parents=True)
+    (home / "state" / "traces" / "smoke").mkdir(parents=True)
     event = {"ts": "2026-01-01T00:00:00Z", "event_type": "hop_finished", "payload": {"ok": True}}
     event["payload"]["leak"] = key
-    (home / "traces" / "smoke" / "t.jsonl").write_text(json.dumps(event) + "\\n")
-    (home / "secrets.json").write_text(json.dumps({"ANTHROPIC_API_KEY": key}))
+    (home / "state" / "traces" / "smoke" / "t.jsonl").write_text(json.dumps(event) + "\\n")
+    (home / "state" / "secrets.json").write_text(json.dumps({"ANTHROPIC_API_KEY": key}))
     (world / "note.txt").write_text("bearer " + key)
     print("argv", sys.argv[1:])
     print("provider said " + key, file=sys.stderr)

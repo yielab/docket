@@ -17,19 +17,21 @@
 set -euo pipefail
 
 FAKE_HOME="${1:?usage: seed.sh <fake_home_dir>}"
-STATE_DIR="$FAKE_HOME/.docket"
+HOME_DIR="$FAKE_HOME/.docket"
+STATE_DIR="$HOME_DIR/state"
+CONFIG_DIR="$HOME_DIR/config"
 FIXED_TS="2026-03-05T12:00:00-03:00"
 
 mkdir -p \
   "$STATE_DIR/workspaces/projects/myshop" \
   "$STATE_DIR/workspaces/projects/content" \
   "$STATE_DIR/traces" \
-  "$STATE_DIR/policies" \
+  "$CONFIG_DIR/policies" \
   "$STATE_DIR/approvals"
 
-chmod 700 "$STATE_DIR"
+chmod 700 "$HOME_DIR" "$STATE_DIR" "$CONFIG_DIR"
 
-# ── fleet.json (docket's own registry, DOCKET_HOME-pinned to $STATE_DIR by
+# ── fleet.json (docket's own registry, DOCKET_HOME-pinned to $HOME_DIR by
 # run.sh — see that file's run_docket() for why) ────────────────────────────────
 # Agent registration, channel bindings, and gates/isolation flags. Per-agent
 # model is deliberately NOT duplicated (see teams/fleet.py) -- only the bare
@@ -43,26 +45,24 @@ cat >"$STATE_DIR/fleet.json" <<'JSON'
   "bindings": [
     { "agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-1001234567890" }
   ],
-  "defaults": { "model": "anthropic/claude-sonnet-4-6" },
-  "security": { "gatesEnabled": false, "isolationEnabled": false }
+  "security": {}
 }
 JSON
 chmod 600 "$STATE_DIR/fleet.json"
 
 # ── docket-models.json (empty policy — uses built-in defaults) ─────────────────
-cat >"$STATE_DIR/docket-models.json" <<'JSON'
+cat >"$CONFIG_DIR/docket-models.json" <<'JSON'
 {
   "roles": {},
   "default": "anthropic/claude-sonnet-4-6"
 }
 JSON
-chmod 600 "$STATE_DIR/docket-models.json"
+chmod 600 "$CONFIG_DIR/docket-models.json"
 
 # ── project agent: myshop ──────────────────────────────────────────────────────
 cat >"$STATE_DIR/workspaces/projects/myshop/.docket-meta.json" <<JSON
 {
   "kind": "project",
-  "type": "repo",
   "name": "My Shop",
   "codebase": "$FAKE_HOME/Sites/myshop",
   "stack": "Docker,git",

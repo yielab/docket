@@ -56,8 +56,8 @@ _NONE = SandboxAvailability(backend="none", docker=False)
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     root = tmp_path / ".docket"
-    (root / "workspaces" / "projects").mkdir(parents=True)
-    (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (root / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (root / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
         _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
@@ -132,9 +132,10 @@ class TestRefusals:
         self, home: Path, monkeypatch: pytest.MonkeyPatch, fake_jail: FakeJail
     ) -> None:
         _meet_everything(home, monkeypatch, fake_jail)
-        data = json.loads((home / "fleet.json").read_text())
+        data = json.loads((home / "state" / "fleet.json").read_text())
         data["security"]["networkMode"] = "unset"
-        (home / "fleet.json").write_text(json.dumps(data))
+        (home / "state").mkdir(parents=True, exist_ok=True)
+        (home / "state" / "fleet.json").write_text(json.dumps(data))
 
         res, driver = _dispatch_one(_GATED)
 
@@ -328,7 +329,10 @@ class TestSetupProfile:
 
         assert runner.invoke(app, ["setup", "profile", "attended"]).exit_code == 0
         assert _fleet.get_profile() == "attended"
-        assert json.loads((home / "fleet.json").read_text())["security"]["profile"] == "unset"
+        assert (
+            json.loads((home / "state" / "fleet.json").read_text())["security"]["profile"]
+            == "unset"
+        )
 
     def test_a_stray_word_is_a_usage_error(self, home: Path) -> None:
         from docket.interfaces.cli.app import app

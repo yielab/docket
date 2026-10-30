@@ -28,7 +28,6 @@ SUBJECT = "docket.interfaces.http.routes.health"
 # ── test fixtures (mirrors test_serve.py fake_home) ───────────────────────
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "Api Test Agent",
     "scope": "project",
@@ -39,8 +38,7 @@ META: dict[str, Any] = {
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "apitest"}],
     "bindings": [],
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
-    "defaults": {"model": ""},
+    "security": {},
 }
 
 
@@ -170,7 +168,7 @@ class TestBudgetInStatusJson:
 
     def test_no_budget_returns_null(self, api_home: Path, tmp_path: Path) -> None:
         # Overwrite meta without budgetUsd
-        ws = api_home / "workspaces" / "projects" / "apitest"
+        ws = api_home / "state" / "workspaces" / "projects" / "apitest"
         meta_no_budget = {k: v for k, v in META.items() if k != "budgetUsd"}
         (ws / ".docket-meta.json").write_text(json.dumps(meta_no_budget))
         agents = health.build_status()["agents"]

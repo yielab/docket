@@ -294,7 +294,7 @@ class TestPipeline:
         with _seed_pod(tmp_path) as oc_dir:
             _queue.enqueue_task_once("demo", "Trace me", channel="cli")
             _sweep.dispatch_pod("demo", runner=FakeDriver())
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
             events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             types = [e["event_type"] for e in events]
@@ -371,7 +371,7 @@ class TestPipeline:
             _sweep.dispatch_pod("demo", runner=runner)
             assert runner.calls, "expected dispatch to run"
             assert all(c[0].startswith("demo-") for c in runner.calls)
-            assert (oc_dir / "traces" / "other").exists() is False
+            assert (oc_dir / "state" / "traces" / "other").exists() is False
 
     def test_no_lead_raises(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):

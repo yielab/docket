@@ -35,8 +35,8 @@ class TestPodConfigOverlays:
         from docket.interfaces.cli.commands import pod as _pod
 
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with _point_config_at(home):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home
@@ -90,8 +90,8 @@ class TestPodSyncCheck:
         from docket.interfaces.cli.commands import pod as _pod
 
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with _point_config_at(home):
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             yield home
@@ -110,7 +110,7 @@ class TestPodSyncCheck:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._build_pod(tmp_path) as home:
-            (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text(
+            (home / "state" / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text(
                 "STALE-HAND-EDITED-SOUL\n"
             )
             issues = _setup_check_config._check_pod_sync(["demo-lead", "demo-implementer"])

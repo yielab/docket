@@ -76,14 +76,14 @@ def _stored_location(raw: str, workspace_kind: str) -> str:
     return str(path)
 
 
-def _invalid(req: InitRequest, message: str, hint: str = "") -> int:
+def _invalid(req: InitRequest, message: str, hint: str = "", *, status: int = 2) -> int:
     """Refuse the request before anything is created: the reason on stderr, or as JSON under
-    ``--json``. Exit status 2."""
+    ``--json``. Exit status 2, or *status*."""
     if req.json_out:
         ui.console.print_json(_json.dumps({"status": "invalid", "reason": message}))
     else:
         ui.error(escape(message), escape(hint))
-    return 2
+    return status
 
 
 def _unnamed_teams(base: Path, chosen: Path) -> list[str]:
@@ -293,12 +293,15 @@ def run_init(req: InitRequest) -> int:
     """Provision a project pod from the request, deriving ordinary defaults from the cwd
     (non-interactive: cwd is the location, its basename the pod id). ``from_file`` takes
     the declarative path instead."""
-    try:
-        moved = _layout.migrate(current_home().root)
-    except _layout.LayoutConflict as exc:
-        return _invalid(req, str(exc))
-    if moved and not req.json_out:
-        ui.info(f"Moved {len(moved)} entries of the old home layout into config/ and state/.")
+    root = current_home().root
+    if stray := _layout.single_level_entries(root):
+        names = ", ".join(entry.name for entry in stray)
+        return _invalid(
+            req,
+            f"{root} keeps {names} at its top level; they belong under config/ or state/",
+            "Docket does not move a home: move or remove them, then run `docket init` again",
+            status=1,
+        )
     mkdir_private(current_home().config_dir)
     mkdir_private(current_home().projects_dir)
 

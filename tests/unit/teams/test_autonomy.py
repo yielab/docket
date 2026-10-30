@@ -41,7 +41,7 @@ def _pod(project: str = "shop", **meta: object) -> str:
     """Seed the Lead's meta of *project* with *meta*."""
     path = current_home().meta_path(pod.member_id(project, "lead"))
     path.parent.mkdir(parents=True, exist_ok=True)
-    _store.write_json(path, {"schemaVersion": 1, "kind": "project", "scope": "project", **meta})
+    _store.write_json(path, {"kind": "project", "scope": "project", **meta})
     return project
 
 

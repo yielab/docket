@@ -14,7 +14,7 @@ from threading import Barrier
 import pytest
 
 from docket.kernel import clock as _clock
-from docket.kernel.home import Home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.threads import new_thread
 from docket.platform import store as _store
 from docket.teams import conversations as C
@@ -124,38 +124,23 @@ class TestLoadSave:
 
 
 class TestLockedMutations:
-    def test_hop_touch_preserves_unknown_fields(self, tmp_path: Path) -> None:
+    def test_hop_touch_records_the_task_and_the_message(self, tmp_path: Path) -> None:
         p = tmp_path / "conversations.json"
         p.write_text(
-            json.dumps(
-                {
-                    "registryExtension": {"keep": True},
-                    "conversations": [
-                        {
-                            "id": "telegram:a:-1",
-                            "agentId": "a",
-                            "peerId": "-1",
-                            "conversationExtension": ["keep"],
-                        }
-                    ],
-                }
-            )
+            json.dumps({"conversations": [{"id": "telegram:a:-1", "agentId": "a", "peerId": "-1"}]})
         )
 
         assert C.touch_for_hop_durable(
             agent_id="a", task_ref="task-1", last_message="short preview", now="t1", path=p
         )
 
-        persisted = json.loads(p.read_text())
-        assert persisted["registryExtension"] == {"keep": True}
-        conv = persisted["conversations"][0]
-        assert conv["conversationExtension"] == ["keep"]
+        conv = json.loads(p.read_text())["conversations"][0]
         assert conv["lastMessage"] == "short preview"
         assert conv["taskRef"] == "task-1"
 
     def test_unwired_touch_leaves_the_file_byte_identical(self, tmp_path: Path) -> None:
         p = tmp_path / "conversations.json"
-        original = '{\n  "future": [1, 2],\n  "conversations": []\n}\n'
+        original = '{\n  "conversations": []\n}\n'
         p.write_text(original)
 
         assert not C.touch_for_hop_durable(
@@ -294,8 +279,8 @@ class TestPruneDurable:
     """``prune_closed_durable`` -- the call ``docket start``'s sweep makes."""
 
     def test_prune_removes_old_done_conversations(self, tmp_path: Path) -> None:
-        p = tmp_path / "docket-conversations.json"
         with use_home(Home(tmp_path)):
+            p = current_home().conversations_file
             _write(
                 _reg(
                     C.Conversation(
@@ -313,8 +298,8 @@ class TestPruneDurable:
             assert C.load(p).conversations == []
 
     def test_prune_dry_run_does_not_delete(self, tmp_path: Path) -> None:
-        p = tmp_path / "docket-conversations.json"
         with use_home(Home(tmp_path)):
+            p = current_home().conversations_file
             _write(
                 _reg(
                     C.Conversation(

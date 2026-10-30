@@ -126,8 +126,8 @@ class TestToolPods:
 
     def test_no_pods_returns_empty_list(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             assert _mcp.tool_pods() == {"pods": []}
 
@@ -216,8 +216,8 @@ class TestToolDelegate:
 
     def test_unknown_project_rejected(self, tmp_path: Path) -> None:
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)), pytest.raises(_mcp.McpToolError, match="no pod"):
             _mcp.tool_delegate("ghost-project", "task")
 

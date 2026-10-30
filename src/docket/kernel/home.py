@@ -289,15 +289,14 @@ class Home:
     @property
     def config_dir(self) -> Path:
         """The operator's authored configuration: catalogs, recipes, skills, policies, plugins
-        and `pods/<pod>/` overlays. An old-layout home (no `config/` or `state/`) is its own
-        config and state level until `docket init` moves it."""
-        return self.root if _layout.is_legacy(self.root) else self.root / _layout.CONFIG_DIRNAME
+        and `pods/<pod>/` overlays."""
+        return self.root / _layout.CONFIG_DIRNAME
 
     @property
     def state_dir(self) -> Path:
         """What docket writes while it runs: sessions, traces, workspaces, caches, audit,
         approvals, escalations and secrets."""
-        return self.root if _layout.is_legacy(self.root) else self.root / _layout.STATE_DIRNAME
+        return self.root / _layout.STATE_DIRNAME
 
     @property
     def model_registry_file(self) -> Path:
@@ -578,8 +577,6 @@ class Home:
 
     def pod_config_dir(self, project: str) -> Path:
         """A pod's configuration overlay, read above the operator's for that pod alone."""
-        if _layout.is_legacy(self.root):
-            return self.pods_dir / project / "config"
         return self.config_dir / "pods" / project
 
     def scopes(self, kind: str, project: str = "", repo_root: Path | None = None) -> list[Path]:

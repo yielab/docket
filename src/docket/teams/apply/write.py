@@ -339,7 +339,6 @@ def apply(plan: ApplyPlan, channel: str = "") -> ApplyResult:
     _fleet.meta_set(
         lead_id, "configDigest", _lock.write_lock(plan.project, _lock.source_items(plan.directory))
     )
-    (current_home().pod_config_dir(plan.project) / _lock.LEGACY_ROLES_FILE).unlink(missing_ok=True)
 
     # Recorded the same way, every apply, `exporters` included -- never merged with what a
     # prior apply named: an empty list here clears a previous recipe's destinations, matching

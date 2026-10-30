@@ -280,12 +280,12 @@ class TestReadOnlyGrants:
                 "relative": "opt/node",
                 "missing": str(tmp_path / "nope"),
                 "docket-home": str(current_home().root),
-                "inside-home-dir": str(current_home().root / "workspaces"),
+                "inside-home-dir": str(current_home().root / "state" / "workspaces"),
                 "home": str(home),
                 "root": "/",
             }[kind]
             if kind == "inside-home-dir":
-                (current_home().root / "workspaces").mkdir(exist_ok=True)
+                (current_home().root / "state" / "workspaces").mkdir(parents=True, exist_ok=True)
             fleet_before = _bytes(current_home().fleet_file)
 
             result = _runner.invoke(app, ["setup", "sandbox", "read", "add", target])

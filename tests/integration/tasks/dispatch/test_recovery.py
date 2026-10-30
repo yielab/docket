@@ -126,8 +126,8 @@ class TestSweepDoesNotStallOnAParkedPod:
         # The scripted turns below are one shared queue consumed in pod order, so the
         # sweep runs serially here; concurrency is TestSweepWorkers' subject.
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with (
             use_home(Home(home)),
             use_home(
@@ -240,7 +240,7 @@ class TestCrashRecovery:
             with claims_gone_stale():
                 _sweep.dispatch_pod("demo", runner=FakeDriver())
 
-                trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+                trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
                 events = [
                     json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
                 ]
@@ -506,8 +506,8 @@ class TestRunCliPrologue:
         from docket.interfaces.cli.app import app
 
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             record_isolation_off(home)
 

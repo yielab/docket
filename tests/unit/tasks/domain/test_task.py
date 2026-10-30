@@ -60,8 +60,8 @@ class TestHopEvents:
     ) -> None:
         """Each hop writes one hop_started and one hop_finished, and the task sums its usage."""
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             record_isolation_off(home)
             build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
@@ -114,8 +114,8 @@ class TestHopEvents:
     def test_by_model_sums_cache_reads_and_writes_per_model(self, tmp_path: Path) -> None:
         """The task's usage and each byModel entry sum input, cached, cacheWrite and output."""
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with use_home(Home(home)):
             record_isolation_off(home)
             build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
