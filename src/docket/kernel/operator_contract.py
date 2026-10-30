@@ -309,6 +309,8 @@ class _EscalationFields(BaseModel):
     # The autonomy level of the record's task when the pause was created; absent for a pause that
     # names no queued task.
     level: EscalationLevel | None = Field(None, exclude_if=lambda value: value is None)
+    # An approval of a call that acts outside the machine (a ``send`` tool); omitted while false.
+    outward: bool = Field(False, exclude_if=lambda value: not value)
     state: EscalationState = "pending"
     resolution: Resolution | None = None
     seq: int = 0
@@ -358,6 +360,9 @@ class EscalationView(_EscalationFields):
     names, and what can be done with it."""
 
     affordances: EscalationAffordances
+    # The whole call of a pending outward approval, credentials removed; only the one-escalation
+    # answer (``GET /escalations/<id>``) and the operator's own CLI set it.
+    call: str | None = Field(None, exclude_if=lambda value: value is None)
 
 
 class EscalationPage(BaseModel):

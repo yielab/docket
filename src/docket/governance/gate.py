@@ -36,6 +36,8 @@ from docket.kernel.gate import (
 from docket.kernel.operator_contract import canonical_args_digest
 from docket.kernel.ports import git as _git
 
+_SEND_REASON = "this tool acts outside the machine; a person approves exactly what leaves"
+
 
 @dataclass(frozen=True)
 class ToolVerdict:
@@ -98,6 +100,9 @@ def evaluate_tool_call(tool: GatedTool, args: dict[str, Any], ctx: GateContext) 
         f"policy {hit.policy_id!r}: {hit.message}" if hit.policy_id else "",
     )
     decision, reason = _rules.combine_verdicts(tool.name, command, policy)
+    if tool.kind == "send" and decision == "allow":
+        # A tool that acts outside the machine asks whatever its name: no policy has to list it.
+        decision, reason = "ask", _SEND_REASON
     return ToolVerdict(decision, reason, policy_id=hit.policy_id, policy_action=hit.action)
 
 
@@ -128,9 +133,25 @@ def govern(call: GateCall, ctx: GateContext) -> GateDecision:
     """Decide *call*: ``allow`` it, or ``deny`` it with the kind and reason to report.
 
     Audits every ``warn``/``redact`` hit, denial and ask; an ``ask`` is settled here (see
-    ``_settle_ask``), so the answer is never ``ask``."""
+    ``_settle_ask``), so the answer is never ``ask``. A ``send`` call that is settled, allowed or
+    denied, is audited as ``tool.send`` whatever decided it; a parked one is settled when it is
+    re-issued."""
+    verdict = evaluate_tool_call(call.tool, call.args, ctx)
+    decision = _decide(call, ctx, verdict)
+    if call.tool.kind == "send" and decision.denial_kind != "approval_parked":
+        audit_tool_decision(
+            "tool.send",
+            call.tool.name,
+            ctx,
+            f"decision={decision.decision} call={render_tool_call(call.tool.name, call.args)}",
+            policy_id=verdict.policy_id,
+            policy_action=verdict.policy_action,
+        )
+    return decision
+
+
+def _decide(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateDecision:
     tool, args = call.tool, call.args
-    verdict = evaluate_tool_call(tool, args, ctx)
     policy_id = verdict.policy_id if verdict.decision != "allow" else ""
 
     if verdict.policy_action in ("warn", "redact"):
@@ -193,6 +214,9 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
             approval_token=pregrant_token or "",
         )
     summary = (f"tool call {tool.name!r}: {verdict.reason}; call={rendered}")[:1000]
+    # What a person approves a send from: the whole call, uncut, credentials removed and nothing
+    # else; the approval drops it when it is settled.
+    whole = _redact(rendered, personal=False) if tool.kind == "send" else None
     if route == "refuse":
         # No approval record, no wait: the pod's posture says nobody will answer. Reported
         # distinctly from a timeout or an explicit denial ("nobody was asked").
@@ -213,7 +237,7 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
 
     rationale, blocked = _approval.screen_rationale(ctx.rationale, ctx.project)
     if route == "park":
-        token = _park(call, ctx, summary, digest, rationale, blocked)
+        token = _park(call, ctx, summary, digest, rationale, blocked, whole)
         reason = _rules.parked_reason(verdict.reason, tool.name)
         return GateDecision(
             "deny",
@@ -231,13 +255,20 @@ def _settle_ask(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateD
         context={"tool": tool.name, "callId": call.call_id, "argsDigest": digest},
         rationale=rationale,
         rationale_blocked=blocked,
+        call=whole,
     )
     _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
     return _wait(token, ctx, tool.name, digest, verdict)
 
 
 def _park(
-    call: GateCall, ctx: GateContext, summary: str, digest: str, rationale: str, blocked: bool
+    call: GateCall,
+    ctx: GateContext,
+    summary: str,
+    digest: str,
+    rationale: str,
+    blocked: bool,
+    whole: str | None,
 ) -> str:
     """Record the exact call and return its approval token without waiting -- a later grant
     re-enters the pipeline with a single-use pre-grant for it (tasks/application/actions.py's
@@ -262,6 +293,7 @@ def _park(
         expires_at=ctx.approval_expires_at,
         rationale=rationale,
         rationale_blocked=blocked,
+        call=whole,
     )
     _ports.approval_opened(token, task_id=ctx.task_id, caused_by=call.call_id)
     return token

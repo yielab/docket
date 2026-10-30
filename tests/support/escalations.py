@@ -29,8 +29,11 @@ def demo_pod() -> None:
     build_pod(PROJECT, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{PROJECT}")
 
 
-def approval_escalation(kind: EscalationKind = "gate", **context: Any) -> Escalation:
-    """A task parked on an approval of *kind* (`approval`, `gate` or `check_changed`)."""
+def approval_escalation(
+    kind: EscalationKind = "gate", *, call: str | None = None, **context: Any
+) -> Escalation:
+    """A task parked on an approval of *kind* (`approval`, `gate` or `check_changed`); with
+    *call* it is the approval of an outward call that keeps it."""
     task = _queue.enqueue_task_once(PROJECT, "tidy the build", channel="cli")[0]
     ctx: dict[str, Any] = {"taskId": task.id, **context}
     if kind == "check_changed":
@@ -38,7 +41,7 @@ def approval_escalation(kind: EscalationKind = "gate", **context: Any) -> Escala
     if kind == "gate":
         ctx["pipelineIndex"] = 1
     token = _ap.approval_create(
-        PROJECT, "implementer", "tool call 'bash': rm -rf build", context=ctx
+        PROJECT, "implementer", "tool call 'bash': rm -rf build", context=ctx, call=call
     )
     update_task(PROJECT, task.id, status="waiting_approval", pending_approval_index=1)
     return _esc.open_for_approval(

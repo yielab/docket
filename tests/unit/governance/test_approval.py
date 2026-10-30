@@ -273,3 +273,33 @@ class TestAuditFieldsAreBounded:
         token = _approval.approval_create("proj-cap-short", "implementer", "deploy")
         _approval.approval_deny(token, "cli", reason="not ready")
         assert "reason=not ready" in str(_audit.read_audit()[-1]["detail"])
+
+
+class TestACallLivesOnlyWhilePending:
+    CALL = 'mcp__outbox__send to="ana@example.com" body="hi"'
+
+    def _pending(self, approvals_dir: Path) -> str:
+        token = _approval.approval_create("proj", "actor", "summary", call=self.CALL)
+        assert _approval.approval_get(token)["call"] == self.CALL
+        return token
+
+    def test_a_grant_removes_it(self, approvals_dir: Path) -> None:
+        token = self._pending(approvals_dir)
+        _approval.approval_grant(token, channel="cli")
+        record = _approval.approval_get(token)
+        assert record["state"] == "granted" and "call" not in record
+
+    def test_a_deny_removes_it(self, approvals_dir: Path) -> None:
+        token = self._pending(approvals_dir)
+        _approval.approval_deny(token, channel="cli")
+        record = _approval.approval_get(token)
+        assert record["state"] == "denied" and "call" not in record
+
+    def test_an_expiry_removes_it(self, approvals_dir: Path) -> None:
+        token = self._pending(approvals_dir)
+        assert _approval.expire_approval(token)
+        assert "call" not in _approval.approval_get(token)
+
+    def test_an_approval_without_a_call_has_no_key(self, approvals_dir: Path) -> None:
+        token = _approval.approval_create("proj", "actor", "summary")
+        assert "call" not in _approval.approval_get(token)

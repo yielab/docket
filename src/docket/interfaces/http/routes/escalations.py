@@ -1,4 +1,5 @@
-"""``GET /escalations`` and ``POST /escalations/<id>``: the pauses a task waits on, and settling one."""
+"""``GET /escalations``, ``GET /escalations/<id>`` and ``POST /escalations/<id>``: the pauses a task
+waits on, one of them with the call it asks about, and settling one."""
 
 from __future__ import annotations
 
@@ -6,9 +7,12 @@ import json
 import re
 import urllib.parse as _urlparse
 
+from docket.governance.approval import approval_call
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel.errors import DocketError
+from docket.kernel.operator_contract import is_escalation_id
 from docket.operator import escalation_page, escalation_view
+from docket.platform import read_escalation
 from docket.tasks.application.escalations import resolve
 
 _SEQ = re.compile(r"[0-9]+")
@@ -27,6 +31,22 @@ def get_escalations(h: HttpExchange, _arg: str) -> None:
     )
     h._send(
         json.dumps(page.model_dump(by_alias=True, mode="json")).encode("utf-8"), "application/json"
+    )
+
+
+def get_escalation(h: HttpExchange, escalation_id: str) -> None:
+    """`GET /escalations/<id>`: the one view, and for a pending approval of a `send` call also its
+    `call`. This is the only answer that carries it."""
+    record = read_escalation(escalation_id) if is_escalation_id(escalation_id) else None
+    if record is None:
+        h._send_json_error("No such escalation", 404)
+        return
+    view = escalation_view(record)
+    call = approval_call(record.id) if view.state == "pending" else None
+    if call is not None:
+        view = view.model_copy(update={"call": call})
+    h._send(
+        json.dumps(view.model_dump(by_alias=True, mode="json")).encode("utf-8"), "application/json"
     )
 
 
