@@ -78,6 +78,11 @@ def pod_record_sets(project: str) -> tuple[list[RecordSet], list[str]]:
     return found, problems
 
 
+def find_set(project: str, name: str) -> RecordSet | None:
+    """The set *project*'s documents declare under *name*, or None."""
+    return next((s for s in pod_record_sets(project)[0] if s.name == name), None)
+
+
 def _store(project: str) -> RecordsStore:
     return RecordsStore(current_home().pod_records_path(project))
 
@@ -130,3 +135,14 @@ def export_csv(project: str, record_set: RecordSet, sql: str | None, path: Path)
     """Write every row *sql* (the whole set when omitted) returns to *path* as CSV; the count."""
     statement = sql if sql is not None else default_sql(record_set)
     return _store(project).export(statement, path, "csv", _EXPORT_TIMEOUT_S)
+
+
+def rows_payload(record_set: RecordSet, result: QueryResult) -> dict[str, object]:
+    """``{set, columns, rows, cut}``: *result* with each row an object keyed by column name."""
+    names = list(result.columns)
+    return {
+        "set": record_set.name,
+        "columns": names,
+        "rows": [dict(zip(names, row, strict=True)) for row in result.rows],
+        "cut": result.cut,
+    }

@@ -5,12 +5,11 @@ optional literal suffix (``/tasks/<pod>/<id>/diff``). The span stands for everyt
 prefix and the suffix, slashes included, and reaches the handler as its second argument; routes
 are tried in table order and the first match wins. The table itself is ``routes.table.ROUTES``.
 
-``auth`` demands the Bearer token before the handler runs. ``bare`` also matches the prefix without
-its trailing slash, with an empty capture (``/escalations`` for ``/escalations/<id>``). ``overlap``
-lets the prefix and the suffix share characters, so ``/tasks/diff`` still matches
-``/tasks/<pod>/<id>/diff`` with an empty capture; a route without it needs the suffix wholly
-after the prefix, as the ``/tasks/.../cancel`` family does. ``label`` is how the startup banner
-shows a row whose pattern would mislead."""
+``auth`` demands the Bearer token first. ``bare`` also matches the prefix without its trailing
+slash (``/escalations`` for ``/escalations/<id>``). ``overlap`` lets the prefix and the suffix share
+characters, so ``/tasks/diff`` still matches ``/tasks/<pod>/<id>/diff``. ``inside`` is a literal the
+capture must contain, which keeps ``/pods/<pod>/records/<set>`` apart from ``/pods/<pod>``.
+``label`` is how the startup banner shows a row whose pattern would mislead."""
 
 from __future__ import annotations
 
@@ -32,6 +31,7 @@ class Route:
     auth: bool = True
     bare: bool = False
     overlap: bool = False
+    inside: str = ""
     label: str = ""
 
     @property
@@ -49,13 +49,12 @@ class Route:
             return ""
         if not path.startswith(prefix):
             return None
-        if not suffix:
-            return path[len(prefix) :]
-        if not path.endswith(suffix):
+        if suffix and not path.endswith(suffix):
             return None
-        if not self.overlap and len(path) < len(prefix) + len(suffix):
+        if suffix and not self.overlap and len(path) < len(prefix) + len(suffix):
             return None
-        return path[len(prefix) : len(path) - len(suffix)]
+        capture = path[len(prefix) : len(path) - len(suffix)]
+        return capture if self.inside in capture else None
 
 
 def find_route(routes: tuple[Route, ...], method: str, path: str) -> tuple[Route, str] | None:
