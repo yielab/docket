@@ -96,6 +96,25 @@ class TestSummarizeRecipe:
             "roles 0 · policies 1 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0"
         )
 
+    def test_records_routines_and_named_pipelines_are_counted(self, tmp_path: Path) -> None:
+        for folder, name in (
+            ("records", "entries"),
+            ("routines", "weekly-report"),
+            ("pipelines", "capture"),
+        ):
+            (tmp_path / folder).mkdir()
+            (tmp_path / folder / f"{name}.yaml").write_text("kind: x\n", encoding="utf-8")
+        (tmp_path / "records" / "notes.txt").write_text("not a document", encoding="utf-8")
+
+        summary = _recipes.summarize_recipe(tmp_path)
+
+        assert summary.records == ("entries",)
+        assert summary.routines == ("weekly-report",)
+        assert summary.pipelines == ("capture",)
+        assert summary.render().endswith(
+            "pipelines capture · records entries · routines weekly-report"
+        )
+
     def test_plan_apply_rejects_a_declared_scope_key(self, tmp_path: Path) -> None:
         project = "scoped"
         with _seed_fixture_pod(tmp_path, project):
