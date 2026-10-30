@@ -116,6 +116,7 @@ class TestBuiltinAndStarterArchetypes:
             "writer",
             "operator",
             "monitor",
+            "actor",
         )
 
     @pytest.mark.parametrize("name", ["lead", "implementer", "reviewer"])
@@ -123,7 +124,9 @@ class TestBuiltinAndStarterArchetypes:
         found = builtin_roles.BUILTIN_ARCHETYPES[name]
         assert arch.validate_archetype_dict(name, found.to_wire()) == []
 
-    @pytest.mark.parametrize("name", ["researcher", "analyst", "writer", "operator", "monitor"])
+    @pytest.mark.parametrize(
+        "name", ["researcher", "analyst", "writer", "operator", "monitor", "actor"]
+    )
     def test_starter_validates(self, name: str) -> None:
         found = builtin_roles.STARTER_ARCHETYPES[name]
         assert arch.validate_archetype_dict(name, found.to_wire()) == []
@@ -158,7 +161,7 @@ class TestBuiltinAndStarterArchetypes:
             v.lower() for v in reviewer_step.gate.pass_values
         ]
 
-    def test_the_registry_holds_exactly_the_eight_roles(self) -> None:
+    def test_the_registry_holds_exactly_the_nine_roles(self) -> None:
         assert set(arch.load_registry("demo").role_names()) == {
             "lead",
             "implementer",
@@ -168,7 +171,30 @@ class TestBuiltinAndStarterArchetypes:
             "writer",
             "operator",
             "monitor",
+            "actor",
         }
+
+    def test_actor_is_a_strong_starter_that_reads_and_cannot_write_edit_or_run(self) -> None:
+        found = builtin_roles.STARTER_ARCHETYPES["actor"]
+        assert found.model_class == "strong"
+        assert found.tools == ("read", "glob")
+        assert set(found.denied_tools) == {"write", "edit", "bash"}
+        assert found.gate_contract.kind == "none"
+        assert "exactly that message" in found.soul_template
+
+    def test_the_outward_and_ops_approval_recipes_validate_and_carry_no_pipeline_or_roles(
+        self,
+    ) -> None:
+        for name in ("outward", "ops-approval"):
+            recipe = RECIPES_DIR / name
+            assert not (recipe / "pipeline.yaml").exists(), name
+            assert not (recipe / "roles").exists(), name
+            assert yaml.safe_load((recipe / "pod.yaml").read_text(encoding="utf-8")).get(
+                "members"
+            ) in (None, []), name
+            assert list((recipe / "policies").glob("*.yaml")), name
+            validated = invoke_pod(["validate", str(recipe)])
+            assert validated.exit_code == 0, validated.output
 
     def test_the_reviewer_is_strong_and_judges_code_text_or_data(self) -> None:
         found = builtin_roles.BUILTIN_ARCHETYPES["reviewer"]

@@ -383,14 +383,14 @@ wired agent's conversation current with the task it is working.
    Implementer -> Reviewer. Only the blueprint or built-in base pipeline is then patched
    so every `VerdictGate` step with a rework edge reflects this pod's own `maxReworkCycles` (see
    "Reviewer verdict gate and bounded rework") -- for a blueprint pipeline this reaches whichever
-   step declares the rework edge (e.g. the `research`/`content` blueprints' Reviewer step), not only a
+   step declares the rework edge (e.g. the `respond` and `routine` blueprints' Reviewer step), not only a
    step named `reviewer`. A bound pipeline is caller-supplied-like and is **never** patched this way
    -- an operator who hand-wrote a rework edge's own `maxCycles` did not ask for the pod setting to
    override it, the same as a `docket run --pipeline` file. A role-targeted step whose role the pod
    does not have is skipped and consumes no pipeline position (the plan marks it `skipped`), for a
-   bound pipeline exactly as for any other. A lean `software` pod (Lead + Implementer only) running
+   bound pipeline exactly as for any other. A lean `build` pod (Lead + Implementer only) running
    the default pipeline runs exactly two hops per pass; a full pod runs up to four, plus any rework
-   cycles (see below); a `research`, `content`, or `ops` pod runs its blueprint's full roster and
+   cycles (see below); a `respond`, `operate`, or `routine` pod runs its blueprint's full roster and
    gates. Before any task is claimed, `dispatch_pod` **MUST** refuse (`DispatchError`) a run whose
    variables leave a step's `instructions` with an unresolved reference (`pipeline-format.spec.md`
    "Variables"), or a `required` variable missing, unless a task still in the queue carries its own

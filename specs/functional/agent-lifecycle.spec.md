@@ -38,8 +38,8 @@ This specification does NOT cover:
    current directory's name), refusing with exit 1 when a project or pod with that id already
    exists, and with exit 2, before anything is created, when the slug is empty or longer than 64
    characters (input-validation.spec.md section 1). `docket init` asks nothing interactively
-2. **MUST** take the codebase (for a `codebase`-kind blueprint, `software` by default) or the
-   working directory (for a `workdir`-kind blueprint: `research`/`content`/`ops`) from the
+2. **MUST** take the codebase (for a `codebase`-kind blueprint, `build` by default) or the
+   working directory (for a `workdir`-kind blueprint: `respond`/`operate`/`routine`) from the
    `location` argument, defaulting to the current directory, and **MUST** store it absolute (a
    relative path is taken from the current directory). A `codebase` that is not an existing
    directory is refused with exit 2 before anything is created; `docket init` does not check that
@@ -72,7 +72,7 @@ This specification does NOT cover:
     detectable
 13. **MAY** provision one or more pods declaratively from a spec file
     (`docket init --from <file>`)
-14. **MUST** select a pod blueprint (`--blueprint <name>`, default `software`) before
+14. **MUST** select a pod blueprint (`--blueprint <name>`, default `build`) before
     provisioning and **MUST** fail cleanly with exit 1, before anything is created, if the name is
     not registered (see pod-blueprints.spec.md)
 
@@ -195,7 +195,7 @@ write anything.
 
 ```bash
 # Create a project pod from a blueprint; with no arguments the id and path come from the cwd and
-# the stack from the code there. --blueprint defaults to `software`. --pod full/--with apply only
+# the stack from the code there. --blueprint defaults to `build`. --pod full/--with apply only
 # to it. The recipe and apply options are pod-blueprints.spec.md's.
 docket init [<project>] [location] [--blueprint <name>] [--pod full | --with reviewer]
 
@@ -223,7 +223,7 @@ docket pod delete [--confirm <pod>] [--pod <pod>]
 
 ```bash
 $ docket init mywebsite ~/projects/website
--> Provisioning 'software' pod 'mywebsite' (lead, implementer)...
+-> Provisioning 'build' pod 'mywebsite' (lead, implementer)...
 ok   mywebsite-lead  [lead]  anthropic/claude-haiku-4-5
 ok   mywebsite-implementer  [implementer]  anthropic/claude-sonnet-4-6
 
