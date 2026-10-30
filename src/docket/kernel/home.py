@@ -414,6 +414,11 @@ class Home:
     def routines_state_file(self) -> Path:
         return self.state_dir / "docket-routines.json"
 
+    # The executions of each pod's `send` tools in the last day, for a policy's `limit` (a quota).
+    @property
+    def quota_file(self) -> Path:
+        return self.state_dir / "quota.json"
+
     # One record per dispatch run, whatever triggered it.
     @property
     def runs_file(self) -> Path:

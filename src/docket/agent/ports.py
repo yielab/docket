@@ -380,6 +380,10 @@ class ToolGate(Protocol):
         """Whether *call* may run: policy and the command classifier, then any approval it needs."""
         ...
 
+    def record_executed(self, call: GateCall, ctx: GateContext) -> None:
+        """Count *call* once its handler ran (a `send` toward its pod's quota); a no-op otherwise."""
+        ...
+
     def audit_refusal(self, call: GateCall, ctx: GateContext, kind: str) -> None:
         """Audit a refusal a tool handler made itself (``kind`` names the rule)."""
         ...
