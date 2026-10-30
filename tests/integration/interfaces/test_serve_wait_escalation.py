@@ -33,8 +33,8 @@ _SCHEMA = Path(__file__).resolve().parents[3] / "docs/contracts/operator-v2/inbo
 @pytest.fixture()
 def server(tmp_path: Path):  # type: ignore[no-untyped-def]
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
         due = "2999-01-01T00:00:00+00:00"

@@ -103,7 +103,7 @@ def _resume(monkeypatch: pytest.MonkeyPatch) -> tuple[_CueBackend, str]:
 
 def _events(home: Path, event_type: str) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
-    for path in (home / "traces" / "demo").glob("*.jsonl"):
+    for path in (home / "state" / "traces" / "demo").glob("*.jsonl"):
         for line in path.read_text().splitlines():
             record = json.loads(line)
             if record["event_type"] == event_type:

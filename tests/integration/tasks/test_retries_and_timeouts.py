@@ -55,7 +55,6 @@ def _write_meta(member_id: str, extra: dict[str, Any] | None = None) -> None:
     ws = current_home().projects_dir / member_id
     ws.mkdir(parents=True, exist_ok=True)
     meta: dict[str, Any] = {
-        "schemaVersion": 1,
         "kind": "project",
         "scope": "project",
         "role": member_id.split("-")[-1],
@@ -495,7 +494,7 @@ class TestRetryDoesNotTripStaleClaimSweep:
             assert tasks[0].failure_kind != "stale_claim"
 
             # No stale_claim trace event should have fired for this task.
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             events = [
                 json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
             ]

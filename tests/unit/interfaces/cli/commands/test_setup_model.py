@@ -78,12 +78,11 @@ class TestProviderAdd:
         with _home(tmp_path) as home:
             self._reachable(monkeypatch)
             monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-            ws = home / "workspaces" / "projects" / "shop-implementer"
+            ws = home / "state" / "workspaces" / "projects" / "shop-implementer"
             ws.mkdir(parents=True)
             (ws / ".docket-meta.json").write_text(
                 json.dumps(
                     {
-                        "schemaVersion": 1,
                         "kind": "project",
                         "scope": "project",
                         "role": "implementer",

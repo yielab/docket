@@ -1,5 +1,5 @@
-"""An old-layout home is served as it is and moved once by ``docket init``: authored
-configuration goes under ``config/``, what docket writes under ``state/``."""
+"""A home is laid out on two levels: ``docket init`` refuses one that keeps authored configuration
+and runtime state side by side at its top, naming the entries and moving nothing."""
 
 from __future__ import annotations
 
@@ -19,89 +19,98 @@ SUBJECT = "docket.kernel.layout"
 _hermetic = _support_home.hermetic_no_tty
 
 
-def _old_home(root: Path) -> Path:
-    """An old-layout home: authored and runtime entries side by side at the top."""
+def _single_level_home(root: Path) -> Path:
+    """Authored and runtime entries side by side at the top, plus a token the operator placed."""
     (root / "policies").mkdir(parents=True)
     (root / "policies" / "mine.yaml").write_text("id: mine\n")
     (root / "docket-models.json").write_text("{}")
     (root / "docket-models.json.bak").write_text("{}")
-    (root / "recipes" / "r").mkdir(parents=True)
     (root / "sessions").mkdir()
     (root / "audit.log").write_text("")
     (root / ".audit.log.lock").write_text("")
     (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
-    overlay = root / "workspaces" / "pods" / "p" / "config" / "policies"
-    overlay.mkdir(parents=True)
-    (overlay / "pod.yaml").write_text("id: pod\n")
-    (root / "workspaces" / "pods" / "p" / "memory.json").write_text("{}")
     (root / "token").write_text("secret")
     return root
 
 
-def test_migrate_moves_authored_entries_to_config_and_the_rest_to_state(tmp_path: Path) -> None:
-    root = _old_home(tmp_path / "old")
-    moved = layout.migrate(root)
-    assert "policies" in moved
-    assert (root / "config" / "policies" / "mine.yaml").is_file()
-    assert (root / "config" / "docket-models.json").is_file()
-    assert (root / "config" / "docket-models.json.bak").is_file()
-    assert (root / "config" / "recipes" / "r").is_dir()
-    assert (root / "config" / "pods" / "p" / "policies" / "pod.yaml").is_file()
-    assert not (root / "workspaces" / "pods" / "p" / "config").exists()
-    assert (root / "state" / "sessions").is_dir()
-    assert (root / "state" / "audit.log").is_file()
-    assert (root / "state" / ".audit.log.lock").is_file()
-    assert (root / "state" / "workspaces" / "pods" / "p" / "memory.json").is_file()
-    assert sorted(p.name for p in root.iterdir()) == ["config", "state", "token"]
+def _tree(root: Path) -> dict[str, bytes | None]:
+    return {
+        str(p.relative_to(root)): (p.read_bytes() if p.is_file() else None) for p in root.rglob("*")
+    }
 
 
-def test_a_second_migration_changes_nothing(tmp_path: Path) -> None:
-    root = _old_home(tmp_path / "old")
-    layout.migrate(root)
-    before = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
-    assert layout.migrate(root) == []
-    assert sorted(str(p.relative_to(root)) for p in root.rglob("*")) == before
+def test_the_entries_the_layout_places_under_config_and_state_are_found_at_the_top(
+    tmp_path: Path,
+) -> None:
+    root = _single_level_home(tmp_path / "docket-home")
+    found = sorted(p.name for p in layout.single_level_entries(root))
+    assert found == [
+        ".audit.log.lock",
+        "audit.log",
+        "docket-models.json",
+        "docket-models.json.bak",
+        "fleet.json",
+        "policies",
+        "sessions",
+    ]
 
 
-def test_both_layouts_at_once_is_refused_and_nothing_moves(tmp_path: Path) -> None:
-    root = _old_home(tmp_path / "old")
-    (root / "state").mkdir()
-    before = sorted(str(p.relative_to(root)) for p in root.rglob("*"))
-    with pytest.raises(layout.LayoutConflict):
-        layout.migrate(root)
-    assert sorted(str(p.relative_to(root)) for p in root.rglob("*")) == before
+def test_a_two_level_home_and_a_missing_home_hold_no_such_entry(tmp_path: Path) -> None:
+    (tmp_path / "docket-home" / "config" / "policies").mkdir(parents=True)
+    (tmp_path / "docket-home" / "state").mkdir()
+    (tmp_path / "docket-home" / "token").write_text("secret")
+    assert layout.single_level_entries(tmp_path / "docket-home") == []
+    assert layout.single_level_entries(tmp_path / "missing") == []
 
 
-def test_a_fresh_home_migrates_to_nothing(tmp_path: Path) -> None:
-    assert layout.migrate(tmp_path / "missing") == []
-    assert not (tmp_path / "missing").exists()
-
-
-def test_an_old_layout_home_still_serves_status_without_init(tmp_path: Path) -> None:
-    root = _old_home(tmp_path / "old")
+def test_init_refuses_a_home_holding_fleet_json_at_its_root_and_moves_nothing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "docket-home"
+    root.mkdir()
+    (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    before = _tree(root)
     with use_home(Home(root=root)):
-        result = CliRunner().invoke(app, ["status"])
-    assert result.exit_code in (0, 1), result.output
-    assert sorted(p.name for p in root.iterdir()) != ["config", "state", "token"]
+        result = CliRunner().invoke(app, ["init", "demo", "--blueprint", "respond"])
+    assert result.exit_code == 1, result.output
+    assert "fleet.json" in result.output
+    assert _tree(root) == before
+
+
+def test_init_names_every_entry_and_changes_nothing_in_a_larger_home(tmp_path: Path) -> None:
+    root = _single_level_home(tmp_path / "docket-home")
+    before = _tree(root)
+    with use_home(Home(root=root)):
+        result = CliRunner().invoke(app, ["init", "demo", "--blueprint", "respond"])
+    assert result.exit_code == 1, result.output
+    for name in ("policies", "docket-models.json", "sessions", "audit.log", "fleet.json"):
+        assert name in result.output
+    assert _tree(root) == before
     assert not (root / "config").exists()
     assert not (root / "state").exists()
 
 
-def test_init_moves_an_old_layout_home_and_a_second_init_is_a_no_op(tmp_path: Path) -> None:
-    root = _old_home(tmp_path / "old")
-    runner = CliRunner()
+@pytest.mark.parametrize("beside", ["config", "state"])
+def test_a_stray_top_level_entry_is_refused_beside_a_two_level_home_too(
+    tmp_path: Path, beside: str
+) -> None:
+    root = tmp_path / "docket-home"
+    (root / beside).mkdir(parents=True)
+    (root / "sessions").mkdir()
+    before = _tree(root)
     with use_home(Home(root=root)):
-        first = runner.invoke(app, ["init", "demo", "--blueprint", "respond"])
-        assert first.exit_code == 0, first.output
-        assert (root / "config" / "policies" / "mine.yaml").is_file()
-        assert (root / "state" / "audit.log").is_file()
-        assert not (root / "policies").exists()
-        snapshot = {
-            str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()
-        }
-        again = runner.invoke(app, ["init", "demo", "--blueprint", "respond"])
-        assert again.exit_code == 1, again.output  # the pod exists; the layout is not touched
-    assert not (root / "policies").exists()
-    assert (root / "config" / "pods" / "p" / "policies" / "pod.yaml").is_file()
-    assert snapshot["config/policies/mine.yaml"] == b"id: mine\n"
-    assert sorted(p.name for p in root.iterdir()) == ["config", "state", "token"]
+        result = CliRunner().invoke(app, ["init", "demo", "--blueprint", "respond"])
+    assert result.exit_code == 1, result.output
+    assert "sessions" in result.output
+    assert _tree(root) == before
+
+
+def test_init_on_a_two_level_home_provisions_as_before(tmp_path: Path) -> None:
+    root = tmp_path / "docket-home"
+    (root / "token").parent.mkdir(parents=True)
+    (root / "token").write_text("secret")
+    with use_home(Home(root=root)):
+        result = CliRunner().invoke(app, ["init", "demo", "--blueprint", "respond"])
+    assert result.exit_code == 0, result.output
+    assert (root / "config").is_dir()
+    assert (root / "token").read_text() == "secret"

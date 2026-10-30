@@ -1,11 +1,12 @@
 # Workspace Structure Specification
 
-**Version**: 3.1.2
+**Version**: 4.0.0
 **Status**: Complete. `DOCKET_HOME` is the only root, split into `config/` (authored) and
 `state/` (written while running). Agent workspaces live under `~/.docket/state/workspaces/projects/`;
 a pod's runtime resources and learned memory live under `~/.docket/state/workspaces/pods/<pod>/`
 and its configuration overlay under `~/.docket/config/pods/<pod>/`. `docket init` provisions pods
-and moves an old-layout home.
+and refuses a home that keeps any of those entries at its top level; there is one layout and no
+migration.
 **Last Updated**: 2026-10-28
 
 ## Purpose
@@ -58,15 +59,14 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
    repository entry and no shipped entry: the shipped policies are seeds `docket init` copies,
    not a scope, and those two kinds enter from a repository only through `docket pod update`.
    A directory is returned whether or not it exists.
-3. `docket init` **MUST** move an old-layout home (one that holds the entries above at its top
-   level and neither `config/` nor `state/`) into `config/` and `state/`, and move each
-   `workspaces/pods/<pod>/config` to `config/pods/<pod>`. It **MUST** refuse, changing nothing,
-   when an old-layout entry exists beside `config/` or `state/`, and a second run **MUST** change
-   nothing. This is a one-way move.
-4. Until it has been moved, an old-layout home **MUST** still be served: `Home` resolves every
-   path at the top of the home (a pod overlay at `workspaces/pods/<pod>/config`), so `docket
-   status` works without `docket init`. This reader is a time-boxed exception to the rule
-   against compatibility readers (ADR 0035 decision 2); it is deleted at the next minor release.
+80. `docket init` **MUST** refuse a home that holds, at its top level, any entry the layout above
+   places under `config/` or `state/` (a catalog, `recipes/`, `skills/`, `policies/`, `plugins/`,
+   `workspaces/`, `sessions/`, `traces/`, `audit.log`, `fleet.json`, `secrets.json` and the other
+   names, with their `.bak`, `.corrupt` and lock siblings): it exits `1` naming each such entry
+   and the home, and moves, creates and changes nothing. Docket never moves a home between
+   layouts; the operator moves or removes the entries.
+81. `Home` **MUST** resolve every path under `config/` or `state/` whatever the home holds at its
+   top level: an entry there is not read, and no command serves a home laid out on one level.
 
 ### Project-agent workspace
 
@@ -358,7 +358,7 @@ Where the names above live today; the only section that names source paths.
   `projects_dir`, `pods_dir`, `skills_dir`, `pod_memory_path`, `pod_config_dir`, `user_recipes_dir`, `pod_memory_max_accepted`,
   `pod_memory_max_undecided`, `pod_memory_max_per_task`, `pod_memory_note_max_chars`,
   `pod_memory_render_max_bytes`
-- `src/docket/kernel/layout.py`: `migrate`, `is_legacy`, `LayoutConflict` (called by `docket init`)
+- `src/docket/kernel/layout.py`: `CONFIG_DIRNAME`, `STATE_DIRNAME`, `single_level_entries` (called by `docket init`)
 - `src/docket/kernel/templates.py`: `POLICY_TEMPLATES_DIR`, `RECIPES_DIR`, `PROVIDER_TEMPLATES_DIR`,
   `EXPORTER_TEMPLATES_DIR`, `CHANNEL_TEMPLATES_DIR`
 - `src/docket/teams/pod_provisioning.py`: `provision_member`, `rendered_member_files`,

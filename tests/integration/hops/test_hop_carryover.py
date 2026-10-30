@@ -194,7 +194,7 @@ class TestContextComposedTrace:
             _queue.enqueue_task_once("demo", "Trace the context", channel="cli")
             _sweep.dispatch_pod("demo", runner=_BigOutputRunner())
 
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             assert len(trace_files) == 1
             events: list[dict[str, Any]] = [
                 json.loads(line) for line in trace_files[0].read_text().splitlines()
@@ -233,7 +233,7 @@ class TestContextComposedTrace:
                     return _rd.TurnResult(True, "tiny output", 0.0, {})
 
             _sweep.dispatch_pod("demo", runner=_SmallRunner())
-            trace_files = list((oc_dir / "traces" / "demo").glob("*.jsonl"))
+            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
             events = [json.loads(line) for line in trace_files[0].read_text().splitlines()]
             composed = [e for e in events if e["event_type"] == "context_composed"]
             assert len(composed) == 2

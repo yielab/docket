@@ -101,9 +101,9 @@ class TestFullRun:
 
     def test_human_no_agents(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": []}))
-        (home / "fleet.json").chmod(0o600)
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": []}))
+        (home / "state" / "fleet.json").chmod(0o600)
         with _point_config_at(home):
             rc = _setup_check.run_check(json_out=False)
             captured = capsys.readouterr()
@@ -188,8 +188,8 @@ class TestJsonCoversEveryTextCheck:
         from docket.interfaces.cli.commands import pod as _pod
 
         home = tmp_path / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         with _point_config_at(home), landlock_host():
             _channel.enable_channel("desktop")
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
@@ -260,7 +260,9 @@ class TestJsonCoversEveryTextCheck:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with self._pod_home(tmp_path, monkeypatch) as home:
-            (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text("STALE\n")
+            (home / "state" / "workspaces" / "projects" / "demo-lead" / "SOUL.md").write_text(
+                "STALE\n"
+            )
             data = self._json(capsys)
             assert data["checks"]["podSync"]["stale"][0]["id"] == "demo-lead"
             assert data["healthy"] is False
@@ -270,14 +272,14 @@ def test_leftover_manager_directory_is_ignored(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     with _seed(tmp_path, monkeypatch, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}) as home:
-        (home / "workspaces" / "manager").mkdir(parents=True)
-        (home / "workspaces" / "manager" / ".docket-meta.json").write_text("{}")
+        (home / "state" / "workspaces" / "manager").mkdir(parents=True)
+        (home / "state" / "workspaces" / "manager" / ".docket-meta.json").write_text("{}")
 
         rc = _setup_check.run_check(json_out=False, do_fix=True)
 
         assert rc == 0
         assert "workspaces/manager" not in capsys.readouterr().out
-        assert not (home / "workspaces" / "manager" / "WORKFLOW_AUTO.md").exists()
+        assert not (home / "state" / "workspaces" / "manager" / "WORKFLOW_AUTO.md").exists()
 
 
 class TestGuardrailPolicies:

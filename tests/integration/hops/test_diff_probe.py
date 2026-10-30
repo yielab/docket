@@ -184,8 +184,8 @@ def _seed_pod(
     work_dir: str = "",
 ) -> Iterator[Path]:
     home = tmp_path / f"{project}-oc"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=codebase, work_dir=work_dir)
         yield home

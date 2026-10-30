@@ -112,7 +112,7 @@ class TestCurrentPod:
         import os
 
         with _seed(tmp_path) as home:
-            (home / "serve.pid").write_text(str(os.getpid()))
+            (home / "state" / "serve.pid").write_text(str(os.getpid()))
             assert _json("--pod", "demo")["running"] is True
 
     def test_no_pod_for_the_directory_exits_1(
@@ -154,22 +154,18 @@ class TestModelProfiles:
             assert "lead hosted" in line and "implementer local" in line
 
 
-class TestNeedsUpdate:
-    def test_a_pod_with_an_old_roles_file_is_told_to_update(self, tmp_path: Path) -> None:
+class TestRolesJsonIsNothing:
+    def test_a_pod_with_a_roles_file_is_told_nothing(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            legacy = current_home().pod_config_dir("demo") / "roles.json"
-            legacy.parent.mkdir(parents=True, exist_ok=True)
-            legacy.write_text("{}")
+            stray = current_home().pod_config_dir("demo") / "roles.json"
+            stray.parent.mkdir(parents=True, exist_ok=True)
+            stray.write_text("{}")
 
             body = _json("--pod", "demo")
             out = runner.invoke(_app, ["status", "--pod", "demo"]).output
 
-            assert "docket pod update" in body["needsUpdate"]
-            assert "Needs update:" in out
-
-    def test_a_current_pod_carries_no_such_key(self, tmp_path: Path) -> None:
-        with _seed(tmp_path):
-            assert "needsUpdate" not in _json("--pod", "demo")
+            assert "needsUpdate" not in body
+            assert "Needs update:" not in out
 
 
 class TestPaused:

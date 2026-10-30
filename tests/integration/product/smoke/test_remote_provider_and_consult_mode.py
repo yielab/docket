@@ -150,7 +150,10 @@ class _Recorder:
             home = self.world / ".docket"
             home.mkdir(parents=True, exist_ok=True)
             agents = [{"id": f"smoke-{role}"} for role in ("lead", "implementer", "reviewer")]
-            (home / "fleet.json").write_text(json.dumps({"agents": agents}), encoding="utf-8")
+            (home / "state").mkdir(parents=True, exist_ok=True)
+            (home / "state" / "fleet.json").write_text(
+                json.dumps({"agents": agents}), encoding="utf-8"
+            )
         if args[:1] == ("run",):
             raise _smoke.SmokeFailure("stopped at the pipeline run")
         return subprocess.CompletedProcess(args, 0, "", "")
@@ -276,9 +279,11 @@ def test_main_leaves_no_key_in_a_kept_world(
         w: Path, repo: Path, live: Any, scenario: str, consult: str, key: str, sandbox: str
     ) -> None:
         assert key == CANARY and live.remote and live.provider == "anthropic"
-        (w / ".docket").mkdir(parents=True, exist_ok=True)
-        (w / ".docket" / "secrets.json").write_text(json.dumps({KEY_ENV: key}), encoding="utf-8")
-        (w / ".docket" / "audit.log").write_text(f"auth bearer {key}\n", encoding="utf-8")
+        (w / ".docket" / "state").mkdir(parents=True, exist_ok=True)
+        (w / ".docket" / "state" / "secrets.json").write_text(
+            json.dumps({KEY_ENV: key}), encoding="utf-8"
+        )
+        (w / ".docket" / "state" / "audit.log").write_text(f"auth bearer {key}\n", encoding="utf-8")
         raise _smoke.SmokeFailure(f"the provider rejected {key}")
 
     monkeypatch.setattr(_smoke, "_run", run)
@@ -299,8 +304,8 @@ def test_main_leaves_no_key_in_a_kept_world(
 
     assert code == 1
     leaked = [p for p in world.rglob("*") if p.is_file() and CANARY in p.read_text()]
-    assert leaked == [] and not (world / ".docket" / "secrets.json").exists()
-    assert (world / ".docket" / "audit.log").read_text() == "auth bearer [redacted]\n"
+    assert leaked == [] and not (world / ".docket" / "state" / "secrets.json").exists()
+    assert (world / ".docket" / "state" / "audit.log").read_text() == "auth bearer [redacted]\n"
 
 
 def test_smoke_script_help_names_the_new_flags() -> None:

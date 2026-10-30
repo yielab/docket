@@ -86,8 +86,8 @@ _ALL = sorted({*_readers(), *_BARE_READS})
 @pytest.fixture
 def fixture_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         code = tmp_path / "code"

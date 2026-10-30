@@ -30,8 +30,8 @@ _MEMBER = "demo-implementer"
 @pytest.fixture
 def pod(tmp_path: Path) -> Iterator[tuple[Path, str]]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         root = tmp_path / "origin"
         (root / "dist").mkdir(parents=True)

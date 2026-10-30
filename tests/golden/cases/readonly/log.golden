@@ -1,4 +1,4 @@
 EXIT:0
 -> No log yet.
   Changes (keys, gates, pods, approvals) are recorded to
-  <HOME>/.docket/audit.log once you make one.
+  <HOME>/.docket/state/audit.log once you make one.

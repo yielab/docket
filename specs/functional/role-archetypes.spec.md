@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 5.4.0
+**Version**: 5.4.1
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
@@ -435,8 +435,7 @@ This specification does NOT cover:
    its authored short-form file (`<name>.yaml|yml|json`) with the Markdown file its `instructions`
    names beside it, read fresh on every access (not cached), silently skipping a malformed file
    (never crashing a live fleet) rather than raising. There is no applied `roles.json`: no file
-   by that name is read, and `docket pod update` removes one an earlier release left. A pod
-   applied before is rewritten by its next `docket pod update`; `docket pod show` says so. No file
+   by that name is read, written or removed. No file
    outside those two directories is read as a role; a `docket-roles.json` under `$DOCKET_HOME` is
    ignored.
 2. A pod archetype **MUST** be able to both add a new role name and override an existing

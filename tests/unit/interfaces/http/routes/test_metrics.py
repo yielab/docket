@@ -22,10 +22,8 @@ fake_home = _support_home.fake_home
 SUBJECT = "docket.interfaces.http.routes.metrics"
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
 }
 
@@ -35,8 +33,7 @@ FLEET_CONFIG: dict[str, Any] = {
     "bindings": [
         {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100123"}
     ],
-    "defaults": {"model": ""},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 

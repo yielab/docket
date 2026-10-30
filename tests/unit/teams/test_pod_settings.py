@@ -21,7 +21,7 @@ def _write_lead_meta(project: str, fields: dict[str, object] | None = None) -> N
     """Seed just the pod Lead's meta keys ``PodSettings`` reads."""
     path = current_home().meta_path(pod.member_id(project, "lead"))
     path.parent.mkdir(parents=True, exist_ok=True)
-    data: dict[str, object] = {"schemaVersion": 1, "kind": "project", "scope": "project"}
+    data: dict[str, object] = {"kind": "project", "scope": "project"}
     if fields:
         data.update(fields)
     _store.write_json(path, data)

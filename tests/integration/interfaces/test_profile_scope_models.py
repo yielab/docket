@@ -26,10 +26,8 @@ _runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
     "stack": "Node.js",
     "codebase": "/home/testuser/Sites/myshop",
@@ -80,14 +78,14 @@ class TestCmdModels:
             ["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir
         )
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        reg = json.loads((oc_dir / "docket-models.json").read_text())
+        reg = json.loads((oc_dir / "config" / "docket-models.json").read_text())
         assert reg["roles"]["implementer"] == "anthropic/claude-haiku-4-5"
 
     def test_models_set_default(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
         rc, _, _ = _run(["setup", "model", "set", "default", "anthropic/claude-haiku-4-5"], oc_dir)
         assert rc == 0
-        reg = json.loads((oc_dir / "docket-models.json").read_text())
+        reg = json.loads((oc_dir / "config" / "docket-models.json").read_text())
         assert reg["default"] == "anthropic/claude-haiku-4-5"
 
     def test_models_set_reapplies_policy(self, tmp_path: Path) -> None:
@@ -95,7 +93,9 @@ class TestCmdModels:
         # myshop is a bare project agent: follows the implementer row, source=policy
         _run(["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         meta = json.loads(
-            (oc_dir / "workspaces" / "projects" / "myshop" / ".docket-meta.json").read_text()
+            (
+                oc_dir / "state" / "workspaces" / "projects" / "myshop" / ".docket-meta.json"
+            ).read_text()
         )
         assert meta["model"] == "anthropic/claude-haiku-4-5"
 
@@ -127,11 +127,12 @@ class TestCmdModels:
 
     def test_models_preset_apply(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        (oc_dir / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (oc_dir / "state").mkdir(parents=True, exist_ok=True)
+        (oc_dir / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         register_local_provider(oc_dir, "openai", [{"id": "gpt-4.1-mini"}])
         rc, _out, err = _run(["setup", "model", "preset", "openai"], oc_dir)
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        reg = json.loads((oc_dir / "docket-models.json").read_text())
+        reg = json.loads((oc_dir / "config" / "docket-models.json").read_text())
         # strong roles get gpt-4.1-mini (standard for openai)
         assert reg["roles"]["implementer"] == "openai/gpt-4.1-mini"
 
@@ -147,12 +148,13 @@ class TestCmdModels:
         rc, out, err = _run(["setup", "model", "preset", preset], oc_dir)
 
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        assert (oc_dir / "docket-models.json").exists()
+        assert (oc_dir / "config" / "docket-models.json").exists()
         assert f"Preset {preset} applied" in out + err
 
     def test_local_preset_selects_the_exact_registered_model(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
-        (oc_dir / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (oc_dir / "state").mkdir(parents=True, exist_ok=True)
+        (oc_dir / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         register_local_provider(
             oc_dir,
             "local",
@@ -163,7 +165,7 @@ class TestCmdModels:
         rc, out, err = _run(["setup", "model", "preset", "local"], oc_dir)
 
         assert rc == 0, f"exit {rc}\nstderr: {err}"
-        reg = json.loads((oc_dir / "docket-models.json").read_text())
+        reg = json.loads((oc_dir / "config" / "docket-models.json").read_text())
         assert reg["default"] == "local/qwen-live-id"
         assert set(reg["roles"].values()) == {"local/qwen-live-id"}
         assert "local/qwen-live-id" in out

@@ -24,8 +24,8 @@ _PROJECT = "demo"
 
 def _work(root: Path, task: str) -> None:
     """The same pod name in both homes, so only the root tells their files apart."""
-    (root / "workspaces" / "projects").mkdir(parents=True)
-    (root / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (root / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (root / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(root)):
         build_pod(_PROJECT, ("lead", "implementer"), codebase=f"/src/{_PROJECT}")
         _queue.enqueue_task_once(_PROJECT, task, channel="cli")

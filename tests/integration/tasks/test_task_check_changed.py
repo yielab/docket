@@ -59,8 +59,8 @@ def _init_repo(path: Path) -> None:
 @contextmanager
 def _seed_pod(tmp_path: Path, repo: Path, pipeline: str = _PIPELINE) -> Iterator[None]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(repo))
         path = _pod.pod.bound_pipeline_path("demo")

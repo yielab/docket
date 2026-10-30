@@ -23,7 +23,6 @@ _runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
     "model": "anthropic/claude-sonnet-4-6",
@@ -37,8 +36,7 @@ META: dict[str, Any] = {
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "myshop"}],
     "bindings": [],
-    "defaults": {"model": ""},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
@@ -47,14 +45,15 @@ def _setup_agent(tmp_path: Path, agent_id: str = "myshop") -> Path:
     oc_dir = tmp_path / ".docket"
     oc_dir.mkdir()
 
-    agent_ws = oc_dir / "workspaces" / "projects" / agent_id
+    agent_ws = oc_dir / "state" / "workspaces" / "projects" / agent_id
     (agent_ws / "memory").mkdir(parents=True)
 
     (agent_ws / ".docket-meta.json").write_text(json.dumps(META))
     (agent_ws / "SOUL.md").write_text("# SOUL\n")
     (agent_ws / "MEMORY.md").write_text("# MEMORY\n")
 
-    (oc_dir / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+    (oc_dir / "state").mkdir(parents=True, exist_ok=True)
+    (oc_dir / "state" / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     return oc_dir
 

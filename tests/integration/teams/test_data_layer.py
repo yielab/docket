@@ -27,10 +27,11 @@ def _make_fleet(home: Path) -> Path:
         "bindings": [
             {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-999"}
         ],
-        "defaults": {"model": "anthropic/claude-sonnet-4-6"},
-        "security": {"gatesEnabled": False, "isolationEnabled": False},
+        "security": {},
     }
-    path = home / "fleet.json"
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    path = home / "state" / "fleet.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(fleet, indent=2))
     return path
 
@@ -40,7 +41,6 @@ def _make_meta(workspace: Path, overrides: dict | None = None) -> Path:
     workspace.mkdir(parents=True, exist_ok=True)
     data = {
         "kind": "project",
-        "type": "repo",
         "name": "My Shop",
         "codebase": "/home/user/myshop",
         "stack": "Docker,git",
@@ -65,10 +65,8 @@ class TestAgentMeta:
 
         raw = {
             "kind": "project",
-            "type": "repo",
             "name": "My Shop",
             "model": "anthropic/claude-haiku-4-5",
-            "modelSource": "pinned",
             "sessionKey": "agent:x:y",
             "projectKey": "y",
             "budgetUsd": 10.0,
@@ -82,20 +80,20 @@ class TestAgentMeta:
         dumped = meta.model_dump(by_alias=True)
         assert "sessionKey" in dumped
 
-    def test_extra_fields_survive_round_trip(self) -> None:
+    def test_an_undeclared_field_is_refused(self) -> None:
+        from pydantic import ValidationError
+
         from docket.teams.models import AgentMeta
 
-        raw = {"kind": "project", "role": "programmer", "futureField": "x"}
-        meta = AgentMeta.model_validate(raw)
-        dumped = meta.model_dump(by_alias=True)
-        assert dumped.get("futureField") == "x"
+        with pytest.raises(ValidationError, match="futureField"):
+            AgentMeta.model_validate({"kind": "project", "role": "programmer", "futureField": "x"})
 
     # ── the scope axis ──────────────────────────────────────
 
     def test_scope_round_trips_when_explicit(self) -> None:
         from docket.teams.models import AgentMeta, AgentScope
 
-        meta = AgentMeta.model_validate({"kind": "project", "type": "repo", "scope": "project"})
+        meta = AgentMeta.model_validate({"kind": "project", "scope": "project"})
         assert meta.scope == AgentScope.project
         assert meta.model_dump(by_alias=True)["scope"] == "project"
 
@@ -132,18 +130,13 @@ class TestFleetConfig:
         assert len(cfg.bindings) == 1
         assert cfg.bindings[0].agent_id == "myshop"
 
-    def test_extra_fields_survive(self) -> None:
+    def test_an_undeclared_top_level_key_is_refused(self) -> None:
+        from pydantic import ValidationError
+
         from docket.teams.fleet import FleetConfig
 
-        raw = {
-            "agents": [],
-            "bindings": [],
-            "security": {"gatesEnabled": False},
-            "newTopLevelKey": 42,
-        }
-        cfg = FleetConfig.model_validate(raw)
-        dumped = cfg.model_dump(by_alias=True)
-        assert dumped["newTopLevelKey"] == 42
+        with pytest.raises(ValidationError, match="newTopLevelKey"):
+            FleetConfig.model_validate({"agents": [], "bindings": [], "newTopLevelKey": 42})
 
 
 # ── store ─────────────────────────────────────────────────────────────────────
@@ -272,7 +265,7 @@ def oc_env(tmp_path: Path) -> Iterator[Path]:
     """Set up a temp DOCKET_HOME with fleet.json and a project workspace."""
     home = tmp_path / ".docket"
     home.mkdir()
-    workspace = home / "workspaces" / "projects" / "myshop"
+    workspace = home / "state" / "workspaces" / "projects" / "myshop"
     _make_meta(workspace)
     _make_fleet(home)  # writes home/fleet.json
 

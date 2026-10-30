@@ -49,8 +49,8 @@ def _seed(
     roles: tuple[str, ...] = pod.DEFAULT_POD_ROLES,
 ) -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         build_pod(project, roles, codebase=f"/src/{project}")
         yield home
@@ -306,7 +306,7 @@ class TestPodShowNonPodAgent:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path) as home:
-            ws = home / "workspaces" / "solo"
+            ws = home / "state" / "workspaces" / "solo"
             ws.mkdir(parents=True)
             _store.write_json(
                 current_home().meta_path("solo"),

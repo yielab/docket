@@ -19,16 +19,13 @@ FLEET_CONFIG: dict[str, Any] = {
     "bindings": [
         {"agentId": "myshop", "channel": "telegram", "peerKind": "group", "peerId": "-100123"}
     ],
-    "defaults": {"model": ""},
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
+    "security": {},
 }
 
 
 META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "My Shop",
-    "type": "repo",
     "model": "anthropic/claude-sonnet-4-6",
 }
 
@@ -36,13 +33,11 @@ META: dict[str, Any] = {
 API_FLEET_CONFIG: dict[str, Any] = {
     "agents": [{"id": "apitest"}],
     "bindings": [],
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
-    "defaults": {"model": ""},
+    "security": {},
 }
 
 
 API_META: dict[str, Any] = {
-    "schemaVersion": 1,
     "kind": "project",
     "name": "Api Test Agent",
     "scope": "project",
@@ -55,8 +50,8 @@ API_META: dict[str, Any] = {
 def hermetic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
 
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
 
     with use_home(Home(home)):
         yield
@@ -71,8 +66,8 @@ def trace_on_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def hermetic_trace_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("DOCKET_NO_TRACE", "0")
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         yield
 
@@ -81,8 +76,8 @@ def hermetic_trace_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterat
 def hermetic_no_tty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setattr(_contract, "is_tty", lambda: False)
     home = tmp_path / "home"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         yield home
 
@@ -172,10 +167,10 @@ def fake_home(tmp_path: Path) -> Iterator[Path]:
     """Seed a temp DOCKET_HOME with one project agent + fleet.json."""
     home = tmp_path / ".docket"
     home.mkdir()
-    ws = home / "workspaces" / "projects" / "myshop"
+    ws = home / "state" / "workspaces" / "projects" / "myshop"
     (ws / "memory").mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(META))
-    session = home / "sessions" / "agent%3Amyshop%3Amyshop"
+    session = home / "state" / "sessions" / "agent%3Amyshop%3Amyshop"
     session.mkdir(parents=True)
     (session / "session.json").write_text(
         json.dumps(
@@ -187,7 +182,8 @@ def fake_home(tmp_path: Path) -> Iterator[Path]:
             }
         )
     )
-    (home / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    (home / "state" / "fleet.json").write_text(json.dumps(FLEET_CONFIG))
 
     with use_home(Home(home)):
         yield home
@@ -197,13 +193,13 @@ def fake_home(tmp_path: Path) -> Iterator[Path]:
 def api_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
-    ws = home / "workspaces" / "projects" / "apitest"
+    ws = home / "state" / "workspaces" / "projects" / "apitest"
     ws.mkdir(parents=True)
     (ws / ".docket-meta.json").write_text(json.dumps(API_META))
 
-    (home / "fleet.json").write_text(json.dumps(API_FLEET_CONFIG))
+    (home / "state" / "fleet.json").write_text(json.dumps(API_FLEET_CONFIG))
 
-    # repoint_docket_home points APPROVALS_DIR at home/"approvals" without
+    # repoint_docket_home points APPROVALS_DIR at home / "state" / "approvals" without
     # creating it, so list_pending() still returns [] gracefully.
     with use_home(Home(home)):
         yield home
@@ -249,7 +245,8 @@ def _record_isolation_mode(home: Path, mode: str) -> None:
     import json
 
     home.mkdir(parents=True, exist_ok=True)
-    path = home / "fleet.json"
+    (home / "state").mkdir(parents=True, exist_ok=True)
+    path = home / "state" / "fleet.json"
     data = json.loads(path.read_text()) if path.exists() else {}
     data.setdefault("security", {})["isolationMode"] = mode
     path.write_text(json.dumps(data))

@@ -133,8 +133,8 @@ class TestInitFromTheDirectoryHoldingTheHome:
     ) -> None:
         code = tmp_path / "code"
         home = code / ".docket"
-        (home / "workspaces" / "projects").mkdir(parents=True)
-        (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+        (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+        (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
         (home / "pod.yaml").write_text("kind: pod\nname: demo\ndescription: from the home\n")
         with use_home(Home(home)):
             result = runner.invoke(app, ["init", "demo", str(code)])

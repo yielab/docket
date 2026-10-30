@@ -14,8 +14,8 @@ fact of registration (its id) — carrying a second copy of fields
 ``.docket-meta.json`` already owns would just recreate the same kind of
 drift.
 
-Lenient by design (``extra="allow"``) so a future field added by one docket
-version round-trips through an older one instead of being silently dropped.
+Closed (``extra="forbid"``): a key a model does not declare is refused, naming the key and the
+file, so a record only ever holds what this docket writes.
 
 This module also carries the read/write functions
 (``meta_get``/``meta_set``/``list_agents``/``add_agent``/``get_binding``/…)
@@ -28,21 +28,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.platform import read_json, write_json
 from docket.teams import fleet as _fleet
-from docket.teams.models import AgentMeta
+from docket.teams.models import AgentMeta, unknown_keys_text
 
-_LENIENT = ConfigDict(extra="allow", populate_by_name=True)
+_CLOSED = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class FleetAgent(BaseModel):
     """One registered agent — presence only; model/session live in AgentMeta."""
 
-    model_config = _LENIENT
+    model_config = _CLOSED
 
     id: str = ""
 
@@ -50,7 +50,7 @@ class FleetAgent(BaseModel):
 class FleetBinding(BaseModel):
     """One channel binding: which peer (e.g. a Telegram group) routes to an agent."""
 
-    model_config = _LENIENT
+    model_config = _CLOSED
 
     agent_id: str = Field("", alias="agentId")
     channel: str = "telegram"
@@ -61,7 +61,7 @@ class FleetBinding(BaseModel):
 class FleetSecurity(BaseModel):
     """Workspace-isolation flags (see security-gates.spec.md)."""
 
-    model_config = _LENIENT
+    model_config = _CLOSED
 
     # 'unset' (no recorded choice: not isolated, opt-in) | 'off' | a sandbox mode string.
     isolation_mode: str = Field("unset", alias="isolationMode")
@@ -78,7 +78,7 @@ class FleetSecurity(BaseModel):
 class FleetConfig(BaseModel):
     """Top-level shape of fleet.json."""
 
-    model_config = _LENIENT
+    model_config = _CLOSED
 
     agents: list[FleetAgent] = Field(default_factory=list)
     bindings: list[FleetBinding] = Field(default_factory=list)
@@ -92,10 +92,21 @@ class FleetConfig(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _refuse_unknown_keys(exc: ValidationError, path: Path) -> None:
+    """Raise ``InvalidInput`` naming the keys a closed model refused and the file that holds them;
+    return for a failure about anything else."""
+    if text := unknown_keys_text(exc):
+        raise InvalidInput(f"{path}: {text}") from exc
+
+
 def load_fleet() -> FleetConfig:
     """Return the full fleet registry as a validated model."""
-    raw = read_json(current_home().fleet_file)
-    return FleetConfig.model_validate(raw)
+    path = current_home().fleet_file
+    try:
+        return FleetConfig.model_validate(read_json(path))
+    except ValidationError as exc:
+        _refuse_unknown_keys(exc, path)
+        raise
 
 
 def _save_fleet(cfg: FleetConfig) -> None:
@@ -117,7 +128,11 @@ def meta_set(agent_id: str, field: str, value: Any) -> None:
     path = current_home().meta_path(agent_id)
     raw = read_json(path)
     raw[field] = value
-    AgentMeta.model_validate(raw)
+    try:
+        AgentMeta.model_validate(raw)
+    except ValidationError as exc:
+        _refuse_unknown_keys(exc, path)
+        raise
     write_json(path, raw)
 
 

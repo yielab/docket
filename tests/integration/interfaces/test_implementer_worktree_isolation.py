@@ -71,8 +71,7 @@ def _init_git_repo(path: Path) -> None:
 FLEET_CONFIG: dict[str, Any] = {
     "agents": [],
     "bindings": [],
-    "security": {"gatesEnabled": False, "isolationEnabled": False},
-    "defaults": {"model": ""},
+    "security": {},
 }
 
 
@@ -80,9 +79,9 @@ FLEET_CONFIG: dict[str, Any] = {
 def pod_home(tmp_path: Path) -> Iterator[Path]:
     home = tmp_path / ".docket"
     home.mkdir()
-    projects = home / "workspaces" / "projects"
+    projects = home / "state" / "workspaces" / "projects"
     projects.mkdir(parents=True)
-    fleet_file = home / "fleet.json"
+    fleet_file = home / "state" / "fleet.json"
     fleet_file.write_text(json.dumps(FLEET_CONFIG))
     with use_home(Home(home)):
         yield home

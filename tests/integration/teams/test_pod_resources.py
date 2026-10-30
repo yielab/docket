@@ -162,7 +162,9 @@ class TestPodResources:
     def test_implementer_tools_md_contains_port_range(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
-            tools_path = home / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
+            tools_path = (
+                home / "state" / "workspaces" / "projects" / "demo-implementer" / "TOOLS.md"
+            )
             assert tools_path.exists(), "TOOLS.md should be written for the implementer"
             content = tools_path.read_text()
             assert "DOCKET_PORT_BASE" in content
@@ -172,7 +174,7 @@ class TestPodResources:
     def test_lead_has_no_tools_md(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            tools_path = home / "workspaces" / "projects" / "demo-lead" / "TOOLS.md"
+            tools_path = home / "state" / "workspaces" / "projects" / "demo-lead" / "TOOLS.md"
             assert not tools_path.exists()
 
     def test_two_pods_get_disjoint_port_ranges(self, tmp_path: Path) -> None:
@@ -231,7 +233,7 @@ class TestPodResources:
     def test_provision_lock_dir_is_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pp.provision_pod("demo", "build", location="/src/demo")
-            lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
+            lock_dir = home / "state" / "workspaces" / ".pod-provision-locks" / b"demo".hex()
             assert lock_dir.is_dir()
             assert lock_dir.stat().st_mode & 0o777 == 0o700
             assert lock_dir.parent.stat().st_mode & 0o777 == 0o700
@@ -239,7 +241,7 @@ class TestPodResources:
     def test_pod_delete_removes_provision_lock_dir(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             _pp.provision_pod("demo", "build", location="/src/demo")
-            lock_dir = home / "workspaces" / ".pod-provision-locks" / b"demo".hex()
+            lock_dir = home / "state" / "workspaces" / ".pod-provision-locks" / b"demo".hex()
             assert lock_dir.is_dir()
             _pp.free_pod_resources("demo")
             assert not lock_dir.exists(), "provision lock dir must be removed on pod teardown"
@@ -247,7 +249,7 @@ class TestPodResources:
     def test_pods_dir_and_project_dir_are_owner_only(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as home:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES)
-            pods_dir = home / "workspaces" / "pods"
+            pods_dir = home / "state" / "workspaces" / "pods"
             project_dir = pods_dir / "demo"
             assert pods_dir.is_dir()
             assert project_dir.is_dir()

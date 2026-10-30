@@ -42,8 +42,8 @@ def _put_role(path: Path) -> None:
 @contextmanager
 def _seed_pod(tmp_path: Path, project: str = "demo") -> Iterator[Path]:
     home = tmp_path / ".docket"
-    (home / "workspaces" / "projects").mkdir(parents=True)
-    (home / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
+    (home / "state" / "workspaces" / "projects").mkdir(parents=True)
+    (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
     with use_home(Home(home)):
         record_isolation_off(home)
         build_pod(project, _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path / "code"))
