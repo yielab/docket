@@ -228,6 +228,25 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   fast with `approval_unavailable`, the one posture that never gives a human a chance to grant it
   later.
 
+### Acting outside the machine: the `send` tool
+- A `send` tool is one that acts outside the machine: it sends a message, submits a form, posts,
+  books or asks another agent to act. docket knows it by kind, from the MCP server that declares
+  `--kind send` (or `access: send`). The kind is your declaration; docket does not inspect what the
+  server's tool does.
+- A role holds a `send` tool only when its own `tools` list names it. A role that names one may not
+  also hold `fetch` or a tool of a `read` server, and `docket pod validate` and `docket pod update`
+  refuse that combination.
+- A `send` call always asks a person, whatever a policy says, and a `block` still denies. The
+  approver sees the whole call with credentials removed and nothing else. Every other copy docket
+  keeps (the trace, the audit log, the inbox, notifications and Telegram) stays redacted, and the full
+  call is deleted once the approval is settled.
+- Every settled `send` is audited as `tool.send`, allowed or denied.
+- A quota caps how many sends a pod makes in an hour or a day. The count rises when a send runs,
+  never when one is asked about or refused; past the cap the call is refused, and `docket status`
+  shows the count against the limit.
+- An agent reached as a tool is a tool call like any other: docket dispatches the call and gates it.
+  What that agent does inside its own system is outside docket's enforcement.
+
 ### Workspace isolation (on where the machine can jail): the sandbox for the agents' shell
 
 **`docket init` turns it on when this machine has a backend** and nobody has chosen yet; with no

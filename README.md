@@ -8,6 +8,9 @@
 **docket is a command-line tool that puts a team of AI coding agents to work on a git repository,
 under rules you write and a gate they cannot skip.**
 
+A pod can also run another kind of team, for research, content or outward work with no repository
+behind it, on demand or on a schedule that `docket start --dispatch` fires, under the same gate.
+
 You describe a task in plain words. A Lead agent plans it, an Implementer makes the change on its
 own git branch, and, if your team has them, a reviewer and a tester check the result before you
 merge anything. Every action an agent takes (reading a file, editing one, running a shell command)
