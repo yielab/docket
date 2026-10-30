@@ -79,7 +79,11 @@ This specification does NOT cover:
    `docket.project`, `docket.role`, `docket.session_id`, and `session.id` attributes (plus the
    privacy attributes of requirement 79), and **MUST NOT** itself return a closed span. Any
    other handled record for a session with no open root **MUST** open that root first, from the
-   same record's fields.
+   same record's fields. A root starts at the session's first record: a `Pipeline` that opens
+   the root of a session whose local trace already holds earlier records (a dispatch resumed in
+   another process, the process that answers an escalation) **MUST** start it at the `ts` of
+   that trace's first record, so every copy of the root a destination receives starts at the
+   session's real start.
 8. An `llm_call` record **MUST** produce one complete child span named `gen_ai.chat`, parented
    to the innermost open hop span of the record's session (requirement 108), else to the session
    root, with `start_ts` computed as the record's `ts` minus its `duration_ms`,
@@ -450,8 +454,9 @@ wait: its duration is the time between the ask and the settlement.
      (`L3`, `L4` or `L5`, operator-loop.spec.md "Escalations" item 12).
 114. The `prompt` payload key of a `consult` or `input` escalation **MUST** be exposed as
      `docket.escalation.prompt`, class `prompts`, gated by requirement 69; at `minimal`, `actions` and any `share` list without
-     `prompts` the attribute **MUST** be absent. The ids and labels of the options and the
-     recommendation are not exported.
+     `prompts` the attribute **MUST** be absent. The ids and labels of the options offered and
+     the recommendation are not exported; the option a resolved or decided escalation settled on
+     (payload `optionId`) **MUST** be exposed as `docket.escalation.answer`, class `prompts`.
 115. `DEFAULT_EVENTS` **MUST** include the five `escalation_*` event types.
 
 ### Exporter privacy fields
@@ -592,7 +597,10 @@ the end of each of them. These requirements keep that session one complete trace
      never does gets its root at process exit (requirement 109).
 107. The built-in `langfuse` document **MUST** alias `docket.session.input` to
      `langfuse.observation.input` and `docket.session.output` to `langfuse.observation.output`,
-     so Langfuse derives the trace's Input and Output from the root observation.
+     so Langfuse derives the trace's Input and Output from the root observation. It **MUST**
+     also alias `docket.escalation.prompt` and `docket.approval.action` to
+     `langfuse.observation.input` and `docket.escalation.answer` to
+     `langfuse.observation.output`, so an escalation shows what it asked and what was answered.
 108. A `tool_call` record without a `callId` -- the marker pod dispatch writes when a hop starts
      (payload `hop`/`agent`) -- **MUST** open a span named `docket.hop <hop>` (`docket.hop` when
      the payload names no hop) carrying `docket.hop`, and key it (requirement 4) as `<role>|<ts>`. A

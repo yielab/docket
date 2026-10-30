@@ -438,6 +438,21 @@ def find_trace(session_id: str) -> Path | None:
     return None
 
 
+def first_ts(project: str, session_id: str) -> str | None:
+    """The ``ts`` of the first record in *session_id*'s trace under *project*, else None."""
+    try:
+        with (current_home().traces_dir / project / f"{session_id}.jsonl").open(
+            encoding="utf-8"
+        ) as handle:
+            for line in handle:
+                record = _parse_record(line)
+                if record is not None:
+                    return str(record.get("ts") or "") or None
+    except OSError:
+        return None
+    return None
+
+
 def read_trace(tracefile: Path) -> list[dict[str, Any]]:
     """Parse every JSON object line of *tracefile* in file order; skip blank, malformed and
     non-object lines."""

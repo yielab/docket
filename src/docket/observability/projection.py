@@ -117,12 +117,14 @@ def _close(open_span: _OpenSpan, trace_id: str, end_ts: str, status: str) -> Spa
     )
 
 
-def _new_root(session_id: str, record: dict[str, Any], policy: ExportPolicy) -> _OpenSpan:
+def _new_root(
+    session_id: str, record: dict[str, Any], policy: ExportPolicy, started: str | None
+) -> _OpenSpan:
     return _OpenSpan(
         span_id=_span_id(session_id, "session", "root"),
         parent_id=None,
         name="docket.session",
-        start_ts=str(record.get("ts", "")),
+        start_ts=started or str(record.get("ts", "")),
         kind="session",
         key="root",
         attributes={
@@ -141,7 +143,7 @@ def _ensure_root(
 ) -> _OpenSpan:
     stack = state.stacks.setdefault(session_id, [])
     if not stack:
-        stack.append(_new_root(session_id, record, policy))
+        stack.append(_new_root(session_id, record, policy, state.started.get(session_id)))
     return stack[0]
 
 
@@ -383,6 +385,7 @@ def _handle_session_end(
     ts = str(record.get("ts", ""))
     stack = state.stacks.pop(session_id, [])
     state.last_ts.pop(session_id, None)
+    state.started.pop(session_id, None)
     trace_id = _trace_id(session_id)
     closed = [_close(open_span, trace_id, ts, "unset") for open_span in reversed(stack[1:])]
     if stack:
@@ -468,6 +471,9 @@ def _escalation_attributes(payload: dict[str, Any], policy: ExportPolicy) -> Att
     prompt = payload.get(payload_key)
     if _granted(policy, cls) and isinstance(prompt, str) and prompt:
         attributes[attr_name] = _text.cut_chars(prompt, policy.content_max_chars)
+    answer = payload.get("optionId")
+    if _granted(policy, "prompts") and isinstance(answer, str) and answer:
+        attributes["docket.escalation.answer"] = answer
     return attributes
 
 
@@ -637,6 +643,7 @@ def flush_open(state: ProjectionState) -> list[Span]:
         del state.escalations[escalation_id]
     for session_id in list(state.stacks):
         stack = state.stacks.pop(session_id)
+        state.started.pop(session_id, None)
         ts = state.last_ts.pop(session_id, None) or (stack[0].start_ts if stack else "")
         trace_id = _trace_id(session_id)
         closed.extend(_close(open_span, trace_id, ts, "unset") for open_span in reversed(stack[1:]))

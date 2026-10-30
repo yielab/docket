@@ -48,6 +48,9 @@ class ProjectionState:
     # An escalation's wait outlives the session and the turn that asked it, so its open span is
     # held by escalation id, with the session whose last timestamp closes it on a forced flush.
     escalations: dict[str, tuple[str, _OpenSpan]] = field(default_factory=dict)
+    # A session's first recorded ts, for a session that began before this state saw it: its root
+    # starts there.
+    started: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,7 @@ ATTRIBUTE_CLASSES: dict[str, str] = {
     "gen_ai.system_instructions": "instructions",
     "docket.session.input": "prompts",
     "docket.escalation.prompt": "prompts",
+    "docket.escalation.answer": "prompts",
     "docket.session.output": "completions",
 }
 
