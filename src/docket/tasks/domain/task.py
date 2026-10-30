@@ -226,6 +226,8 @@ class TaskRecord(BaseModel):
     restrictions: TaskRestrictions | None = Field(None, exclude_if=is_none)
     # The level its pauses are decided at, as asked at enqueue; unset takes the profile's default.
     autonomy: str | None = Field(None, exclude_if=is_none)
+    # Pipeline variables that belong to this task; merged over the run's at claim.
+    variables: dict[str, str] = Field(default_factory=dict, exclude_if=_is_empty)
 
     # The lifecycle: where the task stands.
     status: Status = Status.pending
@@ -254,6 +256,11 @@ class TaskRecord(BaseModel):
     consultations: int = Field(0, exclude_if=_is_empty)
     # The ids of the escalation records opened for this task, oldest first.
     escalations: list[str] = Field(default_factory=list, exclude_if=_is_empty)
+
+    @field_validator("variables", mode="before")
+    @classmethod
+    def _unset_variables_is_empty(cls, value: object) -> object:
+        return {} if value is None else value
 
     @property
     def worktree_dir(self) -> str:

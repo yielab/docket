@@ -60,7 +60,8 @@ def dispatch_pod(
     e.g. the serve webhook's resolved body, or ``docket run --var``) leaves any step's
     own ``instructions`` with an unresolved ``${var}`` reference. *stop* is polled before each
     claim, never inside a task. See
-    specs/functional/pipeline-format.spec.md ("Variables"). *approval_default* is this caller's
+    specs/functional/pipeline-format.spec.md ("Variables"). A task's own ``variables`` are merged
+    over these at its claim and win. *approval_default* is this caller's
     own resolution for an unset pod ``approvalMode`` (ADR 0016 SS2) -- forwarded to every task's
     ``dispatch_task`` call unchanged; an explicit pod value always wins over it."""
     pod_pipeline(project)  # validates pod/lead up front

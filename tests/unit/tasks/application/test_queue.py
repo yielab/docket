@@ -392,6 +392,32 @@ class TestEnqueueAutonomy:
         assert not isinstance(shape.value, _task.TaskRestrictionError)
 
 
+class TestEnqueueVariables:
+    """``variables`` is a name to text mapping kept on the task (operator-api.spec.md)."""
+
+    def test_variables_are_stored_and_an_empty_mapping_is_not(self, pod_home: Path) -> None:
+        _seed_lean_pod()
+
+        kept = _queue.enqueue_task_once("myapp", "x", channel="cli", variables={"tier": "gold"})[0]
+        bare = _queue.enqueue_task_once("myapp", "y", channel="cli", variables={})[0]
+
+        stored = {r.description: r for r in TaskRepository.for_pod("myapp").list()}
+        assert stored["x"].variables == kept.variables == {"tier": "gold"}
+        assert stored["y"].variables == bare.variables == {}
+        assert "variables" not in bare.model_dump(by_alias=True, mode="json")
+
+    @pytest.mark.parametrize("bad", [{"n": 3}, {"n": None}, ["n"], "n=3", {"": "x"}])
+    def test_a_value_that_is_not_text_raises_and_persists_nothing(
+        self, pod_home: Path, bad: object
+    ) -> None:
+        _seed_lean_pod()
+
+        with pytest.raises(_task.DispatchError, match="variables"):
+            _queue.enqueue_task_once("myapp", "x", channel="cli", variables=bad)
+
+        assert TaskRepository.for_pod("myapp").list() == []
+
+
 class TestBaseRefRefusedAtClaim:
     """A task whose ``baseRef`` cannot be honoured fails at claim: no hop, ``failureKind``
     ``base_ref``, and the loop moves on to the next task."""

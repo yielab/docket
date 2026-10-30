@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.2.0
+**Version**: 5.3.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -307,7 +307,7 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
 **Verbs**:
 - `add "<text>" [--priority high|normal|low] [--brief FILE.json] [--external-ref REF]
   [--idempotency-key KEY] [--base-ref REF] [--pipeline NAME] [--gate COMMAND]
-  [--max-tokens N] [--autonomy L3|L4|L5] [--pod <p>]`: Queue the task on
+  [--max-tokens N] [--autonomy L3|L4|L5] [--var NAME=VALUE]... [--pod <p>]`: Queue the task on
   the resolved pod's own list (`~/.docket/workspaces/projects/<project>-lead/TASK_LIST.json`).
   The text is one argument; empty text or text over 500 characters exits 1, an unknown priority
   exits 2. `--brief` loads and validates the file as a `TaskBrief` (operator-v2); an invalid one
@@ -316,6 +316,10 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   ends with `Next: docket run`
   `--autonomy` sets the level the task's pauses are decided at and exits 1 naming the ceiling when it
   is above the pod profile's (`security-gates.spec.md` "Autonomy levels");
+  `--var NAME=VALUE` (repeatable) sets a pipeline variable for this task alone, stored as the task's
+  `variables` and merged over the run's at claim (`operator-api.spec.md` "Arguments"); an argument
+  with no `=` or an empty name exits 2 (as `run --var` does) and enqueues nothing, a repeated name takes
+  the last value;
   The six addressing flags are stored on the task verbatim (`operator-api.spec.md` "Arguments");
   `--gate` takes the command string alone and exits 1 when empty. A second `add` whose
   `--idempotency-key` is already in the queue enqueues nothing and prints the existing id with

@@ -13,11 +13,14 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
 from tests.support import pods as _support_pods
+from tests.support.pods import planned_unit as _planned_unit
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
+from tests.support.pods import unit_context as _unit_context
 
 from docket.agent import ports as _rd
 from docket.hops.application import executor as _executor
@@ -81,3 +84,30 @@ class TestDeterministicRefusalFailsOnlyThatTask:
 
         with pytest.raises(RuntimeError, match="simulated crash"):
             _executor.dispatch_task("myapp", task, runner=_crasher)
+
+
+class TestWhenVarComparesAsText:
+    """``when.var`` / ``is`` compare the variable's text (pod-dispatch.spec.md, "Conditional steps
+    and command steps"), whatever type a webhook body or a task gave the value."""
+
+    @staticmethod
+    def _skipped(value: object, is_: object) -> bool:
+        ctx = _unit_context()
+        ctx.variables = {"n": value}  # type: ignore[dict-item]
+        node = dataclasses.replace(_planned_unit("x"), when={"var": "n", "is": is_})
+        return _executor._step_skipped(ctx, node, [])
+
+    def test_an_integer_value_matches_its_text(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+
+        assert self._skipped(3, "3") is False
+
+    def test_a_different_text_skips(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+
+        assert self._skipped(4, "3") is True
+
+    def test_a_boolean_value_compares_as_its_text(self, pod_home: Path) -> None:
+        _seed_lean_pod("myapp")
+
+        assert self._skipped(True, "True") is False

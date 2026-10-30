@@ -242,6 +242,8 @@ class TestTaskAdd:
             (["task", "add", "", "--pod", "demo"], 1),
             (["task", "add", "x", "--priority", "urgent", "--pod", "demo"], 2),
             (["task", "add", "a" * 501, "--pod", "demo"], 1),
+            (["task", "add", "x", "--var", "tier", "--pod", "demo"], 2),
+            (["task", "add", "x", "--var", "=gold", "--pod", "demo"], 2),
         ],
     )
     def test_invalid_input_enqueues_nothing(
@@ -250,6 +252,24 @@ class TestTaskAdd:
         with _seed_pod(tmp_path):
             assert _runner.invoke(app, args).exit_code == code
             assert TaskRepository.for_pod("demo").list() == []
+
+    def test_var_flags_become_the_tasks_text_variables(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            result = _runner.invoke(
+                app,
+                ["task", "add", "x", "--var", "tier=gold", "--var", "n=3", "--var", "q=a=b",
+                 "--var", "tier=silver", "--pod", "demo"],
+            )  # fmt: skip
+
+            assert result.exit_code == 0, result.output
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.variables == {"tier": "silver", "n": "3", "q": "a=b"}
+
+    def test_no_var_flag_stores_no_variables(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            _runner.invoke(app, ["task", "add", "x", "--pod", "demo"])
+
+            assert TaskRepository.for_pod("demo").list()[0].variables == {}
 
     def test_bracketed_text_prints_literally(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
