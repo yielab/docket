@@ -14,7 +14,7 @@ import datetime as _dt
 
 from docket.hops.application.resolutions import Applied, resolve_route
 from docket.hops.application.steps import _guard_command
-from docket.hops.gates.post_hop import _latest_implementer_evidence, _run_in_envelope
+from docket.hops.gates.post_hop import _latest_evidence, _run_in_envelope
 from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.kernel.handoff import HandoffArtifact
@@ -90,7 +90,7 @@ def probe_wait(project: str, task: TaskRecord) -> bool:
     cwd = worktree or str(
         _fleet.meta_get(lead_id, "codebase", "") or _fleet.meta_get(lead_id, "workDir", "") or ""
     )
-    evidence = _latest_implementer_evidence(task.hops)
+    evidence = _latest_evidence(task.hops)
     env = {
         "DOCKET_TASK_ID": task.id,
         "DOCKET_BASE_COMMIT": str(evidence.get("baseCommit") or ""),
