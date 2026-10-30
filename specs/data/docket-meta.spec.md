@@ -1,9 +1,9 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 5.5.0
+**Version**: 5.5.1
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -76,7 +76,7 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 | `portRangeCount` | number | integer above 0 | No (implementer only) | provisioning | Number of ports in the same allocation as `portRangeStart` |
 | `scratchDir` | string | absolute path | No (implementer only) | provisioning | Pod-isolated scratch directory. Its lifecycle is coupled to provisioning: a failed attempt removes a scratch or working directory only when that attempt created it, preserving pre-existing contents and a successful same-pod directory |
 | `verifyCmd` | string | shell command, at most 2000 characters, no NUL or newline | No (implementer only) | `docket pod add --verify`, `docket pod set verify <cmd> --member <id>`, `docket pod unset verify --member <id>` (removes the key), `POST /pods` | Shell command run mechanically after each Implementer hop. A non-zero exit blocks done and emits a `verification_failed` trace event. Absent or empty means skip, unless the pod's `requireVerify` is true (the task then fails). Per member, not a pod setting |
-| `templateVersion` | string | none | Yes (written always) | provisioning | Template schema version the member was created with (`5`); `docket pod reset` restamps it when it rebuilds the member's files |
+| `templateVersion` | string | none | Yes (written always) | provisioning | Template schema version the member was created with (`6`); `docket pod reset` restamps it when it rebuilds the member's files |
 
 The pod-wide settings that live on the Lead (`budgetUsd`, `turnTimeoutS`, `verifyTimeoutS`,
 `maxReworkCycles`, and the rest) are listed in their own table below.
@@ -189,7 +189,7 @@ kind, so `workspaceKind` and `workDir` are absent):
   "created": "2026-10-22T21:34:29.210789+00:00",
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
-  "templateVersion": "5",
+  "templateVersion": "6",
   "blueprint": "software"
 }
 ```
@@ -212,7 +212,7 @@ the budget gate has paused the pod (`paused` and `pausedReason` change):
   "created": "2026-10-22T21:34:29.210789+00:00",
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
-  "templateVersion": "5",
+  "templateVersion": "6",
   "blueprint": "software",
   "budgetUsd": 5.0,
   "paused": true,
@@ -239,7 +239,7 @@ The pod's Implementer, with its port range, scratch directory and a verify comma
   "created": "2026-10-22T21:34:29.211614+00:00",
   "sessionKey": "agent:myshop:default",
   "projectKey": "default",
-  "templateVersion": "5",
+  "templateVersion": "6",
   "portRangeStart": 3000,
   "portRangeCount": 100,
   "scratchDir": "/home/user/.docket/workspaces/pods/myshop/.scratch",
@@ -266,7 +266,7 @@ a string:
   "created": "2026-10-23T00:15:18.292472+00:00",
   "sessionKey": "agent:my-scan:default",
   "projectKey": "default",
-  "templateVersion": "5",
+  "templateVersion": "6",
   "blueprint": "research",
   "workspaceKind": "workdir",
   "workDir": "/home/user/work/scan",
