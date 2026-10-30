@@ -21,6 +21,7 @@ from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import gate_rules as _rules
 from docket.governance import policy as _policy
 from docket.governance import ports as _ports
+from docket.governance import quota as _quota
 from docket.governance.audit import audit_log
 from docket.governance.gate_rules import AskRoute
 from docket.governance.secrets import redact as _redact
@@ -103,7 +104,27 @@ def evaluate_tool_call(tool: GatedTool, args: dict[str, Any], ctx: GateContext) 
     if tool.kind == "send" and decision == "allow":
         # A tool that acts outside the machine asks whatever its name: no policy has to list it.
         decision, reason = "ask", _SEND_REASON
+    if tool.kind == "send" and decision != "deny":
+        over = _over_quota(tool, ctx)
+        if over is not None:
+            return over
     return ToolVerdict(decision, reason, policy_id=hit.policy_id, policy_action=hit.action)
+
+
+def _over_quota(tool: GatedTool, ctx: GateContext) -> ToolVerdict | None:
+    """The ``deny`` verdict of the first quota the pod has used up, ``None`` when it has room."""
+    for limit in _policy.limits_for(ctx.role, ctx.project):
+        if not limit.covers(tool.name, tool.kind):
+            continue
+        spent = _quota.used(ctx.project or "-", limit)
+        if spent >= limit.count:
+            return ToolVerdict(
+                "deny",
+                _quota.refusal(limit, spent),
+                policy_id=limit.policy_id,
+                policy_action="block",
+            )
+    return None
 
 
 def audit_tool_decision(
@@ -148,6 +169,13 @@ def govern(call: GateCall, ctx: GateContext) -> GateDecision:
             policy_action=verdict.policy_action,
         )
     return decision
+
+
+def record_executed(call: GateCall, ctx: GateContext) -> None:
+    """Count one ``send`` call that ran against its pod's quota; any other kind is not counted.
+    ``dispatch_tool`` calls it after the handler ran, never for a call that was refused."""
+    if call.tool.kind == "send":
+        _quota.record_executed(ctx.project or "-", call.tool.name)
 
 
 def _decide(call: GateCall, ctx: GateContext, verdict: ToolVerdict) -> GateDecision:

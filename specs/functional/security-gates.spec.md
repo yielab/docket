@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -553,6 +553,15 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer`
    credentials, email addresses), and `docket.governance.secrets.redact` masks the same shapes, so
    a `redact` verdict leaves nothing of the secret in the carried-forward text.
+9. A policy **MAY** carry `limit: {kind | tool, count, per}` instead of `when`/`match`: a quota
+   (requirement 18 of the in-turn tool-call gate). The validator **MUST** reject, naming the field:
+   a `limit` beside a `match` or `when`; a `limit` that is not a mapping or has a key other than
+   `kind`, `tool`, `count` and `per`; both or neither of `kind` and `tool`; a `kind` other than
+   `send`; a `tool` that is not a non-empty string; a `count` that is not an integer of at least 1
+   (a boolean is not one); a `per` other than `hour` or `day`; a `then` other than `block`; an
+   `on` other than `toolCall`. The evaluator **MUST NOT** fire a quota as a `when` or `match`
+   would: only the quota check reads it, and a quota that fails validation blocks like any broken
+   policy (requirement 7 of the policy engine).
 
 ### Predicate plugins (ADR 0010)
 
@@ -804,6 +813,32 @@ rewrite its own gate for the next turn.
       then `decision=<allow|deny>` and the call, redacted with `personal=True`. A call that parks
       (`approval_parked`) is not settled: the re-issued call is, so one send writes one entry
       beside the `tool.ask` of the ask. Other kinds keep their rule (an `allow` writes nothing).
+18. **A quota caps what a pod sends (ADR 0036 decision 7).** The one stateful rule: a pod may only
+    send so many times in a window, and a count is of executions, not attempts.
+    - **The clause.** A policy document (Policy format v1, requirement 9) carrying
+      `limit: {kind: send, count: <n>, per: hour | day}`, or `tool: <name>` in place of `kind` for
+      one tool, is a quota. It applies to a pod under that policy's `appliesTo` and scope (a global
+      policy caps each pod on its own); the counter is the pod's, never fleet-wide.
+    - **The window trails.** `per: hour` is the last 3,600 seconds and `per: day` the last 86,400,
+      read from the kernel clock. An execution leaves the window when it is older, so the window
+      rolls; no calendar boundary resets it.
+    - **Over the limit it blocks before it asks.** `evaluate_tool_call` **MUST** decide `deny` for a
+      call that a quota covers when the pod already has `count` executions in the window, whatever
+      the policies or a pre-grant say, and no approval is opened. The reason names the count and
+      the window (`send quota reached: 2/2 per day`) and the quota's policy; `policy_action` is
+      `block` and `policy_id` the quota's name. `govern` writes the ordinary `tool.deny` entry and
+      the `tool.send` entry of requirement 17 with `decision=deny`.
+    - **It counts what runs.** `dispatch_tool` **MUST** call the `ToolGate` port's `record_executed`
+      once for a `send` call after its handler ran (whatever the handler returned or raised) and
+      never for a call that was denied, refused, parked, cancelled before execution or answered by
+      a handler's own refusal. `record_executed` **MUST** append the execution to the pod's counter,
+      under the home's state directory, through `platform/store.py` in one locked
+      read-modify-write; entries older than a day are dropped as they are written. A counter that
+      cannot be read counts as empty.
+    - **`docket status` shows it.** For a pod with a quota the summary **MUST** carry `quotas`, one
+      row per quota with `scope` (`send` or the tool name), `used`, `count` and `per`, and the
+      text view **MUST** print a `Sends` row such as `send 2/2 today` (`per: hour` reads
+      `this hour`). A pod with no quota shows neither.
 
 ### File-tool containment — symlinks
 
@@ -1768,7 +1803,9 @@ $ git clone https://anywhere.example/repo.git
   port of `agent/ports.py`), `ToolContext`, `ToolResult`, `Pregrant`; `agent/tools/screening.py`:
   `screen_tool_result`; `hops/application/builtin_tools.py`: `builtin_registry` (the `bash`, `consult` and
   `fetch` registrations)
-- `src/docket/governance/gate.py`: `govern`, `evaluate_tool_call`, `render_tool_call`, `ToolVerdict`,
+- `src/docket/governance/quota.py`: `Limit`, `validate_limit`, `parse_limit`, `used`,
+  `record_executed`, `quota_rows`; `policy.limits_for` reads the quotas of a role and pod
+- `src/docket/governance/gate.py`: `govern`, `evaluate_tool_call`, `record_executed`, `render_tool_call`, `ToolVerdict`,
   the wait, park, pre-grant and `approve_task` handling, the `tool.*` audit entries;
   `governance/gate_rules.py`: the pure decisions (`combine_verdicts`, `ask_route`, `settle_wait`)
 - `src/docket/governance/command_lexer.py`: the shell lexer under the classifier (`split_segments`,

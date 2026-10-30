@@ -511,6 +511,75 @@ def test_the_approver_of_a_send_sees_the_whole_call_and_every_other_copy_stays_r
     assert status == 200 and settled["state"] == "resolved" and "call" not in settled
 
 
+_QUOTA_ARGS = [{"to": "guest@example.test", "body": f"Invitation {n}"} for n in (1, 2, 3)]
+
+
+@pytest.mark.skipif(not _mcp_client._sdk_available(), reason="the optional mcp SDK is absent")
+def test_an_outward_pod_over_its_send_quota_is_refused_and_audited_and_status_shows_the_count(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    first, second, third = _QUOTA_ARGS
+    model = fake_model(
+        script={
+            "researcher": [say("Nothing to look up.")],
+            "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
+            "critic": [say("APPROVE")],
+            "actor": [
+                call("mcp__outbox__send", "a1", **first),
+                call("mcp__outbox__send", "a2", **first),
+                call("mcp__outbox__send", "a3", **second),
+                call("mcp__outbox__send", "a4", **second),
+                call("mcp__outbox__send", "a5", **third),
+                say("The invitations that fit the quota were sent."),
+            ],
+        }
+    )
+    w, _work_dir = workdir_pod(world, model)
+    script = w.root / "action_server.py"
+    script.write_text(_ACTION_SERVER, encoding="utf-8")
+    log = w.root / "actions.jsonl"
+    server = ("--env", f"ACTION_LOG={log}", "--", sys.executable, str(script))
+    w.docket("setup", "mcp", "add", "inbox", "--kind", "read", "--tools", "lookup", *server)
+    w.docket("setup", "mcp", "add", "outbox", "--kind", "send", "--tools", "send", *server)
+    w.docket("pod", "update", str(RECIPES_DIR / "outward"), "--pod", w.pod)
+    quota = w.home / "config" / "policies" / "two-a-day.yaml"
+    quota.parent.mkdir(parents=True, exist_ok=True)
+    quota.write_text(
+        "kind: policy\nname: two-a-day\nappliesTo: [actor]\n"
+        "limit: {kind: send, count: 2, per: day}\nthen: block\n",
+        encoding="utf-8",
+    )
+    task_id = w.add_task("Invite the guest to the workshop")
+
+    # each distinct send parks for a person; one yes lets that call and its twin run
+    for _ in range(2):
+        w.docket("run", "--pod", w.pod, "--timeout", "30", check=False)
+        assert w.task(task_id)["task"]["status"] == "waiting_approval", w.task(task_id)
+        token = next(e["id"] for e in w.docket("inbox", "--peek", "--json").json()["escalations"])
+        w.docket("task", "answer", token, "--option", "approve_once", "--pod", w.pod)
+    _run(w)
+
+    # the fifth call is over 2/2: refused before anyone is asked, so the task is done
+    assert w.task(task_id)["task"]["status"] == "done", w.task(task_id)
+    assert [json.loads(line) for line in log.read_text("utf-8").splitlines()] == [first, second]
+    rows = oracles.audit_rows(w)
+    sends = [r for r in rows if r["action"] == "tool.send"]
+    assert ["decision=allow" in r["detail"] for r in sends] == [True, True, False]
+    assert "decision=deny" in sends[-1]["detail"]
+    assert "policy_id='two-a-day' policy_action='block'" in sends[-1]["detail"]
+    refused = [r for r in rows if r["action"] == "tool.deny" and "2/2 per day" in r["detail"]]
+    assert len(refused) == 1
+    assert not w.docket("inbox", "--peek", "--json").json()["escalations"]
+
+    shown = w.docket("status", "--pod", w.pod)
+    assert "send 2/2 today" in shown.out, shown.out
+    assert w.docket("status", "--pod", w.pod, "--json").json()["quotas"] == [
+        {"scope": "send", "used": 2, "count": 2, "per": "day"},
+        {"scope": "send", "used": 2, "count": 10, "per": "day"},
+    ]
+    oracles.assert_log_verifies(w)
+
+
 ROUTINE_PIPELINE = """name: heartbeat
 steps:
   - plan: lead

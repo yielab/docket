@@ -313,10 +313,13 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     except Exception as ex:  # a broken tool must not unwind the whole turn
         result.executed = True
         result.error = f"{type(ex).__name__}: {ex}"
+        tool_gate.record_executed(gate_call, ctx)
         return result
 
     if outcome.refusal:
         tool_gate.audit_refusal(gate_call, ctx, outcome.refusal)
+    else:
+        tool_gate.record_executed(gate_call, ctx)
     result.executed = True
     result.ok = outcome.ok
     result.content = outcome.content
