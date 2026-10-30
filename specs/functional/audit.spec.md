@@ -1,6 +1,6 @@
 # Audit Log Specification
 
-**Version**: 3.3.1
+**Version**: 3.3.2
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
@@ -291,7 +291,7 @@ A `models.preset` entry, showing the multi-role-in-one-line shape (Requirement 1
 ```json
 {"seq": 43, "ts": "2026-07-30T08:00:12.500Z", "user": "alice", "pid": 12345,
  "action": "models.preset",
- "detail": "preset=openai default:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini roles:lead:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini,implementer:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini,reviewer:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano,tester:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano",
+ "detail": "preset=openai default:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini roles:lead:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini,implementer:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini,reviewer:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini",
  "prev_hash": "9c2e7a...64 hex chars"}
 ```
 

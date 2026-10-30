@@ -34,10 +34,6 @@ class TestBudgetForRole:
             == _builtin_roles.BUILTIN_ARCHETYPES["reviewer"].token_budget
         )
         assert (
-            _ctx.budget_for_role("tester")
-            == _builtin_roles.BUILTIN_ARCHETYPES["tester"].token_budget
-        )
-        assert (
             _ctx.budget_for_role("lead") == _builtin_roles.BUILTIN_ARCHETYPES["lead"].token_budget
         )
 

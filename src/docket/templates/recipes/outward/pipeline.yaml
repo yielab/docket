@@ -2,7 +2,7 @@ kind: pipeline
 name: outward
 description: >-
   A Researcher gathers what the message needs, a Writer drafts it into the working directory,
-  a Critic vets it with APPROVE or REJECT (one rework back to the Writer), and only then the
+  a Reviewer vets it with APPROVE or REQUEST-CHANGES (one rework back to the Writer), and only then the
   Actor sends it through a send tool. Every send parks the task until a person approves it.
 steps:
   - research: researcher
@@ -14,10 +14,10 @@ steps:
     instructions: >-
       Write the message the task asks for into draft.md in the working directory, using the
       Researcher's findings. Say who it goes to on the first line. Do not send it.
-  - review: critic
-    verdict: [APPROVE, REJECT]
-    on: {REJECT: {goto: draft, max: 1}}
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: draft, max: 1}}
     instructions: >-
       Read draft.md as its recipient would. APPROVE only a draft that is accurate, says what the
-      task asked, and is safe to leave the machine; otherwise REJECT and say what to change.
+      task asked, and is safe to leave the machine; otherwise REQUEST-CHANGES and say what to change.
   - act: actor

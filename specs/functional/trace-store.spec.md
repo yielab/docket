@@ -1,6 +1,6 @@
 # Trace Store Specification
 
-**Version**: 4.4.0
+**Version**: 5.0.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
@@ -69,11 +69,11 @@ This specification does NOT cover:
 5. `cost_usd` **MUST** be included on a record only when the caller passes a value that parses
    as `float`; when included, it **MUST** be the field name `cost_usd`. `duration_ms` follows the
    same optional-inclusion rule, parsed as `int`.
-6. `EVENT_TYPES` **MUST** be exactly these 50 members: `session_start`, `tool_call`,
+6. `EVENT_TYPES` **MUST** be exactly these 49 members: `session_start`, `tool_call`,
    `tool_result`, `context_composed`, `prompt_composed`, `session_compaction`, `request_fit`,
    `guardrail_check`, `guardrail_block`, `approval_granted`,
    `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`,
-   `verification_failed`, `tester_verdict_failed`, `reviewer_verdict_unparseable`,
+   `verification_failed`, `reviewer_verdict_unparseable`,
    `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
    `paused_refused`, `approval_required`, `approval_resumed`, `approval_task_denied`, `approval_unused`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
@@ -369,7 +369,7 @@ DOCKET_NO_TRACE         unset/"0" normally; "1" suppresses every trace_event/swe
 ```python
 received: list[dict[str, object]] = []
 with subscribe(received.append):
-    status = trace_event("proj", "s1", "tester", "session_start", '{"a": 1}')
+    status = trace_event("proj", "s1", "reviewer", "session_start", '{"a": 1}')
 # status == "written"
 # received == read_trace(project_trace_dir("proj") / "s1.jsonl")
 ```

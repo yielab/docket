@@ -136,7 +136,7 @@ _REFUSED_PIPELINES = {
     ),
     "forward-bad-max": (
         "  - a: implementer\n    verify: true\n"
-        "    on:\n      fail: {goto: b, max: 0}\n  - b: tester\n",
+        "    on:\n      fail: {goto: b, max: 0}\n  - b: reviewer\n",
         "'max'",
     ),
     "child-on": (

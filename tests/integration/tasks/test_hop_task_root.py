@@ -195,7 +195,7 @@ class TestWorkdirPod:
         with seed_empty_home(tmp_path):
             build_pod(
                 "demo",
-                ("lead", "writer", "critic"),
+                ("lead", "writer", "reviewer"),
                 work_dir=str(work_dir),
                 blueprint_name="content",
             )
@@ -209,6 +209,21 @@ class TestWorkdirPod:
             assert "repository root" not in message and "Repository map" not in message
             assert "src/util.py" not in message and "README.md" not in message
             assert str(work_dir) not in message
+
+    def test_a_content_pods_reviewer_message_names_no_diff_or_code(self, tmp_path: Path) -> None:
+        work_dir = _repo_with_files(tmp_path / "work")
+        with seed_empty_home(tmp_path):
+            build_pod(
+                "demo",
+                ("lead", "writer", "reviewer"),
+                work_dir=str(work_dir),
+                blueprint_name="content",
+            )
+
+            message, _ = _compose._hop_message(_TASK, "reviewer", [_lead_hop()], project="demo")
+
+        assert "Review the work of the step before" in message
+        assert "diff" not in message.lower() and "code" not in message.lower()
 
     def test_a_codebase_pod_keeps_the_repository_line_and_map(self, tmp_path: Path) -> None:
         codebase = _repo_with_files(tmp_path / "code")

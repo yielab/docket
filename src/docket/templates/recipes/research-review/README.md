@@ -1,8 +1,8 @@
 # research-review
 
-Lead -> Researcher -> Analyst -> Writer -> Critic, gated on the Critic's APPROVE/REJECT
+Lead -> Researcher -> Analyst -> Writer -> Reviewer, gated on the Reviewer's APPROVE/REQUEST-CHANGES
 verdict with one bounded rework cycle back to the Writer. `researcher`, `analyst`, `writer`
-and `critic` are all built-in starter archetypes (`docket pod roles`) — no role YAML to add,
+are starter archetypes and `reviewer` is a built-in one (`docket pod roles`) — no role YAML to add,
 just roster and pipeline.
 
 This is the same pipeline shape as the built-in `research` pod blueprint
@@ -24,8 +24,8 @@ second run plans every item `skip`). `--dry-run` prints the plan without writing
 
 ## Files
 
-- `pod.yaml` — what `apply` reads: `members: [researcher, analyst, writer, critic]`.
-- `pipeline.yaml` — `lead -> researcher -> analyst -> writer -> critic (verdict gate,
+- `pod.yaml` — what `apply` reads: `members: [researcher, analyst, writer, reviewer]`.
+- `pipeline.yaml` — `lead -> researcher -> analyst -> writer -> reviewer (verdict gate,
   rework -> writer, maxCycles 1)`.
 
 ## Undo

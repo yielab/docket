@@ -1,9 +1,8 @@
 """Reviewer verdict gate + bounded rework loop.
 
 Enforces that a Reviewer's "APPROVE or REQUEST-CHANGES" veto is real: an unread verdict would let
-REQUEST-CHANGES still advance to the Tester and complete `done`, making separation-of-duties
-decorative. Mirrors ``test_verify_gate.py``'s ``TestDispatchTesterGate`` fixture pattern (hermetic
-meta + an injected fake runner). TestParseReviewerVerdict covers the pure marker parser;
+REQUEST-CHANGES still advance and complete `done`, making separation-of-duties decorative.
+Uses a hermetic fixture pod (meta + an injected fake runner). TestParseReviewerVerdict covers the pure marker parser;
 TestReviewerGateBasic covers APPROVE advancing normally, unparseable output failing distinctly
 from a rejection, and a pod with no Reviewer being unaffected; TestReviewerReworkLoop and
 TestReviewerReworkResume cover the bounded rework cycle and its resume-after-crash point. See
@@ -47,7 +46,6 @@ def _seed_full_pod(project: str = "myapp", lead_extra: dict[str, Any] | None = N
     _write_meta(f"{project}-lead", lead_extra)
     _write_meta(f"{project}-implementer")
     _write_meta(f"{project}-reviewer")
-    _write_meta(f"{project}-tester")
 
 
 def _role_of(agent_id: str) -> str:
@@ -121,7 +119,7 @@ class TestParseReviewerVerdict:
 class TestReviewerGateBasic:
     """APPROVE/no-reviewer are unchanged; unparseable output fails distinctly."""
 
-    def _runner(self, reviewer_output: str, tester_output: str = "PASS - fine") -> _record.Runner:
+    def _runner(self, reviewer_output: str) -> _record.Runner:
         def _run(
             member_id: str,
             session_id: str,
@@ -130,12 +128,7 @@ class TestReviewerGateBasic:
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
             role = _role_of(member_id)
-            if role == "reviewer":
-                output = reviewer_output
-            elif role == "tester":
-                output = tester_output
-            else:
-                output = "ok"
+            output = reviewer_output if role == "reviewer" else "ok"
             return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
 
         return _run
@@ -145,7 +138,7 @@ class TestReviewerGateBasic:
         task = TaskRecord(id="t1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=self._runner("APPROVE - looks good"))
         assert res.status == "done"
-        assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer", "tester"]
+        assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer"]
 
     def test_approve_case_insensitive(self, tmp_path: Path) -> None:
         _seed_full_pod()
@@ -153,23 +146,18 @@ class TestReviewerGateBasic:
         res = _executor.dispatch_task("myapp", task, runner=self._runner("approve, ship it"))
         assert res.status == "done"
 
-    def test_reviewer_and_tester_markers_may_follow_evidence(self, tmp_path: Path) -> None:
+    def test_the_reviewer_marker_may_follow_evidence(self, tmp_path: Path) -> None:
         _seed_full_pod()
         task = TaskRecord(id="t1c", description="work")
         res = _executor.dispatch_task(
             "myapp",
             task,
-            runner=self._runner(
-                "Reviewed the complete diff; no blockers remain.\nAPPROVE",
-                "Ran the required behavior checks successfully.\nPASS",
-            ),
+            runner=self._runner("Reviewed the complete diff; no blockers remain.\nAPPROVE"),
         )
 
         assert res.status == "done"
         reviewer = next(hop for hop in res.hops if hop.role == "reviewer")
-        tester = next(hop for hop in res.hops if hop.role == "tester")
         assert reviewer.artifact.verdict == "approve"
-        assert tester.artifact.verdict == "pass"
 
     def test_conflicting_reviewer_markers_resolve_to_the_last_line(self, tmp_path: Path) -> None:
         _seed_full_pod()
@@ -191,7 +179,7 @@ class TestReviewerGateBasic:
         # Distinct wording from an explicit rejection — never conflated.
         assert "rejected" not in res.reason
 
-    def test_unparseable_stops_before_tester(self, tmp_path: Path) -> None:
+    def test_unparseable_stops_after_the_one_re_ask(self, tmp_path: Path) -> None:
         _seed_full_pod()
         calls: list[str] = []
 
@@ -272,9 +260,7 @@ class _ReaskRunner:
         queue = self.replies.get(role)
         if queue:
             return queue.pop(0)
-        return _rd.TurnResult(
-            ok=True, output="PASS" if role == "tester" else "ok", cost_usd=0.0, raw={}
-        )
+        return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
 
 
 def _ok(output: str) -> _rd.TurnResult:
@@ -297,7 +283,6 @@ class TestHandoffToolOffer:
             "values": ["APPROVE", "REQUEST-CHANGES"],
             "caseSensitive": False,
         }
-        assert values("tester") == {"values": ["PASS", "FAIL"], "caseSensitive": False}
         assert values("lead") is None
         assert values("implementer") is None
 
@@ -308,7 +293,7 @@ class TestHandoffToolOffer:
         runner = _ReaskRunner({"reviewer": [_ok("APPROVE")]})
         _executor.dispatch_task("myapp", TaskRecord(id="v2", description="work"), runner=runner)
 
-        for role in ("lead", "implementer", "reviewer", "tester"):
+        for role in ("lead", "implementer", "reviewer"):
             assert (runner.envs.get(role) or {}).get(_rd.DOCKET_HANDOFF) == "1", role
 
 
@@ -368,7 +353,6 @@ class TestVerdictReask:
         assert res.status == "failed"
         assert "unparseable" in res.reason
         assert [c[0] for c in runner.calls].count("reviewer") == 2  # exactly one extra request
-        assert [c[0] for c in runner.calls].count("tester") == 0
         events = [e["event_type"] for e in _trace_events("myapp")]
         assert events.count("verdict_reasked") == 1
         assert "reviewer_verdict_unparseable" in events
@@ -401,7 +385,6 @@ class TestVerdictReask:
             "reviewer",
             "implementer",
             "reviewer",
-            "tester",
         ]
 
     def test_a_failed_re_ask_request_leaves_the_unparseable_outcome(self, tmp_path: Path) -> None:
@@ -417,26 +400,12 @@ class TestVerdictReask:
         assert res.status == "failed"
         assert "unparseable" in res.reason
 
-    def test_the_tester_is_reasked_with_its_own_values(self, tmp_path: Path) -> None:
-        _seed_full_pod()
-        runner = _ReaskRunner(
-            {"reviewer": [_ok("APPROVE")], "tester": [_ok("ran the suite, all green"), _ok("PASS")]}
-        )
-        res = _executor.dispatch_task(
-            "myapp", TaskRecord(id="k6", description="work"), runner=runner
-        )
-
-        assert res.status == "done"
-        tester_calls = [c for c in runner.calls if c[0] == "tester"]
-        assert tester_calls[1][2] == REASK.format(values="PASS or FAIL")
-
 
 # ── bounded rework loop ─────────────────────────────────────────────────────────
 
 
 class _ReworkRunner:
-    """Reviewer REQUEST-CHANGES the first N times, then APPROVEs; Tester always PASSes when
-    reached. Records every ``(role, message)`` call so tests can assert call order and that the
+    """Reviewer REQUEST-CHANGES the first N times, then APPROVEs. Records every ``(role, message)`` call so tests can assert call order and that the
     rework brief carries the review text."""
 
     def __init__(
@@ -466,8 +435,6 @@ class _ReworkRunner:
             if self._reviewer_calls <= self.request_changes_count:
                 return _rd.TurnResult(ok=True, output=self.review_text, cost_usd=0.01, raw={})
             return _rd.TurnResult(ok=True, output="APPROVE - fixed", cost_usd=0.01, raw={})
-        if role == "tester":
-            return _rd.TurnResult(ok=True, output="PASS - fine", cost_usd=0.01, raw={})
         return _rd.TurnResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
 
 
@@ -486,7 +453,6 @@ class TestReviewerReworkLoop:
             "reviewer",
             "implementer",
             "reviewer",
-            "tester",
         ]
         assert [h.role for h in res.hops] == roles_called
         implementer_keys = [key for role, key in runner.session_keys if role == "implementer"]
@@ -532,7 +498,6 @@ class TestReviewerReworkLoop:
         roles_called = [c[0] for c in runner.calls]
         # Exactly one rework attempt happened before the second rejection was terminal.
         assert roles_called == ["lead", "implementer", "reviewer", "implementer", "reviewer"]
-        assert "tester" not in roles_called
 
     def test_second_request_changes_emits_review_rejected_trace_event(self, tmp_path: Path) -> None:
         _seed_full_pod()
@@ -542,6 +507,15 @@ class TestReviewerReworkLoop:
         events = _trace_events("myapp")
         ev = next(e for e in events if e["event_type"] == "review_rejected")
         assert ev["payload"]["cycles"] == 1
+
+    def test_a_rejected_review_is_redacted_in_the_trace(self, tmp_path: Path) -> None:
+        secret = "REQUEST-CHANGES\nMYAPP_API_KEY=sk-ant-1234567890abcdefghijklmnop"
+        _seed_full_pod(lead_extra={"maxReworkCycles": "0"})
+        runner = _ReworkRunner(request_changes_count=1, review_text=secret)
+        _executor.dispatch_task("myapp", TaskRecord(id="r5b", description="work"), runner=runner)
+        ev = next(e for e in _trace_events("myapp") if e["event_type"] == "review_rejected")
+        assert secret not in ev["payload"].get("output", "")
+        assert "[REDACTED]" in ev["payload"].get("output", "")
 
     def test_rework_hops_appear_in_persisted_queue(self, tmp_path: Path) -> None:
         _seed_full_pod()
@@ -558,7 +532,6 @@ class TestReviewerReworkLoop:
             "reviewer",
             "implementer",
             "reviewer",
-            "tester",
         ]
 
     def test_max_rework_cycles_zero_disables_rework(self, tmp_path: Path) -> None:
@@ -654,12 +627,12 @@ class TestReviewerReworkResume:
             assert len(results) == 1
             assert results[0].status == "done"
             # The critical assertion: resume re-enters at the REWORK IMPLEMENTER
-            # hop first — not a second Reviewer call, and not skipping straight to
-            # the Tester. A naive role-based "already done" resume would
+            # hop first — not a second Reviewer call, and not skipping straight past it.
+            # A naive role-based "already done" resume would
             # have seen "reviewer" already in the persisted hops and skipped
-            # straight past it to the Tester, silently dropping the rework.
+            # straight past it, silently dropping the rework.
             roles_resumed = [c[0] for c in resumer.calls]
-            assert roles_resumed == ["implementer", "reviewer", "tester"]
+            assert roles_resumed == ["implementer", "reviewer"]
 
             final = TaskRepository.for_pod("myapp").list()[0]
             assert final.status == "done"
@@ -669,7 +642,6 @@ class TestReviewerReworkResume:
                 "reviewer",
                 "implementer",
                 "reviewer",
-                "tester",
             ]
             assert final.claim_pid is None
 

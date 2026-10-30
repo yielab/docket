@@ -22,10 +22,10 @@ steps:
     verify: "sh checks/verify.sh"
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
-  - release-check: tester
+  - release-check: reviewer
     approval: "Approve the release checkpoint."
-  - final-check: tester
-    verdict: [PASS, FAIL]
+  - final-check: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
 """
 
 STEPS = ["plan", "implement", "review", "release-check", "final-check"]
@@ -37,15 +37,15 @@ PARKED = [
     ("verification", "implementer", "passed"),
     ("hop_started", "reviewer", "review"),
     ("hop_finished", "reviewer", "approve"),
-    ("approval_required", "tester", ""),
+    ("approval_required", "reviewer", ""),
     ("session_end", "lead", "waiting_approval"),
 ]
 RESUMED = [
     ("approval_resumed", "lead", ""),
-    ("hop_started", "tester", "release-check"),
-    ("hop_finished", "tester", "ok"),
-    ("hop_started", "tester", "final-check"),
-    ("hop_finished", "tester", "pass"),
+    ("hop_started", "reviewer", "release-check"),
+    ("hop_finished", "reviewer", "ok"),
+    ("hop_started", "reviewer", "final-check"),
+    ("hop_finished", "reviewer", "approve"),
     ("session_end", "lead", "done"),
 ]
 
@@ -60,8 +60,11 @@ def test_a_release_step_with_its_own_approval_pauses_and_resumes_at_that_step(
                 write_file("app.txt", "fixed\n"),
                 say("Implemented the artifact."),
             ],
-            "reviewer": [say("APPROVE\nThe artifact is sound.")],
-            "tester": [say("Release checklist completed."), say("PASS\nThe artifact is valid.")],
+            "reviewer": [
+                say("APPROVE\nThe artifact is sound."),
+                say("Release checklist completed."),
+                say("APPROVE\nThe artifact is valid."),
+            ],
         }
     )
     w = world(model)
@@ -76,7 +79,7 @@ def test_a_release_step_with_its_own_approval_pauses_and_resumes_at_that_step(
     (parked,) = w.docket("inbox", "--peek", "--json").json()["needsYou"]
     assert (parked["id"], parked["state"]) == (task_id, "needs_approval")
     assert [h["stepId"] for h in w.task(task_id)["evidence"]["hops"]] == STEPS[:3]
-    assert len(model.by_role("tester")) == 0
+    assert len(model.by_role("reviewer")) == 1
     assert oracles.trace_skeleton(w, w.pod, task_id) == PARKED
 
     w.docket("task", "answer", parked["escalation"], "--option", "approve_once", "--pod", w.pod)
@@ -88,24 +91,24 @@ def test_a_release_step_with_its_own_approval_pauses_and_resumes_at_that_step(
     assert oracles.trace_skeleton(w, w.pod, task_id) == [*PARKED, *RESUMED]
     hops = shown["evidence"]["hops"]
     assert [h["stepId"] for h in hops] == STEPS
-    assert [h["verdict"] for h in hops] == [None, None, "approve", None, "pass"]
+    assert [h["verdict"] for h in hops] == [None, None, "approve", None, "approve"]
     assert hops[1]["verify"] is not None
     assert all(h["usage"]["input"] > 0 for h in hops)
     assert sorted(r["state"] for r in shown["runs"]) == ["succeeded", "waiting_approval"]
     artifact = Path(shown["task"]["worktree"]["path"]) / "app.txt"
     assert artifact.read_bytes() == b"fixed\n"
 
-    lead, implementer, reviewer, tester = (
-        model.by_role(role) for role in ("lead", "implementer", "reviewer", "tester")
+    lead, implementer, reviewer = (
+        model.by_role(role) for role in ("lead", "implementer", "reviewer")
     )
-    assert [len(r) for r in (lead, implementer, reviewer, tester)] == [1, 2, 1, 2]
+    assert [len(r) for r in (lead, implementer, reviewer)] == [1, 2, 3]
     assert "write" in implementer[0].tools
     assert "Lead prepared the plan." in implementer[0].last_user_text
     wrote = implementer[1].tool_result("call-1")
     assert wrote is not None and "wrote app.txt: 6 bytes" in wrote
     assert "Implemented the artifact." in reviewer[0].last_user_text
-    assert "APPROVE" in tester[0].last_user_text
-    assert "Release checklist completed." in tester[1].last_user_text
+    assert "APPROVE" in reviewer[1].last_user_text
+    assert "Release checklist completed." in reviewer[2].last_user_text
     oracles.assert_checkout_untouched(w, head_before)
     oracles.assert_sentinel_untouched(w)
     oracles.assert_audit_covers_tool_calls(w, w.pod, task_id)

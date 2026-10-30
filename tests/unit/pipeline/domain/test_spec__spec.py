@@ -385,7 +385,7 @@ class TestShortForm:
         assert "'- plan: <role>'" in result.errors[0]
 
     def test_a_parallel_group_is_written_with_short_children(self) -> None:
-        text = "name: p\nsteps:\n  - fan:\n      parallel:\n        - a: reviewer\n        - b: critic\n"
+        text = "name: p\nsteps:\n  - fan:\n      parallel:\n        - a: reviewer\n        - b: reviewer\n"
 
         spec = load_pipeline(text).spec
 

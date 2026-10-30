@@ -1,6 +1,6 @@
 # Test Framework
 
-**Version**: 4.4.0
+**Version**: 4.4.1
 **Status**: Active
 **Last Updated**: 2026-10-25
 
@@ -258,7 +258,7 @@ display, and verify this sequence:
 3. Lead planning, an Implementer tool call through `dispatch_tool`, and a real mechanical file
    check.
 4. Reviewer verdict, a pipeline-defined human approval pause, CLI approval, exact-position resume,
-   and final Tester verdict.
+   and final Reviewer verdict.
 5. Terminal task state plus typed handoffs, isolated durable step histories, an atomic tool-call/
    tool-result pair, traces, audit chain, measured usage, and two run records (the parked dispatch,
    then the one that succeeded).
@@ -312,7 +312,7 @@ An explicitly selected live-local canary **MUST** run the same workflow against 
 OpenAI-compatible model without replacing its replies. An endpoint override **MUST** remain
 loopback-only and the harness **MUST** discover the loaded model from `/models` unless the operator
 supplies its id. The canary **MUST** configure only its temporary `DOCKET_HOME`, through
-`docket setup provider add` and `docket setup model set` (the lead, implementer, reviewer, tester
+`docket setup provider add` and `docket setup model set` (the lead, implementer, reviewer
 and default roles) and `docket setup sandbox off`, send no API key, and make no exact
 response-text or request-count assumption beyond the task's real artifact and pipeline gate
 contracts. It **MUST NOT** tighten the product's normal turn, tool, token, or output limits merely
@@ -351,8 +351,8 @@ raw argument or editable-content text: it checks the path field for `read`, `wri
 path plus pattern for `glob`; path plus file-glob for `grep` without treating the search expression
 as a target; and path-like shell tokens for `bash`, including nested `sh -c`/equivalent command
 text. It semantically normalizes each path against the role's actual runtime root before comparing
-exact case-insensitive path components; the Lead uses the origin checkout while Implementer,
-Reviewer, and Tester use the Implementer's effective worktree once it exists. A non-universal
+exact case-insensitive path components; the Lead uses the origin checkout while Implementer
+and Reviewer use the Implementer's effective worktree once it exists. A non-universal
 selector component capable of matching a private component is also private, while a
 root-contained universal selector such as `**/*` remains valid. The origin checkout and physical
 worktree are the only trusted roots, and must match the canary's expected layout plus Implementer

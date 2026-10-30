@@ -1,6 +1,6 @@
 # Observability Export Specification
 
-**Version**: 3.1.0
+**Version**: 3.1.1
 **Status**: Implemented and live. Trace records project into vendor-neutral spans and are sent,
 off the turn's thread, to every enabled `kind: exporter` destination over the one `otlp-http`
 dialect; what a destination receives beyond structure is set by its own privacy level.
@@ -105,7 +105,7 @@ This specification does NOT cover:
    keyed and paired per requirement 108.
 10. `hop_retry`, `rework_started`, `verdict_rework_started`, `verdict_rejected`,
     `verdict_unparseable`, `verdict_reasked`, `route_taken`, `command_step`, `review_rejected`,
-    `tester_verdict_failed`, and `verification_failed` **MUST** become a `SpanEvent` on the
+    and `verification_failed` **MUST** become a `SpanEvent` on the
     session root (never on a nested span), named for the record's `event_type`, carrying
     `docket.hop`/`docket.task_id` only when the record supplies them.
 11. Every other `EVENT_TYPES` record type (the `escalation_*` family aside, requirements 110-115) **MUST** become a `SpanEvent` on the innermost span

@@ -195,7 +195,7 @@ class TestGroupResume:
 
     def _group(self) -> _orch.PlannedGroup:
         return _orch.PlannedGroup(
-            step_id="reviews", children=(self._unit("reviewer"), self._unit("tester"))
+            step_id="reviews", children=(self._unit("reviewer"), self._unit("implementer"))
         )
 
     def test_a_failed_child_leaves_the_group_unfinished(self) -> None:
@@ -208,7 +208,11 @@ class TestGroupResume:
                 step_id="reviewer",
             ),
             _task.HopResult(
-                role="tester", member_id="demo-tester", ok=True, output="PASS", step_id="tester"
+                role="implementer",
+                member_id="demo-implementer",
+                ok=True,
+                output="PASS",
+                step_id="implementer",
             ),
         ]
         assert _record._group_complete(self._group(), prior) is False
@@ -223,7 +227,11 @@ class TestGroupResume:
                 step_id="reviewer",
             ),
             _task.HopResult(
-                role="tester", member_id="demo-tester", ok=True, output="PASS", step_id="tester"
+                role="implementer",
+                member_id="demo-implementer",
+                ok=True,
+                output="PASS",
+                step_id="implementer",
             ),
         ]
         assert _record._group_complete(self._group(), prior) is True
@@ -238,7 +246,11 @@ class TestGroupResume:
                 step_id="reviewer",
             ),
             _task.HopResult(
-                role="tester", member_id="demo-tester", ok=True, output="PASS", step_id="tester"
+                role="implementer",
+                member_id="demo-implementer",
+                ok=True,
+                output="PASS",
+                step_id="implementer",
             ),
             _task.HopResult(
                 role="reviewer",

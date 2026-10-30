@@ -126,7 +126,7 @@ class TestEffectivePipelineBlueprint:
 
     def test_research_pod_runs_its_blueprint_pipeline(self, pod_home: Path) -> None:
         _write_meta("myapp-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "critic"):
+        for role in ("researcher", "analyst", "writer", "reviewer"):
             _write_meta(f"myapp-{role}")
 
         spec = _steps.effective_pipeline("myapp", None)
@@ -136,7 +136,7 @@ class TestEffectivePipelineBlueprint:
             "researcher",
             "analyst",
             "writer",
-            "critic",
+            "reviewer",
         ]
 
     def test_research_pod_lead_message_names_the_researcher_not_the_implementer(
@@ -149,7 +149,7 @@ class TestEffectivePipelineBlueprint:
         # instructions"), so this pipeline's Lead hop message never invents a
         # role the pod doesn't have.
         _write_meta("myapp-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "critic"):
+        for role in ("researcher", "analyst", "writer", "reviewer"):
             _write_meta(f"myapp-{role}")
 
         spec = _steps.effective_pipeline("myapp", None)
@@ -176,7 +176,6 @@ class TestEffectivePipelineBlueprint:
             "lead",
             "implementer",
             "reviewer",
-            "tester",
         ]
 
     def test_absent_blueprint_meta_falls_back_to_the_built_in_default(self, pod_home: Path) -> None:
@@ -196,22 +195,21 @@ class TestEffectivePipelineBlueprint:
             "lead",
             "implementer",
             "reviewer",
-            "tester",
         ]
 
     def test_pod_rework_budget_patches_the_blueprint_pipeline_rework_edge(
         self, pod_home: Path
     ) -> None:
         _write_meta("myapp-lead", {"blueprint": "content", "maxReworkCycles": "3"})
-        for role in ("writer", "critic"):
+        for role in ("writer", "reviewer"):
             _write_meta(f"myapp-{role}")
 
         spec = _steps.effective_pipeline("myapp", None)
 
-        critic_step = next(step for step in spec.steps if step.id == "critic")
-        assert isinstance(critic_step.gate, _gates.VerdictGate)
-        assert critic_step.gate.rework is not None
-        assert critic_step.gate.rework.max_cycles == 3
+        reviewer_step = next(step for step in spec.steps if step.id == "reviewer")
+        assert isinstance(reviewer_step.gate, _gates.VerdictGate)
+        assert reviewer_step.gate.rework is not None
+        assert reviewer_step.gate.rework.max_cycles == 3
 
     def test_ops_pod_dispatch_reaches_waiting_approval_at_the_approval_step(
         self, pod_home: Path
@@ -311,7 +309,6 @@ class TestBoundPipeline:
             "lead",
             "implementer",
             "reviewer",
-            "tester",
         ]
 
     def test_a_hash_mismatch_refuses_loudly_instead_of_falling_back(self, pod_home: Path) -> None:
@@ -366,7 +363,7 @@ class TestBoundPipeline:
         self, pod_home: Path
     ) -> None:
         _write_meta("myapp-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "critic"):
+        for role in ("researcher", "analyst", "writer", "reviewer"):
             _write_meta(f"myapp-{role}")
 
         assert _steps.effective_pipeline_source("myapp") == "blueprint 'research'"

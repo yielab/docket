@@ -22,7 +22,7 @@ other field at its default).
 - ``summary`` — the ``summary`` of the hop's ``handoff`` call when it made one, else the hop's
   full raw reply text.
 - ``verdict`` — the ``handoff`` call's ``verdict`` field, else the parsed gate marker (e.g.
-  ``"approve"``, ``"fail"``), for a hop gated by a ``VerdictGate`` (Reviewer/Tester, or any
+  ``"approve"``, ``"fail"``), for a hop gated by a ``VerdictGate`` (the Reviewer, or any
   verdict-gated archetype). ``None`` for every other hop (a hop that declared none), or an
   unparseable verdict.
 - ``files_changed`` / ``diff_ref`` / ``diff`` — populated via a real git probe:

@@ -581,12 +581,12 @@ def cmd_init(
     pod: str | None = typer.Option(
         None,
         "--pod",
-        help="'full': Lead, Implementer, Reviewer and Tester (software blueprint only).",
+        help="'full': Lead, Implementer and Reviewer (software blueprint only).",
     ),
     with_roles: str | None = typer.Option(
         None,
         "--with",
-        help="Roles to add to the lean pod, comma-separated: reviewer, tester, implementer.",
+        help="Roles to add to the lean pod, comma-separated: reviewer, implementer.",
     ),
     codebase: str | None = typer.Option(
         None, "--codebase", help="The location, as an option instead of the argument."

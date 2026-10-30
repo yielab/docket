@@ -149,7 +149,7 @@ class TestRecordPregrant:
             task = _queue.enqueue_task_once("demo", "ship it", channel="cli")[0]
 
             token = _interruptions.record_pregrant(
-                "demo", task.id, "git push origin main", channel="cli", actor="tester"
+                "demo", task.id, "git push origin main", channel="cli", actor="reviewer"
             )
 
             expected_digest = _oc.canonical_args_digest("bash", {"command": "git push origin main"})

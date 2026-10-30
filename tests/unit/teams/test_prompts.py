@@ -165,7 +165,7 @@ def test_a_shipped_prompt_loads_with_its_hash_and_scope() -> None:
 def test_every_shipped_prompt_parses_and_sits_in_the_directory_of_its_layer() -> None:
     files = sorted(_templates.PROMPT_TEMPLATES_DIR.glob("*/*.md"))
 
-    assert len(files) >= 15
+    assert len(files) >= 13
     for path in files:
         prompt = prompts.load_prompt_file(path)
         assert prompt.layer == path.parent.name, path

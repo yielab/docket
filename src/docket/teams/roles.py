@@ -14,10 +14,10 @@ those names via `ToolRegistry.without()`, called once per turn by
 `agent/loop.py` before advertising tools or dispatching a call. No caller
 ever branches on a role's name.
 
-Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's four pod roles --
-lead, implementer, reviewer, tester (golden-tested; see
-`tests/integration/test_archetypes.py`). `STARTER_ARCHETYPES` ships six more:
-researcher, analyst, writer, critic, operator, monitor.
+Built-in archetypes (`BUILTIN_ARCHETYPES`) reproduce today's three pod roles --
+lead, implementer, reviewer (golden-tested; see
+`tests/integration/test_archetypes.py`). `STARTER_ARCHETYPES` ships five more:
+researcher, analyst, writer, operator, monitor.
 
 `model_class` (cheap|strong) slots into the role->model policy
 (`teams/model_selection.py`): an archetype's model row is its own name; a

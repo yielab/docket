@@ -177,8 +177,8 @@ class TestPipeline:
             assert "origin codebase" not in impl_message
             assert impl_env is not None
             assert impl_env[_rd.PIPELINE_WORKTREE_ENV] == str(worktree)
-            downstream = [call for call in calls if call[0].endswith(("-reviewer", "-tester"))]
-            assert len(downstream) == 2
+            downstream = [call for call in calls if call[0].endswith("-reviewer")]
+            assert len(downstream) == 1
             for _agent_id, message, env in downstream:
                 assert "Working directory: the repository root" in message
                 assert str(worktree) not in message
@@ -309,7 +309,7 @@ class TestPipeline:
             runner = FakeDriver(fail_role="implementer")
             res = _sweep.dispatch_pod("demo", runner=runner)[0]
             assert res.status == "failed"
-            # Lead + Implementer ran; Reviewer + Tester never got dispatched.
+            # Lead + Implementer ran; the Reviewer never got dispatched.
             roles_called = [c[0].rsplit("-", 1)[-1] for c in runner.calls]
             assert roles_called == ["lead", "implementer"]
 
@@ -437,9 +437,8 @@ class TestHopEnvInjection:
     def test_hop_env_none_for_lead(self) -> None:
         assert _record.hop_env("demo-lead", "lead") is None
 
-    def test_hop_env_none_for_reviewer_and_tester(self) -> None:
+    def test_hop_env_none_for_reviewer(self) -> None:
         assert _record.hop_env("demo-reviewer", "reviewer") is None
-        assert _record.hop_env("demo-tester", "tester") is None
 
     def test_hop_env_none_for_implementer_without_allocation(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):

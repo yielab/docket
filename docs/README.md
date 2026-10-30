@@ -40,7 +40,7 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Agent teams (pods)](AGENT-TEAMS.md) | The core model: project pods, the roles, blueprints, recipes and real pipeline dispatch |
 | [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies, tools and trace exporters |
 | [Workflow guide](WORKFLOW-GUIDE.md) | End-to-end examples: a pod from `init` to committed code, custom pipelines, the run registry, schedules and webhooks |
-| [Recipe library](recipes.md) | The eighteen shipped recipes (teams, policy packs, methodology pipelines, checks, a tool pack), what each brings and its README, generated from the recipes themselves |
+| [Recipe library](recipes.md) | The seventeen shipped recipes (teams, policy packs, methodology pipelines, checks, a tool pack), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
@@ -61,7 +61,7 @@ explains how a feature is specified before it is built.
 ```bash
 # The team
 docket init                                   # this directory -> a Lead + Implementer pod
-docket pod recipes                           # eighteen shipped recipes: teams, policies, methodologies, checks, tools
+docket pod recipes                           # seventeen shipped recipes: teams, policies, methodologies, checks, tools
 docket init --recipe secure-build             # ... plus a recipe (or your own under ~/.docket/recipes/)
 docket pod validate                               # check every document under ./.docket/
 docket pod update [--dry-run]            # apply ./.docket/ (or a recipe name/dir) onto the pod

@@ -55,7 +55,6 @@ DEFAULT_EVENTS: frozenset[str] = frozenset(
         "route_taken",
         "command_step",
         "verification_failed",
-        "tester_verdict_failed",
         "reviewer_verdict_unparseable",
         "stale_claim",
         "paused_refused",
@@ -75,7 +74,6 @@ _ROOT_EVENTS = frozenset(
         "route_taken",
         "command_step",
         "review_rejected",
-        "tester_verdict_failed",
         "verification_failed",
     }
 )

@@ -232,12 +232,11 @@ class TestDispatchVerifyGate:
         assert skipped[0]["payload"]["member"] == "myapp-implementer"
 
     def test_verify_fail_stops_pipeline_before_reviewer(self, tmp_path: Path) -> None:
-        # Full pod: lead + implementer + reviewer + tester. Verify fails after
+        # Full pod: lead + implementer + reviewer. Verify fails after
         # implementer — reviewer hop must never run.
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer", {"verifyCmd": "false"})
         _write_meta("myapp-reviewer")
-        _write_meta("myapp-tester")
 
         ran: list[str] = []
 
@@ -258,7 +257,6 @@ class TestDispatchVerifyGate:
         assert "lead" in ran
         assert "implementer" in ran
         assert "reviewer" not in ran
-        assert "tester" not in ran
 
     def test_verify_pass_continues_to_reviewer(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead")
@@ -299,131 +297,3 @@ class TestDispatchVerifyGate:
         )
         assert res.status == "failed"
         assert "lead hop failed" in res.reason
-
-
-# ── structural Tester PASS/FAIL gate ──────────────────────────────────────────
-
-
-class TestDispatchTesterGate:
-    """The Tester hop's unambiguous PASS/FAIL marker gates the pipeline: a successful subprocess
-    call (``run_res.ok``) only means the Tester ran, not what it found. Exercises the marker
-    parser wired into ``dispatch_task`` for a full pod; a pod with no tester is unaffected."""
-
-    def _runner_with_tester_output(self, tester_output: str) -> _record.Runner:
-        def _run(
-            member_id: str,
-            session_id: str,
-            message: str,
-            timeout: int,
-            env: dict[str, str] | None = None,
-        ) -> _rd.TurnResult:
-            role = _fleet.meta_get(member_id, "role", "") or member_id
-            if role == "tester":
-                output = tester_output
-            elif role == "reviewer":
-                # The reviewer gate needs a real APPROVE to reach the Tester
-                # hop at all — these tests exercise the Tester gate, not the
-                # Reviewer's, so the Reviewer always approves cleanly.
-                output = "APPROVE - looks good"
-            else:
-                output = "ok"
-            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
-
-        return _run
-
-    def _fake_runner(self, output: str = "ok", ok: bool = True) -> _record.Runner:
-        def _run(
-            member_id: str,
-            session_id: str,
-            message: str,
-            timeout: int,
-            env: dict[str, str] | None = None,
-        ) -> _rd.TurnResult:
-            return _rd.TurnResult(ok=ok, output=output, cost_usd=0.0, raw={})
-
-        return _run
-
-    def _seed_full_pod(self) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        _write_meta("myapp-reviewer")
-        _write_meta("myapp-tester")
-
-    def test_tester_pass_allows_done(self, tmp_path: Path) -> None:
-        self._seed_full_pod()
-        task = TaskRecord(id="tt1", description="work")
-        res = _executor.dispatch_task(
-            "myapp", task, runner=self._runner_with_tester_output("PASS\nall good")
-        )
-        assert res.status == "done"
-
-    def test_tester_pass_is_case_insensitive(self, tmp_path: Path) -> None:
-        self._seed_full_pod()
-        task = TaskRecord(id="tt1b", description="work")
-        res = _executor.dispatch_task(
-            "myapp", task, runner=self._runner_with_tester_output("pass — looks good")
-        )
-        assert res.status == "done"
-
-    def test_tester_fail_blocks_pipeline(self, tmp_path: Path) -> None:
-        self._seed_full_pod()
-        task = TaskRecord(id="tt2", description="work")
-        res = _executor.dispatch_task(
-            "myapp", task, runner=self._runner_with_tester_output("FAIL\nrepro steps: ...")
-        )
-        assert res.status == "failed"
-        assert res.reason == "tester reported FAIL"
-
-    def test_tester_fail_emits_distinct_trace_event(self, tmp_path: Path) -> None:
-        self._seed_full_pod()
-        task = TaskRecord(id="tt3", description="work")
-        _executor.dispatch_task(
-            "myapp", task, runner=self._runner_with_tester_output("fail\nbroken")
-        )
-        events = _trace_events("myapp")
-        ev = next(e for e in events if e["event_type"] == "tester_verdict_failed")
-        assert ev["payload"]["verdict"] == "fail"
-
-    def test_tester_unparseable_blocks_distinctly_from_fail(self, tmp_path: Path) -> None:
-        self._seed_full_pod()
-        task = TaskRecord(id="tt4", description="work")
-        res = _executor.dispatch_task(
-            "myapp", task, runner=self._runner_with_tester_output("looks fine to me")
-        )
-        assert res.status == "failed"
-        assert res.reason != "tester reported FAIL"
-        assert "unparseable" in res.reason
-
-        events = _trace_events("myapp")
-        ev = next(e for e in events if e["event_type"] == "tester_verdict_failed")
-        assert ev["payload"]["verdict"] == "unparseable"
-
-    def test_tester_empty_output_is_unparseable_not_fail(self, tmp_path: Path) -> None:
-        self._seed_full_pod()
-        task = TaskRecord(id="tt5", description="work")
-        res = _executor.dispatch_task("myapp", task, runner=self._runner_with_tester_output(""))
-        assert res.status == "failed"
-        assert "unparseable" in res.reason
-
-    def test_pod_without_tester_is_unaffected(self, tmp_path: Path) -> None:
-        # Lean pod (lead + implementer only) — the tester gate code path never runs,
-        # so output that doesn't look like PASS/FAIL can't block a pod with no tester.
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        task = TaskRecord(id="tt6", description="work")
-        res = _executor.dispatch_task(
-            "myapp", task, runner=self._fake_runner(output="no PASS/FAIL marker here")
-        )
-        assert res.status == "done"
-
-    def test_tester_fail_output_redacted_in_trace(self, tmp_path: Path) -> None:
-        secret_output = "FAIL\nMYAPP_API_KEY=sk-ant-1234567890abcdefghijklmnop"
-        self._seed_full_pod()
-        task = TaskRecord(id="tt7", description="work")
-        _executor.dispatch_task(
-            "myapp", task, runner=self._runner_with_tester_output(secret_output)
-        )
-        events = _trace_events("myapp")
-        ev = next(e for e in events if e["event_type"] == "tester_verdict_failed")
-        assert secret_output not in ev["payload"].get("output", "")
-        assert "[REDACTED]" in ev["payload"].get("output", "")

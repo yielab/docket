@@ -134,7 +134,7 @@ every command run inside that repository finds its pod by where you stand; outsi
 | --- | --- | --- |
 | nothing yet | `docket init` | the lean default: `myapp-lead` + `myapp-implementer`, no gates beyond the built-in ones |
 | a `.docket/` committed next to the code | `docket init` | that team, validated before anything is provisioned and applied after; an error names the file and field and provisions nothing |
-| a shipped or local recipe | `docket init --recipe secure-build` (`docket pod recipes` shows all eighteen, or a directory) | the recipe applied onto the default pod |
+| a shipped or local recipe | `docket init --recipe secure-build` (`docket pod recipes` shows all seventeen, or a directory) | the recipe applied onto the default pod |
 
 Give the Implementer a real check. A non-zero exit fails the task instead of letting it advance:
 
@@ -347,7 +347,7 @@ what was applied. A policy in the repo can only add restrictions: it accumulates
 global policies under most-restrictive-wins.
 
 **Add one thing later.** A recipe does not have to be a whole team. `docket pod recipes` shows
-eighteen shipped ones: teams, policy packs that change no roster, methodology pipelines, checks
+seventeen shipped ones: teams, policy packs that change no roster, methodology pipelines, checks
 that fail a task whose tests prove nothing, and a tool pack. `docket pod update git-safety` adds two guardrail policies and nothing else;
 `docket pod update tdd` swaps the route for a test-first one. Apply what you need, then
 `docket pod export --force` writes the merged team back to `.docket/` for the commit.
@@ -413,7 +413,7 @@ run registry are in the [Workflow guide](WORKFLOW-GUIDE.md).
 
 ## Before trusting it with more
 
-Start with the lean pod and add a reviewer, tester or vetter once a concrete quality gate
+Start with the lean pod and add a reviewer or vetter once a concrete quality gate
 justifies the extra turns. Give the Implementer an objective check with `docket pod set verify`, so
 advancement blocks on an exit code rather than on how confident the prose sounds. Keep `docket run`
 explicit before enabling schedules or `start --dispatch`, and set a budget cap first

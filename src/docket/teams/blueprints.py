@@ -19,25 +19,25 @@ Built-ins (``BUILTIN_BLUEPRINTS``):
   (the same object the default dispatch order already matches) and it sets
   no default budget cap — provisioning through this blueprint is behaviorally
   identical to the plain default `docket init`.
-- ``research`` — Lead, Researcher, Analyst, Writer, Critic (workdir): gathers
+- ``research`` — Lead, Researcher, Analyst, Writer, Reviewer (workdir): gathers
   and analyzes source material, drafts a deliverable, and gates it on the
-  Critic's APPROVE/REJECT verdict (bounded rework back to the Writer).
-- ``content`` — Lead, Writer, Critic (workdir): drafts a content deliverable
+  Reviewer's APPROVE/REQUEST-CHANGES verdict (bounded rework back to the Writer).
+- ``content`` — Lead, Writer, Reviewer (workdir): drafts a content deliverable
   and gates it the same way as ``research``, without the gather/analyze steps.
 - ``ops`` — Lead, Operator, Monitor (workdir): executes operational actions
   behind a mechanical check (deferring to the Operator's own ``verifyCmd``,
   mirroring the Implementer's convention), then requires human approval
   before the Monitor's findings are considered actioned.
-- ``agentic-product`` — Lead, Implementer, Reviewer, Tester (codebase): the
+- ``agentic-product`` — Lead, Implementer, Reviewer (codebase): the
   pod shape for a product that itself ships an agent to end users, not just
   an internal tool. Its ``default_pipeline`` is the same
   ``pipeline.domain.spec.default_pipeline()`` object ``software`` attaches, but
-  because the roster carries Reviewer and Tester (``teams/pod.py``'s existing
-  ``FULL_POD_ROLES``, not a new roster shape), both steps actually gate a hop
-  at dispatch time instead of going unreached the way they do behind
+  because the roster carries the Reviewer (``teams/pod.py``'s existing
+  ``FULL_POD_ROLES``, not a new roster shape), that step actually gates a hop
+  at dispatch time instead of going unreached the way it does behind
   ``software``'s lean default roster. That is a deliberate, data-only
   difference in blast radius: an agent that ships to end users warrants the
-  review + test gate on by default; an internal tool does not. This is *not*
+  review gate on by default; an internal tool does not. This is *not*
   a scaffolding blueprint — it describes a pod shape, the same as the other
   four, and provisions no repository contents. The convention a pod
   provisioned from it is expected to follow is embedding the
@@ -134,8 +134,8 @@ def _research_pipeline() -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="research-default",
         description=(
-            "Lead -> Researcher -> Analyst -> Writer -> Critic, gated on an "
-            "APPROVE/REJECT verdict (bounded rework back to the Writer)."
+            "Lead -> Researcher -> Analyst -> Writer -> Reviewer, gated on an "
+            "APPROVE/REQUEST-CHANGES verdict (bounded rework back to the Writer)."
         ),
         steps=[
             _step.Step(
@@ -150,12 +150,12 @@ def _research_pipeline() -> _pipeline.PipelineSpec:
             _step.Step(id="analyst", role="analyst"),
             _step.Step(id="writer", role="writer"),
             _step.Step(
-                id="critic",
-                role="critic",
+                id="reviewer",
+                role="reviewer",
                 gate=_gates.VerdictGate(
-                    pattern=r"^\s*(APPROVE|REJECT)\b",
+                    pattern=r"^\s*(APPROVE|REQUEST-CHANGES)\b",
                     pass_values=["approve"],
-                    rework=_gates.ReworkEdge(to="writer", when=["reject"], max_cycles=1),
+                    rework=_gates.ReworkEdge(to="writer", when=["request-changes"], max_cycles=1),
                 ),
             ),
         ],
@@ -165,7 +165,7 @@ def _research_pipeline() -> _pipeline.PipelineSpec:
 def _content_pipeline() -> _pipeline.PipelineSpec:
     return _pipeline.PipelineSpec(
         name="content-default",
-        description="Lead -> Writer -> Critic, gated on an APPROVE/REJECT verdict.",
+        description="Lead -> Writer -> Reviewer, gated on an APPROVE/REQUEST-CHANGES verdict.",
         steps=[
             _step.Step(
                 id="lead",
@@ -177,12 +177,12 @@ def _content_pipeline() -> _pipeline.PipelineSpec:
             ),
             _step.Step(id="writer", role="writer"),
             _step.Step(
-                id="critic",
-                role="critic",
+                id="reviewer",
+                role="reviewer",
                 gate=_gates.VerdictGate(
-                    pattern=r"^\s*(APPROVE|REJECT)\b",
+                    pattern=r"^\s*(APPROVE|REQUEST-CHANGES)\b",
                     pass_values=["approve"],
-                    rework=_gates.ReworkEdge(to="writer", when=["reject"], max_cycles=1),
+                    rework=_gates.ReworkEdge(to="writer", when=["request-changes"], max_cycles=1),
                 ),
             ),
         ],
@@ -229,7 +229,7 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         name="research",
         version=1,
         workspace_kind="workdir",
-        roles=("lead", "researcher", "analyst", "writer", "critic"),
+        roles=("lead", "researcher", "analyst", "writer", "reviewer"),
         default_pipeline=_research_pipeline(),
         default_budget_usd=20.0,
         description="gathers and analyzes sources, drafts a deliverable, gates it on veto",
@@ -238,7 +238,7 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         name="content",
         version=1,
         workspace_kind="workdir",
-        roles=("lead", "writer", "critic"),
+        roles=("lead", "writer", "reviewer"),
         default_pipeline=_content_pipeline(),
         default_budget_usd=15.0,
         description="drafts and vets a content deliverable",
@@ -262,7 +262,7 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         description=(
             "a product that ships its own agent to end users; embeds docket-runtime "
             "for the gated tool chokepoint, policy engine, approval store and audit "
-            "chain instead of reinventing them, and runs reviewer + tester by default "
+            "chain instead of reinventing them, and runs the reviewer by default "
             "given the higher blast radius of an agent-facing release"
         ),
     ),

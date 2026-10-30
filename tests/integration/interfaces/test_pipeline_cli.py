@@ -84,13 +84,13 @@ class TestPipelinePlanCli:
         """Every one of a research pod's five steps has a present member -- none renders as
         "skipped — role not in pod"."""
         _write_meta("demo-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "critic"):
+        for role in ("researcher", "analyst", "writer", "reviewer"):
             _write_meta(f"demo-{role}")
 
         result = _plan()
 
         assert result.exit_code == 0
-        for role in ("researcher", "analyst", "writer", "critic"):
+        for role in ("researcher", "analyst", "writer", "reviewer"):
             assert role in result.output
         assert "skipped — role not in pod" not in result.output
 
@@ -127,7 +127,7 @@ class TestPipelinePlanCli:
 
     def test_blueprint_pipeline_plan_names_the_blueprint_source(self) -> None:
         _write_meta("demo-lead", {"blueprint": "research"})
-        for role in ("researcher", "analyst", "writer", "critic"):
+        for role in ("researcher", "analyst", "writer", "reviewer"):
             _write_meta(f"demo-{role}")
         result = _plan()
         assert result.exit_code == 0

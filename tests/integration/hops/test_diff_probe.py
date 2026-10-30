@@ -71,7 +71,7 @@ class TestHopDiffProbeUnit:
         result = _worktree.hop_diff_probe("demo-researcher", "researcher", **_IN_PLACE)
         assert result == (["notes/"], None, None, "--- new file: n\nx\n")
         same = _worktree.hop_diff_probe(
-            "demo-critic", "critic", **_IN_PLACE, prior_diff="--- new file: n\nx\n"
+            "demo-reviewer", "reviewer", **_IN_PLACE, prior_diff="--- new file: n\nx\n"
         )
         assert same == ([], None, None, "")
 

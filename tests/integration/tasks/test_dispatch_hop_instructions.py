@@ -4,7 +4,7 @@ variables) overrides it. See specs/functional/role-archetypes.spec.md ("Hop
 instructions") and specs/functional/pipeline-format.spec.md ("Variables").
 
 Before this card, `core/dispatch.py`'s hop-message builder gave any role outside
-lead/implementer/reviewer/tester an empty instruction (dispatch.py:571-572,639) --
+lead/implementer/reviewer an empty instruction (dispatch.py:571-572,639) --
 a custom verdict-gated role depended entirely on its SOUL template to know its own
 marker convention, and a pipeline's declared `variables` were validated and stored on
 the run record (`tasks/application/runs.py`) but never reached a hop's prompt.

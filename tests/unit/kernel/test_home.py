@@ -128,7 +128,6 @@ def test_retries_per_role_fall_back_to_the_default() -> None:
         "lead": 0,
         "implementer": 4,
         "reviewer": 4,
-        "tester": 4,
     }
 
 

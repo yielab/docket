@@ -30,7 +30,7 @@ _STEP_SUGAR_KEYS = frozenset(
         "maxToolCalls",
     }
 )
-_BASE_ROLES = frozenset({"lead", "implementer", "reviewer", "tester"})
+_BASE_ROLES = frozenset({"lead", "implementer", "reviewer"})
 _NO_ON = object()
 _EXTERNAL_GATE_KEYS = frozenset({"external", "timeout", "exitMap"})
 
@@ -196,7 +196,7 @@ def _normalize_mapping_short_step(step_id: str, target: dict[Any, Any]) -> dict[
 
 
 def _normalize_parallel_short_step(step_id: str, target: dict[Any, Any]) -> dict[str, Any]:
-    # `- reviews: {parallel: [{review-code: reviewer}, {review-risk: critic}]}` -- a group
+    # `- reviews: {parallel: [{review-code: reviewer}, {review-risk: security-vetter}]}` -- a group
     # whose children are short unit steps; the group itself carries nothing else.
     children = target["parallel"]
     if not isinstance(children, list) or not children:
