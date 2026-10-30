@@ -151,7 +151,7 @@ Query parameters:
 | `GET /tasks/<pod>` | `status` | one of `pending`, `running`, `waiting_input`, `waiting_approval`, `blocked`, `failed`, `done`, `cancelled`; any other value is `400` |
 | `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
 | `GET /pods/<p>/records/<set>` | `limit` | integer 1 to 1000, default 50; anything else is `400` |
-| `GET /pods/<p>/records/<set>` | `sql` | one read-only `SELECT`; absent reads the whole set in `_id` order, as the CLI does |
+| `GET /pods/<p>/records/<set>` | `sql` | one read-only `SELECT`; absent reads the whole set newest first (`ORDER BY _id DESC`) |
 
 ## Output
 
@@ -321,7 +321,7 @@ is audited as `pod.apply` with `channel=http`; an accepted code is remembered as
 {"records": [{"name": "leads", "description": "", "key": "email", "rows": 2,
               "columns": [{"name": "email", "type": "string", "required": true}]}],
  "problems": []}
-{"set": "leads", "columns": ["_id", "email"], "rows": [{"_id": 1, "email": "a@x.test"}], "cut": 1}
+{"set": "leads", "columns": ["_id", "email"], "rows": [{"_id": 2, "email": "b@x.test"}], "cut": 1}
 ```
 
 Both read the pod's own records file and nothing else (`pod-records.spec.md` requirements 50-53).

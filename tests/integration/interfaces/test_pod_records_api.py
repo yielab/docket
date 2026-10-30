@@ -76,13 +76,13 @@ def test_rows_route_returns_both_rows_and_honours_limit(live_server: tuple[str, 
     status, body = _get(f"{url}/pods/demo/records/leads", token)
     assert status == 200
     assert body["set"] == "leads"
-    assert [r["email"] for r in body["rows"]] == ["p0@x.test", "p1@x.test"]
+    assert [r["email"] for r in body["rows"]] == ["p1@x.test", "p0@x.test"]
     assert body["cut"] == 0
     assert "email" in body["columns"]
 
     status, body = _get(f"{url}/pods/demo/records/leads?limit=1", token)
     assert status == 200
-    assert [r["email"] for r in body["rows"]] == ["p0@x.test"]
+    assert [r["email"] for r in body["rows"]] == ["p1@x.test"]
     assert body["cut"] == 1
 
 
