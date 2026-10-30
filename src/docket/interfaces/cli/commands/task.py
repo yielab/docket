@@ -117,6 +117,19 @@ def _load_brief(path: Path | None) -> dict[str, Any] | None:
     return raw  # type: ignore[no-any-return]
 
 
+def _parse_vars(values: list[str]) -> dict[str, str]:
+    """``NAME=VALUE`` strings as a mapping, the last of a repeated name winning; a malformed one
+    exits 2 naming it."""
+    out: dict[str, str] = {}
+    for raw in values:
+        name, sep, value = raw.partition("=")
+        if not sep or not name.strip():
+            ui.error(f"--var {raw!r} is not NAME=VALUE", "Pass --var NAME=VALUE")
+            raise typer.Exit(2)
+        out[name.strip()] = value
+    return out
+
+
 @task_app.command("add")
 def cmd_add(
     text: str = typer.Argument(..., metavar="TEXT", help="What the task should do"),
@@ -146,6 +159,12 @@ def cmd_add(
         metavar="L3|L4|L5",
         help="Level its pauses are decided at; only narrows the pod profile's ceiling",
     ),
+    var: list[str] = typer.Option(
+        [],
+        "--var",
+        metavar="NAME=VALUE",
+        help="Pipeline variable for this task; repeat for several",
+    ),
     pod: str | None = pod_option(),
 ) -> None:
     """Queue a task for the pod; `docket run` works the queue.
@@ -154,6 +173,7 @@ def cmd_add(
     """
     project = _contract.require_pod(pod)
     loaded = _load_brief(brief)
+    variables = _parse_vars(var)
     if not text.strip():
         ui.error("The task text is empty", 'Pass the task text, e.g. docket task add "fix it"')
         raise typer.Exit(1)
@@ -174,6 +194,7 @@ def cmd_add(
             gate={"command": gate} if gate is not None else None,
             max_tokens=max_tokens,
             autonomy=autonomy,
+            variables=variables or None,
         )
     except DispatchError as ex:
         ui.error(str(ex))

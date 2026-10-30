@@ -77,17 +77,18 @@ def _resolve_task_run(
     spec, source = _task_pipeline(project, task, default_spec, default_source)
     _task_gate(task)
     _refuse_input_for_level(project, task, spec)
-    if spec is default_spec:
+    if spec is default_spec and not task.variables:
         return spec, default_vars, source
+    # The task's own variables win over the run's.
+    merged = {**(variables or {}), **task.variables}
+    label = f"pipeline {task.pipeline!r}" if task.pipeline else "pipeline"
     try:
-        resolved = _pipeline.resolve_variables(spec, variables)
+        resolved = _pipeline.resolve_variables(spec, merged)
     except _pipeline.VariableError as exc:
-        raise TaskRunRefusal(f"pipeline {task.pipeline!r}: {exc}") from exc
+        raise TaskRunRefusal(f"{label}: {exc}") from exc
     missing = _pipeline.unresolved_step_variables(spec, resolved)
     if missing:
-        raise TaskRunRefusal(
-            f"pipeline {task.pipeline!r}: unresolved variable(s): {', '.join(missing)}"
-        )
+        raise TaskRunRefusal(f"{label}: unresolved variable(s): {', '.join(missing)}")
     return spec, resolved, source
 
 
@@ -214,7 +215,7 @@ def _step_skipped(ctx: UnitContext, node: _orch.PlannedUnit, prior: list[HopResu
         matched = matched and any(_fnmatch.fnmatch(path, pattern) for path in changed_files)
     if "var" in when:
         actual = ctx.variables.get(str(when["var"]))
-        matched = matched and actual is not None and actual == str(when.get("is", ""))
+        matched = matched and actual is not None and str(actual) == str(when.get("is", ""))
     if "memberPresent" in when:
         matched = matched and str(when["memberPresent"]) in pod_full_roster(ctx.project)
     if matched:

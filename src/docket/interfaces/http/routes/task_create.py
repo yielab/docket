@@ -27,6 +27,7 @@ _TASK_OPTION_FIELDS: tuple[tuple[str, str], ...] = (
     ("prepare", "prepare"),
     ("restrictions", "restrictions"),
     ("autonomy", "autonomy"),
+    ("variables", "variables"),
 )
 
 
