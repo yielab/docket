@@ -1515,6 +1515,7 @@ def _run(
     consult_mode: str = "park",
     api_key: str | None = None,
     sandbox: str = "off",
+    exporters: tuple[str, ...] = (),
 ) -> None:
     home, codebase, pod_spec, pipeline = _write_inputs(world, scenario)
     env = os.environ.copy()
@@ -1557,6 +1558,9 @@ def _run(
 
     run_cli("init", "--from", str(pod_spec))
     run_cli("setup", "sandbox", sandbox)
+    for exporter in exporters:
+        # Its credentials come from this process's environment, never from the operator's home.
+        run_cli("setup", "export", "enable", exporter, "--yes")
     if consult_mode != "park":
         run_cli("pod", "set", "consultMode", consult_mode, "--pod", "smoke")
     fleet = _load_json(Home(home).fleet_file)
@@ -1651,6 +1655,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--max-tokens",
         type=int,
         help="The --provider model's output cap, for a provider whose wire requires one.",
+    )
+    parser.add_argument(
+        "--export",
+        action="append",
+        default=[],
+        metavar="EXPORTER",
+        help="Enable this exporter in the smoke world (repeatable); its keys come from the "
+        "environment.",
     )
     parser.add_argument(
         "--allow-remote",
@@ -1781,7 +1793,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         live = remote or _discover_live_model(args.endpoint or _DEFAULT_ENDPOINT, args.model)
-        _run(world, repo, live, scenario, args.consult_mode, api_key, sandbox=args.sandbox)
+        options: dict[str, Any] = {"sandbox": args.sandbox}
+        if args.export:
+            options["exporters"] = tuple(args.export)
+        _run(world, repo, live, scenario, args.consult_mode, api_key, **options)
     except (
         SmokeFailure,
         OSError,
