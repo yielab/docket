@@ -1,7 +1,7 @@
 # Role Archetypes Specification
 
-**Version**: 5.3.0
-**Status**: Implemented. Three built-in and five starter archetypes ship; a pod overlay
+**Version**: 5.4.0
+**Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
 
@@ -10,8 +10,8 @@ adds or overrides roles; `deniedTools` is enforced by name and by capability on 
 This specification defines the **role archetype**: a versioned, declarative definition of a pod
 role. A role's name, scope, model class, identity prose, gate contract, tool profile, tool
 denylist, token budget and hop instruction are data. Built-in archetypes define the three
-roles (`lead`, `implementer`, `reviewer`), a starter library ships five more
-(`researcher`, `analyst`, `writer`, `operator`, `monitor`), and an operator can define
+roles (`lead`, `implementer`, `reviewer`), a starter library ships six more
+(`researcher`, `analyst`, `writer`, `operator`, `monitor`, `actor`), and an operator can define
 or override an archetype with a YAML file (`docket pod update <file>`).
 
 ## Scope
@@ -29,7 +29,7 @@ This specification covers:
   hop message resolves its instruction text when a pipeline step declares none of its own; the
   hop-message builder is `pod-dispatch.spec.md`'s
 - The built-in archetypes (lead/implementer/reviewer) and their byte-identity guarantee
-- The starter library (researcher/analyst/writer/operator/monitor)
+- The starter library (researcher/analyst/writer/operator/monitor/actor)
 - The template rendering contract (`${var}` substitution, the guaranteed variable set)
 - The pod overlay (`<pod>/config/roles/`) and the operator's `config/roles/`, and their merge over the built-in and starter archetypes
 - How `modelClass` feeds the role→model policy (`model-profiles.spec.md`) without replacing it
@@ -323,15 +323,21 @@ This specification does NOT cover:
 
 ### Starter library
 
-1. Five starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `operator`,
-   `monitor` (`STARTER_ARCHETYPES`). Each **MUST** pass `docket pod validate` and render both
+1. Six starter archetypes **MUST** ship: `researcher`, `analyst`, `writer`, `operator`,
+   `monitor`, `actor` (`STARTER_ARCHETYPES`). Each **MUST** pass `docket pod validate` and render both
    templates against a representative variable set without error.
 2. Each starter archetype's model-policy key is its own name (see "Role→model policy
    integration").
 3. A starter role can be provisioned into a live pod (e.g. `docket pod add researcher`) because
    `normalize_role`/`resolve_member` resolve against this registry. A preset roster composing
-   several starter roles into one pod shape (e.g. `docket init --blueprint research`) is a pod
+   several starter roles into one pod shape (e.g. `docket init --blueprint respond`) is a pod
    blueprint; see `pod-blueprints.spec.md`, which uses this registry but is not defined here.
+70. `actor` **MUST** be a starter archetype: `modelClass` `strong`, `tools` `[read, glob]`,
+    `deniedTools` `write`, `edit`, `bash`, gate contract `none`. It is the one role that acts outside
+    the machine, and no tool that acts reaches it until the operator's role overlay names one: a
+    tool of an MCP server declared `--kind send`, or an operation of a declared service
+    (`pod-blueprints.spec.md`, "Pod manifests: apply"). Its identity prose sends exactly what the
+    step before approved, once per recipient, and stops when a send is refused.
 
 ### Shipped recipes
 
@@ -340,7 +346,8 @@ This specification does NOT cover:
    with no separate packaging include list.
 2. A recipe **MUST** carry a `README.md` naming its purpose and the command that applies it, and
    a `pod.yaml` (`pod-blueprints.spec.md` "Pod manifests: apply") naming the roles `apply` adds as
-   members. A `pipeline.yaml` (this registry's roles referenced by name), a `roles/` directory, a
+   members, when it adds any: a recipe carries only what a blueprint cannot, so a recipe whose
+   roles a blueprint already has names none. A `pipeline.yaml` (this registry's roles referenced by name), a `roles/` directory, a
    `policies/` directory (`.yaml|yml|json`), a `skills/` directory and an `mcp-servers/` directory
    are each **optional**: a policy-pack recipe ships no pipeline, and a recipe whose roster is
    entirely built-in/starter archetypes ships no role YAML, since it would restate data this
@@ -372,12 +379,12 @@ This specification does NOT cover:
    keyed by the archetype's own `name`); only when the role has no named entry there **MUST** it
    resolve through the archetype's `modelClass`, looked up in the member's pod registry, against
    the live rank anchors (`economy` for `cheap`, `standard` for `strong`). The named table holds
-   all eight built-in and starter names with their classes from `ROLE_CLASS`, so for those eight the
+   all nine built-in and starter names with their classes from `ROLE_CLASS`, so for those nine the
    table decides and the archetype's `modelClass` is not read, including a pod overlay that
    reuses one of those names with a different `modelClass`. `ROLE_CLASS` is built from the
-   `modelClass` of the three built-in and five starter archetypes, so each of the eight has one class.
+   `modelClass` of the three built-in and six starter archetypes, so each of the nine has one class.
 2. This fallback **MUST NOT** add a hardcoded entry to `ALL_ROLES`/`ROLE_CLASS` per archetype:
-   the archetype registry is the source of truth for any role beyond the eight named ones.
+   the archetype registry is the source of truth for any role beyond the nine named ones.
 3. A role name present in neither the named policy table nor the pod's archetype registry
    **MUST** fall back to the model registry's own `default` (`docket-models.json` `default`,
    equal to the compiled-in default on a fresh install), never to the compiled-in literal while an
@@ -643,6 +650,7 @@ applies to the persisted wire object.
 | `writer` | pod | cheap | none | 6000 | bash |
 | `operator` | pod | strong | mechanical | 8000 | *(none)* |
 | `monitor` | pod | cheap | approval | 4000 | write, edit, bash |
+| `actor` | pod | strong | none | 4000 | write, edit, bash |
 
 ### Overlay files
 
