@@ -6,9 +6,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from docket.governance import secrets as _secrets
 from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
-from docket.kernel.mcp import McpServerConfig, McpServerRegistry
+from docket.kernel.mcp import (
+    McpServerConfig,
+    McpServerRegistry,
+    is_credential_name,
+    secret_reference,
+)
 from docket.platform import mkdir_private, read_json, read_modify_write, write_json
 
 # A configured server's *local* name is docket-owned config, not remote input,
@@ -59,6 +65,38 @@ def pod_scoped_owner(name: str, *, exclude: str = "") -> str:
         if any(s.name == name for s in load_pod_mcp_servers(entry.name)):
             return entry.name
     return ""
+
+
+class McpSecretError(InvalidInput):
+    """A server's ``env`` references a secret that is not stored; the message names the variable
+    and the secret, never a value."""
+
+
+def resolve_secret_env(config: McpServerConfig) -> McpServerConfig:
+    """A copy of *config* whose ``secret:<name>`` env values are the stored secrets. The stored
+    config is untouched. Raises ``McpSecretError`` naming the first variable whose secret is
+    missing or empty."""
+    env: dict[str, str] = {}
+    for var, value in config.env.items():
+        name = secret_reference(value)
+        if name is None:
+            env[var] = value
+            continue
+        resolved = _secrets.secret_value(name)
+        if resolved is None:
+            raise McpSecretError(f"env {var}: no secret named {name!r} is stored")
+        env[var] = resolved
+    return config.model_copy(update={"env": env})
+
+
+def literal_credential_env(servers: list[McpServerConfig]) -> list[tuple[str, str]]:
+    """The ``(server, variable)`` pairs holding a literal value under a credential-shaped name."""
+    return [
+        (s.name, var)
+        for s in servers
+        for var, value in s.env.items()
+        if value and secret_reference(value) is None and is_credential_name(var)
+    ]
 
 
 class McpServerDocError(InvalidInput):

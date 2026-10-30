@@ -19,6 +19,7 @@ from tests.support.pods import write_meta_overrides as _write_meta
 
 from docket.agent.tools import mcp_tools as _mt
 from docket.agent.tools.registry import ToolRegistry
+from docket.governance import secrets as _secrets
 from docket.hops.application.driver_support import _load_mcp_tools
 from docket.kernel import mcp as _mcp
 from docket.tasks.domain.task import DispatchError
@@ -131,3 +132,65 @@ class TestServerDocument:
 
         with pytest.raises(_mcp_servers.McpServerDocError, match="access"):
             _mcp_servers.load_mcp_server_document(path)
+
+
+class TestSecretReferences:
+    """An ``env`` value ``secret:<name>`` stays a reference in every stored form and resolves to
+    the stored secret only in a copy."""
+
+    def test_a_reference_round_trips_through_the_document_and_the_config_file(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "crm.yaml"
+        path.write_text(
+            "kind: mcp-server\nname: crm\ncommand: run\nenv:\n  API_TOKEN: secret:crm\n"
+        )
+
+        config = _mcp_servers.load_mcp_server_document(path)
+
+        assert config.env == {"API_TOKEN": "secret:crm"}
+        assert _mcp_servers.mcp_server_document(config)["env"] == {"API_TOKEN": "secret:crm"}
+        _mcp_servers.add_mcp_server(config)
+        assert _mcp_servers.load_mcp_servers()[0].env == {"API_TOKEN": "secret:crm"}
+
+    def test_resolving_returns_a_copy_and_leaves_literals_alone(self) -> None:
+        _secrets.save_secrets({"crm": "crm-live-0123456789"})
+        config = _mcp.McpServerConfig(
+            name="crm", command="run", env={"API_TOKEN": "secret:crm", "REGION": "eu"}
+        )
+
+        resolved = _mcp_servers.resolve_secret_env(config)
+
+        assert resolved.env == {"API_TOKEN": "crm-live-0123456789", "REGION": "eu"}
+        assert config.env["API_TOKEN"] == "secret:crm"
+
+    @pytest.mark.parametrize("stored", [{}, {"crm": ""}])
+    def test_an_unknown_or_empty_secret_names_the_variable_and_no_value(
+        self, stored: dict[str, str]
+    ) -> None:
+        _secrets.save_secrets(stored)
+        config = _mcp.McpServerConfig(name="crm", command="run", env={"API_TOKEN": "secret:crm"})
+
+        with pytest.raises(_mcp_servers.McpSecretError, match="API_TOKEN") as err:
+            _mcp_servers.resolve_secret_env(config)
+        assert "crm" in str(err.value)
+
+    def test_only_a_literal_under_a_credential_shaped_name_is_flagged(self) -> None:
+        servers = [
+            _mcp.McpServerConfig(
+                name="a",
+                command="run",
+                env={
+                    "API_TOKEN": "literal",
+                    "DB_PASSWORD": "literal",
+                    "OK_TOKEN": "secret:ok",
+                    "REGION": "eu",
+                    "EMPTY_KEY": "",
+                },
+            ),
+        ]
+
+        assert _mcp_servers.literal_credential_env(servers) == [
+            ("a", "API_TOKEN"),
+            ("a", "DB_PASSWORD"),
+        ]

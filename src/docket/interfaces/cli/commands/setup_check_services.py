@@ -9,6 +9,7 @@ from docket.kernel.ports import jail as _jail
 from docket.observability import exporter as _exporter
 from docket.operator import load_catalog, unreached_warning
 from docket.teams import fleet as _fleet
+from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import network_posture as _np
 from docket.teams import pod_settings as _pod_settings
 
@@ -57,6 +58,27 @@ def check_exporters() -> int:
         if row["host"]:
             ui.info(f"  {name}: privacy '{row['privacy']}' shares content with {row['host']}")
     return issues
+
+
+def check_mcp_literals(ids: list[str]) -> int:
+    """Warn once per server and variable for a literal value under a credential-shaped name in an
+    MCP server's ``env`` (the operator's servers and each pod's own). Advisory, never an issue, and
+    prints nothing when there is none; never prints the value."""
+    servers = _mcp_servers.load_mcp_servers()
+    for pod in ids:
+        servers.extend(_mcp_servers.load_pod_mcp_servers(pod))
+    shown: set[tuple[str, str]] = set()
+    for server, var in _mcp_servers.literal_credential_env(servers):
+        if (server, var) in shown:
+            continue
+        shown.add((server, var))
+        if len(shown) == 1:
+            ui.section("MCP servers:")
+        ui.warn(
+            f"  {server}: {var} holds a literal credential in mcp-servers.json"
+            " -- store it and re-add the server with --secret"
+        )
+    return 0
 
 
 def _check_notifications(ids: list[str]) -> int:
