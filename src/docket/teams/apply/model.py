@@ -38,6 +38,7 @@ class ApplyItem:
         "plugin",
         "skill",
         "mcp-server",
+        "service",
         "member",
         "pipeline",
         "routine",
@@ -107,6 +108,14 @@ class _McpServerWrite:
 
 
 @dataclass(frozen=True)
+class _ServiceWrite:
+    """One ``services/`` file for the pod overlay: its file name and source bytes."""
+
+    name: str
+    source: bytes
+
+
+@dataclass(frozen=True)
 class _MemberWrite:
     member: pod.PodMember
     codebase: str
@@ -146,6 +155,7 @@ class ApplyPlan:
     _routine_writes: tuple[_RoutineWrite, ...] = field(default=())
     _skill_writes: tuple[_SkillWrite, ...] = field(default=())
     _mcp_server_write: _McpServerWrite | None = field(default=None)
+    _service_writes: tuple[_ServiceWrite, ...] = field(default=())
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
     _pipeline_write: _PipelineWrite | None = field(default=None)
     _setting_writes: tuple[_SettingWrite, ...] = field(default=())
