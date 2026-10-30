@@ -95,7 +95,7 @@ This specification does NOT cover:
 - `RecordsStore.update(set, match, values, meta) -> dict`
 - `RecordsStore.query(sql, max_rows, max_chars, timeout_s) -> QueryResult` (`columns`, `rows`, `cut`)
 - `RecordsStore.export(sql, path, fmt, timeout_s) -> int`
-- `Column(name, type)`, `RecordMeta(task, session, step)`, `RecordsError(ValueError)`
+- `Column(name, type)`, `RecordMeta(task, session, step)`, `RecordsError(InvalidInput)`
 - `COLUMN_TYPES`, `check_value(column, value)`, `render_markdown(columns, rows)`
 
 ### Environment
@@ -135,7 +135,9 @@ store.query("DELETE FROM listings", 200, 2500, 5.0)  # RecordsError, nothing del
 
 ## Implementation
 
-- `src/docket/platform/records_store.py`: everything above
+- `src/docket/platform/records_store.py`: everything above; `platform/__init__.py` exports it in the
+  card whose caller first imports it (a facade export nobody imports fails
+  `tests/architecture/test_import_contracts.py`)
 - `tests/architecture/test_records_writer.py`: requirement 1's import rule
 - `tests/integration/platform/test_records_store.py`: requirements 3-13 on a temporary file
 - `tests/unit/platform/test_records_store.py`: `check_value`, `render_markdown`, name checks
