@@ -621,6 +621,7 @@ def _compose_hop(
         env[_rd.DOCKET_VERDICT_VALUES] = encode_values(
             _orch.verdict_values(node.gate), node.gate.case_sensitive
         )
+    env = {**(env or {}), _rd.DOCKET_HOP_STEP: node.step_id}
     if node.tools is not None:
         env = {**(env or {}), _rd.DOCKET_HOP_TOOLS: _json.dumps(list(node.tools))}
     if node.max_tool_calls is not None:
