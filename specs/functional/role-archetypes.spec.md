@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 4.7.0
+**Version**: 4.8.0
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
@@ -515,6 +515,23 @@ docket pod validate <file.yaml>
    cap ends a hop.
 4. The surface is the model profile's (`model-profiles.spec.md`, "Model profiles"); no caller
    **MUST** branch on a role's or a model's name to decide it.
+5. **A `send` tool is opt-in.** An MCP tool of kind `send` (a tool that acts outside the machine,
+   `mcp-client.spec.md` requirement 32) **MUST** reach a role only when the role's own `tools`
+   allow-list names it: `mcp__<server>__<tool>`, or `mcp__<server>` for every tool of that server.
+   A role with no allow-list, and a role that does not name it, are offered none, whatever a step
+   allows (a step's `tools` narrows further, it never grants a `send` tool the role does not
+   name). `cannot: [send]` (and a pod's `deniedTools: send`) is accepted and removes every `send`
+   tool; for a role whose allow-list names none it is redundant. `cannot: [write]` leaves a
+   `send` tool alone, and `BUILTIN_TOOL_KINDS` has no `send` entry because no built-in tool acts
+   outside the machine. A server name in an allow-list (`mcp__<server>`) names the server's tools
+   for every tool, not only `send` ones.
+6. **Reading and acting are separate roles.** `docket pod update` (a directory or a role file) and
+   `docket pod validate` **MUST** refuse a role whose `tools` allow-list names a `send` tool and
+   that still holds `fetch` or a tool of a `read` MCP server, naming the role and both tools and
+   stating the rule. A step's `tools` can satisfy the rule: the role is accepted when every step of
+   the directory's pipelines that runs it declares `tools` and none of those narrowed views holds
+   both. A server's kind is read from the directory's `mcp-servers/` documents, the pod's and the
+   global catalog; a name no catalog holds is not checked.
 
 ### Wire format (the one authored role file, and the persisted wire object)
 
