@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 2.7.0
+**Version**: 2.8.0
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -215,6 +215,9 @@ This specification does NOT cover:
 1. `RoleDocument`, `PipelineDocument`, `PolicyDocument` and `PodDocument` **MUST** be
    `pydantic.BaseModel` subclasses (`extra="forbid"`) describing exactly the short-form fields
    the role, pipeline and policy normalizers (and the pod manifest) accept, plus `kind`/`name`.
+   `PolicyDocument` carries the optional `limit` mapping (`kind | tool`, `count`, `per`) of a
+   quota (`security-gates.spec.md`, Policy format v1 requirement 9), so the published policy
+   schema names it.
    They are used for two things only, schema generation and the error refinement in
    Requirement 3 below, and are never a second loader; the normalizers remain the only place a
    document is actually parsed. `ExporterSpec`, `ChannelSpec` and `McpServerDocument` are
