@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 6.4.0
+**Version**: 6.4.1
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -81,9 +81,11 @@ directly — see "Provider catalog" below.
 ### User registry overlay
 
 1. `~/.docket/docket-models.json` **MAY** contain a `roles` map (`role → provider/model`);
-   well-formed entries **MUST** override the built-in role defaults. Unknown role names
-   **MUST** be ignored silently — `load_registry` skips them with no warning, the same tolerance
-   it gives a malformed `rankAnchors`/`default` entry.
+   well-formed entries **MUST** override the built-in role defaults. The key may name any role a
+   registry defines: a built-in, a starter, an operator role or a role in any pod's overlay (a
+   custom role pins its model this way, and the pin wins over its `modelClass`). `load_registry`
+   keeps every well-formed entry and never checks the name; a name no registry defines is inert
+   (no member resolves it) and `find_registry_problems` reports it as an unknown role.
 2. Any key other than `default`, `roles` and `rankAnchors` **MUST** be ignored (a retired
    `profiles` map included).
 3. A corrupt registry **MUST** keep built-in defaults (no crash) and **MUST NOT** warn —
@@ -551,9 +553,12 @@ declining the confirmation exits 0 without changes.
 | researcher | strong | claude-sonnet-4-6 | (archetype description) |
 
 The role set above is `ALL_ROLES`, keyed identically to `ROLE_CLASS`. A `docket-models.json`
-`roles:` key that is not one of these names is ignored at read time and reported by
-`docket setup`; nothing rewrites the file. A pod-scoped archetype with no row resolves per
-requirement 5.
+`roles:` key that no registry defines (not one of these, nor an operator or pod-overlay role) is
+inert and reported by `docket setup`; nothing rewrites the file. `docket setup model set <role>
+<id>` accepts exactly the roles a registry defines and refuses any other name (exit 1, naming
+the role); `write_registry` keeps a `role.<name>` update only for such a role. A pod-overlay role's pin is global to the registry file
+and applies in every pod that defines that role. A pod-scoped archetype with no row resolves
+per requirement 5.
 
 ### Built-in Anthropic prices (USD per MTok)
 
