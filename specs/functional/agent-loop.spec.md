@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 3.10.0
+**Version**: 3.10.1
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -787,8 +787,14 @@ This specification does NOT cover:
     coordinates. `registry_for_role` decides what the hop sees from them once, in the order the
     surface, the allow-list, the role's and the pod's denials (`role-archetypes.spec.md`, "Tools
     and calls per hop"); the loop and the driver **MUST NOT** narrow tools another way. Under a
-    `minimal` surface the request offers only `bash`, `read`, `glob`, `edit`, `write`, `verify` and the tool that closes
-    the step (`handoff`), where each is registered; a `hosted` row declares `full`, which leaves
+    `minimal` surface the request offers only `bash`, `read`, `glob`, `edit`, `write`, `verify`, the tool that closes
+    the step (`handoff`) and each MCP tool the allow-list in force names, where each is registered.
+    That allow-list is the step's `tools` when the step declares one (it replaces the role's for
+    this hop), else the role's own; it names an MCP tool by `mcp__<server>__<tool>` or
+    `mcp__<server>` for every tool of that server, a hop with no allow-list offers no MCP tool
+    under `minimal`, and naming another built-in does not widen the surface. The
+    surface never grants a `send` tool: that rule stays the role's own `tools`
+    (`role-archetypes.spec.md`, "Tools and calls per hop" requirement 5); a `hosted` row declares `full`, which leaves
     the request byte-identical to a profile-less one.
 104. `DocketDriver` **MUST** set `LoopConfig.max_tool_calls` from the hop's step `maxToolCalls`
     (`DOCKET_HOP_MAX_TOOL_CALLS`, a positive integer as text; any other value is ignored), else
