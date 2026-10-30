@@ -62,9 +62,9 @@ because the deterministic provider supplies no price evidence.
 
 ## Provenance and reproduction
 
-- Source commit: [`82a3239980bbda3673fdd8030751f1342bcab132`](https://github.com/yielab/docket/commit/82a3239980bbda3673fdd8030751f1342bcab132)
-- Artifact: `docket-0.2.0b1-py3-none-any.whl`
-- Artifact SHA-256: `0fe67120737c4d09da3229c1182d8bf5474e96f7077476f997c98f7c67667fce`
+- Source commit: [`895bccdf290e89381822de683864ec02a8697939`](https://github.com/yielab/docket/commit/895bccdf290e89381822de683864ec02a8697939)
+- Artifact: `docket-0.2.0b6-py3-none-any.whl`
+- Artifact SHA-256: `722cc9adc4afd6714479825e877d3b59ec80928ad11173513aa46a1456bb9d9e`
 - Canonical index and complete summary: [manifest](../benchmarks/results/wave29/manifest.json)
 - Attempt and aggregate contract: [benchmark schema](../benchmarks/schema.json)
 
@@ -72,7 +72,7 @@ Regenerate from the repository root:
 
 ```sh
 python benchmarks/results/regenerate.py \
-  --source-commit 82a3239980bbda3673fdd8030751f1342bcab132 \
+  --source-commit 895bccdf290e89381822de683864ec02a8697939 \
   --output ./wave29-reproduced \
   --repetitions 3
 ```

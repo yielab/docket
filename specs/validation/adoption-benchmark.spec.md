@@ -1,6 +1,6 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 2.3.0
+**Version**: 2.3.1
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -274,7 +274,7 @@ the content-identical wheel at Deflate level 6 using the checksum-pinned zlib-ng
 with new strategies disabled; installing and running the resulting wheel MUST remain on Python
 3.11. Clean regenerations started with different ambient `UV_PYTHON` values MUST produce the
 existing canonical wheel SHA-256
-`0fe67120737c4d09da3229c1182d8bf5474e96f7077476f997c98f7c67667fce`. Changing the published
+`722cc9adc4afd6714479825e877d3b59ec80928ad11173513aa46a1456bb9d9e`. Changing the published
 baseline to accept build-interpreter or backend drift is forbidden.
 
 The published baseline under `benchmarks/results/wave29/` MUST contain a canonical `manifest.json`
