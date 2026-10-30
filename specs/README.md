@@ -95,12 +95,12 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.0 | Complete |
-| Agent Loop | 3.10.0 | Implemented and live |
+| Agent Loop | 3.10.1 | Implemented and live |
 | API Keys | 2.1.0 | Complete |
 | Audit | 3.3.1 | Implemented |
 | Config Format | 2.8.0 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
-| Model Profiles | 6.4.1 | Complete |
+| Model Profiles | 6.4.2 | Complete |
 | Observability Export | 3.1.0 | Implemented and live |
 | Pipeline Format | 4.4.0 | Implemented |
 | Pod Blueprints | 2.6.0 | Implemented |
