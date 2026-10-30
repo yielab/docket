@@ -315,6 +315,7 @@ class TestADeleteTakesNoTaskGrant:
         )
         result = dispatch_tool(ToolCall("c1", "svc__crm__delete_contact", "{}"), ctx, registry)
         assert result.denial_kind == "approval_parked"
+        update_task(PROJECT, task.id, status="waiting_approval")
         return result.approval_token
 
     def test_the_escalation_offers_once_and_deny_and_refuses_approve_task(self) -> None:

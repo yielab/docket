@@ -145,8 +145,11 @@ def _store_decided(escalation: Escalation, *, option_id: str, session_id: str = 
     return stored
 
 
-def _approval_options(kind: EscalationKind) -> list[Option]:
-    options = [Option.model_validate(o) for o in _approval.approval_options()]
+def _approval_options(
+    kind: EscalationKind, offered: list[dict[str, Any]] | None = None
+) -> list[Option]:
+    """The options of an approval pause: the ones its record offered, else the standard three."""
+    options = [Option.model_validate(o) for o in offered or _approval.approval_options()]
     if kind == "approval":
         return options
     return [o for o in options if o.id in (_APPROVE_ONCE, _DENY)]
@@ -175,7 +178,7 @@ def open_for_approval(
             kind=kind,
             caused_by=caused_by,
             prompt=_redact(str(record.get("action", ""))),
-            options=_approval_options(kind),
+            options=_approval_options(kind, record.get("options")),
             asked_at=_clock.iso(),
             expires_at=record.get("expiresAt"),
             on_expiry=_expiry(kind, level),

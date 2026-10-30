@@ -23,6 +23,7 @@ SUBJECT = "docket.governance.gate"
 class _Tool:
     name: str = "write"
     kind: str = "write"
+    deletes: bool = False
 
 
 @dataclass(frozen=True)
