@@ -108,10 +108,10 @@ def test_config_digest_is_the_sha256_of_the_lock_file(seeded: Path) -> None:
     assert settings.config_digest == hashlib.sha256(lock_bytes).hexdigest()
 
 
-def test_update_removes_a_roles_json_from_before_and_the_registry_is_equivalent(
+def test_update_ignores_a_roles_json_and_the_role_is_the_authored_file(
     seeded: Path,
 ) -> None:
-    """A `roles.json` is removed by an update, and its role is the authored file."""
+    """A `roles.json` is nothing docket knows: an update neither reads nor removes it."""
     role_file = _role(_repository(seeded), "vetter", "VET")
     wanted = _arch.load_role_file(str(role_file))
     legacy = current_home().pod_config_dir(_PROJECT) / "roles.json"
@@ -121,7 +121,7 @@ def test_update_removes_a_roles_json_from_before_and_the_registry_is_equivalent(
 
     _apply(_repository(seeded))
 
-    assert not legacy.exists()
+    assert legacy.exists()
     arch = _arch.load_registry(_PROJECT).get("vetter")
     assert arch is not None
     assert arch.to_wire() == _arch.from_wire("vetter", wanted).to_wire()
@@ -138,12 +138,12 @@ def test_show_reports_drift_when_an_applied_file_changes(seeded: Path) -> None:
     assert _show_json()["drift"] == "yes"
 
 
-def test_show_names_a_pod_still_holding_a_roles_json(seeded: Path) -> None:
+def test_show_says_nothing_of_a_roles_json(seeded: Path) -> None:
     legacy = current_home().pod_config_dir(_PROJECT) / "roles.json"
     legacy.parent.mkdir(parents=True, exist_ok=True)
     legacy.write_text(json.dumps({"roles": {}}))
     report = _show_json()
-    assert "docket pod update" in str(report["needsUpdate"])
+    assert "needsUpdate" not in report
 
 
 def test_a_prompt_is_applied_into_the_overlay_and_the_next_hop_uses_it(seeded: Path) -> None:

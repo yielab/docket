@@ -52,12 +52,12 @@ def test_authored_paths_are_under_config_and_runtime_paths_under_state(tmp_path:
     assert home.pod_config_dir("p") == config / "pods" / "p"
 
 
-def test_an_old_layout_home_is_read_in_place(tmp_path: Path) -> None:
+def test_a_single_level_home_is_not_read_in_place(tmp_path: Path) -> None:
     (tmp_path / "policies").mkdir()
     home = Home(root=tmp_path)
-    assert home.policies_dir == tmp_path / "policies"
-    assert home.audit_log == tmp_path / "audit.log"
-    assert home.pod_config_dir("p") == tmp_path / "workspaces" / "pods" / "p" / "config"
+    assert home.policies_dir == tmp_path / "config" / "policies"
+    assert home.audit_log == tmp_path / "state" / "audit.log"
+    assert home.pod_config_dir("p") == tmp_path / "config" / "pods" / "p"
 
 
 def test_an_override_wins_over_the_root(tmp_path: Path) -> None:
