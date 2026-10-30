@@ -170,7 +170,7 @@ class TestPipeline:
             by_agent = {agent_id: (message, env) for agent_id, message, env in calls}
             lead_message, lead_env = by_agent["demo-lead"]
             assert "checkout" not in lead_message
-            assert lead_env == {_rd.DOCKET_HANDOFF: "1"}
+            assert lead_env == {_rd.DOCKET_HANDOFF: "1", _rd.DOCKET_HOP_STEP: "lead"}
             impl_message, impl_env = by_agent["demo-implementer"]
             assert "Working directory: the repository root" in impl_message
             assert str(worktree) not in impl_message
@@ -189,6 +189,7 @@ class TestPipeline:
                     _rd.PIPELINE_WORKTREE_ENV,
                     _rd.DOCKET_VERDICT_VALUES,
                     _rd.DOCKET_HANDOFF,
+                    _rd.DOCKET_HOP_STEP,
                 }
 
     def test_default_approval_mode_leaves_every_hop_env_unchanged(self, tmp_path: Path) -> None:
@@ -269,7 +270,11 @@ class TestPipeline:
                 assert env is not None
                 assert env[_rd.DOCKET_APPROVAL_MODE] == "refuse"
                 if agent_id.endswith("-lead"):
-                    assert env == {_rd.DOCKET_APPROVAL_MODE: "refuse", _rd.DOCKET_HANDOFF: "1"}
+                    assert env == {
+                        _rd.DOCKET_APPROVAL_MODE: "refuse",
+                        _rd.DOCKET_HANDOFF: "1",
+                        _rd.DOCKET_HOP_STEP: "lead",
+                    }
                 else:
                     # The Implementer's port-range env (real DOCKET_PORT_*/
                     # DOCKET_SCRATCH_DIR vars from provisioning) is merged with,
@@ -468,7 +473,7 @@ class TestHopEnvInjection:
             runner = FakeDriver()
             _sweep.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
-            assert by_role["lead"] == {_rd.DOCKET_HANDOFF: "1"}
+            assert by_role["lead"] == {_rd.DOCKET_HANDOFF: "1", _rd.DOCKET_HOP_STEP: "lead"}
             impl_env = by_role["implementer"]
             assert impl_env is not None
             assert impl_env["DOCKET_PORT_BASE"] == str(_res.PORT_BASE)
@@ -489,4 +494,7 @@ class TestHopEnvInjection:
             runner = FakeDriver()
             _sweep.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
-            assert by_role["implementer"] == {_rd.DOCKET_HANDOFF: "1"}
+            assert by_role["implementer"] == {
+                _rd.DOCKET_HANDOFF: "1",
+                _rd.DOCKET_HOP_STEP: "implementer",
+            }
