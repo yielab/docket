@@ -231,8 +231,8 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
 ### Acting outside the machine: the `send` tool
 - A `send` tool is one that acts outside the machine: it sends a message, submits a form, posts,
   books or asks another agent to act. docket knows it by kind, from the MCP server that declares
-  `--kind send` (or `access: send`). The kind is your declaration; docket does not inspect what the
-  server's tool does.
+  `--kind send` (or `access: send`), or from a declared service's operation (below). The kind is your
+  declaration; docket does not inspect what the server's tool does.
 - A role holds a `send` tool only when its own `tools` list names it. A role that names one may not
   also hold `fetch` or a tool of a `read` server, and `docket pod validate` and `docket pod update`
   refuse that combination.
@@ -246,6 +246,45 @@ grep -rn "ignore previous" ~/Sites/myproject/src/
   shows the count against the limit.
 - An agent reached as a tool is a tool call like any other: docket dispatches the call and gates it.
   What that agent does inside its own system is outside docket's enforcement.
+
+### Reaching a service you declared: a document, not a program
+A `kind: service` document (`docket setup service add`, or a pod's `services/` directory) turns each
+operation of an HTTP API into a tool `svc__<service>__<operation>`. It passes the same gate as every
+other tool, and what it may do follows from its method.
+
+- **A write is `send`.** A `GET` is `read` unless declared `send`; `POST`, `PUT`, `PATCH` and `DELETE`
+  are always `send`. A `send` operation reaches only a role whose own `tools` list names it, asks a
+  person who sees the whole call (credentials removed), is audited as `tool.send`, and counts toward
+  the quota of its service: a policy `limit` with `service: <name>` caps all of that service's sends as
+  one count.
+- **A `DELETE` is approved one call at a time.** Its approval offers `approve_once` and `deny`, never
+  "approve for this task". An agent that vets the call before the person is a pipeline step, as in
+  the `outward` recipe.
+- **The perimeter is the service's host, enforced by docket, not the jail.** The call is made by
+  docket's own process, as `fetch` is. A call to any other host, a redirect off the document's hosts
+  and a private, loopback or link-local address are refused unless the document lists that host by
+  name; a path parameter is encoded, never concatenated; response size and time are bounded.
+- **The secret is never seen by the model.** The token is stored once
+  (`docket setup secret set <name> --stdin`) and the document holds only `${secret:<name>}`. It is
+  resolved when the call runs and goes into the request header alone: not the prompt, the trace or the
+  audit log, and it is removed from a response that echoes it. A service whose secret is not stored
+  is left out of the turn, with a failed load that names the secret, never a value.
+- **A call names its task** (`X-Docket-Task`), so the service can tie it to the work.
+
+What it does not do: OAuth (a header token only), and it does not inspect what the service does with a
+call. It has been exercised against a local fake service, not a live third party.
+
+### A pod's records: what the jail can and cannot write
+A pod's records are declared tables in one SQLite file,
+`~/.docket/state/workspaces/pods/<pod>/records.sqlite`. The record tools (`rec__<set>__add`,
+`rec__<set>__update`, `rec__query`, `rec__export`) run in docket's process and pass the gate; no record
+tool is `send`, so a record never leaves through them. The file is outside every directory the jail is
+given: with isolation on, a command the model runs can neither read nor write it, and `rec__export`
+writes only inside the hop's own roots. With isolation off, a shell command is not confined, so do not
+treat the file as protected from it. A role that denies `write` keeps `rec__query` and loses add, update
+and export. docket fills `_task`, `_session` and `_step` on each row from the hop, never from the model,
+so a row can be traced to the task that wrote it; the file itself has no hash chain, unlike the audit
+log.
 
 ### Workspace isolation (on where the machine can jail): the sandbox for the agents' shell
 
@@ -449,7 +488,7 @@ docket status                          # Profile: lights-out, all requirements m
 ### Test 1: Does the Implementer Carry Its Safety Lines?
 ```bash
 # Check the implementer's constraints (replace "myapp" with your project name)
-grep "Never push" ~/.docket/workspaces/projects/myapp-implementer/SOUL.md
+grep "Never push" ~/.docket/state/workspaces/projects/myapp-implementer/SOUL.md
 
 # Should find: "Never push to main/master without HITL approval; ..."
 ```
@@ -457,7 +496,7 @@ grep "Never push" ~/.docket/workspaces/projects/myapp-implementer/SOUL.md
 ### Test 2: Is the Reviewer Read-Only?
 ```bash
 # Only if the pod has a Reviewer (replace "myapp" with your project name)
-grep "Read-only" ~/.docket/workspaces/projects/myapp-reviewer/SOUL.md
+grep "Read-only" ~/.docket/state/workspaces/projects/myapp-reviewer/SOUL.md
 docket pod roles reviewer   # its denied_tools are what actually enforce it
 ```
 
@@ -504,7 +543,7 @@ grep -rn "api_key.*=.*['\"][a-zA-Z0-9]{20,}" ~/Sites/myproject/src/
 
 Every sandbox change, approval grant/deny, credential/model/pod change, and every exporter added,
 removed, enabled, disabled or given a new privacy level, writes one line to
-`~/.docket/audit.log` — who, what, when. Secret **values** are never written, only names (a
+`~/.docket/state/audit.log` — who, what, when. Secret **values** are never written, only names (a
 credential's NAME, a model id, an agent id).
 
 ```bash
