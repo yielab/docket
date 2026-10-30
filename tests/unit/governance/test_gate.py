@@ -191,10 +191,8 @@ class TestASendCall:
 
         _gate.govern(SEND_CALL, _Ctx())
 
-        assert _audit_actions().count("tool.send") == 1
-        assert "decision=deny" in [e for e in _audit.read_audit() if e["action"] == "tool.send"][0][
-            "detail"
-        ]
+        sent = [e for e in _audit.read_audit() if e["action"] == "tool.send"]
+        assert len(sent) == 1 and "decision=deny" in sent[0]["detail"]
 
     def test_a_parked_send_is_not_settled_until_it_is_reissued(
         self, monkeypatch: pytest.MonkeyPatch
@@ -205,7 +203,9 @@ class TestASendCall:
         _gate.govern(SEND_CALL, _Ctx(approval_mode="park"))
         assert "tool.send" not in _audit_actions()
 
-        token = _pregrant.create_pregrant("demo", "implementer", SEND_TOOL.name, digest, channel="cli")
+        token = _pregrant.create_pregrant(
+            "demo", "implementer", SEND_TOOL.name, digest, channel="cli"
+        )
         ctx = _Ctx(approval_mode="park", pregrants=(_Grant(token, SEND_TOOL.name, digest),))
         assert _gate.govern(SEND_CALL, ctx).decision == "allow"
         assert _audit_actions().count("tool.send") == 1

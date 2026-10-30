@@ -421,3 +421,92 @@ def test_an_outward_pod_sends_once_and_only_after_a_person_approves(
     assert all("mcp__outbox__send" in r.tools for r in model.by_role("actor"))
     assert not any("mcp__inbox__lookup" in r.tools for r in model.by_role("actor"))
     oracles.assert_log_verifies(w)
+
+
+_DETAIL_SERVER = _ACTION_SERVER.replace(
+    "def send(to: str, body: str) -> str:",
+    "def send(to: str, body: str, phone: str, headers: dict) -> str:",
+)
+_FAKE_TOKEN = "tkn_" + "Z9y8X7w6" * 4
+_DETAIL_ARGS = {
+    "to": "ana@example.test",
+    "body": "The workshop is on Friday.",
+    "phone": "+57 300 1234567",
+    "headers": {"Authorization": f"Bearer {_FAKE_TOKEN}"},
+}
+
+
+@pytest.mark.skipif(not _mcp_client._sdk_available(), reason="the optional mcp SDK is absent")
+def test_the_approver_of_a_send_sees_the_whole_call_and_every_other_copy_stays_redacted(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(
+        script={
+            "researcher": [say("Nothing to look up.")],
+            "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
+            "critic": [say("APPROVE")],
+            "actor": [
+                call("mcp__outbox__send", "a1", **_DETAIL_ARGS),
+                call("mcp__outbox__send", "a2", **_DETAIL_ARGS),
+                say("The invitation was sent."),
+            ],
+        }
+    )
+    w, _work_dir = workdir_pod(world, model)
+    script = w.root / "action_server.py"
+    script.write_text(_DETAIL_SERVER, encoding="utf-8")
+    log = w.root / "actions.jsonl"
+    server = ("--env", f"ACTION_LOG={log}", "--", sys.executable, str(script))
+    w.docket("setup", "mcp", "add", "inbox", "--kind", "read", "--tools", "lookup", *server)
+    w.docket("setup", "mcp", "add", "outbox", "--kind", "send", "--tools", "send", *server)
+    w.docket("pod", "update", str(RECIPES_DIR / "outward"), "--pod", w.pod)
+    task_id = w.add_task("Invite the guest to the workshop")
+    w.docket("run", "--pod", w.pod, "--timeout", "30", check=False)
+    assert w.task(task_id)["task"]["status"] == "waiting_approval", w.task(task_id)
+
+    escalation = w.docket("inbox", "--peek", "--json").json()["escalations"][0]
+    esc_id = escalation["id"]
+    assert escalation["outward"] is True and "call" not in escalation
+
+    def approval_files() -> list[dict[str, Any]]:
+        return [json.loads(p.read_text("utf-8")) for p in w.home.rglob("approvals/apr-*.json")]
+
+    # the operator's own views show the address and the phone, never the credential
+    for ref in (esc_id, task_id):
+        shown = w.docket("task", "show", ref, "--pod", w.pod).out
+        assert "What leaves" in shown and "action leaves the pod" in shown, shown
+        assert "ana@example.test" in shown and "+57 300 1234567" in shown
+        assert _FAKE_TOKEN not in shown
+    with w.service(dispatch=False) as svc:
+        status, one = svc.get(f"/escalations/{esc_id}")
+        assert status == 200 and one["outward"] is True and one["state"] == "pending"
+        assert "ana@example.test" in one["call"] and "+57 300 1234567" in one["call"]
+        assert _FAKE_TOKEN not in one["call"] and "mcp__outbox__send" in one["call"]
+        copies = [svc.get("/escalations")[1], svc.get("/inbox")[1]]
+        assert svc.get("/escalations/esc-000000000000")[0] == 404
+    copies += [
+        w.docket("inbox", "--peek").out,
+        w.docket("inbox", "--peek", "--json").out,
+        w.docket("task", "trace", task_id, "--pod", w.pod, "--export").out,
+        w.docket("log", "--json").out,
+    ]
+    for copy in copies:
+        text = copy if isinstance(copy, str) else json.dumps(copy)
+        assert "ana@example.test" not in text and _FAKE_TOKEN not in text
+        assert '"call":' not in text.replace(" ", "")
+    pending = [r for r in approval_files() if r["state"] == "pending"]
+    assert len(pending) == 1 and _FAKE_TOKEN not in pending[0]["call"]
+
+    # one yes lets the call run; the settled approval no longer holds it
+    w.docket("task", "answer", esc_id, "--option", "approve_once", "--pod", w.pod)
+    assert all("call" not in r for r in approval_files())
+    _run(w)
+
+    assert w.task(task_id)["task"]["status"] == "done"
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 1
+    rows = oracles.audit_rows(w)
+    assert [r["action"] for r in rows].count("tool.send") == 1
+    with w.service(dispatch=False) as svc:
+        status, settled = svc.get(f"/escalations/{esc_id}")
+    assert status == 200 and settled["state"] == "resolved" and "call" not in settled
+    oracles.assert_log_verifies(w)

@@ -32,6 +32,7 @@ GET_ROUTES: tuple[Route, ...] = (
     Route("GET", "/.well-known/agent.json", a2a.get_agent_card),
     Route("GET", "/inbox", inbox.get_inbox),
     Route("GET", "/escalations", escalations.get_escalations),
+    Route("GET", "/escalations/<id>", escalations.get_escalation),
     Route("GET", "/runs", runs.get_runs),
     Route("GET", "/runs/<id>", runs.get_run),
     Route("GET", "/tasks/<pod>/<id>/diff", tasks.get_task_diff, overlap=True),

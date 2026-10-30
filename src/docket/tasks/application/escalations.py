@@ -180,6 +180,7 @@ def open_for_approval(
             expires_at=record.get("expiresAt"),
             on_expiry=_expiry(kind, level),
             level=level,
+            outward="call" in record,
         ),
         token,
     )

@@ -158,6 +158,11 @@
           "default": null,
           "title": "Level"
         },
+        "outward": {
+          "default": false,
+          "title": "Outward",
+          "type": "boolean"
+        },
         "state": {
           "default": "pending",
           "enum": [
@@ -187,6 +192,18 @@
         },
         "affordances": {
           "$ref": "#/$defs/EscalationAffordances"
+        },
+        "call": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Call"
         }
       },
       "required": [

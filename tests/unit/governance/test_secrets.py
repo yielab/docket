@@ -185,7 +185,9 @@ class TestPersonalRedaction:
 
     def test_an_authorization_header_and_a_stored_value_go_either_way(self) -> None:
         _secrets.save_secrets({"MAIL_PASS": "hunter2hunter2"})
-        text = '{"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz"} hunter2hunter2 ana@example.com'
+        text = (
+            '{"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz"} hunter2hunter2 ana@example.com'
+        )
 
         out = secrets.redact(text, personal=False)
 

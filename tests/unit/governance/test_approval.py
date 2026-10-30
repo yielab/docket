@@ -276,7 +276,7 @@ class TestAuditFieldsAreBounded:
 
 
 class TestACallLivesOnlyWhilePending:
-    CALL = "mcp__outbox__send to=\"ana@example.com\" body=\"hi\""
+    CALL = 'mcp__outbox__send to="ana@example.com" body="hi"'
 
     def _pending(self, approvals_dir: Path) -> str:
         token = _approval.approval_create("proj", "actor", "summary", call=self.CALL)

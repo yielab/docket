@@ -147,3 +147,13 @@ def test_an_unknown_level_renders_as_minimal() -> None:
 
     assert rendered.prompt is None
     assert all(o.label == "" for o in rendered.options)
+
+
+class TestAnOutwardApproval:
+    def test_it_is_titled_for_what_it_does_at_every_level(self) -> None:
+        plain = _render.render_escalation(_view("approval"), "minimal")
+        outward = _view("approval", outward=True)
+
+        assert plain.title == "tool call needs approval"
+        for level in ("minimal", "actions", "full"):
+            assert _render.render_escalation(outward, level).title == "action leaves the pod"

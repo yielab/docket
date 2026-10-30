@@ -16,9 +16,12 @@ before the Actor ran.
 - `docket pod update` and `docket pod validate` refuse a role whose `tools` name a `send` tool
   and that still holds `fetch` or a tool of a `read` server. A step's `tools` can satisfy the rule
   when every step that runs the role declares them.
-- `policies/ask-before-send.yaml` asks a person before the Actor's send runs. A policy matches a
-  tool by its exact name, so it lists every `send` tool of the pod: when your sender is not
-  `outbox` with a `send` tool, rename it in that policy and in `roles/actor.yaml`.
+- docket asks a person before any `send` tool runs, whatever its name: the kind decides, so a
+  new tool of the sender is covered without a policy. `policies/ask-before-send.yaml` names the
+  Actor's tool as well, to carry the message the person reads. The approval shows the whole call,
+  with credentials removed and nothing else: `docket task show <escalation>` prints it under
+  "What leaves" and `GET /escalations/<id>` returns it as `call`; the inbox, notifications and
+  Telegram keep the redacted text. The call is deleted when the approval is settled.
   `docket task answer <token> --option approve_once` lets that one call through.
 
 ## Prerequisites
@@ -84,12 +87,12 @@ anything, and is safe to run again. `--dry-run` prints the plan without writing.
   REJECT, one rework to `draft`) -> `act` (Actor).
 - `roles/actor.yaml` and `roles/actor.md` - the Actor: `tools: [read, glob, mcp__outbox__send]`,
   denied `write`, `edit` and `bash`.
-- `policies/ask-before-send.yaml` - asks before every `send` tool of the Actor.
+- `policies/ask-before-send.yaml` - asks before the Actor's `send` tool, with the message the
+  person reads.
 
 ## Limits
 
-- The policy names tools exactly; a new `send` tool of the same server is not asked about until it
-  is added to the policy.
+- A `send` tool always asks, whatever a policy says, unless a person pre-granted that exact call.
 - docket does not read what a server's tool does: `--kind` is your assertion, not a check.
 
 ## Undo
