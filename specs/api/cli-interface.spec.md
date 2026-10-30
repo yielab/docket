@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.7.1
+**Version**: 5.7.2
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -148,6 +148,10 @@ beyond creating the directories it needs and installing the shipped guardrail po
 existing policy file is never overwritten); the endpoint and the security posture belong to
 `docket setup`.
 **Syntax**: `docket init [project] [location] [--blueprint <name>] [--pod full] [--with <roles>] [--codebase <path>] [--name <text>] [--from <file>] [--recipe <name|dir>] [--no-apply] [--accept CODE] [--json]`
+
+`init` refuses a home that holds, at its top level, an entry the layout puts under `config/` or
+`state/` (workspace-structure.spec.md 80): exit `1`, the entries named, nothing moved. It never
+migrates a home.
 
 `init` provisions the pod's own members and no shared agent. Its arguments and options are
 declared on the command, so `docket init --help` lists each with its meaning and `setup shell`

@@ -163,6 +163,18 @@ class TestLockedMutations:
         )
         assert p.read_text() == original
 
+    def test_an_undeclared_key_is_refused_naming_the_key_and_the_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "conversations.json"
+        original = json.dumps({"conversations": [{"id": "a", "futureField": 1}]})
+        path.write_text(original)
+
+        with pytest.raises(C.ConversationRegistryError) as caught:
+            C.record_durable(agent_id="a", peer_id="-1", now="t1", path=path)
+
+        assert "futureField" in str(caught.value)
+        assert str(path) in str(caught.value)
+        assert path.read_text() == original
+
     def test_malformed_registry_and_mutation_exception_leave_file_unchanged(
         self, tmp_path: Path
     ) -> None:

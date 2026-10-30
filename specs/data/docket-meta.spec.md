@@ -1,6 +1,6 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 5.5.2
+**Version**: 5.6.0
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
 **Last Updated**: 2026-10-30
@@ -36,10 +36,11 @@ same role is `<pod>-<role>-<n>`).
 Every value is a JSON scalar (string, number, boolean) or `null`: there are no nested objects or
 arrays. A list-valued pod setting is stored as a comma-joined string.
 
-The documented field set is the one every writer targets, backed by the `AgentMeta` model, but the
-model is **not closed**: it declares `extra="allow"` so unknown keys round-trip. `meta_set` therefore
-does not reject an undeclared key name. The pod settings (see below)
-rely on this: none of them is an `AgentMeta` attribute.
+The documented field set is the one every writer targets, backed by the `AgentMeta` model, and the
+model is **closed**: it declares `extra="forbid"`. `meta_set` refuses an undeclared key, raising an
+error that names the key and the file (80). The pod settings (see below) and `pod` are declared on
+the model, so a write of one validates; their values are checked by `PodSettings`, not by
+`AgentMeta`.
 
 Pod member files are written by provisioning (`docket init`, `docket init --from`, `docket pod
 add`, `POST /pods`). They carry every row of the agent table that applies to the member's role and
@@ -57,7 +58,7 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 | `kind` | enum | `project` | Yes (the only field `AgentMeta` requires) | provisioning | Always `project` |
 | `scope` | enum | `project` | No (`AgentMeta` defaults to `project`) | pod provisioning | Whose data the agent may see: `project` is pod-scoped, never shared across projects. Absent means `project`; nothing derives it from `kind` or `role` |
 | `role` | string | none | pod members | provisioning | Pod-member role (`lead`, `implementer`, `reviewer`, or a blueprint's role such as `researcher`) |
-| `pod` | string | pod id | pod members | provisioning | The pod this member belongs to. Read first by `docket status`, the cwd-to-pod lookup and `pod_of`, which fall back to parsing the `<pod>-<role>` id only when it is absent. **Not an `AgentMeta` attribute**; it round-trips through `extra="allow"` |
+| `pod` | string | pod id | pod members | provisioning | The pod this member belongs to. Read first by `docket status`, the cwd-to-pod lookup and `pod_of`, which fall back to parsing the `<pod>-<role>` id only when it is absent. A declared `AgentMeta` field |
 | `name` | string | none | Yes (written always; `AgentMeta` defaults it to empty) | provisioning | Human-readable display name |
 | `codebase` | string | path | pod members | provisioning | The project path with `~` expanded; empty for a `workdir`-kind member. `docket init` stores it absolute (a relative path is taken from the current directory) and refuses one that is not an existing directory; `POST /pods` stores it as given |
 | `workspaceKind` | enum | `codebase` or `workdir` | No (absent means `codebase`) | provisioning (blueprints with a working directory) | Whether the workspace is anchored to a codebase or a plain working directory. Only ever written as the literal `workdir` |
@@ -83,7 +84,7 @@ The pod-wide settings that live on the Lead (`budgetUsd`, `turnTimeoutS`, `verif
 
 ### Pod settings on the Lead
 
-The pod's Lead file carries the pod's dispatch configuration as extra keys. They are validated
+The pod's Lead file carries the pod's dispatch configuration as keys `AgentMeta` declares but does not interpret. They are validated
 by `PodSettings` on every read and by `PodSettings.coerce` on every `docket pod set`, never by
 `AgentMeta`. **Only the Lead's value is consulted.** A key that is absent, `null`, or `""` reads as
 its default. A *present but malformed* stored value is never replaced by the default: loading the
@@ -146,8 +147,9 @@ programmatically. See pod-dispatch.spec.md for the per-hop contract.
 `meta_set` merges the new value into the record, validates the whole record against `AgentMeta`,
 and only then writes (atomically, under a lock):
 
-- **Unknown field**: accepted, not rejected (`extra="allow"`). A typo in a key name is written
-  silently. No test pins stricter behaviour.
+- **Unknown field (80)**: refused (`extra="forbid"`), nothing written. The error names the key and
+  the file, so a typo in a key name is never written silently. A file that already holds an
+  undeclared key is refused the same way by the next `meta_set`.
 - **Type mismatch on a declared field**: for example `budgetUsd` given a non-numeric string,
   `paused` given a non-boolean string, or `verifyCmd` given a number. A validation error is
   raised and nothing is written.

@@ -1,6 +1,6 @@
 # Docket JSON Store Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Implemented
 **Last updated**: 2026-10-25
 
@@ -111,6 +111,19 @@ directory's lock when it settles, so the scan the inbox repeats reads only the l
    age, because the task's claim has not applied it yet. A pending record is never touched, and the
    counter file is never deleted, so a `seq` is never handed out twice. The `serve` sweep that
    expires traces MUST call it, and so MUST `docket task prune --traces`.
+
+## Typed registries refuse unknown keys
+
+`fleet.json` (`FleetConfig` and its agent, binding and security records) and
+`docket-conversations.json` (`ConversationRegistry` and its conversation records) are docket-owned
+and typed with `extra="forbid"`: no field is kept "so a future docket version survives".
+
+80. Loading `fleet.json` that holds a key its model does not declare, at any level, **MUST** raise
+   `InvalidInput` naming the key and the file; nothing is written.
+81. A conversation mutation (`mutate` and the `record_durable`-style writers over it) over a registry
+   holding an undeclared key **MUST** raise `ConversationRegistryError` naming the key and the
+   file, and leave the file as it was. The inspection read `load` still returns an empty registry
+   for a registry it cannot validate.
 
 ## Validation
 

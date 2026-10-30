@@ -1,6 +1,6 @@
 # Configuration Document Format Specification
 
-**Version**: 2.10.0
+**Version**: 2.10.1
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -354,7 +354,7 @@ This specification does NOT cover:
    `prompts/<layer>/<file>`, each `services/` file byte for byte as `services/<name>.yaml`, each `records/` file byte for byte as
    `records/<name>.yaml`, and the
    pipelines, skills, policies and plugins as before. There is
-   no applied `roles.json`; an `update` **MUST** leave none behind.
+   no applied `roles.json`; docket reads, writes and removes no file by that name.
 4. The same update **MUST** write `applied.lock`, a JSON object `{"items": [...]}` in the overlay
    directory, one item per file it applied, sorted by `kind` then `name`, each `{kind, name,
    version, scope, path, applied, sha256}`: `path` is the source file's absolute path, `scope` is
@@ -368,8 +368,6 @@ This specification does NOT cover:
 5. `docket pod show` **MUST** report drift `yes` when the recorded source directory still
    exists and its lock differs from the recorded digest, or when any applied overlay file no
    longer hashes to its item's `sha256`; `no` otherwise, and unknown when there is nothing to compare.
-   A pod whose overlay still holds a `roles.json` from an earlier release and no lock **MUST** be
-   reported as needing `docket pod update`.
 
 ### Short-form export
 

@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.6.1
+**Version**: 4.6.2
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-10-29
 
@@ -134,7 +134,6 @@ project agent; and the problem count of each of `modelRegistry`, `schedules`,
   "memberCount": "number",
   "isolation":   "string (the sandbox posture: 'on (<backend>, network <open|none>)' or '<off (default)|off>; <backend|no backend> found, network <open|none>', where isolation off and mode none reads 'network none (not enforced: isolation off)')",
   "members":     "array of { id, role, status: ready | missing, modelProfile: hosted | local (the profile of the member's model; model-profiles requirement 8) }",
-  "needsUpdate": "string (present only for a pod applied before applied.lock, whose roles.json is no longer read: what to run, `docket pod update <directory>`)",
   "tasks": {
     "pending": "number", "running": "number", "waitingApproval": "number",
     "waitingInput": "number (parked consult or input-step questions)",
