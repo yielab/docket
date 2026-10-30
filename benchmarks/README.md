@@ -76,7 +76,7 @@ other free-form runtime data in a scenario.
 
 ## Provenance and interpretation
 
-- Completion joins `docket-runs.json` `taskIds` to the project's Lead `TASK_LIST.json`; run success
+- Completion joins `state/docket-runs.json` `taskIds` to the project's Lead `TASK_LIST.json`; run success
   alone is not completion.
 - Attempts are the sum of positive persisted `hops[].attempts`.
 - Provider-reported token counts come from the named fresh session's cumulative usage. Other
@@ -95,7 +95,8 @@ other free-form runtime data in a scenario.
   estimate-labelled and includes a pricing source, version, and assumption. Docket's runtime `0.0`
   placeholder is not treated as measured cost.
 
-Locators are relative to the supplied Docket home. Output excludes raw prompts, secrets, home
+Locators are relative to the supplied Docket home root (`DOCKET_HOME`), so runtime records sit under
+`state/` (`state/docket-runs.json#run-one`, `state/audit.log#seq=1`). Output excludes raw prompts, secrets, home
 paths, user/PID fields, approval tokens, tool arguments, handoff text, and backend raw objects.
 Canonical identities exclude clocks, UUIDs, paths, process state, and measured elapsed duration.
 

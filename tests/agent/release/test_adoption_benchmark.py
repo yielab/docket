@@ -156,11 +156,11 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
         "costUsd": 0.0,
         "claimedAt": "2026-09-02T00:00:02+00:00",
     }
-    task_path = home / "workspaces" / "projects" / "demo-lead" / "TASK_LIST.json"
+    task_path = home / "state" / "workspaces" / "projects" / "demo-lead" / "TASK_LIST.json"
     _write_json(task_path, {"tasks": [final_task]})
 
     _write_json(
-        home / "docket-runs.json",
+        home / "state" / "docket-runs.json",
         {
             "runs": [
                 {
@@ -188,7 +188,7 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
     )
 
     session_key = "agent:demo:task-one"
-    session_path = home / "sessions" / quote(session_key, safe="") / "session.json"
+    session_path = home / "state" / "sessions" / quote(session_key, safe="") / "session.json"
     _write_json(
         session_path,
         {
@@ -202,7 +202,7 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
     # A reader that calls driver.usage(agent) instead of selecting the fresh attempt session would
     # incorrectly add this unrelated cumulative usage.
     _write_json(
-        home / "sessions" / quote("agent:demo:noise", safe="") / "session.json",
+        home / "state" / "sessions" / quote("agent:demo:noise", safe="") / "session.json",
         {
             "sessionKey": "agent:demo:noise",
             "created": "2026-09-01T00:00:00Z",
@@ -234,7 +234,7 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
         },
     )
 
-    trace_path = home / "traces" / "demo" / f"{session_key}.jsonl"
+    trace_path = home / "state" / "traces" / "demo" / f"{session_key}.jsonl"
     _write_jsonl(
         trace_path,
         [
@@ -295,7 +295,7 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
     )
 
     _write_json(
-        home / "approvals" / f"{APPROVAL_TOKEN}.json",
+        home / "state" / "approvals" / f"{APPROVAL_TOKEN}.json",
         {
             "token": APPROVAL_TOKEN,
             "project": "demo",
@@ -329,7 +329,7 @@ def _build_fixture(tmp_path: Path) -> BenchmarkFixture:
         f"token={APPROVAL_TOKEN} project=demo channel=cli",
         prev_hash=hashlib.sha256(_canonical(bare_deny)).hexdigest(),
     )
-    _write_jsonl(home / "audit.log", [deny, bare_deny, grant])
+    _write_jsonl(home / "state" / "audit.log", [deny, bare_deny, grant])
 
     scenario = {
         "schema_version": SCHEMA_VERSION,
@@ -484,11 +484,11 @@ def test_run_joins_public_records_and_emits_deterministic_private_output(tmp_pat
     assert attempt["cost"] is None
 
     locators = attempt["locators"]
-    assert locators["run"] == "docket-runs.json#run-one"
+    assert locators["run"] == "state/docket-runs.json#run-one"
     assert locators["task"].endswith("TASK_LIST.json#task-one")
     assert locators["session"].endswith("session.json")
     assert locators["trace"].endswith(".jsonl")
-    assert locators["audit"] == ["audit.log#seq=1", "audit.log#seq=3"]
+    assert locators["audit"] == ["state/audit.log#seq=1", "state/audit.log#seq=3"]
     assert locators["recovery_snapshot"] == "snapshots/stale-task.json#task-one"
     assert all(
         not Path(value.split("#", 1)[0]).is_absolute()
@@ -543,7 +543,7 @@ Mutation = Callable[[BenchmarkFixture], None]
 
 def _mismatch_run_join(fixture: BenchmarkFixture) -> None:
     _write_json(
-        fixture.home / "docket-runs.json",
+        fixture.home / "state" / "docket-runs.json",
         {"runs": [{"id": "run-one", "state": "succeeded", "taskIds": ["different-task"]}]},
     )
 
