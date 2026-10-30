@@ -1,0 +1,13 @@
+kind: records
+name: stories
+description: One row per Hacker News story the pod has captured, found again by its story id.
+key: id
+columns:
+  - {name: id, type: string, required: true, description: "The story's objectID; a second add with the same id changes nothing"}
+  - {name: title, type: string, required: true, description: "The story's title as Hacker News shows it"}
+  - {name: url, type: string, description: "The link the story points to, or its Hacker News page https://news.ycombinator.com/item?id=<id> when it has none"}
+  - {name: points, type: integer, description: "The story's points when it was captured"}
+  - {name: comments, type: integer, description: "The story's num_comments when it was captured"}
+  - {name: captured, type: date, description: "The day the story was posted, YYYY-MM-DD, the date part of its created_at; the row's _at says when it was captured"}
+  - {name: summary, type: string, description: "What the story is about, in two or three sentences"}
+  - {name: discussion, type: string, description: "What the comments agree on, what they dispute and the notable objections, in three or four sentences"}

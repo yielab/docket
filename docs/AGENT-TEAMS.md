@@ -207,7 +207,7 @@ its own.
 | growth | `respond` | `outward` | a service or MCP declaration for the channel it publishes or sends on; the Actor's role overlay; prose for audience and voice; a quota |
 | revenue | `respond` | `outward` | the CRM or billing system as a declared service (reads open, writes behind approval); the Actor's role overlay; prose for the rules it must not break |
 | finance | `routine` | `records` | the ledger's columns in the `records/` document; a read-only service or MCP declaration for the books; prose; a policy that asks before anything leaves the machine |
-| insight | `routine` | `records` | the sets it compiles from and the source it reads; the report's prose; the routine's schedule |
+| insight | `routine` | `records`, or `hacker-news` for the worked example that digests a news site | the sets it compiles from and the source it reads; the report's prose; the routine's schedule |
 
 Each row uses only what the sections above describe: a blueprint at `docket init --blueprint
 <shape>`, the recipe with `docket pod update <recipe>`, a service with `docket setup service`
