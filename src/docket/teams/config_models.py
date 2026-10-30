@@ -98,6 +98,7 @@ class PolicyLimit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["send"] | None = None
     tool: str | None = None
+    service: str | None = None
     count: int = Field(ge=1)
     per: Literal["hour", "day"]
 

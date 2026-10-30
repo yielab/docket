@@ -2,6 +2,7 @@ kind: policy
 name: outward-send-quota
 description: The pod sends at most ten times in a day, counted when a send runs
 appliesTo: [actor]
+# To cap one declared service instead, replace kind with its name: limit: {service: crm, count: 10, per: day}
 limit: {kind: send, count: 10, per: day}
 then: block
 message: This pod has used its sends for the day; raise count in this file to allow more.

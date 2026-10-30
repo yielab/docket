@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -553,11 +553,11 @@ policy is refused. A policy can test structured facts of a tool call beside its 
    (provider API keys, GitHub and AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer`
    credentials, email addresses), and `docket.governance.secrets.redact` masks the same shapes, so
    a `redact` verdict leaves nothing of the secret in the carried-forward text.
-9. A policy **MAY** carry `limit: {kind | tool, count, per}` instead of `when`/`match`: a quota
-   (requirement 18 of the in-turn tool-call gate). The validator **MUST** reject, naming the field:
-   a `limit` beside a `match` or `when`; a `limit` that is not a mapping or has a key other than
-   `kind`, `tool`, `count` and `per`; both or neither of `kind` and `tool`; a `kind` other than
-   `send`; a `tool` that is not a non-empty string; a `count` that is not an integer of at least 1
+9. A policy **MAY** carry `limit: {kind | tool | service, count, per}` instead of `when`/`match`: a
+   quota (requirement 18 of the in-turn tool-call gate). The validator **MUST** reject, naming the
+   field: a `limit` beside a `match` or `when`; a `limit` that is not a mapping or has a key other
+   than `kind`, `tool`, `service`, `count` and `per`; more than one or none of `kind`, `tool` and
+   `service`; a `kind` other than `send`; a `tool` or a `service` that is not a non-empty string; a `count` that is not an integer of at least 1
    (a boolean is not one); a `per` other than `hour` or `day`; a `then` other than `block`; an
    `on` other than `toolCall`. The evaluator **MUST NOT** fire a quota as a `when` or `match`
    would: only the quota check reads it, and a quota that fails validation blocks like any broken
@@ -817,7 +817,8 @@ rewrite its own gate for the next turn.
     send so many times in a window, and a count is of executions, not attempts.
     - **The clause.** A policy document (Policy format v1, requirement 9) carrying
       `limit: {kind: send, count: <n>, per: hour | day}`, or `tool: <name>` in place of `kind` for
-      one tool, is a quota. It applies to a pod under that policy's `appliesTo` and scope (a global
+      one tool, or `service: <name>` for the `send` operations of one declared service (the tools
+      named `svc__<name>__<operation>`, `service-client.spec.md`), is a quota. It applies to a pod under that policy's `appliesTo` and scope (a global
       policy caps each pod on its own); the counter is the pod's, never fleet-wide.
     - **The window trails.** `per: hour` is the last 3,600 seconds and `per: day` the last 86,400,
       read from the kernel clock. An execution leaves the window when it is older, so the window
@@ -836,9 +837,16 @@ rewrite its own gate for the next turn.
       read-modify-write; entries older than a day are dropped as they are written. A counter that
       cannot be read counts as empty.
     - **`docket status` shows it.** For a pod with a quota the summary **MUST** carry `quotas`, one
-      row per quota with `scope` (`send` or the tool name), `used`, `count` and `per`, and the
+      row per quota with `scope` (`send`, the tool name or the service name), `used`, `count` and `per`, and the
       text view **MUST** print a `Sends` row such as `send 2/2 today` (`per: hour` reads
       `this hour`). A pod with no quota shows neither.
+
+19. **A delete is approved once or not at all (ADR 0036 decision 13).** A tool that deletes (a
+    `Tool` with `deletes` true; a declared service's `DELETE` operation) **MUST** open its approval
+    with the options `approve_once` and `deny` only, recorded on the approval record and offered by
+    its escalation. `approve_task` sent for it **MUST** be refused as not offered, by the escalation
+    and by `approval_set_option`, so no task-wide grant or later pre-grant can cover a delete. The
+    other tools keep the three options.
 
 ### File-tool containment — symlinks
 
@@ -1810,6 +1818,7 @@ $ git clone https://anywhere.example/repo.git
   port of `agent/ports.py`), `ToolContext`, `ToolResult`, `Pregrant`; `agent/tools/screening.py`:
   `screen_tool_result`; `hops/application/builtin_tools.py`: `builtin_registry` (the `bash`, `consult` and
   `fetch` registrations)
+- `src/docket/governance/approval.py`: `approval_options(deletes)`, the options an approval offers
 - `src/docket/governance/quota.py`: `Limit`, `validate_limit`, `parse_limit`, `used`,
   `record_executed`, `quota_rows`; `policy.limits_for` reads the quotas of a role and pod
 - `src/docket/governance/gate.py`: `govern`, `evaluate_tool_call`, `record_executed`, `render_tool_call`, `ToolVerdict`,

@@ -17,6 +17,16 @@ _SECRET_REF = re.compile(r"\$\{secret:([A-Za-z0-9_.-]+)\}")
 _PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
 _WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 
+SERVICE_TOOL_PREFIX = "svc__"
+
+
+def service_of_tool(tool_name: str) -> str:
+    """The service a ``svc__<service>__<operation>`` tool belongs to; ``''`` for any other name."""
+    if not tool_name.startswith(SERVICE_TOOL_PREFIX):
+        return ""
+    service, sep, operation = tool_name[len(SERVICE_TOOL_PREFIX) :].partition("__")
+    return service if sep and operation else ""
+
 
 def secret_names(value: str) -> list[str]:
     """The secret names *value* refers to, in order."""

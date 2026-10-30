@@ -303,3 +303,37 @@ class TestACallLivesOnlyWhilePending:
     def test_an_approval_without_a_call_has_no_key(self, approvals_dir: Path) -> None:
         token = _approval.approval_create("proj", "actor", "summary")
         assert "call" not in _approval.approval_get(token)
+
+
+class TestADeleteIsApprovedOnceOrNotAtAll:
+    def _ids(self, options: list[dict[str, object]]) -> list[object]:
+        return [o["id"] for o in options]
+
+    def test_the_options_of_an_ordinary_call_are_the_three(self) -> None:
+        assert self._ids(_approval.approval_options()) == ["approve_once", "approve_task", "deny"]
+
+    def test_the_options_of_a_delete_are_once_and_deny(self) -> None:
+        assert self._ids(_approval.approval_options(deletes=True)) == ["approve_once", "deny"]
+
+    def test_a_delete_approval_records_two_options_and_refuses_approve_task(
+        self, approvals_dir: Path
+    ) -> None:
+        token = _approval.approval_create("proj", "actor", "delete", rationale="", deletes=True)
+
+        record = _approval.approval_get(token)
+        assert self._ids(record["options"]) == ["approve_once", "deny"]
+        with pytest.raises(_approval.ApprovalError, match="not offered"):
+            _approval.approval_set_option(token, "approve_task")
+        assert "optionId" not in _approval.approval_get(token)["context"]
+        _approval.approval_set_option(token, "approve_once")
+        assert _approval.approval_get(token)["context"]["optionId"] == "approve_once"
+
+    def test_an_ordinary_approval_still_takes_approve_task(self, approvals_dir: Path) -> None:
+        token = _approval.approval_create("proj", "actor", "send", rationale="")
+
+        assert self._ids(_approval.approval_get(token)["options"]) == [
+            "approve_once",
+            "approve_task",
+            "deny",
+        ]
+        _approval.approval_set_option(token, "approve_task")
