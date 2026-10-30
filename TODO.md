@@ -20,7 +20,8 @@
 > 2026-10-29; their sections are archived and what they leave open is under "Phases 52 and 53" and
 > "Phase 54" in the follow-ups below. **Planned: Phase 55** (D-77,
 > [ADR 0036](docs/adr/0036-a-pod-works-outward.md)): a pod works outward, on its own schedule; twelve
-> cards P55-1..P55-12 over four waves, cut by file ownership, start on the maintainer's go.
+> cards P55-1..P55-12 over four waves, cut by file ownership. **Wave 1 merged 2026-10-30** (P55-1, P55-5,
+> P55-7, P55-11); Wave 2 (P55-3, P55-6) is next.
 > Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md));
 > its loose ends are under "Escalations". The integration branch is `develop`. A new phase starts from a
 > measured trigger or a maintainer request.
@@ -133,7 +134,7 @@ from `main`.
 
 ### P55-1 — the text a hop reads follows the workspace kind, and the first workdir e2e
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet (Haiku for the prompt files) · **Kind:**
+**Status:** DONE (2026-10-30; the Lead's workdir text is the prompt `hop/lead-workdir`, not step `instructions`, which would drop `output: handoff/v1`; `when_cwd` falls back to `workDir`; `POD_TEMPLATE_VERSION` 6) · **Size:** M · **Model:** Sonnet (Haiku for the prompt files) · **Kind:**
 behaviour + data + spec + e2e
 
 - **Trigger:** ADR 0036 findings 1-2, measured 2026-10-29 on a `content` workdir pod with a scripted
@@ -209,7 +210,7 @@ behaviour + data + spec + e2e
 
 ### P55-3 — `send`: a fourth tool kind for actions outside the machine, held only by a role that names it
 
-**Status:** TODO (after P55-5, shares `kernel/mcp.py` and `mcp_tools.py`) · **Size:** L ·
+**Status:** TODO · ready, P55-5 merged 2026-10-30; shares `kernel/mcp.py` and `mcp_tools.py` · **Size:** L ·
 **Model:** Sonnet (Haiku for the recipe files) · **Kind:** behaviour + spec + data
 
 - **Trigger:** ADR 0036 finding 3: `ToolKind = Literal["read", "write", "exec"]`
@@ -319,7 +320,7 @@ behaviour + data + spec + e2e
 
 ### P55-5 — an MCP server may live for the hop (`lifetime: call | hop`)
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (2026-10-30; the maintainer's browser probe under `--lifetime hop` is still to run) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0036 finding 5, measured 2026-10-30 with Playwright MCP 0.0.83 through
   `agent/tools/mcp_client.py::call_remote_tool` against a Chrome on `--cdp-endpoint`: the page
@@ -355,7 +356,7 @@ behaviour + data + spec + e2e
 
 ### P55-6 — a `wait` step: the task sleeps until a time or an event (absorbs P52-12)
 
-**Status:** TODO (after P55-7, shares `executor.py`) · **Size:** L · **Model:** Sonnet · **Kind:**
+**Status:** TODO · ready, P55-7 merged 2026-10-30; shares `executor.py` · **Size:** L · **Model:** Sonnet · **Kind:**
 behaviour + spec + contract
 
 - **Trigger:** ADR 0036 finding 6: no `wait` step (`pipeline/domain/step.py:88-136`), no
@@ -400,7 +401,7 @@ behaviour + spec + contract
 
 ### P55-7 — variables belong to the task, and `when.var` compares as text
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + defect
+**Status:** DONE (2026-10-30) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + defect
 
 - **Trigger:** ADR 0036 finding 6: pipeline variables come per dispatch run
   (`interfaces/http/routes/dispatch.py:36,60`; the sweep passes none, `server.py:96-102`;
@@ -550,7 +551,7 @@ spec
 
 ### P55-11 — a pod widens the machine's network only with the operator's recorded yes
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec (MAJOR on one rule)
+**Status:** DONE (2026-10-30; e2e world in `tests/e2e/test_workdir_pod.py`, ran on Landlock) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec (MAJOR on one rule)
 
 - **Trigger:** ADR 0036 finding 8: `teams/pod_settings.py::effective_network` (`:513-530`) returns
   `none` whenever the machine's recorded mode is `none`, so a pod's `network: open` never widens it
@@ -643,6 +644,23 @@ spec
 jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was granted by hand with
 `docket setup sandbox read add`. Trigger: a second pod whose first jailed gate fails that way. Next:
 `docket setup` proposes the grants for the toolchains it finds.
+
+**Phase 55 Wave 1 (merged 2026-10-30).** Loose ends, none a card yet; the first three belong to the Wave 2 and 4 cards
+that already own the files.
+- *`lifetime` in the document form.* `teams/mcp_servers.py` (`McpServerDocument`, `to_config`),
+  `templates/schemas/mcp-server.schema.json` and the config docs do not carry `lifetime`, so a recipe cannot declare a
+  `hop` server. Belongs to P55-3.
+- *Specs that lag.* `trace-store.spec.md` items 30-32 say every `process_*` payload carries `pgid`; MCP events carry
+  none. `audit.spec.md` (~line 77) omits `pod.network_widen` / `pod.network_narrow`. P55-12 or the next card that
+  edits either spec.
+- *Required variables supplied by tasks.* `dispatch_pod`'s up-front check refuses a `required` pipeline variable that
+  only tasks supply. P55-9 (routines) meets it first.
+- *Smaller.* `docket task cancel` does not kill a `hop` MCP session directly (it closes at hop end); a top-level
+  `networkGrant` in `pod.yaml` is an unknown-key error, not a skip (only under `settings`).
+- *Flakes under load, seen once each and passing alone:* `test_run.py::TestForegroundApprovalPrompt` (two tests),
+  `test_consult_wait.py::TestAnsweredInPlace::test_an_option_answer_goes_back_to_the_model_in_the_same_turn`,
+  `test_end_to_end.py` approval-mode tests. A second failure of the same test is its trigger.
+- *Live evidence owed.* The maintainer's browser probe (snapshot, click by ref) under `--lifetime hop` for P55-5.
 
 **Phase 54 (closed 2026-10-29).** Two items wait for their triggers.
 - *Dated model ids.* The native `/models` lists `claude-haiku-4-5-20251001`, and the probe matches ids
