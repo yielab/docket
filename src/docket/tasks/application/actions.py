@@ -9,6 +9,7 @@ from docket.governance import approval as _ap
 from docket.governance import approval_pregrant as _approval_pregrant
 from docket.governance import audit as _audit
 from docket.kernel import clock as _clock
+from docket.kernel import text as _text
 from docket.kernel.operator_contract import Escalation
 from docket.observability import trace as _trace
 from docket.platform import read_escalation
@@ -208,7 +209,7 @@ _SUMMARY_CHARS = 300
 def _parked_call(record: dict[str, object], tool: str) -> ParkedCall:
     """The call of the parked approval *record*: its tool and the redacted one-line summary the
     gate stored in ``action`` (``tool call 'x': <reason>; call=<rendered call>``)."""
-    action = " ".join(str(record.get("action", "")).split())
+    action = _text.one_line(str(record.get("action", "")))
     _, found, rendered = action.partition(_CALL_MARK)
     return ParkedCall(
         token=str(record.get("token", "")),
