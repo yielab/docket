@@ -1,10 +1,28 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from docket.kernel.home import current_home
+
+# An `env` value `secret:<name>` names a stored secret; docket resolves it when a turn loads the
+# server and never writes the value (specs/functional/mcp-client.spec.md Requirements 47-50).
+SECRET_PREFIX = "secret:"
+SECRET_NAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
+_CREDENTIAL_SUFFIXES = ("_TOKEN", "_KEY", "_SECRET", "_PASSWORD")
+
+
+def secret_reference(value: str) -> str | None:
+    """The secret name *value* refers to (possibly empty or malformed), else ``None`` for a literal."""
+    return value[len(SECRET_PREFIX) :] if value.startswith(SECRET_PREFIX) else None
+
+
+def is_credential_name(var: str) -> bool:
+    """Whether the environment variable *var* is named like a credential."""
+    return var.upper().endswith(_CREDENTIAL_SUFFIXES)
+
 
 # ── config: docket-owned state, persisted through platform/store.py ────────────
 

@@ -52,6 +52,7 @@ from docket.interfaces.cli.commands.setup_check_services import (
     _docker_image_has_git,
     _exporter_report,
     check_exporters,
+    check_mcp_literals,
 )
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
@@ -486,6 +487,7 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     _check_provider_catalog()
     check_exporters()
     _check_notifications(ids)
+    check_mcp_literals(ids)
     _check_security_gates(ids)
     _check_profiles()
     _check_policies()
