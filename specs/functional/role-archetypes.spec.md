@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 4.8.1
+**Version**: 4.8.2
 **Status**: Implemented. Four built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-10-30
@@ -501,8 +501,9 @@ docket pod validate <file.yaml>
    writes each only when set.
 2. `registry_for_role(base, role, project="", *, surface="full", allow=None)` is the one place
    that decides what a hop sees, in this order: (a) the model profile's *surface* (`full` keeps
-   every tool; `minimal` keeps only `bash`, `read`, `glob`, `edit`, `write`, `verify` and any tool that ends the turn, so
-   the closing tool is kept without being named here), then (b) the allow-list, *allow* when the
+   every tool; `minimal` keeps `bash`, `read`, `glob`, `edit`, `write`, `verify`, any tool that ends the turn, so
+   the closing tool is kept without being named here, and any MCP tool the allow-list in force names, as
+   `model-profiles.spec.md` requirement 7 says), then (b) the allow-list, *allow* when the
    step declared one, else the archetype's `tools`, keeping the names it lists and any tool that ends
    the turn (the closing tool is the step's contract, not a capability), then (c) the
    removal of what the role and the pod deny (requirements 2, 6 and 7 of "Per-role tool sets").
