@@ -1,4 +1,6 @@
-"""Opt-in: the hacker-news recipe against the real Hacker News search API and the operator's model."""
+"""Opt-in, live: the hacker-news recipe against the real Hacker News search API and the operator's model.
+
+This lane has no duration ceiling: a real model run takes minutes (DOCKET_RUN_LIVE_HN=1)."""
 
 from __future__ import annotations
 
@@ -11,10 +13,10 @@ from typing import Any
 
 import pytest
 import yaml
-from tests.support.e2e import World
-from tests.support.e2e_workdir import workdir_pod
 
 from docket.kernel.templates import RECIPES_DIR
+from tests.support.e2e import World
+from tests.support.e2e_workdir import workdir_pod
 
 _FRONT_PAGE = "https://hn.algolia.com/api/v1/search?" + urllib.parse.urlencode(
     {
