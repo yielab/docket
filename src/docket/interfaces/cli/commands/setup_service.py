@@ -75,7 +75,7 @@ def cmd_add(
         ..., help="A kind: service document (YAML or JSON), or the service name with --from-openapi"
     ),
     from_openapi: Path | None = typer.Option(
-        None, "--from-openapi", help="Build the service from this local OpenAPI 3 file"
+        None, "--from-openapi", help="Build the service from this local OpenAPI 3 or 2 file"
     ),
     operations: str = typer.Option(
         "", "--operations", help="operationIds to import, comma-separated"
@@ -84,7 +84,7 @@ def cmd_add(
     auth_header: str = typer.Option("", "--auth-header", help="Header that carries the secret"),
     secret: str = typer.Option("", "--secret", help="Stored secret the header references"),
 ) -> None:
-    """Store a service from its document, or from an OpenAPI 3 file, and show what each operation may do.
+    """Store a service from its document, or from an OpenAPI 3 or 2 file, and show what each operation may do.
 
     A credential belongs in the auth value as ${secret:NAME}, with the value stored by
     docket setup secret set NAME; the document and this command never hold it. An OpenAPI
