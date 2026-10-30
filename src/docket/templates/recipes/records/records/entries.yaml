@@ -1,0 +1,8 @@
+kind: records
+name: entries
+description: One row per thing the pod has captured, found again by its ref.
+key: ref
+columns:
+  - {name: ref, type: string, required: true, description: "The input's own identifier for the entry; a second add with the same ref changes nothing"}
+  - {name: title, type: string, required: true, description: "What the entry is, in a few words"}
+  - {name: amount, type: number, description: "The figure the input gives for it, when there is one"}

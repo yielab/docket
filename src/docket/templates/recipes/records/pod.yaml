@@ -1,0 +1,3 @@
+kind: pod
+name: records
+description: A set the pod keeps its entries in, a capture pipeline that adds rows from a task's input, and a weekly report routine, for a routine pod.
