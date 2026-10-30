@@ -119,6 +119,10 @@ def _trace_llm_call(
     }
     if response.usage.cache_write_tokens > 0:
         payload["cacheWriteTokens"] = response.usage.cache_write_tokens
+    if response.cache_miss:
+        payload["cacheMiss"] = response.cache_miss
+    if response.cache_missed_tokens > 0:
+        payload["cacheMissedTokens"] = response.cache_missed_tokens
     if iteration is not None:
         payload["iteration"] = iteration
     if purpose:

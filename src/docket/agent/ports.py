@@ -540,6 +540,12 @@ class ChatResponse:
     #: Bytes of each request part as the adapter encoded them (system, tools, toolResults,
     #: assistant, user); empty when the backend does not measure its request.
     request_bytes: dict[str, int] = field(default_factory=dict)
+    #: The reply's own id; empty when the wire has none.
+    response_id: str = ""
+    #: Where the request diverged from the previous one, as the endpoint reported it (``pending``
+    #: while its comparison ran); empty when it reported none. The token count is its estimate.
+    cache_miss: str = ""
+    cache_missed_tokens: int = 0
 
     @property
     def tool_calls(self) -> list[ToolCall]:

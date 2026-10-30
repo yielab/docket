@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.9.0
+**Version**: 3.10.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -574,7 +574,8 @@ This specification does NOT cover:
     response's `latency_ms`; its payload **MUST** carry `model`, `provider`, `ok`, `finishReason`,
     `failureKind`, `inputTokens`, `outputTokens`, and `cachedTokens`, plus `iteration` for an
     ordinary task request or `purpose: "compaction"` for the summarizer's call. It carries
-    `cacheWriteTokens` only when that count is positive, and `request` (per-part `bytes` and
+    `cacheWriteTokens` only when that count is positive, `cacheMiss` only when the response named
+    one and `cacheMissedTokens` only when positive, and `request` (per-part `bytes` and
     `estTokens`) only when the adapter reported request bytes. It **MUST NOT** carry a `cost_usd`
     value. Both call sites **MUST** also pass the exact `messages` sent for that call, so the payload
     **MAY** additionally carry `inputMessages`, `outputMessages`, `systemInstructions` and
@@ -869,7 +870,9 @@ def approval_parked_error(result: ToolResult) -> str: ...
 `ChatResponse` (the `ChatBackend` port's return type) carries the fields requirement 71's
 `llm_call` event reads: `model: str`, `provider: str` (both from the resolved `Endpoint`),
 `latency_ms: int` (wall-clock time around the backend request, `0` on a response no request was
-sent for), and `request_bytes: dict[str, int]`.
+sent for), `request_bytes: dict[str, int]`, and `cache_miss: str` / `cache_missed_tokens: int`
+(empty and `0` unless the endpoint reported a cache diagnosis). `response_id: str` is the reply's
+own id, empty when the wire has none.
 
 ### The driver
 
