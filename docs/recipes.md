@@ -35,7 +35,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`outward`](#outward) | 2 policies | The policy pack of a respond pod - a send tool asks a person first, and the pod's sends are capped. |
 | [`parallel-explore`](#parallel-explore) | 2 members, pipeline `parallel-explore` | Two cheap-tier Researchers mapping disjoint parts of the code in parallel, then an Implementer gated on its verify command, with one retry back to the Lead. |
 | [`prod-approval`](#prod-approval) | 1 policy | Ask before an implementer or operator runs a deploy/production-shaped command. |
-| [`records`](#records) | nothing | A set the pod keeps its entries in, a capture pipeline that adds rows from a task's input, and a weekly report routine, for a routine pod. |
+| [`records`](#records) | 1 named pipeline, 1 record set, 1 routine | A set the pod keeps its entries in, a capture pipeline that adds rows from a task's input, and a weekly report routine, for a routine pod. |
 | [`reflexion`](#reflexion) | 1 member, pipeline `reflexion` | Bounded self-critique as a pipeline: the Implementer's own change is critiqued and reworked before the task is done. |
 | [`research-review`](#research-review) | 4 members, pipeline `research-review` | Lead, Researcher, Analyst, Writer and Reviewer as a pipeline, gated on the Reviewer's APPROVE/REQUEST-CHANGES with one rework cycle back to the Writer. |
 | [`secrets-guard`](#secrets-guard) | 3 policies | Block writes to credential-shaped paths and credential-shaped text, and redact the same shapes from output. |
@@ -914,7 +914,7 @@ rm ~/.docket/config/pods/<project>/policies/prod-approval-high-risk.yaml
 
 A set the pod keeps its entries in, a capture pipeline that adds rows from a task's input, and a weekly report routine, for a routine pod.
 
-**Brings:** nothing. **Summary line:** `roles 0 · policies 0 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0 · pipelines capture`
+**Brings:** 1 named pipeline, 1 record set, 1 routine. **Summary line:** `roles 0 · policies 0 · members 0 · pipeline none · plugins 0 · skills 0 · settings 0 · pipelines capture · records entries · routines weekly-report`
 
 ```bash
 docket init --recipe records
