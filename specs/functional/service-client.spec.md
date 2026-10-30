@@ -1,7 +1,7 @@
 # Service Client Specification
 
 **Version**: 1.0.0
-**Status**: The document, its access rule, its registration and its scopes are implemented
+**Status**: Implemented in part: the document, its access rule, its registration and its scopes
 (`kernel/service.py`, `teams/services.py`, `docket setup service`, `docket pod update|export`). No
 operation is a tool yet and no call is made: the call and its perimeter, and the tools, are
 separate work.
