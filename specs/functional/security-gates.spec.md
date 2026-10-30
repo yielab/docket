@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -771,10 +771,39 @@ rewrite its own gate for the next turn.
 
     `send` is a kind of MCP tool only: no built-in tool acts outside the machine, so
     `BUILTIN_TOOL_KINDS` has no `send` entry. A `send` call meets `dispatch_tool` and every
-    `pre_tool_call` policy like any tool; this requirement adds no approval of its own (a policy
-    `ask` on the tool's name is the lever, and the audit row and approval view for a `send` call
-    are a later requirement). `registry_for_role` (`role-archetypes.spec.md`, "Tools and calls per
-    hop" requirement 5) is where the opt-in is enforced.
+    `pre_tool_call` policy like any tool, and requirement 17 says what it asks and records.
+    `registry_for_role` (`role-archetypes.spec.md`, "Tools and calls per hop" requirement 5) is
+    where the opt-in is enforced.
+17. **A `send` call always asks; the approver sees exactly what leaves (ADR 0036 decision 3).**
+    - **It asks by kind.** `evaluate_tool_call` **MUST** decide at least `ask` for a tool of kind
+      `send`, whatever policies match: a `block` still denies, an `allow` or no policy asks. A
+      policy `ask` on the tool's name stays valid and its reason wins; with none, the reason is
+      `this tool acts outside the machine; a person approves exactly what leaves`. A `send`
+      tool of any name is therefore asked about without being listed in a policy.
+    - **Two redaction levels.** `redact(text, personal=True)` is today's redaction.
+      `redact(text, personal=False)` **MUST** apply only the credential patterns (tokens, keys,
+      passwords, `Authorization` headers, private keys, JWTs) and the stored secret values; it
+      keeps an e-mail address, a phone number, a name and a handle. The default **MUST** stay
+      byte-identical to the behaviour before this requirement.
+    - **The approval keeps the call.** When a `send` ask opens an approval (the `wait` and the
+      `park` routes; `refuse` opens none), the gate **MUST** hand `approval_create` the whole
+      `render_tool_call` text, uncut, redacted with `personal=False`, and the record **MUST**
+      store it as `call`. The record's `action` and the escalation's `prompt` keep today's text:
+      redacted with `personal=True` and cut at 1,000 characters. An approval for any other tool
+      **MUST NOT** carry a `call`. The record's escalation **MUST** be marked `outward`
+      (`operator-loop.spec.md` area 11 item 1).
+    - **Settled means gone.** `set_state`, the one place a pending approval becomes terminal,
+      **MUST** remove `call` in the same locked write, whether the transition is a grant, a deny
+      or an expiry; a record in a terminal state **MUST NOT** hold a `call`. Only the operator's
+      own views read it (`operator-loop.spec.md` area 11 item 16); the trace, the audit log, the
+      inbox list, notifications, Telegram, the MCP `inbox` tool and the export never carry it.
+    - **Every settled `send` is audited.** `govern` **MUST** write one `tool.send` audit entry for
+      each `send` call it settles, `allow` or `deny`, whatever the decision's source (policy,
+      classifier, pre-grant, approval granted, denied or expired, refusal): `detail` is the
+      ordinary gate detail (tool, agent, role, project, the `policy_id`/`policy_action` pair)
+      then `decision=<allow|deny>` and the call, redacted with `personal=True`. A call that parks
+      (`approval_parked`) is not settled: the re-issued call is, so one send writes one entry
+      beside the `tool.ask` of the ask. Other kinds keep their rule (an `allow` writes nothing).
 
 ### File-tool containment — symlinks
 
