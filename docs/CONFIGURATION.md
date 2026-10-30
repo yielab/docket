@@ -52,9 +52,10 @@ noted.
 │   ├── docket-models.json              init/setup model  role -> model policy
 │   ├── policies/*.yaml                 init         6 baseline guardrail policies (JSON also loads)
 │   ├── docket-mcp-servers.json         setup mcp    external MCP tool servers
+│   ├── services.json                   setup service  declared HTTP services: address, auth header, operations (a token is only a `${secret:<name>}` reference)
 │   ├── docket-exporters.json           setup export your kind: exporter overrides (built-ins ship in the wheel, all off)
 │   ├── docket-channels.json            setup notify your kind: channel overrides (built-ins ship in the wheel, only console on)
-│   └── pods/<pod>/                     a recipe or `pod update` applied  the pod's own overlay: roles/, prompts/, policies/, applied.lock
+│   └── pods/<pod>/                     a recipe or `pod update` applied  the pod's own overlay: roles/, prompts/, policies/, services/, records/, applied.lock
 └── state/                              what docket writes while it runs
     ├── fleet.json                      init         agent registry, bindings, flags
     ├── port-allocations.json           first pod    per-pod port range bases
@@ -65,7 +66,7 @@ noted.
     ├── notify-state.json               first notify the dedupe snapshot `docket setup notify flush` diffs against
     ├── inbox-cursor.json               inbox        the last `docket inbox` call's cursor (skipped by --peek/--since)
     ├── docket-schedules.json           pod set      dispatch schedules (`docket pod set schedule`)
-    ├── secrets.json, secrets.meta.json setup provider stored API keys + timestamps
+    ├── secrets.json, secrets.meta.json setup provider, setup secret  stored API keys and other named secrets + timestamps
     ├── docket-runs.json                dispatch     one record per dispatch invocation
     ├── docket-conversations.json       setup notify Telegram conversation registry
     ├── sessions/<session-key>/session.json dispatch durable per-session turn history
@@ -87,7 +88,10 @@ noted.
         │   ├── memory/                 empty; docket never reads it
         │   ├── TASK_LIST.json          Lead only, after the first `task add`: the pod's queue
         │   └── tasks/<taskId>/         implementers in a git repo: one git worktree per task
-        └── pods/<pod>/.scratch/        first pod   the pod's isolated scratch directory
+        └── pods/<pod>/
+            ├── .scratch/               first pod   the pod's isolated scratch directory
+            ├── memory.json             a verified task reply  what the pod learned (§2)
+            └── records.sqlite          a `records/` document applied  the pod's declared tables, outside every directory a jail is given
 ```
 
 **Inside your repository**, docket writes almost nothing, but not nothing. `docket pod add` and `init`
@@ -182,7 +186,7 @@ the repository's `.docket/` (prompts and skills only, read from the task's base 
 the worktree), the pod's own overlay, the operator's `config/`, then what ships. Roles, pipelines
 and MCP servers enter from a repository only through `docket pod update`.
 
-**A pod's own overlay lives at `~/.docket/config/pods/<pod>/`** (`Home.pod_config_dir(project)`) — `roles/` (each role's authored `<name>.yaml` and its `.md`), `prompts/<layer>/` (prompt files), `applied.lock` (what the last `docket pod update <dir>` applied: one item per file with its sha256; the Lead's `configDigest` records the hash of the lock file) and `policies/*.yaml|json` (same shape as the global policy store), each resolving *above* the built-in or global layer for that pod alone, never shared with any other pod. `docket setup` flags a malformed role file or policy, naming the pod.
+**A pod's own overlay lives at `~/.docket/config/pods/<pod>/`** (`Home.pod_config_dir(project)`) — `roles/` (each role's authored `<name>.yaml` and its `.md`), `prompts/<layer>/` (prompt files), `applied.lock` (what the last `docket pod update <dir>` applied: one item per file with its sha256; the Lead's `configDigest` records the hash of the lock file) and `policies/*.yaml|json` (same shape as the global policy store), `services/*.yaml` (this pod's own `kind: service` documents, resolved before the operator's `services.json`) and `records/*.yaml` (its `kind: records` sets; the rows are in `records.sqlite`, not here), each resolving *above* the built-in or global layer for that pod alone, never shared with any other pod. `docket setup` flags a malformed role file or policy, naming the pod.
 
 Two boundaries worth stating because they are easy to get backwards:
 
@@ -223,7 +227,7 @@ never a fork. Find what you want to change, then read its section:
 
 | You want to change… | Layer | How |
 | --- | --- | --- |
-| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/config/recipes/<name>/`, used by name like the shipped seventeen ([3.10](#310-start-from-a-recipe)) |
+| A starting point you reuse across repositories | Recipes | your own directory under `~/.docket/config/recipes/<name>/`, used by name like the shipped ones ([3.10](#310-start-from-a-recipe)) |
 | The team shape a new pod gets | Blueprint | `docket init --blueprint build\|respond\|operate\|routine` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
 | Who works a task, in what order, behind which gates, with how much rework | Pipeline | a `kind: pipeline` YAML; `docket pod validate/plan`; run once with `docket run --pipeline <file>` or bind it with `docket pod set pipeline <file>` ([3.5](#35-change-the-orchestration-pipelines-and-blueprints)) |
 | What an agent is, what it is told, which tools it lacks, which model it uses | Role | a `kind: role` YAML plus its Markdown; `docket pod update`; a step may name its own `model` ([3.4](#34-define-a-custom-role)) |
@@ -739,12 +743,12 @@ They apply process-wide, to every agent. There is no per-role or per-pod value. 
 ### 3.10 Start from a recipe
 
 A recipe is a directory in the same shape as a repository's `.docket/` (§3.11): `pod.yaml`,
-`roles/`, `prompts/<layer>/`, `pipeline.yaml`, `pipelines/`, `policies/`, `plugins/`, `skills/`, every part optional. **What a recipe
+`roles/`, `prompts/<layer>/`, `pipeline.yaml`, `pipelines/`, `policies/`, `plugins/`, `skills/`, `services/`, `records/`, `routines/`, every part optional. **What a recipe
 brings is derived from what the directory holds, never declared**: `docket pod validate <dir>`,
 `docket pod update --dry-run`, `docket init --recipe` and `docket pod recipes` all print the
-same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). Seventeen
-ship with docket, of five kinds; the full page, generated from the recipes themselves, is
-[the recipe library](recipes.md).
+same summary line (`roles 1 · policies 1 · members 1 · pipeline secure-build · ...`). The recipes
+that ship with docket fall into the kinds below (the table gives examples, not every recipe); the
+full page, generated from the recipes themselves, is [the recipe library](recipes.md).
 
 | Kind | Recipes | What `apply` plans on a lean pod |
 |---|---|---|
@@ -753,6 +757,7 @@ ship with docket, of five kinds; the full page, generated from the recipes thems
 | Methodology | `tdd`, `spec-first`, `spec-writer`, `reflexion`, `cross-family-review`, `frugal` | the members the practice needs from the built-in and starter roles, and the smallest pipeline that *is* the practice (`frugal` also sets a budget) |
 | Check | `anti-tautology`, `mutation` | a pipeline with a `run:` step that fails the task when its tests prove nothing (`mutation` needs mutmut installed) |
 | Tooling | `code-intel` | MCP servers for the pod (structural search, read-only language intelligence) |
+| Records | `records` | for a pod on the `routine` blueprint: a set (`records/`), a capture pipeline and a weekly report routine; no member, no role |
 
 ```bash
 docket pod recipes                        # every recipe reachable by name, what each brings
@@ -1239,6 +1244,8 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `config/pods/<pod>/applied.lock` | `{"items": [{kind, name, version, scope, path, applied, sha256}]}`: one item per file the last `pod update <dir>` applied | `pod update <dir>` | `pod show`, which reports drift when an applied file no longer matches its `sha256` | no |
 | `config/policies/*.yaml\|json` | one policy per file (§3.6) | `docket setup`, init, you | every tool call, task enqueue and hop output | **yes, this is the intended interface** |
 | `config/docket-mcp-servers.json` | `servers[{name,command,args,env,timeout,kind,tools,isolate}]` | `setup mcp add/remove` | every turn | via command |
+| `config/services.json` | `services[]`, one entry per `kind: service` document: `name`, `baseUrl`, `auth{header,value}` (the value a `${secret:<name>}` reference, never the token), `hosts`, `timeout`, `idempotencyHeader`, `operations[{name,method,path,params,body,access}]` | `setup service add/remove` (also `--from-openapi`) | every turn: each operation becomes a tool `svc__<service>__<operation>`; a pod's own `services/` overlay wins by name | via command. `setup service list` shows the header and secret names, never a value. |
+| `state/workspaces/pods/<pod>/records.sqlite` | SQLite, WAL: one table per declared set, with the implicit columns `_id`, `_at`, `_task`, `_session`, `_step`, `_updated_at` | `pod update` (creates a table or adds a column, never removes one) and the record tools `rec__<set>__add`/`update` | `rec__query`/`rec__export` in a hop, `docket pod records`, `GET /pods/<pod>/records` | no. Read it with `docket pod records`; the file is the pod's data and `pod export` does not carry its rows. |
 | `config/docket-exporters.json` | `exporters{<name>: kind: exporter override}` — only the keys you changed (`enabled`, `endpoint`, `privacy`/`share`, `contentMaxChars`, `events`) over the built-in | `setup export enable/disable/privacy/add/remove` | the export pipeline at the start of every turn: which destinations run, and at what level (§3.14) | via command. A hand edit that widens `privacy` skips the confirmation and the `exporter.privacy` audit entry. |
 | `state/exporters-health.json` | `{<name>: {exported,dropped,failed,…}}` | the export pipeline, after every turn | `setup export show`, `setup` | no |
 | `config/docket-channels.json` | `channels{<name>: kind: channel override}` — only the keys you changed (`enabled`, `capabilities`, `on`, `content`, `actors`, `config`, `secret`) over the built-in | `setup notify enable/disable/privacy/add/remove` | `docket setup notify flush`, `docket start`'s sweep and a foreground `docket run`, each after their own work: which channels run, and how much they carry (§3.15) | via command. A hand edit that widens `content` skips the confirmation and audit entry. |
@@ -1246,7 +1253,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 | `state/notify-state.json` | `{<dedupe-key>: version}` plus an `expiring` list | `operator.notify.flush`, saved before delivering | `operator.notify.diff_events` on the next flush, to avoid re-sending an unchanged item | no |
 | `state/inbox-cursor.json` | `{"next": "<iso timestamp>"}` | a plain `docket inbox` call | the next plain `docket inbox` call's `doneSince` filter | no |
 | `state/docket-schedules.json` | `schedules{pod: spec}`, `lastRun{pod: epoch}` | `pod set/unset schedule`, `docket start` (`lastRun`) | `docket start --dispatch` sweep | via command; `docket setup` names a bad hand edit |
-| `state/secrets.json` / `state/secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `setup provider add/rotate/remove` | endpoint key lookup (after env) | no |
+| `state/secrets.json` / `state/secrets.meta.json` | `{NAME: value}` / `{NAME:{added_at,rotated_at}}` | `setup provider add/rotate/remove`, `setup secret set/remove` | endpoint key lookup (after env); a `${secret:<name>}` reference in a service's `auth` when the call runs | no |
 | `state/port-allocations.json` | `allocations{pod: base}`, 100 ports each from 3000 | pod create/delete | implementer env `DOCKET_PORT_BASE` | no |
 | `state/docket-runs.json` | `runs[{id,source,project,state,taskIds,…}]` | every dispatch | `docket task list`, `/runs` | no (never pruned) |
 | `state/docket-conversations.json` | `conversations[{id,agentId,peerId,topic,status,…}]` | Telegram | Telegram channel | no |

@@ -78,10 +78,13 @@ class RecipeSummary:
     exporters: tuple[str, ...] = ()
     mcp_servers: tuple[str, ...] = ()
     pipelines: tuple[str, ...] = ()
+    records: tuple[str, ...] = ()
+    routines: tuple[str, ...] = ()
 
     def render(self) -> str:
         """One line, every count always shown, in a fixed order; `pipeline none` when unbound;
-        `· exporters`, `· mcp-servers` and `· pipelines <name>, ...` appended only when present."""
+        `· exporters`, `· mcp-servers`, `· pipelines`, `· records` and `· routines <name>, ...`
+        appended only when present."""
         line = (
             f"roles {self.roles} · policies {self.policies} · members {self.members} · "
             f"pipeline {self.pipeline or 'none'} · plugins {self.plugins} · skills {self.skills} · "
@@ -93,6 +96,10 @@ class RecipeSummary:
             line += f" · mcp-servers {', '.join(self.mcp_servers)}"
         if self.pipelines:
             line += f" · pipelines {', '.join(self.pipelines)}"
+        if self.records:
+            line += f" · records {', '.join(self.records)}"
+        if self.routines:
+            line += f" · routines {', '.join(self.routines)}"
         return line
 
 
@@ -143,12 +150,22 @@ def _declared_servers(directory: Path) -> list[_mcp.McpServerConfig]:
     return servers
 
 
+def _folder_files(directory: Path, folder: str) -> list[Path]:
+    """``<folder>/*.yaml|yml`` directly under *directory*, sorted by name."""
+    folder_dir = directory / folder
+    if not folder_dir.is_dir():
+        return []
+    return sorted([*folder_dir.glob("*.yaml"), *folder_dir.glob("*.yml")])
+
+
 def _named_pipeline_files(directory: Path) -> list[Path]:
     """``pipelines/*.yaml|yml`` directly under *directory*, sorted by name."""
-    pipelines_dir = directory / "pipelines"
-    if not pipelines_dir.is_dir():
-        return []
-    return sorted([*pipelines_dir.glob("*.yaml"), *pipelines_dir.glob("*.yml")])
+    return _folder_files(directory, "pipelines")
+
+
+def _document_names(directory: Path, folder: str) -> tuple[str, ...]:
+    """The file names, without the extension, of ``<folder>/*.yaml|yml`` under *directory*."""
+    return tuple(f.stem for f in _folder_files(directory, folder))
 
 
 def summarize_recipe(directory: Path) -> RecipeSummary:
@@ -203,7 +220,9 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
     servers = _declared_servers(directory)
     return RecipeSummary(
         mcp_servers=tuple(s.name for s in servers),
-        pipelines=tuple(f.stem for f in _named_pipeline_files(directory)),
+        pipelines=_document_names(directory, "pipelines"),
+        records=_document_names(directory, "records"),
+        routines=_document_names(directory, "routines"),
         roles=roles,
         policies=policies,
         plugins=plugins,
