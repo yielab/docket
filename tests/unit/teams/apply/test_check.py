@@ -134,3 +134,61 @@ def test_a_step_that_narrows_to_both_still_conflicts() -> None:
     (problem,) = _check.send_conflicts(roles, _KINDS, steps)
 
     assert "step" in problem
+
+
+_SERVICE_KINDS = {
+    **_KINDS,
+    "svc__crm__get_contact": "read",
+    "svc__crm__create_contact": "send",
+    "svc__billing__get_invoice": "read",
+}
+
+
+def test_a_role_naming_a_send_operation_and_a_read_operation_is_named_with_both() -> None:
+    roles = {"actor": (("svc__crm__create_contact", "svc__crm__get_contact"), ())}
+
+    (problem,) = _check.send_conflicts(roles, _SERVICE_KINDS, {})
+
+    assert "svc__crm__create_contact" in problem and "svc__crm__get_contact" in problem
+
+
+def test_a_service_named_whole_counts_as_every_operation_of_it() -> None:
+    roles = {
+        "both": (("svc__crm",), ()),
+        "split": (("svc__crm__create_contact", "svc__billing"), ()),
+    }
+
+    problems = _check.send_conflicts(roles, _SERVICE_KINDS, {})
+
+    assert len(problems) == 2
+    assert "role 'both'" in problems[0] and "role 'split'" in problems[1]
+
+
+def test_a_send_operation_beside_a_read_operation_of_another_unknown_service_is_accepted() -> None:
+    roles = {"actor": (("svc__crm__create_contact", "svc__ghost__x", "write"), ())}
+
+    assert _check.send_conflicts(roles, _SERVICE_KINDS, {}) == []
+
+
+def test_a_role_denying_read_does_not_hold_a_read_operation() -> None:
+    roles = {"actor": (("svc__crm__create_contact", "svc__crm__get_contact"), ("read",))}
+
+    assert _check.send_conflicts(roles, _SERVICE_KINDS, {}) == []
+
+
+def test_the_operations_a_directory_declares_are_read_from_its_services(tmp_path: Path) -> None:
+    (tmp_path / "services").mkdir()
+    (tmp_path / "services" / "crm.yaml").write_text(
+        "kind: service\nname: crm\nbaseUrl: https://api.example.com\noperations:\n"
+        "  - {name: get_contact, method: GET, path: /c}\n"
+        "  - {name: create_contact, method: POST, path: /c}\n"
+    )
+    (tmp_path / "roles").mkdir()
+    (tmp_path / "roles" / "actor.yaml").write_text(
+        "kind: role\nname: actor\nmodel: cheap\ntools: [svc__crm]\n"
+    )
+    (tmp_path / "roles" / "actor.md").write_text("x\n")
+
+    (problem,) = _check.directory_send_problems(tmp_path, "acme")
+
+    assert "actor" in problem and "svc__crm" in problem

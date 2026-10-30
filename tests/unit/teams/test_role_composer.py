@@ -397,3 +397,101 @@ class TestMinimalSurfaceKeepsWhatTheRoleNames:
             )
 
             assert narrowed.names() == ["read"]
+
+
+def _service_registry() -> ToolRegistry:
+    base = builtin_registry()
+    for name, kind in (
+        ("svc__crm__get_contact", "read"),
+        ("svc__crm__list_contacts", "read"),
+        ("svc__crm__create_contact", "send"),
+        ("svc__billing__get_invoice", "read"),
+    ):
+        base.register(_mcp_tool(name, kind))
+    return base
+
+
+class TestServiceTools:
+    """A service operation is a tool a role names: the `send` ones only by the role's own list."""
+
+    def test_a_role_naming_the_service_is_offered_its_read_and_send_operations(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, svc__crm]\n")
+
+            narrowed = registry_for_role(_service_registry(), "actor", project="acme")
+
+            assert sorted(narrowed.names()) == [
+                "read",
+                "svc__crm__create_contact",
+                "svc__crm__get_contact",
+                "svc__crm__list_contacts",
+            ]
+
+    def test_a_role_naming_one_operation_is_offered_that_operation_only(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay(
+                "acme", "actor", [], extra="tools: [read, svc__crm__create_contact]\n"
+            )
+
+            narrowed = registry_for_role(_service_registry(), "actor", project="acme")
+
+            assert sorted(narrowed.names()) == ["read", "svc__crm__create_contact"]
+
+    def test_a_role_not_naming_the_service_sees_none_of_it(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, svc__billing]\n")
+
+            narrowed = registry_for_role(_service_registry(), "actor", project="acme")
+
+            assert sorted(narrowed.names()) == ["read", "svc__billing__get_invoice"]
+
+    def test_a_role_with_no_allow_list_is_offered_no_send_operation(self) -> None:
+        narrowed = registry_for_role(_service_registry(), "implementer")
+
+        assert "svc__crm__create_contact" not in narrowed.names()
+        assert "svc__crm__get_contact" in narrowed.names()
+
+    def test_a_step_allow_list_never_grants_a_send_operation_the_role_does_not_name(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, svc__billing]\n")
+
+            narrowed = registry_for_role(
+                _service_registry(), "actor", project="acme", allow=("read", "svc__crm")
+            )
+
+            assert narrowed.names() == ["read"]
+
+    def test_cannot_send_removes_the_send_operations_of_a_role_that_names_them(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", ["send"], extra="tools: [read, svc__crm]\n")
+
+            narrowed = registry_for_role(_service_registry(), "actor", project="acme")
+
+            assert sorted(narrowed.names()) == [
+                "read",
+                "svc__crm__get_contact",
+                "svc__crm__list_contacts",
+            ]
+
+    def test_the_minimal_surface_keeps_a_service_tool_the_role_names(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, svc__crm__get_contact]\n")
+
+            narrowed = registry_for_role(
+                _service_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert sorted(narrowed.names()) == ["read", "svc__crm__get_contact"]
+
+    def test_the_minimal_surface_keeps_no_service_tool_without_an_allow_list(self) -> None:
+        narrowed = registry_for_role(_service_registry(), "implementer", surface="minimal")
+
+        assert not [n for n in narrowed.names() if n.startswith("svc__")]

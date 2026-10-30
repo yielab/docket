@@ -22,6 +22,7 @@ from docket.teams.role_schema import (
 from docket.teams.roles import (
     MCP_TOOL_PREFIX,
     STEP_TOOL_NAMES,
+    allow_list_names,
     find_overlay_problems,
     unknown_allow_list_tools,
 )
@@ -191,3 +192,13 @@ class TestAllowListToolNames:
         names = ("read", "grpe", "verify", "mcp__a__b", "grpe", "handoff")
 
         assert unknown_allow_list_tools(names) == ["grpe"]
+
+    def test_a_service_name_is_accepted_like_an_mcp_name(self) -> None:
+        assert unknown_allow_list_tools(("svc__crm", "svc__crm__get_contact", "grpe")) == ["grpe"]
+
+    def test_a_service_entry_names_its_operations_and_an_operation_names_itself(self) -> None:
+        assert allow_list_names(("svc__crm",), "svc__crm__get_contact")
+        assert allow_list_names(("svc__crm__get_contact",), "svc__crm__get_contact")
+        assert not allow_list_names(("svc__crm__get_contact",), "svc__crm__get_contact_all")
+        assert not allow_list_names(("svc__crm",), "svc__crmx__get_contact")
+        assert not allow_list_names(("svc__billing",), "svc__crm__get_contact")
