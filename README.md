@@ -45,9 +45,9 @@ Messages API natively, hosted or running on your own machine.
 
 Five ideas cover everything docket does:
 
-- **Pod.** A **pod** is the team of agents attached to one repository: its members, its rules, its
-  task queue and the git worktrees its agents work in. `docket init` creates one; inside the
-  repository you never type its name.
+- **Pod.** A **pod** is the team of agents attached to one repository or, for work with no
+  repository, one working directory: its members, its rules, its task queue and the git worktrees
+  its agents work in. `docket init` creates one; inside the repository you never type its name.
 - **Role.** What an agent is (Lead, Implementer, Reviewer, Tester, or one you define), what it is
   told, and which tools it lacks. A reviewer without a write tool *cannot* write; it is not merely
   asked not to.
