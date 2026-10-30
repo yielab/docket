@@ -169,21 +169,21 @@ class TestThePerimeter:
         base, seen = server
         out = call_operation(_request(base, path="/items", hosts=()))
         assert not out.ok
-        assert out.refusal == "service_address_not_allowed"
+        assert out.refusal == "service_not_allowed"
         assert seen == []
 
     def test_a_redirect_to_another_host_is_refused(self, server: tuple[str, list]) -> None:
         base, seen = server
         out = call_operation(_request(base, path="/redirect"))
         assert not out.ok
-        assert out.refusal == "service_host_not_allowed"
+        assert out.refusal == "service_not_allowed"
         assert "evil.example.test" in out.error
         assert len(seen) == 1
 
     def test_a_base_url_with_credentials_or_a_bad_scheme_is_refused(self) -> None:
         for base in ("http://user:pw@127.0.0.1:1", "ftp://127.0.0.1", "not a url"):
             out = call_operation(_request(base, path="/x"))
-            assert out.refusal == "service_host_not_allowed", base
+            assert out.refusal == "service_not_allowed", base
 
     @pytest.mark.parametrize(
         "headers",
@@ -218,7 +218,7 @@ class TestThePerimeter:
         )
         assert out.ok
         assert "s3cr3t-tok" not in out.content
-        assert "[redacted]" in out.content
+        assert "[REDACTED]" in out.content
 
     def test_a_credential_in_an_error_is_redacted(self, server: tuple[str, list]) -> None:
         base, _ = server

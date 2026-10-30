@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from docket.kernel.errors import InvalidInput
 from docket.platform import service_http as _svc
 
 SUBJECT = "docket.platform.service_http"
@@ -32,9 +33,8 @@ class TestBuildUrl:
         [("/a/{id}", {}), ("/a/{id}", {"id": ".."}), ("/a/{id}", {"id": "."}), ("/a/{", {})],
     )
     def test_refuses_an_unresolvable_path(self, path: str, params: dict[str, str]) -> None:
-        with pytest.raises(_svc.Refused) as caught:
+        with pytest.raises(InvalidInput):
             _svc.build_url(_req(path=path, path_params=params))
-        assert caught.value.kind == "service_bad_request"
 
 
 class TestAddressRefused:
@@ -65,7 +65,7 @@ class TestCheckHeaders:
         ],
     )
     def test_refuses_an_unsafe_header(self, headers: dict[str, str]) -> None:
-        with pytest.raises(_svc.Refused):
+        with pytest.raises(InvalidInput):
             _svc.check_headers(headers)
 
     def test_accepts_ordinary_headers(self) -> None:
@@ -82,7 +82,7 @@ class TestRedaction:
 
     def test_replaces_the_longest_first(self) -> None:
         text = _svc.redact("echo Bearer abc123 and abc123", ("abc123", "Bearer abc123"))
-        assert text == "echo [redacted] and [redacted]"
+        assert text == "echo [REDACTED] and [REDACTED]"
 
     def test_ignores_an_empty_value(self) -> None:
         assert _svc.redact("kept", ("",)) == "kept"
