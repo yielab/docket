@@ -878,5 +878,13 @@
     "heading": "▶ PHASE 55 — a pod works outward, on its own schedule (D-77, ADR 0036) · CLOSED 2026-10-30",
     "bytes": 49236,
     "sha256": "0308c2d8d623e687a9b4435b0a5c60d1351d3d177d6003afd66c2e02b89a8488"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 56 — an external service is declared, a pod keeps records (D-77 amendments, ADR 0036 decisions 13-16) · CLOSED 2026-10-30",
+    "bytes": 58780,
+    "sha256": "d580d2a4f13d8819e7cb8820843f68dd590a633e4219e81287847b2f58d5604e"
   }
 ]
