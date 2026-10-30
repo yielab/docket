@@ -1,10 +1,12 @@
 # MCP Client Specification
 
-**Version**: 2.0.1
+**Version**: 2.1.0
 **Status**: Implemented and on the live turn path: configured servers' tools load into the turn's
 registry before per-role narrowing, so a role that denies a capability loses them like a built-in.
-Stdio transport only; each turn re-spawns every configured server (no listing cache).
-**Last Updated**: 2026-10-23
+Stdio transport only; each turn re-spawns every configured server (no listing cache). A server
+declared `lifetime: hop` keeps one session open for the hop's calls (Requirements 41-46); every
+other server is one subprocess per exchange.
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -39,6 +41,7 @@ This specification covers:
 - The pod's `mcpServers` selection as it applies to loading
 - The directory and jail a stdio server starts in during a turn
 - The model-visible output ceiling for a remote tool result
+- A server's `lifetime`: one stdio session that answers all of a hop's calls, and where it ends
 
 This specification does NOT cover:
 
@@ -48,6 +51,9 @@ This specification does NOT cover:
 - `docket start --mcp` (docket exposing its own control plane as MCP tools); see
   `mcp-server.spec.md`
 - Non-stdio MCP transports (HTTP/SSE)
+- A session that outlives its hop (`lifetime: task`): deferred until a recorded run needs it
+- The browser (or any program) a server drives: it runs outside docket and is not started,
+  stopped or governed by this client
 - The role-narrowing mechanism itself (kind-based exclusion); `role-archetypes.spec.md` owns it.
   This specification only states that MCP tools are loaded before it runs, and why that ordering
   matters: a namespaced name can never equal a denied built-in name, so denial must be by
@@ -198,8 +204,44 @@ This specification does NOT cover:
     exception is Requirement 34's pod-scoped selection: a caller misconfiguration, not a
     live-server failure, so it raises instead of degrading.
 29. A listing and each tool call **MUST** each spawn a fresh stdio subprocess for exactly one
-    exchange and tear it down again. No connection and no tool listing is kept between calls or
-    between turns, so a misbehaving server cannot corrupt a later, unrelated call's state.
+    exchange and tear it down again, per call unless the server declares `lifetime: hop`
+    (Requirements 41-46). No tool listing is kept between turns, and no connection is kept between
+    calls of a `call` server, so a misbehaving server cannot corrupt a later, unrelated call's
+    state. A `hop` session never outlives the hop that opened it.
+
+### Server lifetime (`call` | `hop`)
+
+41. `McpServerConfig` **MUST** carry `lifetime: Literal["call", "hop"] = "call"`. A config written
+    before the field existed, or without it, loads as `call` and behaves byte for byte as before.
+    `docket setup mcp add` **MUST** accept `--lifetime call|hop` (any other value exits 1 naming the
+    flag), and `list --json` shows the field. A tool listing is always one subprocess per exchange,
+    whatever the lifetime.
+42. For a `hop` server the first tool call of a hop **MUST** open one stdio session, and every
+    later call of that hop to that server **MUST** be answered over the same session (the server's
+    own state, such as a page it navigated, is therefore still there). The next hop **MUST** open a
+    fresh session. A `call` server **MUST NOT** be affected: each call spawns its own subprocess.
+43. A session **MUST** be closed where the hop ends (`DocketDriver.run_turn`'s `finally`, beside the
+    stop of the hop's background processes), on every exit path. Opening a session **MUST** be
+    reported to `ToolContext.on_process` as `started` and closing it as `exited`, each carrying
+    `tool: "mcp"` and `server: <name>`; the close at hop end adds `reason: "turn_end"`. Each
+    session therefore yields exactly one `process_started` and one `process_exited` trace event, and
+    a hop that called no `hop` server yields none.
+44. A `hop` session **MUST** apply, per call and unchanged, what a `call` exchange applies: the same
+    launch (`StdioLaunch`: directory and jail argv, Requirement 40), the same per-call wall-clock
+    bound (Requirement 13; a call that times out ends its session), the same output bound
+    (Requirement 30) and the same `pre_input` screening of the result (Requirement 35); and the call
+    **MUST** still reach the transport only through `dispatch_tool` (Requirement 5). Opening a
+    session is bounded by the same timeout; a server that cannot start reports the same failed
+    outcome a `call` server does.
+45. A `hop` server that has died (killed, crashed, or no longer answering a liveness probe) **MUST**
+    be restarted by the next call, and that call's output **MUST** begin with a line saying the
+    server was restarted and its state from earlier calls in the hop is gone. A server that dies
+    during a call fails that call with an error saying so and the state is gone; it is not
+    retried, because the call may have had an effect. The dead session's `exited` is reported once,
+    at the moment it is found dead (with `reason: "died"`, or `"timeout"` after a timed-out call).
+46. The session is a runtime object owned by the hop's `ToolContext` (`mcp_sessions`); it **MUST
+    NOT** be stored in `McpServerConfig`, any document or the trace. Because the hop's calls are
+    sequential, a session serves one call at a time.
 
 ### Model-visible output bound
 
@@ -295,12 +337,14 @@ This specification does NOT cover:
 ```python
 NAMESPACE_PREFIX = "mcp__"
 
-class McpServerConfig(BaseModel):              # name, command, args, env, timeout, kind, tools
+class McpServerConfig(BaseModel):              # name, command, args, env, timeout, kind, tools, lifetime
     def resolved_timeout(self) -> float: ...   # clamped to MCP_CLIENT_MAX_TIMEOUT_S
     # kind: Literal["read", "write"] = "write" -- declared trust level, an operator
     #   assertion (Requirement 32), never inferred by connecting to the server
     # tools: list[str] = []                    -- non-empty = exhaustive allow-list of
     #   remote tool names to register; empty = register everything advertised
+    # lifetime: Literal["call", "hop"] = "call" -- "call": one subprocess per exchange (today);
+    #   "hop": one stdio session answers the hop's calls (Requirements 41-46)
 
 class McpServerRegistry(BaseModel):            # servers: list[McpServerConfig]
 
@@ -354,7 +398,17 @@ def call_remote_tool(
     config: McpServerConfig, name: str, arguments: dict[str, Any], timeout: float,
     launch: StdioLaunch | None = None,
 ) -> ToolOutcome: ...
+
+class HopSessions:                              # the hop's open `lifetime: hop` sessions (ToolContext.mcp_sessions)
+    def call(self, config, name, arguments, timeout, launch=None, on_process=None) -> ToolOutcome: ...  # opens or restarts
+    def close_all(self, on_process, *, reason: str) -> None: ...   # one `exited` per open session
 ```
+
+The adapted tool of a `hop` server calls `ctx.mcp_sessions.call(...)` where a `call` server's calls
+`call_remote_tool(...)`; both return a `ToolOutcome`, and the result screen (Requirement 35) is
+the same. `DocketDriver.run_turn` calls `ctx.mcp_sessions.close_all(ctx.on_process, reason="turn_end")`
+right after `background.stop_all`. P55-3 and later work on `kernel/mcp.py` and `mcp_tools.py` should
+keep this seam: the session is looked up from the context at call time, never captured at load time.
 
 ### `DocketDriver`'s wiring seam
 
@@ -389,26 +443,27 @@ Requirement 34's `mcpServers` filtering keys off.
       "env": {},
       "timeout": 0.0,
       "kind": "write",
-      "tools": []
+      "tools": [],
+      "lifetime": "call"
     }
   ]
 }
 ```
 
 `timeout: 0.0` means "use `MCP_CLIENT_TIMEOUT_S`"; any other value is still clamped to
-`MCP_CLIENT_MAX_TIMEOUT_S`. `kind` and `tools` are optional on read (Requirement 32) and default to
-`"write"` and `[]`.
+`MCP_CLIENT_MAX_TIMEOUT_S`. `kind`, `tools` and `lifetime` are optional on read (Requirements 32, 41) and default to
+`"write"`, `[]` and `"call"`.
 
 ### CLI syntax
 
 ```
 docket setup mcp list [--json]
 docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
-    [--kind read|write] [--tools NAME,NAME,...] -- <command> [args...]
+    [--kind read|write] [--tools NAME,NAME,...] [--lifetime call|hop] -- <command> [args...]
 docket setup mcp remove <name>
 ```
 
-`--kind`/`--tools` follow the same before-`--` convention as `--env`/`--timeout` (Requirement 21).
+`--kind`/`--tools`/`--lifetime` follow the same before-`--` convention as `--env`/`--timeout` (Requirement 21).
 `--tools` takes a single comma-separated argument (no repeated flag, unlike `--env`) since it names
 a subset of one server's own tools, not a set of independent key/value pairs.
 
@@ -427,10 +482,13 @@ for "this tool drives a browser".
 
 1. **Configure the server.** The [Playwright MCP server](https://github.com/microsoft/playwright-mcp)
    is a stdio MCP server that drives a real browser and ships as an `npx` package, so nothing beyond
-   Node is required:
+   Node is required. The browser itself runs outside docket (started and stopped by the operator);
+   the server only attaches to it over `--cdp-endpoint`. The server keeps the page and its element
+   refs between calls, so it declares `--lifetime hop`: one session answers the hop's calls
+   (Requirement 42), where a `call` server would lose the page after the first call.
 
    ```
-   docket setup mcp add playwright -- npx -y @playwright/mcp@latest
+   docket setup mcp add playwright --lifetime hop -- npx -y @playwright/mcp@latest --cdp-endpoint http://127.0.0.1:9222
    ```
 
 2. **What this buys, mechanically.** On the next turn every tool Playwright advertises
@@ -547,7 +605,7 @@ dispatch_tool(
   `add_mcp_server`, `remove_mcp_server`, `namespaced_tool_name`, `load_mcp_tools`,
   `load_mcp_server_document`, `pod_mcp_servers_file`, `load_pod_mcp_servers`,
   `write_pod_mcp_servers`, `pod_scoped_owner`
-- `src/docket/agent/tools/mcp_client.py`: `list_remote_tools`, `call_remote_tool`,
+- `src/docket/agent/tools/mcp_client.py`: `list_remote_tools`, `call_remote_tool`, `HopSessions`,
   `MISSING_SDK_HINT`; the output truncation, the jail wrapping of a stdio server's argv, and the
   hard wall-clock bound (`anyio.fail_after`)
 - `src/docket/hops/application/driver.py`: `DocketDriver.mcp_loader` and its default wrapper
@@ -562,4 +620,5 @@ dispatch_tool(
 - Tests: `tests/integration/agent/test_mcp_client.py` (`TestCollisionRule`, `TestGatedExactlyLikeABuiltin`,
   `TestOnlyTheInertResultTypeIsImported`), `tests/unit/agent/tools/test_mcp_tools.py`
   (`TestZeroServersIsUnchanged`, `TestReviewerNeverGainsAWriteCapableMcpTool`),
-  `tests/integration/interfaces/test_mcp_servers_cli.py`, `tests/integration/teams/test_recipe_mcp_servers.py`
+  `tests/integration/interfaces/test_mcp_servers_cli.py`, `tests/integration/teams/test_recipe_mcp_servers.py`,
+  `tests/integration/agent/tools/test_mcp_lifetime.py` (`lifetime: hop`, Requirements 41-46)

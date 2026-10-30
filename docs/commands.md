@@ -838,7 +838,8 @@ Example: docket setup mcp list
 Configure a server; everything after -- is its launch command, verbatim.
 
 A role that denies write gets tools only from a server declared --kind read.
-Example: docket setup mcp add playwright -- npx -y @playwright/mcp@latest
+A server that keeps state between calls (a browser) wants --lifetime hop.
+Example: docket setup mcp add playwright --lifetime hop -- npx -y @playwright/mcp@latest
 
 ### setup mcp remove
 

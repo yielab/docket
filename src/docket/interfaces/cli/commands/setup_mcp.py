@@ -72,13 +72,20 @@ def cmd_add(
     timeout: float = typer.Option(0.0, "--timeout", help="Seconds before a call gives up"),
     kind: str = typer.Option("write", "--kind", help="read or write: the server's trust level"),
     tools: str = typer.Option("", "--tools", help="Allow-list of the server's tool names"),
+    lifetime: str = typer.Option(
+        "call", "--lifetime", help="call: a process per call; hop: one session per hop"
+    ),
 ) -> None:
     """Configure a server; everything after -- is its launch command, verbatim.
 
     A role that denies write gets tools only from a server declared --kind read.
-    Example: docket setup mcp add playwright -- npx -y @playwright/mcp@latest"""
+    A server that keeps state between calls (a browser) wants --lifetime hop.
+    Example: docket setup mcp add playwright --lifetime hop -- npx -y @playwright/mcp@latest"""
     if kind not in ("read", "write"):
         ui.error(f"--kind must be 'read' or 'write', got '{kind}'")
+        raise typer.Exit(1)
+    if lifetime not in ("call", "hop"):
+        ui.error(f"--lifetime must be 'call' or 'hop', got '{lifetime}'")
         raise typer.Exit(1)
     allow = [t.strip() for t in tools.split(",") if t.strip()]
     try:
@@ -91,6 +98,7 @@ def cmd_add(
                 timeout=timeout,
                 kind=kind,  # type: ignore[arg-type]  # validated above
                 tools=allow,
+                lifetime=lifetime,  # type: ignore[arg-type]  # validated above
             )
         )
     except ValueError as exc:
@@ -98,7 +106,8 @@ def cmd_add(
         raise typer.Exit(1) from exc
     audit_log(
         "mcp_servers.add",
-        f"name={name!r} command={command[0]!r} kind={kind}",
+        f"name={name!r} command={command[0]!r} kind={kind}"
+        + (f" lifetime={lifetime}" if lifetime != "call" else ""),
     )
     ui.success(f"MCP server '{name}' added ({' '.join(command)}).")
     ui.dim(f"  Its tools register as mcp__{name}__<tool>, gated like a built-in tool.")

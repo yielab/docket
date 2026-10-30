@@ -121,6 +121,7 @@ def _build_tool(
     config: McpServerConfig,
     call_tool: CallToolFn,
     timeout: float,
+    launch: StdioLaunch | None = None,
 ) -> Tool:
     """Adapt one remote tool into an ordinary ``agent.tools.registry.Tool``.
 
@@ -138,7 +139,12 @@ def _build_tool(
     def _handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         # dispatch_tool has already gated the call; this runs the protocol exchange, then
         # screens what the remote server sent back, which is untrusted like its description.
-        outcome = call_tool(config, remote.name, args, timeout)
+        if config.lifetime == "hop":
+            outcome = ctx.mcp_sessions.call(
+                config, remote.name, args, timeout, launch, ctx.on_process
+            )
+        else:
+            outcome = call_tool(config, remote.name, args, timeout)
         return _screen_result(ctx.role, config.name, remote.name, outcome, project=ctx.project)
 
     description = f"[MCP:{config.name}] {remote.description}".strip()
@@ -241,7 +247,7 @@ def load_mcp_tools(
                 skipped.append(McpToolSkip(name, skip_reason))
                 continue
 
-            registry.register(_build_tool(name, remote, config, call_tool, timeout))
+            registry.register(_build_tool(name, remote, config, call_tool, timeout, launch))
             registered.append(name)
 
         reports.append(
