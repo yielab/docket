@@ -236,7 +236,7 @@ only needs a table should not need a server.
     `number`, `boolean`, `date`) and an optional `key` column. `pod update` creates the table or adds
     a column; it never removes, renames or retypes one. The file is `pods/<pod>/records.sqlite`,
     beside `memory.json`, outside the roots the jail may write, and one module writes it
-    (`platform/records_store.py`, pinned like the task queue's writer). The tools follow the
+    (`platform/records_sqlite.py`, behind the `RecordStore` port, pinned like the task queue's writer). The tools follow the
     methodology "operations, not tables": `rec__<set>__add` and `rec__<set>__update` are `write`
     tools whose parameters are the declared columns, and an `add` whose key exists returns the
     existing row, so a resumed hop that repeats its call writes once; `rec__query` is a `read` tool
