@@ -97,8 +97,8 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Agent Lifecycle | 4.0.0 | Complete |
 | Agent Loop | 3.10.0 | Implemented and live |
 | API Keys | 2.0.3 | Complete |
-| Audit | 3.3.0 | Implemented |
-| Config Format | 2.7.0 | Implemented |
+| Audit | 3.3.1 | Implemented |
+| Config Format | 2.8.0 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 6.4.1 | Complete |
 | Observability Export | 3.1.0 | Implemented and live |
@@ -106,7 +106,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pod Blueprints | 2.6.0 | Implemented |
 | Pod Dispatch | 11.7.0 | Implemented |
 | Role Archetypes | 4.8.1 | Implemented |
-| Security Gates | 3.2.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.3.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
