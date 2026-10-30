@@ -1,8 +1,8 @@
 # Adoption Benchmark Validation Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Implemented
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -74,18 +74,18 @@ An attempt record MUST contain the following normalized fields:
 
 The runner MUST derive those values as follows:
 
-1. Read the selected run from `docket-runs.json`, require its `project` to match the coordinate and
+1. Read the selected run from `state/docket-runs.json`, require its `project` to match the coordinate and
    its `taskIds` to contain the selected task, then join that id to the selected project's Lead
-   `TASK_LIST.json` (`workspaces/projects/<project>-lead/`). A run state by itself is
+   `TASK_LIST.json` (`state/workspaces/projects/<project>-lead/`). A run state by itself is
    insufficient: `completed=true` requires a `succeeded` run and a task status of `done`.
 2. Sum positive `hops[].attempts` from that task. A task with no hop, or a missing, Boolean, zero,
    or negative attempt value, is invalid rather than silently defaulted.
-3. Read only the selected session's (`sessions/<url-quoted session key>/session.json`) cumulative
+3. Read only the selected session's (`state/sessions/<url-quoted session key>/session.json`) cumulative
    `usage.inputTokens` and `usage.outputTokens`; the record's `sessionKey` MUST equal the
    coordinate. Those are endpoint-reported counts accumulated within one session; `total_tokens`
    MUST equal their sum. Reusing one session key across the attempts of a scenario is invalid, and
    unrelated sessions MUST NOT affect the attempt.
-4. Read `traces/<project>/<session key>.jsonl`; every record MUST carry the coordinate's project and
+4. Read `state/traces/<project>/<session key>.jsonl`; every record MUST carry the coordinate's project and
    session id. Pair `tool_call` and `tool_result` events by `callId` and tool name.
    `tool_calls.total` counts completed pairs, while `tool_calls.executed` counts only results with
    `executed=true`. An orphan, duplicate, or mismatched call/result is invalid.
@@ -95,7 +95,7 @@ The runner MUST derive those values as follows:
    scoped to the selected project, not to the selected task. Approval requests and bare
    command-classifier denials are not policy violations.
 6. Compute approval latency in integer milliseconds from a selected task's approval record
-   (`approvals/*.json` whose `context.taskId` and `project` match) `created` timestamp to the
+   (`state/approvals/*.json` whose `context.taskId` and `project` match) `created` timestamp to the
    matching terminal `approval.grant`/`approval.deny` audit timestamp, joined by the approval token
    in the audit detail. At most one approval may match a task; it MUST be in a terminal state
    (`granted` or `denied`) and have exactly one matching audit entry, or the attempt is invalid.
@@ -122,8 +122,9 @@ The runner MUST derive those values as follows:
    `truncated`, `backend_error`, `compaction_failed`, `context_fit`, `tool_denials`, and
    `run_cancelled`.
 
-Every locator MUST be relative to the supplied Docket home and use only a record id (`#<id>`), a
-trace or session file, or an audit sequence suffix (`audit.log#seq=<n>`). Absolute paths and
+Every locator MUST be relative to the supplied Docket home root (the `DOCKET_HOME` that holds
+`config/` and `state/`, per `specs/functional/workspace-structure.spec.md`) and use only a record id (`#<id>`), a
+trace or session file, or an audit sequence suffix (`state/audit.log#seq=<n>`). Absolute paths and
 approval-token filenames are forbidden.
 
 ### 4. Cost and measurement honesty
