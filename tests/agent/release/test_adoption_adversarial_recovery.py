@@ -238,11 +238,11 @@ def test_public_adversarial_and_recovery_matrix_isolated_and_c3_valid(tmp_path: 
             assert _locator_file(resolved["home"], audit_locator).is_file()
 
         if scenario_id == "corrupt-primary-recovery":
-            primary = resolved["home"] / "docket-runs.json"
-            backup = resolved["home"] / "docket-runs.json.bak"
-            quarantine = resolved["home"] / "docket-runs.json.corrupt"
+            primary = resolved["home"] / "state" / "docket-runs.json"
+            backup = resolved["home"] / "state" / "docket-runs.json.bak"
+            quarantine = resolved["home"] / "state" / "docket-runs.json.corrupt"
             assert _object(primary) == _object(backup)
-            assert quarantine.read_bytes() and not list(resolved["home"].glob("*.tmp"))
+            assert quarantine.read_bytes() and not list((resolved["home"] / "state").glob("*.tmp"))
             assert evidence["malformed_primary_sha256"] == _sha256(quarantine.read_bytes())
             assert primary.stat().st_mode & 0o777 == 0o600
         else:

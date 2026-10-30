@@ -506,7 +506,7 @@ def _starter_run(source: Path, python: Path, run_root: Path, env: dict[str, str]
         raise RegenerationError("starter did not use an isolated non-8081 loopback port")
     if target.read_bytes() != b"docket starter approved\n":
         raise RegenerationError("starter grant did not produce the contracted mutation")
-    sessions = sorted(home.glob("sessions/*/session.json"))
+    sessions = sorted((home / "state" / "sessions").glob("*/session.json"))
     if len(sessions) != 1:
         raise RegenerationError("starter did not retain exactly one provider session")
     usage = _read_object(sessions[0]).get("usage")
