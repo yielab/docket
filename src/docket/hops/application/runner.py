@@ -24,6 +24,7 @@ from docket.kernel.ids import step_session_key
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import runs as _runs
+from docket.tasks.application.actions import ParkedCall, approved_calls_for
 from docket.tasks.application.record import (
     UnitContext,
     UnitOutcome,
@@ -245,6 +246,7 @@ def execute_unit(
     if approval_outcome is not None:
         return approval_outcome
 
+    approved = approved_calls_for(ctx.task_id, role)
     message, env, manifest = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
     hop_first_ts = _clock.stamp()
     run_res, attempt = _run_hop_turn(ctx, node, role, member_id, history_session_key, message, env)
@@ -271,10 +273,33 @@ def execute_unit(
     )
     if early_outcome is not None:
         return early_outcome
+    if hop_ok and approved:
+        _trace_unused_approvals(ctx, role, approved)
 
     return _evaluate_hop_gates(
         ctx, node, role, member_id, hop, prior_snapshot, check_approval=check_approval
     )
+
+
+def _trace_unused_approvals(ctx: UnitContext, role: str, approved: list[ParkedCall]) -> None:
+    """Trace each call the hop was told to issue again that is still unspent after it ended ok."""
+    unspent = {call.token for call in approved_calls_for(ctx.task_id, role)}
+    for call in approved:
+        if call.token in unspent:
+            trace_locked(
+                ctx.project,
+                ctx.session_id,
+                role,
+                "approval_unused",
+                _json.dumps(
+                    {
+                        "task": ctx.task_id,
+                        "role": role,
+                        "tool": call.tool,
+                        "escalation": call.escalation,
+                    }
+                ),
+            )
 
 
 def when_cwd(ctx: UnitContext, prior: list[HopResult]) -> str:

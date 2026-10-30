@@ -41,6 +41,7 @@ DEFAULT_EVENTS: frozenset[str] = frozenset(
         "approval_required",
         "approval_resumed",
         "approval_task_denied",
+        "approval_unused",
         "budget_warning",
         "budget_exceeded",
         "error",
