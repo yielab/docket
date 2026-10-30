@@ -684,7 +684,10 @@ that already own the files.
     dependency; no `--tz`-aware `HH:MM` form. A routine fires only under `docket start --dispatch`.
     `teams/apply/plan.py` sits at 699 of 700 lines: the next card touching it moves code out first. A routine skip is
     traced as `step_skipped` because `EVENT_TYPES` is closed.
-- *Live evidence owed.* The maintainer's browser probe (snapshot, click by ref) under `--lifetime hop` for P55-5.
+- *Live evidence, P55-5 (2026-10-30).* A real Playwright MCP server (0.0.83, headless system Chrome) driven through
+  docket's MCP layer against a local page: under `lifetime: hop` navigate, snapshot and click by ref keep one session
+  (the click ran, the page title changed); under `call` the snapshot after a navigate is `about:blank` and no ref
+  exists. Not a model-driven pod run. That server's click argument is `target`, not `ref`.
 
 **Phase 54 (closed 2026-10-29).** Two items wait for their triggers.
 - *Dated model ids.* The native `/models` lists `claude-haiku-4-5-20251001`, and the probe matches ids
