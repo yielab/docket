@@ -238,9 +238,22 @@ def cmd_list(
     ui.table(rows, ["ID", "PRI", "STATUS", "COST", "WORKTREE", "DESCRIPTION"])
 
 
+def _task_of_escalation(ref: str) -> str:
+    """*ref* itself, or for an ``esc-`` id the id of the task that escalation pauses."""
+    if not is_escalation_id(ref):
+        return ref
+    record = read_escalation(ref)
+    if record is None or not record.task:
+        ui.error(f"No queued task waits on {ref}", "Run docket inbox")
+        raise typer.Exit(1)
+    return record.task
+
+
 @task_app.command("show")
 def cmd_show(
-    ref: str = typer.Argument(..., help="Task id, short id, unique prefix or run id"),
+    ref: str = typer.Argument(
+        ..., help="Task id, short id, unique prefix, run id or escalation id"
+    ),
     json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
     pod: str | None = pod_option(),
 ) -> None:
@@ -248,7 +261,7 @@ def cmd_show(
 
     Example: docket task show task-04ff
     """
-    found = _resolve(pod, ref)
+    found = _resolve(pod, _task_of_escalation(ref))
     record = _task_record(found)
     try:
         ev = _evidence.task_evidence(found.project, found.task_id, "1.1.0")

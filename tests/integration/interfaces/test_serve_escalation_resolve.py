@@ -20,6 +20,7 @@ from tests.support.escalations import (
     consult_escalation,
     input_escalation,
 )
+from tests.support.http import get as _get
 from tests.support.http import post as _post
 from tests.support.tasks import stored_task
 
@@ -245,3 +246,58 @@ class TestTheRetiredRoutesAreOrdinaryUnknowns:
         assert status == unknown >= 400
         assert stored_task(PROJECT, escalation.task).status == "waiting_input"
         assert read_escalation(escalation.id) == escalation
+
+
+class TestOneEscalationRoute:
+    CALL = 'mcp__outbox__send to="ana@example.test" phone="+57 300 1234567"'
+
+    def test_it_needs_the_bearer_token(self, live_server: tuple[str, str]) -> None:
+        url, _token = live_server
+
+        assert _get(f"{url}/escalations/esc-000000000000")[0] == 401
+
+    def test_an_unknown_id_is_a_404(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+
+        assert _get(f"{url}/escalations/esc-000000000000", token)[0] == 404
+        assert _get(f"{url}/escalations/not-an-id", token)[0] == 404
+
+    def test_a_pending_outward_approval_carries_its_call_and_no_list_does(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        escalation = approval_escalation("approval", call=self.CALL)
+
+        status, one = _get(f"{url}/escalations/{escalation.id}", token)
+        _, listed = _get(f"{url}/escalations", token)
+        _, inbox = _get(f"{url}/inbox", token)
+
+        assert status == 200
+        assert (one["id"], one["state"], one["outward"], one["call"]) == (
+            escalation.id,
+            "pending",
+            True,
+            self.CALL,
+        )
+        assert "call" not in listed["escalations"][0] and "call" not in inbox["escalations"][0]
+        assert listed["escalations"][0]["outward"] is True
+
+    def test_a_settled_approval_no_longer_has_a_call(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        escalation = approval_escalation("approval", call=self.CALL)
+
+        _post(f"{url}/escalations/{escalation.id}", {"optionId": "deny"}, token=token)
+        status, one = _get(f"{url}/escalations/{escalation.id}", token)
+
+        assert (status, one["state"]) == (200, "resolved")
+        assert "call" not in one
+
+    def test_an_approval_that_keeps_no_call_answers_without_one(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        escalation = approval_escalation("gate")
+
+        _, one = _get(f"{url}/escalations/{escalation.id}", token)
+
+        assert "call" not in one and "outward" not in one

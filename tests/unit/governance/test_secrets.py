@@ -166,3 +166,30 @@ class TestRedactionWordBoundary:
         out = secrets.redact(text)
         assert "[REDACTED]" in out
         assert "A" * 24 not in out
+
+
+class TestPersonalRedaction:
+    TEXT = "token=sk-abcdefghijklmnopqrstuvwxyz0123 to ana@example.com +57 300 1234567"
+
+    def test_the_default_hides_credentials_and_addresses(self) -> None:
+        out = secrets.redact(self.TEXT)
+
+        assert out == "token=[REDACTED] to [REDACTED] +57 300 1234567"
+        assert out == secrets.redact(self.TEXT, personal=True)
+
+    def test_without_personal_data_only_credentials_go(self) -> None:
+        out = secrets.redact(self.TEXT, personal=False)
+
+        assert "sk-abcdefghijklmnopqrstuvwxyz0123" not in out
+        assert "ana@example.com" in out and "+57 300 1234567" in out
+
+    def test_an_authorization_header_and_a_stored_value_go_either_way(self) -> None:
+        _secrets.save_secrets({"MAIL_PASS": "hunter2hunter2"})
+        text = (
+            '{"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz"} hunter2hunter2 ana@example.com'
+        )
+
+        out = secrets.redact(text, personal=False)
+
+        assert "abcdefghijklmnopqrstuvwxyz" not in out and "hunter2hunter2" not in out
+        assert "ana@example.com" in out

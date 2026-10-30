@@ -37,6 +37,8 @@ _TITLES: dict[EscalationKind, str] = {
     "input": "input requested",
     "wait": "waiting",
 }
+# An approval of a call that acts outside the machine says so, whatever the level.
+_OUTWARD_TITLE = "action leaves the pod"
 # A question's own decline is answered by its own verb (`--decline`), never by naming an option.
 _DECLINE = "decline"
 
@@ -96,7 +98,7 @@ def render_escalation(view: EscalationView, level: str) -> RenderedEscalation:
     # Docket wrote an approval's labels; a question's come from the model.
     labels = not question or level in _CONVERSATION_LEVELS
     return RenderedEscalation(
-        title=_TITLES[view.kind],
+        title=_OUTWARD_TITLE if view.outward and view.kind == "approval" else _TITLES[view.kind],
         prompt=view.prompt if level in allowed else None,
         options=render_options(options, recommended, labels=labels),
         expires_at=view.expires_at,

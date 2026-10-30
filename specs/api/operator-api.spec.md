@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.4.0
+**Version**: 7.5.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-30
 
@@ -64,6 +64,7 @@ over 1 MiB is `413`.
 | `POST /tasks/<pod>/<id>/retry` | put a `blocked` or `failed` task back on the queue |
 | `GET /tasks/<pod>/<id>/diff` | what the task's branch changed |
 | `GET /escalations?since=<seq>&pod=&task=` | the escalation records after a cursor, each joined with its pause |
+| `GET /escalations/<id>` | one escalation joined with its pause; a pending `send` approval also carries its `call` |
 | `POST /escalations/<id>` | resolve one escalation: choose an option, give content |
 | `GET /pods` | every dispatchable pod with its queue counts |
 | `GET /pods/<p>` | one pod's report |
@@ -336,6 +337,13 @@ resolves the escalation (below). `GET /inbox` carries the pending ones as
 `escalations` (and lists a pause no waiting task carries in `needsYou`) and the pauses the pod settled alone as
 `decided`, newest first and at most twenty, a key that is absent while there are none.
 
+`GET /escalations/<id>` (Bearer) answers `200` with the one `EscalationView`, as `GET /escalations`
+lists it, and `404` for an id no record has. For an approval of a `send` call that is still
+`pending` it adds `call`, the whole call with credentials and stored secret values removed, uncut
+(`operator-loop.spec.md` area 11 item 16); every other answer, a settled approval included, has no
+`call`, and no other route carries it. `outward` (`true` on the approval of a `send` call, absent
+otherwise) is on every view. Both are additive to `operator-v2` and to API 6.
+
 `POST /escalations/<id>` takes `{"optionId"?: string, "content"?: object, "actor"?: string}` and
 calls `resolve` (`operator-loop.spec.md` area 10) with channel `http` and actor `actor` (default
 `http`; a label only, the Bearer token is the authority). `optionId` is one of the view's
@@ -459,7 +467,7 @@ probe; the sweep ends the wait, nobody is asked.
 | `201` | a new task or a new pod |
 | `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
-| `404` | no pod (checked before an `apply` body is read), no task, no escalation (`POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
+| `404` | no pod (checked before an `apply` body is read), no task, no escalation (`GET` or `POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting |
 | `413` | a request body over 1 MiB |
 | `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an `autonomy` above the pod profile's ceiling; an invalid `brief`; `POST /escalations/<id>` with an unknown option, content that fails the schema or content a policy blocks |
@@ -489,7 +497,7 @@ probe; the sweep ends the wait, nobody is asked.
 
 - `src/docket/interfaces/http/routes/`: the handler for every route above (`table.py` is the
   route table, one module per resource).
-- `src/docket/interfaces/http/routes/escalations.py`: `get_escalations`, `post_escalation`.
+- `src/docket/interfaces/http/routes/escalations.py`: `get_escalations`, `get_escalation`, `post_escalation`.
 - `src/docket/tasks/application/escalations.py`: `resolve`.
 - `src/docket/interfaces/http/server.py`: `render_health`.
 - `src/docket/interfaces/http/routes/health.py`: `SERVE_API_VERSION`, the `tokenBudget`

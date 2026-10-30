@@ -199,6 +199,7 @@ def set_state(token: str, new_state: str) -> dict[str, Any]:
             raise ApprovalError(f"Unknown approval state: {new_state}")
 
         data["state"] = new_state
+        data.pop("call", None)  # a settled approval never holds the call it was asked about
         return data
 
     return read_modify_write(path, transition)
@@ -224,9 +225,12 @@ def approval_create(
     expires_at: str | None = None,
     rationale: str | None = None,
     rationale_blocked: bool = False,
+    call: str | None = None,
 ) -> str:
     """Persist a pending approval and return its token. ``context`` is optional caller
-    data stored verbatim, never redacted; always ``{}`` when omitted. ``expires_at``,
+    data stored verbatim, never redacted; always ``{}`` when omitted. ``call`` is the whole
+    outward call a person approves, already redacted for credentials by the caller and kept
+    uncut until the record is settled (``set_state`` drops it). ``expires_at``,
     is the record's own deadline; omitted, it is ``created + APPROVAL_TIMEOUT``.
     ``rationale`` (already screened and bounded; ``""`` when none) makes this a gated-call
     pack: the record gains ``rationale`` and the three ``options``, and ``rationaleBlocked`` when
@@ -256,6 +260,8 @@ def approval_create(
         data["options"] = approval_options()
         if rationale_blocked:
             data["rationaleBlocked"] = True
+    if call is not None:
+        data["call"] = call
     write_json(_approval_path(token), data)
 
     return token
@@ -280,6 +286,20 @@ def approval_of(escalation_id: str) -> str:
     """The token of the approval record that backs *escalation_id*, else ``""`` (a pause that waits
     on no approval: a parked question)."""
     return approvals_of().get(escalation_id, "")
+
+
+def approval_call(escalation_id: str) -> str | None:
+    """The whole call of the still-pending approval that backs *escalation_id*, else ``None``:
+    the one text an operator's own view shows, which no settled record holds."""
+    token = approval_of(escalation_id)
+    if not token:
+        return None
+    try:
+        data = _read(token)
+    except (ApprovalError, OSError, ValueError):
+        return None
+    call = data.get("call")
+    return str(call) if data.get("state") == "pending" and call is not None else None
 
 
 def approval_set_option(token: str, option_id: str) -> None:
