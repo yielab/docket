@@ -192,3 +192,21 @@ def test_the_operations_a_directory_declares_are_read_from_its_services(tmp_path
     (problem,) = _check.directory_send_problems(tmp_path, "acme")
 
     assert "actor" in problem and "svc__crm" in problem
+
+
+def test_a_role_naming_a_send_tool_and_the_record_query_is_named_with_both() -> None:
+    for held in ("rec__query", "rec"):
+        roles = {"actor": (("mcp__mail__send", held), ())}
+
+        (problem,) = _check.send_conflicts(roles, _KINDS, {})
+
+        assert held in problem and "mcp__mail__send" in problem
+
+
+def test_a_send_tool_beside_record_writers_or_a_role_denying_read_is_accepted() -> None:
+    roles = {
+        "writes": (("mcp__mail__send", "rec__leads", "rec__export"), ()),
+        "blind": (("mcp__mail__send", "rec__query"), ("read",)),
+    }
+
+    assert _check.send_conflicts(roles, _KINDS, {}) == []

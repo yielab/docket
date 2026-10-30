@@ -202,3 +202,18 @@ class TestAllowListToolNames:
         assert not allow_list_names(("svc__crm__get_contact",), "svc__crm__get_contact_all")
         assert not allow_list_names(("svc__crm",), "svc__crmx__get_contact")
         assert not allow_list_names(("svc__billing",), "svc__crm__get_contact")
+
+    def test_a_record_name_is_accepted_like_an_mcp_name(self) -> None:
+        names = ("rec", "rec__leads", "rec__leads__add", "rec__query", "rec__export", "grpe")
+
+        assert unknown_allow_list_tools(names) == ["grpe"]
+
+    def test_a_record_entry_names_a_set_a_tool_or_every_tool_of_the_pod(self) -> None:
+        assert allow_list_names(("rec",), "rec__leads__add")
+        assert allow_list_names(("rec",), "rec__query")
+        assert allow_list_names(("rec__leads",), "rec__leads__update")
+        assert allow_list_names(("rec__query",), "rec__query")
+        assert not allow_list_names(("rec__leads",), "rec__notes__add")
+        assert not allow_list_names(("rec__leads",), "rec__query")
+        assert not allow_list_names(("rec__lead",), "rec__leads__add")
+        assert not allow_list_names(("rec",), "svc__crm__get_contact")
