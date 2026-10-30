@@ -24,6 +24,7 @@ from docket.agent.ports import (
 )
 from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
+from docket.agent.tools import records_tools as _records_tools
 from docket.agent.tools import service_tools as _service_tools
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
@@ -33,7 +34,7 @@ from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
 from docket.models.catalog import ModelProfile
 from docket.observability import trace as _trace
-from docket.platform import read_json
+from docket.platform import RecordsStore, read_json
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.queue import touch_claim
 from docket.tasks.application.repository import TaskRepository
@@ -41,6 +42,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import records as _records
 from docket.teams import roles as _archetypes
 from docket.teams import services as _services
 from docket.teams.models import AgentMeta
@@ -148,6 +150,18 @@ def _load_service_tools(registry: ToolRegistry, project: str = "") -> list[Any]:
             continue
         loadable.append(_service_tools.ResolvedService(config, headers, secrets))
     return [*unavailable, *_service_tools.load_service_tools(registry, services=loadable)]
+
+
+def _load_records_tools(registry: ToolRegistry, project: str = "") -> list[str]:
+    """Fold *project*'s declared record sets into *registry* as tools. A document that does not
+    validate adds none and appends a ``records.unavailable`` audit event naming the file."""
+    if not project:
+        return []
+    sets, problems = _records.pod_record_sets(project)
+    for problem in problems:
+        tool_gate.audit_event("records.unavailable", problem)
+    store = RecordsStore(current_home().pod_records_path(project))
+    return _records_tools.load_records_tools(registry, store=store, sets=sets)
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:

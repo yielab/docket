@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from tests.support.llm import RecordingScriptedBackend as _ScriptedBackend
 from tests.support.llm import final as _final
+from tests.support.llm import tool_calls
 from tests.support.pods import write_meta_overrides as _write_meta
 from tests.support.roles import write_role_overlay
 from tests.support.turns import run_turn
@@ -19,10 +20,6 @@ from tests.support.turns import run_turn
 from docket.agent.ports import (
     DOCKET_HOP_STEP,
     DOCKET_PREGRANTS,
-    ChatResponse,
-    TokenUsage,
-    ToolCall,
-    assistant,
 )
 from docket.governance import approval_pregrant as _pregrant
 from docket.governance import secrets as _secrets
@@ -69,19 +66,6 @@ def world(tmp_path: Path) -> None:
     write_role_overlay("acme", "implementer", [], extra="tools: [read, svc__crm]\n")
 
 
-def _calls(*names_and_arguments: tuple[str, dict[str, Any]]) -> ChatResponse:
-    calls = [
-        ToolCall(id=f"c-{i}", name=name, arguments=json.dumps(arguments))
-        for i, (name, arguments) in enumerate(names_and_arguments)
-    ]
-    return ChatResponse(
-        ok=True,
-        message=assistant("", tool_calls=calls),
-        finish_reason="tool_calls",
-        usage=TokenUsage(5, 5),
-    )
-
-
 def _pregrants(name: str, arguments: dict[str, Any], count: int) -> str:
     digest = canonical_args_digest(name, arguments)
     return json.dumps(
@@ -109,7 +93,7 @@ def _turn(
 
 def _send_twice(task: str, *, step: str = "build") -> None:
     args = {"body": _BODY}
-    backend = _ScriptedBackend([_calls((_SEND, args), (_SEND, args)), _final("done")])
+    backend = _ScriptedBackend([tool_calls((_SEND, args), (_SEND, args)), _final("done")])
     _turn(backend, task, step=step, pregrants=_pregrants(_SEND, args, 2))
 
 
@@ -119,7 +103,7 @@ class TestEveryCallNamesItsTask:
     ) -> None:
         base, seen = service_server
         _services.add_service(_service(base))
-        backend = _ScriptedBackend([_calls(("svc__crm__list_contacts", {})), _final("done")])
+        backend = _ScriptedBackend([tool_calls(("svc__crm__list_contacts", {})), _final("done")])
 
         _turn(backend, "t-1")
 
