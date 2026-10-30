@@ -153,8 +153,8 @@ _VERIFY_SENTENCE = (
 )
 
 
-class TestImplementerNamesItsVerifyCommand:
-    """A hop whose step has a verify command tells the Implementer how it will be judged."""
+class TestHopNamesItsVerifyCommand:
+    """A hop whose step has a verify command is told how it will be judged, whatever its role."""
 
     def test_the_sentence_follows_the_built_in_instruction(self) -> None:
         message, _ = _compose._hop_message(
@@ -178,9 +178,14 @@ class TestImplementerNamesItsVerifyCommand:
         )
         assert message.endswith("Fix it your way.\n\n" + _VERIFY_SENTENCE)
 
-    def test_only_the_implementer_is_told(self) -> None:
-        for role in ("reviewer", "lead"):
+    def test_any_role_whose_step_has_the_command_is_told(self) -> None:
+        for role in ("reviewer", "operator"):
             message, _ = _compose._hop_message(_TASK, role, [], verify_cmd="sh checks/verify.sh")
+            assert message.endswith(_VERIFY_SENTENCE), role
+
+    def test_a_hop_composed_without_a_command_is_not_told_one(self) -> None:
+        for role in ("reviewer", "lead", "operator"):
+            message, _ = _compose._hop_message(_TASK, role, [])
             assert "sh checks/verify.sh" not in message, role
 
 

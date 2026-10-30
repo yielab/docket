@@ -20,7 +20,7 @@ from docket.hops.application.steps import (
 )
 from docket.hops.gates.post_hop import (
     _external_failure_kind,
-    _latest_implementer_evidence,
+    _latest_evidence,
     _match_on_route,
 )
 from docket.hops.gates.pre_hop import (
@@ -208,7 +208,7 @@ def _step_skipped(ctx: UnitContext, node: _orch.PlannedUnit, prior: list[HopResu
     if "changed" in when:
         cwd = when_cwd(ctx, prior)
         changed_files = _git.git_changed_files(cwd) if cwd else []
-        evidence = _latest_implementer_evidence(prior)
+        evidence = _latest_evidence(prior)
         base, head = evidence.get("baseCommit"), evidence.get("commit")
         if cwd and base and head:
             changed_files += _git.git_diff_names(cwd, str(base), str(head))

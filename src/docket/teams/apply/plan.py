@@ -44,7 +44,7 @@ from docket.teams.apply.check import (
     unresolved_members,
     unsupplied_inputs,
 )
-from docket.teams.apply.external import plan_mcp_servers
+from docket.teams.apply.external import plan_mcp_servers, plan_services
 from docket.teams.apply.model import (
     ApplyAction,
     ApplyItem,
@@ -542,6 +542,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
     )
 
     mcp_items, mcp_write = plan_mcp_servers(directory, project)
+    service_items, service_writes = plan_services(directory, project)
 
     all_settings = _settings_with_top_level(raw_settings, manifest)
     if "maxReworkCycles" in all_settings and (
@@ -559,6 +560,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         *plugin_items,
         *skill_items,
         *mcp_items,
+        *service_items,
         *member_items,
     ]
     if pipeline_item is not None:
@@ -580,6 +582,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         _routine_writes=tuple(routine_writes),
         _skill_writes=tuple(skill_writes),
         _mcp_server_write=mcp_write,
+        _service_writes=tuple(service_writes),
         _member_writes=tuple(member_writes),
         _pipeline_write=pipeline_write,
         _setting_writes=tuple(setting_writes),
