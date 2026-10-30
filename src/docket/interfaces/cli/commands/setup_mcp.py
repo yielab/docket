@@ -11,6 +11,7 @@ from docket.interfaces.cli.render import ui
 from docket.kernel import mcp as _mcp
 from docket.kernel.home import current_home
 from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import services as _services
 
 mcp_app = typer.Typer(
     name="mcp",
@@ -116,6 +117,10 @@ def cmd_add(
     literal = _parse_env(env)
     server_env = {**literal, **_parse_secret(secret, literal)}
     stored = _secrets.secrets_keys()
+    conflict = _services.service_name_conflict(name)
+    if conflict:
+        ui.error(conflict)
+        raise typer.Exit(1)
     try:
         _mcp_servers.add_mcp_server(
             _mcp.McpServerConfig(

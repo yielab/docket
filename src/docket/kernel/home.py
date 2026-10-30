@@ -461,6 +461,11 @@ class Home:
             return self.mcp_servers_file_override
         return self.config_dir / "docket-mcp-servers.json"
 
+    # The operator's declared external services (specs/functional/service-client.spec.md).
+    @property
+    def services_file(self) -> Path:
+        return self.config_dir / "services.json"
+
     # The operator's provider documents, merged nearest-wins over the ones in the wheel.
     @property
     def providers_file(self) -> Path:
