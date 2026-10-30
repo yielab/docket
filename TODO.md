@@ -21,7 +21,7 @@
 > "Phase 54" in the follow-ups below. **Planned: Phase 55** (D-77,
 > [ADR 0036](docs/adr/0036-a-pod-works-outward.md)): a pod works outward, on its own schedule; twelve
 > cards P55-1..P55-12 over four waves, cut by file ownership. **Wave 1 merged 2026-10-30** (P55-1, P55-5,
-> P55-7, P55-11); **Wave 2 merged 2026-10-30** (P55-3, P55-6); Wave 3 (P55-2, P55-4, P55-9) is next.
+> P55-7, P55-11); **Wave 2 merged 2026-10-30** (P55-3, P55-6); **Wave 3 merged 2026-10-30** (P55-2, P55-4, P55-9); Wave 4 (P55-8, P55-10, then P55-12 at the close) is next.
 > Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md));
 > its loose ends are under "Escalations". The integration branch is `develop`. A new phase starts from a
 > measured trigger or a maintainer request.
@@ -187,7 +187,7 @@ behaviour + data + spec + e2e
 
 ### P55-2 — a custom role pins its model like a built-in one
 
-**Status:** TODO · ready, P55-3 merged 2026-10-30; shares `role-archetypes.spec.md` · **Size:** S · **Model:** Sonnet ·
+**Status:** DONE (2026-10-30, merged from `p55-2`; the refusal golden is a follow-up) · **Size:** S · **Model:** Sonnet ·
 **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0036 finding 7: `teams/model_selection.py:432` keeps `role.<name>` only when
@@ -259,7 +259,7 @@ behaviour + data + spec + e2e
 
 ### P55-4 — the approver sees exactly what leaves; every kept or forwarded copy stays redacted
 
-**Status:** TODO · ready, P55-3 and P55-6 merged 2026-10-30 · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (2026-10-30, merged from `p55-4`) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 + HTTP API (additive)
 
 - **Trigger:** ADR 0036 finding 4, measured 2026-10-29 with a draft message parked for approval: the
@@ -427,7 +427,7 @@ behaviour + spec + contract
 
 ### P55-8 — a quota on `send`: N actions per pod per window, counted when they run
 
-**Status:** TODO (after P55-4) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** TODO · ready, P55-4 merged 2026-10-30; continues `gate.py` · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0036 decision 7 and the request (an action that leaves the machine needs a
   ceiling a pod cannot talk its way past); no stateful rule exists (`governance/policy.py:34-63`,
@@ -453,7 +453,7 @@ behaviour + spec + contract
 
 ### P55-9 — routines: a pod creates its own tasks on a schedule
 
-**Status:** TODO · ready, P55-6 and P55-7 merged 2026-10-30 · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** DONE (2026-10-30, merged from `p55-9`) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec + data
 
 - **Trigger:** the request ("on schedules or at recurring times") and ADR 0036 finding 6: `docket pod
@@ -506,7 +506,7 @@ spec + data
 
 ### P55-10 — an external API is an MCP server whose credentials come from the secret store
 
-**Status:** TODO (after P55-3 and P55-4) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO · ready, P55-3 and P55-4 merged 2026-10-30 · **Size:** S · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request ("interacting with external APIs is another case") and ADR 0036 finding 9:
@@ -671,6 +671,19 @@ that already own the files.
   timed-out wait with no route is `blocked` / `wait_expired`, and `POST /escalations/<id>` `{optionId: "resume"}` ends
   it early. The e2e lane took 344 s once on this host against about 42 s measured before; its slowest tests are 13 s,
   so it was host load, not a test; re-measure if it repeats.
+- *Phase 55 Wave 3.*
+  - P55-2: the refusal golden is not added. `tests/golden/run.sh` derives the command from the case id and
+    `setup model set` validates the model id (it contains `/`) before the role; a CLI unit test in
+    `tests/unit/interfaces/cli/commands/test_setup_model.py` plus checking the role first would fix both. The refusal
+    hint and `setup model list` name only the ten built-in roles; `known_role_names()` reads every overlay per call.
+  - P55-4: `task show --json` carries no `call` (deliberate). The `Authorization` redaction pattern needs a token of
+    about 20 characters after "Bearer". `outward` and `call` are additive to `operator-v2`; tell Tack's maintainer.
+  - P55-9: `docs/CONFIGURATION.md` and `kernel/layout.py` do not list `docket-routines.json`;
+    `pod-blueprints.spec.md` omits `routines/` from the `pod update` list; the recipe summary line does not name
+    routines; cron day-of-month and day-of-week are ANDed, as in the existing parser; `tzdata` is not a declared
+    dependency; no `--tz`-aware `HH:MM` form. A routine fires only under `docket start --dispatch`.
+    `teams/apply/plan.py` sits at 699 of 700 lines: the next card touching it moves code out first. A routine skip is
+    traced as `step_skipped` because `EVENT_TYPES` is closed.
 - *Live evidence owed.* The maintainer's browser probe (snapshot, click by ref) under `--lifetime hop` for P55-5.
 
 **Phase 54 (closed 2026-10-29).** Two items wait for their triggers.
