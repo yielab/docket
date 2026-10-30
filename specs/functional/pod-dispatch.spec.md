@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.7.0
+**Version**: 11.8.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1146,6 +1146,20 @@ dispatches the queue that already exists and is unchanged.
      with or without `--resume`.
    - Each resolution traces `approval_resumed` (grant) or `approval_task_denied` (deny) on the
      task's session.
+   - **The resumed hop is told which call to issue again.** The next claim re-runs the step of the
+     hop that parked a call, on the session that still holds the earlier `approval_parked`
+     refusal. That hop's message **MUST** end with a note naming each call a person approved for
+     this task and the hop's role that no hop has spent yet: the tool and the one-line, redacted
+     summary of the call (the `call=` part of the approval's `action`), and saying to issue the
+     same call again now, with the same arguments, because it runs once without asking. A call
+     approved ahead with `docket task pregrant` is not named. Without a granted call the message
+     is unchanged. When the latest parked call of this task and role was denied and a hop of that
+     role runs again (a retried task), the note says that call was refused and is not to be issued
+     again; a denial still fails the task as above.
+   - **A hop that ignores the note is reported.** A hop that ends `ok` while a call named in its
+     note is still unspent **MUST** trace `approval_unused` on the task's session (`task`, `role`,
+     `tool`, `escalation`) and `docket task show` **MUST** print one line per such event. The
+     task's status is what the pipeline gives it; nothing here adds a status or executes the call.
    - Resolving an approval not created by a dispatch gate (no `context.taskId` and no escalation
      naming a task, or no `project`), an unknown approval, or a task no longer `waiting_approval`
      on that exact escalation (already resolved by a concurrent caller) **MUST** be a harmless
@@ -2366,6 +2380,7 @@ paused_refused               # a claim attempt was refused because the pod's Lea
 approval_required            # a require_approval gate or a parked call fired (task -> waiting_approval); names the escalation
 approval_resumed             # a granted approval moved the task on (pending, or done for check_changed)
 approval_task_denied         # a denied approval failed the task terminally
+approval_unused              # a hop ended ok without issuing the call a person approved for it
 session_end                  # once, at the end of dispatch_task, carrying the final status
 run_cancellation_observed    # once when execution first observes the persisted run request
 run_cancelled                # once when execution has fully stopped and terminalizes the run
