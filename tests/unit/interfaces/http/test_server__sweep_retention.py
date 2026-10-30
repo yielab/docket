@@ -23,7 +23,6 @@ from tests.support.tasks import put_tasks, task
 from tests.support.trace import write_trace as _write_trace
 
 from docket.interfaces.http import server as _server
-from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.routes import a2a_push
 from docket.kernel import threads as _threads
 from docket.kernel.home import Home, current_home, use_home
@@ -222,7 +221,7 @@ class TestSweepRefreshesObservedModels:
             _provider_lifecycle, "refresh_observed_models_due", lambda: calls.append(1) or []
         )
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: [])
-        monkeypatch.setattr(_sweeps, "check_schedules", lambda now: None)
+        monkeypatch.setattr(_server, "check_schedules", lambda now: None)
         return calls
 
     def test_only_a_dispatching_sweep_refreshes_the_providers_limits(
@@ -246,6 +245,6 @@ class TestSweepRefreshesObservedModels:
         seen: list[int] = []
         monkeypatch.setattr(_provider_lifecycle, "refresh_observed_models_due", boom)
         monkeypatch.setattr(_queue, "dispatchable_pods", lambda: seen.append(1) or [])
-        monkeypatch.setattr(_sweeps, "check_schedules", lambda now: None)
+        monkeypatch.setattr(_server, "check_schedules", lambda now: None)
         _server._run_sweeps(dispatch=True)
         assert seen == [1]
