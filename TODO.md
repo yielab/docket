@@ -750,6 +750,11 @@ that already own the files.
     `teams/config_docs.py` sits at 700 lines.
   - A flake, once: `test_consult_wait.py::TestAnsweredInPlace::test_an_answer_by_the_task_goes_through_the_same_record`
     failed in the full run and passed alone (the file's other test is already on the list above).
+- *To investigate, important, first after Phase 55: declarative external services.* The maintainer wants a pod to reach
+  an external service from a `kind: service` document or commands (base URL, auth from the secret store, operations as
+  read/send tools through `dispatch_tool`), with no program written per service and no more MCP implementation work. It
+  reverses ADR 0036's "no native HTTP tool", so it needs an ADR first. Sketch and open questions in
+  `internal-docs/design/site-credentials-for-a-pod.md` (Addendum). No card yet.
 - *To investigate, important: a pod logging in to a site nobody configured.* Per-service MCP bridges and `secret:<name>`
   are fixed when a server is registered; a task that ends in a `send` at a new site that needs a login has no per-site
   credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
