@@ -28,6 +28,7 @@ import docket.governance.plugin_api as _plugin_api
 import docket.kernel.templates as _templates
 from docket.governance import plugins as _plugins
 from docket.governance import policy_command as _command
+from docket.governance import quota as _quota
 from docket.kernel.errors import CanonicalFormRefused, InvalidInput
 from docket.kernel.home import current_home
 
@@ -128,6 +129,9 @@ def _validate_doc(p: dict[str, Any], label: str) -> str:
         )
     if p.get("action") not in VALID_ACTIONS:
         return f"{label}: unknown action '{p.get('action')}'"
+
+    if "limit" in p:  # a quota fires on a count, not on the call's text (governance/quota.py)
+        return _quota.validate_limit(p, label)
 
     # A document fires on a `match` (the text regex), a `when` (structured predicates
     # over the tool call), or both -- it must carry at least one.
@@ -570,6 +574,8 @@ def policy_eval_detail(
         if trusted and p.get("id") in _INJECTION_IDS:
             continue
 
+        if "limit" in p:
+            continue  # a quota never fires as a predicate; `limits_for` reads it
         when = p.get("when")
         if isinstance(when, dict):
             try:
@@ -588,6 +594,23 @@ def policy_eval_detail(
             )
 
     return best
+
+
+def limits_for(role: str | None, project: str) -> list[_quota.Limit]:
+    """The valid quotas of *project*'s policy scope that apply to *role* (every role when
+    ``None``); a broken file is skipped here and fails closed in :func:`policy_eval_detail`."""
+    found: list[_quota.Limit] = []
+    for path in policy_files(project):
+        try:
+            p = read_policy(path)
+        except Exception:
+            continue
+        if "limit" not in p or _validate_doc(p, path.name):
+            continue
+        applies = p.get("applies_to") or []
+        if role is None or "*" in applies or role in applies:
+            found.append(_quota.parse_limit(p))
+    return found
 
 
 def policy_test(

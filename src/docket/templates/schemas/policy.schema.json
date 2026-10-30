@@ -83,6 +83,56 @@
       "title": "PolicyCommand",
       "type": "object"
     },
+    "PolicyLimit": {
+      "additionalProperties": false,
+      "description": "A policy's send quota -- see security-gates.spec.md (\"Policy format v1\" requirement 9).",
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "const": "send",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "per": {
+          "enum": [
+            "hour",
+            "day"
+          ],
+          "title": "Per",
+          "type": "string"
+        }
+      },
+      "required": [
+        "count",
+        "per"
+      ],
+      "title": "PolicyLimit",
+      "type": "object"
+    },
     "PolicyWhen": {
       "additionalProperties": false,
       "description": "A policy's structured predicate -- see security-gates.spec.md (\"Policy format v1\").\n`plugin`/`with` describe the predicate-plugin escape hatch (ADR 0010 \u00a74); the runtime\nengine's own support for them is a separate, later card.",
@@ -283,6 +333,17 @@
       ],
       "default": null,
       "title": "Message"
+    },
+    "limit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PolicyLimit"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

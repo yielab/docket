@@ -24,6 +24,11 @@ before the Actor ran.
   Telegram keep the redacted text. The call is deleted when the approval is settled.
   `docket task answer <token> --option approve_once` lets that one call through.
 
+- `policies/send-quota.yaml` caps the pod at ten sends in a trailing day. The count rises when a
+  `send` runs, never when one is asked about or refused; past the limit the call is refused with
+  the count and the window, audited as `tool.send` with `decision=deny`, and `docket status` shows
+  `send 3/10 today`. Edit `count` or `per: hour | day`, or delete the file for no cap.
+
 ## Prerequisites
 
 The recipe ships no MCP server. Declare yours first; a server that both reads and acts is declared
@@ -89,6 +94,7 @@ anything, and is safe to run again. `--dry-run` prints the plan without writing.
   denied `write`, `edit` and `bash`.
 - `policies/ask-before-send.yaml` - asks before the Actor's `send` tool, with the message the
   person reads.
+- `policies/send-quota.yaml` - the quota above.
 
 ## Limits
 
