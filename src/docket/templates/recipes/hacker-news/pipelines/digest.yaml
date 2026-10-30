@@ -1,0 +1,36 @@
+kind: pipeline
+name: digest
+description: >-
+  The Analyst reads the Hacker News front page and records its most commented stories, reads each
+  story's comments and writes its summary and the discussion, then the Reviewer checks the rows.
+steps:
+  - collect: analyst
+    instructions: >-
+      Read the front page with svc__hn__search, passing exactly tags=front_page, hitsPerPage=10,
+      attributesToRetrieve=title,points,num_comments,objectID,url,created_at and
+      attributesToHighlight=none. Take the five hits with the most num_comments. For each, add a
+      row with rec__stories__add: id is the objectID, title, url (or
+      https://news.ycombinator.com/item?id=<objectID> when the hit has none), points, comments is
+      num_comments, and captured is the date part of created_at (YYYY-MM-DD). Leave summary and
+      discussion empty. A story already in the set is returned, not added again, so do not retry
+      it. Reply with the ids you added and the ids that were already there.
+  - analyse: analyst
+    instructions: >-
+      Find the stories still without a summary with rec__query: SELECT id, title FROM stories WHERE
+      summary IS NULL OR summary = ''. For each one read its comments with svc__hn__comments,
+      passing exactly tags=comment,story_<id>, hitsPerPage=8,
+      attributesToRetrieve=author,comment_text,points and attributesToHighlight=none. Then call
+      rec__stories__update with match {id} and values {summary, discussion}. The summary says what
+      the story is about, from its title and from what the comments explain. The discussion says what
+      the commenters agree on, what they dispute and the notable objections, and quotes one comment
+      in a few words. Write only what the comments say. If the Reviewer named a story, redo it. Reply
+      with the ids you filled.
+  - check: reviewer
+    instructions: >-
+      List the newest rows with rec__query (SELECT id, title, comments, summary, discussion FROM
+      stories ORDER BY _id DESC), limit 5. APPROVE only when there is at least one, every row has
+      a summary and a discussion that is not empty, and the discussion reads as what commenters
+      said and not as a copy of the title; otherwise REQUEST-CHANGES and name the id that is
+      missing or wrong. You cannot add or change a row.
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: analyse, max: 1}}

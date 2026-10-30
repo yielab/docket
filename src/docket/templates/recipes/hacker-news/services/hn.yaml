@@ -1,0 +1,30 @@
+kind: service
+name: hn
+baseUrl: https://hn.algolia.com/api/v1
+hosts: [hn.algolia.com]
+operations:
+  - name: search
+    method: GET
+    path: /search
+    description: >-
+      Search Hacker News stories. For the front page pass tags=front_page, hitsPerPage=10,
+      attributesToRetrieve=title,points,num_comments,objectID,url,created_at and
+      attributesToHighlight=none. For the stories since a date pass tags=story and
+      numericFilters=created_at_i>UNIX_SECONDS, the same attributes and hitsPerPage.
+    params:
+      - {name: tags, in: query, type: string}
+      - {name: numericFilters, in: query, type: string}
+      - {name: hitsPerPage, in: query, type: integer}
+      - {name: attributesToRetrieve, in: query, type: string}
+      - {name: attributesToHighlight, in: query, type: string}
+  - name: comments
+    method: GET
+    path: /search
+    description: >-
+      The comments of one story. Pass tags=comment,story_<objectID>, hitsPerPage=8,
+      attributesToRetrieve=author,comment_text,points and attributesToHighlight=none.
+    params:
+      - {name: tags, in: query, type: string}
+      - {name: hitsPerPage, in: query, type: integer}
+      - {name: attributesToRetrieve, in: query, type: string}
+      - {name: attributesToHighlight, in: query, type: string}
