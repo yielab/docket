@@ -73,6 +73,7 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "approval_required",  # a require_approval gate fired pre-hop (task -> waiting_approval)
         "approval_resumed",  # a granted approval flipped a waiting task back to pending
         "approval_task_denied",  # a denied approval failed a waiting task terminally
+        "approval_unused",  # a hop ended ok without issuing the call a person approved for it
         "run_cancellation_observed",  # execution first observed a persisted run request
         "run_cancelled",  # dispatch fully stopped and terminalized the requested run
         # Generic verdict-gate outcomes for any role/archetype beyond the two

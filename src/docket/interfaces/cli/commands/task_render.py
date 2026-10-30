@@ -176,6 +176,23 @@ def _render_outward(found: TaskRef) -> None:
         _say("    " + call.replace("\n", "\n    "))
 
 
+def _render_unused(found: TaskRef) -> None:
+    """One line per approved call a hop ended without issuing again."""
+    events = [
+        r["payload"]
+        for r in _trace.read_trace(_trace_file(found))
+        if r.get("event_type") == "approval_unused" and isinstance(r.get("payload"), dict)
+    ]
+    if not events:
+        return
+    ui.section("Approved, not used")
+    for payload in events:
+        _say(
+            f"  {payload.get('role', '')} was told to issue the approved {payload.get('tool', '')} "
+            f"call again and did not ({payload.get('escalation', '')})"
+        )
+
+
 def _render_decided(found: TaskRef) -> None:
     views = _decided_for(found)
     if not views:
@@ -219,6 +236,7 @@ def _render_show(
         _say(f"  merge:  {wt['merge']}")
     _render_waiting(found)
     _render_outward(found)
+    _render_unused(found)
     _render_decided(found)
     if notes:
         ui.section("Corrections")
