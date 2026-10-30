@@ -17,15 +17,17 @@ from pathlib import Path
 
 import pytest
 from tests.support import home as _support_home
+from tests.support.pods import spec as _spec
 from tests.support.pods import write_meta as _write_meta
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.hops.application import executor as _executor
+from docket.hops.gates import post_hop as _post_hop
 from docket.kernel.ports import jail as _jail
 from docket.sandbox.launch import _VERIFY_MAX_OUTPUT
 from docket.tasks.application import record as _record
-from docket.tasks.domain.task import TaskRecord
+from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import fleet as _fleet
 
 _hermetic = _support_home.hermetic_trace_on
@@ -297,3 +299,80 @@ class TestDispatchVerifyGate:
         )
         assert res.status == "failed"
         assert "lead hop failed" in res.reason
+
+
+# ── the verify command belongs to the step, not to the role ──────────────────
+
+_OPERATE = """\
+name: operate
+steps:
+  - operate: operator
+    verify: "true"
+"""
+
+
+class TestStepOwnedGate:
+    """A step's mechanical gate is told to, and its evidence read from, any role."""
+
+    def test_an_operator_step_with_a_gate_command_is_told_the_command(self, tmp_path: Path) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-operator")
+        messages: dict[str, str] = {}
+
+        def _runner(
+            member_id: str,
+            session_id: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            messages[member_id] = message
+            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+
+        res = _executor.dispatch_task(
+            "myapp",
+            TaskRecord(id="t20", description="close the books"),
+            runner=_runner,
+            spec=_spec(_OPERATE),
+        )
+
+        assert res.status == "done", res.reason
+        assert "Your work is accepted only if `true` exits 0." in messages["myapp-operator"]
+        assert "Run it with the `verify` tool" in messages["myapp-operator"]
+
+    def test_a_hop_without_a_gate_command_is_not_told_one(self, tmp_path: Path) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-operator")
+        seen: list[str] = []
+
+        def _runner(
+            member_id: str,
+            session_id: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            seen.append(message)
+            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+
+        plain = _spec("name: plain\nsteps:\n  - operate: operator\n")
+        _executor.dispatch_task(
+            "myapp", TaskRecord(id="t21", description="x"), runner=_runner, spec=plain
+        )
+
+        assert seen
+        assert not any("Your work is accepted only if" in m for m in seen)
+
+    def test_the_latest_evidence_is_the_latest_successful_hops_whatever_its_role(self) -> None:
+        def _hop(role: str, evidence: dict[str, str] | None, ok: bool = True) -> HopResult:
+            return HopResult(role=role, member_id=f"p-{role}", ok=ok, output="", evidence=evidence)
+
+        built = _hop("implementer", {"commit": "aaa", "baseCommit": "base"})
+        operated = _hop("operator", {"commit": "bbb", "baseCommit": "aaa"})
+        judged = _hop("reviewer", None)
+        failed = _hop("operator", {"commit": "ccc"}, ok=False)
+
+        assert _post_hop._latest_evidence([built, judged]) == built.evidence
+        assert _post_hop._latest_evidence([built, operated, judged]) == operated.evidence
+        assert _post_hop._latest_evidence([built, operated, failed]) == operated.evidence
+        assert _post_hop._latest_evidence([judged]) == {}
