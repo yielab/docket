@@ -92,7 +92,13 @@ document can override `toolSurface` (`full` or `minimal`), `descriptions` (`full
 `toolChoice` (`auto` or `forced-on-close`) and `budgets` (`readWindow`, `toolOutput`: shares of the
 context window), and declare `sampling: {temperature, topP}`; sampling is sent only when declared,
 so an endpoint's own defaults apply otherwise. `docket status` names each member's profile.
-`toolSurface` and `budgets` are resolved but not yet applied to any tool.
+`toolSurface: minimal` is applied to every hop: the request offers `bash`, `read`, `glob`, `edit`,
+`write` and `verify`, the step's closing tool, and any MCP tool the role's `tools` allow-list (or the
+step's, when it declares one) names, as `mcp__<server>__<tool>` or `mcp__<server>` for every tool of
+that server. A role with no allow-list is offered no MCP tool under `minimal`, and a `send` tool still
+needs the role's own list. `full` offers every tool the role may hold.
+`budgets` set the turn's tool-output cap and `read` window from the model's context window, never
+above `DOCKET_TOOL_MAX_OUTPUT_CHARS`.
 
 Compatibility does not mean feature parity. Docket currently:
 
