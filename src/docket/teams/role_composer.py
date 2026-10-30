@@ -12,6 +12,7 @@ from pathlib import Path
 
 from docket.agent.ports import PromptComposition
 from docket.agent.tools.registry import Tool, ToolRegistry
+from docket.kernel.service import service_of_tool
 from docket.teams import identity as _identity
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import role_composer as _role_composer
@@ -98,8 +99,9 @@ def registry_for_role(
     the allow-list (*allow* when the step declared one, else *role*'s `tools`), then minus what
     *role* and its pod deny.
 
-    A ``minimal`` *surface* keeps ``MINIMAL_SURFACE``, the tool that ends the turn and each MCP tool
-    the allow-list in force names (*allow* replaces `tools` there too); ``full`` keeps all. The allow-list keeps the names it lists and the tool that ends the turn, and an
+    A ``minimal`` *surface* keeps ``MINIMAL_SURFACE``, the tool that ends the turn and each MCP or
+    service tool the allow-list in force names (*allow* replaces `tools` there too); ``full`` keeps
+    all. The allow-list keeps the names it lists and the tool that ends the turn, and an
     allow-list never grants a denied tool, because the denial runs last. Looks *role* up in the live
     archetype registry (*project*'s pod overlay, when given, resolving nearest-wins above the
     global overlay -- see `load_registry`) and removes every name in the **union** of its
@@ -140,7 +142,7 @@ def registry_for_role(
                 t.name in MINIMAL_SURFACE
                 or t.ends_turn
                 or (
-                    t.name.startswith(_roles.MCP_TOOL_PREFIX)
+                    (t.name.startswith(_roles.MCP_TOOL_PREFIX) or bool(service_of_tool(t.name)))
                     and allowed is not None
                     and _roles.allow_list_names(allowed, t.name)
                 )

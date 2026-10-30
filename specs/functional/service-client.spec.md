@@ -3,19 +3,23 @@
 **Version**: 1.2.0
 **Status**: Implemented in part: the document, its access rule, its registration, its scopes and
 its import from an OpenAPI document (`kernel/service.py`, `teams/services.py`,
-`teams/services_openapi.py`, `docket setup service`, `docket pod update|export`). No
-operation is a tool yet and no call is made: the call and its perimeter, and the tools, are
-separate work. Requirements 40-41 hold at the gate for any tool named `svc__<service>__<operation>`
-(quota) or marked `deletes` (approval); the service tool that sets the mark is separate work.
+`teams/services_openapi.py`, `docket setup service`, `docket pod update|export`), the call with its
+perimeter (`platform/service_http.py::call_operation`), the tools (each operation is a tool a role
+names, loaded each turn: `agent/tools/service_tools.py`) and the handling of writes apart (the quota
+per service and the delete approval, `governance/`). Not shipped: the `X-Docket-Task` header, the
+idempotency key of a `send` operation and the service's own `timeout` are not yet carried into the
+call, and nothing proves the whole path against a real service.
 **Last Updated**: 2026-10-30
 
 ## Purpose
 
 A pod reaches an external HTTP service without anyone writing a program for it. A service is a
 document: its address, how it authenticates, and the operations a pod may perform on it, each with
-the access it needs. docket reads the document, keeps it, and (in later work) turns each operation
-into a tool that passes `dispatch_tool` like any other. This specification defines the document and
-the rule that decides what an operation may do. It is the declared-service counterpart of the MCP
+the access it needs. docket reads the document, keeps it, and turns each operation
+into a tool that passes `dispatch_tool` like any other. This specification defines the document,
+the rule that decides what an operation may do, how an operation becomes a tool, and the call it makes: the half that
+touches the network, and the perimeter that call stays inside. The caller is docket's own process,
+not the jail (as `fetch` is), so the perimeter is the service's host alone. It is the declared-service counterpart of the MCP
 client (`mcp-client.spec.md`), which reaches a service through a program someone wrote.
 
 ## Scope
@@ -28,13 +32,18 @@ This specification covers:
   (`pod update`, `pod export`)
 - The rule that a service and an MCP server never share a name
 - `docket setup service add|list|remove`
+- The tool each operation becomes: its name, schema, secret resolution, audit detail and the
+  roles that may hold it
+- `call_operation`: building the URL from a path template, sending JSON, and shaping the outcome
+- The perimeter: which hosts and addresses a call may reach, redirects, header hygiene, the bounds on
+  time and size, and what never appears in an outcome
 - Importing operations from an OpenAPI document (`setup service add <name> --from-openapi`)
 - How writing operations are handled apart: the quota per service and the approval of a `DELETE`
 
 This specification does NOT cover:
 
-- Making a call, resolving a secret, the host perimeter, the size and time bounds (the call)
-- Turning an operation into a tool (the tools)
+- Resolving a secret (the caller does, before it builds the request)
+- Retries, pagination, multipart or binary bodies
 - OpenAPI 2, fetching an OpenAPI document over the network, auth schemes beyond one header
 - OAuth grants of any kind
 
@@ -45,7 +54,9 @@ This specification does NOT cover:
 1. A service **MUST** be a YAML or JSON document of `ServiceDocument` (`extra="forbid"`; an unknown
    key at any level is refused naming it): `kind` (`service`), `name`, `baseUrl`, an optional
    `auth`, `hosts`, `timeout`, `idempotencyHeader` and `operations`.
-2. `name` **MUST** contain only letters, digits, `-` and `_`. `baseUrl` **MUST** be an `http` or
+2. `name` **MUST** contain only letters, digits, `-` and `_`, and **MUST NOT** contain `__` (a tool
+   name `svc__<service>__<operation>` would be ambiguous); a name with `__` is refused naming the
+   field. `baseUrl` **MUST** be an `http` or
    `https` URL with a host and no user information, query or fragment. `hosts` is a list of extra
    host names the service may be called on (default none). `timeout` is a number of seconds, not
    negative, `0` meaning the default. `idempotencyHeader` is an optional header name.
@@ -77,7 +88,7 @@ This specification does NOT cover:
 11. `POST`, `PUT`, `PATCH` and `DELETE` **MUST** be `send`: a document declaring one of them
     `read` **MUST** be refused, naming the operation. No other `access` value exists.
 12. The access an operation resolves to **MUST** be part of its typed form, so the tool built from
-    it (later work) never re-derives it from the method.
+    it never re-derives it from the method.
 
 ### Scopes and names
 
@@ -107,6 +118,94 @@ This specification does NOT cover:
     the same as an array.
 19. `docket setup service remove <name>` **MUST** delete the operator's service and audit
     `services.remove`; an unknown name exits 1.
+
+### The call
+
+20. `call_operation(request) -> ToolOutcome` (`docket.platform.service_http`) **MUST** take a `ServiceRequest`
+    carrying the method, the service's `base_url`, a path template, the values for its `{name}`
+    parameters, a query mapping, the headers, an optional JSON body and the extra `hosts` the document
+    lists. The caller resolves a secret before building the request; `platform` imports nothing from
+    `governance`.
+21. The method **MUST** be one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`; any other is refused.
+22. The URL **MUST** be the `base_url` (without a trailing slash) followed by the path template with
+    each `{name}` replaced by its value percent-encoded with no safe characters, so a value holding
+    `/`, `?`, `#` or `..` stays one path segment and is never concatenated raw. A value that is `.` or
+    `..` on its own, a `{name}` with no value, and a `{name}` left in the result **MUST** be refused.
+    The query mapping is appended encoded, a boolean as `true` or `false`.
+23. A body, when given, **MUST** be sent as compact JSON with `Content-Type: application/json`.
+24. A 2xx response whose body parses as JSON **MUST** return `ok` with that JSON re-serialised
+    compactly; any other 2xx body **MUST** return `ok` with the text, decoded as UTF-8 with
+    replacement.
+25. A non-2xx response **MUST** return a failed outcome whose `error` names the status code, the method
+    and the host and path (never the query), and the head of the body (at most 500 characters).
+26. A connection error or a timeout **MUST** return a failed outcome naming the host; nothing raises.
+
+### The perimeter
+
+27. The host of the URL **MUST** be the host of `base_url` or one of `hosts` (compared in lowercase);
+    `base_url` **MUST** be `http` or `https` with a host and no embedded credentials. Otherwise the call
+    is refused (`refusal="service_not_allowed"`) before any socket is opened.
+28. A redirect **MUST NOT** be followed to a host outside that set, or to a scheme that downgrades `https`
+    to `http`; the refusal is reported as in Requirement 27. A redirect inside the set is followed.
+29. Every address the host resolves to **MUST** be checked before connecting; the call **MUST** connect
+    to the address it checked. A private, loopback, link-local, multicast, reserved or unspecified
+    address **MUST** be refused (`refusal="service_not_allowed"`) unless the host is listed
+    in `hosts` explicitly: being the `base_url` host is not enough. System proxy settings **MUST NOT**
+    apply, since a proxy would move the connection past the check.
+30. A header name **MUST** be an HTTP token and a header value **MUST NOT** contain CR, LF or NUL; a
+    header named `Host`, `Content-Length` or `Transfer-Encoding` **MUST** be refused. A violation is
+    refused (`refusal="service_bad_request"`) before any socket is opened.
+31. The call **MUST** be bounded in time by `Home.fetch_timeout_s` (the whole call, headers and body)
+    and in size by `Home.fetch_max_response_bytes`: a body over the cap is cut at it and the content
+    ends with `[truncated: response exceeded <N> bytes]`, so a cut body is returned as text, never as
+    JSON.
+32. The value of any header named `Authorization`, `Proxy-Authorization`, `Cookie`, or containing
+    `key`, `token`, `secret` or `auth`, each word of it, and every value in the request's `secrets`
+    **MUST** be replaced by `[REDACTED]` wherever it appears in the outcome's `content` or `error`, so
+    a server that echoes the credential back does not hand it to the model.
+
+### Tools
+
+33. Each operation of a service **MUST** be one tool named `svc__<service>__<operation>`
+    (`kernel.service.service_tool_name`; `service_of_tool` reads the service back), with the
+    `Tool.kind` the operation's resolved `access` (`read` or `send`), never re-derived from the
+    method. Its description **MUST** begin `[service:<name>]` followed by the operation's
+    `description`, or `<METHOD> <path>` when it has none. The tool of a `DELETE` operation
+    **MUST** carry `deletes=True` (its approval offers once-or-deny only); no other method does.
+34. The tool's parameters **MUST** be a JSON Schema object with one property per declared
+    parameter (its `type`, path and query alike) and, when the operation declares a `body`, a
+    `body` property holding that schema. `required` lists the required parameters and `body` when
+    the body schema lists required fields. A call with an undeclared argument, or an argument of
+    the wrong type (a boolean for an integer, a container for a string), **MUST** fail with
+    `refusal="service_bad_request"` before any socket opens.
+35. Service tools **MUST** be loaded for each turn, beside the MCP tools, from the services visible
+    to the turn's pod (`load_services(project)`), and every call **MUST** pass `dispatch_tool`:
+    the handler runs only after the gate allowed it, a `send` operation is asked, audited and
+    counted like any `send` tool, and a role holds a service tool by the rule of requirement 38.
+36. The header value of `auth` **MUST** be resolved when the turn loads its tools, each
+    `${secret:<name>}` through the secret store, and the resolved value **MUST** reach only the
+    request's header and `secrets` (requirement 32). A service whose secret is not stored **MUST**
+    be left out of that turn, with the audit event `service_client.unavailable` and a failed load
+    report naming the service, the header and the secret, never a value; the other services load.
+    A service with no `auth` loads without a header.
+37. A call **MUST** build a `ServiceRequest` from the service's `baseUrl`, the operation's path
+    template and method, the path parameters, the query parameters (omitted when not given), the
+    resolved header, the `body` and the document's `hosts`, and return what `call_operation`
+    returns. A refusal it reports (`service_not_allowed`, `service_bad_request`) **MUST** be
+    audited as `tool.refused` with the kind, the HTTP method and the host, and nothing else of the
+    call; and the `tool.send` audit row of a `send` call **MUST** name the method and the host in
+    addition to the redacted arguments every `send` row carries. No audit row or trace event
+    holds a resolved header value.
+38. A role **MUST** hold a service tool by naming it in its `tools` allow-list, as an MCP tool is
+    named (`role-archetypes.spec.md`, "Tools and calls per hop"): `svc__<service>__<operation>`,
+    or `svc__<service>` for every operation of that service. A `send` operation reaches a role only
+    when the role's own allow-list names it; the `minimal` surface keeps a service tool the
+    allow-list in force names; `docket pod validate` accepts a `svc__` name without checking it
+    against a live service; and the read/act rule (requirement 6 of "Tools and calls per hop")
+    counts a `read` operation like a tool of a `read` MCP server and a `send` operation like a
+    `send` one.
+39. The tool's handler **MUST** return `call_operation`'s outcome unchanged: the service's text is
+    returned as the tool result, bounded by the same cap as every tool result.
 
 ### Writes
 
@@ -159,13 +258,38 @@ This specification does NOT cover:
 ### Python API
 
 - `docket.kernel.service`: `ServiceConfig`, `Operation`, `OperationParam`, `ServiceRegistry`,
-  `secret_names(value)`
+  `secret_names(value)`, `SERVICE_TOOL_PREFIX`, `service_tool_name(service, operation="")`,
+  `service_of_tool(tool_name)`
+- `docket.agent.tools.service_tools`: `load_service_tools(registry, *, services)` (each service
+  with its resolved header) and `ServiceLoadResult`
 - `docket.teams.services`: `ServiceDocument`, `ServiceDocError`, `load_service_document(path)`,
   `load_services(project="")`, `load_pod_services(project)`,
   `add_service(config)`, `remove_service(name)`, `mcp_name_conflict(name)`,
   `service_name_conflict(name)`
 - `docket.teams.services_openapi`: `import_openapi(path, name, ...)` returning the `ServiceConfig`
   and the skipped operations with their reasons
+- `docket.platform` (from `service_http`): `ServiceRequest`, `call_operation(request)`
+
+### The call
+
+```python
+@dataclass(frozen=True)
+class ServiceRequest:
+    method: str
+    base_url: str
+    path: str = ""
+    path_params: Mapping[str, str] = {}
+    query: Mapping[str, object] = {}
+    headers: Mapping[str, str] = {}
+    body: object | None = None
+    hosts: tuple[str, ...] = ()
+    secrets: tuple[str, ...] = ()
+
+def call_operation(request: ServiceRequest) -> ToolOutcome: ...
+```
+
+Refusal kinds: `service_not_allowed` (the perimeter: host, redirect, address) and `service_bad_request`
+(the request: method, path, headers).
 
 ### Document
 
@@ -206,6 +330,12 @@ $ docket setup service add crm.yaml
 Error: crm.yaml: operations.1: operation 'create_contact': POST is always send, not read
 ```
 
+### A path parameter stays one segment
+
+A request `GET http://127.0.0.1:8123` with `path="/items/{id}"` and `path_params={"id": "../x"}` calls
+`/items/..%2Fx`. The same request with `hosts=()` is refused with `service_not_allowed` before
+a socket opens; with `hosts=("127.0.0.1",)` it is sent.
+
 ## Validation
 
 ### Pre-conditions
@@ -221,6 +351,8 @@ Error: crm.yaml: operations.1: operation 'create_contact': POST is always send, 
 
 - A `${secret:...}` reference is never resolved by a function of this specification
 - A service and an MCP server never share a name
+- The host of a call is the service's `baseUrl` host or one of its `hosts`, on every redirect
+- A private or loopback address is reached only when its host is listed in `hosts`
 
 ## Implementation
 
@@ -229,3 +361,9 @@ Error: crm.yaml: operations.1: operation 'create_contact': POST is always send, 
 - `src/docket/teams/services_openapi.py`: the OpenAPI import
 - `src/docket/teams/apply/external.py`: the `pod update` planner for `services/`
 - `src/docket/interfaces/cli/commands/setup_service.py`: `setup service`
+- `src/docket/platform/service_http.py`: `call_operation` and the perimeter
+- `src/docket/agent/tools/service_tools.py`: the tool per operation; `hops/application/driver_support.py`
+  loads it each turn and resolves the secret; `governance/gate.py` audits the method and host
+- `tests/integration/platform/test_service_http.py` drives `call_operation` against a loopback
+  `http.server`; `tests/unit/platform/test_service_http.py` covers the pure helpers (URL building,
+  header checks, address classification, redaction)

@@ -54,6 +54,7 @@ from docket.hops.application.driver_support import (
     _consult_mode,
     _load_agent_meta,
     _load_mcp_tools,
+    _load_service_tools,
     _loop_config,
     _max_consultations,
     _parse_pregrants,
@@ -290,6 +291,7 @@ class DocketDriver:
         describe_tools(registry, ctx, profile.descriptions)
         register_closing_tool(registry, verdict_gate, offer)
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))
+        _load_service_tools(registry, ctx.project)
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
         loop_config = _loop_config(
