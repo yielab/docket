@@ -19,7 +19,7 @@
 > **NO ACTIVE WAVE.** Phase 56 (D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16) closed
 > 2026-10-30: an external service is declared, not programmed; a pod keeps records; one judge; one home layout; the
 > four team shapes. Its section is archived and what it leaves open is under "Phase 56" in the follow-ups below.
-> Decisions 15-16 of the ADR are still **proposed**: accepting them is the maintainer's call (ROADMAP §7.1). Phase 55
+> Decisions 15-16 of the ADR were accepted by the maintainer the same day. Phase 55
 > closed 2026-10-30; Phases 52 to 54 closed 2026-10-29. The integration branch is `develop`. A new phase starts from
 > a measured trigger or a maintainer request.
 
