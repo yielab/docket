@@ -13,6 +13,14 @@ ColumnType = Literal["string", "integer", "number", "boolean", "date"]
 _NAME = r"^[a-z][a-z0-9_]*$"
 MAX_COLUMNS = 40
 
+RECORDS_TOOL_PREFIX = "rec__"
+
+
+def records_tool_name(set_name: str = "", operation: str = "") -> str:
+    """``rec__<set>__<operation>``, ``rec__<set>`` for the whole set or ``rec__<operation>`` for a
+    tool of the pod (``rec__query``, ``rec__export``)."""
+    return RECORDS_TOOL_PREFIX + "__".join(part for part in (set_name, operation) if part)
+
 
 class RecordColumn(BaseModel):
     """One column of a set. ``required`` is carried and published; the tools enforce it."""
