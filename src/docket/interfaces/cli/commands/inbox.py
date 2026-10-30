@@ -105,6 +105,8 @@ def _escalation_command(escalation: EscalationView) -> str:
     """The one command that answers *escalation* from a terminal."""
     if escalation.kind in ("consult", "input"):
         return f"docket task answer {escalation.task}"
+    if escalation.kind == "wait":
+        return f"docket task answer {escalation.id} --option resume"
     return f"docket task answer {escalation.id} --option approve_once"
 
 
@@ -154,6 +156,10 @@ def _render_pause(item: TaskView | EscalationView, escalations: list[EscalationV
     if pause is None:
         return
     rendered = render_escalation(pause, _LEVEL)
+    if pause.kind == "wait":
+        _say(f"    waiting until {pause.expires_at}")
+        _say(f"    resume:  docket task answer {pause.id} --option resume")
+        return
     if pause.kind in ("consult", "input"):
         _say(_block("    Q: ", rendered.prompt or ""))
         if rendered.options:

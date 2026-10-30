@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from docket.hops.application import driver as _dr
 from docket.hops.application import resolutions as _resolutions
+from docket.hops.application import waits as _waits
 from docket.hops.application.runner import execute_unit, when_cwd
 from docket.hops.application.steps import (
     _run_command_step,
@@ -325,6 +326,8 @@ def _run_pipeline(
             outcome = _run_command_step(ctx, node, prior, pipeline_index)
         elif node.input is not None:
             outcome = _run_input_step(ctx, node, prior, pipeline_index)
+        elif node.wait is not None:
+            outcome = _waits.run_wait_step(ctx, node, pipeline_index)
         else:
             rework_hop = pending_rework_by_index.pop(pipeline_index, None)
             outcome = execute_unit(
@@ -472,13 +475,15 @@ def dispatch_task(
         applied = _resolutions.apply_resolutions(
             project, task, list(resume_from or []), runtime_steps, id_to_index
         )
-        resume_from = applied.hops
-        if applied.ended is not None:
-            status, reason = applied.ended
+        waited = _waits.apply_wait(project, task, applied.hops, runtime_steps, id_to_index)
+        resume_from = waited.hops
+        ended = applied.ended or waited.ended
+        if ended is not None:
+            status, reason = ended
             _trace.trace_event(
                 project, session_id, "lead", "session_end", _json.dumps({"status": status})
             )
-            return TaskResult(task_id=task_id, status=status, reason=reason, hops=applied.hops)
+            return TaskResult(task_id=task_id, status=status, reason=reason, hops=waited.hops)
         resolved_vars: dict[str, Any] = variables or {}
         step_instructions = {
             sid: _pipeline.interpolate_instructions(text, resolved_vars)

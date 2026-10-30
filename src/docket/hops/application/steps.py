@@ -209,9 +209,9 @@ def _task_gate(task: TaskRecord) -> _gates.ExternalGate | None:
 
 def _task_gate_step_id(nodes: tuple[_orch.PlannedNode, ...]) -> str | None:
     """The step a task gate follows: the last ``implementer`` unit, else the last unit that runs
-    an agent turn (a ``run`` or ``input`` step never takes it)."""
+    an agent turn (a ``run``, ``input`` or ``wait`` step never takes it)."""
     units = [u for n in nodes for u in (n.children if isinstance(n, _orch.PlannedGroup) else (n,))]
-    turns = [u for u in units if u.run is None and u.input is None]
+    turns = [u for u in units if u.run is None and u.input is None and u.wait is None]
     chosen = [u for u in turns if u.role == "implementer"] or turns
     return chosen[-1].step_id if chosen else None
 
@@ -238,21 +238,16 @@ def unpriced_budget_models(project: str) -> list[str]:
     return sorted(m for m in models if _unpriced(m))
 
 
-def _run_command_step(
-    ctx: UnitContext,
-    node: _orch.PlannedUnit,
-    prior: list[HopResult],
-    index_for_context: int,
-) -> UnitOutcome:
-    """Run *node*'s ``run`` command directly -- no agent turn, no session. Classified like
-    any shell-out first: ``allow`` runs it, anything else gates like an ``approval`` step
-    (or fails outright under ``approvalMode: refuse``). See pod-dispatch.spec.md."""
+def _guard_command(
+    ctx: UnitContext, node: _orch.PlannedUnit, cmd: str, index_for_context: int
+) -> UnitOutcome | None:
+    """Classify *cmd* (a ``run`` step's, or a ``wait`` step's probe) like any shell-out: ``allow``
+    returns ``None``; anything else gates like an ``approval`` step, or fails under ``approvalMode:
+    refuse``, and returns the outcome that ends the attempt. See pod-dispatch.spec.md."""
     # `park` gates the same non-blocking way `wait` does here -- a command step never
     # reaches the in-turn tool chokepoint a park-mode call would need to record, so there
     # is nothing to park.
-    assert node.run is not None
     role = node.step_id
-    cmd = node.run
     settings = load_pod_settings(ctx.project)
     verdict = _sec.classify_command(cmd, extra_bins=frozenset(settings.allow_commands))
     if verdict.action != "allow":
@@ -302,6 +297,23 @@ def _run_command_step(
         )
         if approval_outcome is not None:
             return approval_outcome
+    return None
+
+
+def _run_command_step(
+    ctx: UnitContext,
+    node: _orch.PlannedUnit,
+    prior: list[HopResult],
+    index_for_context: int,
+) -> UnitOutcome:
+    """Run *node*'s ``run`` command directly -- no agent turn, no session. Classified like
+    any shell-out first (``_guard_command``). See pod-dispatch.spec.md."""
+    assert node.run is not None
+    role = node.step_id
+    cmd = node.run
+    refused = _guard_command(ctx, node, cmd, index_for_context)
+    if refused is not None:
+        return refused
 
     cwd = when_cwd(ctx, prior)
     timeout = node.timeout or ctx.resolved_verify_timeout

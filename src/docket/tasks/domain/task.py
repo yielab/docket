@@ -195,6 +195,23 @@ class TaskResult:
         return round(sum(h.cost_usd for h in self.hops), 6)
 
 
+class TaskWait(BaseModel):
+    """The `wait` step a task is parked on: when it falls due, the probe that may end it earlier and
+    how it ended (pod-dispatch.spec.md, "Wait steps"). ``outcome`` is ``resumed`` or ``timeout`` once
+    the task is woken, and is applied, then removed, by the next claim."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    step: str
+    due_at: str = Field(alias="dueAt")
+    until: str | None = Field(None, exclude_if=is_none)
+    every_s: int | None = Field(None, alias="everyS", exclude_if=is_none)
+    next_probe_at: str | None = Field(None, alias="nextProbeAt", exclude_if=is_none)
+    probes: int = 0
+    routed: bool = False
+    outcome: str | None = Field(None, exclude_if=is_none)
+
+
 class TaskRecord(BaseModel):
     """One task of a pod's queue; its alias dump is the stored record."""
 
@@ -256,6 +273,8 @@ class TaskRecord(BaseModel):
     consultations: int = Field(0, exclude_if=_is_empty)
     # The ids of the escalation records opened for this task, oldest first.
     escalations: list[str] = Field(default_factory=list, exclude_if=_is_empty)
+    # The `wait` step the task is parked on, or woken from and not yet claimed; absent otherwise.
+    wait: TaskWait | None = Field(None, exclude_if=is_none)
 
     @field_validator("variables", mode="before")
     @classmethod

@@ -98,6 +98,9 @@ class PlannedUnit:
     env: dict[str, str] | None = None
     # An operator-input step spec, or `None` for a regular role/agent/run step.
     input: _step.InputSpec | None = None
+    # A wait step's duration and probe, or `None` for any other step.
+    wait: str | None = None
+    until: _step.WaitUntil | None = None
     # The step's own outcome-routing map (a copy of ``Step.on``), or ``None``.
     # See specs/functional/pipeline-format.spec.md ("Outcome routing").
     on: dict[str, Any] | None = None
@@ -179,8 +182,8 @@ def _resolve_unit(step: _step.Step, roster: dict[str, str], registry: RoleRegist
         # A command step needs no member -- it never runs an agent turn.
         member_id: str | None = None
         skipped = False
-    elif step.input is not None:
-        # An input step needs no member -- it asks the operator a question.
+    elif step.input is not None or step.wait is not None:
+        # An input or wait step needs no member -- it asks the operator, or sleeps.
         member_id = None
         skipped = False
     elif step.agent is not None:
@@ -207,6 +210,8 @@ def _resolve_unit(step: _step.Step, roster: dict[str, str], registry: RoleRegist
         run=step.run,
         env=dict(step.env) if step.env else None,
         input=step.input,
+        wait=step.wait,
+        until=step.until,
         on=step.on,
     )
 
@@ -251,6 +256,10 @@ def _render_unit(unit: PlannedUnit) -> str:
         base = f"run {unit.run!r} [gate: exit code]"
     elif unit.input is not None:
         base = f"asks the operator (from {unit.input.from_})"
+    elif unit.wait is not None and unit.until is not None:
+        base = f"waits up to {unit.wait}, probing {unit.until.run!r} every {unit.until.every}"
+    elif unit.wait is not None:
+        base = f"waits {unit.wait}"
     else:
         target = unit.agent if unit.agent is not None else f"role={unit.role}"
         who = unit.member_id or "(unresolved)"

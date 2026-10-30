@@ -7,7 +7,8 @@ description: >-
   person = wait for one (in place at a terminal, parked without one);
   recommendation = apply the model's own recommendation in the turn;
   deny = refuse the call and fail the task needs_human;
-  fail = refuse what would ask a person.
+  fail = refuse what would ask a person;
+  machine = nobody is asked: a time or a probe ends the pause, so a wait is the same at every level.
   A check the change itself defines (check_changed) can never be satisfied by a machine.
 rows:
   approval:
@@ -30,3 +31,7 @@ rows:
     L3: {policy: person, onExpiry: deny}
     L4: {policy: person, onExpiry: deny}
     L5: {policy: person, onExpiry: deny}
+  wait:
+    L3: {policy: machine, onExpiry: block}
+    L4: {policy: machine, onExpiry: block}
+    L5: {policy: machine, onExpiry: block}

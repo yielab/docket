@@ -263,6 +263,8 @@ class PipelineSpec(BaseModel):
                 _check_input_from(s, i, top_index)
                 _check_input_keys(s)
                 continue
+            if s.wait is not None:
+                continue
             if not isinstance(s.gate, VerdictGate) or s.gate.rework is None:
                 continue
             rework = s.gate.rework
