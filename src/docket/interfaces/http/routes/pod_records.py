@@ -81,7 +81,7 @@ def get_pod_record_rows(h: HttpExchange, capture: str) -> None:
         return
     sql = query["sql"][0] if query.get("sql") else None
     try:
-        result = _records.read_rows(project, record_set, sql, limit)
+        result = _records.read_rows(project, record_set, sql, limit, newest_first=True)
     except InvalidInput as exc:
         h._send_json_error(str(exc), 400)
         return

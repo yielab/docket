@@ -155,7 +155,8 @@ This specification does NOT cover:
     `pod_record_sets` and the count is `row_count`, the functions `docket pod records` calls.
 51. `GET /pods/<pod>/records/<set>` **MUST** answer `200` with `{"set", "columns", "rows", "cut"}`,
     the shape `docket pod records <set> --json` prints (`columns` the names, each row an object),
-    through `read_rows`: with no `sql` the statement is `SELECT * FROM <set> ORDER BY _id`, with
+    through `read_rows`: with no `sql` the statement is `SELECT * FROM <set> ORDER BY _id DESC` (newest
+    first, so `limit` keeps the latest rows; the CLI's default stays `_id` order), with
     `sql=<SELECT>` it runs through `query` unchanged, so requirements 10-12 hold over HTTP. `limit`
     defaults to 50, is at least 1 and at most 1000; any other value is `400`. A pod that has
     written no row reads as no rows.
