@@ -31,6 +31,7 @@ from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod as _pod_core
 from docket.teams import pod_provisioning as _pp
 from docket.teams import pod_settings as _pod_settings
+from docket.teams import records as _records
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
 from docket.teams.apply import check as _check
@@ -238,6 +239,10 @@ def cmd_export(
         _fail(str(ex))
     audit_log("pod.export", f"project={project} dir={target}")
     ui.success(f"Exported pod '{project}' to {target}")
+    if _records.records_files(target):
+        ui.dim(
+            "  The records documents were exported; rows stay in the pod's records.sqlite, never exported"
+        )
     _contract.next_step(f"docket pod validate {target}")
 
 

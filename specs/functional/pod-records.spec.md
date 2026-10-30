@@ -209,11 +209,11 @@ store.query("DELETE FROM listings", 200, 2500, 5.0)  # RecordsError, nothing del
   `Column` and `RecordsError`, which `teams/records.py` imports
 - `src/docket/kernel/records.py`: the typed config of the document
 - `src/docket/teams/records.py`: loading, validating and applying a pod's documents
-- `src/docket/teams/apply/external.py`: the `records/` plan, write and export
+- `src/docket/teams/apply/records.py`: the `records/` plan, write and export
 - `src/docket/interfaces/cli/commands/pod_records.py`: `docket pod records`
 - `tests/architecture/test_records_writer.py`: requirement 1's import rule
 - `tests/integration/platform/test_records_store.py`: requirements 3-13 on a temporary file
 - `tests/unit/platform/test_records_store.py`: `check_value`, `render_markdown`, name checks
-- `tests/unit/teams/test_records_doc.py`: requirements 15-16 (the document)
+- `tests/unit/teams/test_records__doc.py`: requirements 15-16 (the document)
 - `tests/integration/interfaces/test_pod_records_cli.py`: requirements 17-23 (`pod update`, `pod
   export`, `pod records`)

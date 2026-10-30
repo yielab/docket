@@ -6,6 +6,7 @@ from typing import Literal
 
 from docket.kernel import mcp as _mcp
 from docket.kernel.errors import InvalidInput
+from docket.kernel.records import RecordSet
 from docket.teams import pod
 
 # The same name shape `observability.exporter.ExporterSpec` validates -- checked here too so a
@@ -39,6 +40,7 @@ class ApplyItem:
         "skill",
         "mcp-server",
         "service",
+        "records",
         "member",
         "pipeline",
         "routine",
@@ -116,6 +118,16 @@ class _ServiceWrite:
 
 
 @dataclass(frozen=True)
+class _RecordsWrite:
+    """One ``records/`` file for the pod overlay: its file name, source bytes and the set it
+    declares, whose table is created or extended when the file is written."""
+
+    name: str
+    source: bytes
+    record_set: RecordSet
+
+
+@dataclass(frozen=True)
 class _MemberWrite:
     member: pod.PodMember
     codebase: str
@@ -156,6 +168,7 @@ class ApplyPlan:
     _skill_writes: tuple[_SkillWrite, ...] = field(default=())
     _mcp_server_write: _McpServerWrite | None = field(default=None)
     _service_writes: tuple[_ServiceWrite, ...] = field(default=())
+    _records_writes: tuple[_RecordsWrite, ...] = field(default=())
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
     _pipeline_write: _PipelineWrite | None = field(default=None)
     _setting_writes: tuple[_SettingWrite, ...] = field(default=())
