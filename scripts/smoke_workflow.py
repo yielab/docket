@@ -1560,7 +1560,7 @@ def _run(
     run_cli("setup", "sandbox", sandbox)
     for exporter in exporters:
         # Its credentials come from this process's environment, never from the operator's home.
-        run_cli("setup", "export", "enable", exporter, "--yes")
+        run_cli("setup", "export", "enable", exporter, "--privacy", "full", "--yes")
     if consult_mode != "park":
         run_cli("pod", "set", "consultMode", consult_mode, "--pod", "smoke")
     fleet = _load_json(Home(home).fleet_file)
@@ -1661,7 +1661,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="EXPORTER",
-        help="Enable this exporter in the smoke world (repeatable); its keys come from the "
+        help="Enable this exporter at privacy full in the smoke world (repeatable): it receives "
+        "every prompt, reply, tool argument and tool result of the run; its keys come from the "
         "environment.",
     )
     parser.add_argument(

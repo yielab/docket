@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from docket.governance import privacy
@@ -324,3 +326,94 @@ class TestEscalationSpans:
 
         (span,) = _escalation_spans(spans)
         assert not any("option" in key.lower() for key in span.attributes)
+
+    def test_a_settlement_within_the_ask_s_second_closes_the_span_at_its_start(self) -> None:
+        spans = _run(
+            [
+                _esc_record(
+                    "escalation_asked", "2026-10-25T10:00:00Z", askedAt="2026-10-25T10:00:00.751Z"
+                ),
+                _esc_record("escalation_resolved", "2026-10-25T10:00:00Z"),
+            ]
+        )
+
+        (span,) = _escalation_spans(spans)
+        assert span.end_ts == span.start_ts == "2026-10-25T10:00:00.751Z"
+
+    def test_flushing_before_the_settlement_never_ends_before_the_ask(self) -> None:
+        state = observability_spans.ProjectionState()
+        _run(
+            [
+                _esc_record(
+                    "escalation_asked", "2026-10-25T10:00:00Z", askedAt="2026-10-25T10:00:00.751Z"
+                )
+            ],
+            state=state,
+        )
+
+        (span,) = _escalation_spans(projection.flush_open(state))
+        assert span.end_ts == span.start_ts
+
+
+def _hop_record(event_type: str, ts: str, role: str, **payload: object) -> dict[str, object]:
+    return {
+        "ts": ts,
+        "project": "demo",
+        "session_id": "agent:demo:t-1",
+        "agent_role": role,
+        "event_type": event_type,
+        "payload": payload,
+    }
+
+
+class TestHopSpans:
+    _RECORDS: ClassVar[list[dict[str, object]]] = [
+        _hop_record("tool_call", "2026-10-29T10:00:00Z", "lead", hop="lead", agent="demo-lead"),
+        _hop_record(
+            "llm_call",
+            "2026-10-29T10:00:03Z",
+            "lead",
+            iteration=1,
+            inputTokens=5000,
+            outputTokens=40,
+            cachedTokens=3000,
+            cacheWriteTokens=1500,
+            cacheMiss="system_changed",
+            cacheMissedTokens=2900,
+        ),
+        _hop_record("tool_call", "2026-10-29T10:00:03Z", "lead", tool="read", callId="c1"),
+        _hop_record("tool_result", "2026-10-29T10:00:03Z", "lead", tool="read", callId="c1"),
+        _hop_record("tool_result", "2026-10-29T10:00:05Z", "lead", text="plan"),
+    ]
+
+    def _spans(self) -> dict[str, observability_spans.Span]:
+        return {span.name: span for span in _run(self._RECORDS)}
+
+    def test_a_hop_is_one_span_named_for_it_from_its_start_to_its_reply(self) -> None:
+        hop = self._spans()["docket.hop lead"]
+        assert (hop.start_ts, hop.end_ts) == ("2026-10-29T10:00:00Z", "2026-10-29T10:00:05Z")
+        assert hop.attributes["docket.hop"] == "lead"
+
+    def test_the_hop_s_calls_and_tools_are_its_children(self) -> None:
+        spans = self._spans()
+        hop_id = spans["docket.hop lead"].span_id
+        assert spans["gen_ai.chat"].parent_id == hop_id
+        assert spans["execute_tool read"].parent_id == hop_id
+
+    def test_the_generation_carries_the_cache_reads_writes_and_miss(self) -> None:
+        attributes = self._spans()["gen_ai.chat"].attributes
+        assert attributes["gen_ai.usage.input_tokens"] == 5000
+        assert attributes["gen_ai.usage.cache_read.input_tokens"] == 3000
+        assert attributes["gen_ai.usage.cache_creation.input_tokens"] == 1500
+        assert attributes["docket.cache_miss"] == "system_changed"
+        assert attributes["docket.cache_missed_tokens"] == 2900
+
+    def test_a_generation_with_no_cache_activity_carries_no_cache_attributes(self) -> None:
+        (chat,) = _run(
+            [
+                _hop_record(
+                    "llm_call", "2026-10-29T10:00:03Z", "lead", inputTokens=10, cachedTokens=0
+                )
+            ]
+        )
+        assert not any("cache" in key for key in chat.attributes)

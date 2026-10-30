@@ -357,7 +357,7 @@ class TestOneSessionAcrossHops:
     def test_hop_markers_without_a_call_id_get_one_span_each(self) -> None:
         records = _hop_markers()
         spans = _project_all(records)
-        tools = [s for s in spans if s.name == "execute_tool"]
+        tools = [s for s in spans if s.name.startswith(("docket.hop", "execute_tool"))]
         assert len(tools) == 3
         assert len({s.span_id for s in tools}) == 3
         lead = next(s for s in tools if s.start_ts == "2026-09-28T00:00:01Z")
@@ -423,7 +423,7 @@ class TestTurnEndFlushHoldsTheSessionRoot:
         pipeline.offer(lead_reply)
         pipeline.offer(_session_end())
         pipeline.close()
-        hops = [s for s in sink.spans if s.name == "execute_tool"]
+        hops = [s for s in sink.spans if s.name.startswith("docket.hop")]
         assert len(hops) == 1
         assert (hops[0].start_ts, hops[0].end_ts) == (
             "2026-09-28T00:00:01Z",
