@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.6.0
+**Version**: 5.6.1
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -844,7 +844,10 @@ document (`service-client.spec.md`); this registers and lists them, it makes no 
 **Syntax**: `docket setup service <add|list|remove>` (a real sub-app of `setup`)
 **Subcommands**:
 - `add <file.yaml>`: Load and store one document, audit `services.add`, and print its operations
-  with their access. A document that fails the format, a name already stored and a name an MCP
+  with their access. `add <name> --from-openapi <file> [--operations id,id] [--base-url URL]
+  [--auth-header H --secret NAME]` builds the document from a local OpenAPI 3 file instead and
+  lists the operations it skipped (`service-client.spec.md`, "From OpenAPI"); those four options
+  without `--from-openapi` exit 2. A document that fails the format, a name already stored and a name an MCP
   server holds exit 1 writing nothing; a `${secret:<name>}` reference whose secret is not stored
   warns and succeeds
 - `list [--json]`: Each stored service's name, base URL, operation count, auth header and the
