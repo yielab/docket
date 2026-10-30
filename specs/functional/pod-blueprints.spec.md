@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 **Status**: Implemented
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -139,6 +139,17 @@ This specification does NOT cover:
    `TOOLS.md`; `TOOLS.md` is written only for an Implementer with allocated resources or a
    `verifyCmd` (`workspace-structure.spec.md`), and no built-in `workdir` blueprint's roster
    includes an Implementer.
+6. The text a `workdir`-kind pod's members read **MUST** follow the workspace kind. A hop message
+   states the root as the pod's working directory and carries no repository map
+   (`pod-dispatch.spec.md` "Bounded hop prompts" requirement 10); a member's `AGENTS.md` carries
+   the working-directory `## Method` block (`role-archetypes.spec.md` "Built-in archetypes and
+   legacy fidelity" requirement 5) and its `MEMORY.md` seed asks for what the working directory
+   holds, not for a codebase README. The Lead's hop instruction names "the role that follows in
+   the pipeline", not the Implementer (`pod-dispatch.spec.md` "Bounded hop prompts" requirement 8),
+   and its identity names "the workspace", not code or git, on every pod. A `codebase`-kind pod's
+   hop messages and `AGENTS.md` read the earlier text, byte for byte. A `baseRef` on a task of a
+   `workdir` pod **MUST** fail the task before any hop with `failureKind: base_ref`, because the
+   pod has no repository to branch from.
 
 ### CLI surface
 
@@ -694,6 +705,8 @@ $ docket pod update secure-build --dry-run
   the `blueprint` key.
 - After provisioning a `workdir` blueprint, every member's `WORKFLOW_AUTO.md` **MUST** contain
   `## Your working directory` and **MUST NOT** contain `## Your codebase`.
+- After provisioning a `workdir` blueprint, no member's `AGENTS.md` or `MEMORY.md` contains
+  "repository map" or "codebase README".
 - `docket setup --fix` **MUST** report no workspace-file, template or ledger issue for a freshly
   provisioned, unmodified pod of any built-in blueprint (what it reports about provider
   credentials and notification bindings depends on the host).

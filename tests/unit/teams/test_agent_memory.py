@@ -281,3 +281,24 @@ class TestWorkflowAutoManualPathHeader:
         text = (ws / _mem.REQUIRED_STARTUP_FILE).read_text(encoding="utf-8")
         assert "Manual-path contract" in text
         assert text.index("Manual-path contract") < text.index("## Your working directory")
+
+
+# ── MEMORY.md's seed follows the workspace kind ─────────────────────────────
+
+
+class TestMemorySeedFollowsTheWorkspaceKind:
+    def test_a_workdir_seed_asks_for_the_working_directory_not_a_codebase(
+        self, tmp_path: Path
+    ) -> None:
+        ws = _ws(tmp_path)
+        _mem.seed_contract(ws, project="demo", work_dir="/tmp/demo")
+        text = _mem.memory_md_path(ws).read_text(encoding="utf-8")
+        assert "codebase" not in text and "## Architecture" not in text
+        assert "## Layout" in text and "working directory" in text
+
+    def test_a_codebase_seed_is_unchanged(self, tmp_path: Path) -> None:
+        ws = _ws(tmp_path)
+        _mem.seed_contract(ws, project="demo", codebase="/src/demo", stack="Python")
+        text = _mem.memory_md_path(ws).read_text(encoding="utf-8")
+        assert "Fill from the codebase README on first run" in text
+        assert "## Architecture" in text and "## Layout" not in text

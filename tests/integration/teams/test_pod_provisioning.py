@@ -94,7 +94,7 @@ class TestBuildPod:
             build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase="/src/demo")
             lead = (home / "workspaces" / "projects" / "demo-lead" / "SOUL.md").read_text()
             impl = (home / "workspaces" / "projects" / "demo-implementer" / "SOUL.md").read_text()
-            assert "NEVER edit code" in lead
+            assert "NEVER change the workspace" in lead
             assert "working directory" in impl and "/src/demo" not in impl
             # No leftover shared-specialist language anywhere in the pod.
             assert "shared specialist" not in (lead + impl).lower()
@@ -417,7 +417,7 @@ class TestMemberSync:
 
             status = _member_workspace.member_sync_status("demo-lead")
 
-            assert _member_workspace.POD_TEMPLATE_VERSION == 5
+            assert _member_workspace.POD_TEMPLATE_VERSION == 6
             assert status is not None
             assert status.stale is True
 
