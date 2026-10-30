@@ -603,7 +603,7 @@ spec
 
 ### P55-12 — the docs say what shipped
 
-**Status:** TODO · ready, every other card merged 2026-10-30 · **Size:** S · **Model:** Haiku · **Kind:** docs
+**Status:** DONE (2026-10-30, merged from `p55-12`) · **Size:** S · **Model:** Haiku · **Kind:** docs
 
 - **Trigger:** README D-37: when work changes what is true, the sentence changes in the same phase.
   Today the README and `docs/DOCKET.md` describe code teams only; `docs/recipes.md` lacks `outward`;
@@ -624,6 +624,60 @@ spec
   and `validate-specs.sh` pass.
 - **Gate:** the agent lane once, at the close, by the integrator.
 - **Contention:** Wave 4, after every other card merged.
+
+### P55-13 — a role that names an MCP tool keeps it under the `minimal` tool surface
+
+**Status:** TODO · ready · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger (measured, the phase-close real run, 2026-10-30):** on the `local` provider
+  (`toolSurface: minimal`, `model-profiles.spec.md` Requirement 2) `registry_for_role` keeps only
+  `MINIMAL_SURFACE` and the closing tool (`teams/role_composer.py:77,136-137`), so every `mcp__*` tool
+  vanished: the `outward` actor answered "I don't have a send tool", the researcher ran `find /` for 20 turns, with no audit
+  row and no error. `docs/MODEL-GATEWAYS.md:95` says `toolSurface` is "not yet applied", which is false.
+- **Goal:** under `minimal`, a tool the role's `tools` allow-list names (`allow_list_names`, an exact `mcp__<server>__<tool>`
+  or `mcp__<server>`) stays; a role with no allow-list gets no MCP tool under `minimal`, as now. `docs/MODEL-GATEWAYS.md`
+  says what `minimal` does. A hop that drops a named tool for the surface says so once in the trace.
+- **Non-goals:** changing the built-in profiles; the sandbox grants (P55-15).
+- **Spec:** `model-profiles.spec.md` Requirement 7 (PATCH or MINOR), `agent-loop.spec.md` "Tools and calls per hop".
+- **Change:** `teams/role_composer.py:136`; the two spec sections; `docs/MODEL-GATEWAYS.md`.
+- **Acceptance (RED first):** `tests/unit/teams/test_role_composer.py`: `minimal` + a role naming `mcp__outbox__send`
+  keeps it; naming the server keeps its tools; no allow-list keeps none; a `send` tool still needs the role's own list.
+- **Gate:** that unit file, `tests/unit/agent`, the e2e lane.
+- **Contention:** continues `role_composer.py` (P55-3). Parallel-safe with P55-14.
+
+### P55-14 — a granted approval tells the resumed hop to issue the call again
+
+**Status:** TODO · ready · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger (measured, the same run):** the `outward` actor parked, a person ran `task answer --option approve_once`,
+  the next `docket run` resumed the hop: one model call, 33 output tokens, "The send ... was refused ... Stopping.", no
+  tool call, the task `done` and the outbox log empty. The resumed hop's messages carry the earlier refusal and nothing
+  says the call is now approved (trace `approval_resumed`, then `hop_started` with the same step; the scripted e2e model
+  always re-issues, so no test crossed this seam with a model that must be told).
+- **Goal:** when a hop resumes after a granted approval, its input names the approved call (tool and a redacted
+  one-line summary) and says to issue the same call again now; a deny says the call was refused and the task ends as
+  today. A resumed hop that ends `done` without having re-issued the approved call is reported on the task
+  (`approval_unused` trace event and a note in `task show`), never silently `done`.
+- **Non-goals:** executing the approved call without the model; changing `approve_once` / `approve_always` meaning.
+- **Spec:** `pod-dispatch.spec.md` (the resume), `security-gates.spec.md` (item 17 or the approval section), `trace-store.spec.md`
+  if the event is new.
+- **Change:** `hops/application/` (where a resumed hop composes its input; `rg -n "approval_resumed" src`,
+  `tasks/application/actions.py:117`), the hop prompt it adds, the executor's end-of-hop check.
+- **Acceptance (RED first):** an integration test with a scripted model that does NOT re-issue unless the resumed
+  input says to: it fails today, passes after; a hop that ignores the cue ends with `approval_unused`; the real-model
+  oracle is the re-run of the phase-close real run (P55-15).
+- **Gate:** the integration file, `tests/unit/hops`, the e2e lane.
+- **Contention:** `hops/application/` composition and `pod-dispatch.spec.md`. Parallel-safe with P55-13.
+
+### P55-15 — the phase-close real run, repeated, with the sandbox grants named
+
+**Status:** TODO · after P55-13 and P55-14 (integrator, no code card) · **Size:** M · **Model:** Sonnet (run)
+
+- **Goal:** repeat the real run (scratch dir `/tmp/claude-1000/outward-run.RAdk` kept for reference): runs 1 park, 2
+  approve (outbox log has exactly one entry), 3 `wait` step, 4 routine under `docket start --dispatch`, against the
+  local model. Also record what a stdio MCP server needs under isolation: its script, interpreter and venv readable
+  (`docket setup sandbox read add`), the log inside the pod workdir; today the failure is `mcp_client.unavailable:
+  ExceptionGroup` with python's "Permission denied" only on stderr. If that message stays unhelpful, a follow-up card.
 
 ### Wave table (schedule by file contention)
 
