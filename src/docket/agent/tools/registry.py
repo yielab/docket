@@ -23,6 +23,7 @@ from docket.agent.ports import ToolCall, ToolCallArgumentsError, ToolSpec, tool_
 # handler module, which only this module may import.
 from docket.agent.tools.builtins import background
 from docket.agent.tools.builtins.toolbox import SandboxMode
+from docket.agent.tools.mcp_client import HopSessions
 from docket.kernel.gate import (
     DEFAULT_MAX_CONSULTATIONS,
     Decision,
@@ -87,6 +88,8 @@ class ToolContext:
     read_window: int | None = None
     # The turn's background `bash` processes by pgid; the driver stops the live ones at turn end.
     processes: background.Processes = field(default_factory=dict)
+    # The hop's open `lifetime: hop` MCP sessions; the driver closes them where it stops `processes`.
+    mcp_sessions: HopSessions = field(default_factory=HopSessions)
     # The assistant text of the message making the current call(s); the agent loop sets it
     # per batch. Raw: ``_approval.screen_rationale`` screens it when an approval is made.
     rationale: str = ""

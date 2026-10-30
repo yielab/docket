@@ -103,6 +103,12 @@ def start_export() -> None:
 atexit.register(_close_telemetry)
 
 
+def _end_hop_tools(ctx: ToolContext) -> None:
+    """Stop what the hop left running: background processes, then open MCP sessions."""
+    background.stop_all(ctx.processes, ctx.on_process, reason="turn_end")
+    ctx.mcp_sessions.close_all(ctx.on_process, reason="turn_end")
+
+
 @dataclass
 class DocketDriver:
     """The ``RuntimeDriver`` implementation. ``backend_factory``/``registry_factory``/
@@ -305,7 +311,7 @@ class DocketDriver:
                     trace_task_id=trace_task_id or "",
                 )
         finally:
-            background.stop_all(ctx.processes, ctx.on_process, reason="turn_end")
+            _end_hop_tools(ctx)
             if view_token is not None:
                 _repo_view.unregister(view_token)
 

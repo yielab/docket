@@ -36,6 +36,10 @@ class McpServerConfig(BaseModel):
     # in McpServerLoadResult.skipped), never silently dropped. Empty (the
     # default) means "register everything advertised" -- today's behavior.
     tools: list[str] = Field(default_factory=list)
+    # "call" (the default) spawns one subprocess per exchange; "hop" keeps one stdio session open
+    # for the hop's calls and closes it where the hop ends (specs/functional/mcp-client.spec.md
+    # Requirements 41-46). A listing is always one subprocess.
+    lifetime: Literal["call", "hop"] = "call"
 
     def resolved_timeout(self) -> float:
         """The actual per-call bound this server's calls will honor.
