@@ -87,6 +87,28 @@ class TestEnsureTable:
             RecordsStore(tmp_path / "r.sqlite").ensure_table("s", [Column("a", "blob")])
 
 
+class TestCheckTable:
+    def test_a_new_set_is_reported_without_creating_the_file(self, tmp_path: Path) -> None:
+        made = RecordsStore(tmp_path / "pod" / "r.sqlite")
+        out = made.check_table("notes", [Column("body", "string")])
+        assert (out.created, out.added) == (True, ())
+        assert not (tmp_path / "pod").exists()
+
+    def test_an_added_column_is_reported_and_not_added(self, store: RecordsStore) -> None:
+        out = store.check_table("listings", [*LISTINGS, Column("agent", "string")], key="url")
+        assert (out.created, out.added) == (False, ("agent",))
+        assert store.query("SELECT * FROM listings", 10, 1000).columns[-1] == "seen"
+
+    def test_a_set_the_file_lacks_is_created_not_refused(self, store: RecordsStore) -> None:
+        assert store.check_table("notes", [Column("body", "string")]).created is True
+
+    def test_the_refusals_are_ensure_tables(self, store: RecordsStore) -> None:
+        with pytest.raises(RecordsError, match="price"):
+            store.check_table("listings", [Column("url", "string"), Column("seen", "date")], "url")
+        with pytest.raises(RecordsError, match="key"):
+            store.check_table("listings", LISTINGS, key=None)
+
+
 class TestAdd:
     def test_a_string_in_an_integer_column_is_refused_naming_the_column(
         self, store: RecordsStore
