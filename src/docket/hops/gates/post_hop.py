@@ -469,10 +469,11 @@ def _evaluate_hop_gates(
     return outcome
 
 
-def _latest_implementer_evidence(prior: list[HopResult]) -> dict[str, Any]:
-    """The evidence of the latest successful Implementer hop in *prior*, ``{}`` when none."""
+def _latest_evidence(prior: list[HopResult]) -> dict[str, Any]:
+    """The evidence of the latest successful hop in *prior* that has any, whatever its role;
+    ``{}`` when none."""
     for hop in reversed(prior):
-        if hop.role == "implementer" and hop.ok and hop.evidence is not None:
+        if hop.ok and hop.evidence is not None:
             return hop.evidence
     return {}
 
@@ -481,9 +482,9 @@ def _task_command_env(
     ctx: UnitContext, prior: list[HopResult], step_env: dict[str, str] | None = None
 ) -> dict[str, str]:
     """A command step's environment: the step's own ``env`` under the task's coordinates -- its
-    id, and the base and head commits of the latest successful Implementer hop's evidence
+    id, and the base and head commits of the latest successful hop's evidence
     (empty strings when there is none). The coordinates always win."""
-    evidence = _latest_implementer_evidence(prior)
+    evidence = _latest_evidence(prior)
     return {
         **(step_env or {}),
         "DOCKET_TASK_ID": ctx.task_id,
