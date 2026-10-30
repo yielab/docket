@@ -130,6 +130,7 @@ def source_items(directory: Path) -> tuple[LockItem, ...]:
         ("policy", "policies", ("*.yaml", "*.yml", "*.json")),
         ("plugin", "plugins", ("*.py",)),
         ("pipeline", "pipelines", ("*.yaml", "*.yml")),
+        ("routine", "routines", ("*.yaml", "*.yml")),
     ):
         items.extend(
             _file_item(scope, kind, directory, p) for p in _glob(directory / sub, *patterns)

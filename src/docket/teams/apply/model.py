@@ -32,7 +32,16 @@ class ApplyItem:
     named, and whether applying it would add, replace, or skip (already matches disk)."""
 
     kind: Literal[
-        "role", "prompt", "policy", "plugin", "skill", "mcp-server", "member", "pipeline", "setting"
+        "role",
+        "prompt",
+        "policy",
+        "plugin",
+        "skill",
+        "mcp-server",
+        "member",
+        "pipeline",
+        "routine",
+        "setting",
     ]
     name: str
     action: ApplyAction
@@ -69,6 +78,12 @@ class _PluginWrite:
 
 @dataclass(frozen=True)
 class _NamedPipelineWrite:
+    name: str
+    source: bytes
+
+
+@dataclass(frozen=True)
+class _RoutineWrite:
     name: str
     source: bytes
 
@@ -128,6 +143,7 @@ class ApplyPlan:
     _policy_writes: tuple[_PolicyWrite, ...] = field(default=())
     _plugin_writes: tuple[_PluginWrite, ...] = field(default=())
     _named_pipeline_writes: tuple[_NamedPipelineWrite, ...] = field(default=())
+    _routine_writes: tuple[_RoutineWrite, ...] = field(default=())
     _skill_writes: tuple[_SkillWrite, ...] = field(default=())
     _mcp_server_write: _McpServerWrite | None = field(default=None)
     _member_writes: tuple[_MemberWrite, ...] = field(default=())
