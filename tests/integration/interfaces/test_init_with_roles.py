@@ -11,6 +11,7 @@ from tests.support.pods import members as _members
 from typer.testing import CliRunner
 
 from docket.interfaces.cli.app import app
+from docket.kernel import layout as _layout
 from docket.kernel.home import current_home
 from docket.teams import fleet as _fleet
 
@@ -22,7 +23,8 @@ runner = CliRunner()
 
 
 def _operator_role(name: str) -> None:
-    roles = current_home().config_dir / "roles"
+    _layout.migrate(current_home().root)  # `init` would move a legacy home; roles go to the new one
+    roles = current_home().roles_dir
     roles.mkdir(parents=True, exist_ok=True)
     (roles / f"{name}.yaml").write_text(
         f"kind: role\nname: {name}\ndescription: a test role\nmodel: strong\n"
