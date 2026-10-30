@@ -316,3 +316,84 @@ class TestSendTools:
         narrowed = registry_for_role(_outward_registry(), "")
 
         assert not [n for n in narrowed.names() if n.startswith("mcp__mail")]
+
+
+class TestMinimalSurfaceKeepsWhatTheRoleNames:
+    """Under `minimal` the allow-list in force still keeps the tools it names."""
+
+    def test_a_role_naming_an_mcp_tool_keeps_it(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, mcp__mail__send]\n")
+
+            narrowed = registry_for_role(
+                _outward_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert sorted(narrowed.names()) == ["mcp__mail__send", "read"]
+
+    def test_a_role_naming_the_server_keeps_every_tool_of_it(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, mcp__notes]\n")
+
+            narrowed = registry_for_role(
+                _outward_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert sorted(narrowed.names()) == ["mcp__notes__save", "read"]
+
+    def test_a_role_with_no_allow_list_keeps_no_mcp_tool(self) -> None:
+        narrowed = registry_for_role(_outward_registry(), "implementer", surface="minimal")
+
+        assert not [n for n in narrowed.names() if n.startswith("mcp__")]
+        assert {"bash", "read", "edit", "write"} <= set(narrowed.names())
+
+    def test_a_tool_the_role_does_not_name_is_still_dropped(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, mcp__notes__save]\n")
+
+            narrowed = registry_for_role(
+                _outward_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert "mcp__inbox__list" not in narrowed.names()
+            assert "bash" not in narrowed.names()
+
+    def test_a_step_allow_list_replaces_the_role_s_for_the_surface(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, mcp__notes__save]\n")
+
+            narrowed = registry_for_role(
+                _outward_registry(),
+                "actor",
+                project="acme",
+                surface="minimal",
+                allow=("read", "mcp__inbox__list"),
+            )
+
+            assert sorted(narrowed.names()) == ["mcp__inbox__list", "read"]
+
+    def test_a_send_tool_still_needs_the_role_s_own_list(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read]\n")
+
+            narrowed = registry_for_role(
+                _outward_registry(),
+                "actor",
+                project="acme",
+                surface="minimal",
+                allow=("read", "mcp__mail__send"),
+            )
+
+            assert narrowed.names() == ["read"]
+
+    def test_a_denied_tool_is_not_kept_by_being_named(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay(
+                "acme", "actor", ["write"], extra="tools: [read, mcp__notes__save]\n"
+            )
+
+            narrowed = registry_for_role(
+                _outward_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert narrowed.names() == ["read"]
