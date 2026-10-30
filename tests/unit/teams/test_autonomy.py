@@ -31,6 +31,9 @@ TABLE = {
     ("check_changed", "L3"): ("person", "deny"),
     ("check_changed", "L4"): ("person", "deny"),
     ("check_changed", "L5"): ("person", "deny"),
+    ("wait", "L3"): ("machine", "block"),
+    ("wait", "L4"): ("machine", "block"),
+    ("wait", "L5"): ("machine", "block"),
 }
 
 
@@ -47,8 +50,13 @@ class TestPolicyFor:
     def test_every_cell_of_the_table(self, kind: str, level: str) -> None:
         assert autonomy.policy_for(kind, level) == TABLE[(kind, level)]
 
-    def test_the_table_has_fifteen_cells(self) -> None:
-        assert len(TABLE) == len(autonomy.KINDS) * len(autonomy.LEVELS) == 15
+    def test_the_table_has_eighteen_cells(self) -> None:
+        assert len(TABLE) == len(autonomy.KINDS) * len(autonomy.LEVELS) == 18
+
+    def test_a_wait_is_the_same_at_every_level(self) -> None:
+        assert {autonomy.policy_for("wait", level) for level in autonomy.LEVELS} == {
+            ("machine", "block")
+        }
 
     @pytest.mark.parametrize(("kind", "level"), [("banana", "L3"), ("consult", "L2")])
     def test_an_unknown_kind_or_level_is_refused(self, kind: str, level: str) -> None:

@@ -500,7 +500,7 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    waits.
 6. Execution - the pause, the probe, the wake-up and `timeout` - is `pod-dispatch.spec.md`, "Wait
    steps". The `until.run` command is run as a `run:` step's command is (its classification, its
-   jail), so `docket pod apply` lists it among the commands a plan review shows.
+   jail), so a plan review lists it among the commands a pod would run.
 
 ## Interface Contracts
 

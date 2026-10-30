@@ -113,6 +113,12 @@ def _pending_id(task: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _waits_on_a_wait(escalation: str | None) -> bool:
+    """Whether the pause *escalation* names is a ``wait``: nobody is asked, so no one is needed."""
+    record = read_escalation(escalation) if escalation else None
+    return record is not None and record.kind == "wait"
+
+
 def task_view(
     project: str, task: dict[str, Any], now: str = "", escalation: str | None = None
 ) -> TaskView:
@@ -127,7 +133,9 @@ def task_view(
         id=str(task.get("id", "")),
         pod=project,
         status=status,
-        a2a_state=a2a_state(
+        a2a_state="WORKING"
+        if status == "waiting_input" and _waits_on_a_wait(escalation)
+        else a2a_state(
             status,
             blocked_reason=task.get("blockedReason"),
             failure_kind=task.get("failureKind"),
@@ -208,6 +216,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     statuses: dict[str, dict[str, str]] = {}
     pending = list_escalations(state="pending")
     waiting_on = {(e.pod, e.task): e.id for e in pending if e.task}
+    machine_waits = {(e.pod, e.task) for e in pending if e.kind == "wait"}
 
     for project in _all_projects():
         tasks = _tasks.read_tasks(project)
@@ -215,6 +224,8 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
         for task in tasks:
             view = task_view(project, task, now, waiting_on.get((project, str(task.get("id", "")))))
             latest = _newer(latest, view.updated_at)
+            if (project, view.id) in machine_waits and view.status == "waiting_input":
+                continue  # waits on a time or a probe: it needs no one, its record is listed below
             if view.status.startswith("waiting_") or view.status in _NEEDS_YOU_STATUSES:
                 needs_you.append(view)
             elif view.status == "failed":
@@ -232,7 +243,7 @@ def build_inbox(*, now: str, since: str | None = None) -> InboxView:
     escalations = [_escalation_view(e, True) for e in pending if _is_live(e, _status(e))]
     carried = {(t.pod, t.id) for t in needs_you if isinstance(t, TaskView)}
     for pending_view in escalations:
-        if (pending_view.pod, pending_view.task) not in carried:
+        if pending_view.kind != "wait" and (pending_view.pod, pending_view.task) not in carried:
             needs_you.append(pending_view)
             latest = _newer(latest, pending_view.asked_at)
     decided = [_escalation_view(e, False) for e in reversed(list_escalations(state="decided"))][

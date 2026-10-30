@@ -39,7 +39,7 @@ __all__ = [
 ]
 
 LEVELS: tuple[str, ...] = ("L3", "L4", "L5")
-KINDS: tuple[str, ...] = ("approval", "consult", "input", "gate", "check_changed")
+KINDS: tuple[str, ...] = ("approval", "consult", "input", "gate", "check_changed", "wait")
 
 DEFAULT_DOCUMENT: Path = _templates.AUTONOMY_TEMPLATES_DIR / "default.yaml"
 
@@ -60,13 +60,13 @@ class LevelAboveCeiling(InvalidInput):
 class _Cell(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    policy: Literal["person", "recommendation", "deny", "fail"]
+    policy: Literal["person", "recommendation", "deny", "fail", "machine"]
     on_expiry: Literal["deny", "block"] = Field(alias="onExpiry")
 
 
 class AutonomyDocument(BaseModel):
     """A ``kind: autonomy`` document: ``rows[kind][level]`` is the policy and expiry of one cell,
-    and every one of the fifteen cells must be present."""
+    and every one of the eighteen cells must be present."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
