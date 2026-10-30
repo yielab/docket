@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 2.0.3
+**Version**: 2.1.0
 **Status**: Complete
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -16,6 +16,7 @@ This specification covers:
 - Storing, rotating and removing a provider's credential (`docket setup provider`)
 - The supported key names
 - The storage backends (file and OS keyring)
+- A stored secret consumed by an MCP server's environment
 
 This specification does NOT cover credential format rules beyond the warning in Operations item 1
 (see input-validation.spec.md).
@@ -67,6 +68,16 @@ Credentials belong to a provider; there is no separate key command.
    no callable endpoint. A built-in hosted provider's base URL comes from its shipped
    `kind: provider` document, so a stored Anthropic/OpenAI/Google key is sufficient readiness on
    its own — no separate endpoint registration is required.
+
+### A stored secret consumed by an MCP server
+
+1. A stored secret **MAY** be consumed by an MCP server: its `env` value `secret:<name>` is resolved
+   through `secret_value(<name>)` when a turn loads the server (`mcp-client.spec.md` Requirements
+   47-49). The reference, never the value, is what `mcp-servers.json`, a pod-scoped file and a
+   `kind: mcp-server` document hold.
+2. The resolved value **MUST** reach only the server's process environment. It is a stored secret,
+   so trace, audit and export redact it like a provider credential (Requirement 2 above); a name
+   with no stored value makes that server unavailable for the turn and **MUST NOT** print a value.
 
 ### Backends
 
