@@ -59,6 +59,7 @@ REQUIRED_RECIPES = (
     "strong-plan-cheap-edit",
     "parallel-explore",
     "web-research",
+    "outward",
 )
 
 
