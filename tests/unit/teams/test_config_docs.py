@@ -45,11 +45,12 @@ def test_an_unknown_kind_raises_naming_every_known_kind(tmp_path: Path) -> None:
         "mcp-server",
         "autonomy",
         "prompt",
+        "routine",
     }
     assert str(error) == (
         f"{path}:1 kind: unknown kind 'banana' "
         "(valid: role, pipeline, policy, pod, provider, exporter, channel, mcp-server, autonomy, "
-        "prompt)"
+        "prompt, routine)"
     )
 
 
@@ -272,3 +273,57 @@ def test_discovery_lists_prompts_under_their_layer_directories_after_pipelines(
     ]
 
     assert found == ["pipelines/a.yaml", "prompts/top.md", "prompts/hop/n.md"]
+
+
+ROUTINE = """kind: routine
+name: morning
+schedule: "0 9 * * 1-5"
+tz: America/Bogota
+task:
+  description: read the overnight tickets
+"""
+
+
+def _routine(tmp_path: Path, text: str, directory: str = "") -> Path:
+    folder = tmp_path / directory
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "morning.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_a_routine_loads_and_a_file_under_routines_needs_no_kind(tmp_path: Path) -> None:
+    document = config_docs.load_document(_routine(tmp_path, ROUTINE))
+    assert (document.kind, document.name) == ("routine", "morning")
+
+    bare = ROUTINE.replace("kind: routine\n", "")
+    located = config_docs.load_document(_routine(tmp_path, bare, "routines"))
+    assert located.kind == "routine"
+    assert [r.error for r in config_docs.validate_path(tmp_path)] == [None]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "field"),
+    [
+        ('schedule: "0 9 * * 1-5"', 'schedule: "09:00"', "schedule"),
+        ('schedule: "0 9 * * 1-5"', 'schedule: "every day"', "schedule"),
+        ("tz: America/Bogota", "tz: Mars/Olympus", "tz"),
+        ("  description: read the overnight tickets", "  description: ''", "task.description"),
+        ("tz: America/Bogota", "catchUp: always", "catchUp"),
+        ("tz: America/Bogota", "colour: red", "colour"),
+    ],
+)
+def test_a_bad_routine_names_the_field_that_failed(
+    tmp_path: Path, old: str, new: str, field: str
+) -> None:
+    path = _routine(tmp_path, ROUTINE.replace(old, new))
+    with pytest.raises(config_docs.ConfigDocError) as exc_info:
+        config_docs.load_document(path)
+    assert exc_info.value.field == field
+
+
+def test_the_routine_schema_is_published_and_matches_the_model() -> None:
+    name = "routine.schema.json"
+    assert (DOCS_SCHEMA_DIR / name).read_text() == (PACKAGE_SCHEMA_DIR / name).read_text()
+    schema = json.loads((DOCS_SCHEMA_DIR / name).read_text())
+    Draft202012Validator(schema).validate(yaml.safe_load(ROUTINE))

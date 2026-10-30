@@ -34,8 +34,36 @@ from docket.tasks.application.queue import (
     touch_claim,
 )
 from docket.tasks.application.record import Runner, persist_hop
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import HopResult, TaskResult, TaskRunRefusal
 from docket.teams.pod import pod_pipeline
+
+
+def _unsupplied_variables(
+    spec: _pipeline.PipelineSpec, variables: dict[str, Any] | None
+) -> str | None:
+    """Why *spec* cannot run with *variables* alone (a required one missing, or a step's
+    instructions naming one nothing resolves), or ``None`` when it can."""
+    try:
+        resolved = _pipeline.resolve_variables(spec, variables)
+    except _pipeline.VariableError as exc:
+        return str(exc)
+    missing = _pipeline.unresolved_step_variables(spec, resolved)
+    if missing:
+        return (
+            "refusing dispatch: step instructions reference unresolved pipeline "
+            "variable(s): " + ", ".join(missing)
+        )
+    return None
+
+
+def _tasks_supply_variables(project: str) -> bool:
+    """Whether an unfinished task of *project* carries its own variables or names its own
+    pipeline: what the caller left unresolved is then the task's to supply, at its claim."""
+    return any(
+        bool(r.variables or r.pipeline) and not r.is_terminal
+        for r in TaskRepository.for_pod(project).list()
+    )
 
 
 def dispatch_pod(
@@ -59,8 +87,10 @@ def dispatch_pod(
     and continue from the last persisted hop. Returns one TaskResult per task attempted.
     Raises DispatchError if the pod has no Lead, or -- checked once, here, before any task is
     claimed or any hop runs -- if *variables* (the caller-supplied pipeline variable mapping;
-    e.g. the serve webhook's resolved body, or ``docket run --var``) leaves any step's
-    own ``instructions`` with an unresolved ``${var}`` reference. A ``wait`` step's parked tasks
+    e.g. the serve webhook's resolved body, or ``docket run --var``) leaves a required variable
+    missing or any step's own ``instructions`` with an unresolved ``${var}`` reference, unless an
+    unfinished task carries its own ``variables`` or ``pipeline``: the check then waits for each
+    claim, and a task with neither is refused ``failed`` with the same reason. A ``wait`` step's parked tasks
     whose time has come or whose probe passes are woken before the first claim (pod-dispatch.spec.md
     "Wait steps"). *stop* is polled before each
     claim, never inside a task. See
@@ -70,16 +100,12 @@ def dispatch_pod(
     ``dispatch_task`` call unchanged; an explicit pod value always wins over it."""
     pod_pipeline(project)  # validates pod/lead up front
     effective_spec = effective_pipeline(project, spec)
-    try:
+    resolved_vars = dict(variables or {})
+    deferred = _unsupplied_variables(effective_spec, variables)
+    if deferred is None:
         resolved_vars = _pipeline.resolve_variables(effective_spec, variables)
-    except _pipeline.VariableError as exc:
-        raise DispatchError(str(exc)) from exc
-    missing = _pipeline.unresolved_step_variables(effective_spec, resolved_vars)
-    if missing:
-        raise DispatchError(
-            "refusing dispatch: step instructions reference unresolved pipeline "
-            "variable(s): " + ", ".join(missing)
-        )
+    elif not _tasks_supply_variables(project):
+        raise DispatchError(deferred)
     sweep_stale_claims(project)
     sweep_waits(pod=project, probe=probe_wait)
     if resume:
@@ -97,6 +123,9 @@ def dispatch_pod(
         claimed_ids.add(task_id)
         if claim.refusal is not None:
             results.append(refuse_claimed_task(project, task, *claim.refusal))
+            continue
+        if deferred is not None and not (task.variables or task.pipeline or task.pipeline_spec):
+            results.append(refuse_claimed_task(project, task, "pipeline", deferred))
             continue
         try:
             run_spec, run_vars, source = _resolve_task_run(
