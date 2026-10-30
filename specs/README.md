@@ -105,7 +105,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Model Profiles | 6.6.0 | Complete |
 | Observability Export | 3.1.1 | Implemented and live |
 | Pipeline Format | 4.6.0 | Implemented |
-| Pod Blueprints | 4.0.0 | Implemented |
+| Pod Blueprints | 4.1.0 | Implemented |
 | Pod Dispatch | 11.9.0 | Implemented |
 | Role Archetypes | 5.4.1 | Implemented |
 | Security Gates | 3.5.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
@@ -128,10 +128,10 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Serve Read API | 5.3.0 | Stable |
 | Adoption Benchmark | 2.3.0 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
-| Test Framework | 4.4.0 | Active |
+| Test Framework | 4.4.1 | Active |
 | Starter Journey | 2.1.0 | Implemented |
 | Operator Loop | 3.3.0 | Implemented |
-| User Stories | 2.1.0 | Active |
+| User Stories | 2.1.1 | Active |
 
 ## Tools
 
