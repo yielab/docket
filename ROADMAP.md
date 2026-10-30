@@ -9,17 +9,18 @@ phase records, wave narratives and this file's older sections are archived verba
 
 ## Status
 
-**Last updated: 2026-10-30.** Phases 0–54 are complete; none is active. **Phase 55 is planned**
-(D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md)): a pod works outward, on its own schedule.
-A pod can do work other than code and act outside the machine (send a message, navigate and act on
-a web site, call an external API, another agent or an MCP server) without changing how code pods are
-governed. The text a hop reads follows the pod's workspace kind, a custom role pins its model,
-`send` is a fourth tool kind no role has unless it names it (always audited, approved by a person
-who sees the whole call while every kept or forwarded copy stays redacted, under a per-pod quota), an MCP server may live for the hop and take its
-credential from the secret store, a `wait` step parks a task until a time or an event, variables
-belong to the task, a routine creates tasks on a schedule, and a pod widens the machine's network
-only with the operator's recorded yes. Twelve cards over four waves, cut by file ownership, start on
-the maintainer's go.
+**Last updated: 2026-10-30.** Phases 0–55 are complete; none is active. **Phase 55** (D-77,
+[ADR 0036](docs/adr/0036-a-pod-works-outward.md)) closed 2026-10-30: a pod works outward, on its own schedule. A pod
+can do work other than code in a working directory, and act outside the machine through a `send` tool no role holds
+unless it names it (always audited, approved by a person who sees the whole call while every kept copy stays redacted,
+under a per-pod quota); an MCP server may live for the hop and take its credential from the secret store; a `wait`
+step parks a task until a time or a probe; variables belong to the task; a routine creates tasks on a schedule; a pod
+widens the machine's network only with the operator's recorded yes. Fourteen cards: the twelve planned and two the
+phase-close real run found (the `minimal` surface dropped every MCP tool; a resumed hop was not told its call was
+approved). The repeated real run against the local model passed park, approve-and-send-once, a `wait` step and a
+routine; what it leaves open is under "Phase 55" in `TODO.md`'s follow-ups. **Phase 56 is planned** (ADR 0036
+decisions 13-14, accepted 2026-10-30): an external service is declared in a document or by commands, not
+programmed; nine cards start on the maintainer's go.
 Phases 52 and 53 ran as one schedule in five waves and closed 2026-10-29; Phase 54 closed the same day.
 **Phase 52** (D-73, [ADR 0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md); D-74,
 [ADR 0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md)): the harness adapts to the model by
@@ -106,7 +107,7 @@ Every release keeps a `-beta.N` suffix until the project drops its beta warning.
 | 52 | The harness adapts to the model by data, and pays for context once: cache-hit and tokens-per-accepted-task figures, a re-read report on recorded traces; tool results normalized and cut head+tail, errors that teach, small results never condensed first; a stable prefix (finalization as a trailing message) and sampling from the catalog; a parse failure refused rather than asked; the Lead's locators read into the Implementer's message; viewer/editor recipes; `ModelProfile` (`hosted`, `local`: surface, descriptions, forced `tool_choice` on close, window-derived budgets); results over the cap kept whole under the pod cache. With D-74: a tool's clock clamped to the turn's and a running tool keeping the claim fresh; background processes with a handle, stopped at turn end, a bare `&` asking; `fetch` converting HTML to text; a `web-research` recipe; a `wait` escalation held until a run needs it | D-73 · [0033](docs/adr/0033-the-harness-adapts-to-the-model-by-data.md) · D-74 · [0034](docs/adr/0034-the-turn-owns-its-processes-and-its-time.md) | **complete** 2026-10-29: eight of nine cards; P52-12 (`wait`) stays blocked on a recorded run; P52-2's bench oracle was decided at triage (no step worse than the recorded request); the `&` and parse-failure halves of P52-4 both shipped |
 | 53 | Prompts as versioned configuration: one `prompt` kind and loader, four scopes with one order, `applied.lock`, a hash and a manifest on every hop; the `handoff` tool replaces the free-text close; `Task` and `Hop` layers, a map bounded by the Lead's paths and no absolute path; prompt variants by class, `docket pod test` and a role `floor`; a structured `task` on `POST /tasks/<pod>` | D-75 · [0035](docs/adr/0035-prompts-are-versioned-configuration.md) | **complete** 2026-10-29: nine cards, P53-1..P53-9; the Lead's locators (P53-4 goal 3) wait for P52-1's figure; follow-ups under "Phases 52 and 53" in `TODO.md` |
 | 54 | The native Anthropic Messages dialect: `dialect: anthropic-messages` beside `openai-chat`, one chat client whose request path, payload, decoding and per-part sizes come from the dialect, the built-in `anthropic` document moved to it (two cache markers, cache reads and writes in the measured usage, a call without an output cap fails before sending), recorded real response bodies as decoder fixtures | D-76 · [0011](docs/adr/0011-provider-catalog.md) amendment | **complete** 2026-10-29: P54-1, P54-2; follow-ups under "Phase 54" in `TODO.md` |
-| 55 | A pod works outward, on its own schedule: the hop's text follows the workspace kind and the first workdir e2e; a custom role pins its model; `send` as a fourth tool kind held only by a role that names it, always audited, approved by a person who sees the whole call while kept copies stay redacted, under a per-pod quota; an MCP server with `lifetime: hop` and credentials from the secret store; a `wait` step settled by the sweep; variables on the task; routines that create tasks; a pod's network widened only by the operator's recorded yes; the `outward` recipe | D-77 · [0036](docs/adr/0036-a-pod-works-outward.md) | **planned** 2026-10-30: twelve cards P55-1..P55-12 over four waves on `TODO.md`; start on the maintainer's go |
+| 55 | A pod works outward, on its own schedule: the hop's text follows the workspace kind and the first workdir e2e; a custom role pins its model; `send` as a fourth tool kind held only by a role that names it, always audited, approved by a person who sees the whole call while kept copies stay redacted, under a per-pod quota; an MCP server with `lifetime: hop` and credentials from the secret store; a `wait` step settled by the sweep; variables on the task; routines that create tasks; a pod's network widened only by the operator's recorded yes; the `outward` recipe | D-77 · [0036](docs/adr/0036-a-pod-works-outward.md) | **complete** 2026-10-30: fourteen cards (twelve planned, two from the phase-close real run), the real run repeated and passed |
 | 56 | An external service is declared, not programmed: a `kind: service` document and `docket setup service`, operations by hand or from OpenAPI, each a tool through `dispatch_tool`; writes always `send`, a `DELETE` approved one call at a time, a quota per service; the call runs in docket's process with its perimeter at the service's host; `docket setup secret set` | D-77 · [0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-14 | **planned** 2026-10-30: nine cards P56-1..P56-9 over four waves on `TODO.md`, after Phase 55 closes |
 
 Waves that were not phases (17–22, 30–37, 89–90, 96–97, 108) are recorded in
