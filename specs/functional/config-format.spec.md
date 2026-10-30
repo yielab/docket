@@ -193,7 +193,7 @@ This specification does NOT cover:
    repository keeps one; otherwise the current directory. A file argument **MUST** validate
    that one file only.
 2. Given a directory, it **MUST** validate every `*.yaml`/`*.yml`/`*.json` file directly under
-   `roles/`, `policies/`, `mcp-servers/` and `services/`, every `*.yaml`/`*.yml` under `pipelines/` (a
+   `roles/`, `policies/` and `mcp-servers/`, every `*.yaml`/`*.yml` under `services/`, `pipelines/` (a
    pipeline by location) and under `routines/` (a routine by location), every `*.md` file directly under `prompts/` or under one of its layer
    directories (`prompts/<layer>/*.md`, after the pipelines), plus a `pipeline.yaml`/`pipeline.yml` and a `pod.yaml`/`pod.yml`
    directly under the directory, when present, in that order. `discover_config_paths` does not

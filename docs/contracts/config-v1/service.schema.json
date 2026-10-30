@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docket.dev/schemas/config-v1/service.schema.json",
+  "title": "ServiceDocument",
+  "$defs": {
+    "Operation": {
+      "additionalProperties": false,
+      "description": "One call a pod may make. ``access`` is resolved from the method when omitted.",
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "path": {
+          "pattern": "^/[^\\s?#]*$",
+          "title": "Path",
+          "type": "string"
+        },
+        "params": {
+          "items": {
+            "$ref": "#/$defs/OperationParam"
+          },
+          "title": "Params",
+          "type": "array"
+        },
+        "body": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body"
+        },
+        "access": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "send"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "method",
+        "path"
+      ],
+      "title": "Operation",
+      "type": "object"
+    },
+    "OperationParam": {
+      "additionalProperties": false,
+      "description": "One typed parameter of an operation: a path segment or a query value.",
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "in": {
+          "enum": [
+            "path",
+            "query"
+          ],
+          "title": "In",
+          "type": "string"
+        },
+        "type": {
+          "default": "string",
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "in"
+      ],
+      "title": "OperationParam",
+      "type": "object"
+    },
+    "ServiceAuth": {
+      "additionalProperties": false,
+      "description": "The header every call carries; ``value`` may hold ``${secret:<name>}`` references.",
+      "properties": {
+        "header": {
+          "pattern": "^[A-Za-z0-9-]+$",
+          "title": "Header",
+          "type": "string"
+        },
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "header",
+        "value"
+      ],
+      "title": "ServiceAuth",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A ``kind: service`` document: the service's fields under the ``kind`` envelope.",
+  "properties": {
+    "name": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Name",
+      "type": "string"
+    },
+    "baseUrl": {
+      "title": "Baseurl",
+      "type": "string"
+    },
+    "auth": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ServiceAuth"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "hosts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Hosts",
+      "type": "array"
+    },
+    "timeout": {
+      "default": 0.0,
+      "minimum": 0,
+      "title": "Timeout",
+      "type": "number"
+    },
+    "idempotencyHeader": {
+      "default": "",
+      "pattern": "^[A-Za-z0-9-]*$",
+      "title": "Idempotencyheader",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/Operation"
+      },
+      "title": "Operations",
+      "type": "array"
+    },
+    "kind": {
+      "const": "service",
+      "title": "Kind",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "baseUrl",
+    "kind"
+  ],
+  "type": "object"
+}

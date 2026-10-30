@@ -51,6 +51,11 @@ def _write(tmp_path: Path, doc: dict[str, Any], name: str = "crm.yaml") -> Path:
     return path
 
 
+def _document(config: Any) -> dict[str, Any]:
+    body = config.model_dump(mode="json", by_alias=True, exclude_defaults=True)
+    return {"kind": "service", **body}
+
+
 def _with_operation(**fields: Any) -> dict[str, Any]:
     doc = copy.deepcopy(_DOC)
     doc["operations"] = [{"name": "op", "method": "GET", "path": "/x", **fields}]
@@ -66,11 +71,9 @@ def test_a_valid_document_round_trips(tmp_path: Path) -> None:
         ["files.example.com"],
         20.0,
     )
-    again = _services.load_service_document(
-        _write(tmp_path, _services.service_document(config), "again.yaml")
-    )
+    again = _services.load_service_document(_write(tmp_path, _document(config), "again.yaml"))
     assert again == config
-    assert _services.service_document(config) == _DOC
+    assert _document(config) == _DOC
 
 
 def test_access_defaults_from_the_method(tmp_path: Path) -> None:
@@ -123,7 +126,7 @@ def test_a_secret_reference_round_trips_unresolved(tmp_path: Path) -> None:
     (stored,) = _services.load_services()
     assert stored.auth is not None and stored.auth.value == "Bearer ${secret:crm}"
     assert "${secret:crm}" in current_home().services_file.read_text(encoding="utf-8")
-    assert _services.service_document(stored)["auth"]["value"] == "Bearer ${secret:crm}"
+    assert _document(stored)["auth"]["value"] == "Bearer ${secret:crm}"
 
 
 @pytest.mark.parametrize("value", ["Bearer ${secret:}", "Bearer ${secret:a b}", "${secret:crm"])
@@ -221,6 +224,7 @@ def test_a_service_cannot_take_an_mcp_servers_name(tmp_path: Path) -> None:
 
 
 def test_a_pod_scoped_mcp_servers_name_is_taken_too(tmp_path: Path) -> None:
+    (current_home().pods_dir / "shop").mkdir(parents=True)
     _mcp_servers.write_pod_mcp_servers(
         "shop", [_mcp.McpServerConfig(name="crm", command="crm-mcp")]
     )

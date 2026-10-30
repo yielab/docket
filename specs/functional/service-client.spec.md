@@ -49,7 +49,7 @@ This specification does NOT cover:
    `${secret:<name>}` references (`<name>` is letters, digits, `-`, `_`, `.`); a reference not
    written that way is refused. A reference **MUST** be kept as written everywhere the document is
    loaded, stored, listed or exported; no function of this specification resolves one, and a
-   listing shows a literal `value` as `****`.
+   listing shows the header and the secret names a value references, never the value.
 4. An operation is `name`, `method` (`GET`, `POST`, `PUT`, `PATCH` or `DELETE`), `path`, `params`,
    `body`, `access` and `description`. Operation names are unique within a service and contain
    only letters, digits, `-` and `_`.
@@ -63,8 +63,8 @@ This specification does NOT cover:
    An operation with method `GET` **MUST NOT** declare a body.
 8. A document that fails any rule above **MUST** be refused as a whole, naming the file and the
    first failing field, and nothing **MUST** be written.
-9. A document **MUST** round-trip: loading it, writing it back as a document and loading that gives
-   an equal `ServiceConfig`.
+9. A document **MUST** round-trip: the loaded `ServiceConfig` dumped by alias (access resolved,
+   defaults left out) under `kind: service` loads to an equal `ServiceConfig`.
 
 ### Access
 
@@ -98,9 +98,9 @@ This specification does NOT cover:
     operations with their access. A name already stored, a name taken by an MCP server or an invalid
     document exits 1 and writes nothing. A `${secret:<name>}` reference whose secret is not stored
     **MUST** produce a warning naming the secret and the header, never failing the command.
-18. `docket setup service list` **MUST** print each stored service (name, base URL, operations,
-    auth header) without any `auth` value that is not a reference; `--json` prints the same as an
-    array.
+18. `docket setup service list` **MUST** print each stored service (name, base URL, operation
+    count, auth header and the secret names it references), never an `auth` value; `--json` prints
+    the same as an array.
 19. `docket setup service remove <name>` **MUST** delete the operator's service and audit
     `services.remove`; an unknown name exits 1.
 
@@ -111,7 +111,7 @@ This specification does NOT cover:
 - `docket.kernel.service`: `ServiceConfig`, `Operation`, `OperationParam`, `ServiceRegistry`,
   `secret_names(value)`
 - `docket.teams.services`: `ServiceDocument`, `ServiceDocError`, `load_service_document(path)`,
-  `service_document(config)`, `load_services(project="")`, `load_pod_services(project)`,
+  `load_services(project="")`, `load_pod_services(project)`,
   `add_service(config)`, `remove_service(name)`, `mcp_name_conflict(name)`,
   `service_name_conflict(name)`
 
@@ -143,7 +143,7 @@ operations:
 
 ```
 $ docket setup service add crm.yaml
-Error: crm.yaml: operations.0.access: operation 'create_contact': POST is always send
+Error: crm.yaml: operations.1: operation 'create_contact': POST is always send, not read
 ```
 
 ## Validation
