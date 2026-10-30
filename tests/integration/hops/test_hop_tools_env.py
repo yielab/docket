@@ -57,3 +57,11 @@ def test_a_step_with_neither_hands_the_turn_nothing(pod_home: Path) -> None:
 
     assert _rd.DOCKET_HOP_TOOLS not in seen["lead"]
     assert _rd.DOCKET_HOP_MAX_TOOL_CALLS not in seen["lead"]
+
+
+def test_every_step_hands_the_turn_its_own_id(pod_home: Path) -> None:
+    _seed_lean_pod(_PROJECT)
+
+    seen = _envs(_step.Step(id="intake", role="lead"))
+
+    assert seen["lead"][_rd.DOCKET_HOP_STEP] == "intake"

@@ -47,7 +47,8 @@ _BAD_REQUEST = "service_bad_request"
 
 @dataclass(frozen=True)
 class ServiceRequest:
-    """One resolved operation call. *path* is a template whose `{name}` parts take *path_params*."""
+    """One resolved operation call. *path* is a template whose `{name}` parts take *path_params*;
+    *timeout* bounds the whole call in seconds, ``0`` meaning ``Home.fetch_timeout_s``."""
 
     method: str
     base_url: str
@@ -58,6 +59,7 @@ class ServiceRequest:
     body: object | None = None
     hosts: tuple[str, ...] = ()
     secrets: tuple[str, ...] = ()
+    timeout: float = 0.0
 
 
 def _split_base(base_url: str) -> urllib.parse.SplitResult:
@@ -304,7 +306,8 @@ def _call(request: ServiceRequest, scrub: tuple[str, ...]) -> ToolOutcome:
             headers["Content-Type"] = "application/json"
 
     home = current_home()
-    cap, timeout = home.fetch_max_response_bytes, home.fetch_timeout_s
+    cap = home.fetch_max_response_bytes
+    timeout = request.timeout or home.fetch_timeout_s
     deadline = _clock.monotonic() + timeout
     opener = urllib.request.OpenerDirector()
     for handler in (

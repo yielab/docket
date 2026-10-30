@@ -9,12 +9,16 @@ raises."""
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlsplit
 
 from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry
+from docket.kernel.errors import InvalidInput
 from docket.kernel.service import Operation, OperationParam, ServiceConfig, service_tool_name
 from docket.kernel.tool_outcome import ToolOutcome
 from docket.platform import ServiceRequest, call_operation
@@ -22,6 +26,8 @@ from docket.platform import ServiceRequest, call_operation
 __all__ = ["ResolvedService", "ServiceLoadResult", "load_service_tools"]
 
 _BAD_REQUEST = "service_bad_request"
+_TASK_HEADER = "X-Docket-Task"
+_KEY_DIGITS = 32
 CallFn = Callable[[ServiceRequest], ToolOutcome]
 
 
@@ -56,7 +62,7 @@ def _schema(operation: Operation) -> dict[str, Any]:
 
 
 def _value(param: OperationParam, value: Any) -> Any:
-    """*value* as *param*'s type allows, else a ``ValueError`` naming the parameter."""
+    """*value* as *param*'s type allows, else an ``InvalidInput`` naming the parameter."""
     plain = not isinstance(value, bool | dict | list | tuple)
     if param.type == "boolean" and isinstance(value, bool):
         return value
@@ -66,19 +72,19 @@ def _value(param: OperationParam, value: Any) -> Any:
         return value
     if param.type == "string" and isinstance(value, str | int | float) and plain:
         return str(value)
-    raise ValueError(f"argument {param.name!r} must be a {param.type}")
+    raise InvalidInput(f"argument {param.name!r} must be a {param.type}")
 
 
 def _request(
     service: ResolvedService, operation: Operation, args: dict[str, Any]
 ) -> ServiceRequest:
-    """The request one call makes. Raises ``ValueError`` for an argument the operation does not
+    """The request one call makes. Raises ``InvalidInput`` for an argument the operation does not
     declare or one of the wrong type."""
     declared = {p.name: p for p in operation.params}
     unknown = [name for name in args if name not in declared and name != "body"]
     if unknown or ("body" in args and operation.body is None):
         names = ", ".join(sorted([*unknown, *(["body"] if operation.body is None else [])]))
-        raise ValueError(f"unknown argument(s): {names}")
+        raise InvalidInput(f"unknown argument(s): {names}")
     path_params: dict[str, str] = {}
     query: dict[str, object] = {}
     for name, value in args.items():
@@ -92,7 +98,7 @@ def _request(
             query[name] = checked
     body = args.get("body")
     if body is not None and not isinstance(body, dict):
-        raise ValueError("argument 'body' must be an object")
+        raise InvalidInput("argument 'body' must be an object")
     return ServiceRequest(
         method=operation.method,
         base_url=service.config.baseUrl,
@@ -103,7 +109,39 @@ def _request(
         body=body,
         hosts=tuple(service.config.hosts),
         secrets=service.secrets,
+        timeout=service.config.timeout,
     )
+
+
+def _identified(
+    service: ResolvedService, operation: Operation, request: ServiceRequest, ctx: ToolContext
+) -> ServiceRequest:
+    """*request* with the headers the hop supplies: the task it serves and, for a ``send``
+    operation of a service that declares one, an idempotency key. Built from *ctx* and the
+    validated arguments, never from the model, and set last so nothing else can override them."""
+    headers = dict(request.headers)
+
+    def put(name: str, value: str) -> None:
+        for existing in [h for h in headers if h.lower() == name.lower()]:
+            del headers[existing]
+        headers[name] = value
+
+    if ctx.task_id:
+        put(_TASK_HEADER, ctx.task_id)
+    if operation.access == "send" and service.config.idempotencyHeader:
+        identity = [
+            ctx.task_id,
+            ctx.step_id,
+            service.config.name,
+            operation.name,
+            dict(request.path_params),
+            dict(request.query),
+            request.body,
+        ]
+        canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        digest = hashlib.sha256(canonical.encode()).hexdigest()
+        put(service.config.idempotencyHeader, digest[:_KEY_DIGITS])
+    return dataclasses.replace(request, headers=headers)
 
 
 def _build_tool(service: ResolvedService, operation: Operation, call: CallFn) -> Tool:
@@ -113,9 +151,9 @@ def _build_tool(service: ResolvedService, operation: Operation, call: CallFn) ->
         # dispatch_tool has already gated the call; this builds the request and sends it.
         try:
             request = _request(service, operation, args)
-        except ValueError as ex:
+        except InvalidInput as ex:
             return ToolOutcome(False, error=str(ex), refusal=_BAD_REQUEST)
-        return call(request)
+        return call(_identified(service, operation, request, ctx))
 
     host = (urlsplit(service.config.baseUrl).hostname or "?").lower()
     return Tool(
