@@ -77,11 +77,11 @@ def _resolve_hop_instructions(
     view: RepoView | None = None,
     model_class: str | None = None,
 ) -> tuple[str, LoadedPrompt | None]:
-    """This role's hop instruction text and the prompt it came from; an Implementer whose step
-    has *verify_cmd* is told it."""
+    """This role's hop instruction text and the prompt it came from; a hop whose step has
+    *verify_cmd* is told it, whatever its role."""
     prompt = _role_prompt(role, project, rework_hop, step_instructions, view, model_class)
     text = prompt.text if prompt is not None else ""
-    if verify_cmd and role == "implementer":
+    if verify_cmd:
         text = "\n\n".join(p for p in (text, _VERIFY_SENTENCE.format(verify_cmd)) if p)
     return text, prompt
 
