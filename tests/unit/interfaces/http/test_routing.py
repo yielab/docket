@@ -37,6 +37,12 @@ class TestMatch:
         assert Route("GET", "/tasks/<id>/diff", _noop, overlap=True).match("/tasks/diff") == ""
         assert Route("POST", "/tasks/<id>/cancel", _noop).match("/tasks/cancel") is None
 
+    def test_inside_keeps_a_row_apart_from_the_wider_row_below_it(self) -> None:
+        route = Route("GET", "/pods/<pod>/records/<set>", _noop, inside="/records/")
+        assert route.match("/pods/demo/records/leads") == "demo/records/leads"
+        assert route.match("/pods/demo") is None
+        assert route.match("/pods/demo/records") is None
+
 
 class TestTable:
     def test_first_matching_row_wins_and_method_must_agree(self) -> None:
@@ -45,6 +51,16 @@ class TestTable:
         assert found[0].pattern == "/tasks/<pod>/<id>/diff"
         assert found[1] == "demo/t1"
         assert find_route(ROUTES, "POST", "/health") is None
+
+    def test_a_pods_records_are_not_taken_for_the_pod(self) -> None:
+        for path, pattern in (
+            ("/pods/demo/records", "/pods/<pod>/records"),
+            ("/pods/demo/records/leads", "/pods/<pod>/records/<set>"),
+            ("/pods/records", "/pods/<pod>"),
+        ):
+            found = find_route(ROUTES, "GET", path)
+            assert found is not None
+            assert found[0].pattern == pattern
 
     def test_only_the_probe_routes_are_open(self) -> None:
         assert {r.pattern for r in ROUTES if not r.auth} == {"/status.json", "/metrics", "/health"}

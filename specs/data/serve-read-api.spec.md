@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 5.2.0
+**Version**: 5.3.0
 **Status**: Stable
 **Last Updated**: 2026-10-28
 
@@ -28,7 +28,8 @@ This specification covers:
 The addressable-task fields of `POST /tasks/<project>`, the `GET /tasks/<project>` filters and
 `tokenBudget`, `GET /tasks/<project>/<id>`, `GET /tasks/<project>/<id>/diff`,
 `POST /tasks/<project>/<id>/cancel|retry`, `GET /pods`, `GET /pods/<p>`,
-`GET /pods/<p>/corrections`, `POST /pods/<p>/apply`, `GET /escalations` and
+`GET /pods/<p>/corrections`, `GET /pods/<p>/records[/<set>]`, `POST /pods/<p>/apply`,
+`GET /escalations` and
 `POST /escalations/<id>` (the one route that settles a pause) are specified by
 `operator-api.spec.md`.
 
@@ -64,6 +65,8 @@ Authenticated read endpoints:
 | `GET /tasks/<project>` | `application/json` | Yes |
 | `GET /tasks/<project>/<id>/evidence` | `application/json` | Yes |
 | `GET /traces/<project>` | `application/json` | Yes |
+| `GET /pods/<pod>/records` | `application/json` | Yes |
+| `GET /pods/<pod>/records/<set>` | `application/json` | Yes |
 
 Every response carries `Cache-Control: no-store`; consumers must not cache. An unknown `GET`
 path is `404` (`text/plain`); an unknown `POST` path is `404 {"ok": false, "error": "not found"}`.
@@ -612,6 +615,10 @@ Success response (`201`) — the created pod roster:
 - `/inbox` MUST reject a request with no (or an invalid) Bearer token with `401` before building
   the inbox, and MUST return the byte-identical shape `docket inbox --json` prints for the same
   pod/escalation state (`operator-loop.spec.md` requirement area 5).
+- `GET /pods/<pod>/records` and `GET /pods/<pod>/records/<set>` MUST reject a request with no (or an
+  invalid) Bearer token with `401`, a pod id that fails `validate_project_id` with `400`, and an unknown
+  pod with `404`, before opening the records file; a statement the store refuses is `400`, an
+  undeclared set `404` (`operator-api.spec.md`, `pod-records.spec.md` requirements 50-53).
 - `GET /tasks/<project>`, `GET /tasks/<project>/<id>/evidence`, `GET /traces/<project>`,
   `POST /tasks/<project>` and `POST /dispatch/<project>` MUST reject a request with no (or an
   invalid) Bearer token with `401`, and MUST reject an empty project segment or one that fails
@@ -715,6 +722,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 - `src/docket/interfaces/http/auth.py`: the Bearer check
 - `src/docket/interfaces/http/exchange.py`: the body cap `MAX_POST_BODY_BYTES`
 - `src/docket/interfaces/http/routes/traces.py`: the `/traces` cursor and hold-back
+- `src/docket/interfaces/http/routes/pod_records.py`: the two `/pods/<pod>/records` reads
 - `src/docket/kernel/threads.py`: `ContextHTTPServer`, `new_thread`, `start_thread`, `submit`
 - `src/docket/operator/inbox.py`: `build_inbox`, `task_view`
 - `src/docket/kernel/operator_contract.py`: `InboxView`, `TaskView`, `EscalationView`, `TaskBrief`
