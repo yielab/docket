@@ -187,7 +187,7 @@ behaviour + data + spec + e2e
 
 ### P55-2 — a custom role pins its model like a built-in one
 
-**Status:** TODO (after P55-3, shares `role-archetypes.spec.md`) · **Size:** S · **Model:** Sonnet ·
+**Status:** TODO · ready, P55-3 merged 2026-10-30; shares `role-archetypes.spec.md` · **Size:** S · **Model:** Sonnet ·
 **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0036 finding 7: `teams/model_selection.py:432` keeps `role.<name>` only when
@@ -259,7 +259,7 @@ behaviour + data + spec + e2e
 
 ### P55-4 — the approver sees exactly what leaves; every kept or forwarded copy stays redacted
 
-**Status:** TODO (after P55-3 and P55-6) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** TODO · ready, P55-3 and P55-6 merged 2026-10-30 · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
 + HTTP API (additive)
 
 - **Trigger:** ADR 0036 finding 4, measured 2026-10-29 with a draft message parked for approval: the
@@ -453,7 +453,7 @@ behaviour + spec + contract
 
 ### P55-9 — routines: a pod creates its own tasks on a schedule
 
-**Status:** TODO (after P55-6 and P55-7) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** TODO · ready, P55-6 and P55-7 merged 2026-10-30 · **Size:** L · **Model:** Sonnet · **Kind:** behaviour +
 spec + data
 
 - **Trigger:** the request ("on schedules or at recurring times") and ADR 0036 finding 6: `docket pod
