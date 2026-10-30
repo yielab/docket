@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.4.0
+**Version**: 5.5.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -810,6 +810,20 @@ privacy confirmation or refusal, or a preview of what a destination would receiv
 **Return**: 0 on success, 1 on an unknown exporter, a missing credential, an unreachable
 endpoint, a refused widening, or (`preview`) an unknown session
 
+**`setup secret`**
+**Purpose**: Store, list and remove a secret under any name, so a `secret:<name>` reference
+(`api-keys.spec.md`, "A secret stored under any name") has a value to resolve
+**Syntax**: `docket setup secret <set|list|remove>` (a real sub-app of `setup`)
+**Subcommands**:
+- `set <name> [--stdin]`: The value comes from `--stdin` or a hidden prompt on a terminal, never
+  from an argument; a value given as a second positional exits 2 and is not echoed. Off a terminal
+  without `--stdin`, an empty value, a name outside `[A-Za-z0-9_.-]+` or a refused backend exits 1
+  writing nothing
+- `list [--json]`: Each stored name with its added and rotated times; never a value; `--json`
+  prints an array of `{name, added_at, rotated_at}`
+- `remove <name>`: Delete a stored secret; a name not stored exits 1
+**Return**: 0 on success, 1 on a refused name, value or backend, 2 on a value given as an argument
+
 **`setup mcp`**
 **Purpose**: Configure the external stdio MCP tool servers docket connects to as a client, whose
 tools reach a live turn through the same `dispatch_tool` chokepoint (`mcp-client.spec.md`)
@@ -1099,6 +1113,7 @@ when the error names its fix — optionally followed by a usage or recovery hint
 - `src/docket/interfaces/cli/commands/setup_notify.py`: `setup notify`
 - `src/docket/interfaces/cli/commands/setup_export.py`: `setup export`
 - `src/docket/interfaces/cli/commands/setup_mcp.py`: `setup mcp`
+- `src/docket/interfaces/cli/commands/setup_secret.py`: `setup secret`
 - `src/docket/interfaces/cli/commands/service.py`: `docket start`, `docket stop`
 - `src/docket/interfaces/cli/render/ui.py`: `TAGLINE`, `guide`, `header`, `section`, `table`, `error`, `hint`, plain mode
 - `src/docket/tasks/domain/refs.py`: `resolve_task`

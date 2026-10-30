@@ -20,7 +20,6 @@ from docket.interfaces.telegram import bot as _telegram
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Unavailable
 from docket.kernel.home import current_home
-from docket.kernel.ports import process as _process
 from docket.operator import (
     ChannelError,
     ChannelSpec,
@@ -122,22 +121,6 @@ def _backend() -> str:
         raise NotifySetupError(f"{exc.message}. {exc.hint}") from exc
 
 
-def store_secret(name: str, value: str) -> None:
-    """Write one credential to the 0600 secret store (or the OS keyring when requested)."""
-    backend = _backend()
-    secrets = _secrets.load_secrets()
-    keyring = backend == "keyring"
-    if keyring:
-        if not _process.secret_tool_store(current_home().keyring_service, name, value):
-            raise NotifySetupError(f"the OS keyring refused {name}; nothing was written")
-        secrets[name] = ""
-    else:
-        secrets[name] = value
-    _secrets.save_secrets(secrets)
-    _secrets.touch_meta(name, "added")
-    audit_log("keys.add", name)
-
-
 def lead_ids() -> list[str]:
     """Every registered pod Lead, in fleet order."""
     leads: list[str] = []
@@ -171,7 +154,10 @@ def enable_telegram(chat_ids: list[str], token: str | None, *, test: bool) -> Wr
         raise NotifySetupError(str(exc)) from exc
     stored = ""
     if token is not None:
-        store_secret(_token_name(), token)
+        try:
+            _secrets.store_secret(_token_name(), token)
+        except Unavailable as exc:
+            raise NotifySetupError(f"{exc.message}. {exc.hint}") from exc
         stored = _token_name()
     leads = lead_ids()
     for aid in leads:
