@@ -341,7 +341,8 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
         if model not in MODEL_CLASSES:
             raise ArchetypeError(
                 f"archetype {name!r}: model must be one of {sorted(MODEL_CLASSES)} "
-                f"(got {model!r}); to run one hop on a specific model, set `model:` on its pipeline step"
+                f"(got {model!r}); to pin the role to a model run `docket setup model set {name} <id>`, "
+                "or set `model:` on a pipeline step to run one hop on it"
             )
         canonical["modelClass"] = model
 
