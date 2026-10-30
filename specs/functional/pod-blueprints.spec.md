@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 **Status**: Implemented
 **Last Updated**: 2026-10-30
 
@@ -544,6 +544,7 @@ requirement 1). The shipped library groups by what a directory contains, not by 
 | Team | `secure-build` | roles (`security-vetter`, read-only) + policies + members + pipeline + skills (`security-review`) |
 | Team | `research-review` | members (`researcher`, `analyst`, `writer`, `critic`) + pipeline |
 | Team | `ops-approval` | policies + members (`operator`) + pipeline |
+| Team | `outward` | roles (`researcher`, `writer`, `critic`, `actor`) + a policy that asks before every `send` tool + members + pipeline (researcher -> writer -> critic, one rework -> actor) for a `workdir` pod; no MCP server ships, the README shows three server shapes |
 | Policy pack | `git-safety` | policies only |
 | Policy pack | `no-egress` | policies only |
 | Policy pack | `secrets-guard` | policies only |

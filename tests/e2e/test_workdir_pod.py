@@ -9,6 +9,7 @@ from __future__ import annotations
 import http.server
 import json
 import sys
+import textwrap
 import threading
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -16,11 +17,13 @@ from typing import Any
 
 import pytest
 
+from docket.agent.tools import mcp_client as _mcp_client
+from docket.kernel.templates import RECIPES_DIR
 from docket.sandbox.landlock import landlock_available
 from docket.sandbox.seatbelt import seatbelt_available
 from tests.support import e2e_oracles as oracles
 from tests.support.e2e import World
-from tests.support.model_server import FakeModel, Request, say, write_file
+from tests.support.model_server import FakeModel, Request, call, say, write_file
 
 BRIEF = "# Launch brief\n\nOne page, two claims.\n"
 DRAFT_AND_CHECK = """name: draft-and-check
@@ -294,3 +297,82 @@ def test_a_pod_reaches_the_network_only_after_the_operators_recorded_yes(
     assert hits == 0
     machine = w.docket("setup", "sandbox", "status", "--json").json()
     assert machine["isolationEnabled"] is True
+
+
+_ACTION_SERVER = textwrap.dedent(
+    """
+    import json
+    import os
+    from mcp.server.mcpserver import MCPServer
+
+    app = MCPServer("world")
+
+    @app.tool()
+    def lookup(topic: str) -> str:
+        return f"{topic}: the venue holds 80 people"
+
+    @app.tool()
+    def send(to: str, body: str) -> str:
+        with open(os.environ["ACTION_LOG"], "a", encoding="utf-8") as log:
+            log.write(json.dumps({"to": to, "body": body}) + "\\n")
+        return "sent"
+
+    app.run("stdio")
+    """
+)
+INVITATION = "To: guest@example.test\n\nThe workshop is on Friday; the venue holds 80 people.\n"
+SEND_ARGS = {"to": "guest@example.test", "body": "The workshop is on Friday."}
+
+
+@pytest.mark.skipif(not _mcp_client._sdk_available(), reason="the optional mcp SDK is absent")
+def test_an_outward_pod_sends_once_and_only_after_a_person_approves(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(
+        script={
+            "researcher": [
+                call("mcp__inbox__lookup", "r1", topic="venue"),
+                say("The venue holds 80 people."),
+            ],
+            "writer": [write_file("draft.md", INVITATION), say("draft.md is written.")],
+            "critic": [say("APPROVE")],
+            "actor": [
+                call("mcp__outbox__send", "a1", **SEND_ARGS),
+                call("mcp__outbox__send", "a2", **SEND_ARGS),
+                say("The invitation was sent."),
+            ],
+        }
+    )
+    w, _work_dir = workdir_pod(world, model)
+    script = w.root / "action_server.py"
+    script.write_text(_ACTION_SERVER, encoding="utf-8")
+    log = w.root / "actions.jsonl"
+    server = ("--env", f"ACTION_LOG={log}", "--", sys.executable, str(script))
+    w.docket("setup", "mcp", "add", "inbox", "--kind", "read", "--tools", "lookup", *server)
+    w.docket("setup", "mcp", "add", "outbox", "--kind", "send", "--tools", "send", *server)
+    w.docket("pod", "update", str(RECIPES_DIR / "outward"), "--pod", w.pod)
+    task_id = w.add_task("Invite the guest to the workshop")
+
+    # the actor's send parks the task for a person; nothing has left the machine
+    w.docket("run", "--pod", w.pod, "--timeout", "30", check=False)
+    shown = w.task(task_id)["task"]
+    assert shown["status"] == "waiting_approval", w.task(task_id)
+    assert not log.exists()
+
+    # one yes lets that one call run, and the task ends done
+    token = next(e["id"] for e in w.docket("inbox", "--peek", "--json").json()["escalations"])
+    w.docket("task", "answer", token, "--option", "approve_once", "--pod", w.pod)
+    _run(w)
+
+    assert w.task(task_id)["task"]["status"] == "done"
+    assert [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] == [
+        SEND_ARGS
+    ]
+    for role in ("researcher", "writer", "critic"):
+        requests = model.by_role(role)
+        assert requests, role
+        assert all("mcp__outbox__send" not in r.tools for r in requests), role
+    assert "mcp__inbox__lookup" in model.by_role("researcher")[0].tools
+    assert all("mcp__outbox__send" in r.tools for r in model.by_role("actor"))
+    assert not any("mcp__inbox__lookup" in r.tools for r in model.by_role("actor"))
+    oracles.assert_log_verifies(w)

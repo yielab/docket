@@ -1,0 +1,9 @@
+kind: policy
+name: outward-ask-before-send
+description: Every send tool asks a person before it runs, whatever the Critic approved
+appliesTo: [actor]
+when:
+  anyOf:
+    - tool: mcp__outbox__send
+then: ask
+message: This sends a message outside the machine; a person approves exactly what leaves.

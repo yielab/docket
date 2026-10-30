@@ -125,8 +125,8 @@ def _build_tool(
 ) -> Tool:
     """Adapt one remote tool into an ordinary ``agent.tools.registry.Tool``.
 
-    ``kind`` is the *server's* declared ``McpServerConfig.kind`` -- ``"read"`` or ``"write"``,
-    defaulting to ``"write"`` -- never ``"exec"``: `evaluate_tool_call` routes ``exec``-kind tools
+    ``kind`` is the *server's* declared ``McpServerConfig.kind`` -- ``"read"``, ``"write"`` or
+    ``"send"``, defaulting to ``"write"`` -- never ``"exec"``: `evaluate_tool_call` routes ``exec``-kind tools
     through the shell-command classifier, which reads ``args["command"]`` and would not find one
     here. Either kind still passes through the full `pre_tool_call` policy gate; a declared
     ``"read"`` kind is simply not additionally classified as a shell command and is excluded from
@@ -175,7 +175,7 @@ class McpServerLoadResult:
 
     server: str
     ok: bool
-    kind: Literal["read", "write"] = "write"
+    kind: Literal["read", "write", "send"] = "write"
     registered: tuple[str, ...] = ()
     skipped: tuple[McpToolSkip, ...] = ()
     error: str = ""

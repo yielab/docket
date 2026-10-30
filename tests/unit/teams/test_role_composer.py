@@ -16,7 +16,7 @@ from pathlib import Path
 
 from tests.support.roles import write_role_overlay, write_vetter_overlay
 
-from docket.agent.tools.registry import Tool, ToolOutcome
+from docket.agent.tools.registry import Tool, ToolOutcome, ToolRegistry
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import Home, current_home, use_home
 from docket.platform import store as _store
@@ -221,3 +221,98 @@ class TestHopTools:
         narrowed = registry_for_role(builtin_registry(), "tester")
 
         assert {"bash", "process_output", "process_stop"} <= set(narrowed.names())
+
+
+def _mcp_tool(name: str, kind: str) -> Tool:
+    return Tool(
+        name=name,
+        description=f"a {kind} tool",
+        parameters={"type": "object", "properties": {}},
+        handler=lambda args, ctx: ToolOutcome(ok=True, content="ran"),
+        kind=kind,  # type: ignore[arg-type]
+    )
+
+
+def _outward_registry() -> ToolRegistry:
+    base = builtin_registry()
+    for name, kind in (
+        ("mcp__mail__send", "send"),
+        ("mcp__mail__draft", "send"),
+        ("mcp__inbox__list", "read"),
+        ("mcp__notes__save", "write"),
+    ):
+        base.register(_mcp_tool(name, kind))
+    return base
+
+
+class TestSendTools:
+    """A `send` tool acts outside the machine: only a role whose own allow-list names it holds it."""
+
+    def test_a_role_with_no_allow_list_is_not_offered_a_send_tool(self) -> None:
+        narrowed = registry_for_role(_outward_registry(), "implementer")
+
+        assert "mcp__mail__send" not in narrowed.names()
+        assert {"mcp__inbox__list", "mcp__notes__save", "read"} <= set(narrowed.names())
+
+    def test_a_role_naming_the_tool_is_offered_it_and_only_it(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, mcp__mail__send]\n")
+
+            narrowed = registry_for_role(_outward_registry(), "actor", project="acme")
+
+            assert sorted(narrowed.names()) == ["mcp__mail__send", "read"]
+
+    def test_a_role_naming_the_server_is_offered_every_tool_of_it(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [mcp__mail]\n")
+
+            narrowed = registry_for_role(_outward_registry(), "actor", project="acme")
+
+            assert sorted(narrowed.names()) == ["mcp__mail__draft", "mcp__mail__send"]
+
+    def test_a_step_allow_list_never_grants_a_send_tool_the_role_does_not_name(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read]\n")
+
+            narrowed = registry_for_role(
+                _outward_registry(), "actor", project="acme", allow=("read", "mcp__mail__send")
+            )
+
+            assert narrowed.names() == ["read"]
+
+    def test_a_step_allow_list_can_narrow_a_role_that_names_it(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read, mcp__mail__send]\n")
+
+            narrowed = registry_for_role(
+                _outward_registry(), "actor", project="acme", allow=("read",)
+            )
+
+            assert narrowed.names() == ["read"]
+
+    def test_denying_write_leaves_a_send_tool_alone(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay(
+                "acme", "actor", ["write"], extra="tools: [mcp__mail__send, mcp__notes__save]\n"
+            )
+
+            narrowed = registry_for_role(_outward_registry(), "actor", project="acme")
+
+            assert narrowed.names() == ["mcp__mail__send"]
+
+    def test_cannot_send_removes_the_send_tools_of_a_role_that_names_them(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", ["send"], extra="tools: [read, mcp__mail__send]\n")
+
+            narrowed = registry_for_role(_outward_registry(), "actor", project="acme")
+
+            assert narrowed.names() == ["read"]
+
+    def test_a_non_pod_caller_is_offered_no_send_tool(self) -> None:
+        narrowed = registry_for_role(_outward_registry(), "")
+
+        assert not [n for n in narrowed.names() if n.startswith("mcp__mail")]

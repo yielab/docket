@@ -838,6 +838,8 @@ Example: docket setup mcp list
 Configure a server; everything after -- is its launch command, verbatim.
 
 A role that denies write gets tools only from a server declared --kind read.
+A server whose tools act outside the machine (send, post, book, pay) is --kind send;
+only a role whose tools list names one is given it.
 A server that keeps state between calls (a browser) wants --lifetime hop.
 Example: docket setup mcp add playwright --lifetime hop -- npx -y @playwright/mcp@latest
 

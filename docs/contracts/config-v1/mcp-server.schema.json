@@ -3,7 +3,7 @@
   "$id": "https://docket.dev/schemas/config-v1/mcp-server.schema.json",
   "title": "McpServerDocument",
   "additionalProperties": false,
-  "description": "A ``kind: mcp-server`` document: the global server fields, with the read/write assertion\nunder ``access`` because ``kind`` is the envelope.",
+  "description": "A ``kind: mcp-server`` document: the global server fields, with the read/write/send\nassertion under ``access`` because ``kind`` is the envelope.",
   "properties": {
     "kind": {
       "const": "mcp-server",
@@ -41,7 +41,8 @@
       "default": "write",
       "enum": [
         "read",
-        "write"
+        "write",
+        "send"
       ],
       "title": "Access",
       "type": "string"
@@ -52,6 +53,15 @@
       },
       "title": "Tools",
       "type": "array"
+    },
+    "lifetime": {
+      "default": "call",
+      "enum": [
+        "call",
+        "hop"
+      ],
+      "title": "Lifetime",
+      "type": "string"
     }
   },
   "required": [

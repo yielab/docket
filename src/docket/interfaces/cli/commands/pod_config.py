@@ -166,6 +166,8 @@ def _plan_file(project: str, path: Path) -> tuple[_config_docs.Document, _model.
     except _config_docs.ConfigDocError as exc:
         _fail(str(exc), code=2 if isinstance(exc, CanonicalFormRefused) else 1)
     if document.kind == "role":
+        if problems := _check.role_file_send_problems(path, project):
+            _fail("; ".join(problems))
         exists = _arch.load_registry(project).source_of(document.name) == f"pod:{project}"
     elif document.kind == "policy":
         exists = (current_home().pod_config_dir(project) / "policies" / path.name).is_file()
@@ -264,7 +266,7 @@ def cmd_validate(
         assert result.document is not None
         doc = result.document
         ui.success(f"{result.path} ({doc.kind} {doc.name})")
-    problems = [] if target.is_file() else _reference_problems(target)
+    problems = _file_problems(target) if target.is_file() else _reference_problems(target)
     for problem in problems:
         ui.fail(problem)
     if not target.is_file():
@@ -274,6 +276,13 @@ def cmd_validate(
             ui.dim(f"  {summary.description}")
     if problems or any(r.error is not None for r in results):
         raise typer.Exit(1)
+
+
+def _file_problems(path: Path) -> list[str]:
+    """What a single role file gets wrong against the catalog it would join (read/act rule)."""
+    if path.parent.name != "roles":
+        return []
+    return _check.role_file_send_problems(path, _scope_pod(None))
 
 
 def _reference_problems(directory: Path) -> list[str]:

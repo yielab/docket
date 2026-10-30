@@ -1,6 +1,6 @@
 # MCP Client Specification
 
-**Version**: 2.1.0
+**Version**: 3.0.0
 **Status**: Implemented and on the live turn path: configured servers' tools load into the turn's
 registry before per-role narrowing, so a role that denies a capability loses them like a built-in.
 Stdio transport only; each turn re-spawns every configured server (no listing cache). A server
@@ -89,8 +89,8 @@ This specification does NOT cover:
    unmodified chokepoint a built-in tool call reaches. The MCP client **MUST NOT** invoke an adapted
    tool's handler itself under any circumstance; the only thing it does with a `Tool` object is
    build it and hand it to `ToolRegistry.register`.
-6. An adapted tool's `kind` **MUST** be its server's declared `McpServerConfig.kind` (`"read"` or
-   `"write"`, default `"write"`), never `"exec"`: an MCP tool call is not a shell command and does
+6. An adapted tool's `kind` **MUST** be its server's declared `McpServerConfig.kind` (`"read"`,
+   `"write"` or `"send"`, default `"write"`), never `"exec"`: an MCP tool call is not a shell command and does
    not carry the `args["command"]` shape `evaluate_tool_call`'s exec-kind path expects. This does
    not weaken gating: the `pre_tool_call` policy hook gates every tool kind identically
    (Requirement 5); only the additional shell-command classification is kind-specific, and an MCP
@@ -155,7 +155,7 @@ This specification does NOT cover:
     kind, tools allow-list, timeout and env), **MUST NOT** print any `env` value in the clear (mask
     as `KEY=****`, in the table and in `--json`, matching `docket setup provider list`), and
     **MUST NOT** connect to any server: it is a pure read of the global server configuration.
-21. `docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS] [--kind read|write]
+21. `docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS] [--kind read|write|send]
     [--tools NAME,NAME,...] -- <command> [args...]` **MUST** treat everything after a literal `--`
     token as the server's launch command and arguments verbatim, so a command's own flags (e.g.
     `npx -y ...`, or a `--env`/`--timeout` that belongs to the launched process rather than to
@@ -167,7 +167,7 @@ This specification does NOT cover:
 22. `docket setup mcp add` **MUST** build one `McpServerConfig` from the parsed name, command, args,
     env, timeout, kind and tools and pass it to `add_mcp_server` unchanged, surfacing that
     function's `ValueError` (bad or duplicate name) as a CLI error (exit 1) rather than a
-    traceback. A `--kind` other than `read` or `write` **MUST** exit 1 naming the flag.
+    traceback. A `--kind` other than `read`, `write` or `send` **MUST** exit 1 naming the flag.
 23. `docket setup mcp add`/`remove` **MUST** write an audit entry (`mcp_servers.add` /
     `mcp_servers.remove`) naming the server and, for `add`, its launch command and kind. They
     **MUST NOT** record any `env` value, matching Requirement 20's masking rule for `list`.
@@ -212,7 +212,9 @@ This specification does NOT cover:
 ### Server lifetime (`call` | `hop`)
 
 41. `McpServerConfig` **MUST** carry `lifetime: Literal["call", "hop"] = "call"`. A config written
-    before the field existed, or without it, loads as `call` and behaves byte for byte as before.
+    before the field existed, or without it, loads as `call` and behaves byte for byte as before. A
+    `kind: mcp-server` document **MUST** accept `lifetime: call|hop` too (default `call`) and
+    `mcp_server_document` **MUST** write it back when it is `hop`.
     `docket setup mcp add` **MUST** accept `--lifetime call|hop` (any other value exits 1 naming the
     flag), and `list --json` shows the field. A tool listing is always one subprocess per exchange,
     whatever the lifetime.
@@ -254,16 +256,22 @@ This specification does NOT cover:
 
 ### Declared kind and tool subset
 
-32. `McpServerConfig` **MUST** carry `kind: Literal["read", "write"] = "write"` and
+32. `McpServerConfig` **MUST** carry `kind: Literal["read", "write", "send"] = "write"` and
     `tools: list[str] = []`. Both are operator assertions validated at write time (a `kind` outside
-    `{"read", "write"}` **MUST** be rejected: the model's validation error is a `ValueError`, and the
+    `{"read", "write", "send"}` **MUST** be rejected: the model's validation error is a `ValueError`, and the
     CLI refuses it first with an exit-1 error naming the flag, per Requirement 22); neither is ever inferred by connecting to the
     server. An empty `tools` list means "every tool the server advertises"; a non-empty one is the
     exhaustive allow-list of remote tool names `load_mcp_tools` **MUST** register. Every other
     advertised tool **MUST** be recorded in that server's `McpServerLoadResult.skipped` with an
     `McpToolSkip` reason naming that it is "not in the server's `tools` list", exactly like
     Requirement 10's collision-skip, never silently dropped. A stored server without `kind` or
-    `tools` **MUST** load as `kind="write", tools=[]`.
+    `tools` **MUST** load as `kind="write", tools=[]`. `send` declares that a tool acts outside the
+    machine: it sends a message, submits a form, posts, books, pays, or asks another agent to. The
+    tools of a `send` server register with `ToolKind` `send`; a server that both reads and acts is
+    declared twice, once `read` and once `send`. A `send` tool **MUST NOT** reach any role by
+    default: `registry_for_role` offers it only to a role whose own `tools` allow-list names it
+    (`role-archetypes.spec.md`, "Tools and calls per hop" requirement 5). `write`'s semantics are
+    unchanged: `cannot: [write]` removes a `write` tool and leaves a `send` tool alone.
 33. The load outcome `load_mcp_tools` returns for each server **MUST** name that server's declared
     `kind`, so an operator or an audit-trail reader can see which trust level a given load ran under
     without re-reading the config file.
@@ -339,7 +347,7 @@ NAMESPACE_PREFIX = "mcp__"
 
 class McpServerConfig(BaseModel):              # name, command, args, env, timeout, kind, tools, lifetime
     def resolved_timeout(self) -> float: ...   # clamped to MCP_CLIENT_MAX_TIMEOUT_S
-    # kind: Literal["read", "write"] = "write" -- declared trust level, an operator
+    # kind: Literal["read", "write", "send"] = "write" -- declared trust level, an operator
     #   assertion (Requirement 32), never inferred by connecting to the server
     # tools: list[str] = []                    -- non-empty = exhaustive allow-list of
     #   remote tool names to register; empty = register everything advertised
@@ -359,7 +367,8 @@ def load_pod_mcp_servers(project: str) -> list[McpServerConfig]: ...
 def write_pod_mcp_servers(project: str, servers: list[McpServerConfig]) -> None: ...
 def pod_scoped_owner(name: str, *, exclude: str = "") -> str: ...  # pod declaring it, else ""
 
-# the kind: mcp-server document (same fields; `access` carries read|write because `kind:` is the envelope)
+# the kind: mcp-server document (same fields; `access` carries read|write|send because `kind:` is the
+# envelope; `lifetime` is `call|hop`, Requirement 41)
 class McpServerDocument(BaseModel): ...
 class McpServerDocError(ValueError): ...
 def load_mcp_server_document(path: str | Path) -> McpServerConfig: ...
@@ -459,7 +468,7 @@ Requirement 34's `mcpServers` filtering keys off.
 ```
 docket setup mcp list [--json]
 docket setup mcp add <name> [--env KEY=VALUE ...] [--timeout SECONDS]
-    [--kind read|write] [--tools NAME,NAME,...] [--lifetime call|hop] -- <command> [args...]
+    [--kind read|write|send] [--tools NAME,NAME,...] [--lifetime call|hop] -- <command> [args...]
 docket setup mcp remove <name>
 ```
 
