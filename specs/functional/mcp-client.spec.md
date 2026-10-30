@@ -267,7 +267,7 @@ This specification does NOT cover:
     servers **MUST** still load and the turn **MUST NOT** fail on this alone (Requirement 28). A
     value resolved from the store reaches only the server's process environment; because it is a
     stored secret it is removed from the trace, the audit log and exports like any other.
-50. `docket setup` (the check) **MUST** warn once per server and variable when a server's `env` holds
+50. `docket setup --fix` (the health check, `run_check`) **MUST** warn once per server and variable when a server's `env` holds
     a literal value under a credential-shaped name (one ending `_TOKEN`, `_KEY`, `_SECRET` or
     `_PASSWORD`), naming the server and the variable and the `--secret` fix, and **MUST NOT** print
     the value. The warning is advisory: it is not counted as a critical issue.
@@ -649,8 +649,9 @@ dispatch_tool(
 - `src/docket/hops/application/driver.py`: `DocketDriver.mcp_loader` and its default wrapper
   (the pod `mcpServers` selection, the `StdioLaunch` built from the turn's context);
   `driver_support.py` resolves `secret:` references before the load (Requirement 49)
+- `src/docket/interfaces/cli/commands/setup_check_services.py`: `check_mcp_literals` (Requirement 50)
 - `src/docket/kernel/mcp.py`: `secret_reference`, `is_credential_name`; `src/docket/teams/mcp_servers.py`:
-  `resolve_secret_env`, `literal_credential_env` (Requirements 47-50)
+  `resolve_secret_env`, `McpSecretError`, `literal_credential_env` (Requirements 47-50)
 - `src/docket/agent/tools/screening.py`: `screen_tool_result` (the untrusted-result screen used for MCP
   results); `src/docket/agent/tools/registry.py`: `dispatch_tool`, `ToolRegistry`
 - `src/docket/teams/pod.py`: `PodSettings` `mcpServers` validation (Requirement 38)

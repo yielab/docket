@@ -855,6 +855,8 @@ A role that denies write gets tools only from a server declared --kind read.
 A server whose tools act outside the machine (send, post, book, pay) is --kind send;
 only a role whose tools list names one is given it.
 A server that keeps state between calls (a browser) wants --lifetime hop.
+A credential belongs in --secret API_TOKEN=crm, not --env: the file holds the reference
+secret:crm and each turn takes the value from the secret store.
 Example: docket setup mcp add playwright --lifetime hop -- npx -y @playwright/mcp@latest
 
 ### setup mcp remove

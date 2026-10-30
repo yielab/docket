@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from docket.governance import secrets as _secrets
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
@@ -27,6 +28,21 @@ def _parse_env(pairs: list[str]) -> dict[str, str]:
             raise typer.Exit(1)
         env[key] = value
     return env
+
+
+def _parse_secret(pairs: list[str], env: dict[str, str]) -> dict[str, str]:
+    """``--secret VAR=NAME`` pairs as ``VAR -> secret:NAME`` env entries; never reads a value."""
+    refs: dict[str, str] = {}
+    for raw in pairs:
+        var, sep, name = raw.partition("=")
+        if not sep or not var or not _mcp.SECRET_NAME_RE.fullmatch(name):
+            ui.error(f"--secret expects VAR=NAME (letters, digits, '-', '_', '.'), got '{raw}'")
+            raise typer.Exit(1)
+        if var in env or var in refs:
+            ui.error(f"{var} is given twice; use --env or --secret for it, once")
+            raise typer.Exit(1)
+        refs[var] = _mcp.SECRET_PREFIX + name
+    return refs
 
 
 @mcp_app.command("list")
@@ -69,6 +85,9 @@ def cmd_add(
     name: str = typer.Argument(..., help="Server name; tools register as mcp__<name>__<tool>"),
     command: list[str] = typer.Argument(..., help="Launch command and arguments, after --"),
     env: list[str] = typer.Option([], "--env", "-e", help="KEY=VALUE for the server (repeatable)"),
+    secret: list[str] = typer.Option(
+        [], "--secret", help="VAR=NAME: VAR comes from the stored secret NAME (repeatable)"
+    ),
     timeout: float = typer.Option(0.0, "--timeout", help="Seconds before a call gives up"),
     kind: str = typer.Option(
         "write", "--kind", help="read, write or send: the server's trust level"
@@ -84,6 +103,8 @@ def cmd_add(
     A server whose tools act outside the machine (send, post, book, pay) is --kind send;
     only a role whose tools list names one is given it.
     A server that keeps state between calls (a browser) wants --lifetime hop.
+    A credential belongs in --secret API_TOKEN=crm, not --env: the file holds the reference
+    secret:crm and each turn takes the value from the secret store.
     Example: docket setup mcp add playwright --lifetime hop -- npx -y @playwright/mcp@latest"""
     if kind not in ("read", "write", "send"):
         ui.error(f"--kind must be 'read', 'write' or 'send', got '{kind}'")
@@ -92,13 +113,16 @@ def cmd_add(
         ui.error(f"--lifetime must be 'call' or 'hop', got '{lifetime}'")
         raise typer.Exit(1)
     allow = [t.strip() for t in tools.split(",") if t.strip()]
+    literal = _parse_env(env)
+    server_env = {**literal, **_parse_secret(secret, literal)}
+    stored = _secrets.secrets_keys()
     try:
         _mcp_servers.add_mcp_server(
             _mcp.McpServerConfig(
                 name=name,
                 command=command[0],
                 args=command[1:],
-                env=_parse_env(env),
+                env=server_env,
                 timeout=timeout,
                 kind=kind,  # type: ignore[arg-type]  # validated above
                 tools=allow,
@@ -113,6 +137,10 @@ def cmd_add(
         f"name={name!r} command={command[0]!r} kind={kind}"
         + (f" lifetime={lifetime}" if lifetime != "call" else ""),
     )
+    for var, value in server_env.items():
+        ref = _mcp.secret_reference(value)
+        if ref is not None and ref not in stored:
+            ui.warn(f"{var}: no secret named '{ref}' is stored yet")
     ui.success(f"MCP server '{name}' added ({' '.join(command)}).")
     ui.dim(f"  Its tools register as mcp__{name}__<tool>, gated like a built-in tool.")
     _contract.next_step("docket setup mcp list")

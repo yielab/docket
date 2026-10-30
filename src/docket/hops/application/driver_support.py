@@ -20,6 +20,7 @@ from docket.agent.ports import (
     PIPELINE_WORKTREE_ENV,
     ChatBackend,
     TurnResult,
+    tool_gate,
 )
 from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
@@ -100,9 +101,32 @@ def _load_mcp_tools(
     selection = _pod_mcp_selection(project)
     if selection is not None:
         servers = [s for s in servers if s.name in selection]
+    loadable, unavailable = _resolve_server_secrets(servers)
     if launch is None:
-        return _mcp.load_mcp_tools(registry, servers=servers, role=role, project=project)
-    return _mcp.load_mcp_tools(registry, servers=servers, role=role, project=project, launch=launch)
+        loaded = _mcp.load_mcp_tools(registry, servers=loadable, role=role, project=project)
+    else:
+        loaded = _mcp.load_mcp_tools(
+            registry, servers=loadable, role=role, project=project, launch=launch
+        )
+    return [*unavailable, *loaded]
+
+
+def _resolve_server_secrets(
+    servers: list[Any],
+) -> tuple[list[Any], list[_mcp.McpServerLoadResult]]:
+    """Servers with their ``secret:`` env values resolved, and a failed load result (plus the
+    ``mcp_client.unavailable`` audit event) for each whose secret is not stored."""
+    loadable: list[Any] = []
+    unavailable: list[_mcp.McpServerLoadResult] = []
+    for server in servers:
+        try:
+            loadable.append(_mcp_servers.resolve_secret_env(server))
+        except _mcp_servers.McpSecretError as exc:
+            tool_gate.audit_event("mcp_client.unavailable", f"server={server.name!r}: {exc}")
+            unavailable.append(
+                _mcp.McpServerLoadResult(server.name, ok=False, kind=server.kind, error=str(exc))
+            )
+    return loadable, unavailable
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:

@@ -27,7 +27,7 @@ before the Actor ran.
 ## Prerequisites
 
 The recipe ships no MCP server. Declare yours first; a server that both reads and acts is declared
-twice, once for each. Three shapes:
+twice, once for each. Four shapes:
 
 1. A mailbox and its sender.
 
@@ -66,6 +66,27 @@ twice, once for each. Three shapes:
    docket setup mcp add advisor --kind read -- <agent-mcp-server-command>
    docket setup mcp add outbox --kind send -- <same-agent-mcp-server-command>
    ```
+
+4. An external API with a token. An API is an MCP server, either an OpenAPI-to-MCP bridge
+   pointed at the API's spec or a small wrapper you write; `fetch` stays a GET without headers.
+   Declare it twice, its GET operations as `read` and its writes as `send`, split with `--tools`,
+   and give both the token as a `--secret`:
+
+   ```bash
+   docket setup mcp add crm-read --kind read --secret API_TOKEN=crm \
+     --tools list_contacts,get_contact -- <openapi-mcp-bridge-command> --spec <api-spec>
+   docket setup mcp add crm-write --kind send --secret API_TOKEN=crm \
+     --tools create_contact,update_contact -- <openapi-mcp-bridge-command> --spec <api-spec>
+   ```
+
+   `--secret API_TOKEN=crm` writes `API_TOKEN: secret:crm` into the server's `env` and never the
+   token. Each turn takes the value from docket's secret store (`secrets.json` in the home, or the
+   keyring) and hands it to the server's process only; the store scrubs it from the trace like
+   any other stored secret. A name with nothing stored makes that server unavailable for the turn,
+   with the variable named, while the pod's other servers still load. A `kind: mcp-server`
+   document carries the same reference under `env:` (`API_TOKEN: secret:crm`). A literal token
+   under `--env` still works, and `docket setup --fix` warns about it. Token refresh and OAuth are
+   the wrapping server's job.
 
 ## Apply it
 
