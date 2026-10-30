@@ -59,26 +59,17 @@ def _list(project: str, json_out: bool) -> None:
 
 
 def _find(project: str, name: str) -> RecordSet:
-    found, _ = _records.pod_record_sets(project)
-    for record_set in found:
-        if record_set.name == name:
-            return record_set
-    known = ", ".join(s.name for s in found) or "none"
-    _fail(f"Pod '{project}' declares no record set '{name}' (it declares: {known})")
+    record_set = _records.find_set(project, name)
+    if record_set is None:
+        known = ", ".join(s.name for s in _records.pod_record_sets(project)[0]) or "none"
+        _fail(f"Pod '{project}' declares no record set '{name}' (it declares: {known})")
+    return record_set
 
 
 def _show(project: str, record_set: RecordSet, sql: str | None, limit: int, json_out: bool) -> None:
     result = _records.read_rows(project, record_set, sql, limit)
     if json_out:
-        names = list(result.columns)
-        _contract.emit_json(
-            {
-                "set": record_set.name,
-                "columns": names,
-                "rows": [dict(zip(names, row, strict=True)) for row in result.rows],
-                "cut": result.cut,
-            }
-        )
+        _contract.emit_json(_records.rows_payload(record_set, result))
         return
     if result.rows:
         ui.table([[_cell(v) for v in row] for row in result.rows], list(result.columns))

@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 from docket.kernel import records as _kernel_records
-from docket.platform.records_store import COLUMN_TYPES
+from docket.platform.records_store import COLUMN_TYPES, QueryResult
 from docket.teams import config_docs as _config_docs
 from docket.teams import records as _records
 
@@ -133,3 +133,17 @@ def test_records_files_are_the_yaml_files_of_the_directory_sorted(tmp_path: Path
 
     assert [f.name for f in _records.records_files(tmp_path)] == ["a.yaml", "b.yml"]
     assert _records.records_files(tmp_path / "nowhere") == []
+
+
+def test_rows_payload_keys_each_row_by_column_name() -> None:
+    record_set = _kernel_records.RecordSet.model_validate(
+        {"name": "leads", "columns": [{"name": "email", "type": "string"}]}
+    )
+    result = QueryResult(columns=("_id", "email"), rows=[(1, "a@x.test")], cut=3)
+
+    assert _records.rows_payload(record_set, result) == {
+        "set": "leads",
+        "columns": ["_id", "email"],
+        "rows": [{"_id": 1, "email": "a@x.test"}],
+        "cut": 3,
+    }

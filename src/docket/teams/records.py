@@ -78,6 +78,11 @@ def pod_record_sets(project: str) -> tuple[list[RecordSet], list[str]]:
     return found, problems
 
 
+def find_set(project: str, name: str) -> RecordSet | None:
+    """The set *project*'s documents declare under *name*, or None."""
+    return next((s for s in pod_record_sets(project)[0] if s.name == name), None)
+
+
 def _store(project: str) -> RecordsStore:
     return RecordsStore(current_home().pod_records_path(project))
 
@@ -111,18 +116,20 @@ def row_count(project: str, record_set: RecordSet) -> int:
     return int(_store(project).query(sql, _COUNT_LIMIT, _MAX_CHARS, _QUERY_TIMEOUT_S).rows[0][0])
 
 
-def default_sql(record_set: RecordSet) -> str:
-    """The statement `docket pod records <set>` runs when none is given."""
-    return f'SELECT * FROM "{record_set.name}" ORDER BY _id'
+def default_sql(record_set: RecordSet, newest_first: bool = False) -> str:
+    """The statement run when none is given: the set in `_id` order, or newest first."""
+    return f'SELECT * FROM "{record_set.name}" ORDER BY _id{" DESC" if newest_first else ""}'
 
 
-def read_rows(project: str, record_set: RecordSet, sql: str | None, limit: int) -> QueryResult:
-    """Run *sql* (the whole set when omitted) on the read-only connection, at most *limit* rows.
-    A set whose table does not exist yet reads as no rows."""
+def read_rows(
+    project: str, record_set: RecordSet, sql: str | None, limit: int, newest_first: bool = False
+) -> QueryResult:
+    """Run *sql* (the whole set when omitted, newest first if asked) on the read-only connection,
+    at most *limit* rows. A set whose table does not exist yet reads as no rows."""
     if sql is None and not _table_exists(project, record_set.name):
         columns = (*_IMPLICIT, *(c.name for c in record_set.columns))
         return QueryResult(columns=columns, rows=[], cut=0)
-    statement = sql if sql is not None else default_sql(record_set)
+    statement = sql if sql is not None else default_sql(record_set, newest_first)
     return _store(project).query(statement, limit, _MAX_CHARS, _QUERY_TIMEOUT_S)
 
 
@@ -130,3 +137,14 @@ def export_csv(project: str, record_set: RecordSet, sql: str | None, path: Path)
     """Write every row *sql* (the whole set when omitted) returns to *path* as CSV; the count."""
     statement = sql if sql is not None else default_sql(record_set)
     return _store(project).export(statement, path, "csv", _EXPORT_TIMEOUT_S)
+
+
+def rows_payload(record_set: RecordSet, result: QueryResult) -> dict[str, object]:
+    """``{set, columns, rows, cut}``: *result* with each row an object keyed by column name."""
+    names = list(result.columns)
+    return {
+        "set": record_set.name,
+        "columns": names,
+        "rows": [dict(zip(names, row, strict=True)) for row in result.rows],
+        "cut": result.cut,
+    }

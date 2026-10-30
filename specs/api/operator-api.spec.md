@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.5.1
+**Version**: 7.6.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-30
 
@@ -26,7 +26,7 @@ This specification covers:
 - The `hop_started` / `hop_finished` trace events a consumer reads from `GET /traces/<pod>`
 - `GET /escalations`, the pauses a task waits on, one record each (`operator-loop.spec.md` area 11)
 - `GET /pods`, `GET /pods/<p>`, `POST /pods` with `ensure`, `POST /pods/<p>/apply`,
-  `GET /pods/<p>/corrections`
+  `GET /pods/<p>/corrections`, `GET /pods/<p>/records`, `GET /pods/<p>/records/<set>`
 - The `dispatch` block of `GET /health` under `--dispatch`
 - Re-attaching a client after a restart, and the `check_changed` approval a consumer sees
 - Status codes and error bodies
@@ -71,6 +71,8 @@ over 1 MiB is `413`.
 | `POST /pods` (`ensure`) | provision a pod, or find it |
 | `POST /pods/<p>/apply` | apply a directory of configuration to a pod |
 | `GET /pods/<p>/corrections?since=` | the corrections ledger, from a cursor |
+| `GET /pods/<p>/records` | the pod's record sets with their columns and row counts |
+| `GET /pods/<p>/records/<set>?limit=&sql=` | a set's rows, or a read-only `SELECT`'s |
 | `GET /health` (dispatch block) | whether the sweep is on and what is in flight |
 
 The CLI keeps symmetry: `docket task add` takes `--external-ref`, `--idempotency-key`,
@@ -148,6 +150,8 @@ Query parameters:
 | `GET /tasks/<pod>` | `externalRef` | exact match; both parameters combine |
 | `GET /tasks/<pod>` | `status` | one of `pending`, `running`, `waiting_input`, `waiting_approval`, `blocked`, `failed`, `done`, `cancelled`; any other value is `400` |
 | `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
+| `GET /pods/<p>/records/<set>` | `limit` | integer 1 to 1000, default 50; anything else is `400` |
+| `GET /pods/<p>/records/<set>` | `sql` | one read-only `SELECT`; absent reads the whole set newest first (`ORDER BY _id DESC`) |
 
 ## Output
 
@@ -310,6 +314,19 @@ is audited as `pod.apply` with `channel=http`; an accepted code is remembered as
                   "taskId": "task-91aa...", "role": "reviewer", "text": "...", "source": "pipeline"}],
  "next": "2026-10-03T10:12:00Z"}
 ```
+
+`GET /pods/<p>/records` (`200`), then `GET /pods/<p>/records/leads?limit=1` (`200`):
+
+```json
+{"records": [{"name": "leads", "description": "", "key": "email", "rows": 2,
+              "columns": [{"name": "email", "type": "string", "required": true}]}],
+ "problems": []}
+{"set": "leads", "columns": ["_id", "email"], "rows": [{"_id": 2, "email": "b@x.test"}], "cut": 1}
+```
+
+Both read the pod's own records file and nothing else (`pod-records.spec.md` requirements 50-53).
+A statement the store refuses is `400` with its message; a set the pod does not declare, or an
+unknown pod, is `404`.
 
 ### Escalations
 
@@ -514,9 +531,11 @@ probe; the sweep ends the wait, nobody is asked.
   review code and `repo.allow`.
 - `src/docket/teams/pod_provisioning.py`: `provision_pod`.
 - `src/docket/tasks/application/corrections.py`: `read` and the cursor helpers.
+- `src/docket/interfaces/http/routes/pod_records.py`: `GET /pods/<p>/records[/<set>]`, over
+  `teams/records.py`.
 - `src/docket/observability/trace.py`: `hop_started`, `hop_finished` in `EVENT_TYPES`.
 - `src/docket/platform/git.py`: `git_diff_range`, `git_untracked`, `DIFF_MAX_CHARS`.
 - `tests/integration/interfaces/test_serve_reattach.py`, `test_serve_tasks_endpoint.py`,
   `test_serve_task_lifecycle.py`, `test_serve_pods_endpoint.py`, `test_serve_pods_config.py`,
-  `test_serve_pods_corrections.py`, `test_task_check_changed.py`; `tests/support/model_server.py`
+  `test_serve_pods_corrections.py`, `test_pod_records_api.py`, `test_task_check_changed.py`; `tests/support/model_server.py`
   (fixture `fake_model`).
