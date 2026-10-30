@@ -1,7 +1,7 @@
-"""Architecture: only ``platform/records_store.py`` imports ``sqlite3``.
+"""Architecture: only ``platform/records_sqlite.py`` imports ``sqlite3``.
 
-A pod's records live in one SQLite file. ``RecordsStore`` is the one module that opens it, so every
-other module reaches the records through that class. A module is a second door when it imports
+A pod's records live in one SQLite file. ``SqliteRecordStore`` is the one module that opens it, so
+every other module reaches the records through the ``RecordStore`` port. A module is a second door when it imports
 ``sqlite3`` by any spelling, or loads it by name with ``import_module`` or ``__import__``.
 """
 
@@ -14,7 +14,7 @@ SUBJECT = "docket"
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src" / "docket"
-STORE_MODULE = "platform/records_store.py"
+STORE_MODULE = "platform/records_sqlite.py"
 DRIVER = "sqlite3"
 LOADERS = frozenset({"import_module", "__import__"})
 
@@ -45,9 +45,9 @@ def modules_reaching_the_records() -> dict[str, list[str]]:
     return {module: why for module, why in reached.items() if why}
 
 
-def test_only_the_records_store_imports_sqlite() -> None:
+def test_only_the_sqlite_adapter_imports_sqlite() -> None:
     outside = {m: why for m, why in modules_reaching_the_records().items() if m != STORE_MODULE}
-    assert not outside, f"{outside} reach SQLite without RecordsStore: use {STORE_MODULE}"
+    assert not outside, f"{outside} reach SQLite without the SQLite adapter: use {STORE_MODULE}"
 
 
 def test_the_allowed_module_exists_and_is_the_door() -> None:
