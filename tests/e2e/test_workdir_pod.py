@@ -15,8 +15,10 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+import yaml
 
 from docket.agent.tools import mcp_client as _mcp_client
+from docket.kernel.templates import RECIPES_DIR
 from docket.sandbox.landlock import landlock_available
 from docket.sandbox.seatbelt import seatbelt_available
 from tests.support import e2e_oracles as oracles
@@ -595,3 +597,112 @@ def test_a_routine_creates_its_task_and_the_service_runs_it_to_done(
         for a, d in actions
     )
     oracles.assert_log_verifies(w)
+
+
+CAPTURE_TASK = "Capture these entries: R-1 Rent 1200, R-2 Power 85, R-1 Rent 1200 again"
+ENTRY_ROW = {"ref": "R-1", "title": "Rent", "amount": 1200}
+
+
+def _capture_script() -> dict[str, list[Any]]:
+    """Analyst adds R-1 twice and R-2 once; the reviewer counts the set before it approves."""
+    return {
+        "analyst": [
+            call("rec__entries__add", "a1", **ENTRY_ROW),
+            call("rec__entries__add", "a2", **{"ref": "R-2", "title": "Power", "amount": 85}),
+            call("rec__entries__add", "a3", **ENTRY_ROW),
+            say("Captured R-1 and R-2; the second R-1 was already there."),
+        ],
+        "reviewer": [
+            call("rec__query", "q1", sql="SELECT COUNT(*) AS n FROM entries"),
+            say("APPROVE: two distinct refs in the input, two rows."),
+        ],
+    }
+
+
+def _entries(w: World) -> list[dict[str, Any]]:
+    shown = w.docket("pod", "records", "entries", "--pod", w.pod, "--json").json()
+    assert isinstance(shown, dict)
+    rows = shown["rows"]
+    assert isinstance(rows, list)
+    return rows
+
+
+def test_the_records_recipe_captures_one_row_per_key_and_the_pod_shows_it_and_the_reviewer_cannot_write(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    script = _capture_script()
+    script["reviewer"] += [
+        call("rec__entries__add", "s1", ref="SNEAK", title="Not mine", amount=1),
+        say("APPROVE: my add was refused, nothing else to check."),
+    ]
+    script["analyst"] += [say("Nothing new to add.")]
+    model = fake_model(script=script)
+    w, _work_dir = workdir_pod(world, model)
+    w.docket("pod", "update", "records", "--pod", w.pod)
+
+    task_id = w.add_task(CAPTURE_TASK, "--pipeline", "capture")
+    _run(w)
+
+    assert w.task(task_id)["task"]["status"] == "done"
+    rows = _entries(w)
+    assert [(r["ref"], r["title"], r["amount"]) for r in rows] == [
+        ("R-1", "Rent", 1200),
+        ("R-2", "Power", 85),
+    ]
+    assert {r["_task"] for r in rows} == {task_id}
+    (listed,) = w.docket("pod", "records", "--pod", w.pod, "--json").json()
+    desc = listed["description"]
+    assert [listed] == [
+        {"name": "entries", "rows": 2, "columns": 3, "key": "ref", "description": desc}
+    ]
+    assert "R-2" in w.docket("pod", "records", "entries", "--pod", w.pod).out
+    assert "rec__query" in model.by_role("reviewer")[0].tools
+
+    # a reviewer holds no record write: the tool is not offered and a call to it is refused
+    w.add_task("Capture nothing new", "--pipeline", "capture")
+    _run(w)
+    reviewer_requests = model.by_role("reviewer")
+    assert all("rec__entries__add" not in r.tools for r in reviewer_requests)
+    refused = reviewer_requests[-1].tool_result("s1")
+    assert refused is not None and "rec__entries__add" in refused, refused
+    assert [r["ref"] for r in _entries(w)] == ["R-1", "R-2"]
+    oracles.assert_log_verifies(w)
+
+
+def test_a_task_on_the_routine_blueprint_pipeline_leaves_the_captured_rows_in_report_md(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    script = _capture_script()
+    script["analyst"] += [say("Compiled: the entries set holds R-1 and R-2.")]
+    script["writer"] = [
+        call(
+            "rec__export",
+            "w1",
+            sql="SELECT ref, title, amount FROM entries ORDER BY ref",
+            path="report.md",
+            format="md",
+        ),
+        say("report.md is written from the entries set."),
+    ]
+    script["reviewer"] += [say("APPROVE")]
+    model = fake_model(script=script)
+    w, work_dir = workdir_pod(world, model)
+    w.docket("pod", "update", "records", "--pod", w.pod)
+    w.add_task(CAPTURE_TASK, "--pipeline", "capture")
+    _run(w)
+
+    routine = yaml.safe_load(
+        (RECIPES_DIR / "records" / "routines" / "weekly-report.yaml").read_text(encoding="utf-8")
+    )
+    assert routine["task"].get("pipeline") is None
+    report_task = w.add_task(routine["task"]["description"])
+    _run(w)
+
+    assert w.task(report_task)["task"]["status"] == "done"
+    report = (work_dir / "report.md").read_text(encoding="utf-8")
+    assert "R-1" in report and "Rent" in report and "1200" in report
+    assert "R-2" in report
+    steps = [
+        s for (e, _r, s) in oracles.trace_skeleton(w, w.pod, report_task) if e == "hop_started"
+    ]
+    assert steps == ["compile", "draft", "review"]
