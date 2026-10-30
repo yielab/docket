@@ -8,6 +8,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import threading
+import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, ClassVar
@@ -55,6 +56,9 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/echo-auth"):
             auth = self.headers.get("Authorization", "")
             self._reply(200, json.dumps({"you_sent": auth}).encode())
+        elif self.path.startswith("/slow"):
+            time.sleep(1.5)
+            self._reply(200, b"late", "text/plain")
         elif self.path.startswith("/text"):
             self._reply(200, b"plain words", "text/plain")
         else:
@@ -230,3 +234,16 @@ class TestThePerimeter:
         assert not out.ok
         assert "such thing" not in out.error
         assert "k-12345" not in out.error
+
+
+class TestTheRequestsOwnTimeout:
+    def test_a_request_timeout_bounds_the_call_and_the_default_does_not(
+        self, server: tuple[str, list]
+    ) -> None:
+        base, _ = server
+
+        slow = call_operation(_request(base, path="/slow", timeout=0.3))
+        patient = call_operation(_request(base, path="/slow"))
+
+        assert not slow.ok and "timed out" in slow.error
+        assert patient.ok and patient.content == "late"
