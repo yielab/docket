@@ -487,7 +487,6 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
             "DISPATCH_RETRIES_LEAD",
             "DISPATCH_RETRIES_IMPLEMENTER",
             "DISPATCH_RETRIES_REVIEWER",
-            "DISPATCH_RETRIES_TESTER",
         ),
         "Per-role override of `DISPATCH_RETRIES_DEFAULT`",
         "same as `DISPATCH_RETRIES_DEFAULT`",

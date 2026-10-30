@@ -38,17 +38,9 @@ class TestBuiltinRolesByteIdenticalToBase:
     def test_reviewer_message_unchanged(self) -> None:
         message, _ = _compose._hop_message(_TASK, "reviewer", [])
         assert (
-            "You are the Reviewer. Review the diff (read-only). The LAST line of your "
+            "You are the Reviewer. Review the work of the step before (read-only). The LAST line of your "
             "FINAL message must be exactly `APPROVE` or `REQUEST-CHANGES`, with nothing "
             "else on that line. Reasons go above it." in message
-        )
-
-    def test_tester_message_unchanged(self) -> None:
-        message, _ = _compose._hop_message(_TASK, "tester", [])
-        assert (
-            "You are the Tester. Validate behaviour only. The LAST line of your FINAL "
-            "message must be exactly `PASS` or `FAIL`, with nothing else on that line. "
-            "Evidence goes above it." in message
         )
 
 
@@ -187,7 +179,7 @@ class TestImplementerNamesItsVerifyCommand:
         assert message.endswith("Fix it your way.\n\n" + _VERIFY_SENTENCE)
 
     def test_only_the_implementer_is_told(self) -> None:
-        for role in ("reviewer", "tester", "lead"):
+        for role in ("reviewer", "lead"):
             message, _ = _compose._hop_message(_TASK, role, [], verify_cmd="sh checks/verify.sh")
             assert "sh checks/verify.sh" not in message, role
 

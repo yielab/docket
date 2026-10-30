@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.4.0
+**Version**: 5.4.1
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -181,10 +181,10 @@ passes without a key.
 - `--codebase <path>`: The location, as an option instead of the second argument
 - `--name <text>`: The pod's name, as an option instead of the first argument; an option wins
   over its positional
-- `--pod full`: Provision a full pod — Lead, Implementer, Reviewer, and Tester. Applies only to
+- `--pod full`: Provision a full pod — Lead, Implementer, and Reviewer. Applies only to
   the `software` blueprint
 - `--with <roles>`: Start from the lean pod and add named roles (comma-separated: `reviewer`,
-  `tester`, `implementer`). Applies only to the `software` blueprint; passing it with another
+  `implementer`). Applies only to the `software` blueprint; passing it with another
   blueprint warns and is ignored (that blueprint's own fixed roster is used instead)
 - `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); each entry
   names a `blueprint` and provisions a pod the same way `--blueprint` does interactively. An

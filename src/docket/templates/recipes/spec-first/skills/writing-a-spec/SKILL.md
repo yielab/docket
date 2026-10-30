@@ -1,11 +1,11 @@
 ---
 name: writing-a-spec
-description: The shape of a specification that a Critic can approve and an Implementer can build from without asking, and the checks the Critic applies to it.
+description: The shape of a specification that a Reviewer can approve and an Implementer can build from without asking, and the checks the Reviewer applies to it.
 ---
 
 # Writing a specification
 
-Use this on the `spec` step (Writer) and the `approve-spec` step (Critic) of the `spec-first`
+Use this on the `spec` step (Writer) and the `approve-spec` step (Reviewer) of the `spec-first`
 pipeline. The spec is a file next to the code; a reply that only describes it is not a spec.
 
 ## What the Writer produces
@@ -26,9 +26,9 @@ One Markdown file with these sections, in this order:
 Write it so that someone who has never spoken to you could implement it. If you cannot state
 a requirement as something a test checks, it is not a requirement yet: say what is unknown.
 
-## What the Critic checks
+## What the Reviewer checks
 
-Answer `APPROVE` only when every item holds; otherwise `REJECT` and name the failing item.
+Answer `APPROVE` only when every item holds; otherwise `REQUEST-CHANGES` and name the failing item.
 
 - Every requirement in Behaviour has a fixture, an action and an observable result.
 - Nothing in Behaviour depends on a decision the spec leaves open.

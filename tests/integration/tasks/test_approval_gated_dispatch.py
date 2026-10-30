@@ -105,7 +105,6 @@ def _seed_full_pod(project: str = "myapp", *, gated: bool = False) -> None:
     _write_meta(f"{project}-lead")
     _write_meta(f"{project}-implementer")
     _write_meta(f"{project}-reviewer")
-    _write_meta(f"{project}-tester")
     if gated:
         _bind_gated_implementer(project)
 
@@ -131,7 +130,7 @@ class _RecordingRunner:
 
 
 class _VerdictAwareRunner:
-    """Like _RecordingRunner, but Reviewer/Tester hops carry a real verdict so a
+    """Like _RecordingRunner, but Reviewer hops carry a real verdict so a
     full pod can finish `done`."""
 
     def __init__(self) -> None:
@@ -147,18 +146,13 @@ class _VerdictAwareRunner:
     ) -> _rd.TurnResult:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
-        if role == "tester":
-            output = "PASS - looks good"
-        elif role == "reviewer":
-            output = "APPROVE - looks good"
-        else:
-            output = f"done by {agent_id}"
+        output = "APPROVE - looks good" if role == "reviewer" else f"done by {agent_id}"
         return _rd.TurnResult(True, output, 0.01, {"output": output})
 
 
 class _OneReworkThenGateAgainRunner:
     """Implementer/Lead succeed; Reviewer REQUEST-CHANGES exactly once, then
-    APPROVE; Tester PASS. Proves the gate re-fires on the rework hop."""
+    APPROVE. Proves the gate re-fires on the rework hop."""
 
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -179,8 +173,6 @@ class _OneReworkThenGateAgainRunner:
             output = (
                 "REQUEST-CHANGES\nfix it" if self._reviewer_calls == 1 else "APPROVE - now good"
             )
-        elif role == "tester":
-            output = "PASS - looks good"
         else:
             output = f"done by {agent_id}"
         return _rd.TurnResult(True, output, 0.01, {"output": output})
@@ -332,15 +324,14 @@ class TestGrantResumesAtHop:
         results = _sweep.dispatch_pod("myapp", runner=runner)
         assert len(results) == 1
         assert results[0].status == "done"
-        # The lead hop is NOT re-run; only implementer/reviewer/tester continue.
-        assert runner.calls == ["implementer", "reviewer", "tester"]
+        # The lead hop is NOT re-run; only implementer/reviewer continue.
+        assert runner.calls == ["implementer", "reviewer"]
 
         final = TaskRepository.for_pod("myapp").list()[0]
         assert [h.role for h in final.hops] == [
             "lead",
             "implementer",
             "reviewer",
-            "tester",
         ]
         (gate,) = [e for e in list_escalations() if e.kind == "gate"]
         assert gate.resolution is not None and gate.resolution.applied_at is not None
@@ -363,7 +354,7 @@ class TestGrantResumesAtHop:
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
         assert results[0].status == "done"
-        assert runner.calls == ["implementer", "reviewer", "tester"]
+        assert runner.calls == ["implementer", "reviewer"]
 
     def test_grant_on_a_non_dispatch_token_is_a_harmless_noop(self) -> None:
         token = _ap.approval_create("someproj", "programmer", "rm -rf /tmp/x")
@@ -539,7 +530,7 @@ class TestHttpEscalationEndpoint:
         runner = _VerdictAwareRunner()
         results = _sweep.dispatch_pod("myapp", runner=runner)
         assert results[0].status == "done"
-        assert runner.calls == ["implementer", "reviewer", "tester"]
+        assert runner.calls == ["implementer", "reviewer"]
 
     def test_post_deny_fails_the_dispatch_task(self, live_server: str) -> None:
         _seed_lean_pod(gated=True)

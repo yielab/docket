@@ -24,7 +24,7 @@ from pydantic import ValidationError
 from tests.support import home as _support_home
 from tests.support.fakes import FakeDriver
 from tests.support.llm import hop as _hop
-from tests.support.pods import build_pod
+from tests.support.pods import build_pod, spec
 
 from docket.agent import context as _context
 from docket.hops.application import executor as _executor
@@ -151,7 +151,7 @@ class TestHopRecordRoundTrip:
     def test_a_hop_dump_persists_and_restores_artifact_exactly(self) -> None:
         art = _handoff.HandoffArtifact(summary="s", verdict="fail", files_changed=["x.py"])
         hop = _task.HopResult(
-            role="tester", member_id="demo-tester", ok=True, output="s", artifact=art
+            role="reviewer", member_id="demo-reviewer", ok=True, output="s", artifact=art
         )
         rec = hop.model_dump(by_alias=True, mode="json")
         assert rec["artifact"] == art.model_dump()
@@ -255,6 +255,18 @@ def _seed_pod(tmp_path: Path, project: str = "demo", *, full: bool = False) -> I
         yield home
 
 
+# A step after the Reviewer, so a hop exists that is shown the Reviewer's artifact.
+_REVIEW_THEN_FINISH = spec(
+    "name: review-then-finish\n"
+    "steps:\n"
+    "  - lead: lead\n"
+    "  - implementer: implementer\n"
+    "  - reviewer: reviewer\n"
+    "    verdict: [APPROVE, REQUEST-CHANGES]\n"
+    "  - finish: implementer\n"
+)
+
+
 class TestDispatchBuildsTypedArtifacts:
     def test_two_hop_dispatch_produces_typed_artifacts_not_strings(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -289,7 +301,6 @@ class TestDispatchBuildsTypedArtifacts:
                         "lead": "plan",
                         "implementer": "did it",
                         "reviewer": "APPROVE - looks solid",
-                        "tester": "PASS - works",
                     }[role]
                     return TurnResult(True, text, 0.01, {})
 
@@ -298,11 +309,8 @@ class TestDispatchBuildsTypedArtifacts:
             assert res.status == "done"
 
             reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
-            tester_hop = next(h for h in res.hops if h.role == "tester")
             assert reviewer_hop.artifact is not None
             assert reviewer_hop.artifact.verdict == "approve"
-            assert tester_hop.artifact is not None
-            assert tester_hop.artifact.verdict == "pass"
 
             # Non-verdict-gated hops carry no verdict at all.
             lead_hop = next(h for h in res.hops if h.role == "lead")
@@ -310,7 +318,7 @@ class TestDispatchBuildsTypedArtifacts:
             assert lead_hop.artifact.verdict is None
 
     def test_next_hop_message_is_built_from_rendered_artifact(self, tmp_path: Path) -> None:
-        """The tester's prompt must reflect the reviewer's artifact -- including a structural
+        """The next hop's prompt must reflect the reviewer's artifact -- including a structural
         "Verdict: approve" line the raw reviewer text never contained -- proving the message
         is built from ``HandoffArtifact.render()``, not straight from ``HopResult.output``."""
         with _seed_pod(tmp_path, full=True):
@@ -333,17 +341,16 @@ class TestDispatchBuildsTypedArtifacts:
                         "lead": "plan",
                         "implementer": "did it",
                         "reviewer": "APPROVE - looks solid",
-                        "tester": "PASS - works",
                     }[role]
                     return TurnResult(True, text, 0.01, {})
 
             task = TaskRecord(id="t3", description="work")
-            res = _executor.dispatch_task("demo", task, runner=_Runner())
+            res = _executor.dispatch_task("demo", task, runner=_Runner(), spec=_REVIEW_THEN_FINISH)
             assert res.status == "done"
 
-            tester_message = next(msg for role, msg in calls if role == "tester")
-            assert "APPROVE - looks solid" in tester_message
-            assert "Verdict: approve" in tester_message
+            finish_message = [msg for role, msg in calls if role == "implementer"][-1]
+            assert "APPROVE - looks solid" in finish_message
+            assert "Verdict: approve" in finish_message
 
     def test_budget_checks_the_rendered_artifact_and_sheds_verdict_before_summary(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -377,12 +384,11 @@ class TestDispatchBuildsTypedArtifacts:
                         "lead": "plan",
                         "implementer": "did it",
                         "reviewer": "APPROVE " + ("x" * 200),
-                        "tester": "PASS - works",
                     }[role]
                     return TurnResult(True, text, 0.01, {})
 
             task = TaskRecord(id="t4", description="work")
-            res = _executor.dispatch_task("demo", task, runner=_Runner())
+            res = _executor.dispatch_task("demo", task, runner=_Runner(), spec=_REVIEW_THEN_FINISH)
             assert res.status == "done"
             reviewer_hop = next(h for h in res.hops if h.role == "reviewer")
             assert reviewer_hop.artifact is not None
@@ -392,9 +398,9 @@ class TestDispatchBuildsTypedArtifacts:
             rendered_len = len(reviewer_hop.artifact.render().encode("utf-8"))
             assert rendered_len > len(reviewer_hop.artifact.summary.encode("utf-8"))
 
-            tester_message = next(msg for role, msg in calls if role == "tester")
-            assert "APPROVE " + ("x" * 200) in tester_message
-            assert "Verdict: approve" not in tester_message
+            finish_message = [msg for role, msg in calls if role == "implementer"][-1]
+            assert "APPROVE " + ("x" * 200) in finish_message
+            assert "Verdict: approve" not in finish_message
 
     def test_resume_recovers_persisted_artifact_after_a_crash(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -424,12 +430,9 @@ class TestDispatchBuildsTypedArtifacts:
                     ]
                     return TurnResult(True, text, 0.01, {})
 
-            # Drive the pipeline through the Reviewer only (simulating a crash
-            # right before the Tester hop) by dispatching with a spec-free run
-            # but a runner that would raise for "tester" -- simpler: reuse the
-            # real dispatch_pod/persist_hop path via three completed hops, then
-            # hand-build the resume_from list the way a real crash-and-restart
-            # would load it (through the persisted-record round trip).
+            # Simulate a crash right before the step after the Reviewer: hand-build the
+            # resume_from list of the three completed hops the way a real
+            # crash-and-restart would load it (through the persisted-record round trip).
             prior_hops = [
                 _task.HopResult(
                     role="lead", member_id="demo-lead", ok=True, output="plan", cost_usd=0.0
@@ -468,7 +471,7 @@ class TestDispatchBuildsTypedArtifacts:
 
             calls: list[tuple[str, str]] = []
 
-            class _TesterRunner:
+            class _FinishRunner:
                 def __call__(
                     self,
                     agent_id: str,
@@ -479,19 +482,23 @@ class TestDispatchBuildsTypedArtifacts:
                 ) -> Any:
                     role = agent_id.rsplit("-", 1)[-1]
                     calls.append((role, message))
-                    return TurnResult(True, "PASS - works", 0.01, {})
+                    return TurnResult(True, "finished", 0.01, {})
 
             res = _executor.dispatch_task(
-                "demo", task, runner=_TesterRunner(), resume_from=resumed_hops
+                "demo",
+                task,
+                runner=_FinishRunner(),
+                resume_from=resumed_hops,
+                spec=_REVIEW_THEN_FINISH,
             )
             assert res.status == "done"
-            assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer", "tester"]
+            assert [h.role for h in res.hops] == ["lead", "implementer", "reviewer", "implementer"]
 
-            tester_message = next(msg for role, msg in calls if role == "tester")
+            finish_message = next(msg for role, msg in calls if role == "implementer")
             # The resumed reviewer hop's *persisted artifact* (not a fresh parse
-            # of raw text) is what reached the tester's prompt.
-            assert "APPROVE - solid" in tester_message
-            assert "Verdict: approve" in tester_message
+            # of raw text) is what reached the next hop's prompt.
+            assert "APPROVE - solid" in finish_message
+            assert "Verdict: approve" in finish_message
 
 
 # ── the handoff call and the prompt manifest ─────────────────────────────────
@@ -500,7 +507,7 @@ class TestDispatchBuildsTypedArtifacts:
 def _reviewer_runner(reviewer: Any) -> Any:
     from docket.agent.ports import TurnResult
 
-    texts = {"lead": "plan", "implementer": "did it", "tester": "PASS - works"}
+    texts = {"lead": "plan", "implementer": "did it"}
 
     def _run(
         agent_id: str,
@@ -595,14 +602,19 @@ class TestHandoffCallBuildsTheRecord:
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> Any:
-            if agent_id.endswith("-tester"):
+            if agent_id.endswith("-implementer"):
                 seen.append(message)
             return base(agent_id, session_key, message, timeout, env)
 
         with _seed_pod(tmp_path, full=True):
-            _executor.dispatch_task("demo", TaskRecord(id="h4", description="work"), runner=runner)
+            _executor.dispatch_task(
+                "demo",
+                TaskRecord(id="h4", description="work"),
+                runner=runner,
+                spec=_REVIEW_THEN_FINISH,
+            )
 
-        assert "Assumptions:\n- A1" in seen[0]
+        assert "Assumptions:\n- A1" in seen[-1]
 
 
 class TestPromptManifest:

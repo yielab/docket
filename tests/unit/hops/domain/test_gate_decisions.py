@@ -229,12 +229,13 @@ def test_verdict_failure_reasons_and_details() -> None:
 
 @pytest.mark.parametrize(("check_approval", "kind"), [(True, "advance"), (False, "failed")])
 def test_approval_gate_after_the_hop(check_approval: bool, kind: str) -> None:
-    decision = _d.decide_approval_in_group(check_approval=check_approval, role="tester")
+    decision = _d.decide_approval_in_group(check_approval=check_approval, role="reviewer")
 
     assert decision.kind == kind
     if kind == "failed":
         assert (
-            decision.reason == "tester: an 'approval' gate is not supported inside a parallel group"
+            decision.reason
+            == "reviewer: an 'approval' gate is not supported inside a parallel group"
         )
 
 

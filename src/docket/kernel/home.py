@@ -13,7 +13,7 @@ from pathlib import Path
 from docket.kernel import layout as _layout
 from docket.kernel import templates as _templates
 
-_RETRY_ROLES = ("lead", "implementer", "reviewer", "tester")
+_RETRY_ROLES = ("lead", "implementer", "reviewer")
 
 # Kind -> the Home property holding the operator's directory for it.
 _OPERATOR_DIRS = {

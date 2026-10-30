@@ -383,11 +383,9 @@ def _configure_provider(
         "lead",
         "implementer",
         "reviewer",
-        "tester",
         "researcher",
         "analyst",
         "writer",
-        "critic",
         "operator",
         "monitor",
     ):

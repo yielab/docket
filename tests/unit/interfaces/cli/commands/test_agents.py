@@ -52,12 +52,22 @@ class TestParsing:
     def test_roster_blueprint_recipe_and_no_apply(self, requests: list) -> None:
         runner.invoke(
             app,
-            ["init", "--pod", "full", "--with", "tester", "--blueprint", "ops", "--recipe", "tdd"],
+            [
+                "init",
+                "--pod",
+                "full",
+                "--with",
+                "reviewer",
+                "--blueprint",
+                "ops",
+                "--recipe",
+                "tdd",
+            ],
         )
         req = requests[0]
         assert (req.full, req.with_roles, req.blueprint, req.recipe) == (
             True,
-            "tester",
+            "reviewer",
             "ops",
             "tdd",
         )

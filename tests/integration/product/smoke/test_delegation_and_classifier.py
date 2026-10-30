@@ -91,7 +91,7 @@ def test_memory_smoke_delegation_fits_the_public_cli_boundary(
         record_isolation_off(home)
         build_pod(
             "smoke",
-            ("lead", "implementer", "reviewer", "tester"),
+            ("lead", "implementer", "reviewer"),
             codebase=str(codebase),
         )
         results: list[object] = []
@@ -266,7 +266,7 @@ def test_private_project_tool_classifier_normalizes_allowed_worktree(tmp_path: P
         == ".docket"
     )
     assert _smoke._relative_project_root("lead", (codebase, worktree)) == codebase
-    for downstream in ("implementer", "reviewer", "tester", "smoke-reviewer"):
+    for downstream in ("implementer", "reviewer", "smoke-reviewer"):
         assert _smoke._relative_project_root(downstream, (codebase, worktree)) == worktree
     assert (
         _smoke._private_tool_violation(

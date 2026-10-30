@@ -426,7 +426,6 @@ class TestOverridesThreaded:
             "implementer",
             "lead",
             "reviewer",
-            "tester",
         ]
 
     def test_budget_overrides_blueprint_default(self, live_server: tuple[str, str]) -> None:

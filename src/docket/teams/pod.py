@@ -1,11 +1,11 @@
 """Pod composition model: the set of project-scoped agents making up one project. Composition
 logic — the CLI (`docket init`/`docket pod`) turns a `PodPlan` into registered agents; this
 module only decides what a pod contains and how members are named. Default pod is
-**lean** (Lead + Implementer); Reviewer, Tester, or extra Implementers are added later, and a
+**lean** (Lead + Implementer); a Reviewer, or extra Implementers are added later, and a
 duplicated role gets an indexed member id (``<project>-implementer``, ``...-implementer-2``).
-The set of valid pod roles is not a hardcoded 4-tuple: ``normalize_role``/``member_id``/
+The set of valid pod roles is not a hardcoded tuple: ``normalize_role``/``member_id``/
 ``pod_of``/``members_of`` all resolve against ``teams/roles.py``'s registry (built-in
-four + starter library + any user-defined archetype), so a fifth role is data, never a new
+three + starter library + any user-defined archetype), so a further role is data, never a new
 hardcoded string. ``_role_names()`` reads that registry fresh on every call. ``pod_of`` is the
 one function here with I/O — it reads a member's recorded meta via `teams/fleet.py`'s
 ``meta_get`` before falling back to id-string parsing; see its own docstring."""
@@ -24,7 +24,7 @@ from docket.teams import pod as _pod
 from docket.teams import roles as _archetypes
 
 DEFAULT_POD_ROLES: tuple[str, ...] = ("lead", "implementer")
-FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
+FULL_POD_ROLES: tuple[str, ...] = ("lead", "implementer", "reviewer")
 
 # At most one Lead per pod — a pod has a single orchestrator. Not part of the
 # archetype schema (that field list has no "singleton" concept) — this is a
@@ -270,7 +270,7 @@ def bound_pipeline_path(project: str) -> Path:
 def pod_full_roster(project: str) -> dict[str, str]:
     """Every role this pod has, first member per role (``role -> member_id``). Unlike
     :func:`pod_pipeline` (fixed to ``PIPELINE_ORDER``), this covers every role name so a
-    custom :class:`~docket.pipeline.domain.spec.PipelineSpec` can target a role outside the default four."""
+    custom :class:`~docket.pipeline.domain.spec.PipelineSpec` can target a role outside the default three."""
     all_ids = [a.id for a in _fleet.list_agents()]
     by_role: dict[str, str] = {}
     for mid, role, _idx in _pod.members_of(all_ids, project):
@@ -278,8 +278,8 @@ def pod_full_roster(project: str) -> dict[str, str]:
     return by_role
 
 
-# Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 4.
-PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer", "tester")
+# Only roles the pod actually has run — lean pod (lead + implementer) = 2 hops; full pod = 3.
+PIPELINE_ORDER: tuple[str, ...] = ("lead", "implementer", "reviewer")
 
 
 def pod_pipeline(project: str) -> list[tuple[str, str]]:

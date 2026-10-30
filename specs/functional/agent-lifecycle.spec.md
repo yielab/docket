@@ -1,6 +1,6 @@
 # Agent Lifecycle Specification
 
-**Version**: 4.0.0
+**Version**: 4.0.1
 **Status**: Complete. Pods and their members are created, shown, added to, reset, removed and
 deleted as described below; `docket init --from` provisions pods from a spec file (see
 Declarative Provisioning).
@@ -197,7 +197,7 @@ write anything.
 # Create a project pod from a blueprint; with no arguments the id and path come from the cwd and
 # the stack from the code there. --blueprint defaults to `software`. --pod full/--with apply only
 # to it. The recipe and apply options are pod-blueprints.spec.md's.
-docket init [<project>] [location] [--blueprint <name>] [--pod full | --with reviewer,tester]
+docket init [<project>] [location] [--blueprint <name>] [--pod full | --with reviewer]
 
 # Provision one or more pods declaratively from a spec file; excludes every other option
 docket init --from <agents.yaml|agents.json>

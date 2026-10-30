@@ -405,15 +405,14 @@ def load_pipeline(text: str | None) -> PipelineLoadResult:
     return PipelineLoadResult(spec=spec, errors=[], source="file")
 
 
-# Mirrors the Reviewer/Tester verdict conventions of the built-in archetypes exactly —
-# ``tests/unit/pipeline/domain/test_spec__spec.py`` cross-checks these two patterns
+# Mirrors the Reviewer verdict convention of the built-in archetype exactly —
+# ``tests/unit/pipeline/domain/test_spec__spec.py`` cross-checks this pattern
 # and the role order below directly against the archetype registry and
 # ``hops/application/steps.py``'s ``PIPELINE_ORDER``,
 # so this module's hardcoding one drift-guarded copy (rather than importing
 # the executor at runtime) is a deliberate, tested tradeoff — see the module
 # docstring.
 _REVIEWER_PATTERN = r"^\s*(APPROVE|REQUEST-CHANGES)\b"
-_TESTER_PATTERN = r"^\s*(PASS|FAIL)\b"
 
 # The literal default teams/settings.py's pod_max_rework_cycles() falls back to
 # when a pod's Lead has no maxReworkCycles meta set.
@@ -436,11 +435,11 @@ def input_refusal(spec: PipelineSpec, level: str) -> str | None:
 
 def default_pipeline() -> PipelineSpec:
     """The built-in zero-migration pipeline, equivalent to ``hops/application/steps.py``'s
-    ``PIPELINE_ORDER``: lead -> implementer -> reviewer -> tester. See
+    ``PIPELINE_ORDER``: lead -> implementer -> reviewer. See
     specs/functional/pipeline-format.spec.md ("Zero migration") for the exact gates/rework bound."""
     return PipelineSpec(
         name="default",
-        description="Built-in lead -> implementer -> reviewer -> tester pipeline (zero migration).",
+        description="Built-in lead -> implementer -> reviewer pipeline (zero migration).",
         steps=[
             Step(id="lead", role="lead"),
             Step(id="implementer", role="implementer", gate=MechanicalGate(command=None)),
@@ -456,11 +455,6 @@ def default_pipeline() -> PipelineSpec:
                         max_cycles=_DEFAULT_MAX_REWORK_CYCLES,
                     ),
                 ),
-            ),
-            Step(
-                id="tester",
-                role="tester",
-                gate=VerdictGate(pattern=_TESTER_PATTERN, pass_values=["pass"]),
             ),
         ],
     )

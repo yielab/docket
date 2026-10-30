@@ -27,7 +27,7 @@ class TestSubscribe:
     def test_sink_receives_the_exact_record_read_trace_later_returns(self) -> None:
         received: list[dict[str, object]] = []
         with trace.subscribe(received.append):
-            status = trace.trace_event("proj", "s1", "tester", "session_start", '{"a": 1}')
+            status = trace.trace_event("proj", "s1", "reviewer", "session_start", '{"a": 1}')
         assert status == "written"
         tracefile = trace.project_trace_dir("proj") / "s1.jsonl"
         assert received == trace.read_trace(tracefile)
@@ -36,7 +36,7 @@ class TestSubscribe:
         received: list[dict[str, object]] = []
         with trace.subscribe(received.append):
             pass
-        trace.trace_event("proj", "s2", "tester", "session_start", "{}")
+        trace.trace_event("proj", "s2", "reviewer", "session_start", "{}")
         assert received == []
 
     def test_sink_receives_nothing_when_trace_is_suppressed(
@@ -45,7 +45,7 @@ class TestSubscribe:
         monkeypatch.setenv("DOCKET_NO_TRACE", "1")
         received: list[dict[str, object]] = []
         with trace.subscribe(received.append):
-            status = trace.trace_event("proj", "s3", "tester", "session_start", "{}")
+            status = trace.trace_event("proj", "s3", "reviewer", "session_start", "{}")
         assert status == "suppressed"
         assert received == []
 
@@ -54,7 +54,7 @@ class TestSubscribe:
             raise RuntimeError("sink exploded")
 
         with trace.subscribe(boom):
-            status = trace.trace_event("proj", "s4", "tester", "session_start", '{"a": 1}')
+            status = trace.trace_event("proj", "s4", "reviewer", "session_start", '{"a": 1}')
         assert status == "written"
         tracefile = trace.project_trace_dir("proj") / "s4.jsonl"
         records = trace.read_trace(tracefile)
@@ -62,19 +62,19 @@ class TestSubscribe:
         assert records[0]["event_type"] == "session_start"
 
     def test_zero_sinks_produces_a_byte_identical_record_shape(self) -> None:
-        trace.trace_event("proj", "s5", "tester", "session_start", '{"a": 1}')
+        trace.trace_event("proj", "s5", "reviewer", "session_start", '{"a": 1}')
         tracefile = trace.project_trace_dir("proj") / "s5.jsonl"
         line = tracefile.read_text(encoding="utf-8").splitlines()[0]
         assert re.fullmatch(
             r'\{"ts": "[^"]+", "project": "proj", "session_id": "s5", '
-            r'"agent_role": "tester", "event_type": "session_start", "payload": \{"a": 1\}\}',
+            r'"agent_role": "reviewer", "event_type": "session_start", "payload": \{"a": 1\}\}',
             line,
         ), line
 
 
 class TestTaskId:
     def test_task_id_written_after_event_type_when_truthy(self) -> None:
-        trace.trace_event("proj", "s6", "tester", "session_start", "{}", task_id="task-1")
+        trace.trace_event("proj", "s6", "reviewer", "session_start", "{}", task_id="task-1")
         tracefile = trace.project_trace_dir("proj") / "s6.jsonl"
         record = trace.read_trace(tracefile)[0]
         assert record["task_id"] == "task-1"
@@ -82,7 +82,7 @@ class TestTaskId:
         assert keys.index("task_id") == keys.index("event_type") + 1
 
     def test_task_id_key_absent_when_not_given(self) -> None:
-        trace.trace_event("proj", "s7", "tester", "session_start", "{}")
+        trace.trace_event("proj", "s7", "reviewer", "session_start", "{}")
         tracefile = trace.project_trace_dir("proj") / "s7.jsonl"
         record = trace.read_trace(tracefile)[0]
         assert "task_id" not in record

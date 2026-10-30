@@ -4,7 +4,7 @@
 #   docket pod plan --pipeline examples/pipelines/code-review.yaml
 #   docket run --pipeline examples/pipelines/code-review.yaml
 #
-# A review-heavy pipeline with no automated Tester: Implementer's own
+# A review-heavy pipeline with no second automated judge: Implementer's own
 # verifyCmd (whatever `docket pod set verify` configured) gates the
 # build, Reviewer's APPROVE/REQUEST-CHANGES verdict can send it back for
 # rework, and a final `approval` gate holds the pipeline for an explicit

@@ -117,7 +117,7 @@ class TestHopMessageCap:
             _hop("implementer", "B" * 20_000),
             _hop("reviewer", "C" * 20_000),
         ]
-        _message, comp = _compose._hop_message(task, "tester", prior)
+        _message, comp = _compose._hop_message(task, "reviewer", prior)
         assert [s["role"] for s in comp.sections] == ["lead", "implementer", "reviewer"]
         sent = {s["role"]: s["sent_bytes"] for s in comp.sections}
         # Chronological order is oldest -> newest; the most recent (reviewer)
@@ -134,7 +134,7 @@ class TestHopMessageCap:
         monkeypatch.setattr(_context, "budget_for_role", lambda role, **_: cap_tokens)
         task = TaskRecord(description="task")
         prior = [_hop(f"hop-{i}", "Q" * 100_000) for i in range(8)]
-        message, comp = _compose._hop_message(task, "tester", prior)
+        message, comp = _compose._hop_message(task, "reviewer", prior)
 
         cap_bytes = cap_tokens * current_home().context_bytes_per_token
         total_carryover = sum(s["sent_bytes"] for s in comp.sections)
@@ -156,7 +156,7 @@ class TestHopMessageCap:
                 "## Hop",
                 "--- lead output ---\nshort plan\n",
                 "--- implementer output ---\nsmall diff\n",
-                "You are the Reviewer. Review the diff (read-only). The LAST line of your "
+                "You are the Reviewer. Review the work of the step before (read-only). The LAST line of your "
                 "FINAL message must be exactly `APPROVE` or `REQUEST-CHANGES`, with nothing "
                 "else on that line. Reasons go above it.",
             ]

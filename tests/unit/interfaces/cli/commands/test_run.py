@@ -255,7 +255,7 @@ class TestDryRun:
         with _seed_pod(tmp_path, roles=("lead", "implementer")):
             out = runner.invoke(_app, ["run", "--dry-run", "--pod", "demo"]).output
             assert "role=lead" in out and "role=implementer" in out
-            assert "skipped" in out  # reviewer and tester are absent from the pod
+            assert "skipped" in out  # the reviewer is absent from the pod
 
 
 class TestEndpointGate:

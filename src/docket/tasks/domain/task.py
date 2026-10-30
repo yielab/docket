@@ -25,7 +25,7 @@ from docket.tasks.domain.parts import Prepared, TaskUsage, Worktree, is_none
 from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.state import Status
 
-# The Reviewer/Tester verdict patterns live in exactly one place:
+# The Reviewer verdict pattern lives in exactly one place:
 # `pipeline/domain/spec.py`'s `default_pipeline()` declares them as real `VerdictGate`s, and gate
 # execution reads a step's *resolved* gate generically (see `execute_unit`'s
 # `isinstance(gate, _pipeline.VerdictGate)` branch and `pipeline.domain.plan.parse_verdict`)

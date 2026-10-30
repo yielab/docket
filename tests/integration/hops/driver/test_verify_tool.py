@@ -77,7 +77,7 @@ def _turn(role: str, tmp_path: Path, env: dict[str, str], backend: _RecordingBac
     ("role", "with_plan", "offered"),
     [
         ("implementer", True, True),
-        ("tester", True, True),
+        ("operator", True, True),
         ("reviewer", True, False),
         ("lead", True, False),
         ("implementer", False, False),

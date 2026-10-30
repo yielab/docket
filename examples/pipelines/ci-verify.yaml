@@ -6,7 +6,7 @@
 #
 # A CI-style verify pipeline: Lead plans, Implementer must pass a real test
 # command (a mechanical gate — nonzero exit fails the step), Reviewer must
-# approve before Tester runs a final structural PASS/FAIL check. A
+# approve the change. A
 # REQUEST-CHANGES verdict from Reviewer sends the pod back to Implementer for
 # up to 2 rework cycles before the step fails outright.
 #
@@ -19,7 +19,7 @@
 # workspace after that hop.
 kind: pipeline
 name: ci-verify
-description: Build and verify a change, gated on tests and a human-reviewed diff.
+description: Build and verify a change, gated on tests and a reviewed diff.
 
 steps:
   - plan: lead
@@ -30,6 +30,3 @@ steps:
   - review: reviewer
     verdict: [APPROVE, REQUEST-CHANGES]
     on: {REQUEST-CHANGES: {goto: build, max: 2}}
-
-  - test: tester
-    verdict: [PASS, FAIL]
