@@ -32,7 +32,9 @@ from docket.tasks.domain.parts import Answer
 from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
+from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models
+from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
@@ -86,13 +88,17 @@ def _role_prompt(
     step_instructions: str,
     view: RepoView | None = None,
     model_class: str | None = None,
+    workdir: bool = False,
 ) -> LoadedPrompt | None:
     """The role's own prompt: the step's own override, else a built-in role's hop prompt (the
     first of the task's base commit, the pod overlay, the operator and what ships that holds
     it, the file of the hop's *model_class* before an ``any`` one), else a custom role's
-    registry-resolved ``hopInstruction``."""
+    registry-resolved ``hopInstruction``. A *workdir* pod's Lead reads ``hop/lead-workdir`` while
+    its archetype holds the shipped instruction."""
     if step_instructions:
         return _prompts.inline_prompt(role, "hop", step_instructions, "pipeline")
+    if role == "lead" and workdir and _lead_instruction_is_shipped(project):
+        return _prompts.resolve_prompt("hop", "lead-workdir", project=project)
     if role == "implementer":
         name = "implementer" if rework_hop is None else "implementer-rework"
         return _prompts.resolve_prompt(
@@ -109,6 +115,31 @@ def _role_prompt(
     # matching today's behavior.
     archetype = _archetypes.load_registry(project).get(role)
     return _role_schema.resolve_hop_prompt(archetype) if archetype else None
+
+
+#: The root line of a ``workdir``-kind pod, whose root is not a repository.
+_WORKDIR_LINE = (
+    "Working directory: the pod's working directory (your tools start there; give paths "
+    "relative to it)."
+)
+
+
+def _root_line(root: str, project: str) -> tuple[str, bool]:
+    """The line that says where the hop's tools start, and whether the pod is ``workdir``-kind
+    (every member of a pod shares its kind, which the Lead's metadata records); ``("", False)``
+    when no root resolves."""
+    if not root:
+        return "", False
+    lead = _pod.member_id(project, "lead") if project else ""
+    if lead and _fleet.meta_get(lead, "workspaceKind", "") == "workdir":
+        return _WORKDIR_LINE, True
+    return _repo_map.WORKING_DIRECTORY_LINE, False
+
+
+def _lead_instruction_is_shipped(project: str) -> bool:
+    """Whether *project*'s `lead` archetype still holds the shipped `hop/lead` instruction."""
+    lead = _archetypes.load_registry(project).get("lead")
+    return lead is not None and lead.hop_instruction == _prompts.shipped_prompt("hop", "lead").text
 
 
 def _layers_of(
@@ -237,14 +268,16 @@ def _request_lines(request: TaskRequest) -> str:
     return "\n".join(lines)
 
 
-def _task_section(task: TaskRecord, desc: str, root: str, prior: list[HopResult]) -> str:
+def _task_section(
+    task: TaskRecord, desc: str, root: str, prior: list[HopResult], *, workdir: bool = False
+) -> str:
     """The ``## Task`` section: the description, the structured request when the task has one,
-    and a map bounded by the Lead's brief and the request's paths (capped when neither exists).
-    Only the description, the request, the brief and the base commit feed it."""
+    and a map bounded by the Lead's brief and the request's paths (capped when neither exists, none
+    on a *workdir* pod). Only the description, the request, the brief and the base commit feed it."""
     request = task.task
     brief_text = _brief_text(prior)
     paths = " ".join(request.paths or []) if request is not None else ""
-    if not root:
+    if not root or workdir:
         repo_map = ""
     elif brief_text is None and not paths:
         repo_map = _repo_map.capped_map(root)
@@ -283,13 +316,13 @@ def _hop_message(
     desc = task.description.strip()
     worktree = "" if role == "lead" else claimed_worktree_dir(task)
     root = _repo_map.resolve_root(worktree, project, role)
-    root_line = _repo_map.WORKING_DIRECTORY_LINE if root else ""
+    root_line, workdir = _root_line(root, project)
     if role == "lead":
-        lead_prompt = _role_prompt("lead", project, None, step_instructions)
+        lead_prompt = _role_prompt("lead", project, None, step_instructions, workdir=workdir)
         lead_instruction = lead_prompt.text if lead_prompt is not None else ""
         message = f"{lead_instruction}\n\n{desc}" if lead_instruction else desc
         if root:
-            lead_map = _repo_map.capped_map(root)
+            lead_map = "" if workdir else _repo_map.capped_map(root)
             message = f"{message}\n\n{root_line}" + (f"\n{lead_map}" if lead_map else "")
         answers_block = _render_operator_answers(answers_of(task))
         if answers_block:
@@ -317,7 +350,7 @@ def _hop_message(
     # budget" a real, checkable property rather than an aspiration: the two
     # pieces that are never shed are accounted for before anything
     # sheddable is given a share.
-    task_section = _task_section(task, desc, root, prior)
+    task_section = _task_section(task, desc, root, prior, workdir=workdir)
     reserved_tokens = sum(_rd.estimate_tokens(t) for t in (task_section, instructions, root_line))
     carryover_budget = max(_ctx.budget_for_role(role, project=project) - reserved_tokens, 0)
 

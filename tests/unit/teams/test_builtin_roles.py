@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import pytest
 
-from docket.teams.builtin_roles import BUILTIN_ARCHETYPES, STARTER_ARCHETYPES
+from docket.teams.builtin_roles import (
+    BUILTIN_ARCHETYPES,
+    STARTER_ARCHETYPES,
+    method_for_workspace,
+)
 from docket.teams.role_schema import (
     render,
 )
@@ -55,3 +59,38 @@ class TestTheLeadHasOneEscalationChannel:
         assert "list every assumption" in soul
         assert "cannot message the human" not in soul
         assert "NEEDS-INPUT" not in soul
+
+
+class TestTheWriterHoldsNoShell:
+    """The writer drafts with write/edit; a command runs in a pipeline `run:` step, not in the role."""
+
+    def test_the_writer_denies_bash_and_its_soul_does_not_offer_it(self) -> None:
+        writer = STARTER_ARCHETYPES["writer"]
+        soul = render(writer.soul_template, {**_SAMPLE_VARIABLES, "role": "writer"})
+
+        assert "bash" in writer.denied_tools
+        assert "bash" not in soul
+        assert "`read`/`grep`/`glob`" in soul
+
+    def test_the_implementer_still_holds_it(self) -> None:
+        assert "bash" not in BUILTIN_ARCHETYPES["implementer"].denied_tools
+
+
+class TestTheMethodBlockFollowsTheWorkspaceKind:
+    @pytest.mark.parametrize("name", ["lead", "implementer", "writer", "critic"])
+    def test_a_workdir_method_names_no_repository_or_code(self, name: str) -> None:
+        arch = {**BUILTIN_ARCHETYPES, **STARTER_ARCHETYPES}[name]
+        rendered = render(arch.agents_template, {**_SAMPLE_VARIABLES, "role": name})
+
+        swapped = method_for_workspace(rendered, workdir=True)
+        method = swapped.split("## Red Lines")[0].split("## Method")[1].lower()
+
+        assert "working directory" in method
+        assert "repository" not in method and "code" not in method
+        assert len(method) < 520
+
+    def test_a_codebase_method_is_the_text_it_always_was(self) -> None:
+        rendered = render(BUILTIN_ARCHETYPES["lead"].agents_template, _SAMPLE_VARIABLES)
+
+        assert method_for_workspace(rendered, workdir=False) == rendered
+        assert "a repository map" in rendered

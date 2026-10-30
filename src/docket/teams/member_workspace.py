@@ -12,6 +12,7 @@ from docket.teams import fleet as _fleet
 from docket.teams import pod
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
+from docket.teams.builtin_roles import method_for_workspace
 from docket.teams.task_worktrees import TASK_WORKTREES_DIRNAME
 
 # Bump when the pod-member templates change (doctor flags older members).
@@ -20,7 +21,9 @@ from docket.teams.task_worktrees import TASK_WORKTREES_DIRNAME
 # teams/roles.py's Red Lines templates).
 # v4: SOUL.md names no path, AGENTS.md carries the shared method and no private-file
 # reads, and no template asks for a completion promise.
-POD_TEMPLATE_VERSION = 5
+# v6: a `workdir` pod's AGENTS.md and MEMORY.md seed read working-directory text, the Lead's
+# identity names no code or git, and the writer's SOUL.md no longer offers `bash`.
+POD_TEMPLATE_VERSION = 6
 
 
 def _render_context(
@@ -117,15 +120,15 @@ def member_tools(
     return "\n".join(lines) + "\n"
 
 
-def _member_agents(member: pod.PodMember, project: str) -> str:
-    """Render a pod member's AGENTS.md from its archetype's `agentsTemplate`.
-
-    Byte-identical (role-archetypes.spec.md); section-projection rule: agent-loop.spec.md req 30."""
+def _member_agents(member: pod.PodMember, project: str, *, work_dir: str = "") -> str:
+    """Render a pod member's AGENTS.md from its archetype's `agentsTemplate`; a *work_dir* pod
+    gets the working-directory `## Method` block. Byte-identical otherwise (role-archetypes.spec.md)."""
     arch = _arch.load_registry(project).get(member.role)
     if arch is None:
         raise pod.PodError(f"no archetype registered for role {member.role!r}")
     variables = _render_context(member, project, "", "", "")
-    return _role_schema.render(arch.agents_template, variables)
+    rendered = _role_schema.render(arch.agents_template, variables)
+    return method_for_workspace(rendered, workdir=bool(work_dir))
 
 
 def write_member_workspace(
@@ -152,7 +155,9 @@ def write_member_workspace(
         _member_soul(member, project, told_root, stack, description, work_dir=work_dir),
         encoding="utf-8",
     )
-    (ws / "AGENTS.md").write_text(_member_agents(member, project), encoding="utf-8")
+    (ws / "AGENTS.md").write_text(
+        _member_agents(member, project, work_dir=work_dir), encoding="utf-8"
+    )
     (ws / _mem.HEARTBEAT_FILE).write_text(_mem.heartbeat_seed(member.member_id), encoding="utf-8")
     if member.role == "implementer" and ((port_range_start and scratch_dir) or verify_cmd):
         (ws / "TOOLS.md").write_text(
@@ -311,7 +316,7 @@ def rendered_member_files(member_id: str) -> dict[str, str]:
     work_dir = str(meta.get("workDir", ""))
     files = {
         "SOUL.md": _member_soul(member, project, codebase, stack, description, work_dir=work_dir),
-        "AGENTS.md": _member_agents(member, project),
+        "AGENTS.md": _member_agents(member, project, work_dir=work_dir),
     }
     verify_cmd = str(meta.get("verifyCmd", ""))
     port_start_s = str(meta.get("portRangeStart", ""))

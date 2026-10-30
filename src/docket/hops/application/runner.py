@@ -280,9 +280,12 @@ def execute_unit(
 def when_cwd(ctx: UnitContext, prior: list[HopResult]) -> str:
     """Working tree a ``when: {changed: ...}`` predicate and a command step's own command
     both run against: the task's own worktree, falling back to the pod Lead's own codebase
-    (the task runs in place, or the pod has no Implementer)."""
+    (the task runs in place, or the pod has no Implementer) and then its working directory (a
+    `workdir`-kind pod has no codebase)."""
     worktree = claimed_worktree_dir(ctx.task)
     if worktree:
         return worktree
     lead_id = _pod.member_id(ctx.project, "lead")
-    return str(_fleet.meta_get(lead_id, "codebase", "") or "")
+    return str(
+        _fleet.meta_get(lead_id, "codebase", "") or _fleet.meta_get(lead_id, "workDir", "") or ""
+    )
