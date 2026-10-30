@@ -54,12 +54,18 @@ _PACK_OPTIONS: tuple[tuple[str, str, str], ...] = (
 APPROVAL_OPTION_IDS: frozenset[str] = frozenset(o[0] for o in _PACK_OPTIONS)
 
 
-def approval_options() -> list[dict[str, Any]]:
-    """The three pack options, built through the operator-v1.1 ``Option`` model."""
+_TASK_WIDE = "approve_task"
+
+
+def approval_options(deletes: bool = False) -> list[dict[str, Any]]:
+    """The pack options, built through the operator-v1.1 ``Option`` model: the three, or for a
+    call that *deletes* only ``approve_once`` and ``deny``, since a delete is never granted for
+    the rest of a task."""
 
     return [
         Option(id=i, label=label, description=desc).model_dump(by_alias=True, exclude_none=True)
         for i, label, desc in _PACK_OPTIONS
+        if not (deletes and i == _TASK_WIDE)
     ]
 
 
@@ -226,6 +232,7 @@ def approval_create(
     rationale: str | None = None,
     rationale_blocked: bool = False,
     call: str | None = None,
+    deletes: bool = False,
 ) -> str:
     """Persist a pending approval and return its token. ``context`` is optional caller
     data stored verbatim, never redacted; always ``{}`` when omitted. ``call`` is the whole
@@ -234,7 +241,8 @@ def approval_create(
     is the record's own deadline; omitted, it is ``created + APPROVAL_TIMEOUT``.
     ``rationale`` (already screened and bounded; ``""`` when none) makes this a gated-call
     pack: the record gains ``rationale`` and the three ``options``, and ``rationaleBlocked`` when
-    the model's rationale was withheld by a policy. ``None`` leaves all of them out."""
+    the model's rationale was withheld by a policy. ``None`` leaves all of them out. ``deletes``
+    narrows the options to ``approve_once`` and ``deny``."""
     if not project or not role or not action:
         raise ApprovalError("approval_create: missing arguments")
 
@@ -257,7 +265,7 @@ def approval_create(
     data["expiresAt"] = expires_at or _iso_after(created, current_home().approval_timeout)
     if rationale is not None:
         data["rationale"] = rationale
-        data["options"] = approval_options()
+        data["options"] = approval_options(deletes)
         if rationale_blocked:
             data["rationaleBlocked"] = True
     if call is not None:
@@ -314,6 +322,9 @@ def approval_set_option(token: str, option_id: str) -> None:
             raise ApprovalError(f"Approval not found: {token}")
         if data.get("state") != "pending":
             raise ApprovalNoop(f"Not pending: {token}")
+        offered = [str(o.get("id")) for o in data.get("options") or [] if isinstance(o, dict)]
+        if offered and option_id not in offered:
+            raise ApprovalError(f"option {option_id!r} is not offered; choose one of: {offered}")
         ctx = dict(data.get("context") or {})
         ctx["optionId"] = option_id
         data["context"] = ctx

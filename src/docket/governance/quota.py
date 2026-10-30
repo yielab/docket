@@ -1,7 +1,7 @@
 """The send quota: a pod may send so many times in a trailing window (ADR 0036 decision 7).
 
-The one stateful rule. A policy document carries ``limit: {kind: send | tool: <name>, count: <n>,
-per: hour | day}``; this module validates and parses the clause, counts the executions a pod has
+The one stateful rule. A policy document carries ``limit: {kind: send | tool: <name> | service: <name>,
+count: <n>, per: hour | day}``; this module validates and parses the clause, counts the executions a pod has
 made and appends a new one. The counter is a JSON file under the home's state directory written
 only through ``platform/store.py``; it holds one ``[epoch, tool]`` pair per execution of the last
 day, so a window is a count over the entries younger than it. ``governance.gate`` asks
@@ -15,29 +15,38 @@ from typing import Any
 
 from docket.kernel import clock as _clock
 from docket.kernel.home import current_home
+from docket.kernel.service import service_of_tool
 from docket.platform import read_json, read_modify_write
 
 _PER_SECONDS: dict[str, int] = {"hour": 3600, "day": 86400}
 _PER_LABEL: dict[str, str] = {"hour": "this hour", "day": "today"}
-_KEYS = frozenset({"kind", "tool", "count", "per"})
+_KEYS = frozenset({"kind", "tool", "service", "count", "per"})
 _KEEP_S = max(_PER_SECONDS.values())
 
 
 @dataclass(frozen=True)
 class Limit:
-    """One quota: ``count`` executions per ``per`` of the ``send`` kind, or of one ``tool``."""
+    """One quota: ``count`` executions per ``per`` of the ``send`` kind, of one ``tool`` or of one
+    declared ``service``'s send operations."""
 
     policy_id: str
     count: int
     per: str
     tool: str = ""
+    service: str = ""
 
     @property
     def scope(self) -> str:
-        return self.tool or "send"
+        return self.tool or self.service or "send"
+
+    def counts(self, tool_name: str) -> bool:
+        """Whether an execution of *tool_name* is one this quota counts."""
+        if self.service:
+            return service_of_tool(tool_name) == self.service
+        return not self.tool or tool_name == self.tool
 
     def covers(self, tool_name: str, tool_kind: str) -> bool:
-        return tool_kind == "send" and (not self.tool or self.tool == tool_name)
+        return tool_kind == "send" and self.counts(tool_name)
 
 
 def validate_limit(p: dict[str, Any], label: str) -> str:
@@ -53,14 +62,16 @@ def validate_limit(p: dict[str, Any], label: str) -> str:
         return f"{label}: a limit blocks, so then must be block"
     unknown = sorted(str(k) for k in set(limit) - _KEYS)
     if unknown:
-        return f"{label}: unknown limit key(s) {unknown} (valid: kind, tool, count, per)"
-    tool, kind = limit.get("tool"), limit.get("kind")
-    if (tool is None) == (kind is None):
-        return f"{label}: limit needs exactly one of kind (send) or tool"
+        return f"{label}: unknown limit key(s) {unknown} (valid: kind, tool, service, count, per)"
+    tool, kind, service = limit.get("tool"), limit.get("kind"), limit.get("service")
+    if sum(v is not None for v in (tool, kind, service)) != 1:
+        return f"{label}: limit needs exactly one of kind (send), tool or service"
     if kind is not None and kind != "send":
         return f"{label}: limit.kind must be send, got {kind!r}"
     if tool is not None and not (isinstance(tool, str) and tool.strip()):
         return f"{label}: limit.tool must be a non-empty tool name"
+    if service is not None and not (isinstance(service, str) and service.strip()):
+        return f"{label}: limit.service must be a non-empty service name"
     count = limit.get("count")
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         return f"{label}: limit.count must be an integer of at least 1"
@@ -72,7 +83,13 @@ def validate_limit(p: dict[str, Any], label: str) -> str:
 def parse_limit(p: dict[str, Any]) -> Limit:
     """The :class:`Limit` of a canonical policy that passed :func:`validate_limit`."""
     limit = p["limit"]
-    return Limit(str(p["id"]), int(limit["count"]), str(limit["per"]), str(limit.get("tool") or ""))
+    return Limit(
+        str(p["id"]),
+        int(limit["count"]),
+        str(limit["per"]),
+        str(limit.get("tool") or ""),
+        str(limit.get("service") or ""),
+    )
 
 
 def _entries(pod: str) -> list[list[Any]]:
@@ -89,7 +106,7 @@ def used(pod: str, limit: Limit) -> int:
     return sum(
         1
         for at, tool in _entries(pod)
-        if isinstance(at, int | float) and at > since and (not limit.tool or tool == limit.tool)
+        if isinstance(at, int | float) and at > since and limit.counts(str(tool))
     )
 
 

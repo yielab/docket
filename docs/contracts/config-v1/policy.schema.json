@@ -112,6 +112,18 @@
           "default": null,
           "title": "Tool"
         },
+        "service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service"
+        },
         "count": {
           "minimum": 1,
           "title": "Count",

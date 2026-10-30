@@ -27,7 +27,8 @@ before the Actor ran.
 - `policies/send-quota.yaml` caps the pod at ten sends in a trailing day. The count rises when a
   `send` runs, never when one is asked about or refused; past the limit the call is refused with
   the count and the window, audited as `tool.send` with `decision=deny`, and `docket status` shows
-  `send 3/10 today`. Edit `count` or `per: hour | day`, or delete the file for no cap.
+  `send 3/10 today`. Edit `count` or `per: hour | day`, or delete the file for no cap. To cap one
+  declared service instead, write `service: <name>` in place of `kind: send`.
 
 ## Prerequisites
 

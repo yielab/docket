@@ -17,7 +17,9 @@ from tests.support.tasks import stored_task, update_task
 from typer.testing import CliRunner
 
 from docket.agent import ports as _rd
-from docket.agent.tools.registry import ToolContext
+from docket.agent.ports import ToolCall
+from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.registry import Tool, ToolContext, ToolRegistry, dispatch_tool
 from docket.governance import approval as _approval
 from docket.governance import approval_pregrant as _pregrants
 from docket.governance import audit as _audit
@@ -29,6 +31,7 @@ from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.telegram import bot as _tg
 from docket.kernel.operator_contract import canonical_args_digest
 from docket.pipeline.domain import plan as _orch
+from docket.platform import read_escalation
 from docket.tasks.application import actions as _actions
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application import lifecycle as _lifecycle
@@ -287,3 +290,41 @@ class TestApproveTaskHttpAndMcp:
         with pytest.raises(_mcp.McpToolError):
             _mcp.tool_resolve(escalation_of(token), "approve_forever")
         assert _approval.approval_get(token)["state"] == "pending"
+
+
+class TestADeleteTakesNoTaskGrant:
+    def _parked_delete(self) -> str:
+        task = _queue.enqueue_task_once(PROJECT, "tidy the crm", channel="cli")[0]
+        registry = ToolRegistry()
+        registry.register(
+            Tool(
+                "svc__crm__delete_contact",
+                "delete",
+                {"type": "object", "properties": {}},
+                lambda a, c: ToolOutcome(ok=True, content="deleted"),
+                kind="send",
+                deletes=True,
+            )
+        )
+        ctx = ToolContext(
+            agent_id=f"{PROJECT}-implementer",
+            role="implementer",
+            project=PROJECT,
+            approval_mode="park",
+            task_id=task.id,
+        )
+        result = dispatch_tool(ToolCall("c1", "svc__crm__delete_contact", "{}"), ctx, registry)
+        assert result.denial_kind == "approval_parked"
+        update_task(PROJECT, task.id, status="waiting_approval")
+        return result.approval_token
+
+    def test_the_escalation_offers_once_and_deny_and_refuses_approve_task(self) -> None:
+        token = self._parked_delete()
+
+        escalation = read_escalation(escalation_of(token))
+        assert escalation is not None
+        assert [o.id for o in escalation.options] == ["approve_once", "deny"]
+        assert run_answer(token, "approve_task") != 0
+        assert _approval.approval_get(token)["state"] == "pending"
+        assert run_answer(token, "approve_once") == 0
+        assert _approval.approval_get(token)["state"] == "granted"

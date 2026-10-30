@@ -1,11 +1,12 @@
 # Service Client Specification
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: Implemented in part: the document, its access rule, its registration, its scopes and
 its import from an OpenAPI document (`kernel/service.py`, `teams/services.py`,
 `teams/services_openapi.py`, `docket setup service`, `docket pod update|export`). No
 operation is a tool yet and no call is made: the call and its perimeter, and the tools, are
-separate work.
+separate work. Requirements 40-41 hold at the gate for any tool named `svc__<service>__<operation>`
+(quota) or marked `deletes` (approval); the service tool that sets the mark is separate work.
 **Last Updated**: 2026-10-30
 
 ## Purpose
@@ -28,11 +29,12 @@ This specification covers:
 - The rule that a service and an MCP server never share a name
 - `docket setup service add|list|remove`
 - Importing operations from an OpenAPI document (`setup service add <name> --from-openapi`)
+- How writing operations are handled apart: the quota per service and the approval of a `DELETE`
 
 This specification does NOT cover:
 
 - Making a call, resolving a secret, the host perimeter, the size and time bounds (the call)
-- Turning an operation into a tool, its quota or its approval (the tools)
+- Turning an operation into a tool (the tools)
 - OpenAPI 2, fetching an OpenAPI document over the network, auth schemes beyond one header
 - OAuth grants of any kind
 
@@ -105,6 +107,18 @@ This specification does NOT cover:
     the same as an array.
 19. `docket setup service remove <name>` **MUST** delete the operator's service and audit
     `services.remove`; an unknown name exits 1.
+
+### Writes
+
+40. A service's `send` operations **MUST** be counted per service. A policy `limit` with
+    `service: <name>` (`security-gates.spec.md`, Policy format v1 requirement 9) **MUST** cover
+    every `send` operation of that service, the tools named `svc__<name>__<operation>`, and no
+    tool of another service or of none: with `count: 1`, the second send to the service in the
+    window is blocked and a send to another service is not. A quota is never per operation.
+41. An approval of a `DELETE` operation **MUST** offer `approve_once` and `deny` only; `approve_task`
+    sent for it **MUST** be refused (`security-gates.spec.md`, in-turn tool-call gate 19). The tool
+    built from a `DELETE` operation **MUST** be marked `deletes`, the field the gate reads; a
+    `POST`, `PUT` or `PATCH` keeps the three options.
 
 ### From OpenAPI
 
