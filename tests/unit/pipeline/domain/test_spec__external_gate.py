@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from tests.support.pods import load as _load
+from tests.support.roles import ROLE_NAMES
 
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
@@ -16,7 +17,7 @@ SUBJECT = "docket.pipeline.domain.spec"
 
 
 def _errors(text: str) -> str:
-    loaded = load_pipeline(text)
+    loaded = load_pipeline(text, roles=ROLE_NAMES)
     assert not loaded.ok
     return "\n".join(loaded.errors)
 

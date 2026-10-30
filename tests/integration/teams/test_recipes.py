@@ -21,6 +21,7 @@ from tests.support.cli import pod_cli as _pod_cli
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
 from tests.support.pods import seed_fixture_pod as _seed_fixture_pod
+from tests.support.roles import ROLE_NAMES
 from tests.support.trace import trace_events as _trace_events
 
 import docket.kernel.templates as _templates
@@ -117,13 +118,17 @@ def test_web_research_readme_states_both_prerequisites() -> None:
     assert "docket setup mcp add searxng --kind read -- " in readme
 
 
+def _loaded(path: Path) -> _pipeline.PipelineLoadResult:
+    return _pipeline.load_pipeline(path.read_text(encoding="utf-8"), roles=ROLE_NAMES)
+
+
 @pytest.mark.parametrize("recipe_dir", _recipe_dirs(), ids=lambda p: p.name)
 def test_recipe_pipeline_validates(recipe_dir: Path) -> None:
     pipeline_file = recipe_dir / "pipeline.yaml"
     if not pipeline_file.is_file():
         pytest.skip(f"{recipe_dir.name} is a policy pack: no pipeline.yaml")
     text = pipeline_file.read_text(encoding="utf-8")
-    assert _pipeline.load_pipeline(text).errors == []
+    assert _pipeline.load_pipeline(text, roles=ROLE_NAMES).errors == []
 
 
 @pytest.mark.parametrize(
@@ -158,7 +163,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(recipe_dir: Path, tmp_path: Pat
         pipeline_file = recipe_dir / "pipeline.yaml"
         if not pipeline_file.is_file():
             return
-        result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
+        result = _loaded(pipeline_file)
         assert result.spec is not None, result.errors
 
         roster = pod.pod_full_roster(project)
@@ -178,7 +183,7 @@ def test_web_research_validates_and_its_lead_is_not_told_to_plan_for_the_impleme
     validated = invoke_pod(["validate", str(recipe_dir)])
     assert validated.exit_code == 0, validated.output
 
-    spec = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8")).spec
+    spec = _loaded(recipe_dir / "pipeline.yaml").spec
     assert spec is not None
     lead = next(step for step in spec.steps if step.role == "lead")
     assert lead.instructions
@@ -427,7 +432,7 @@ def test_secure_build_recipe_dispatches_to_done_with_the_verdict_gate_observed_i
         assert _arch.load_registry(project).source_of("security-vetter") == f"pod:{project}"
         assert "security-vetter" not in _arch.load_registry().archetypes
 
-        result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        result = _loaded(recipe_dir / "pipeline.yaml")
         assert result.spec is not None, result.errors
 
         _queue.enqueue_task_once(project, "add a login endpoint", channel="cli")
@@ -787,7 +792,7 @@ def test_a_recipe_step_env_survives_apply_and_export(tmp_path: Path) -> None:
         _write.apply(_pod_apply.plan_apply(project, RECIPES_DIR / "mutation"))
         export_dir = tmp_path / "exported"
         assert _pod_cli("export", str(export_dir), "--pod", project).exit_code == 0
-        result = _pipeline.load_pipeline((export_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        result = _loaded(export_dir / "pipeline.yaml")
         assert result.spec is not None, result.errors
         step = next(s for s in result.spec.steps if s.id == "check-mutation-score")
         assert step.env == {"MUTATION_THRESHOLD": "80", "MUTATION_CMD": "mutmut"}

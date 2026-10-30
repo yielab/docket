@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 import yaml
 from tests.support.cli import invoke_pod
+from tests.support.roles import ROLE_NAMES
 
 from docket.kernel.home import current_home
 from docket.kernel.templates import RECIPES_DIR
@@ -182,7 +183,12 @@ class TestBuiltinAndStarterArchetypes:
             own = {p.stem for p in pod_yaml.parent.glob("roles/*.yaml")}
             assert set(members) <= registry | own, pod_yaml.parent.name
         for pipeline_yaml in sorted(RECIPES_DIR.glob("*/pipeline.yaml")):
-            assert _pipeline.load_pipeline(pipeline_yaml.read_text(encoding="utf-8")).errors == []
+            assert (
+                _pipeline.load_pipeline(
+                    pipeline_yaml.read_text(encoding="utf-8"), roles=ROLE_NAMES
+                ).errors
+                == []
+            )
 
     def test_lead_gate_is_none(self) -> None:
         assert builtin_roles.BUILTIN_ARCHETYPES["lead"].gate_contract.kind == "none"

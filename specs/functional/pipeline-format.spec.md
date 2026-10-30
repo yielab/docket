@@ -1,6 +1,6 @@
 # Pipeline Format Specification
 
-**Version**: 4.5.0
+**Version**: 4.6.0
 **Status**: Implemented. The document format, its validation, variable resolution, `${var}`
 interpolation of step instructions, the short form, outcome routing, command, conditional and
 operator-input and wait steps and the external gate are all live. Running a pipeline is `pod-dispatch.spec.md`.
@@ -295,7 +295,7 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
 
 ### Loading and validation
 
-1. `load_pipeline(text)` **MUST** return a result carrying exactly one of: a validated
+1. `load_pipeline(text, roles=...)` **MUST** return a result carrying exactly one of: a validated
    `PipelineSpec` (`errors == []`), or a non-empty list of human-readable error strings
    (`spec is None`). It **MUST** also report its `source` — `"builtin"` for the zero-migration case,
    `"file"` otherwise — and an `ok` flag that is true exactly when the spec loaded.
@@ -313,7 +313,7 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
 
 ### Short form
 
-1. `normalize_pipeline(doc: dict) -> dict` **MUST** be a pure function: given a parsed YAML document
+1. `normalize_pipeline(doc: dict, roles: frozenset[str]) -> dict` **MUST** be a pure function: given a parsed YAML document
    it returns the mapping `PipelineSpec` validates, without touching the filesystem or mutating
    its argument. `load_pipeline` **MUST** call it on every document (after stripping a
    `kind: pipeline` key) before `PipelineSpec` validation. A step written with an `id:` key (the
@@ -328,11 +328,14 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    **MUST** be a load error naming the step. A command or input step's mapping carries the
    canonical step's own keys unchanged (an unknown key is rejected by validation); a `parallel`
    group's mapping carries only `parallel`.
-3. The target string **MUST** become `role:` when it is one of `lead`/`implementer`/`reviewer`, or when it is not shaped like a pod member id; it **MUST** become `agent:` when it is
-   shaped like one — `<prefix>-<role>` or `<prefix>-<role>-<index>` where `<role>` is one of the
-   three base roles — recognized by shape alone, as the `archetype` field's slug shape is, without
-   consulting any registry. `security-vetter` is therefore a `role:` (its last segment, `vetter`, is
-   not a base role); `myshop-implementer` and `myshop-implementer-2` are `agent:`.
+3. The target string **MUST** become `role:` when it is one of the caller's role names, or when it
+   is not shaped like a pod member id; it **MUST** become `agent:` when it is shaped like one --
+   `<prefix>-<role>` or `<prefix>-<role>-<index>` where `<role>` is one of the caller's role names
+   and `<prefix>` is not empty. The role names come in as data (Requirement 90); the match is by
+   shape alone, as the `archetype` field's slug shape is, and checks no pod. With `critic` among
+   the role names, `shop-critic` and `shop-critic-2` are `agent:` and `critic` is a `role:`;
+   without it, `shop-critic` stays a `role:`. `myshop-implementer` and `myshop-implementer-2` are
+   `agent:` whenever `implementer` is a role name.
 4. The recognized sugar keys, each optional, **MUST** be mapped as follows:
    - `verify: true` -> `gate: {type: mechanical}`; `verify: "<command>"` -> `gate: {type:
      mechanical, command: "<command>"}`; `verify: {command: "<command>", timeout: <n>}` carries
@@ -372,6 +375,13 @@ step expands to; the canonical spelling of that model (a step with an `id:` key,
    expands to the canonical `{id, run, ...}` or `{id, input, on}` step. Their keys live inside the
    mapping value, not beside the id. Keys other than the ones shown are carried only where the
    canonical step defines them (an unknown key is rejected by validation).
+
+90. `load_pipeline(text, *, roles)` and `normalize_pipeline(doc, roles)` **MUST** take `roles`, the
+    role names the caller knows (`frozenset[str]`), as a required argument with no default, and
+    Requirement 3 **MUST** read its member-id shape check from it. Every caller passes the names
+    of the role registry it runs against (the pod's, where a pod is in play): the format keeps no
+    list of role names of its own. Whether the member a step names exists is `pod-dispatch.spec.md`'s
+    check at run time, not this format's.
 
 ### Outcome routing
 
@@ -514,7 +524,7 @@ Requirement 6). The format itself gains no field and no storage concept from tha
 Loading and the built-in pipeline:
 
 ```python
-result = load_pipeline(text_or_none)
+result = load_pipeline(text_or_none, roles=role_names)   # roles: frozenset[str], required
 result.ok        # bool: spec is not None and errors == []
 result.spec      # PipelineSpec | None
 result.errors    # list[str]
@@ -526,7 +536,7 @@ builtin = default_pipeline()       # the zero-migration PipelineSpec, unconditio
 Short form:
 
 ```python
-normalize_pipeline(doc)   # dict -> dict: short-form steps expanded into the mapping
+normalize_pipeline(doc, roles)   # dict -> dict: short-form steps expanded into the mapping
                           # PipelineSpec validates; a canonical step (an `id:` key) is refused.
                           # load_pipeline calls this before PipelineSpec validation;
                           # callers of load_pipeline never need to call it themselves.
@@ -631,7 +641,7 @@ steps:
 ```
 
 ```text
->>> load_pipeline(text).errors
+>>> load_pipeline(text, roles=role_names).errors
 ["a step needs exactly one key that is not a sugar key, the step id (got 'build', 'verifyCommand'); write '- <id>: <role>'"]
 ```
 
@@ -645,7 +655,7 @@ steps:
 ```
 
 ```text
->>> load_pipeline(text).errors
+>>> load_pipeline(text, roles=role_names).errors
 ["step 'build' is written in the canonical form (an 'id:' key); write the id as the key: '- build: <role>', ..."]
 ```
 

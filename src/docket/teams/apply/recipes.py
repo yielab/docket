@@ -13,6 +13,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
+from docket.teams import roles as _roles
 from docket.teams.apply.model import PodApplyError
 
 
@@ -183,7 +184,9 @@ def summarize_recipe(directory: Path) -> RecipeSummary:
     )
     pipeline = ""
     if pipeline_file is not None:
-        result = _pipeline.load_pipeline(pipeline_file.read_text(encoding="utf-8"))
+        result = _pipeline.load_pipeline(
+            pipeline_file.read_text(encoding="utf-8"), roles=_roles.load_registry().names()
+        )
         if result.spec is not None:
             pipeline = result.spec.name
 

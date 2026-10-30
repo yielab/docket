@@ -327,7 +327,7 @@ def cmd_plan(
 
     Example: docket pod plan --pipeline review.yaml"""
     project = _contract.require_pod(pod)
-    spec = _plan_spec(pipeline) if pipeline else None
+    spec = _plan_spec(pipeline, project) if pipeline else None
     try:
         _pod_core.pod_pipeline(project)
         roster = _pod_core.pod_full_roster(project)
@@ -345,14 +345,15 @@ def cmd_plan(
     ui.console.print()
 
 
-def _plan_spec(pipeline: str) -> _pipeline.PipelineSpec:
+def _plan_spec(pipeline: str, project: str) -> _pipeline.PipelineSpec:
     path = Path(pipeline)
     if not path.is_file():
         _fail(f"Pipeline file not found: {pipeline}")
     (result,) = _config_docs.validate_path(path, kind="pipeline")
     if result.error is not None:
         _fail(f"Pipeline file is invalid: {result.error}")
-    spec = _pipeline.load_pipeline(path.read_text(encoding="utf-8")).spec
+    names = _arch.load_registry(project).names()
+    spec = _pipeline.load_pipeline(path.read_text(encoding="utf-8"), roles=names).spec
     if spec is None:
         _fail(f"Pipeline file is invalid: {pipeline}")
     return spec

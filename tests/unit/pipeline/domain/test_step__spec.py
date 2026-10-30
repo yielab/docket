@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from tests.support.roles import ROLE_NAMES
 
 from docket.pipeline.domain.short_form import normalize_pipeline
 from docket.pipeline.domain.spec import (
@@ -77,12 +78,12 @@ class TestStepTargeting:
 
     def test_duplicate_top_level_step_id_rejected(self) -> None:
         text = "name: p\nsteps:\n  - dup: lead\n  - dup: implementer\n"
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert any("duplicate" in e for e in result.errors)
 
     def test_empty_steps_list_rejected(self) -> None:
-        result = load_pipeline("name: p\nsteps: []\n")
+        result = load_pipeline("name: p\nsteps: []\n", roles=ROLE_NAMES)
         assert not result.ok
 
     def test_retries_must_be_non_negative(self) -> None:
@@ -128,7 +129,7 @@ class TestStepModel:
             "name": "p",
             "steps": [{"plan": "lead"}, {"build": "implementer", "model": "strong"}],
         }
-        normalized = normalize_pipeline(doc)
+        normalized = normalize_pipeline(doc, ROLE_NAMES)
         build = normalized["steps"][1]
         assert build == {"id": "build", "role": "implementer", "model": "strong"}
         spec = PipelineSpec.model_validate(normalized)
@@ -148,7 +149,7 @@ class TestStepToolsAndCalls:
             "name": "p",
             "steps": [{"look": "reviewer", "tools": ["read", "bash"], "maxToolCalls": 3}],
         }
-        spec = PipelineSpec.model_validate(normalize_pipeline(doc))
+        spec = PipelineSpec.model_validate(normalize_pipeline(doc, ROLE_NAMES))
         assert spec.steps[0].tools == ["read", "bash"]
         assert spec.steps[0].max_tool_calls == 3
 

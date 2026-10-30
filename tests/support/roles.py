@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from docket.kernel.home import current_home
+from docket.teams.builtin_roles import BUILTIN_ARCHETYPES, STARTER_ARCHETYPES
 
 
 def write_role_overlay(
@@ -22,3 +23,6 @@ def write_role_overlay(
 
 def write_vetter_overlay(project: str, denied_tools: list[str]) -> None:
     write_role_overlay(project, "vetter", denied_tools)
+
+
+ROLE_NAMES: frozenset[str] = frozenset({**BUILTIN_ARCHETYPES, **STARTER_ARCHETYPES})

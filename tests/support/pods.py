@@ -34,6 +34,7 @@ from docket.teams import pod
 from docket.teams import pod_provisioning as _pp
 from tests.support.fakes import FakeDriver, landlock_host
 from tests.support.home import point_config_at, record_isolation_off
+from tests.support.roles import ROLE_NAMES
 
 
 def build_pod(
@@ -252,7 +253,7 @@ def bind_intake_pipeline(project: str) -> None:
     """Bind the real shipped ``intake`` recipe's pipeline so ``dispatch_pod`` and
     ``answer_task`` resolve the same steps (see ``_bind_pipeline`` above)."""
     text = (_templates.RECIPES_DIR / "intake" / "pipeline.yaml").read_text(encoding="utf-8")
-    result = _pipeline.load_pipeline(text)
+    result = _pipeline.load_pipeline(text, roles=ROLE_NAMES)
     assert result.spec is not None, result.errors
     bind_pipeline(project, text)
 
@@ -272,7 +273,7 @@ def write_meta_overrides(agent_id: str, **overrides: object) -> Path:
 
 
 def spec(text: str) -> _pipeline.PipelineSpec:
-    loaded = _pipeline.load_pipeline(text)
+    loaded = _pipeline.load_pipeline(text, roles=ROLE_NAMES)
     assert loaded.ok, loaded.errors
     assert loaded.spec is not None
     return loaded.spec
@@ -540,7 +541,7 @@ def bind_one_step_pipeline(project: str) -> None:
 
 
 def load(text: str) -> PipelineSpec:
-    loaded = load_pipeline(text)
+    loaded = load_pipeline(text, roles=ROLE_NAMES)
     assert loaded.ok, loaded.errors
     assert loaded.spec is not None
     return loaded.spec

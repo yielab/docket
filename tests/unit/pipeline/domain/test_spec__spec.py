@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 import yaml
 from pydantic import ValidationError
+from tests.support.roles import ROLE_NAMES
 
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain.gates import MechanicalGate, ReworkEdge
@@ -98,28 +99,28 @@ steps:
 
 class TestRoundTrip:
     def test_valid_pipeline_loads(self) -> None:
-        result = load_pipeline(FULL_YAML)
+        result = load_pipeline(FULL_YAML, roles=ROLE_NAMES)
         assert result.ok, result.errors
         assert result.source == "file"
         assert result.spec is not None
         assert [s.id for s in result.spec.steps] == ["plan", "build", "review", "fanout", "ship"]
 
     def test_round_trips_through_dump(self) -> None:
-        spec = load_pipeline(FULL_YAML).spec
+        spec = load_pipeline(FULL_YAML, roles=ROLE_NAMES).spec
         assert spec is not None
         dumped = spec.model_dump(by_alias=True)
         reloaded = PipelineSpec.model_validate(dumped)
         assert reloaded == spec
 
     def test_variables_parsed(self) -> None:
-        spec = load_pipeline(FULL_YAML).spec
+        spec = load_pipeline(FULL_YAML, roles=ROLE_NAMES).spec
         assert spec is not None
         assert spec.variables["TARGET"].default == "main"
         assert spec.variables["REASON"].required is True
         assert spec.variables["REASON"].default is None
 
     def test_nested_parallel_children_parsed(self) -> None:
-        spec = load_pipeline(FULL_YAML).spec
+        spec = load_pipeline(FULL_YAML, roles=ROLE_NAMES).spec
         assert spec is not None
         fanout = next(s for s in spec.steps if s.id == "fanout")
         assert fanout.parallel is not None
@@ -129,13 +130,13 @@ class TestRoundTrip:
 
 class TestUnknownKeyRejected:
     def test_unknown_top_level_key_rejected(self) -> None:
-        result = load_pipeline(FULL_YAML + "\nnotARealField: 1\n")
+        result = load_pipeline(FULL_YAML + "\nnotARealField: 1\n", roles=ROLE_NAMES)
         assert not result.ok
         assert any("notARealField" in e for e in result.errors)
 
     def test_unknown_step_key_rejected(self) -> None:
         text = "name: p\nsteps:\n  - s1: lead\n    bogus: yes\n"
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert any("bogus" in e for e in result.errors)
 
@@ -144,7 +145,7 @@ class TestUnknownKeyRejected:
             "name: p\nsteps:\n  - s1: implementer\n"
             "    verify:\n      command: echo hi\n      wat: 1\n"
         )
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert any("wat" in e for e in result.errors)
 
@@ -154,7 +155,7 @@ class TestUnknownKeyRejected:
 
     def test_unknown_variable_key_rejected(self) -> None:
         text = "name: p\nvariables:\n  X:\n    default: 1\n    bogus: yes\nsteps:\n  - s1: lead\n"
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert any("bogus" in e for e in result.errors)
 
@@ -324,7 +325,7 @@ class TestParallelGroups:
             "  - fanout:\n      parallel:\n"
             "        - dup: implementer\n"
         )
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert any("duplicate" in e for e in result.errors)
 
@@ -335,7 +336,7 @@ class TestParallelGroups:
             "        - same: implementer\n"
             "        - same: reviewer\n"
         )
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert any("duplicate" in e for e in result.errors)
 
@@ -356,13 +357,13 @@ class TestVariables:
 
     def test_invalid_variable_identifier_rejected(self) -> None:
         text = "name: p\nvariables:\n  '1bad':\n    default: x\nsteps:\n  - s1: lead\n"
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert any("1bad" in e for e in result.errors)
 
     def test_valid_variable_identifier_with_underscore(self) -> None:
         text = "name: p\nvariables:\n  _my_var:\n    default: x\nsteps:\n  - s1: lead\n"
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert result.ok, result.errors
 
 
@@ -372,14 +373,14 @@ class TestShortForm:
 
         short_doc = yaml.safe_load(_SECURE_BUILD_SHORT)
         short_doc.pop("kind")
-        normalized = normalize_pipeline(short_doc)
+        normalized = normalize_pipeline(short_doc, ROLE_NAMES)
         assert PipelineSpec.model_validate(normalized) == canonical
 
         # load_pipeline itself accepts the short form end to end, `kind` included.
-        assert load_pipeline(_SECURE_BUILD_SHORT).spec == canonical
+        assert load_pipeline(_SECURE_BUILD_SHORT, roles=ROLE_NAMES).spec == canonical
 
     def test_a_step_written_in_the_canonical_form_is_refused_naming_the_short_form(self) -> None:
-        result = load_pipeline("name: p\nsteps:\n  - id: plan\n    role: lead\n")
+        result = load_pipeline("name: p\nsteps:\n  - id: plan\n    role: lead\n", roles=ROLE_NAMES)
 
         assert not result.ok
         assert "'- plan: <role>'" in result.errors[0]
@@ -387,7 +388,7 @@ class TestShortForm:
     def test_a_parallel_group_is_written_with_short_children(self) -> None:
         text = "name: p\nsteps:\n  - fan:\n      parallel:\n        - a: reviewer\n        - b: reviewer\n"
 
-        spec = load_pipeline(text).spec
+        spec = load_pipeline(text, roles=ROLE_NAMES).spec
 
         assert spec is not None
         assert [c.id for c in spec.steps[0].parallel or []] == ["a", "b"]
@@ -395,7 +396,7 @@ class TestShortForm:
     def test_a_verify_gate_carries_its_command_and_timeout(self) -> None:
         text = "name: p\nsteps:\n  - b: implementer\n    verify: {command: make, timeout: 30}\n"
 
-        spec = load_pipeline(text).spec
+        spec = load_pipeline(text, roles=ROLE_NAMES).spec
 
         assert spec is not None
         assert spec.steps[0].gate == MechanicalGate(command="make", timeout=30)
@@ -405,7 +406,7 @@ class TestShortForm:
             "on: {REQUEST-CHANGES: {goto: build, max: 1}}",
             "on: {REQUEST-CHANGES: {goto: build}}",
         )
-        result = load_pipeline(text)
+        result = load_pipeline(text, roles=ROLE_NAMES)
         assert not result.ok
         assert len(result.errors) == 1
         assert "vet" in result.errors[0]

@@ -5,6 +5,7 @@ run through dispatch in ``tests/integration/tasks/dispatch/test_wait_step.py``."
 from __future__ import annotations
 
 import pytest
+from tests.support.roles import ROLE_NAMES
 
 from docket.hops.application import waits as _waits
 from docket.kernel.errors import DispatchError
@@ -25,7 +26,7 @@ steps:
 
 
 def _plan() -> tuple[tuple[_orch.PlannedNode, ...], dict[str, int]]:
-    spec = load_pipeline(_PIPELINE).spec
+    spec = load_pipeline(_PIPELINE, roles=ROLE_NAMES).spec
     assert spec is not None
     roster = {"lead": "demo-lead", "implementer": "demo-implementer"}
     steps = _orch.resolve_plan(spec, roster, registry=_archetypes.load_registry()).runnable_nodes()

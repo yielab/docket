@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.pods import build_pod
+from tests.support.roles import ROLE_NAMES
 from tests.support.trace import trace_events as _trace_events
 
 import docket.kernel.templates as _templates
@@ -66,7 +67,7 @@ def test_every_methodology_recipe_has_its_three_files() -> None:
 @pytest.mark.parametrize("name", RECIPE_NAMES)
 def test_recipe_pipeline_validates(name: str) -> None:
     text = (_recipe_dir(name) / "pipeline.yaml").read_text(encoding="utf-8")
-    assert _pipeline.load_pipeline(text).errors == []
+    assert _pipeline.load_pipeline(text, roles=ROLE_NAMES).errors == []
 
 
 def test_tdd_check_red_routes_pass_to_fail_and_fail_to_green() -> None:
@@ -74,7 +75,7 @@ def test_tdd_check_red_routes_pass_to_fail_and_fail_to_green() -> None:
     test fails the task outright; a failing one (the expected "red" state) continues to
     ``green``. Written in canonical form, since the short form drops a command step's ``on``."""
     text = (_recipe_dir("tdd") / "pipeline.yaml").read_text(encoding="utf-8")
-    result = _pipeline.load_pipeline(text)
+    result = _pipeline.load_pipeline(text, roles=ROLE_NAMES)
     assert result.spec is not None, result.errors
     steps_by_id = {s.id: s for s in result.spec.steps}
     check_red = steps_by_id.get("check-red")
@@ -97,7 +98,9 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
         plan = _pod_apply.plan_apply(project, recipe_dir)
         _write.apply(plan)
 
-        result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        result = _pipeline.load_pipeline(
+            (recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"), roles=ROLE_NAMES
+        )
         assert result.spec is not None, result.errors
 
         roster = pod.pod_full_roster(project)
@@ -181,7 +184,9 @@ def test_reflexion_recipe_dispatches_to_done_with_rework_counted(tmp_path: Path)
         # path; the recipe's own `pipeline.yaml` is exercised unmodified.
         _pod_members.add_members(project, "reviewer")
 
-        result = _pipeline.load_pipeline((recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"))
+        result = _pipeline.load_pipeline(
+            (recipe_dir / "pipeline.yaml").read_text(encoding="utf-8"), roles=ROLE_NAMES
+        )
         assert result.spec is not None, result.errors
 
         _queue.enqueue_task_once(project, "harden the login handler", channel="cli")
