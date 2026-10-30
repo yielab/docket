@@ -105,7 +105,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pipeline Format | 4.4.0 | Implemented |
 | Pod Blueprints | 2.6.0 | Implemented |
 | Pod Dispatch | 11.7.0 | Implemented |
-| Role Archetypes | 4.8.1 | Implemented |
+| Role Archetypes | 4.8.2 | Implemented |
 | Security Gates | 3.3.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Session History | 1.10.0 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
