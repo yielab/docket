@@ -1,8 +1,9 @@
 # Service Client Specification
 
-**Version**: 1.0.0
-**Status**: Implemented in part: the document, its access rule, its registration and its scopes
-(`kernel/service.py`, `teams/services.py`, `docket setup service`, `docket pod update|export`). No
+**Version**: 1.1.0
+**Status**: Implemented in part: the document, its access rule, its registration, its scopes and
+its import from an OpenAPI document (`kernel/service.py`, `teams/services.py`,
+`teams/services_openapi.py`, `docket setup service`, `docket pod update|export`). No
 operation is a tool yet and no call is made: the call and its perimeter, and the tools, are
 separate work.
 **Last Updated**: 2026-10-30
@@ -26,12 +27,13 @@ This specification covers:
   (`pod update`, `pod export`)
 - The rule that a service and an MCP server never share a name
 - `docket setup service add|list|remove`
+- Importing operations from an OpenAPI document (`setup service add <name> --from-openapi`)
 
 This specification does NOT cover:
 
 - Making a call, resolving a secret, the host perimeter, the size and time bounds (the call)
 - Turning an operation into a tool, its quota or its approval (the tools)
-- Importing operations from an OpenAPI document
+- OpenAPI 2, fetching an OpenAPI document over the network, auth schemes beyond one header
 - OAuth grants of any kind
 
 ## Requirements
@@ -104,6 +106,40 @@ This specification does NOT cover:
 19. `docket setup service remove <name>` **MUST** delete the operator's service and audit
     `services.remove`; an unknown name exits 1.
 
+### From OpenAPI
+
+50. `docket setup service add <name> --from-openapi <file>` **MUST** read an OpenAPI 3 document
+    (JSON or YAML, a local file; nothing is fetched) and store a service named `<name>` built from
+    it. The built mapping **MUST** pass through the same `ServiceDocument` validation as a written
+    document, so every rule above holds and a failure refuses the whole import writing nothing. A
+    document with a `swagger` key (OpenAPI 2) or no `openapi: 3.x` is refused naming the file.
+51. Each selected operation of the document, found by `operationId`, **MUST** become one operation:
+    its name is the `operationId` and its method and path are the document's; its `params` are the
+    path and query parameters (the path item's, overridden by the operation's), with their `type`
+    (`string`, `integer`, `number`, `boolean`) and `required`; its `body` is the schema of an
+    `application/json` (or `+json`) request body; its `description` is the `summary`. Its `access`
+    is never read from the document: it is resolved by requirements 10 and 11.
+52. A `$ref` that points inside the same file (`#/...`) **MUST** be resolved wherever it occurs
+    (parameter, request body, schema, nested); a reference to another file or a URL, and a
+    reference cycle, **MUST NOT** be followed.
+53. An operation that cannot be mapped **MUST** be skipped and listed with its reason, never
+    guessed, and the others still imported: a missing, invalid or repeated `operationId`; a request
+    body with no JSON form; a `$ref` that cannot be resolved; a parameter that is not a scalar; a
+    required header or cookie parameter (an optional one is dropped and listed); an operation the
+    document rules refuse. When no operation is left the import exits 1 listing the reasons and
+    writes nothing.
+54. `--operations a,b` **MUST** import only those operations; an id the document does not have
+    exits 1 naming it and writes nothing.
+55. The service's `baseUrl` **MUST** be `--base-url`, else the document's first `servers` URL when it
+    is absolute and has no `{variable}`, with no trailing `/`; otherwise the import exits 1 asking
+    for `--base-url`.
+56. `--auth-header H --secret NAME` (both or neither) **MUST** write `auth` as header `H` and value
+    `${secret:NAME}`, the reference and never a resolved value; a secret not stored warns as
+    requirement 17 says. Without them the service has no `auth`.
+57. The imported service **MUST** be an ordinary stored service (requirements 17 to 19, audit
+    `services.add`); the skipped operations are printed after it. `--operations`, `--base-url`,
+    `--auth-header` and `--secret` without `--from-openapi` exit 2.
+
 ## Interface Contracts
 
 ### Python API
@@ -114,6 +150,8 @@ This specification does NOT cover:
   `load_services(project="")`, `load_pod_services(project)`,
   `add_service(config)`, `remove_service(name)`, `mcp_name_conflict(name)`,
   `service_name_conflict(name)`
+- `docket.teams.services_openapi`: `import_openapi(path, name, ...)` returning the `ServiceConfig`
+  and the skipped operations with their reasons
 
 ### Document
 
@@ -138,6 +176,14 @@ operations:
 ```
 
 ## Examples
+
+### An OpenAPI import
+
+```
+$ docket setup service add crm --from-openapi crm.yaml --auth-header Authorization --secret crm
+Service 'crm' added (https://api.example.test/v1).
+  skipped uploadAvatar: request body has no JSON form (multipart/form-data)
+```
 
 ### A write declared read
 
@@ -166,5 +212,6 @@ Error: crm.yaml: operations.1: operation 'create_contact': POST is always send, 
 
 - `src/docket/kernel/service.py`: the typed config and its rules
 - `src/docket/teams/services.py`: the document, the stores, the name rule
+- `src/docket/teams/services_openapi.py`: the OpenAPI import
 - `src/docket/teams/apply/external.py`: the `pod update` planner for `services/`
 - `src/docket/interfaces/cli/commands/setup_service.py`: `setup service`
