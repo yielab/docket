@@ -21,7 +21,7 @@
 > "Phase 54" in the follow-ups below. **Planned: Phase 55** (D-77,
 > [ADR 0036](docs/adr/0036-a-pod-works-outward.md)): a pod works outward, on its own schedule; twelve
 > cards P55-1..P55-12 over four waves, cut by file ownership. **Wave 1 merged 2026-10-30** (P55-1, P55-5,
-> P55-7, P55-11); **Wave 2 merged 2026-10-30** (P55-3, P55-6); **Wave 3 merged 2026-10-30** (P55-2, P55-4, P55-9); Wave 4 (P55-8, P55-10, then P55-12 at the close) is next.
+> P55-7, P55-11); **Wave 2 merged 2026-10-30** (P55-3, P55-6); **Wave 3 merged 2026-10-30** (P55-2, P55-4, P55-9); **Wave 4 code merged 2026-10-30** (P55-8, P55-10); P55-12 (docs) and the phase close are next.
 > Phase 51 closed 2026-10-25 (D-72, [ADR 0032](docs/adr/0032-one-escalation-record-and-one-resolve.md));
 > its loose ends are under "Escalations". The integration branch is `develop`. A new phase starts from a
 > measured trigger or a maintainer request.
@@ -427,7 +427,7 @@ behaviour + spec + contract
 
 ### P55-8 — a quota on `send`: N actions per pod per window, counted when they run
 
-**Status:** TODO · ready, P55-4 merged 2026-10-30; continues `gate.py` · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (2026-10-30, merged from `p55-8`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0036 decision 7 and the request (an action that leaves the machine needs a
   ceiling a pod cannot talk its way past); no stateful rule exists (`governance/policy.py:34-63`,
@@ -506,7 +506,7 @@ spec + data
 
 ### P55-10 — an external API is an MCP server whose credentials come from the secret store
 
-**Status:** TODO · ready, P55-3 and P55-4 merged 2026-10-30 · **Size:** S · **Model:** Sonnet · **Kind:** behaviour +
+**Status:** DONE (2026-10-30, merged from `p55-10`; storing a named secret is a follow-up) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour +
 spec
 
 - **Trigger:** the request ("interacting with external APIs is another case") and ADR 0036 finding 9:
@@ -603,7 +603,7 @@ spec
 
 ### P55-12 — the docs say what shipped
 
-**Status:** TODO (at the close) · **Size:** S · **Model:** Haiku · **Kind:** docs
+**Status:** TODO · ready, every other card merged 2026-10-30 · **Size:** S · **Model:** Haiku · **Kind:** docs
 
 - **Trigger:** README D-37: when work changes what is true, the sentence changes in the same phase.
   Today the README and `docs/DOCKET.md` describe code teams only; `docs/recipes.md` lacks `outward`;
@@ -684,6 +684,18 @@ that already own the files.
     dependency; no `--tz`-aware `HH:MM` form. A routine fires only under `docket start --dispatch`.
     `teams/apply/plan.py` sits at 699 of 700 lines: the next card touching it moves code out first. A routine skip is
     traced as `step_skipped` because `EVENT_TYPES` is closed.
+- *Phase 55 Wave 4.*
+  - P55-10, a gap in the flow: nothing user-facing stores a secret under an arbitrary name such as `crm` (provider add
+    and notify write only their own names; `setup_notify.store_secret` is the one writer), so a `secret:crm` reference
+    needs `secrets.json` or the keyring edited by hand. Recommended: a `docket setup secret set <name>` command that
+    reads the value from stdin or a prompt and never echoes it; needs the maintainer's go as a card. Sessions and the
+    model's own reply carry raw tool output (the model sees it); not checked. `setup --fix` (not bare `setup`) carries
+    the literal-credential warning; there is no CLI golden for `--secret` (run.sh replays readonly cases only).
+  - P55-8: the check and the increment of a quota are not atomic (two concurrent sends in one pod could both pass at
+    count-1); an unreadable counter counts as empty; `pod policies` and `check` do not show quotas;
+    `teams/config_docs.py` sits at 700 lines.
+  - A flake, once: `test_consult_wait.py::TestAnsweredInPlace::test_an_answer_by_the_task_goes_through_the_same_record`
+    failed in the full run and passed alone (the file's other test is already on the list above).
 - *Live evidence, P55-5 (2026-10-30).* A real Playwright MCP server (0.0.83, headless system Chrome) driven through
   docket's MCP layer against a local page: under `lifetime: hop` navigate, snapshot and click by ref keep one session
   (the click ran, the page title changed); under `call` the snapshot after a navigate is `about:blank` and no ref
