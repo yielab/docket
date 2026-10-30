@@ -353,14 +353,17 @@ def run_init(req: InitRequest) -> int:
     stack = detected_stack or ("" if is_workdir else "unknown")
     description = ""
 
-    # --pod full / --with only make sense against the `software` roster —
+    # --pod full / --with only make sense against the default blueprint's roster —
     # any other blueprint provisions its own fixed roster as-is.
-    if blueprint.name == "software":
-        roles = _pod.pod_roles(req.full, req.with_roles)
+    if blueprint.name == _bp.DEFAULT_BLUEPRINT:
+        try:
+            roles = _pod.pod_roles(req.full, req.with_roles)
+        except InvalidInput as exc:
+            return _invalid(req, exc.message, exc.hint)
     else:
         if req.full or req.with_roles:
             ui.warn(
-                f"--pod/--with only apply to the 'software' blueprint — ignoring for '{blueprint.name}'."
+                f"--pod/--with only apply to the '{_bp.DEFAULT_BLUEPRINT}' blueprint — ignoring for '{blueprint.name}'."
             )
         roles = blueprint.roles
 
@@ -586,7 +589,7 @@ def cmd_init(
     with_roles: str | None = typer.Option(
         None,
         "--with",
-        help="Roles to add to the lean pod, comma-separated: reviewer, implementer.",
+        help="Roles to add to the lean pod, comma-separated: any role `docket pod roles` lists.",
     ),
     codebase: str | None = typer.Option(
         None, "--codebase", help="The location, as an option instead of the argument."

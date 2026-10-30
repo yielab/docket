@@ -19,6 +19,7 @@ from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import pod as _pod
 from docket.interfaces.cli.commands import pod_members as _pod_members
 from docket.interfaces.cli.commands import pod_settings as _pod_settings
+from docket.kernel.errors import InvalidInput
 from docket.kernel.home import Home, use_home
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
@@ -170,12 +171,17 @@ class TestPodRoles:
             "reviewer",
         )
 
-    def test_unknown_and_lean_roles_are_ignored(self) -> None:
-        assert _pod.pod_roles(False, "reviewer,wizard, lead") == (
+    def test_a_lean_role_adds_nothing_and_the_given_order_is_kept(self) -> None:
+        assert _pod.pod_roles(False, "writer, lead,analyst") == (
             "lead",
             "implementer",
-            "reviewer",
+            "writer",
+            "analyst",
         )
+
+    def test_an_unknown_role_is_refused_naming_it(self) -> None:
+        with pytest.raises(InvalidInput, match="wizard"):
+            _pod.pod_roles(False, "reviewer,wizard")
 
 
 class TestDeletePod:

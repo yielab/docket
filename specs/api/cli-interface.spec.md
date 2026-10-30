@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.7.0
+**Version**: 5.7.1
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-10-30
@@ -183,9 +183,14 @@ passes without a key.
   over its positional
 - `--pod full`: Provision a full pod — Lead, Implementer, and Reviewer. Applies only to
   the `software` blueprint
-- `--with <roles>`: Start from the lean pod and add named roles (comma-separated: `reviewer`,
-  `implementer`). Applies only to the `software` blueprint; passing it with another
-  blueprint warns and is ignored (that blueprint's own fixed roster is used instead)
+- `--with <roles>`: Start from the lean pod (Lead and Implementer, the base) and add named
+  roles (comma-separated), in the order given. A name is any role `docket pod roles` lists:
+  built-in, starter or defined under the operator's `config/roles/`; a name the lean pair
+  already holds, or a repeat, adds nothing. A name the registry does not know is refused with
+  exit `2` (`{"status": "invalid", "reason"}` under `--json`) naming it and the known names,
+  before anything is provisioned: no pod directory exists afterwards. Applies only to the
+  `software` blueprint; passing it with another blueprint warns and is ignored (that
+  blueprint's own fixed roster is used instead)
 - `--from <file>`: Declarative provisioning from a JSON/YAML spec file (idempotent); each entry
   names a `blueprint` and provisions a pod the same way `--blueprint` does interactively. An
   entry without one, or with a location that is not usable, is refused and the command exits 2
