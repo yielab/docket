@@ -361,3 +361,23 @@ class TestAnAnswerToAParkedQuestion:
 
         assert screened == []
         assert [c["kind"] for c in _corrections.read(PROJECT)] == ["declined_answer"]
+
+
+class TestAPauseIsNeverVisibleWithoutItsApproval:
+    @pytest.mark.parametrize("kind", ["approval", "gate", "check_changed"])
+    def test_the_approval_is_linked_before_the_pending_record_is_written(
+        self, kind: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        written: list[tuple[str, str]] = []
+        write = _esc.write_escalation
+
+        def spy(escalation: Escalation) -> Escalation:
+            written.append((escalation.state, _ap.approval_of(escalation.id)))
+            return write(escalation)
+
+        monkeypatch.setattr(_esc, "write_escalation", spy)
+
+        escalation = _approval(kind)
+
+        (state, token) = written[0]
+        assert state == "pending" and token == _ap.approval_of(escalation.id) != ""

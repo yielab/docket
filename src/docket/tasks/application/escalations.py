@@ -128,12 +128,12 @@ def _persist(escalation: Escalation) -> Escalation:
 
 
 def _store(escalation: Escalation, token: str = "") -> Escalation:
-    """Persist *escalation*, which a person is asked to settle, tie it to the approval record
-    *token* that backs it (when it has one) and trace that it was asked. The tie comes first so a
-    surface that sees the event can already tell what the pause waits on."""
-    stored = _persist(escalation)
+    """Tie *escalation*, which a person is asked to settle, to the approval record *token* that
+    backs it (when it has one), persist it and trace that it was asked. The tie comes first so a
+    surface that reads the pending record, or sees the event, can already tell what it waits on."""
     if token:
-        _approval.approval_link(token, stored.id)
+        _approval.approval_link(token, escalation.id)
+    stored = _persist(escalation)
     _events.emit(_events.ASKED, stored)
     return stored
 
