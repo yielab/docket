@@ -369,7 +369,7 @@ class TestEndToEnd:
 
             task = TaskRepository.for_pod("demo").list()[0]
             assert task.status == "failed"
-            assert task.failure_kind == "approval_denied"
+            assert task.failure_kind == "approval_expired"
 
     def test_each_step_replays_only_its_history_and_receives_typed_handoff_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

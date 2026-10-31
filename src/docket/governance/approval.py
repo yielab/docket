@@ -498,7 +498,7 @@ def expire_approval(token: str) -> bool:
         with contextlib.suppress(Exception):
             _escalation_expiry.expire(escalation_id)
     with contextlib.suppress(Exception):
-        _follow_up.resolve_waiting_approval(token, "denied")
+        _follow_up.resolve_waiting_approval(token, "expired")
     return True
 
 

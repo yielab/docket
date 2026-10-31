@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.6.2
+**Version**: 4.7.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -304,6 +304,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
 ```json
 {
   "pod":     "string",
+  "blueprint": "build | respond | operate | routine | \"\" (the shape the pod was provisioned with; empty for a pod provisioned without one)",
   "members": [
     {
       "id":        "string",
@@ -320,7 +321,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
     "effective": "wait | park | refuse (what dispatch uses for this caller)",
     "source":    "set | unset"
   },
-  "pipeline":     { "source": "string" },
+  "pipeline":     { "source": "string", "steps": ["step, below (absent when the pipeline does not resolve)"] },
   "network":      { "mode": "open | none", "scope": "default | global | pod" },
   "budgetUnpriced": ["string (a model the budget cannot price; empty without budgetUsd)"],
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
@@ -328,6 +329,27 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
 }
 ```
+
+`pipeline.steps` is the effective pipeline as the pod would run it: the steps resolved against the
+pod's roster, a step whose role the pod lacks left out, in run order. Each step:
+
+```json
+{
+  "id":         "string",
+  "kind":       "agent | command | ask | wait | parallel",
+  "role":       "string | null (the role an agent step runs as; null for command, ask, wait and parallel)",
+  "modelClass": "cheap | strong | null (the class of the model the hop would run; null when the model has no class, and for every step that is not an agent)",
+  "gate":       "mechanical | verdict | approval | external | null (the step's gate, the role's gate contract included)",
+  "rework":     [ { "when": ["string (outcome label, as stored: labels compare case-insensitively)"], "to": "string (step id)", "max": "integer >= 1" } ],
+  "steps":      ["step (only on a parallel step: its branches)"]
+}
+```
+
+`rework` lists the step's bounded routes: a verdict gate's `rework` edge, then each `on:` route that
+carries a `max`, in document order; `[]` when there is none. These are the same bounds `settings.
+maxReworkCycles` reports for a bound pipeline. A step's model is its own `model:` when it names one,
+else its member's. A pipeline that does not resolve (a `DispatchError`) leaves `steps` out; the
+report does not fail.
 
 `settings` has one entry per pod setting: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,

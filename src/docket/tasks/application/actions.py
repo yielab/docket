@@ -34,7 +34,8 @@ def resolve_waiting_approval(
     never mutates the approval record itself, only reacts to a transition
     ``governance/approval.py`` already made. See pod-dispatch.spec.md ("require_approval gate and
     waiting_approval") for the pre-hop gate's grant (-> ``pending``) and deny
-    (-> ``failed``, ``failureKind: "approval_denied"``) outcomes.
+    (-> ``failed``, ``failureKind: "approval_denied"``) outcomes, and "Parked approvals" item 5 for
+    an expiry (-> ``failed``, ``failureKind: "approval_expired"``).
 
     Only the status moves here. What a grant lets the next claim do (skip the gate once, pass the
     parked call once, pass it for the rest of the task) is read at that claim from the approval
@@ -45,9 +46,8 @@ def resolve_waiting_approval(
     ``wait``-mode ask carries no task (its wait blocks the calling thread directly, so there is
     no task-level state to update here) and is unaffected: it no-ops.
 
-    A deny carries the operator's *reason* into the task's ``reason`` as
-    ``approval denied: <reason>`` so the inbox and ``task show`` say why; without one the
-    text is ``approval denied``.
+    A deny carries the operator's *reason* into the task's ``reason`` (``approval denied:
+    <reason>``, else ``approval denied``) so the inbox and ``task show`` say why.
 
     Returns ``False`` as a harmless no-op for an unrelated/already-resolved token or a mismatched
     task, ``True`` when a waiting task moved."""
@@ -95,6 +95,15 @@ def resolve_waiting_approval(
             )
         elif decision == "granted":
             _transitions.apply_to_task(record, _state.Status.pending)
+        elif decision == "expired":
+            deadline = str(rec.get("expiresAt") or "") or "its deadline"
+            _transitions.apply_to_task(
+                record,
+                _state.Status.failed,
+                now=now,
+                reason=f"approval expired: nobody answered by {deadline}",
+                failure_kind=_state.FailureKind.approval_expired,
+            )
         else:
             _transitions.apply_to_task(
                 record,

@@ -35,7 +35,8 @@
 > approval is answered exactly the same way (any of the four channels above), re-runs the same
 > hop on a grant rather than skipping ahead, and — left untouched — expires after the pod's
 > `approvalExpiryHours` (24h by default) and denies, the identical fail-closed sweep a pre-hop
-> gate's pending approval already used. See "The operator loop" below for how a human actually
+> gate's pending approval already used; the task then fails `approval_expired`, not
+> `approval_denied`, so nobody answering is not read as a person saying no. See "The operator loop" below for how a human actually
 > learns a task is waiting.
 >
 > An "ask" verdict always blocks the call and always sits in docket's own approval store,
