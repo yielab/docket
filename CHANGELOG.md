@@ -15,9 +15,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   API stays 6 and every other key keeps its meaning.
 - **`docket init --workdir <dir>`**, the same option as `--codebase` under the name a `respond`,
   `operate` or `routine` pod reads.
+- **`blueprint` on `GET /pods` rows, `GET /pods/<p>` and `docket pod show --json`**: the shape the
+  pod was provisioned with (`build`, `respond`, `operate`, `routine`), `""` for a pod made without
+  one.
+- **`pipeline.steps` on `GET /pods/<p>` and `docket pod show --json`**: the effective pipeline as
+  data, resolved against the pod's roster, one object per step with `id`, `kind` (`agent`,
+  `command`, `ask`, `wait`, `parallel`), `role`, `modelClass` (`cheap`, `strong` or `null`),
+  `gate` and `rework` (each bounded route: outcome labels, target step, maximum), and `steps` for a
+  parallel step's branches. Left out when the pipeline does not resolve. `pipeline.source` is
+  unchanged.
+- **`failureKind: "approval_expired"`**: an approval nobody answered by its `expiresAt` (the pod's
+  `approvalExpiryHours`, 24 by default) now fails its task as `approval_expired`, with the reason
+  `approval expired: nobody answered by <expiresAt>`, instead of `approval_denied`, so a client
+  tells "nobody answered" from "someone said no". The approval itself is still recorded `denied`
+  (fail-closed). A `deny` sent through any channel, a client's own deadline included, is still
+  `approval_denied`. An expired `check_changed` approval also ends `approval_expired`; the task
+  keeps `checkChanged`.
 
 ### Changed
 
+- **The `bash` tool says where a call runs**: each call is a new shell at the workspace root, so a
+  `cd` does not carry over and the root never needs finding. A Tack run waited 58 minutes on an
+  approval for `cd "$(git rev-parse --show-toplevel)"`, which the classifier asks about because a
+  command substitution cannot be read statically.
 - **A task on a `workdir` pod says what the pod is.** A `baseRef` fails it at claim with
   `pod '<p>' works in a folder (workspaceKind workdir); baseRef '<ref>' applies only to a pod with
   a codebase` (still `failureKind: "base_ref"`), not a sentence about an Implementer the pod never

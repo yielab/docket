@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.7.0
+**Version**: 7.8.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-31
 
@@ -284,16 +284,18 @@ label or `null`; `gate` is the step's gate label or `null`. `hop_started` names 
 ### Pod answers
 
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp",
-"workspaceKind": "codebase", "members": 2, "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
+"workspaceKind": "codebase", "blueprint": "build", "members": 2, "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
 "waitingInput": 0, "blocked": 0, "failed": 0, "done": 4, "cancelled": 0}}]}`; `queue` carries the
 counts `status --json` prints under `tasks`: one per task status. `workspaceKind` is the closed
 enum `"codebase"` or `"workdir"`, read from the kind the pod was provisioned with (its Lead's
 `workspaceKind`; a pod that records none is `"codebase"`), never inferred from an empty `codebase`:
 `codebase` is `""` both for a `workdir` pod and for a `codebase` pod whose codebase is not recorded.
+`blueprint` is the shape the pod was provisioned with (`build`, `respond`, `operate`, `routine`; its
+Lead's `blueprint`), `""` for a pod provisioned without one.
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
-`pod`, `members`, `settings`, `approvalMode`, `pipeline`, `network`, `budgetUnpriced`,
-`configSource`, `configDigest`, `drift`) plus the five keys below, where `profile` here is the
+`pod`, `blueprint`, `members`, `settings`, `approvalMode`, `pipeline` with its `steps`, `network`,
+`budgetUnpriced`, `configSource`, `configDigest`, `drift`) plus the five keys below, where `profile` here is the
 verdict object (a row of `GET /pods` carries the profile name as a string):
 
 ```json
@@ -460,7 +462,9 @@ rule below holds because the pod's task list and the approval records, on disk u
    `200` with `"created": false` and the failed task, and enqueues nothing. A new attempt takes a
    new key, or `POST .../retry` on the failed task.
 5. Expiry and its final states are not restated here: an approval past its `expiresAt` resolves
-   to denied (`security-gates.spec.md`, "Approval tokens and approval packs"); a question past its
+   to denied and fails its task with `failureKind: "approval_expired"`, never `approval_denied`,
+   which only a sent `deny` produces (`security-gates.spec.md`, "Approval tokens and approval
+   packs"; additive to version 6); a question past its
    `expiresAt` moves the task to `blocked` with `blockedReason: "input_expired"`
    (`operator-loop.spec.md`, `inputExpiryHours`); both are ended by the one sweep, by each
    record's `onExpiry`.
@@ -481,9 +485,10 @@ consumer that polls for `done` does not see an unreviewed change to a check.
 1. The task record (`GET /tasks/<pod>/<id>`, `GET /inbox`'s task view reason) carries
    `checkChanged`, the sorted protected paths the diff touched; `GET /escalations?task=<id>`
    lists the escalation of kind `check_changed` it waits on (`serve-read-api.spec.md`).
-2. `POST /escalations/<id>` with `optionId` `approve_once` ends the task `done`; `deny` (or an
-   escalation past its `expiresAt`) ends it `failed` with `failureKind: "check_changed"`, which is
-   final until `POST .../retry`. `checkChanged` stays on the record either way.
+2. `POST /escalations/<id>` with `optionId` `approve_once` ends the task `done`; `deny` ends it
+   `failed` with `failureKind: "check_changed"`, and an escalation past its `expiresAt` with
+   `failureKind: "approval_expired"`; either is final until `POST .../retry`. `checkChanged` stays
+   on the record either way, so a client still knows what the pause was about.
 3. `checkChanged` and `failureKind: "check_changed"` are additive keys of version 6.
 
 ## Wait

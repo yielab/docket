@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 3.5.0
+**Version**: 3.6.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -176,7 +176,8 @@ and chain (audit.spec.md).
    (In-turn tool-call gate 5). A **pending** record in the store **MUST** resolve to **denied**
    once past its own `expiresAt` through `sweep_escalations`, which runs only while
    `docket start` is up. When that record gates a dispatch task, the resolution **MUST** also fail
-   the waiting task terminally (`failureKind: "approval_denied"`).
+   the waiting task terminally with `failureKind: "approval_expired"`: the record is `denied`,
+   but nobody denied it (`pod-dispatch.spec.md` "Parked approvals" item 5).
 4. Every grant and denial through docket's store **MUST** be recorded in the audit log
    (`approval.grant`, `approval.deny`), tagged with the channel it came through: `cli`, `http`,
    `mcp`, `telegram`, `timeout` (the expiry sweep, or an in-turn wait that timed out), or
@@ -1227,7 +1228,12 @@ material, may be read as saying otherwise.
     every program runs without approval inside the jail and lists only the classes that still ask.
     `DocketDriver.run_turn` renders it once per turn from `ToolContext.allow_commands` and
     `ToolContext.sandbox`; a registry whose `bash` description is not the built-in default is left
-    as the caller made it. The sentence adds no rule: it states `classify_command`'s.
+    as the caller made it. The sentence adds no rule: it states `classify_command`'s. The
+    description **MUST** also say where a call runs, since a model that believes its directory
+    drifted reaches for `cd "$(git rev-parse --show-toplevel)"`, which asks: `Each call is a new
+    shell that starts at the workspace root, so a `cd` does not carry over and the root never needs
+    finding: give paths relative to it.` That is what `run_bash` does (one process per call,
+    rooted at the first allowed root).
 
 ### Parked calls and single-use pre-grants (ADR 0016)
 
@@ -1518,7 +1524,7 @@ A pod whose pipeline gives the `implementer` step an `approval` gate parks the t
 approve line, `docket task answer <id> --option approve_once` grants it and the next `docket run`
 finishes the task. An unanswered approval fails closed: under `docket start`,
 `sweep_escalations` resolves it to `denied` once past its `expiresAt`, and the task fails
-terminally (`failureKind: "approval_denied"`) without anyone answering `--option deny`.
+terminally (`failureKind: "approval_expired"`) without anyone answering `--option deny`.
 
 ### The enqueue-time gate
 

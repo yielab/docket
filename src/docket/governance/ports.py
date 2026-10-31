@@ -17,7 +17,9 @@ class ApprovalFollowUp(Protocol):
     """What becomes of the work an approval gated once the approval resolves."""
 
     def resolve_waiting_approval(self, token: str, decision: str) -> bool:
-        """React to a just-applied *decision* (``granted`` or ``denied``); ``False`` for a no-op."""
+        """React to a just-applied *decision*: ``granted``, ``denied`` (someone said no) or
+        ``expired`` (nobody answered by the deadline; the record is ``denied``, fail-closed).
+        ``False`` for a no-op."""
         ...
 
 

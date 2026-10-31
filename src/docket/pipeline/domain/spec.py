@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from docket.kernel.errors import InvalidInput
 from docket.pipeline.domain.gates import (
     ExternalGate,
+    Gate,
     MechanicalGate,
     ReworkEdge,
     VerdictGate,
@@ -166,6 +167,31 @@ def _route_shape(step_id: str, label: str, route: Any) -> tuple[str, Any, bool]:
     ):
         return route["goto"], route.get("max"), "max" in route
     raise InvalidInput(f"step {step_id!r}: 'on' entry {label!r} is malformed")
+
+
+@dataclass(frozen=True)
+class BoundedRoute:
+    """A route a step takes on the outcomes in *when*, to step *to*, at most *max* times."""
+
+    when: tuple[str, ...]
+    to: str
+    max: int
+
+
+def bounded_routes(
+    step_id: str, gate: Gate | None, on: dict[str, Any] | None
+) -> list[BoundedRoute]:
+    """*step_id*'s bounded routes in document order: its verdict gate's ``rework`` edge, then each
+    ``on:`` route that carries a ``max`` (pipeline-format.spec.md "Outcome routing")."""
+    found: list[BoundedRoute] = []
+    if isinstance(gate, VerdictGate) and gate.rework is not None:
+        edge = gate.rework
+        found.append(BoundedRoute(tuple(edge.when), edge.to, edge.max_cycles))
+    for label, route in (on or {}).items():
+        target, bound, has_max = _route_shape(step_id, label, route)
+        if has_max:
+            found.append(BoundedRoute((label,), target, int(bound)))
+    return found
 
 
 def _check_input_from(step: Step, index: int, top_index: dict[str, int]) -> None:

@@ -18,14 +18,16 @@ from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import executor as _executor
 from docket.hops.application import steps as _steps
 from docket.hops.gates import profile as _profile
+from docket.hops.gates.pre_hop import hop_model
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.models.application import endpoint as _endpoint
 from docket.observability import exporter as _exporter
-from docket.pipeline.domain import gates as _gates
+from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain.spec import bounded_routes
 from docket.platform import read_json
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -33,6 +35,7 @@ from docket.tasks.domain.state import Status
 from docket.teams import fleet as _fleet
 from docket.teams import identity as _identity
 from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import model_selection as _models
 from docket.teams import network_posture as _network_posture
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
@@ -159,14 +162,11 @@ def _bound_rework_maxes(project: str) -> str:
         spec = _steps.effective_pipeline(project, None)
     except DispatchError:
         return "none"
-    found: list[str] = []
-    for step in spec.steps:
-        gate = step.gate
-        if isinstance(gate, _gates.VerdictGate) and gate.rework is not None:
-            found.append(f"{step.id}:{gate.rework.max_cycles}")
-        for route in (step.on or {}).values():
-            if isinstance(route, dict) and "max" in route:
-                found.append(f"{step.id}:{route['max']}")
+    found = [
+        f"{step.id}:{route.max}"
+        for step in spec.steps
+        for route in bounded_routes(step.id, step.gate, step.on)
+    ]
     return ",".join(found) or "none"
 
 
@@ -404,13 +404,14 @@ def pod_report(project: str) -> dict[str, Any]:
     record = _config_of_record_report(settings, project)
     return {
         "pod": project,
+        "blueprint": _blueprint(project),
         "members": members,
         "settings": _pod_settings_report(settings, project),
         "approvalMode": {
             "effective": approval,
             "source": "set" if _settings.pod_approval_mode_is_set(project) else "unset",
         },
-        "pipeline": {"source": _steps.effective_pipeline_source(project)},
+        "pipeline": _pipeline_report(project),
         "network": dict(
             zip(("mode", "scope"), _pod_settings.effective_network(project), strict=True)
         ),
@@ -422,6 +423,70 @@ def pod_report(project: str) -> dict[str, Any]:
 def unpriced_text(models: list[str]) -> str:
     """What a budget cannot do about *models*, for ``pod show`` and ``status``."""
     return f"cannot stop spend on {', '.join(models)}: no price in the provider catalog"
+
+
+def _blueprint(project: str) -> str:
+    """The shape *project* was provisioned with (its Lead's ``blueprint``), ``""`` without one."""
+    return _fleet.meta_get(_pod.member_id(project, "lead"), "blueprint", "") or ""
+
+
+def _pipeline_report(project: str) -> dict[str, Any]:
+    """``pipeline``: where the effective pipeline comes from and, when it resolves, its steps."""
+    report: dict[str, Any] = {"source": _steps.effective_pipeline_source(project)}
+    try:
+        nodes = _executor.resolve_pipeline_steps(project, None)[0]
+    except DispatchError:
+        return report
+    report["steps"] = [_step_view(node) for node in nodes]
+    return report
+
+
+def _step_view(node: _orch.PlannedNode) -> dict[str, Any]:
+    """One step as data (cli-json-shapes.spec.md, "`docket pod show --json`")."""
+    if isinstance(node, _orch.PlannedGroup):
+        branches = [_step_view(child) for child in node.children if not child.skipped]
+        view = _step_fields(node.step_id, "parallel", None, None, None, [])
+        return {**view, "steps": branches}
+    kind = _step_kind(node)
+    agent = kind == "agent" and node.member_id is not None
+    member = node.member_id or ""
+    routes = bounded_routes(node.step_id, node.gate, node.on)
+    return _step_fields(
+        node.step_id,
+        kind,
+        (node.role or node.archetype or _fleet.meta_get(member, "role", "")) if agent else None,
+        _models.model_class_of(hop_model(node, member)) if agent else None,
+        node.gate.type if node.gate is not None else None,
+        [{"when": list(r.when), "to": r.to, "max": r.max} for r in routes],
+    )
+
+
+def _step_kind(node: _orch.PlannedUnit) -> str:
+    if node.run is not None:
+        return "command"
+    if node.input is not None:
+        return "ask"
+    if node.wait is not None or node.until is not None:
+        return "wait"
+    return "agent"
+
+
+def _step_fields(
+    step_id: str,
+    kind: str,
+    role: str | None,
+    model_class: str | None,
+    gate: str | None,
+    rework: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "id": step_id,
+        "kind": kind,
+        "role": role,
+        "modelClass": model_class,
+        "gate": gate,
+        "rework": rework,
+    }
 
 
 def _codebase(project: str) -> str:
@@ -463,6 +528,7 @@ def pod_summary(project: str) -> dict[str, Any]:
         "name": project,
         "codebase": _codebase(project),
         "workspaceKind": str(_pod_settings.workspace_kind(project)),
+        "blueprint": _blueprint(project),
         "members": len(_pod.members_of(ids, project)),
         "profile": _profile.effective_profile(project),
         "queue": task_counts(project),

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.10.0
+**Version**: 11.11.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -844,9 +844,12 @@ dispatches the queue that already exists and is unchanged.
 5. **Expiry.** Under a resolved `"park"`, dispatch also sets `DOCKET_APPROVAL_EXPIRES_AT` (ISO UTC,
    `now + approvalExpiryHours`, computed fresh per hop); the tool gate stamps this onto the parked
    record's own `expiresAt`, which `sweep_escalations`'s fail-closed deadline logic prefers over
-   the generic `APPROVAL_TIMEOUT`. Past that deadline the sweep resolves the record to **denied**,
-   and the waiting task fails exactly as an explicit human deny does
-   (`failureKind: "approval_denied"`).
+   the generic `APPROVAL_TIMEOUT`. Past that deadline the sweep resolves the record to **denied**
+   (fail-closed: the approval store never grants by silence) and the waiting task fails
+   terminally, but as what happened, not as a person's answer: `failureKind: "approval_expired"`
+   and the reason `approval expired: nobody answered by <expiresAt>`. `approval_denied` is kept for a decision someone sent
+   (`deny` through any channel, including a client's own deadline). Who sets the deadline: the
+   pod's `approvalExpiryHours` (default 24, `docket pod set approvalExpiryHours <n>`).
 6. **Resume at the same index.** Resume treats a `hop.parked` entry as an attempt, not a decided
    outcome: it neither advances past it nor evaluates it as a rework or route target, and sets the
    resume position to that hop's own index -- re-running the exact step rather than the one after it.
@@ -2182,7 +2185,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    posture `waiting_approval` has.
 9. Failure kinds. A `failed` task's `failureKind` **MUST** be one of: `stale_claim`,
    `dispatch_refused`, `base_ref`, `pipeline`, `prepare`, `budget`, `rejected`, `gate_failed`,
-   `gate_needs_human`, `gate_error`, `approval_denied`, `check_changed`, `needs_human` (a tool
+   `gate_needs_human`, `gate_error`, `approval_denied`, `approval_expired` (nobody answered an
+   approval by its `expiresAt`, "Parked approvals" item 5), `check_changed`, `needs_human` (a tool
    call needed approval at autonomy level `L5`, security-gates.spec.md "Autonomy levels" item 4),
    or absent for an ordinary
    graded hop or gate failure (a hop's own `TurnResult.failure_kind`, see "Retries", is not copied

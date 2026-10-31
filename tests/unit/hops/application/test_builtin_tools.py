@@ -195,6 +195,11 @@ class TestBashStatesItsRules:
         for rule in ("`sed -i`", "`find -exec`", "`$(`", "backticks", "outside the workspace"):
             assert rule in stated
 
+    def test_it_says_every_call_starts_at_the_workspace_root(self) -> None:
+        for stated in (self._stated(), self._stated(sandbox="auto")):
+            assert "Each call is a new shell that starts at the workspace root" in stated
+            assert "give paths relative to it" in stated
+
     def test_a_pods_extra_bins_join_the_list(self) -> None:
         stated = self._stated(allow_commands=("tox", "uv"))
 

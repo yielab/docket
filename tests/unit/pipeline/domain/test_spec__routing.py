@@ -8,9 +8,11 @@ import pytest
 from tests.support.roles import ROLE_NAMES
 
 from docket.pipeline.domain import plan as _orch
-from docket.pipeline.domain.gates import MechanicalGate, VerdictGate
+from docket.pipeline.domain.gates import MechanicalGate, ReworkEdge, VerdictGate
 from docket.pipeline.domain.spec import (
+    BoundedRoute,
     PipelineSpec,
+    bounded_routes,
     default_pipeline,
     load_pipeline,
 )
@@ -330,3 +332,23 @@ class TestRefusedShapes:
             + "        archetype: reviewer\n        verify: true\n"
         )
         assert load_pipeline(_HEAD + body, roles=ROLE_NAMES).ok
+
+
+class TestBoundedRoutes:
+    """A step's bounded routes: its verdict gate's rework edge, then each `on:` route with a max."""
+
+    def test_the_rework_edge_comes_first_then_each_route_with_a_max(self) -> None:
+        gate = VerdictGate(
+            pattern=r"^VERDICT: (\w+)$",
+            passValues=["APPROVE"],
+            rework=ReworkEdge(to="build", when=["REQUEST-CHANGES"], maxCycles=2),
+        )
+        on = {"FAIL": {"goto": "build", "max": 1}, "BLOCKED": "stop", "LATER": {"goto": "ship"}}
+
+        assert bounded_routes("check", gate, on) == [
+            BoundedRoute(when=("REQUEST-CHANGES",), to="build", max=2),
+            BoundedRoute(when=("FAIL",), to="build", max=1),
+        ]
+
+    def test_a_step_with_neither_has_none(self) -> None:
+        assert bounded_routes("build", MechanicalGate(), None) == []

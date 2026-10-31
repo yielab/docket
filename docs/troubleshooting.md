@@ -357,8 +357,9 @@ docket setup notify enable desktop            # this machine; or webhook/ntfy/te
 ```
 
 Left unanswered, a parked approval expires after the pod's `approvalExpiryHours` (24h by
-default) and denies on its own — it is not a silent forever-wait, but 24h is a long time to
-discover one by accident. Granting it does not skip ahead: the exact hop that parked re-runs,
+default) and fails the task with `failureKind: approval_expired`, which tells "nobody answered"
+from a person's `deny` (`approval_denied`) — it is not a silent forever-wait, but 24h is a long
+time to discover one by accident. `docket pod set approvalExpiryHours <n>` sets it per pod. Granting it does not skip ahead: the exact hop that parked re-runs,
 carrying a single-use pre-grant so the model's identical next call passes without asking twice.
 
 ### A dispatched task stays "waiting_input"

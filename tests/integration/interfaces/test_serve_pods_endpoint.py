@@ -551,6 +551,23 @@ class TestReadPods:
         _, ops = _get(f"{url}/pods/ops", token)
         assert (ops["workspaceKind"], ops["repoConfigDir"]) == ("workdir", "")
 
+    def test_each_pod_carries_its_blueprint_and_its_steps(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        """The shape a pod was made from, and its pipeline as data, not only where it came from."""
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        _post(f"{url}/pods", {"name": "ops", "blueprint": "operate"}, token)
+        _, body = _get(f"{url}/pods", token)
+        assert {row["name"]: row["blueprint"] for row in body["pods"]} == {
+            "demo": "build",
+            "ops": "operate",
+        }
+        _, ops = _get(f"{url}/pods/ops", token)
+        assert ops["blueprint"] == "operate"
+        steps = ops["pipeline"]["steps"]
+        assert steps and {"id", "kind", "role", "modelClass", "gate", "rework"} <= set(steps[0])
+
     def test_repo_config_dir_names_the_pods_team_dir(
         self, live_server: tuple[str, str], tmp_path: Path
     ) -> None:

@@ -42,7 +42,8 @@ from typing import Any
 import pytest
 from tests.support import home as _support_home
 from tests.support.approvals import escalation_of, pending_token, resolve_token
-from tests.support.pods import GATED_IMPLEMENTER_PIPELINE_YAML
+from tests.support.escalations import approval_escalation
+from tests.support.pods import GATED_IMPLEMENTER_PIPELINE_YAML, build_pod
 from tests.support.pods import write_meta as _write_meta
 from tests.support.tasks import claims_gone_stale
 from tests.support.trace import trace_events as _trace_events
@@ -474,8 +475,21 @@ class TestExpirySweepDenies:
         assert swept == 1
 
         task = TaskRepository.for_pod("myapp").list()[0]
-        assert task.status == "failed"
-        assert task.failure_kind == "approval_denied"
+        assert (task.status, task.failure_kind) == ("failed", "approval_expired")
+        assert task.reason == "approval expired: nobody answered by 2000-01-01T00:00:00Z"
+        assert _ap.approval_get(token)["state"] == "denied"
+
+    def test_an_expired_check_changed_approval_ends_approval_expired(self) -> None:
+        build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+        token = _ap.approval_of(approval_escalation("check_changed").id)
+        rec = _ap.approval_get(token)
+        rec["expiresAt"] = "2000-01-01T00:00:00Z"
+        current_home().approvals_dir.joinpath(f"{token}.json").write_text(json.dumps(rec))
+
+        assert _escalation_sweep.sweep_escalations() == 1
+
+        (task,) = TaskRepository.for_pod("demo").list()
+        assert (task.status, task.failure_kind) == ("failed", "approval_expired")
 
 
 # ── HTTP POST /escalations/<id> genuinely resumes/kills ─────────────────────────

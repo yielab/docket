@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.support.pods import bind_pipeline, build_pod, seed_empty_home
+
 from docket.hops.application import report as pod_report
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
 from docket.tasks.domain.task import TaskRecord
+from docket.teams import fleet as _fleet
+from docket.teams import model_selection as _models
 from docket.teams.models import AgentMeta
 
 SUBJECT = "docket.hops.application.report"
@@ -80,3 +84,55 @@ class TestNetworkText:
         with use_home(Home(home)):
             text = pod_report.network_text({"mode": "none", "scope": "default"})
             assert "not enforced" in text and "egress is open" in text
+
+
+_PIPELINE = """\
+name: p
+steps:
+  - plan: lead
+  - build: implementer
+  - review: reviewer
+    verdict: [APPROVE, REQUEST-CHANGES]
+    on: {REQUEST-CHANGES: {goto: build, max: 2}}
+  - fan:
+      parallel:
+        - left: lead
+        - right: reviewer
+  - ship:
+      run: make ship
+  - hold: {wait: 1h}
+"""
+
+
+class TestPodReportShapeAndSteps:
+    """The pod report says which blueprint made the pod and its pipeline as data."""
+
+    def test_the_blueprint_and_every_step_kind(self, tmp_path: Path) -> None:
+        with seed_empty_home(tmp_path):
+            roles = ("lead", "implementer", "reviewer")
+            build_pod("demo", roles, codebase="/src/demo", blueprint_name="build")
+            bind_pipeline("demo", _PIPELINE)
+            _, tiers, _ = _models.load_registry()
+            _fleet.meta_set("demo-implementer", "model", tiers["economy"])
+            _fleet.meta_set("demo-reviewer", "model", tiers["standard"])
+
+            report = pod_report.pod_report("demo")
+
+        assert report["blueprint"] == "build"
+        steps = {s["id"]: s for s in report["pipeline"]["steps"]}
+        assert list(steps) == ["plan", "build", "review", "fan", "ship", "hold"]
+        assert {k: steps["build"][k] for k in ("kind", "role", "modelClass", "gate", "rework")} == {
+            "kind": "agent",
+            "role": "implementer",
+            "modelClass": "cheap",
+            "gate": "mechanical",
+            "rework": [],
+        }
+        assert (steps["review"]["modelClass"], steps["review"]["gate"]) == ("strong", "verdict")
+        assert steps["review"]["rework"] == [{"when": ["request-changes"], "to": "build", "max": 2}]
+        assert steps["plan"]["gate"] is None
+        assert [c["id"] for c in steps["fan"]["steps"]] == ["left", "right"]
+        assert steps["fan"]["kind"] == "parallel"
+        assert (steps["ship"]["kind"], steps["ship"]["role"]) == ("command", None)
+        assert (steps["hold"]["kind"], steps["hold"]["modelClass"]) == ("wait", None)
+        assert "steps" not in steps["build"]

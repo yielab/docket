@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 3.3.0
+**Version**: 3.4.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-10-31
@@ -854,8 +854,9 @@ keeps no copy of it, and every surface prints from it.
     `person`).
 13. **One expiry sweep.** `sweep_escalations()` (`tasks/application/escalation_sweep.py`) ends every
     pause nobody answered by its deadline. For each `pending` record past its `expiresAt` it applies
-    the record's own `onExpiry`: `deny` denies the approval it names (the task fails
-    `approval_denied` through the follow-up the denial always ran) and `block` blocks the task
+    the record's own `onExpiry`: `deny` denies the approval it names (the approval is recorded
+    `denied`, fail-closed, and the task fails `approval_expired` through the follow-up the denial
+    always ran, so a client tells "nobody answered" from "someone said no") and `block` blocks the task
     `input_expired`. A question never fails a task and an approval fails closed, so a `deny` that
     names no approval blocks and a `block` that names one denies. A `pending` record whose pause
     already ended (its task was cancelled) is settled `expired` with no side effect. Then it

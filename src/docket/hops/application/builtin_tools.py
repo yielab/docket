@@ -332,6 +332,12 @@ _ASKING = (
     "`sed -i`, `find -exec` and high-risk actions (publishing, deploying, pushing to main)"
 )
 _EXTRA_BINS_SHOWN = 20
+# A model that thinks its directory drifted reaches for `cd "$(git rev-parse --show-toplevel)"`,
+# which asks (security-gates.spec.md, In-turn tool-call gate 15).
+_WHERE_A_CALL_RUNS = (
+    "Each call is a new shell that starts at the workspace root, so a `cd` does not carry over "
+    "and the root never needs finding: give paths relative to it."
+)
 
 
 def _bash_description(allow_commands: tuple[str, ...], *, jailed: bool) -> str:
@@ -346,9 +352,9 @@ def _bash_description(allow_commands: tuple[str, ...], *, jailed: bool) -> str:
             f"Runs without approval: {names}{more}. Needs approval: any other program, {_ASKING}."
         )
     return (
-        f"Run a shell command in the workspace. {rules} If sandboxing is enabled for this "
-        "agent, an approved command additionally runs inside the strongest exec jail "
-        "(landlock, seatbelt or docker) available on the host; otherwise it runs directly in "
+        f"Run a shell command in the workspace. {_WHERE_A_CALL_RUNS} {rules} If sandboxing is "
+        "enabled for this agent, an approved command additionally runs inside the strongest exec "
+        "jail (landlock, seatbelt or docker) available on the host; otherwise it runs directly in "
         "the workspace. Create or change files with `write`/`edit`, not `cat >`, heredocs or "
         "`sed -i`; inspect with `read`/`grep`/`glob`; use `bash` to run things."
     )

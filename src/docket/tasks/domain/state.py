@@ -35,6 +35,7 @@ class FailureKind(StrEnum):
     stale_claim = "stale_claim"
     dispatch_refused = "dispatch_refused"
     approval_denied = "approval_denied"
+    approval_expired = "approval_expired"
     check_changed = "check_changed"
     needs_human = "needs_human"
 

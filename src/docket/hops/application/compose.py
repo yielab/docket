@@ -11,7 +11,7 @@ from docket.hops.application import manifest as _manifest
 from docket.hops.application import verify_tool as _verify
 from docket.hops.application.base_view import base_commit_view
 from docket.hops.application.handoff_tool import encode_values
-from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, _hop_model
+from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, hop_model
 from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
@@ -522,7 +522,7 @@ def _compose_hop(
         step_instructions=step_override,
         project=ctx.project,
         verify_cmd=verify_plan.command if verify_plan is not None else "",
-        model_class=_models.model_class_of(_hop_model(node, member_id)),
+        model_class=_models.model_class_of(hop_model(node, member_id)),
     )
     message += consult_note(ctx.task, node.step_id) + _approval_note(ctx.task_id, role)
     pipeline_worktree = ""
@@ -560,7 +560,7 @@ def _compose_hop(
         "tool_call",
         _json.dumps({"hop": role, "agent": member_id}),
     )
-    planned_model = _hop_model(node, member_id)
+    planned_model = hop_model(node, member_id)
     trace_locked(
         ctx.project,
         ctx.session_id,

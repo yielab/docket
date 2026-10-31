@@ -277,7 +277,7 @@ class TestExpiryStates:
         with _server() as url:
             _, denied = _call("GET", f"{url}/tasks/demo/{gated.id}")
         assert denied["status"] == "failed"
-        assert denied["failureKind"] == "approval_denied"
+        assert denied["failureKind"] == "approval_expired"
 
         asked = _park_on_consult(monkeypatch, tmp_path)
         assert asked

@@ -146,7 +146,7 @@ def _gate_budget(ctx: UnitContext, role: str) -> UnitOutcome | None:
     return UnitOutcome(kind="blocked", reason=decision.reason)
 
 
-def _hop_model(node: _orch.PlannedUnit, member_id: str) -> str:
+def hop_model(node: _orch.PlannedUnit, member_id: str) -> str:
     """The model this hop runs: the step's own ``model`` (resolved), else the member's."""
     if node.model:
         try:
