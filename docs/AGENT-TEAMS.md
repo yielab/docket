@@ -114,8 +114,8 @@ its kind.
 A custom role's hop message is also data: an archetype can declare its own `hopInstruction` text;
 if it doesn't, one is generated from its `gateContract` (a verdict role, for example, is told its
 exact `APPROVE`/`REJECT`-style marker convention). Either way, a pipeline step's own `instructions`
-(when set) overrides it for that one hop — see [Pipelines](WORKFLOW-GUIDE.md#pipelines-the-one-dialect)
-in the Workflow Guide.
+(when set) overrides it for that one hop — see
+[Change the orchestration](CONFIGURATION.md#35-change-the-orchestration-pipelines-and-blueprints).
 
 Composing several starter roles into one pod shape, in a single command, is a **pod blueprint** —
 next section.
@@ -359,8 +359,7 @@ for what class a given role carries.
 | Implementer | strong |
 | Reviewer | strong |
 
-See [Architecture (DOCKET)](DOCKET.md) for the routing internals and
-[Command Reference](commands.md) for every flag.
+See the [Command Reference](commands.md) for every flag.
 
 ---
 

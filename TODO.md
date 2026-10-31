@@ -53,8 +53,7 @@
       each check costs, measured, is in `.agents/skills/docket-spec-work/references/validation.md`.
    6. Goldens, the agent lane, `scripts/maint/pytest-without-sandbox.sh`, the escape matrix,
       `validate-specs.sh`, the generated-docs checks and the real run: once, at
-      the phase close. The agent lane (about 5 min) runs on a committed tree: its release check
-      refuses any uncommitted path.
+      the phase close. The agent lane takes about 5 min.
    7. **Stop rule:** a check that fails again after one fix stops the step. Park with the failing line
       and the hypothesis. No third attempt, no "until green", no background process or polling, no
       `git stash` (a WIP commit sets work aside).
@@ -171,15 +170,11 @@ that already own the files.
   - P56-10 left: a producer of git evidence for a non-implementer role. The `operate` and `routine` pods are workdir
     pods with no commits, so nothing would read it (trigger: a git-backed pod whose non-implementer step commits what
     a later step needs).
-  - The published adoption baseline (`benchmarks/results/wave29`) failed `test_adoption_evidence` after the home layout
-    split because it was built from a commit that wrote the old layout; it was regenerated from a two-level-home
-    commit. `tests/agent` is not in the per-merge suite, so a card that changes the home layout or the starter runs
-    `tests/agent/release/test_adoption_evidence.py` itself.
   - Tack's runner sends `"blueprint": "software"` in `POST /pods` and must send `build`.
   - `summarize_recipe` does not count a recipe's `services/`; `gen_recipe_docs._brings` and
     `pod_config_library._brings` are two near-duplicates. The `captured` column of `stories` holds the day a story
     was posted (the model has no clock); the row's `_at` is the capture time.
-  - Prose still behind the code: `docs/DOCKET.md` and the MCP client text ("workdir blueprint such as research"),
+  - Prose still behind the code: the MCP client text ("workdir blueprint such as research"),
     `README.md` line 11 ("research, content or outward work"), `builtin_roles.py:68` ("forward-compat"), and
     `config-format.spec.md` (~line 115, `load_pipeline(text)`); `_blueprint_pipeline` loads a registry only to call
     `load_pipeline(None, ...)`; `conversations.load` returns an empty registry for an invalid file.
@@ -369,8 +364,7 @@ that already own the files.
   the pod-wide `deniedTools`. Trigger: a recipe or pod that needs one member without write tools.
 - **Delete the old-layout reader** (`kernel/layout.py::is_legacy` and the legacy branches of `Home`).
   Trigger: the next minor release. First move what still seeds or reads an old-layout home:
-  `tests/support/home.py` and `pods.py`, `benchmarks/harness.py`, `benchmarks/scenarios/run.py`, the
-  adoption benchmark tests, and the old paths named in `scripts/gen_cli_docs.py`,
+  `tests/support/home.py` and `pods.py`, and the old paths named in `scripts/gen_cli_docs.py`,
   `scripts/render-doc-assets.py` and `docs/commands.md`.
 - **Parallel tasks in a pod:** ADR 0027 point 10 holds the trigger; a card would add a
   `maxParallelTasks` pod setting and a bounded pool in dispatch.

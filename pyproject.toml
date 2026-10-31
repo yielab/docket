@@ -1,5 +1,5 @@
 [build-system]
-# Pinned to benchmarks/results/build-constraints.txt: hatchling 1.32.1 stopped normalizing the
+# Pinned: hatchling 1.32.1 stopped normalizing the
 # METADATA version (0.2.0-beta.2 instead of 0.2.0b2), which changes the published artifact.
 requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
@@ -63,10 +63,8 @@ dependencies = [
 [tool.hatch.build]
 # Homebrew consumes the release sdist, but the formula's SHA-256 is derived from
 # that same archive. Keeping the formula out of the archive avoids a circular,
-# non-reproducible release input; it remains a repository release input. `benchmarks/`
-# is repository-only too, and its trace fixture is named with `:`, which uv 0.13 refuses
-# to extract from an sdist.
-exclude = ["/Formula", "/benchmarks"]
+# non-reproducible release input; it remains a repository release input.
+exclude = ["/Formula"]
 
 [project.urls]
 Homepage = "https://github.com/yielab/docket"

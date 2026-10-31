@@ -72,9 +72,9 @@ class TestPlanted:
 
 
 # Scripts drive the CLI as argv lists, which the text linter cannot see, so the verb after a
-# literal "task" is checked against the live group. Result trees are recorded evidence.
-DRIVER_ROOTS: tuple[str, ...] = ("scripts", "examples", "benchmarks")
-DRIVER_SKIP: tuple[str, ...] = ("benchmarks/results",)
+# literal "task" is checked against the live group.
+DRIVER_ROOTS: tuple[str, ...] = ("scripts", "examples")
+DRIVER_SKIP: tuple[str, ...] = ()
 DRIVER_SUFFIXES = {".py", ".sh", ".md", ".yaml", ".yml"}
 # Yaml comments narrate retired dialects in prose, so only the field check reads them.
 INVOCATION_SUFFIXES = {".py", ".sh", ".md"}

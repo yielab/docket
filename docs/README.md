@@ -39,20 +39,16 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 | [Quick start](QUICK-START-DOCKET.md) | Ten minutes from install to a governed run, then the customization loop |
 | [Agent teams (pods)](AGENT-TEAMS.md) | The core model: project pods, the roles, blueprints, recipes and real pipeline dispatch |
 | [Configuration](CONFIGURATION.md) | Every file, globally and per project: what it controls, what reads it, and recipes for customizing agents, roles, pipelines, policies, tools and trace exporters |
-| [Workflow guide](WORKFLOW-GUIDE.md) | End-to-end examples: a pod from `init` to committed code, custom pipelines, the run registry, schedules and webhooks |
 | [Recipe library](recipes.md) | The seventeen shipped recipes (teams, policy packs, methodology pipelines, checks, a tool pack), what each brings and its README, generated from the recipes themselves |
 | [Command reference](commands.md) | Every command with syntax, options and examples, generated from the CLI |
 | [Models, gateways and harnesses](MODEL-GATEWAYS.md) | Hosted providers, OpenRouter and Vercel AI Gateway, other OpenAI-compatible endpoints, and what "compatible" does not promise |
 | [Security](SECURITY-SIMPLE.md) | The layered model: the always-on tool-call gate, policies, high-risk command classes, approvals, the audit log, and what trace export lets leave the host |
-| [Architecture (deep dive)](DOCKET.md) | The `cli`/`core`/`edges` layering, the RuntimeDriver port, dispatch internals, durable state |
-| [Adoption evidence](ADOPTION-EVIDENCE.md) | Scripted governance and recovery fixtures, and what they do not prove |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
-| [Contributor harness](DEVELOPMENT-HARNESS.md) | For people and agents working *on* docket's own codebase. |
 | [Decision records (ADRs)](adr/) | One reasoned architectural decision per file |
 | [Cycles ended](cycles-ended/README.md) | The archive of closed waves and phases; verbatim, hash-verified, never a source of work |
 
-Requirements live in [`../specs/`](../specs/); the [SSD workflow guide](../SSD-WORKFLOW.md)
-explains how a feature is specified before it is built.
+Requirements live in [`../specs/`](../specs/); [CONTRIBUTING](../CONTRIBUTING.md) explains how a
+feature is specified before it is built.
 
 ---
 
@@ -152,8 +148,7 @@ of [Configuration §2](CONFIGURATION.md#2-how-the-files-reach-a-running-agent).
 
 ## Known limits
 
-Read these before trusting docket with anything consequential. The fixture results and what they
-do not prove are in [Adoption evidence](ADOPTION-EVIDENCE.md).
+Read these before trusting docket with anything consequential.
 
 **Scope**
 

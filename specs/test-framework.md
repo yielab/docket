@@ -80,7 +80,7 @@ tests/
 │   └── run.sh              capture / verify / verify-all / list harness
 ├── agent/                  NOT in testpaths; CI job `agent-lane`
 │   ├── truth/              assertions on prose (README, spec index, positioning, project policy)
-│   └── release/            builds or installs artifacts; adapter parity; journeys; adoption evidence
+│   └── release/            builds or installs artifacts; adapter parity; journeys
 └── run-all-tests.sh        local aggregate gate (default lanes + golden; not the agent lane)
 ```
 

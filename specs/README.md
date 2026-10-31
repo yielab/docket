@@ -54,7 +54,6 @@ specs/
 │   ├── starter-journey.spec.md           # Extractable artifact-installed starter journey
 │   └── user-stories.md                   # User stories
 └── validation/                            # Validation rules
-    ├── adoption-benchmark.spec.md        # Deterministic benchmark artifact contract
     └── input-validation.spec.md          # Input validation rules
 ```
 

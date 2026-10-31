@@ -7,8 +7,7 @@ on:
     branches: ["**"]
 
 env:
-  # Pinned: uv 0.13 refuses an sdist member named with ":", which the adoption
-  # baseline's immutable source commit (benchmarks/results/wave29) holds.
+  # Pinned to the uv the release was last verified with; raise it on purpose, not by drift.
   UV_VERSION: "0.12.24"
 
 jobs:
