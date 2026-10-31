@@ -76,6 +76,15 @@
       "default": null,
       "title": "Key"
     },
+    "scope": {
+      "default": "pod",
+      "enum": [
+        "pod",
+        "task"
+      ],
+      "title": "Scope",
+      "type": "string"
+    },
     "kind": {
       "const": "records",
       "title": "Kind",

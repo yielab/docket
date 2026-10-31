@@ -382,7 +382,7 @@ class PodSettings(BaseModel):
         if value in (None, ""):
             return ()
         tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
-        known = {*_archetypes.BUILTIN_TOOL_KINDS, _archetypes.SEND_KIND}
+        known = {*_archetypes.BUILTIN_TOOL_KINDS, _archetypes.SEND_KIND, _archetypes.RECORD_KIND}
         kept: dict[str, None] = {}
         for raw in tokens:
             name = str(raw).strip()

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from docket.kernel.records import COLUMN_TYPES, RecordsError, RecordSet
-from docket.kernel.records_port import ReadLimits, Row, Rows, SetChange
+from docket.kernel.records_port import ReadLimits, RecordOrigin, Row, Rows, SetChange
 from docket.kernel.text import ellipsize
 
 EXPORT_FORMATS = ("csv", "markdown")
@@ -84,6 +84,14 @@ def _checked(declared: RecordSet, values: Row) -> Row:
             raise RecordsError(f"set {declared.name!r} has no column {name!r}")
         out[name] = check_value(name, kind, value)
     return out
+
+
+def check_origin(declared: RecordSet, origin: RecordOrigin) -> None:
+    """Refuse a write to a task-scoped set from a hop that has no task: the row would have no owner."""
+    if declared.scope == "task" and not origin.task:
+        raise RecordsError(
+            f"set {declared.name!r} is scoped to a task: a write needs the task it comes from"
+        )
 
 
 def check_add(declared: RecordSet, values: Row) -> Row:
@@ -161,6 +169,11 @@ def plan_change(current: RecordSet | None, wanted: RecordSet) -> SetChange:
         raise RecordsError(
             f"set {name!r}: the key is {current.key!r}, not {wanted.key!r}; "
             "the key cannot change; nothing was changed"
+        )
+    if wanted.scope != current.scope:
+        raise RecordsError(
+            f"set {name!r}: the scope is {current.scope!r}, not {wanted.scope!r}; "
+            "the scope cannot change; nothing was changed"
         )
     return SetChange(created=False, added=tuple(n for n in want if n not in have))
 

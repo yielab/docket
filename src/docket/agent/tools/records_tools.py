@@ -3,8 +3,8 @@
 ``hops/application/driver_support.py`` loads the pod's sets each turn and hands them here. Every
 tool is an ordinary ``Tool``, so each call still passes ``agent.tools.registry.dispatch_tool``; the
 handlers run in docket's process and reach the records only through the ``RecordStore`` port, whose
-adapter holds the write transaction and the read-only authorizer. docket fills ``_task``, ``_session`` and
-``_step`` from the hop and refuses a model argument that names one of them. No tool is ``send``:
+adapter holds the write transaction and the read-only authorizer. docket fills ``_task``, ``_session``,
+``_step`` and ``_role`` from the hop and refuses a model argument that names one of them. No tool is ``send``:
 records never leave the machine. ``load_records_tools`` never raises."""
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from docket.kernel.tool_outcome import ToolOutcome, text_outcome
 
 __all__ = ["load_records_tools"]
 
-_RESERVED = ("_id", "_at", "_task", "_session", "_step", "_updated_at")
+_RESERVED = ("_id", "_at", "_task", "_session", "_step", "_role", "_updated_at")
 _LIMIT_DEFAULT = 50
 _LIMIT_MAX = 200
 _EXPORT = ReadLimits(timeout_s=30.0)
@@ -52,6 +52,7 @@ def _origin(ctx: ToolContext) -> RecordOrigin:
         task=ctx.task_id or None,
         session=ctx.trace_session_key or ctx.session_key or None,
         step=ctx.step_id or None,
+        role=ctx.role or None,
     )
 
 
@@ -70,6 +71,11 @@ def _guarded(call: Callable[[], ToolOutcome]) -> ToolOutcome:
         return _fail(str(exc))
 
 
+def _blank(value: object) -> bool:
+    """Null, or a string with nothing in it: a required column holds neither."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def _properties(record_set: RecordSet, *, skip: str | None = None) -> dict[str, Any]:
     return {
         c.name: {**_JSON_TYPE[c.type], **({"description": c.description} if c.description else {})}
@@ -84,7 +90,7 @@ def _add_tool(store: RecordStore, record_set: RecordSet) -> Tool:
     def handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         if (refused := _reserved(list(args))) is not None:
             return refused
-        if missing := [name for name in required if args.get(name) is None]:
+        if missing := [name for name in required if _blank(args.get(name))]:
             return _fail(f"set {record_set.name!r}: {', '.join(missing)} is required")
 
         def add() -> ToolOutcome:
@@ -108,11 +114,12 @@ def _add_tool(store: RecordStore, record_set: RecordSet) -> Tool:
             "required": required,
         },
         handler=handler,
-        kind="write",
+        kind="record",
     )
 
 
 def _update_tool(store: RecordStore, record_set: RecordSet) -> Tool:
+    required = [c.name for c in record_set.columns if c.required]
     match: dict[str, Any] = {"_id": {"type": "integer"}}
     if record_set.key:
         match[record_set.key] = _properties(record_set)[record_set.key]
@@ -123,6 +130,8 @@ def _update_tool(store: RecordStore, record_set: RecordSet) -> Tool:
             return _fail("match and values must each be an object")
         if (refused := _reserved(list(values))) is not None:
             return refused
+        if blanked := [name for name in required if name in values and _blank(values[name])]:
+            return _fail(f"set {record_set.name!r}: {', '.join(blanked)} is required")
 
         def update() -> ToolOutcome:
             row = store.update(record_set.name, found, values, _origin(ctx))
@@ -147,7 +156,7 @@ def _update_tool(store: RecordStore, record_set: RecordSet) -> Tool:
             "required": ["match", "values"],
         },
         handler=handler,
-        kind="write",
+        kind="record",
     )
 
 
@@ -176,7 +185,7 @@ def _query_tool(store: RecordStore) -> Tool:
     return Tool(
         name=records_tool_name(operation="query"),
         description="[records] Run one read-only SELECT over the pod's record sets. "
-        "Columns _id, _at, _task, _session, _step and _updated_at exist on every row.",
+        "Columns _id, _at, _task, _session, _step, _role and _updated_at exist on every row.",
         parameters={
             "type": "object",
             "properties": {

@@ -42,6 +42,7 @@ def get_pod_records(h: HttpExchange, project: str) -> None:
             "name": s.name,
             "description": s.description,
             "key": s.key,
+            "scope": s.scope,
             "rows": _records.row_count(project, s),
             "columns": [
                 {"name": c.name, "type": c.type, "required": c.required} for c in s.columns
@@ -62,8 +63,14 @@ def _limit(raw: str) -> int | None:
     return limit if 1 <= limit <= _MAX_LIMIT else None
 
 
+def _task(path: str) -> str | None:
+    """The `task` query value, `""` when it is given empty, `None` when it is absent."""
+    found = _urlparse.parse_qs(_urlparse.urlsplit(path).query, keep_blank_values=True)
+    return found["task"][0].strip() if "task" in found else None
+
+
 def get_pod_record_rows(h: HttpExchange, capture: str) -> None:
-    """``GET /pods/<pod>/records/<set>?limit=&sql=`` (pod-records.spec.md requirements 51-52)."""
+    """``GET /pods/<pod>/records/<set>?limit=&sql=&task=`` (pod-records.spec.md requirements 51-52)."""
     project, _, name = capture.partition("/records/")
     if not _known_pod(h, project):
         return
@@ -80,8 +87,12 @@ def get_pod_record_rows(h: HttpExchange, capture: str) -> None:
         )
         return
     sql = query["sql"][0] if query.get("sql") else None
+    task = _task(h.path)
+    if task == "" or (task is not None and sql is not None):
+        h._send_json_error("task must name a task and cannot be combined with sql", 400)
+        return
     try:
-        result = _records.read_rows(project, record_set, sql, limit, newest_first=True)
+        result = _records.read_rows(project, record_set, sql, limit, newest_first=True, task=task)
     except InvalidInput as exc:
         h._send_json_error(str(exc), 400)
         return

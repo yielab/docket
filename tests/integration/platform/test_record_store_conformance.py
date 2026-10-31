@@ -225,7 +225,87 @@ class TestUpdate:
             store.update("ghosts", {"_id": 1}, {"a": 1}, ORIGIN)
 
 
+PROPOSALS = RecordSet(
+    name="proposals",
+    key="ref",
+    scope="task",
+    columns=[RecordColumn(name="ref", type="string"), RecordColumn(name="title", type="string")],
+)
+FIRST = RecordOrigin(task="t-1", session="s-1", step="plan", role="planner")
+SECOND = RecordOrigin(task="t-2", session="s-2", step="plan", role="planner")
+
+
+class TestTaskScope:
+    @pytest.fixture
+    def scoped(self, blank: RecordStore) -> RecordStore:
+        blank.declare(PROPOSALS)
+        return blank
+
+    def test_one_key_in_two_tasks_makes_two_rows(self, scoped: RecordStore) -> None:
+        first = scoped.add("proposals", {"ref": "a", "title": "one"}, FIRST)
+        second = scoped.add("proposals", {"ref": "a", "title": "two"}, SECOND)
+        assert (first.created, second.created) == (True, True)
+        rows = scoped.read("SELECT _task, title FROM proposals ORDER BY _id", ALL).rows
+        assert rows == [("t-1", "one"), ("t-2", "two")]
+
+    def test_a_repeated_add_in_one_task_returns_its_row(self, scoped: RecordStore) -> None:
+        first = scoped.add("proposals", {"ref": "a", "title": "one"}, FIRST)
+        again = scoped.add("proposals", {"ref": "a", "title": "other"}, FIRST)
+        assert (again.created, again.row["_id"], again.row["title"]) == (
+            False,
+            first.row["_id"],
+            "one",
+        )
+        assert _count(scoped, "proposals") == 1
+
+    def test_an_update_reaches_only_a_row_of_its_own_task(self, scoped: RecordStore) -> None:
+        mine = scoped.add("proposals", {"ref": "a", "title": "one"}, FIRST).row
+        with pytest.raises(RecordsError, match="a"):
+            scoped.update("proposals", {"ref": "a"}, {"title": "stolen"}, SECOND)
+        with pytest.raises(RecordsError, match="_id"):
+            scoped.update("proposals", {"_id": mine["_id"]}, {"title": "stolen"}, SECOND)
+        assert scoped.read("SELECT _task, title FROM proposals", ALL).rows == [("t-1", "one")]
+
+    def test_an_update_in_its_own_task_keeps_the_row_there(self, scoped: RecordStore) -> None:
+        scoped.add("proposals", {"ref": "a", "title": "one"}, FIRST)
+        row = scoped.update("proposals", {"ref": "a"}, {"title": "better"}, FIRST)
+        assert (row["_task"], row["title"], row["_updated_at"] is None) == ("t-1", "better", False)
+
+    def test_a_write_with_no_task_is_refused(self, scoped: RecordStore) -> None:
+        nobody = RecordOrigin(session="s-1")
+        with pytest.raises(RecordsError, match="proposals"):
+            scoped.add("proposals", {"ref": "a"}, nobody)
+        scoped.add("proposals", {"ref": "a"}, FIRST)
+        with pytest.raises(RecordsError, match="proposals"):
+            scoped.update("proposals", {"ref": "a"}, {"title": "x"}, nobody)
+
+    def test_the_scope_cannot_change(self, scoped: RecordStore, blank: RecordStore) -> None:
+        wide = PROPOSALS.model_copy(update={"scope": "pod"})
+        with pytest.raises(RecordsError, match="scope"):
+            scoped.declare(wide)
+        with pytest.raises(RecordsError, match="scope"):
+            scoped.plan(wide)
+
+    def test_a_pod_set_cannot_become_task_scoped(self, store: RecordStore) -> None:
+        with pytest.raises(RecordsError, match="scope"):
+            store.declare(LISTINGS.model_copy(update={"scope": "task"}))
+
+    def test_the_scope_survives_a_new_handle(
+        self, scoped: RecordStore, open_store: Callable[..., RecordStore]
+    ) -> None:
+        scoped.add("proposals", {"ref": "a"}, FIRST)
+        assert open_store("pod").add("proposals", {"ref": "a"}, SECOND).created is True
+
+
 class TestRead:
+    def test_a_bound_parameter_is_a_value_and_never_statement_text(
+        self, store: RecordStore
+    ) -> None:
+        store.add("listings", {"url": "a", "price": 5}, ORIGIN)
+        sql = "SELECT url FROM listings WHERE url = ?"
+        assert store.read(sql, ALL, ("a",)).rows == [("a",)]
+        assert store.read(sql, ALL, ("a' OR '1'='1",)).rows == []
+
     @pytest.mark.parametrize(
         "sql",
         [

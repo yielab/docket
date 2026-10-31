@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.8.0
+**Version**: 7.9.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-10-31
 
@@ -312,6 +312,21 @@ verdict object (a row of `GET /pods` carries the profile name as a string):
 `profile.violations` is empty unless the effective profile is `lights-out`, `pipelineSource` says
 where the effective pipeline comes from, `workspaceKind` is the value its `GET /pods` row carries,
 and `repoConfigDir` is `""` for a pod with no codebase.
+Each entry of `members` also carries `capabilities`, what its role can reach after the role's and the
+pod's denials, computed by `registry_for_role` over the tools docket declares (the built-ins and the
+pod's record tools):
+
+```json
+{"kinds": ["read", "record"],
+ "tools": ["glob", "grep", "read", "rec__query", "rec__tack_proposals__add", "rec__tack_proposals__update"],
+ "records": {"write": ["tack_proposals"], "query": true}}
+```
+
+`kinds` is the distinct tool kinds (`read`, `write`, `exec`, `send`, `record`) of `tools`, the tool names the
+role holds; `records.write` names the sets it can add to and `records.query` says whether it holds
+`rec__query`. A role that denies `write` still lists `record` and its sets (`pod-records.spec.md`
+requirement 37). MCP and service tools are not listed: a server's tools are known only once it is
+started and a service's only once its secret resolves, and a `GET` does neither.
 A pod that is not dispatchable is `404`. A pod whose stored settings no longer validate is `500`
 with the error envelope naming the setting.
 

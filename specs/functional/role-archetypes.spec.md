@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 5.4.1
+**Version**: 5.5.0
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -556,9 +556,11 @@ docket pod validate <file.yaml>
    "The tools") reach a role by the same allow-list as an MCP or service tool: a role's `tools` names
    `rec__<set>` (the set's add and update), `rec__query`, `rec__export` or `rec` (all of the pod's);
    a role with no allow-list holds them all, and a step's `tools` narrows them. `rec__query` is
-   a `read` tool; the others are `write`. A role that denies `write`, by its own `deniedTools` or its
-   pod's, therefore loses add, update and export by requirement 6 of "Per-role tool sets" and keeps
-   `rec__query`. None is `send`.
+   a `read` tool, `rec__export` a `write` tool (it writes a file in the project) and the add and update
+   tools are `record` tools, a row being outside the project. A role that denies `write`, by its own
+   `deniedTools` or its pod's, therefore loses `rec__export` by requirement 6 of "Per-role tool sets"
+   and keeps add, update and `rec__query`; one that denies `record` loses add and update. `record` is a
+   kind a `deniedTools` entry may name, like `send`, and no built-in tool has it. None is `send`.
 
 ### Wire format (the one authored role file, and the persisted wire object)
 
