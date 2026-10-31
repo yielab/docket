@@ -87,6 +87,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A command that sends nothing no longer zeroes the exporter's health.** Every `docket` process starts the
+  enabled exporters and, on exit, wrote its own counters to `exporters-health.json`, so a read-only command
+  (`pod show`, `setup export show`) replaced the counts of the last run that sent spans with zeros. An
+  all-zero result is no longer written, by the exit hook or by `run_turn` (observability export 3.2.0).
+- **The live Hacker News test can run on Anthropic** (`DOCKET_LIVE_HN_PROVIDER=anthropic` with `ANTHROPIC_API_KEY`).
+
 - **The MCP `queue` tool no longer says only a blocked task can be retried.** `retry_task_id`
   re-queues a `blocked` or a `failed` task, as `docket task retry` does; the refusal now reads
   "not a failed or blocked task" (mcp-server spec 1.9.6).
