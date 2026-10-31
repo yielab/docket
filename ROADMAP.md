@@ -332,9 +332,9 @@ today:
 > need a decision, not a trigger.
 
 - **The agent lane's retirements:** whether the PydanticAI and OpenHands adapters (no consumer;
-  last changed 2026-09-01) and the adoption benchmark (`docs/ADOPTION-EVIDENCE.md`: fixture data a
-  driver writes, no policy hook runs) stay public claims. Recommended: keep `docket-runtime`, delete
-  the benchmark and the README link, delete the adapters until a product of ours uses one.
+  last changed 2026-09-01) stay public claims. Recommended: keep `docket-runtime`, delete the
+  adapters until a product of ours uses one. (The adoption benchmark, its report and its tests were
+  deleted 2026-10-31: fixture data a driver wrote, with no policy hook run.)
 - **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends
   hosted-model tokens on `fab-dev`, so it needs a go.
 - **Make `--sandbox on` the default of the live-eval smoke** (`scripts/smoke_workflow.py` and

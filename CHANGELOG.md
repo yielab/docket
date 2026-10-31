@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **The adoption benchmark and its report.** `benchmarks/`, `docs/ADOPTION-EVIDENCE.md`, its spec
+  and its four tests are deleted: a driver wrote the records it counted, no policy hook or agent
+  turn ran, and the product's denial, approval and recovery behaviour is covered by `tests/e2e/`
+  and the release journey. The starter journey stays.
+- **Four guides that repeated other documents:** `docs/DOCKET.md`, `docs/WORKFLOW-GUIDE.md`,
+  `docs/DEVELOPMENT-HARNESS.md` and `SSD-WORKFLOW.md`. The agent-team model is in
+  `docs/AGENT-TEAMS.md`, the files and customisation recipes in `docs/CONFIGURATION.md`, and the
+  contributor rules in `AGENTS.md` and `CONTRIBUTING.md`.
+
 ## [0.3.0-beta.1] - 2026-10-30
 
 The largest change since the first beta, so the minor version moves. `0.2.0-beta.5` and

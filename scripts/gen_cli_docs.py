@@ -762,7 +762,6 @@ docket status --all --json > ~/backups/fleet-$(date +%s).json
 
 _NEXT_STEPS = """\
 - [Agent Teams (Pods)](AGENT-TEAMS.md)
-- [Workflow Guide](WORKFLOW-GUIDE.md)
 - [Main README](../README.md)
 """
 

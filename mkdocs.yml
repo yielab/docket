@@ -36,8 +36,7 @@ exclude_docs: |
   cycles-ended/todo-waves.md
   cycles-ended/handoffs/
 
-# The rest of docs/ (the docs index, the other guides, adoption evidence,
-# assets) still builds -- so relative links between docs resolve under
+# The rest of docs/ (the docs index, the other guides, assets) still builds -- so relative links between docs resolve under
 # --strict -- it just isn't forced into the *sidebar*, which this file
 # fixes per D-36.
 not_in_nav: |
@@ -64,10 +63,8 @@ nav:
       - Agent Teams (Pods): AGENT-TEAMS.md
       - Quick Start: QUICK-START-DOCKET.md
       - Configuration: CONFIGURATION.md
-      - Workflow Guide: WORKFLOW-GUIDE.md
       - Recipe Library: recipes.md
       - Security (simple): SECURITY-SIMPLE.md
-      - Docket (deep dive): DOCKET.md
   - CLI Reference: commands.md
   - docket-runtime API: packages/docket-runtime/docs/api.md
   - Specifications: specs/README.md

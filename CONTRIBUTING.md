@@ -229,8 +229,8 @@ uv run python scripts/release_journey.py            # exact-wheel first-turn rel
 
 ## Adding a New Command
 
-docket follows spec-driven development (see [SSD-WORKFLOW.md](SSD-WORKFLOW.md)). To add a
-command:
+docket follows spec-driven development: the spec comes first, then a failing test, then the
+change (see [AGENTS.md](AGENTS.md)). To add a command:
 
 1. Write a spec under `specs/functional/<command>.spec.md`.
 2. Register the command as a Typer function under `src/docket/interfaces/cli/` (registered in

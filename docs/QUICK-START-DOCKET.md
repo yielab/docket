@@ -407,7 +407,7 @@ and the policy that asked.
 adds an inbound-only approval channel with three verbs (`/status`, `/delegate`,
 `/answer`); it is not a chat, and its poll loop only replies; a push to your phone comes from the `telegram`
 channel you enabled above. Schedules, webhooks and the
-run registry are in the [Workflow guide](WORKFLOW-GUIDE.md).
+run registry are in the [Configuration guide](CONFIGURATION.md).
 
 ---
 
@@ -426,7 +426,6 @@ Keep docket behind your own boundary: `docket start` binds loopback and does not
 - [Agent teams](AGENT-TEAMS.md): roles, pods, blueprints, recipes and how a run is gated
 - [Configuration](CONFIGURATION.md): every file docket creates, what reads it, the
   customization recipes by use case, and trace export with its privacy levels
-- [Workflow guide](WORKFLOW-GUIDE.md): end-to-end examples, custom pipelines, schedules, webhooks
 - [Security](SECURITY-SIMPLE.md): the layers, the approval channels, the audit log
 - [Command reference](commands.md) and [Troubleshooting](troubleshooting.md)
 - Issues: https://github.com/yielab/docket/issues

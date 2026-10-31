@@ -26,8 +26,7 @@ every decision goes to a tamper-evident log you can verify.
 
 [Website](https://yielab.com/docket) · [Documentation](docs/README.md) ·
 [Quick start](docs/QUICK-START-DOCKET.md) · [Recipes](docs/recipes.md) ·
-[Security](SECURITY.md) · [Adoption evidence](docs/ADOPTION-EVIDENCE.md) ·
-[Changelog](CHANGELOG.md)
+[Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
 > [!WARNING]
 > docket is beta software. Core contracts are spec-first and test-backed, but the
@@ -222,7 +221,7 @@ service and [COMPATIBILITY.md](COMPATIBILITY.md) before relying on a model endpo
 | Connect a hosted or local model | [Models and gateways](docs/MODEL-GATEWAYS.md) |
 | Know what the gate enforces | [Security model](docs/SECURITY-SIMPLE.md) |
 | Fix a problem | [Troubleshooting](docs/troubleshooting.md) |
-| Embed the gate in my own application | [Architecture](docs/DOCKET.md) and [Compatibility](COMPATIBILITY.md) |
+| Embed the gate in my own application | [Compatibility](COMPATIBILITY.md) and [`examples/runtime_embed.py`](examples/runtime_embed.py) |
 
 The embeddable runtime ships as a separate package, **`docket-runtime`**, built from this
 repository's source and not published to any index. Every guide is listed in the
