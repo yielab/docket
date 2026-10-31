@@ -186,23 +186,25 @@ docket setup export enable langfuse       # or otel-collector, jaeger, honeycomb
 
 ## Known limits
 
-Read these before trusting docket with anything consequential:
+What docket does not do, so you know what to arrange yourself:
 
-- **One machine, one operator.** No multi-tenancy, hosted scheduler or worker queue.
-- **Sandboxing needs a backend.** `docket init` turns it on where the machine has Landlock or
-  Seatbelt; without one, or after `docket setup sandbox off`, an agent's shell commands run on your
+- **The sandbox needs a backend.** `docket init` turns it on where the machine has Landlock or
+  Seatbelt. Without one, or after `docket setup sandbox off`, an agent's shell commands run on your
   machine and can reach the network.
-- **The checkpoint covers what docket dispatches.** Your rules apply to the tool calls it makes
-  for its agents, not to everything else on the machine.
-- **The audit log is tamper-evident, not tamper-proof.** Deleting it is visible, not impossible.
-- **Costs are estimates.** Token counts are measured; docket records no dollar spend, and its
-  budget limit works on a labelled estimate.
+- **The checkpoint covers what docket runs.** Your rules apply to the tool calls docket makes for
+  its agents, not to anything else on the machine.
+- **The audit log shows tampering; it does not prevent it.** Deleting it is visible, not
+  impossible.
 - **An exporter shares what you allow.** At `conversation` or `full`, the destination receives
   prompts, replies and tool output, which can include your code.
-- **Models vary.** A small local model can give different results run to run; a tool-calling
-  endpoint is required for real work.
+- **The model must support tool calling.** Agents act only through tool calls, so an endpoint that
+  only chats cannot do the work. Small local models call tools less reliably.
+- **It runs on one machine for one operator.** There are no tenants and no hosted service; a
+  routine fires only while `docket start --dispatch` runs here.
+- **Costs are estimates.** Token counts are measured; docket records no dollar spend, and its
+  budget limit works on a labelled estimate.
 
-The full list, with the reasoning behind each limit, is in
+The reasoning behind each limit, and the ones that matter less, are in
 [Known limits](docs/README.md#known-limits). Read [SECURITY.md](SECURITY.md) before exposing a
 service and [COMPATIBILITY.md](COMPATIBILITY.md) before relying on a model endpoint or MCP server.
 
