@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`workspaceKind` on `GET /pods` rows and `GET /pods/<p>`**: `"codebase"` or `"workdir"`, the kind
+  the pod was provisioned with. A client no longer infers a folder pod from an empty `codebase` or
+  `repoConfigDir`, which also read empty for a code pod whose codebase is missing. Additive: the
+  API stays 6 and every other key keeps its meaning.
+- **`docket init --workdir <dir>`**, the same option as `--codebase` under the name a `respond`,
+  `operate` or `routine` pod reads.
+
+### Changed
+
+- **A task on a `workdir` pod says what the pod is.** A `baseRef` fails it at claim with
+  `pod '<p>' works in a folder (workspaceKind workdir); baseRef '<ref>' applies only to a pod with
+  a codebase` (still `failureKind: "base_ref"`), not a sentence about an Implementer the pod never
+  had. A code pod with no Implementer codebase says that instead. The check reads the pod's
+  workspace kind first.
+- **A `prepare` command on a `workdir` pod's task is refused, not ignored** (`failureKind:
+  "prepare"`, the same sentence shape): an install the caller asked for and nothing would run.
+  `""` and `none` are accepted.
+- **`docket pod update` on a `workdir` pod's directory asks for no install.** It no longer derives
+  `prepare` from the surrounding repository's lockfile and lists it to accept; a `prepare:`
+  command in that pod's `pod.yaml`, or `docket pod set prepare <command>`, is refused with
+  `prepare: pod '<p>' works in a folder (workspaceKind workdir); a prepare command applies only to
+  a pod with a codebase`. `docket init` with a `workdir` blueprint reviews the same way.
+
 ### Removed
 
 - **The adoption benchmark and its report.** `benchmarks/`, `docs/ADOPTION-EVIDENCE.md`, its spec

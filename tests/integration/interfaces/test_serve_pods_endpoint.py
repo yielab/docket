@@ -539,6 +539,18 @@ class TestReadPods:
         assert body["pipelineSource"] == _steps.effective_pipeline_source("demo")
         assert body["repoConfigDir"] == "/src/demo/.docket"
 
+    def test_each_pod_carries_its_workspace_kind(self, live_server: tuple[str, str]) -> None:
+        """`workspaceKind` is the pod's own kind, not an inference from an empty `codebase`."""
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        _post(f"{url}/pods", {"name": "ops", "blueprint": "operate"}, token)
+        _, body = _get(f"{url}/pods", token)
+        kinds = {row["name"]: row["workspaceKind"] for row in body["pods"]}
+        assert kinds == {"demo": "codebase", "ops": "workdir"}
+        assert _get(f"{url}/pods/demo", token)[1]["workspaceKind"] == "codebase"
+        _, ops = _get(f"{url}/pods/ops", token)
+        assert (ops["workspaceKind"], ops["repoConfigDir"]) == ("workdir", "")
+
     def test_repo_config_dir_names_the_pods_team_dir(
         self, live_server: tuple[str, str], tmp_path: Path
     ) -> None:

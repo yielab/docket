@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.7.2
+**Version**: 5.8.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -147,7 +147,7 @@ default — see pod-blueprints.spec.md). It **MUST NOT** bootstrap the workstati
 beyond creating the directories it needs and installing the shipped guardrail policies (an
 existing policy file is never overwritten); the endpoint and the security posture belong to
 `docket setup`.
-**Syntax**: `docket init [project] [location] [--blueprint <name>] [--pod full] [--with <roles>] [--codebase <path>] [--name <text>] [--from <file>] [--recipe <name|dir>] [--no-apply] [--accept CODE] [--json]`
+**Syntax**: `docket init [project] [location] [--blueprint <name>] [--pod full] [--with <roles>] [--codebase <path> | --workdir <path>] [--name <text>] [--from <file>] [--recipe <name|dir>] [--no-apply] [--accept CODE] [--json]`
 
 `init` refuses a home that holds, at its top level, an entry the layout puts under `config/` or
 `state/` (workspace-structure.spec.md 80): exit `1`, the entries named, nothing moved. It never
@@ -183,6 +183,8 @@ passes without a key.
   `routine`); omitted defaults to `build`. An unknown name fails
   cleanly (exit 1) before any prompt is shown
 - `--codebase <path>`: The location, as an option instead of the second argument
+- `--workdir <path>`: The same option under the name a `workdir` blueprint (`respond`, `operate`,
+  `routine`) reads naturally; giving it together with `--codebase` exits 2
 - `--name <text>`: The pod's name, as an option instead of the first argument; an option wins
   over its positional
 - `--pod full`: Provision a full pod — Lead, Implementer, and Reviewer. Applies only to

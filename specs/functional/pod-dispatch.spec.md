@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.9.0
+**Version**: 11.10.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -1830,15 +1830,19 @@ counts to attribute usage to.
    resumed, or retried) **MUST** reuse it; claim never creates a second one.
 4. When git is missing, the codebase is not a repo, or `worktree add` fails, the task **MUST** run in
    place and record `worktree = {dir: "", branch: "", baseCommit: "", fallbackReason}`, unless the
-   task carries a `baseRef` (requirement 4a). An Implementer with no `codebase` records no worktree.
+   task carries a `baseRef` (requirement 4a). An Implementer with no `codebase` records no worktree,
+   and neither does a `workdir`-kind pod, whose tasks all run in its working directory: the claim
+   reads the pod's workspace kind (its Lead's `workspaceKind`) before any member's `codebase`.
    - 4a. A task with a `baseRef` **MUST** get its worktree created on the new task branch from that
      ref (`git worktree add -b <branch> <dir> <baseRef>`), record `worktree.baseRef` as given, and
      `baseCommit` is the new worktree's HEAD, the commit the ref resolved to. A ref that begins with
      `-` is refused outright. The caller asked for a base, so running in place is wrong: when the ref
-     does not resolve, the codebase is not a repo, git is missing, or the Implementer has no
-     codebase, claim **MUST** record no `worktree`, leave no worktree directory or task branch
-     behind, and settle the task through the claim-time refusal (requirement 4b) with `failureKind:
-     "base_ref"` and a reason naming the ref. No hop runs.
+     does not resolve, the codebase is not a repo, git is missing, the pod is `workdir`-kind, or
+     the Implementer has no codebase, claim **MUST** record no `worktree`, leave no worktree
+     directory or task branch behind, and settle the task through the claim-time refusal
+     (requirement 4b) with `failureKind: "base_ref"` and a reason naming the pod and the ref. The
+     reason of a `workdir` pod and of a missing Implementer codebase are the two sentences of
+     `operator-api.spec.md` "A task on a `workdir` pod". No hop runs.
    - 4b. The claim-time refusal settles the claimed task `failed` with `failureKind`, `reason` and
      `completedAt`, leaves the recorded `hops` untouched, re-syncs the ledger, and
      writes a `dispatch_refused` trace event whose payload carries the refusal `reason` and
@@ -1893,7 +1897,12 @@ Dispatch prepares it once per claim, before any hop.
    gate resolution, and before the task's first hop, `dispatch_pod` **MUST** prepare the claimed
    task's worktree. A task with no recorded worktree `dir` (one that runs in place) **MUST NOT** be
    prepared: docket installs only into a checkout it made. No hop runs, and no token is spent, until
-   preparation has finished.
+   preparation has finished. On a `workdir`-kind pod, which never has a task worktree, a task whose
+   own `prepare` is a command (not blank, not `none`) **MUST** instead be settled at claim through
+   the claim-time refusal with `failureKind: "prepare"` and the reason `operator-api.spec.md` "A task
+   on a `workdir` pod" gives: the caller asked for an install that nothing would run. A `codebase`
+   pod's task that runs in place keeps being run unprepared, since the pod's own fallback put it
+   there, not the caller.
 2. The command is the first of these that is present; a blank string or `none` (any case) at a level
    turns preparation off and wins over every lower level:
    1. the task's own `prepare` (`POST /tasks/<pod>`, stored on the task record before it runs);

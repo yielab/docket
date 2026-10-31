@@ -23,6 +23,7 @@ from tests.support import pods as _support_pods
 from tests.support.http import post_raw as _post_raw
 from tests.support.pods import bind_one_step_pipeline as _bind_one_step_pipeline
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
+from tests.support.pods import write_meta
 from tests.support.tasks import put_task as _put_task
 from tests.support.tasks import put_tasks, update_task
 from tests.support.tasks import task as _make_task
@@ -47,6 +48,16 @@ from docket.teams import agent_memory as _mem
 live_server = _support_http.live_server
 
 pod_home = _support_pods.pod_home_bare
+
+
+def _seed_workdir_pod(project: str) -> None:
+    """A `workdir`-kind pod: a Lead that records its folder, and no Implementer."""
+    work = current_home().root / "work" / project
+    work.mkdir(parents=True)
+    write_meta(
+        f"{project}-lead", {"codebase": "", "workspaceKind": "workdir", "workDir": str(work)}
+    )
+
 
 SUBJECT = "docket.tasks.application.queue"
 
@@ -478,7 +489,7 @@ class TestBaseRefRefusedAtClaim:
         monkeypatch.setattr(
             _queue,
             "ensure_task_worktree",
-            lambda project, task_id, base_ref: (
+            lambda project, task_id, base_ref, prepare: (
                 None,
                 ("base_ref", f"baseRef {base_ref!r} was not used: no such ref"),
             ),
@@ -492,6 +503,60 @@ class TestBaseRefRefusedAtClaim:
         (stored,) = TaskRepository.for_pod("myapp").list()
         assert stored.status == "running"
         assert stored.worktree is None
+
+    def test_a_workdir_pod_refuses_a_base_ref_naming_the_pod(self, pod_home: Path) -> None:
+        _seed_workdir_pod("ops")
+        _queue.enqueue_task_once("ops", "needs a base", channel="cli", base_ref="abc123")
+        calls: list[str] = []
+
+        _sweep.dispatch_pod("ops", runner=self._runner(calls))
+
+        (task,) = TaskRepository.for_pod("ops").list()
+        assert (task.status, task.failure_kind, task.reason) == (
+            "failed",
+            "base_ref",
+            "pod 'ops' works in a folder (workspaceKind workdir); "
+            "baseRef 'abc123' applies only to a pod with a codebase",
+        )
+        assert calls == [] and task.worktree is None
+
+    def test_a_codebase_pod_with_no_implementer_names_the_pod(self, pod_home: Path) -> None:
+        write_meta("myapp-lead")
+        _queue.enqueue_task_once("myapp", "needs a base", channel="cli", base_ref="main")
+
+        claim = _queue.claim_next_task("myapp", resume=False)
+
+        assert claim is not None
+        assert claim.refusal == (
+            "base_ref",
+            "pod 'myapp' has no Implementer with a codebase to make a task worktree from; "
+            "baseRef 'main' was not used",
+        )
+
+    def test_a_workdir_pod_refuses_a_prepare_command(self, pod_home: Path) -> None:
+        _seed_workdir_pod("ops")
+        _queue.enqueue_task_once("ops", "install first", channel="cli", prepare="npm ci")
+
+        claim = _queue.claim_next_task("ops", resume=False)
+
+        assert claim is not None
+        assert claim.refusal == (
+            "prepare",
+            "pod 'ops' works in a folder (workspaceKind workdir); "
+            "prepare 'npm ci' applies only to a pod with a codebase",
+        )
+
+    @pytest.mark.parametrize("prepare", ["none", ""])
+    def test_a_workdir_pod_accepts_a_prepare_that_runs_nothing(
+        self, pod_home: Path, prepare: str
+    ) -> None:
+        _seed_workdir_pod("ops")
+        _queue.enqueue_task_once("ops", "nothing to install", channel="cli", prepare=prepare)
+
+        claim = _queue.claim_next_task("ops", resume=False)
+
+        assert claim is not None
+        assert (claim.refusal, claim.record.worktree) == (None, None)
 
     def test_a_made_worktree_is_stored_and_carried_on_the_claim(
         self, pod_home: Path, monkeypatch: pytest.MonkeyPatch

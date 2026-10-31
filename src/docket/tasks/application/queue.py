@@ -366,7 +366,7 @@ def claim_next_task(
     the ``Claim`` (the task, its recorded hops, a granted approval's gate override), or ``None``.
     A task id in *skip* (one this run already claimed) is never picked again. A task without a
     worktree gets one after the claim; the ``Claim`` carries ``refusal`` when a ``baseRef`` could
-    not be honoured."""
+    not be honoured, or when a ``workdir`` pod's task asks for a ``prepare`` command."""
     lead_id = _pod.member_id(project, "lead")
     if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")):
         _trace.trace_event(
@@ -385,7 +385,9 @@ def claim_next_task(
     record = claim.record
     if record.worktree is not None:
         return claim
-    stored, refusal = ensure_task_worktree(project, record.id, record.base_ref or "")
+    stored, refusal = ensure_task_worktree(
+        project, record.id, record.base_ref or "", record.prepare
+    )
     if stored is not None:
         worktree = Worktree.model_validate(stored)
         repo.update(record.id, lambda r: setattr(r, "worktree", worktree))

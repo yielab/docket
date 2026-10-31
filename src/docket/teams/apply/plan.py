@@ -73,6 +73,7 @@ from docket.teams.apply.review import (
     PlanReview,
     RunChange,
     classify_directory,
+    is_workdir,
     repo_root,
     review_decision,
     runs_changed,
@@ -615,7 +616,7 @@ def apply_directory(
     plan = plan_apply(project, directory)
     if dry_run:
         return DirectoryOutcome("planned", plan.items)
-    decision = review_decision(root, project, directory, accept)
+    decision = review_decision(root, project, directory, accept, workdir=is_workdir(project))
     if decision.status == "refused":
         return DirectoryOutcome("refused", refused=decision.review.refused)
     if decision.status == "needs_code":
@@ -659,6 +660,6 @@ def repo_changes(project: str, repo_dir: Path) -> RepoChanges | None:
         plan=plan,
         adds_changed=tuple(f"{i.kind} {i.name}" for i in plan.items if i.action != "skip"),
         runs_changed=runs_changed(project, repo_dir),
-        review=classify_directory(repo_dir),
+        review=classify_directory(repo_dir, workdir=is_workdir(project)),
         allowed_on=found.date if found else "",
     )

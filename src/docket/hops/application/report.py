@@ -456,11 +456,13 @@ def lights_out_report() -> dict[str, list[_profile.Violation]]:
 
 
 def pod_summary(project: str) -> dict[str, Any]:
-    """One row of ``GET /pods``: name, codebase, member count, effective profile, queue."""
+    """One row of ``GET /pods``: name, codebase, workspace kind, member count, effective profile,
+    queue."""
     ids = [a.id for a in _fleet.list_agents()]
     return {
         "name": project,
         "codebase": _codebase(project),
+        "workspaceKind": str(_pod_settings.workspace_kind(project)),
         "members": len(_pod.members_of(ids, project)),
         "profile": _profile.effective_profile(project),
         "queue": task_counts(project),
@@ -468,8 +470,8 @@ def pod_summary(project: str) -> dict[str, Any]:
 
 
 def pod_detail(project: str) -> dict[str, Any]:
-    """``pod_report`` plus the profile verdict, the pipeline source, the repo config dir and the
-    read-only jail grants the pod keeps."""
+    """``pod_report`` plus the profile verdict, the pipeline source, the workspace kind, the repo
+    config dir and the read-only jail grants the pod keeps."""
     effective = _profile.effective_profile(project)
     verdict = (
         _profile.as_json(project_violations(project))
@@ -480,6 +482,7 @@ def pod_detail(project: str) -> dict[str, Any]:
         **pod_report(project),
         "profile": verdict,
         "pipelineSource": _steps.effective_pipeline_source(project),
+        "workspaceKind": str(_pod_settings.workspace_kind(project)),
         "repoConfigDir": _repo_config_dir(project),
         "readOnly": [str(path) for path in _pod_settings.effective_read_only(project)],
     }

@@ -1,8 +1,8 @@
 # Pod Blueprints Specification
 
-**Version**: 4.1.0
+**Version**: 4.2.0
 **Status**: Implemented
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -157,8 +157,11 @@ This specification does NOT cover:
    the pipeline", not the Implementer (`pod-dispatch.spec.md` "Bounded hop prompts" requirement 8),
    and its identity names "the workspace", not code or git, on every pod. A `codebase`-kind pod's
    hop messages and `AGENTS.md` read the earlier text, byte for byte. A `baseRef` on a task of a
-   `workdir` pod **MUST** fail the task before any hop with `failureKind: base_ref`, because the
-   pod has no repository to branch from.
+   `workdir` pod **MUST** fail the task before any hop with `failureKind: base_ref`, and a task
+   `prepare` command with `failureKind: prepare`, because the pod has no repository to branch from
+   and no worktree to install into; the reasons name the pod and its `workspaceKind`
+   (`operator-api.spec.md` "A task on a `workdir` pod"). The HTTP API reports the kind as
+   `workspaceKind` on `GET /pods` and `GET /pods/<p>`.
 
 ### CLI surface
 
@@ -453,7 +456,13 @@ overlay, policies, members, pipeline binding, settings) into one command.
     12's review shows and remembers it: the directory's own `prepare:` when it has one and it is
     not `none`, else, when *dir* is a repository's `.docket/` (or `.docket/teams/<pod>/`) whose
     repository root holds a lockfile, the command pod dispatch derives from it. `prepare: none`
-    lists nothing. `docket pod export` writes the recorded setting back as `prepare:`.
+    lists nothing. `docket pod export` writes the recorded setting back as `prepare:`. A
+    `workdir`-kind pod never prepares (no task worktree), so for one: classification **MUST NOT**
+    derive a command from a lockfile nor list a `prepare` item, and planning (like `docket pod set
+    prepare`) **MUST** refuse a `prepare:` that is a command with `prepare: pod '<pod>' works in a
+    folder (workspaceKind workdir); a prepare command applies only to a pod with a codebase`,
+    before anything is written. `""` and `none` are accepted. `docket init` with a `workdir`
+    blueprint classifies the directory the same way before the pod exists.
 14. **A team names what its tasks may not change alone (ADR 0029).** `pod.yaml`'s optional
     top-level `protects:` is a list of path globs added to the default protected paths
     (`security-gates.spec.md` "Protected paths and the reviewed digest"); a task whose diff touches

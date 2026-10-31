@@ -511,3 +511,23 @@ class TestEffectiveNetworkGrant:
         assert pod_settings.revoke_network_grant("shop") is True
         assert pod_settings.revoke_network_grant("shop") is False
         assert pod_settings.effective_network("shop") == ("none", "global")
+
+
+class TestWorkspaceKind:
+    """A pod's workspace kind is the one its Lead records; a folder pod takes no install."""
+
+    def test_the_kind_is_read_from_the_lead_and_defaults_to_codebase(self) -> None:
+        _write_lead_meta("web")
+        _write_lead_meta("ops", {"workspaceKind": "workdir"})
+        assert pod_settings.workspace_kind("web") == "codebase"
+        assert pod_settings.workspace_kind("ops") == "workdir"
+
+    def test_a_workdir_pod_refuses_a_prepare_command_and_accepts_none(self) -> None:
+        _write_lead_meta("ops", {"workspaceKind": "workdir"})
+        with pytest.raises(
+            pod_settings.PodSettingsError,
+            match=r"^prepare: pod 'ops' works in a folder \(workspaceKind workdir\); "
+            r"a prepare command applies only to a pod with a codebase$",
+        ):
+            pod_settings.PodSettings.coerce("prepare", "npm ci", project="ops")
+        assert pod_settings.PodSettings.coerce("prepare", "none", project="ops") == "none"

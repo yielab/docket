@@ -45,6 +45,16 @@ class TestParsing:
         assert requests[0].name == "myapp"
         assert requests[0].location == "/src/myapp"
 
+    def test_workdir_is_the_location_under_a_folder_word(self, requests: list) -> None:
+        assert (
+            runner.invoke(app, ["init", "--blueprint", "operate", "--workdir", "/w"]).exit_code == 0
+        )
+        assert requests[0].location == "/w"
+
+    def test_workdir_and_codebase_together_exit_2(self, requests: list) -> None:
+        result = runner.invoke(app, ["init", "--workdir", "/w", "--codebase", "/c"])
+        assert result.exit_code == 2 and requests == []
+
     def test_options_win_over_positionals(self, requests: list) -> None:
         runner.invoke(app, ["init", "pos", "/a", "--name", "Flag Name", "--codebase=/b"])
         assert (requests[0].name, requests[0].location) == ("Flag Name", "/b")
