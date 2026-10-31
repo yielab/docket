@@ -14,11 +14,12 @@ from __future__ import annotations
 import contextlib
 import os
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 from docket.kernel import clock as _clock
-from docket.kernel.records import RecordColumn, RecordsError, RecordSet
+from docket.kernel.records import RecordColumn, RecordScope, RecordsError, RecordSet
 from docket.kernel.records_port import (
     AddOutcome,
     ReadLimits,
@@ -32,6 +33,7 @@ from docket.kernel.records_rules import (
     check_add,
     check_declaration,
     check_format,
+    check_origin,
     check_update,
     plan_change,
     write_export,
@@ -60,6 +62,8 @@ _DECLARED_DDL = (
     "(set_name TEXT NOT NULL, column_name TEXT NOT NULL, type TEXT NOT NULL, "
     "is_key INTEGER NOT NULL, PRIMARY KEY (set_name, column_name))"
 )
+# A set's scope; a set with no row here (declared before scopes existed) is scoped to the pod.
+_SETS_DDL = 'CREATE TABLE IF NOT EXISTS "_sets" (set_name TEXT PRIMARY KEY, scope TEXT NOT NULL)'
 
 
 def _quote(name: str) -> str:
@@ -78,7 +82,23 @@ def _declared(db: sqlite3.Connection, set_name: str) -> RecordSet | None:
         return None
     key = next((r[0] for r in rows if r[2]), None)
     columns = [RecordColumn(name=r[0], type=r[1]) for r in rows]
-    return RecordSet(name=set_name, columns=columns, key=key)
+    return RecordSet(name=set_name, columns=columns, key=key, scope=_scope(db, set_name))
+
+
+def _scope(db: sqlite3.Connection, set_name: str) -> RecordScope:
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE name = '_sets'").fetchone():
+        return "pod"
+    found = db.execute('SELECT scope FROM "_sets" WHERE set_name = ?', (set_name,)).fetchone()
+    return "task" if found is not None and found[0] == "task" else "pod"
+
+
+def _owned(
+    declared: RecordSet, condition: str, value: object, origin: RecordOrigin
+) -> tuple[str, list[object]]:
+    """*condition* on *value*, and in a task-scoped set only among the rows of the writing task."""
+    if declared.scope == "task":
+        return f"{condition} AND _task = ?", [value, origin.task]
+    return condition, [value]
 
 
 def _require(db: sqlite3.Connection, set_name: str) -> RecordSet:
@@ -111,6 +131,7 @@ def _create(db: sqlite3.Connection, record_set: RecordSet) -> None:
         "_task TEXT",
         "_session TEXT",
         "_step TEXT",
+        "_role TEXT",
         "_updated_at TEXT",
     ]
     for column in record_set.columns:
@@ -119,7 +140,12 @@ def _create(db: sqlite3.Connection, record_set: RecordSet) -> None:
     db.execute(f"CREATE TABLE {table} ({', '.join(parts)})")
     if record_set.key is not None:
         index = _quote("ux_" + record_set.name)
-        db.execute(f"CREATE UNIQUE INDEX {index} ON {table} ({_quote(record_set.key)})")
+        unique = [_quote(record_set.key)]
+        if record_set.scope == "task":
+            unique.insert(0, "_task")
+        db.execute(f"CREATE UNIQUE INDEX {index} ON {table} ({', '.join(unique)})")
+    if record_set.scope == "task":
+        db.execute('INSERT INTO "_sets" (set_name, scope) VALUES (?, ?)', (record_set.name, "task"))
     for column in record_set.columns:
         _declare(db, record_set.name, column, column.name == record_set.key)
 
@@ -187,6 +213,7 @@ class SqliteRecordStore:
         check_declaration(record_set)
         with self._transaction() as db:
             db.execute(_DECLARED_DDL)
+            db.execute(_SETS_DDL)
             current = _declared(db, record_set.name)
             change = plan_change(current, record_set)
             if current is None:
@@ -217,17 +244,25 @@ class SqliteRecordStore:
     def add(self, set_name: str, values: Row, origin: RecordOrigin) -> AddOutcome:
         with self._transaction() as db:
             declared = _require(db, set_name)
+            check_origin(declared, origin)
             clean = check_add(declared, values)
             table = _quote(set_name)
             if declared.key is not None:
-                found = db.execute(
-                    f"SELECT * FROM {table} WHERE {_quote(declared.key)} = ?",
-                    (clean[declared.key],),
-                ).fetchone()
+                where, args = _owned(
+                    declared, f"{_quote(declared.key)} = ?", clean[declared.key], origin
+                )
+                found = db.execute(f"SELECT * FROM {table} WHERE {where}", args).fetchone()
                 if found is not None:
                     return AddOutcome(_row(declared, found), created=False)
-            names = ["_at", "_task", "_session", "_step", *clean]
-            args = [_clock.stamp(), origin.task, origin.session, origin.step, *clean.values()]
+            names = ["_at", "_task", "_session", "_step", "_role", *clean]
+            args = [
+                _clock.stamp(),
+                origin.task,
+                origin.session,
+                origin.step,
+                origin.role,
+                *clean.values(),
+            ]
             marks = ", ".join("?" for _ in names)
             columns = ", ".join(_quote(n) for n in names)
             cursor = db.execute(f"INSERT INTO {table} ({columns}) VALUES ({marks})", args)
@@ -237,23 +272,31 @@ class SqliteRecordStore:
     def update(self, set_name: str, match: Row, values: Row, origin: RecordOrigin) -> Row:
         with self._transaction() as db:
             declared = _require(db, set_name)
+            check_origin(declared, origin)
             column, wanted, clean = check_update(declared, match, values)
             table = _quote(set_name)
-            found = db.execute(
-                f"SELECT _id FROM {table} WHERE {_quote(column)} = ?", (wanted,)
-            ).fetchone()
+            where, bound = _owned(declared, f"{_quote(column)} = ?", wanted, origin)
+            found = db.execute(f"SELECT _id FROM {table} WHERE {where}", bound).fetchone()
             if found is None:
-                raise RecordsError(f"set {set_name!r} has no row with {column} = {wanted!r}")
-            names = [*clean, "_updated_at", "_task", "_session", "_step"]
-            args = [*clean.values(), _clock.stamp(), origin.task, origin.session, origin.step]
+                mine = " in this task" if declared.scope == "task" else ""
+                raise RecordsError(f"set {set_name!r} has no row with {column} = {wanted!r}{mine}")
+            names = [*clean, "_updated_at", "_task", "_session", "_step", "_role"]
+            args = [
+                *clean.values(),
+                _clock.stamp(),
+                origin.task,
+                origin.session,
+                origin.step,
+                origin.role,
+            ]
             assigns = ", ".join(f"{_quote(n)} = ?" for n in names)
             db.execute(f"UPDATE {table} SET {assigns} WHERE _id = ?", [*args, found["_id"]])
             row = db.execute(f"SELECT * FROM {table} WHERE _id = ?", (found["_id"],)).fetchone()
             return _row(declared, row)
 
-    def read(self, statement: str, limits: ReadLimits) -> Rows:
+    def read(self, statement: str, limits: ReadLimits, params: Sequence[Any] = ()) -> Rows:
         with self._reader(limits.timeout_s) as db:
-            cursor = db.execute(statement)
+            cursor = db.execute(statement, tuple(params))
             return bound_rows([d[0] for d in cursor.description or ()], cursor, limits)
 
     def export(self, statement: str, target: Path, fmt: str, limits: ReadLimits) -> int:

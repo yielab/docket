@@ -16,4 +16,5 @@ steps:
       task added with rec__query (the _task column holds the task id). APPROVE only when the two
       counts agree and each title and amount matches the input; otherwise REQUEST-CHANGES and
       name the ref that is missing, extra or wrong. You cannot add or change a row.
+    tools: [read, glob, grep, rec__query]
     verdict: [APPROVE, REQUEST-CHANGES]

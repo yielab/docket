@@ -239,6 +239,11 @@ MCP_TOOL_PREFIX = "mcp__"
 # no built-in tool acts outside the machine.
 SEND_KIND = "send"
 
+# The other kind a `cannot`/`deniedTools` entry may name that is not a built-in tool: it denies the
+# tools that add or change a pod's own record rows. A row lives outside the project and its jail, so
+# denying `write` does not deny it.
+RECORD_KIND = "record"
+
 
 def allow_list_names(allow: tuple[str, ...], tool_name: str) -> bool:
     """Whether *allow* names *tool_name*: the exact name, or the server (`mcp__<server>`), service

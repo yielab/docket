@@ -8,6 +8,7 @@ and one entry in the conformance suite. The rules every backend shares are in `r
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -24,6 +25,7 @@ class RecordOrigin:
     task: str | None = None
     session: str | None = None
     step: str | None = None
+    role: str | None = None
 
 
 @dataclass(frozen=True)
@@ -86,8 +88,9 @@ class RecordStore(Protocol):
         """Change declared columns of the one row `match` names by `_id` or by the key."""
         ...
 
-    def read(self, statement: str, limits: ReadLimits) -> Rows:
-        """Run one read-only statement; keep what `limits` allow and count the rest as cut."""
+    def read(self, statement: str, limits: ReadLimits, params: Sequence[Any] = ()) -> Rows:
+        """Run one read-only statement, its `?` placeholders bound to *params* (a value, never
+        statement text); keep what `limits` allow and count the rest as cut."""
         ...
 
     def export(self, statement: str, target: Path, fmt: str, limits: ReadLimits) -> int:

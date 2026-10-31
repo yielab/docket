@@ -15,6 +15,7 @@ from pydantic.alias_generators import to_camel
 
 from docket.governance import policy as _policy
 from docket.hops.application import builtin_tools as _builtin_tools
+from docket.hops.application import capabilities as _capabilities
 from docket.hops.application import executor as _executor
 from docket.hops.application import steps as _steps
 from docket.hops.gates import profile as _profile
@@ -544,8 +545,14 @@ def pod_detail(project: str) -> dict[str, Any]:
         if effective == _profile.LIGHTS_OUT
         else {"name": effective, "violations": []}
     )
+    report = pod_report(project)
+    members = [
+        {**m, "capabilities": _capabilities.member_capabilities(project, m["role"])}
+        for m in report["members"]
+    ]
     return {
-        **pod_report(project),
+        **report,
+        "members": members,
         "profile": verdict,
         "pipelineSource": _steps.effective_pipeline_source(project),
         "workspaceKind": str(_pod_settings.workspace_kind(project)),

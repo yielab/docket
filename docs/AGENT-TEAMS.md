@@ -304,16 +304,17 @@ that tries.
 
 | Tool | Kind | What it does |
 |---|---|---|
-| `rec__<set>__add` | write | adds a row; its parameters are the set's columns. With a `key`, an add whose key exists returns the existing row, so a resumed hop that repeats the call writes once |
-| `rec__<set>__update` | write | changes one row, found by `_id` or by the key; it cannot change the key |
+| `rec__<set>__add` | record | adds a row; its parameters are the set's columns. With a `key`, an add whose key exists returns the existing row, so a resumed hop that repeats the call writes once |
+| `rec__<set>__update` | record | changes one row, found by `_id` or by the key; it cannot change the key |
 | `rec__query` | read | runs one `SELECT` on a read-only connection, with a row bound and a time bound |
 | `rec__export` | write | writes a query's rows as CSV or Markdown into the hop's working directory; the rows do not pass through the model |
 
-docket fills `_task`, `_session`, `_step` and `_at` on every row from the hop, never from the
+docket fills `_task`, `_session`, `_step`, `_role` and `_at` on every row from the hop, never from the
 model's arguments; an argument that names one is refused. A role holds the tools by naming
-`rec__<set>`, `rec__query`, `rec__export` or `rec` (all of them) in its `tools`; a role that
-denies `write` loses add, update and export and keeps `rec__query`, which is how the `records`
-recipe's Reviewer can check a set and never change it. No record tool is `send`: the tools do not
+`rec__<set>`, `rec__query`, `rec__export` or `rec` (all of them) in its `tools`. A row lives outside
+the project, so a role that denies `write` keeps add and update and loses only `rec__export`, which
+writes a file; to keep a role from changing rows, deny `record` (`cannot: [record]`) or list its tools,
+which is how the `records` recipe's Reviewer checks a set and never changes it. No record tool is `send`: the tools do not
 send a record anywhere, and a policy `ask` on `rec__*` is your choice.
 
 **What the jail can and cannot write.** The tools run in docket's process, and the records file is

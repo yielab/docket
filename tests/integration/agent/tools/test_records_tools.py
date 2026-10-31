@@ -216,15 +216,27 @@ class TestWhatTheRoleSees:
     def _offered(self, backend: _ScriptedBackend) -> set[str]:
         return {spec.name for spec in backend.tools_seen[0]}
 
-    def test_a_role_denying_write_is_offered_only_the_query(self, workdir: Path) -> None:
+    def test_a_role_denying_write_keeps_the_rows_and_loses_the_export(self, workdir: Path) -> None:
         write_role_overlay("acme", "implementer", ["write"])
         backend = _ScriptedBackend([_final()])
 
         _turn(backend)
 
         offered = self._offered(backend)
-        assert "rec__query" in offered
-        assert offered.isdisjoint({"rec__leads__add", "rec__leads__update", "rec__export"})
+        assert {"rec__query", "rec__leads__add", "rec__leads__update"} <= offered
+        assert "rec__export" not in offered
+
+    def test_a_role_denying_record_loses_the_rows_and_keeps_query_and_export(
+        self, workdir: Path
+    ) -> None:
+        write_role_overlay("acme", "implementer", ["record"])
+        backend = _ScriptedBackend([_final()])
+
+        _turn(backend)
+
+        offered = self._offered(backend)
+        assert {"rec__query", "rec__export"} <= offered
+        assert offered.isdisjoint({"rec__leads__add", "rec__leads__update"})
 
     def test_a_role_naming_the_set_is_offered_its_add_and_update_alone(self, workdir: Path) -> None:
         write_role_overlay("acme", "implementer", [], extra="tools: [read, rec__leads]\n")

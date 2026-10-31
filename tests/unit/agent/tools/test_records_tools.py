@@ -88,13 +88,19 @@ class TestNamesKindsAndSchemas:
             "rec__query",
         ]
 
-    def test_reads_are_read_and_everything_that_writes_is_write(self) -> None:
+    def test_rows_are_record_the_query_is_read_and_the_export_is_write(self) -> None:
         registry, _ = _load()
 
         kinds = {name: tool_named(registry, name).kind for name in registry.names()}
 
-        assert kinds["rec__query"] == "read"
-        assert {k for n, k in kinds.items() if n != "rec__query"} == {"write"}
+        assert kinds == {
+            "rec__export": "write",
+            "rec__leads__add": "record",
+            "rec__leads__update": "record",
+            "rec__notes__add": "record",
+            "rec__notes__update": "record",
+            "rec__query": "read",
+        }
 
     def test_add_takes_the_columns_and_requires_the_key_and_required_columns(self) -> None:
         registry, _ = _load()
@@ -133,11 +139,14 @@ class TestAdd:
         registry, store = _load()
 
         out = tool_named(registry, "rec__leads__add").handler(
-            {"email": "a@b.test", "score": 2}, _ctx(tmp_path, trace_session_key="s-9")
+            {"email": "a@b.test", "score": 2},
+            _ctx(tmp_path, trace_session_key="s-9", role="planner"),
         )
 
         assert out.ok
-        assert store.calls[0][1][2] == RecordOrigin(task="t-1", session="s-9", step="scan")
+        assert store.calls[0][1][2] == RecordOrigin(
+            task="t-1", session="s-9", step="scan", role="planner"
+        )
         assert json.loads(out.content)["created"] is True
 
     def test_the_session_key_stands_in_when_the_hop_has_no_trace_session(
@@ -154,7 +163,7 @@ class TestAdd:
     ) -> None:
         registry, store = _load()
 
-        for name in ("_id", "_at", "_task", "_session", "_step", "_updated_at"):
+        for name in ("_id", "_at", "_task", "_session", "_step", "_role", "_updated_at"):
             out = tool_named(registry, "rec__leads__add").handler(
                 {"email": "a", "score": 1, name: "x"}, _ctx(tmp_path)
             )
@@ -171,6 +180,29 @@ class TestAdd:
         null = add.handler({"email": "a", "score": None}, _ctx(tmp_path))
 
         assert "score" in missing.error and "score" in null.error
+        assert store.calls == []
+
+    def test_a_blank_required_string_is_refused_naming_it(self, tmp_path: Path) -> None:
+        registry, store = _load()
+
+        for blank in ("", "   \n"):
+            out = tool_named(registry, "rec__leads__add").handler(
+                {"email": blank, "score": 1}, _ctx(tmp_path)
+            )
+            assert not out.ok
+            assert "email" in out.error
+
+        assert store.calls == []
+
+    def test_an_update_cannot_blank_a_required_column(self, tmp_path: Path) -> None:
+        registry, store = _load()
+
+        out = tool_named(registry, "rec__leads__update").handler(
+            {"match": {"email": "a"}, "values": {"score": None}}, _ctx(tmp_path)
+        )
+
+        assert not out.ok
+        assert "score" in out.error
         assert store.calls == []
 
     def test_the_store_s_refusal_is_the_tool_s_error(self, tmp_path: Path) -> None:

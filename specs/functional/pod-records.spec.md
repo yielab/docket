@@ -1,12 +1,12 @@
 # Pod Records Specification
 
-**Version**: 1.4.0
+**Version**: 1.6.0
 **Status**: Implemented in part. The port (`RecordStore`, `kernel/records_port.py`), its SQLite adapter
 (`platform/records_sqlite.py`), the `kind: records` document
 (`pod update` and `pod export` carry it), `docket pod records` and the `rec__*` tools a hop's agent
 reads and writes records with ("The tools") and the two read routes of the HTTP API ("Over HTTP") are
 implemented. Nothing is proven against a live model yet.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -66,15 +66,22 @@ This specification does NOT cover:
 6. When the set has a key and a row with that key value exists, `add` **MUST** write nothing and return
    that row with `created` false; otherwise it **MUST** insert one row and return it with `created`
    true. The check and the insert **MUST** be one transaction, so two adds of one key leave one row.
+   In a set with `scope` `task` (requirement 8a) the key is unique within a task, not within the pod.
 7. `update(set, match, values, origin)` **MUST** find exactly one row by `{"_id": n}` or by
    `{<key column>: value}` and refuse any other match, a row that does not exist, a value for a column
    that is not declared (an implicit column included) and a change to the key column, each naming what
    it refused. It **MUST** check each value as `add` does and return the updated row.
 8. Every row **MUST** carry the implicit columns `_id` (integer, assigned by the store), `_at` (the
-   creating time, UTC, from the kernel clock), `_task`, `_session`, `_step` (from `origin`, which the
-   hop supplies and the model never does) and `_updated_at` (null until the first update). An update
-   **MUST** set `_updated_at` and replace `_task`, `_session` and `_step` with the updating hop's.
-   A declared column **MUST NOT** begin with an underscore.
+   creating time, UTC, from the kernel clock), `_task`, `_session`, `_step`, `_role` (from `origin`,
+   which the hop supplies and the model never does) and `_updated_at` (null until the first update).
+   An update **MUST** set `_updated_at` and replace `_task`, `_session`, `_step` and `_role` with the
+   updating hop's. A declared column **MUST NOT** begin with an underscore.
+8a. A set declares a `scope`: `pod` (the default) or `task`. In a `task` set the key is unique within
+   a task (an `add` of one key in two tasks makes two rows, in one task one), `update` **MUST** reach
+   only a row whose `_task` is the writing hop's task (a row of another task is refused, naming the
+   match, and is left as it was) and never changes `_task`, and a write whose `origin` has no task
+   **MUST** be refused naming the set. `declare` and `plan` **MUST** refuse a change of scope, as
+   they refuse a change of key; the scope of a set declared before scopes existed is `pod`.
 9. A boolean column **MUST** be returned as `bool` and stored as 0 or 1.
 
 ### Queries
@@ -82,7 +89,8 @@ This specification does NOT cover:
 The statement of `read` and `export` is a read-only statement in the backend's own SQL dialect: for the
 SQLite adapter, SQLite's. docket does not translate it.
 
-10. `read(statement, limits)` **MUST** run on a connection separate from the writer,
+10. `read(statement, limits, params)` **MUST** bind *params* to the statement's `?` placeholders as
+    values, never as statement text, and **MUST** run on a connection separate from the writer,
     opened `mode=ro`, whose authorizer allows only `SELECT`, reading a column or table, a function and
     recursion. `INSERT`, `UPDATE`, `DELETE`, `ATTACH`, `PRAGMA`, DDL, a second statement and anything
     else **MUST** raise `RecordsError` and leave the data unchanged. A `WITH` query and a join **MUST**
@@ -108,11 +116,11 @@ SQLite adapter, SQLite's. docket does not translate it.
 ### The document
 
 15. A `kind: records` document **MUST** declare one set: `name` (`^[a-z][a-z0-9_]*$`), an optional
-    `description`, an optional `key` and `columns`, at least one and at most 40, each with `name`
+    `description`, an optional `key`, an optional `scope` (`pod`, the default, or `task`) and `columns`, at least one and at most 40, each with `name`
     (`^[a-z][a-z0-9_]*$`, unique within the set), `type` (`string`, `integer`, `number`, `boolean` or
     `date`), `required` (default false) and an optional `description`. `key`, when given, **MUST** name
     one of the columns. Any other key is refused. A column name that starts with `_` **MUST** be
-    refused (`_id`, `_at`, `_task`, `_session`, `_step` and `_updated_at` are docket's), as **MUST** an
+    refused (`_id`, `_at`, `_task`, `_session`, `_step`, `_role` and `_updated_at` are docket's), as **MUST** an
     unknown type, a repeated column, a `key` that is no column and a 41st column, each naming the
     file and the first failing field. `required` is carried and published; the store does not enforce
     it (only the key column is non-null), and the tools will.
@@ -166,21 +174,23 @@ SQLite adapter, SQLite's. docket does not translate it.
     validate **MUST** contribute no tool and **MUST** append a `records.unavailable` event to the
     audit log naming the file. Loading **MUST NOT** raise. Every call **MUST** pass `dispatch_tool`,
     like any tool, so the pod's policies and the role's kinds apply.
-31. `rec__<set>__add` **MUST** be a `write` tool whose parameters are the set's columns: a `string` and
+31. `rec__<set>__add` **MUST** be a `record` tool whose parameters are the set's columns: a `string` and
     a `date` as a JSON string (a `date` with `format: date`), an `integer`, a `number` and a `boolean`
     as their JSON types, with `required` naming the columns declared `required` and the key. It
     **MUST** call `RecordStore.add` and return JSON `{"created": <bool>, "row": {...}}`. An add whose
     key exists returns that row with `created` false and writes nothing, so a resumed hop that repeats
-    its call leaves one row. A required column that is missing or null **MUST** be refused naming the
-    column, writing nothing.
-32. `rec__<set>__update` **MUST** be a `write` tool with two parameters, both required: `match`, an
+    its call leaves one row. A required column that is missing, null or, for a `string`, empty or only
+    whitespace **MUST** be refused naming the column, writing nothing.
+32. `rec__<set>__update` **MUST** be a `record` tool with two parameters, both required: `match`, an
     object holding `_id` or the key column (one of them), and `values`, an object of the set's columns.
     It **MUST** call `RecordStore.update` and return `{"row": {...}}`. A refusal the store makes
     (a missing row, a change to the key, a wrong type, an undeclared column) **MUST** come back as the
-    tool's error text, with the file unchanged.
+    tool's error text, with the file unchanged. An update that sets a required column to null or, for a
+    `string`, to nothing **MUST** be refused as an add of it is.
 33. docket **MUST** fill `_task` (the hop's task id), `_session` (the hop's trace session, else its
-    session key) and `_step` (the hop's pipeline step) from the hop and **MUST NOT** take them from
-    the model. An argument named `_id`, `_at`, `_task`, `_session`, `_step` or `_updated_at`, at the
+    session key), `_step` (the hop's pipeline step) and `_role` (the hop's role) from the hop and
+    **MUST NOT** take them from the model. An argument named `_id`, `_at`, `_task`, `_session`,
+    `_step`, `_role` or `_updated_at`, at the
     top level of an add or inside `values` of an update, **MUST** be refused naming it, writing
     nothing. A column of the set is the only other name an add accepts.
 34. `rec__query` **MUST** be a `read` tool with `sql` (required) and `limit` (optional, default 50,
@@ -197,8 +207,11 @@ SQLite adapter, SQLite's. docket does not translate it.
 36. No result of a record tool **MUST** exceed the turn's tool-output cap.
 37. A role's `tools` allow-list names record tools as `rec__<set>` (that set's add and update),
     `rec__query`, `rec__export`, or `rec` (every record tool of the pod); a role with no allow-list
-    holds them all. A role that denies `write`, by its own `deniedTools` or its pod's, **MUST** lose
-    add, update and export, by their kind, and keep `rec__query`. The `minimal` surface **MUST** keep
+    holds them all. Add and update are of kind `record`, `rec__query` of kind `read` and `rec__export`
+    of kind `write` (it writes a file in the project). A role that denies `record`, by its own
+    `deniedTools` or its pod's, **MUST** lose add and update and keep `rec__query` and `rec__export`;
+    one that denies `write` **MUST** lose `rec__export` and keep add, update and `rec__query`, because
+    a row lives outside the project and its jail. The `minimal` surface **MUST** keep
     a record tool the allow-list in force names. `role-archetypes.spec.md` is the contract of those
     rules.
 38. No record tool **MUST** be `send`, and none has an approval of its own: a policy `ask` on `rec__*`
@@ -212,7 +225,7 @@ SQLite adapter, SQLite's. docket does not translate it.
 50. `GET /pods/<pod>/records` **MUST** answer `200` with `{"records": [...], "problems": [...]}`:
     one object per set the pod's `records/` documents declare -- `name`, `description`, `key` (null
     for none), `rows` (0 for a set whose table does not exist yet) and `columns`, each `{name, type,
-    required}` -- and one message for each document that does not validate. The set list is
+    required}`, and `scope` -- and one message for each document that does not validate. The set list is
     `pod_record_sets` and the count is `row_count`, the functions `docket pod records` calls.
 51. `GET /pods/<pod>/records/<set>` **MUST** answer `200` with `{"set", "columns", "rows", "cut"}`,
     the shape `docket pod records <set> --json` prints (`columns` the names, each row an object),
@@ -220,7 +233,10 @@ SQLite adapter, SQLite's. docket does not translate it.
     first, so `limit` keeps the latest rows; the CLI's default stays `_id` order), with
     `sql=<SELECT>` it runs through `read` unchanged, so requirements 10-12 hold over HTTP. `limit`
     defaults to 50, is at least 1 and at most 1000; any other value is `400`. A pod that has
-    written no row reads as no rows.
+    written no row reads as no rows. `task=<id>` replaces the statement with the rows whose `_task`
+    is that id, in write order (`ORDER BY _id`), the id bound as a parameter; it works on a set of
+    either scope, a task with no row reads as no rows, and `task` empty or together with `sql` is
+    `400`. The `scope` key of requirement 50 is how a client learns the docket supports `task`.
 52. A statement `read` refuses (not one `SELECT`, a second statement, a slow one) **MUST** be `400`
     with `{"ok": false, "error": <the store's message>}` and the rows remain. A set no document of
     the pod declares is `404` naming it and the sets there are; a pod that is not dispatchable is
@@ -241,9 +257,9 @@ of "The store", "Queries" and "Checking a declaration", and none names an engine
 - `has(set_name) -> bool`: whether the set is declared; false before the first write
 - `add(set_name, values, origin) -> AddOutcome` (`row`, `created`), idempotent by key
 - `update(set_name, match, values, origin) -> Row`
-- `read(statement, limits) -> Rows` (`columns`, `rows`, `cut`): one read-only statement, bounded
+- `read(statement, limits, params) -> Rows` (`columns`, `rows`, `cut`): one read-only statement, bounded
 - `export(statement, target, fmt, limits) -> int`: every row to a file as `csv` or `markdown`
-- the values they exchange: `RecordOrigin(task, session, step)`, `SetChange(created, added)`,
+- the values they exchange: `RecordOrigin(task, session, step, role)`, `SetChange(created, added)`,
   `AddOutcome`, `Rows`, `ReadLimits(max_rows, max_chars, timeout_s)` and `Row`
 
 `docket.kernel.records`: `RecordSet`, `RecordColumn`, `ColumnType`, `COLUMN_TYPES` (the typed config, no

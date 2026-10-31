@@ -33,5 +33,6 @@ steps:
       a summary and a discussion that is not empty, and the discussion reads as what commenters
       said and not as a copy of the title; otherwise REQUEST-CHANGES and name the id that is
       missing or wrong. You cannot add or change a row.
+    tools: [read, glob, grep, rec__query]
     verdict: [APPROVE, REQUEST-CHANGES]
     on: {REQUEST-CHANGES: {goto: analyse, max: 1}}

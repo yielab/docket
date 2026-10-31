@@ -19,7 +19,7 @@ from docket.kernel.records_port import ReadLimits, Rows, SetChange
 _COUNT_LIMIT = 5
 _READ = ReadLimits(max_chars=200_000, timeout_s=5.0)
 _EXPORT = ReadLimits(timeout_s=30.0)
-_IMPLICIT = ("_id", "_at", "_task", "_session", "_step", "_updated_at")
+_IMPLICIT = ("_id", "_at", "_task", "_session", "_step", "_role", "_updated_at")
 
 
 class RecordsDocError(InvalidInput):
@@ -109,16 +109,26 @@ def default_sql(record_set: RecordSet, newest_first: bool = False) -> str:
 
 
 def read_rows(
-    project: str, record_set: RecordSet, sql: str | None, limit: int, newest_first: bool = False
+    project: str,
+    record_set: RecordSet,
+    sql: str | None,
+    limit: int,
+    newest_first: bool = False,
+    task: str | None = None,
 ) -> Rows:
     """Run *sql* (the whole set when omitted, newest first if asked) as a read, at most *limit*
-    rows. A set that is not declared yet reads as no rows."""
+    rows; with *task* instead, the rows that task wrote in write order. A set that is not declared
+    yet reads as no rows."""
     store = records.open(project)
     if sql is None and not store.has(record_set.name):
         columns = (*_IMPLICIT, *(c.name for c in record_set.columns))
         return Rows(columns=columns, rows=[], cut=0)
+    limits = replace(_READ, max_rows=limit)
+    if task is not None:
+        statement = f'SELECT * FROM "{record_set.name}" WHERE _task = ? ORDER BY _id'
+        return store.read(statement, limits, (task,))
     statement = sql if sql is not None else default_sql(record_set, newest_first)
-    return store.read(statement, replace(_READ, max_rows=limit))
+    return store.read(statement, limits)
 
 
 def export_csv(project: str, record_set: RecordSet, sql: str | None, path: Path) -> int:

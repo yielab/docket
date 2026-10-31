@@ -165,8 +165,7 @@ def registry_for_role(
         return narrowed
     narrowed = narrowed.without(*denied)
     denied_kinds: set[str] = {kind for name in named if (kind := BUILTIN_TOOL_KINDS.get(name))}
-    if _roles.SEND_KIND in named:
-        denied_kinds.add(_roles.SEND_KIND)
+    denied_kinds |= {kind for kind in (_roles.SEND_KIND, _roles.RECORD_KIND) if kind in named}
     if denied_kinds:
         extra = [
             name

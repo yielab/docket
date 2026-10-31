@@ -163,3 +163,45 @@ def test_a_declared_set_with_no_file_reads_as_no_rows(live_server: tuple[str, st
     assert status == 200
     assert body["rows"] == []
     assert _get(f"{url}/pods/fresh/records", token)[1]["records"][0]["rows"] == 0
+
+
+def test_list_says_each_set_s_scope(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pod_with_leads()
+
+    _, body = _get(f"{url}/pods/demo/records", token)
+
+    assert [r["scope"] for r in body["records"]] == ["pod"]
+
+
+def test_task_returns_that_task_s_rows_in_write_order(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pod_with_leads(rows=0)
+    store = records.open("demo")
+    for task, email in (("t1", "a"), ("t2", "b"), ("t1", "c")):
+        store.add("leads", {"email": email}, RecordOrigin(task=task))
+
+    status, body = _get(f"{url}/pods/demo/records/leads?task=t1", token)
+
+    assert status == 200
+    assert [r["email"] for r in body["rows"]] == ["a", "c"]
+    assert body["cut"] == 0
+
+
+def test_task_of_a_set_with_no_row_of_it_is_no_rows(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pod_with_leads()
+
+    status, body = _get(f"{url}/pods/demo/records/leads?task=ghost", token)
+
+    assert (status, body["rows"]) == (200, [])
+
+
+def test_task_with_sql_or_empty_is_400(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pod_with_leads()
+
+    for query in (f"task=t1&sql={quote('SELECT 1')}", "task="):
+        status, body = _get(f"{url}/pods/demo/records/leads?{query}", token)
+        assert status == 400
+        assert body["ok"] is False

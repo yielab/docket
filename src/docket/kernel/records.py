@@ -12,6 +12,8 @@ from docket.kernel.errors import InvalidInput
 
 ColumnType = Literal["string", "integer", "number", "boolean", "date"]
 COLUMN_TYPES: tuple[str, ...] = get_args(ColumnType)
+# Whose rows a key is unique among: the whole pod, or only the rows of one task.
+RecordScope = Literal["pod", "task"]
 
 _NAME = r"^[a-z][a-z0-9_]*$"
 MAX_COLUMNS = 40
@@ -48,13 +50,13 @@ class RecordColumn(BaseModel):
         if isinstance(value, str) and value.startswith("_"):
             raise ValueError(
                 "a column name cannot start with an underscore: docket fills _id, _at, _task, "
-                "_session, _step and _updated_at itself"
+                "_session, _step, _role and _updated_at itself"
             )
         return value
 
 
 class RecordSet(BaseModel):
-    """A set: ``name``, an optional ``key`` column and 1 to 40 ``columns``."""
+    """A set: ``name``, an optional ``key`` column, its ``scope`` and 1 to 40 ``columns``."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -62,6 +64,7 @@ class RecordSet(BaseModel):
     description: str = ""
     columns: list[RecordColumn] = Field(min_length=1, max_length=MAX_COLUMNS)
     key: str | None = None
+    scope: RecordScope = "pod"
 
     @field_validator("columns")
     @classmethod

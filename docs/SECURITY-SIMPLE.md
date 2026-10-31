@@ -282,8 +282,8 @@ A pod's records are declared tables in one SQLite file,
 tool is `send`, so a record never leaves through them. The file is outside every directory the jail is
 given: with isolation on, a command the model runs can neither read nor write it, and `rec__export`
 writes only inside the hop's own roots. With isolation off, a shell command is not confined, so do not
-treat the file as protected from it. A role that denies `write` keeps `rec__query` and loses add, update
-and export. docket fills `_task`, `_session` and `_step` on each row from the hop, never from the model,
+treat the file as protected from it. A role that denies `record` loses add and update, and one that denies
+`write` loses `rec__export`; a row is outside the project, so denying `write` alone does not stop it. docket fills `_task`, `_session` and `_step` on each row from the hop, never from the model,
 so a row can be traced to the task that wrote it; the file itself has no hash chain, unlike the audit
 log.
 

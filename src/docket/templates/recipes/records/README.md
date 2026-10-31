@@ -16,8 +16,9 @@ roster it names (`analyst`, `reviewer`, and a writer for the report) is the `rou
 - `pipelines/capture.yaml` - `docket task add "<entries>" --pipeline capture`. The Analyst adds a
   row for each entry in the task's input with `rec__entries__add`; a repeated `ref` returns the row
   that exists, so a resumed hop that repeats its call writes once. The Reviewer counts the rows this
-  task added with `rec__query` against the input and answers APPROVE or REQUEST-CHANGES. The Reviewer
-  denies `write`, which covers every record write, so it can check the set and never change it.
+  task added with `rec__query` against the input and answers APPROVE or REQUEST-CHANGES. The Reviewer's
+  step lists only `read`, `glob`, `grep` and `rec__query`, so it can check the set and never change it
+  (denying `write` would not do it: a row is a `record` tool, not a `write` one).
 - `routines/weekly-report.yaml` - on Mondays at 08:00 UTC (set `tz` for another zone) the service enqueues a task on the blueprint's
   own pipeline. The Writer exports the set into `report.md` with `rec__export`, without the rows
   passing through the model. Change `schedule` or the description to suit; the service must be running
