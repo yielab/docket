@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import tempfile
 import textwrap
 from pathlib import Path
@@ -31,14 +32,14 @@ PADDING = 34
 LINE_HEIGHT = 28
 FONT_SIZE = 19
 
-BACKGROUND = "#111827"
-TITLEBAR = "#1f2937"
-TEXT = "#e5e7eb"
-MUTED = "#94a3b8"
-BLUE = "#7dd3fc"
-GREEN = "#86efac"
-YELLOW = "#fde68a"
-RED = "#fda4af"
+# Greys and one muted accent; the second hue marks only what was refused or went wrong.
+BACKGROUND = "#0f0f10"
+TITLEBAR = "#19191a"
+TEXT = "#d4d4d4"
+MUTED = "#737373"
+DOTS = "#3a3a3c"
+ACCENT = "#9db8a3"
+ALERT = "#c98f7e"
 
 
 # The vendored, licensed font keeps glyphs and layout identical on Linux and macOS.
@@ -69,13 +70,13 @@ def _wrapped(lines: list[str], *, columns: int = 98) -> list[str]:
 def _line_style(line: str) -> tuple[str, ImageFont.FreeTypeFont | ImageFont.ImageFont]:
     stripped = line.lstrip()
     if stripped.startswith("$"):
-        return BLUE, BOLD
+        return ACCENT, BOLD
     if stripped.startswith(("ok ", "✓")) or line.startswith("+"):
-        return GREEN, BOLD
+        return ACCENT, BOLD
     if stripped.startswith(("! ", "⚠", "Result:")):
-        return YELLOW, BOLD
+        return ALERT, BOLD
     if stripped.startswith(("x ", "✗", "ERROR")) or line.startswith("-"):
-        return RED, BOLD
+        return ALERT, BOLD
     if stripped.startswith(("docket - ", "Project:", "Pod —")):
         return TEXT, BOLD
     if not stripped or stripped.startswith(("⋯", "->", "→", "@@")):
@@ -112,8 +113,8 @@ def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Im
     image = Image.new("RGB", (WIDTH, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, WIDTH, TITLE_HEIGHT), fill=TITLEBAR)
-    for x, color in ((28, RED), (52, YELLOW), (76, GREEN)):
-        draw.ellipse((x - 7, 17, x + 7, 31), fill=color)
+    for x in (28, 52, 76):
+        draw.ellipse((x - 7, 17, x + 7, 31), fill=DOTS)
     # The wordmark sits left of the traffic lights' gap; the scene title stays centred.
     draw.text((104, 13), WORDMARK, font=REGULAR, fill=TEXT)
     title_width = draw.textlength(title, font=REGULAR)
@@ -126,102 +127,11 @@ def _terminal(title: str, lines: list[str], *, height: int = HEIGHT) -> Image.Im
     return image
 
 
-# Every scene below is a verbatim transcript of one real run of
+# Each terminal scene below is a verbatim transcript of one real run of
 # scripts/maint/capture-doc-journey.sh; docs/assets/README.md records which run. Only
 # three edits are allowed when refreshing it: the capture root becomes "~", "⋯" marks elided
 # lines or path prefixes, and a trailing "# ..." on a "$" line is a reader's note, never
 # captured output.
-_TEAM = [
-    "$ docket init --recipe secure-build",
-    "⋯",
-    "-> Provisioning 'software' pod 'myapp' (lead, implementer)...",
-    "ok   myapp-lead  [lead]  local/local-model",
-    "ok   myapp-implementer  [implementer]  local/local-model",
-    "docket - Apply plan myapp <- ⋯/templates/recipes/secure-build",
-    "⋯",
-    "  [add] role: security-vetter",
-    "  [add] policy: require-approval-secret-writes.yaml",
-    "  [add] skill: security-review",
-    "  [add] member: security-vetter",
-    "  [add] pipeline: pipeline.yaml",
-    "ok Applied 5 change(s) to pod 'myapp' from ⋯/templates/recipes/secure-build.",
-    "$ docket pod export --pod myapp            # the team, written back next to the code",
-    "ok Exported pod 'myapp' to ~/code/myapp/.docket",
-    "$ find .docket -type f | sort",
-    ".docket/pipeline.yaml",
-    ".docket/pod.yaml",
-    ".docket/policies/require-approval-secret-writes.yaml",
-    "⋯",
-]
-
-_PLAN = [
-    "$ docket pod validate                      # every file starts with kind:",
-    "ok ~/code/myapp/.docket/roles/security-vetter.yaml (role security-vetter)",
-    "ok ~/code/myapp/.docket/policies/require-approval-secret-writes.yaml "
-    "(policy secure-build-secret-writes)",
-    "ok ~/code/myapp/.docket/pipeline.yaml (pipeline secure-build)",
-    "ok ~/code/myapp/.docket/pod.yaml (pod myapp)",
-    "$ docket pod plan --pod myapp",
-    "⋯",
-    "Pipeline: secure-build",
-    "  [plan] role=lead -> myapp-lead [gate: none]",
-    "  [build] role=implementer -> myapp-implementer [gate: mechanical(verifyCmd)]",
-    "  [vet] role=security-vetter -> myapp-security-vetter [gate: verdict(approve, rework->build)]",
-    "$ docket pod set verify --member myapp-implementer --pod myapp \\",
-    "    \"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
-    "ok Set verify command for myapp-implementer: "
-    "\"python3 -c 'import calc; assert calc.add(2, 3) == 5'\"",
-    '$ docket task add "Fix calc.add so it returns the sum of a and b" --pod myapp',
-    "ok Queued for pod 'myapp': [task-6e046891-e910-4778-92ce-4560364bfaa9] Fix calc.add so it "
-    "returns the sum of a and b",
-    "  May ask you: 5 policies -- see: docket task show task-6e046891-e910",
-]
-
-_DISPATCH = [
-    "$ docket run --pod myapp",
-    "-> Running 1 pending task(s) through: lead → implementer → security-vetter",
-    "ok   [task-6e046891-e910-4778-92ce-4560364bfaa9] done — 3 hop(s)",
-    "ok 1 done · 0 failed · 36.3k tokens (~$0.00 est.)",
-    "$ docket task trace task-6e046891-e910-4778-92ce-4560364bfaa9 --pod myapp",
-    "  2026-10-09T10:38:26  session_start              (lead)",
-    "  ⋯",
-    "  2026-10-09T10:38:58  tool_result                (lead)  text=Here is the plan for the "
-    "**Implementer**.",
-    "  ⋯",
-    "  2026-10-09T10:39:46  tool_result                (implementer)  text=The verification gate "
-    "passes. The `calc.add` function has been corrected to return the sum `a + b` instead of the "
-    "difference `a - b`.",
-    "  ⋯",
-    "  2026-10-09T10:40:32  tool_result                (security-vetter)  text=**Security Review: "
-    "`calc.add` fix**",
-    "⋯",
-    "APPROVE",
-    "  2026-10-09T10:40:32  session_end                (lead)  status=done",
-]
-
-_RECORD = [
-    "$ docket pod show myapp-implementer --pod myapp",
-    "⋯",
-    "docket - member myapp-implementer",
-    "⋯",
-    "  Model: local/local-model (policy)",
-    "  Endpoint: http://127.0.0.1:8081/v1 (ready)",
-    "  Provider: local (global, openai-chat)",
-    "⋯",
-    "  Tools allowed: bash, consult, edit, fetch, glob, grep, read, skill, write",
-    "⋯",
-    "secure-build-secret-writes  pre_tool_call  require_approval",
-    "⋯",
-    "  Skills: security-review (codebase)",
-    "⋯",
-    "  Pipeline: bound pipeline (hash 45f7aaf31d1f...)",
-    "  Network: open (default)",
-    "  Config source: ⋯/templates/recipes/secure-build (digest ec69082e5924..., drift: no)",
-    "⋯",
-    "$ docket log verify",
-    "ok 9 chained line(s) verified clean.",
-]
-
 _ISOLATION = [
     "$ docket pod show myapp-implementer --pod myapp",
     "⋯",
@@ -288,11 +198,286 @@ _GATE = [
 ]
 
 
-_HERO_TITLES = ("the team you define", "validate, plan, queue", "the run", "the record")
+# The hero is a diagram, not captured output: the four pod shapes docket ships (specs/functional/
+# pod-blueprints.spec.md, the roster and gate columns), a task token walking each one, and the one
+# checkpoint under all of them. Rework, waiting for a person and the audit chain are the three
+# things it shows happening.
+_FRAME_MS = 90
+_FRAMES = 64
+_SMALL = ImageFont.truetype(str(FONT_PATH), 15)
+_NAME = ImageFont.truetype(str(FONT_PATH), 16)
+_CARD_W, _CARD_H = 122, 54
+_FIRST_X, _LAST_X = 270, 1100
+_ROW_Y = (160, 282, 404, 526)
+_PANEL = (40, 606, 1160, 686)
+_CHAIN_CELLS = 40
+_ACTIVE = "#27332c"
 
 
-def _hero_scenes() -> list[list[str]]:
-    return [_TEAM, _PLAN, _DISPATCH, _RECORD]
+class _Row:
+    """One pod shape: its roles, the gate on each hand-off, a rework hop and the token's script."""
+
+    def __init__(
+        self,
+        y: int,
+        name: str,
+        kind: str,
+        roles: tuple[str, ...],
+        gates: dict[int, str],
+        rework: tuple[int, int] | None,
+        script: tuple[tuple[str, int, float, str], ...],
+        phase: float,
+    ) -> None:
+        self.name, self.kind, self.gates, self.rework = name, kind, gates, rework
+        self.nodes = (*roles, "you")
+        self.script, self.phase = script, phase
+        self.y = y
+        self.line = y + 14  # the hand-off line and the token run under the role name
+        step = (_LAST_X - _FIRST_X) / (len(self.nodes) - 1)
+        self.xs = [round(_FIRST_X + i * step) for i in range(len(self.nodes))]
+
+
+_ALERT_BADGE, _OK_BADGE = "alert", "ok"
+# A script step is (kind, node, dwell-in-units, badge): "at" walks the row line to a node and
+# rests there, "back" walks the rework path from the previous node to this one.
+_ROWS = (
+    _Row(
+        _ROW_Y[0],
+        "build",
+        "codebase",
+        ("lead", "implementer", "reviewer"),
+        {1: "verify", 2: "verdict"},
+        (2, 1),
+        (
+            ("at", 0, 0.6, ""),
+            ("at", 1, 0.8, ""),
+            ("at", 2, 1.6, "REQUEST-CHANGES"),
+            ("back", 1, 0.8, ""),
+            ("at", 2, 1.4, "APPROVE"),
+            ("at", 3, 1.6, ""),
+        ),
+        0.0,
+    ),
+    _Row(
+        _ROW_Y[1],
+        "respond",
+        "workdir",
+        ("lead", "researcher", "writer", "reviewer", "actor"),
+        {3: "verdict", 4: "ask"},
+        (3, 2),
+        (
+            ("at", 0, 0.6, ""),
+            ("at", 1, 0.6, ""),
+            ("at", 2, 0.6, ""),
+            ("at", 3, 1.0, "APPROVE"),
+            ("at", 4, 2.4, "waiting for you"),
+            ("at", 5, 1.6, ""),
+        ),
+        0.37,
+    ),
+    _Row(
+        _ROW_Y[2],
+        "operate",
+        "workdir",
+        ("lead", "monitor", "operator", "reviewer"),
+        {1: "approval", 2: "verify", 3: "verdict"},
+        None,
+        (
+            ("at", 0, 0.6, ""),
+            ("at", 1, 2.4, "waiting for you"),
+            ("at", 2, 0.8, ""),
+            ("at", 3, 1.0, "APPROVE"),
+            ("at", 4, 1.6, ""),
+        ),
+        0.68,
+    ),
+    _Row(
+        _ROW_Y[3],
+        "routine",
+        "workdir",
+        ("lead", "analyst", "writer", "reviewer"),
+        {3: "verdict"},
+        (3, 2),
+        (
+            ("at", 0, 0.6, ""),
+            ("at", 1, 0.8, ""),
+            ("at", 2, 0.8, ""),
+            ("at", 3, 1.2, "APPROVE"),
+            ("at", 4, 1.6, ""),
+        ),
+        0.15,
+    ),
+)
+
+
+def _centered(draw: ImageDraw.ImageDraw, x: float, y: float, text: str, font, fill: str) -> None:
+    draw.text((x - draw.textlength(text, font=font) / 2, y), text, font=font, fill=fill)
+
+
+def _arrow(draw: ImageDraw.ImageDraw, x: float, y: float, fill: str, *, up: bool = False) -> None:
+    if up:
+        draw.polygon([(x, y), (x - 5, y + 9), (x + 5, y + 9)], fill=fill)
+    else:
+        draw.polygon([(x, y), (x - 9, y - 5), (x - 9, y + 5)], fill=fill)
+
+
+def _hero_base() -> Image.Image:
+    image = Image.new("RGB", (WIDTH, HEIGHT), BACKGROUND)
+    draw = ImageDraw.Draw(image)
+    draw.text((40, 28), "four teams, one checkpoint", font=REGULAR, fill=TEXT)
+    draw.text(
+        (40, 60),
+        "a task moves from role to role through the gates of its pod's shape",
+        font=_SMALL,
+        fill=MUTED,
+    )
+    for row in _ROWS:
+        cy = row.y
+        draw.text((40, cy - 22), row.name, font=REGULAR, fill=TEXT)
+        draw.text((40, cy + 4), row.kind, font=_SMALL, fill=MUTED)
+        for i, x in enumerate(row.xs[:-1]):
+            left, right = x + _CARD_W // 2, row.xs[i + 1] - _CARD_W // 2
+            draw.line((left, row.line, right - 9, row.line), fill=DOTS, width=2)
+            _arrow(draw, right, row.line, DOTS)
+            if i in row.gates:
+                mid = (left + right) // 2
+                ln = row.line
+                draw.polygon(
+                    [(mid, ln - 7), (mid + 7, ln), (mid, ln + 7), (mid - 7, ln)], outline=MUTED
+                )
+                _centered(draw, mid, cy - _CARD_H // 2 - 22, row.gates[i], _SMALL, MUTED)
+        if row.rework:
+            _rework_path(draw, row, DOTS)
+        for i, x in enumerate(row.xs):
+            _card(draw, x, cy, row.nodes[i], active=False, last=i == len(row.nodes) - 1)
+    draw.rounded_rectangle(_PANEL, radius=10, fill=TITLEBAR, outline=DOTS)
+    draw.text((62, _PANEL[1] + 14), "checkpoint", font=REGULAR, fill=ACCENT)
+    draw.text(
+        (200, _PANEL[1] + 16),
+        "every tool call of every agent: allow it, ask a person, or deny it",
+        font=_SMALL,
+        fill=TEXT,
+    )
+    draw.text((62, _PANEL[1] + 48), "audit log", font=_SMALL, fill=MUTED)
+    draw.text(
+        (_CHAIN_X + _CHAIN_CELLS * 20 + 10, _PANEL[1] + 48), "hash-chained", font=_SMALL, fill=MUTED
+    )
+    return image
+
+
+_CHAIN_X = 170
+
+
+def _card(
+    draw: ImageDraw.ImageDraw, x: int, cy: int, name: str, *, active: bool, last: bool
+) -> None:
+    box = (x - _CARD_W // 2, cy - _CARD_H // 2, x + _CARD_W // 2, cy + _CARD_H // 2)
+    draw.rounded_rectangle(
+        box,
+        radius=10,
+        fill=_ACTIVE if active else TITLEBAR,
+        outline=ACCENT if active else DOTS,
+        width=2,
+    )
+    _centered(draw, x, cy - 19, name, _NAME, MUTED if last and not active else TEXT)
+
+
+def _rework_points(row: _Row) -> list[tuple[int, int]]:
+    assert row.rework is not None
+    src, dst = row.rework
+    bottom = row.y + _CARD_H // 2
+    return [
+        (row.xs[src], bottom),
+        (row.xs[src], bottom + 16),
+        (row.xs[dst], bottom + 16),
+        (row.xs[dst], bottom),
+    ]
+
+
+def _rework_path(draw: ImageDraw.ImageDraw, row: _Row, fill: str) -> None:
+    points = _rework_points(row)
+    draw.line(points[:3] + points[3:], fill=fill, width=2)
+    _arrow(draw, points[3][0], points[3][1], fill, up=True)
+    mid = (points[1][0] + points[2][0]) // 2
+    _centered(draw, mid, points[1][1] + 10, "rework", _SMALL, MUTED)
+
+
+def _walk(row: _Row, u: float) -> tuple[float, float, int | None, str, bool]:
+    """Where the token is at *u* in [0, 1): ``(x, y, node it rests on, badge, on the rework path)``."""
+    speed = 90.0  # pixels per unit
+    timeline: list[
+        tuple[float, tuple[float, float], tuple[float, float], int | None, str, bool]
+    ] = []
+    here: tuple[float, float] = (float(row.xs[0]), float(row.line))
+    for kind, target, dwell, badge in row.script:
+        goal = (float(row.xs[target]), float(row.line))
+        if kind == "back":
+            points = _rework_points(row)
+            path = [points[0], points[1], points[2], points[3]]
+            length = 16 + abs(points[2][0] - points[1][0]) + 16
+            timeline.append((length / speed, path[0], path[3], None, "", True))
+        elif here != goal:
+            timeline.append((abs(goal[0] - here[0]) / speed, here, goal, None, "", False))
+        timeline.append((dwell, goal, goal, target, badge, False))
+        here = goal
+    timeline.append((1.0, here, here, -1, "", False))
+    total = sum(item[0] for item in timeline)
+    t = (u % 1.0) * total
+    for span, a, b, rest, badge, rework in timeline:
+        if t <= span or (span == 0):
+            frac = 0.0 if span == 0 else min(1.0, t / span)
+            if rework:
+                return (*_along(_rework_points(row), frac), None, "", True)
+            return (a[0] + (b[0] - a[0]) * frac, a[1], rest, badge, False)
+        t -= span
+    return (here[0], here[1], -1, "", False)
+
+
+def _along(points: list[tuple[int, int]], frac: float) -> tuple[float, float]:
+    lengths = [abs(b[0] - a[0]) + abs(b[1] - a[1]) for a, b in itertools.pairwise(points)]
+    target = frac * sum(lengths)
+    for (a, b), length in zip(itertools.pairwise(points), lengths, strict=True):
+        if target <= length or length == 0:
+            f = 0.0 if length == 0 else target / length
+            return a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f
+        target -= length
+    return float(points[-1][0]), float(points[-1][1])
+
+
+def _hero_frame(base: Image.Image, index: int) -> Image.Image:
+    image = base.copy()
+    draw = ImageDraw.Draw(image)
+    for row in _ROWS:
+        x, y, rest, badge, rework = _walk(row, index / _FRAMES + row.phase)
+        if rework:
+            _rework_path(draw, row, ALERT)
+        if rest is not None and rest >= 0:
+            _card(draw, row.xs[rest], row.y, row.nodes[rest], active=True, last=False)
+        if rest != -1:
+            draw.ellipse((x - 7, y - 7, x + 7, y + 7), fill=ALERT if rework else ACCENT)
+        if badge and rest is not None and rest >= 0:
+            colour = ACCENT if badge == "APPROVE" else ALERT
+            _centered(draw, row.xs[rest], row.y + _CARD_H // 2 + 24, badge, _SMALL, colour)
+    lit = round(_CHAIN_CELLS * (index + 1) / _FRAMES)
+    for cell in range(_CHAIN_CELLS):
+        x0 = _CHAIN_X + cell * 20
+        top = _PANEL[1] + 50
+        box = (x0, top, x0 + 14, top + 14)
+        if cell < lit:
+            draw.rectangle(box, fill=ACCENT)
+        else:
+            draw.rectangle(box, outline=DOTS)
+    return image
+
+
+def _hero_frames() -> list[Image.Image]:
+    base = _hero_base()
+    frames = [_hero_frame(base, i) for i in range(_FRAMES)]
+    sample = Image.new("RGB", (WIDTH, HEIGHT * 4))
+    for slot, i in enumerate((0, _FRAMES // 4, _FRAMES // 2, 3 * _FRAMES // 4)):
+        sample.paste(frames[i], (0, HEIGHT * slot))
+    palette = sample.quantize(colors=48, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    return [f.quantize(palette=palette, dither=Image.Dither.NONE) for f in frames]
 
 
 def _render_contract() -> str:
@@ -314,17 +499,14 @@ def _write_assets(target: Path) -> None:
         target / "governance.png", optimize=True, pnginfo=png_info
     )
 
-    frames = [
-        _terminal(title, scene) for title, scene in zip(_HERO_TITLES, _hero_scenes(), strict=True)
-    ]
+    frames = _hero_frames()
     frames[0].save(
         target / "hero.gif",
         save_all=True,
         append_images=frames[1:],
-        duration=[3200, 3600, 4200, 4200],
+        duration=[_FRAME_MS] * len(frames),
         loop=0,
         optimize=True,
-        disposal=2,
         comment=f"{CONTRACT_KEY}:{contract}".encode(),
     )
 

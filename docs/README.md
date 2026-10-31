@@ -12,7 +12,7 @@ docket is a Python CLI that owns the agent turn loop itself. It has no daemon an
 OpenAI-compatible chat-completions endpoint, hosted or local.
 
 <p align="center">
-  <img src="assets/hero.gif" alt="Animated docket terminal journey captured from a real run against a local model: provision a pod from a recipe, validate and plan the team, dispatch a fix through Lead, Implementer and a read-only vetter with a verify gate, and verify the audit chain" width="720">
+  <img src="assets/hero.gif" alt="Animated diagram of the four pod shapes docket ships (build, respond, operate and routine): a task moves from role to role through each shape's gates, one reviewer sends the work back for rework, one step waits for a person, and every action passes one checkpoint that writes the audit log" width="720">
 </p>
 
 > [!WARNING]
