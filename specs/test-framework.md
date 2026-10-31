@@ -220,7 +220,7 @@ Requirements:
     handler refusal, legal task transitions, an untouched checkout, an untouched sentinel file
     under the fake home, and a verifying audit chain.
     `tests/architecture/` holds the import-linter contracts and the shrink-only ratchets (import
-    contracts, function-local `docket` imports, module size toward the 700-line ceiling, writers
+    contracts, function-local `docket` imports, module size under the 1,000-line ceiling (D-78), writers
     of a task's `status`, the test-id manifest). `tests/release/` is the agent lane of rule 3 under
     its new name and keeps its `LANE` / `REASON` / `RETIRE_WHEN` headers and its line budget.
     `tests/evals/` is reserved for agent-quality evals and holds a README only. `tests/guards/`,

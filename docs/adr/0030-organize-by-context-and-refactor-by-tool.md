@@ -6,6 +6,9 @@
 > test audit; one testing budget replaces the gate after every commit. Phase 47 on `TODO.md` is the
 > card list for what Phase 46 left.
 >
+> **Amended 2026-10-31 (D-78)** (§"Amendment (2026-10-31): the module ceiling"): a module over
+> 1,000 lines is the defect; 700 was the ceiling for the split.
+>
 > **Amended 2026-10-23, during Phase 47 (P47-9)** (§"The contexts are layered"): "a context talks to
 > another only through its `__init__`" is replaced by a layers contract. The contexts have one fixed
 > bottom-to-top order; a context imports any module of a context below it, and an import of a
@@ -576,3 +579,14 @@ window.
 A framework for agents, a database, FastAPI, a plugin system, event sourcing, a typed verdict tool
 (behaviour change; its own card later), agent-quality evals (its own decision; `tests/evals/` is
 created empty with a README), one file per task (waits for a measured trigger).
+
+## Amendment (2026-10-31): the module ceiling
+
+Decision 7's "a module over 700 lines is a defect" becomes 1,000 lines (D-78, the maintainer's
+request). Measured 2026-10-31 at `df17a145`: 312 modules; the largest is `platform/git.py` at 700,
+and ten more sit between 651 and 690. At that density the next ordinary change to any of them
+(an added field, a refusal sentence) forced a split chosen by line count, not by context, which is
+the kind of move this ADR exists to prevent. The ceiling keeps its purpose, stopping another
+`core/dispatch.py`, and applies to every module with no exemption list. Whether a module mixes
+contexts is the import contracts' question (`tests/architecture/`), not the size test's. The body
+above is not edited.
