@@ -3,7 +3,7 @@
 **Version**: 3.3.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -727,7 +727,9 @@ keeps no copy of it, and every surface prints from it.
 4. **Approval link.** An approval, gate or changed-check escalation is backed by an approval
    record, which names the escalation it backs; `approval_of(<escalation id>)` finds it. A
    `consult` waiting in the turn has one beside it (Consult item 3). No token is stored anywhere
-   else.
+   else. The record is linked before the escalation is written `pending`, so no surface can read a
+   pause that waits on an approval and find no approval behind it; `resolve` of a pause read that
+   way would otherwise take the branch of a parked question and refuse as not pending.
 5. **States.** A record is written `pending`. The one expiry sweep (`sweep_escalations`, item 13)
    and the timeout of one in-turn wait move it to `expired`. `resolved` is written by `resolve`
    (area 10 item 4) and `decided` is the state of a record the pod settled itself (a consult
