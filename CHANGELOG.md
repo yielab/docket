@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0-beta.1] - 2026-10-30
+
+The largest change since the first beta, so the minor version moves. `0.2.0-beta.5` and
+`0.2.0-beta.6` were declared in the tree but never tagged; this release carries everything since
+`v0.2.0-beta.4`, and the sections below it hold the earlier declarations.
+
+What a user gets: a pod can do work other than code and act outside the machine (Phase 55), with
+external services declared in a document and a pod's business data kept in declared records
+(Phase 56); every pause that waits on a person is one escalation with one `resolve` verb
+(Phase 51), and a task can say what happens to a pause when nobody is there (`L3|L4|L5`); the
+harness adapts to the model from the provider catalog, prompts are versioned configuration, and
+the built-in `anthropic` provider speaks Anthropic's Messages API with its prompt cache measured
+(Phases 52-54). Underneath, the source tree is organised by context under import contracts the
+tests enforce (Phases 46-49), and end-to-end tests run the product the way an operator or Tack
+does (Phase 50).
+
+**Breaking changes.** docket has no installed base yet, so nothing removed below kept an alias.
+Contract `operator-v2`, operator API 7.0.0, MCP server 2.0.0, Telegram integration 5.0.0: the
+retired escalation shapes are gone. An authored configuration file has one form, the `kind:`
+short form, so a canonical-form pipeline is refused. The `critic` and `tester` roles are deleted
+(one `strong` reviewer judges), the old home layout and the `roles.json` shim are deleted, and
+the workspace contract is v5. `docket init` turns workspace isolation on where the machine can
+jail. Module paths moved with the context layout (ADR 0030).
+
+### Added
+
+- **Outward pods (D-77, ADR 0036, Phase 55).** A pod can do work other than code in a working
+  directory and act outside the machine through `send`, a fourth tool kind beside `read`, `write`
+  and `exec` that no role holds unless it names it. Every `send` is audited; its approver sees the
+  whole call minus credentials, which are kept only in the pending approval and deleted once it is
+  settled, while trace, audit, notifications and export stay redacted; a per-pod quota counts
+  executions. An MCP server may live for the hop (`lifetime: hop`) and take a value from the
+  secret store. A `wait` step parks a task until a time or a probe, variables belong to the task,
+  and a `kind: routine` document creates tasks on a cron schedule in a time zone. A pod widens a
+  machine's recorded `none` network only through `pod set network open --widen`, a recorded and
+  audited yes.
+- **The harness adapts to the model by data, and prompts are versioned configuration (D-73, D-74,
+  D-75, ADR 0033, 0034, 0035, Phases 52-53).** Limits and behaviour come from the provider
+  catalog and context is paid for once, the turn owns its processes and its time, and `fetch`
+  returns text. A prompt is a configuration document with one authored form, one loader, one scope
+  order, a lockfile and a hash on every hop; a hop closes with a `handoff` tool, and the message a
+  small model reads drops the mixed layers, the whole repository map and the absolute path.
+- **The native Anthropic Messages dialect (D-76, ADR 0011 amendment, Phase 54).**
+  `dialect: anthropic-messages` sits beside `openai-chat`: the built-in `anthropic` provider uses
+  two cache markers and reports cache reads and writes in the measured usage, and a call without
+  an output cap fails before it is sent.
+- **End-to-end tests that run the product (D-71, ADR 0031, Phase 50).** `tests/e2e/` drives docket
+  the way an operator or Tack does, with one fake model and shared oracles.
+
 ### Changed
 
 - **One escalation record, one `resolve` verb (D-72, ADR 0032, Phase 51).** Every pause (a gated
