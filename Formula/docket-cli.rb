@@ -8,7 +8,7 @@ class DocketCli < Formula
   # scripts/update-homebrew-sha.sh rewrites both occurrences at release time. Never
   # interpolate `#{version}` here: it is evaluated while the class body runs, before any
   # `version` line below it exists, and resolves to ".../download/v/docket-v.tar.gz".
-  url "https://github.com/yielab/docket/releases/download/v0.2.0-beta.6/docket-v0.2.0-beta.6.tar.gz"
+  url "https://github.com/yielab/docket/releases/download/v0.3.0-beta.1/docket-v0.3.0-beta.1.tar.gz"
   # Digest of the published release asset, written by
   # scripts/update-homebrew-sha.sh AFTER the release exists -- never before.
   # It cannot be precomputed: the wheel builds byte-identically anywhere, but
@@ -144,7 +144,7 @@ class DocketCli < Formula
   end
 
   test do
-    # The package reports its PEP 440 form: `0.2.0-beta.6` installs as `0.2.0b6`.
+    # The package reports its PEP 440 form: `0.3.0-beta.1` installs as `0.3.0b1`.
     tags = { "alpha" => "a", "beta" => "b", "rc" => "rc" }
     pep440 = version.to_s.sub(/-(alpha|beta|rc)\.?(\d+)\z/) do
       tags[Regexp.last_match(1)] + Regexp.last_match(2)

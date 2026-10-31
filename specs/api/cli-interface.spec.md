@@ -37,7 +37,7 @@ MUST run from an artifact-only installation.  `docket --version` prints
 `.git`) it appends ` (git <sha8>)`, and `, dirty` inside the parentheses when `git status`
 reports changes, so a tree ahead of its tag is told apart from the release that tag built.
 Installed project metadata MUST
-report a PEP 440-equivalent form of declared version `0.2.0-beta.6`, Python
+report a PEP 440-equivalent form of declared version `0.3.0-beta.1`, Python
 requirement `>=3.11`, Apache-2.0 licensing, and the canonical project source,
 issues, and homepage URLs.  Uninstalling the
 distribution MUST remove its executable, package, and distribution metadata
