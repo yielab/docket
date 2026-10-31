@@ -41,7 +41,7 @@ task; load only the referenced section or spec.
    an import of a context above is the violation the baseline records); `<context>/adapters`, `platform` and `sandbox` import `kernel`,
    `platform`'s `__init__` and the ports and domain types they implement; `agent` imports `kernel`, `platform`'s `__init__` and its own
    packages (the turn engine; the ports it needs are in `agent/ports.py`); `interfaces` imports `kernel`, `bootstrap` and any context; `bootstrap`
-   imports everything. No function-local `docket.*` import; no module over 700 lines. The
+   imports everything. No function-local `docket.*` import; no module over 1,000 lines (D-78). The
    contracts are enforced by `tests/architecture/`; `cli/`, `core/` and `edges/` no longer exist.
    `dispatch_tool` is in `agent/tools/registry.py` and the store in `platform/store.py`.
 5. Run focused checks first; run the full required gates before handoff. Never regenerate a golden

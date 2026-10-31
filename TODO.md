@@ -129,8 +129,7 @@ that already own the files.
     `pod-blueprints.spec.md` omits `routines/` from the `pod update` list; the recipe summary line does not name
     routines; cron day-of-month and day-of-week are ANDed, as in the existing parser; `tzdata` is not a declared
     dependency; no `--tz`-aware `HH:MM` form. A routine fires only under `docket start --dispatch`.
-    `teams/apply/plan.py` sits at 699 of 700 lines: the next card touching it moves code out first. A routine skip is
-    traced as `step_skipped` because `EVENT_TYPES` is closed.
+    A routine skip is traced as `step_skipped` because `EVENT_TYPES` is closed.
 - *Phase 55 Wave 4.*
   - P55-10, a gap in the flow: nothing user-facing stores a secret under an arbitrary name such as `crm` (provider add
     and notify write only their own names; `setup_notify.store_secret` is the one writer), so a `secret:crm` reference
@@ -139,8 +138,7 @@ that already own the files.
     model's own reply carry raw tool output (the model sees it); not checked. `setup --fix` (not bare `setup`) carries
     the literal-credential warning; there is no CLI golden for `--secret` (run.sh replays readonly cases only).
   - P55-8: the check and the increment of a quota are not atomic (two concurrent sends in one pod could both pass at
-    count-1); an unreadable counter counts as empty; `pod policies` and `check` do not show quotas;
-    `teams/config_docs.py` sits at 700 lines.
+    count-1); an unreadable counter counts as empty; `pod policies` and `check` do not show quotas.
   - A flake, once: `test_consult_wait.py::TestAnsweredInPlace::test_an_answer_by_the_task_goes_through_the_same_record`
     failed in the full run and passed alone (the file's other test is already on the list above).
   - Phase 56 Wave 2 merge run (2026-10-30), both passed alone: `test_consult_wait.py::TestAnsweredInPlace::

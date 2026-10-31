@@ -105,7 +105,9 @@ So a domain package never imports an adapter, a context imports only contexts be
 order (an import of one above it is the violation the baseline records, and the baseline only
 shrinks), and nothing imports `interfaces/`. Function-local imports of `docket.*` are
 forbidden because they hide cycles; the existing ones are a baseline that only shrinks. A module
-over **700 lines is a defect**, and the ceiling ratchets down to it from today's largest module.
+over **1,000 lines is a defect** (D-78). The 700-line ceiling served the Phase 46 split; once every
+module was under it, it forced splits by size rather than by context, so it was raised. Split a
+module by what it does before it crosses, never to make a number agree.
 
 **What holds today.** The code has moved: `cli/`, `core/` and `edges/` no longer exist, the CLI
 is `interfaces/cli/` and the HTTP control plane is `interfaces/http/`, and this section is the
