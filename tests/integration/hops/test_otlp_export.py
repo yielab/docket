@@ -296,6 +296,34 @@ class TestTheCommandStartsTheExport:
             srv.shutdown()
 
 
+class TestAReadOnlyCommandKeepsTheRecordedHealth:
+    def test_a_process_that_sent_nothing_leaves_the_health_file_as_it_found_it(self) -> None:
+        """A command that only reads starts the exporter and closes it with every counter at
+        zero; that must not overwrite the counters the last sending process recorded."""
+        srv, url, _handler_cls = _recording_server()
+        try:
+            _enable_local_exporter(url)
+            recorded = {
+                "local": {
+                    "exported": 30,
+                    "dropped": 0,
+                    "failed": 0,
+                    "lastOk": "2026-10-31T00:07:11Z",
+                    "lastError": "",
+                    "lastErrorAt": "",
+                }
+            }
+            _store.write_json(current_home().exporters_health_file, recorded)
+
+            docket_runtime.start_export()
+            assert "local" in _telemetry._REGISTRY
+            docket_runtime._close_telemetry()
+        finally:
+            srv.shutdown()
+
+        assert _exporter.read_health() == recorded
+
+
 class TestExporterPrivacyGatesToolArguments:
     """`ExporterSpec.privacy` wired through `observability.telemetry.start` into the started
     `Pipeline`'s policy (observability-export.spec.md requirement 86): `actions` grants

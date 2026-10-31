@@ -1,10 +1,10 @@
 # Observability Export Specification
 
-**Version**: 3.1.1
+**Version**: 3.2.0
 **Status**: Implemented and live. Trace records project into vendor-neutral spans and are sent,
 off the turn's thread, to every enabled `kind: exporter` destination over the one `otlp-http`
 dialect; what a destination receives beyond structure is set by its own privacy level.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-10-30
 
 ## Purpose
 
@@ -616,7 +616,11 @@ the end of each of them. These requirements keep that session one complete trace
      when nothing was started), and `DocketDriver`'s process-exit hook (registered with `atexit`
      when the driver is imported) **MUST** write a non-empty result to `exporters-health.json`
      through the docket-owned JSON store, so the delivery of the spans the final flush sends
-     (the session root, per requirement 106) is recorded like any other.
+     (the session root, per requirement 106) is recorded like any other. A result whose every
+     counter is zero (a process that exported, dropped and failed nothing, such as a command that
+     only reads) **MUST NOT** be written, and neither **MUST** `run_turn`'s own write of
+     `health()` when every counter is zero: the file keeps what the last process that sent
+     something recorded.
 
 ## Interface Contracts
 

@@ -86,13 +86,21 @@ from docket.teams.workspace import repo_view as _repo_view
 __all__ = ["DocketDriver"]
 
 
+def _record_health(counters: dict[str, dict[str, Any]]) -> None:
+    """Write *counters* to the health file unless every one is zero: a process that sent nothing
+    must not overwrite what the last process that did send recorded."""
+    if any(
+        entry.get("exported") or entry.get("dropped") or entry.get("failed")
+        for entry in counters.values()
+    ):
+        write_json(current_home().exporters_health_file, counters)
+
+
 def _close_telemetry() -> None:
     """Close every started exporter and record the final flush's counters -- the session root
     is sent there, so its delivery belongs in the health file too."""
-    final = _telemetry.close()
-    if final:
-        with contextlib.suppress(Exception):
-            write_json(current_home().exporters_health_file, final)
+    with contextlib.suppress(Exception):
+        _record_health(_telemetry.close())
 
 
 def start_export() -> None:
@@ -170,7 +178,7 @@ class DocketDriver:
             )
         finally:
             _telemetry.flush(current_home().export_flush_timeout_s)
-            write_json(current_home().exporters_health_file, _telemetry.health())
+            _record_health(_telemetry.health())
 
     def _run_turn_body(
         self,

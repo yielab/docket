@@ -103,7 +103,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Config Format | 2.10.1 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 6.6.0 | Complete |
-| Observability Export | 3.1.1 | Implemented and live |
+| Observability Export | 3.2.0 | Implemented and live |
 | Pipeline Format | 4.6.0 | Implemented |
 | Pod Blueprints | 4.1.0 | Implemented |
 | Pod Dispatch | 11.9.0 | Implemented |
