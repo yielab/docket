@@ -188,6 +188,10 @@ that already own the files.
     amendment on `send` first, and S3 is an export destination, not a backend. `teams/records.py` quotes a set name
     in ANSI double quotes (each backend would quote its own); `ReadLimits` serves `read` and `export` though
     `export` honours only `timeout_s` (a possible `ExportLimits`).
+  - Live Hacker News on Anthropic: the recipe ran on `claude-haiku-5-5` with Langfuse export (digest 218.9k tokens,
+    weekly report 111.1k) and `tests/live` now takes `DOCKET_LIVE_HN_PROVIDER=anthropic`, but that lane was not run
+    with a real key (setup only checked with a fake one). A fake key makes the run wait out its timeout instead of
+    failing on the 401 at once.
   - Records and services: `pod update` does not check that a `rec__<set>` allow-list entry names a declared set;
     real PostgREST documents carry no `operationId`; `setup service list` shows secret names; the `ask-before-send` custom message is not shown
     for service sends; service results are not screened as untrusted; `pod records --csv` overwrites silently; the

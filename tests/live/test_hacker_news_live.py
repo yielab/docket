@@ -1,6 +1,7 @@
 """Opt-in, live: the hacker-news recipe against the real Hacker News search API and the operator's model.
 
-This lane has no duration ceiling: a real model run takes minutes (DOCKET_RUN_LIVE_HN=1)."""
+This lane has no duration ceiling: a real model run takes minutes (DOCKET_RUN_LIVE_HN=1). The model
+is the local endpoint, or Anthropic's with DOCKET_LIVE_HN_PROVIDER=anthropic and ANTHROPIC_API_KEY."""
 
 from __future__ import annotations
 
@@ -28,6 +29,8 @@ _FRONT_PAGE = "https://hn.algolia.com/api/v1/search?" + urllib.parse.urlencode(
 )
 _ENDPOINT = "http://127.0.0.1:8081/v1"
 _RUN_TIMEOUT_S = 1800
+_ANTHROPIC_MODEL = "anthropic/claude-haiku-5-5"
+_ROLES = ("lead", "analyst", "writer", "reviewer")
 
 
 class _Endpoint:
@@ -41,6 +44,24 @@ def _front_page_titles() -> set[str]:
     with urllib.request.urlopen(_FRONT_PAGE, timeout=30) as response:
         hits = json.loads(response.read())["hits"]
     return {str(hit["title"]) for hit in hits}
+
+
+def _anthropic_world(root: Path, model: _Endpoint, env: dict[str, str]) -> World:
+    """A world whose provider is Anthropic and whose every role runs ``_ANTHROPIC_MODEL``."""
+    w = World(root, model, env=env)  # type: ignore[arg-type]
+    w.docket(
+        "setup",
+        "provider",
+        "add",
+        "anthropic",
+        "--model",
+        "claude-haiku-5-5",
+        "--max-tokens",
+        "8192",
+    )
+    for key in ("default", *_ROLES):
+        w.docket("setup", "model", "set", key, _ANTHROPIC_MODEL)
+    return w
 
 
 def _rows(w: World) -> list[dict[str, Any]]:
@@ -68,10 +89,14 @@ def test_the_hacker_news_recipe_digests_the_real_front_page_and_writes_both_repo
     on_front_page = _front_page_titles()
     assert on_front_page, "the real front page answered with no stories"
 
-    w, work_dir = workdir_pod(
-        lambda model: World(tmp_path / "world", model, env=env),
-        _Endpoint(endpoint),  # type: ignore[arg-type]
-    )
+    if os.environ.get("DOCKET_LIVE_HN_PROVIDER") == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        assert key, "DOCKET_LIVE_HN_PROVIDER=anthropic needs ANTHROPIC_API_KEY in the environment"
+        env = {**env, "ANTHROPIC_API_KEY": key}
+        make_world = lambda model: _anthropic_world(tmp_path / "world", model, env)  # noqa: E731
+    else:
+        make_world = lambda model: World(tmp_path / "world", model, env=env)  # noqa: E731
+    w, work_dir = workdir_pod(make_world, _Endpoint(endpoint))  # type: ignore[arg-type]
     w.docket("pod", "update", "hacker-news", "--pod", w.pod)
     run = ("run", "--pod", w.pod, "--timeout", str(_RUN_TIMEOUT_S))
 
