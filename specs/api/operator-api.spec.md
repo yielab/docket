@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.6.0
+**Version**: 7.7.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-10-31
 
 ## Purpose
 
@@ -93,11 +93,11 @@ same functions as their routes; `docket start` takes `--bind`. `prepare`, `restr
 | `task` | object | optional structured fields beside `description`, additive to API 6 (no version change): `objective`, `doneWhen`, `risk`, `verify`, `kind` (strings), `acceptance`, `constraints`, `paths` (lists of strings) and `answers` (a list of objects), each optional. An unknown key or a field of the wrong type is `400` naming it, and nothing is enqueued. The record keeps it as `task`; with both present `description` is the title. The first non-Lead hop's `## Task` section renders it after the description in the fixed order objective, done when, acceptance, constraints, risk, answers, verify, kind, paths, and `paths` bound that hop's repository map to the entries beside them (`pod-dispatch.spec.md` "Bounded hop prompts"). The text is screened by `pre_input` with the description. Not exposed by the CLI, MCP or the operator view |
 | `externalRef` | string, 1-200 chars | a caller label, stored verbatim, never interpreted; filterable |
 | `idempotencyKey` | string, 1-200 chars | when a task in this pod's queue already carries it, nothing is enqueued and that task is returned with `200`; a new task answers `201` |
-| `baseRef` | string | a branch name or commit the task worktree starts from (`git worktree add -b <task-branch> <dir> <baseRef>`); unset means the codebase's HEAD. Validated at claim, not at enqueue: an unresolvable ref, or a pod whose Implementer has no codebase, fails the task before any hop with `failureKind: "base_ref"` |
+| `baseRef` | string | a branch name or commit the task worktree starts from (`git worktree add -b <task-branch> <dir> <baseRef>`); unset means the codebase's HEAD. Validated at claim, not at enqueue: an unresolvable ref, a `workdir` pod, or a pod with no Implementer codebase to make the worktree from, fails the task before any hop with `failureKind: "base_ref"` (see "A task on a `workdir` pod") |
 | `pipeline` | string | the name of a pod-local pipeline (`<pod config dir>/pipelines/<name>.yaml`) or of a recipe that carries a `pipeline.yaml`, the operator's own (`~/.docket/recipes/`) before the shipped ones (`docket pod recipes`); unset means the pod's effective pipeline. Resolved at claim; a name that resolves to nothing valid, or a `gate` that cannot be honoured, fails the task before any hop with `failureKind: "pipeline"` |
 | `gate` | object | `{"command": string, "timeoutS"?: int, "map"?: {exit code: label}}` -- an `ExternalGate` (ADR 0025) added **after** the last implementer step's own gate, with the same labels and `on:` routing. It never replaces a gate the pipeline declares |
 | `maxTokens` | int > 0 | a budget over the task's counted usage (`input - cached + output` summed over hops; a cache read is not counted); each hop runs with a turn token budget of `maxTokens - used so far`; a hop that would start with nothing left, or a turn that stops on that budget, fails the task with `failureKind: "budget"` |
-| `prepare` | string | the install command run in this task's worktree before its first hop; `""` or `none` runs nothing and wins over the pod's `prepare` and the lockfile. Unset means the pod's `prepare` setting, else the command for the worktree's lockfile (`pod-dispatch.spec.md` "Task preparation"). Stored on the task record and shown by `GET /tasks/<pod>/<id>`; an install that fails settles the task before any hop with `failureKind: "prepare"` and the output tail as `reason`. A newline or NUL, or more than 1,000 characters, is `400` |
+| `prepare` | string | the install command run in this task's worktree before its first hop; `""` or `none` runs nothing and wins over the pod's `prepare` and the lockfile. Unset means the pod's `prepare` setting, else the command for the worktree's lockfile (`pod-dispatch.spec.md` "Task preparation"). Stored on the task record and shown by `GET /tasks/<pod>/<id>`; an install that fails settles the task before any hop with `failureKind: "prepare"` and the output tail as `reason`. A newline or NUL, or more than 1,000 characters, is `400`. On a `workdir` pod a command fails the task at claim with `failureKind: "prepare"`; `""` or `none` is accepted (see "A task on a `workdir` pod") |
 | `variables` | object of strings | optional, additive to API 6 (no version change): pipeline variables that belong to this task, name to string value. A value that is not a string, or a body that is not an object, is `400` naming the field and nothing is enqueued. Stored on the task record as `variables` (absent when none were sent, and absent on a record written before the field) and shown by `GET /tasks/<pod>/<id>`. At claim they are merged over the run's variables (a webhook body or `docket run --var`), the task's winning, so a step's `when: {var: ..., is: ...}` and `${var}` instructions see them for this task only. `when.var` compares the variable's text with `is`, so an integer from a webhook body matches `is: "3"` |
 | `restrictions` | object | see below. Anything that would widen is `422` |
 | `autonomy` | `L3` / `L4` / `L5` | the level the task's pauses are decided at (`security-gates.spec.md` "Autonomy levels"). It only narrows: the pod's profile is the ceiling, `attended` admits up to `L3` and `lights-out` up to `L5`, and a level above it is `422` with the ceiling named. Unset takes the profile's default (`L3` attended, `L4` lights-out), so `L5` is always asked for. Any other value is `400`. Stored on the task record and shown by `GET /tasks/<pod>/<id>` |
@@ -109,6 +109,30 @@ same functions as their routes; `docket start` takes `--bind`. `prepare`, `restr
 | `deniedTools` | list of tool names | unioned with the role's denied tools and the pod's `deniedTools` when the hop's registry is narrowed; an unknown name is `422` (the built-in tool names, as for `pod set deniedTools`) |
 | `network` | `"none"` | the hop's jail network is `none` whatever the pod records; the only accepted value, since `"open"` would widen |
 | `policies` | list of policy documents | each a `kind: policy` short or canonical form; every rule's action MUST be `block`, any other action is `422`; loaded for the task's session after the pod's policies, never persisted to the pod |
+
+### A task on a `workdir` pod
+
+A pod's `workspaceKind` (`GET /pods`) says where its tasks run. A `codebase` pod gives each task a
+worktree of its own; a `workdir` pod (the `respond`, `operate` and `routine` blueprints) runs every
+task in its one working directory, with no repository and no worktree, and never makes one.
+`baseRef` and `prepare` both act on a task's worktree, so on a `workdir` pod:
+
+- `baseRef` **MUST** fail the task at claim, before any hop, with `failureKind: "base_ref"` and
+  the reason `pod '<pod>' works in a folder (workspaceKind workdir); baseRef '<ref>' applies only
+  to a pod with a codebase`. A caller that names a base revision expects the work on a branch from
+  it; running elsewhere would hide that the request was not met.
+- A `prepare` command **MUST** fail the task at claim the same way, with `failureKind: "prepare"`
+  and the reason `pod '<pod>' works in a folder (workspaceKind workdir); prepare '<command>'
+  applies only to a pod with a codebase`. It is refused rather than ignored for the same reason: a
+  caller that asks for an install expects the hops to run with it, and nothing would install it.
+  `""` and `none` ask for nothing to run, so they are accepted.
+- A pod's own `prepare` is never derived for a `workdir` pod and cannot be set on one
+  (`pod-blueprints.spec.md` "Pod manifests: apply" requirement 13).
+
+On a `codebase` pod whose Implementer records no codebase (the member was removed, or never had
+one), a `baseRef` fails with `failureKind: "base_ref"` and the reason `pod '<pod>' has no
+Implementer with a codebase to make a task worktree from; baseRef '<ref>' was not used`, and a task
+without one runs in place unprepared (`pod-dispatch.spec.md` "Task worktrees" requirement 4).
 
 ### `POST /tasks/<pod>/<id>/cancel`
 
@@ -259,19 +283,23 @@ label or `null`; `gate` is the step's gate label or `null`. `hop_started` names 
 
 ### Pod answers
 
-`GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp", "members": 2,
-"profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
+`GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp",
+"workspaceKind": "codebase", "members": 2, "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
 "waitingInput": 0, "blocked": 0, "failed": 0, "done": 4, "cancelled": 0}}]}`; `queue` carries the
-counts `status --json` prints under `tasks`: one per task status.
+counts `status --json` prints under `tasks`: one per task status. `workspaceKind` is the closed
+enum `"codebase"` or `"workdir"`, read from the kind the pod was provisioned with (its Lead's
+`workspaceKind`; a pod that records none is `"codebase"`), never inferred from an empty `codebase`:
+`codebase` is `""` both for a `workdir` pod and for a `codebase` pod whose codebase is not recorded.
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
 `pod`, `members`, `settings`, `approvalMode`, `pipeline`, `network`, `budgetUnpriced`,
-`configSource`, `configDigest`, `drift`) plus the four keys below, where `profile` here is the
+`configSource`, `configDigest`, `drift`) plus the five keys below, where `profile` here is the
 verdict object (a row of `GET /pods` carries the profile name as a string):
 
 ```json
 {"profile": {"name": "lights-out", "violations": [{"requirement": "network", "fix": "docket pod set network none"}]},
  "pipelineSource": "pod",
+ "workspaceKind": "codebase",
  "repoConfigDir": "/srv/webapp/.docket/teams/web-dev",
  "readOnly": ["/opt/node-22"]}
 ```
@@ -280,7 +308,8 @@ verdict object (a row of `GET /pods` carries the profile name as a string):
 (`docket setup sandbox read add`), kept only where the pod's `settings.readOnly` names them
 (`security-gates.spec.md` Exec sandbox requirement 14); `[]` when there are none.
 `profile.violations` is empty unless the effective profile is `lights-out`, `pipelineSource` says
-where the effective pipeline comes from, and `repoConfigDir` is `""` for a pod with no codebase.
+where the effective pipeline comes from, `workspaceKind` is the value its `GET /pods` row carries,
+and `repoConfigDir` is `""` for a pod with no codebase.
 A pod that is not dispatchable is `404`. A pod whose stored settings no longer validate is `500`
 with the error envelope naming the setting.
 

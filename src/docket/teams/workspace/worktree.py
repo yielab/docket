@@ -7,7 +7,12 @@ from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import task_worktrees as _task_worktrees
+from docket.teams.models import WorkspaceKind
+from docket.teams.workspace import prepare as _prepare
+
+_CODEBASE_ONLY = "applies only to a pod with a codebase"
 
 
 def trusted_worktree_dir(directory: str, git_dir: str, common_dir: str) -> str:
@@ -94,19 +99,25 @@ def _pin_hop_tree(
 
 
 def ensure_task_worktree(
-    project: str, task_id: str, base_ref: str
+    project: str, task_id: str, base_ref: str, prepare: str | None
 ) -> tuple[dict[str, Any] | None, tuple[str, str] | None]:
-    """``(worktree, refusal)`` for a claimed task that has no recorded worktree. *worktree* is the
-    record to store (a failed add is an empty record with a ``fallbackReason``: the task runs in
-    place); ``None`` when none was made. With a *base_ref* it never runs in place: *refusal* is
-    ``(failure_kind, reason)`` and nothing is stored. The caller stores the record; this module
-    does not touch the queue."""
+    """``(worktree, refusal)`` for a claimed task with no recorded worktree; the caller stores the
+    record. *refusal* is ``(failure_kind, reason)`` (pod-dispatch.spec.md "Task worktrees" 4-4a,
+    operator-api.spec.md "A task on a `workdir` pod")."""
+    if _pod_settings.workspace_kind(project) == WorkspaceKind.workdir:
+        folder = _pod_settings.in_a_folder(project)
+        if base_ref:
+            return None, ("base_ref", f"{folder}; baseRef {base_ref!r} {_CODEBASE_ONLY}")
+        if prepare is not None and not _prepare.is_off(prepare):
+            return None, ("prepare", f"{folder}; prepare {prepare!r} {_CODEBASE_ONLY}")
+        return None, None
     implementer = _pod.member_id(project, "implementer")
     codebase = str(_fleet.meta_get(implementer, "codebase", "") or "")
     if not codebase:
         if base_ref:
             reason = (
-                f"baseRef {base_ref!r} needs a task worktree, but the Implementer has no codebase"
+                f"pod {project!r} has no Implementer with a codebase to make a task worktree "
+                f"from; baseRef {base_ref!r} was not used"
             )
             return None, ("base_ref", reason)
         return None, None

@@ -230,11 +230,13 @@ def review_repo_source(
     loc_path: Path,
     apply_source: Path,
     command: str = "docket init",
+    *,
+    workdir: bool,
 ) -> int:
     """The operator's OK for what *apply_source* runs on this machine, asked before anything is
     created. 0 means go on; 2 means stop (already printed). Shipped recipes are exempt."""
 
-    decision = _review.review_decision(loc_path, project, apply_source, req.accept)
+    decision = _review.review_decision(loc_path, project, apply_source, req.accept, workdir=workdir)
     review = decision.review
     if decision.status == "go":
         return 0
@@ -346,7 +348,7 @@ def run_init(req: InitRequest) -> int:
     if resolve_rc:
         return resolve_rc
     if apply_source is not None and not req.no_apply:
-        review_rc = review_repo_source(req, aid, loc_path, apply_source)
+        review_rc = review_repo_source(req, aid, loc_path, apply_source, workdir=is_workdir)
         if review_rc:
             return review_rc
 
@@ -597,6 +599,9 @@ def cmd_init(
     codebase: str | None = typer.Option(
         None, "--codebase", help="The location, as an option instead of the argument."
     ),
+    workdir: str | None = typer.Option(
+        None, "--workdir", help="--codebase under the name a respond, operate or routine pod reads."
+    ),
     name: str | None = typer.Option(
         None, "--name", help="The pod's name, as an option instead of the argument."
     ),
@@ -637,14 +642,16 @@ def cmd_init(
     Example: docket init --recipe secure-build"""
     if pod not in (None, "full"):
         raise typer.BadParameter("only 'full' is accepted", param_hint="--pod")
-    others = (project, location, blueprint, pod, with_roles, codebase, name, recipe)
+    if codebase is not None and workdir is not None:
+        raise typer.BadParameter("give --codebase or --workdir, not both", param_hint="--workdir")
+    others = (project, location, blueprint, pod, with_roles, codebase, workdir, name, recipe)
     if from_file is not None and (
         no_apply or accept or json_out or any(o is not None for o in others)
     ):
         raise typer.BadParameter("--from takes no other argument or option", param_hint="--from")
     req = InitRequest(
         name=name or project,
-        location=codebase or location,
+        location=codebase or workdir or location,
         blueprint=blueprint,
         recipe=recipe,
         no_apply=no_apply,

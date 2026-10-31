@@ -37,13 +37,12 @@ from docket.tasks.domain.parts import Answer
 from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.task import HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
-from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models
-from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _archetypes
+from docket.teams.models import WorkspaceKind
 from docket.teams.prompts import LoadedPrompt
 from docket.teams.settings import load_pod_settings, pod_approval_mode
 from docket.teams.workspace import repo_map as _repo_map
@@ -135,8 +134,7 @@ def _root_line(root: str, project: str) -> tuple[str, bool]:
     when no root resolves."""
     if not root:
         return "", False
-    lead = _pod.member_id(project, "lead") if project else ""
-    if lead and _fleet.meta_get(lead, "workspaceKind", "") == "workdir":
+    if project and _pod_settings.workspace_kind(project) == WorkspaceKind.workdir:
         return _WORKDIR_LINE, True
     return _repo_map.WORKING_DIRECTORY_LINE, False
 

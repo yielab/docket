@@ -19,7 +19,9 @@ from docket.platform import read_json, write_json
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import roles as _archetypes
+from docket.teams.models import WorkspaceKind
 from docket.teams.pod import member_id
+from docket.teams.workspace import prepare as _prepare
 
 
 class PodSettingsError(InvalidInput):
@@ -30,6 +32,18 @@ def is_explicit(project: str, key: str) -> bool:
     """Whether the pod's Lead meta carries *key* itself. A loaded ``PodSettings`` always holds a
     value (the field default), so only the raw stored key tells a choice from its absence."""
     return bool(_fleet.meta_get(member_id(project, "lead"), key, ""))
+
+
+def workspace_kind(project: str) -> WorkspaceKind:
+    """Whether *project* works in a codebase or in a folder: the kind its Lead's metadata records
+    (every member shares it), ``codebase`` when it records none."""
+    raw = _fleet.meta_get(member_id(project, "lead"), "workspaceKind", "")
+    return WorkspaceKind(raw or WorkspaceKind.codebase)
+
+
+def in_a_folder(project: str) -> str:
+    """The clause every refusal of a ``workdir`` pod opens with."""
+    return f"pod {project!r} works in a folder (workspaceKind {WorkspaceKind.workdir})"
 
 
 # The scope `effective_network` reports for a pod the operator widened past a machine at `none`.
@@ -516,6 +530,16 @@ class PodSettings(BaseModel):
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"
             )
         settings = cls._validated({key: value}, project=project, mcp_extra=mcp_extra, stored=False)
+        if (
+            key == "prepare"
+            and project
+            and not _prepare.is_off(settings.prepare)
+            and workspace_kind(project) == WorkspaceKind.workdir
+        ):
+            raise PodSettingsError(
+                f"prepare: {in_a_folder(project)}; a prepare command applies only to a pod "
+                "with a codebase"
+            )
         if (
             key == "profile"
             and settings.profile == "attended"

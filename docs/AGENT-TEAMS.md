@@ -157,7 +157,11 @@ the policy pack that asks before every send and caps them.
 The `workdir` shapes have **no git**. A hop in a plain working directory has no commit, diff stat
 or changed-file list to show for its work, so the hop record says "checked, found nothing" rather
 than showing commit evidence; what a `routine` or `respond` pod leaves behind is the files in its
-working directory and the pod's records (below).
+working directory and the pod's records (below). A task on one runs in that directory, never in a
+worktree, so a `baseRef` or a `prepare` command on it fails the task before any hop, with a reason
+that names the pod as working in a folder; `GET /pods` and `GET /pods/<p>` report the kind as
+`workspaceKind` (`codebase` or `workdir`). `docket init --blueprint operate --workdir <dir>` names
+the directory; `--codebase` is the same option.
 
 Start lean and grow only when the work earns it:
 

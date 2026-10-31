@@ -17,6 +17,7 @@ from docket.teams import roles as _arch
 from docket.teams import services as _services
 from docket.teams.apply.recipes import _config_glob, _declared_servers, _named_pipeline_files
 from docket.teams.apply.routines import routine_files
+from docket.teams.models import WorkspaceKind
 from docket.teams.workspace import prepare as _prepare
 
 # `allowCommands` and `network` are run items; `networkGrant` is never applied from a repository.
@@ -125,9 +126,12 @@ def repo_config_dir(codebase: Path, project: str, *, create: bool = False) -> Pa
     return base
 
 
-def _prepare_runs(directory: Path, manifest: dict[str, Any]) -> list[RunItem]:
+def _prepare_runs(directory: Path, manifest: dict[str, Any], workdir: bool) -> list[RunItem]:
     """The install command a task worktree runs: the directory's own ``prepare:``, else -- for a
-    repository's ``.docket/`` -- the one derived from a lockfile at the repository root."""
+    repository's ``.docket/`` -- the one derived from a lockfile at the repository root. A
+    ``workdir`` pod has no task worktree, so nothing (its planning refuses a command)."""
+    if workdir:
+        return []
     raw = manifest.get("prepare")
     if isinstance(raw, str):
         command = raw.strip()
@@ -139,8 +143,9 @@ def _prepare_runs(directory: Path, manifest: dict[str, Any]) -> list[RunItem]:
     return [] if _prepare.is_off(command) else [RunItem("prepare", "prepare", command)]
 
 
-def classify_directory(directory: Path) -> PlanReview:
-    """Read-only split of *directory* into adds and run-on-this-machine items; needs no pod."""
+def classify_directory(directory: Path, *, workdir: bool = False) -> PlanReview:
+    """Read-only split of *directory* into adds and run-on-this-machine items; needs no pod, only
+    whether the pod it is for works in a folder (*workdir*)."""
     manifest_file = directory / "pod.yaml"
     manifest = _config_docs_doc(manifest_file, "pod") if manifest_file.is_file() else {}
     settings = manifest.get("settings") or {}
@@ -174,7 +179,7 @@ def classify_directory(directory: Path) -> PlanReview:
         runs.append(RunItem("allow-commands", "allowCommands", ", ".join(names)))
     if str(settings.get("network", "")) == "open":
         runs.append(RunItem("network", "network", "open"))
-    runs.extend(_prepare_runs(directory, manifest))
+    runs.extend(_prepare_runs(directory, manifest, workdir))
     runs.extend(_loosened_denials(directory))
     for sub, kind in (("roles", "role"), ("policies", "policy")):
         sub_dir = directory / sub
@@ -193,16 +198,16 @@ def classify_directory(directory: Path) -> PlanReview:
 
 
 def review_decision(
-    repo_root: Path, project: str, directory: Path, accept: str | None
+    repo_root: Path, project: str, directory: Path, accept: str | None, *, workdir: bool = False
 ) -> ReviewDecision:
     """Whether *directory*'s run-on-this-machine items are cleared by the shipped-recipe
     exemption, a set *project* remembered for *repo_root*, or the matching *accept* code.
-    Read-only."""
+    *workdir* is whether *project* works in a folder (known before the pod exists). Read-only."""
 
     empty = PlanReview((), ())
     if is_shipped_recipe(directory):
         return ReviewDecision("go", empty)
-    review = classify_directory(directory)
+    review = classify_directory(directory, workdir=workdir)
     if review.refused:
         return ReviewDecision("refused", review)
     if not review.runs or _reviewed.is_reviewed(repo_root, project, review.runs):
@@ -211,6 +216,11 @@ def review_decision(
     if accept is None:
         return ReviewDecision("needs_code", review, code)
     return ReviewDecision("accepted" if accept == code else "code_mismatch", review, code)
+
+
+def is_workdir(project: str) -> bool:
+    """Whether the existing pod *project* works in a folder."""
+    return _pod_settings.workspace_kind(project) == WorkspaceKind.workdir
 
 
 @dataclass(frozen=True)
@@ -230,6 +240,6 @@ def runs_changed(project: str, repo_dir: Path) -> tuple[RunChange, ...]:
     was = {(i.kind, i.name): i.runs for i in found.items} if found else {}
     return tuple(
         RunChange(i, was.get((i.kind, i.name)))
-        for i in classify_directory(repo_dir).runs
+        for i in classify_directory(repo_dir, workdir=is_workdir(project)).runs
         if was.get((i.kind, i.name)) != i.runs
     )

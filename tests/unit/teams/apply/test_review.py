@@ -80,6 +80,12 @@ class TestPrepare:
         team.mkdir(parents=True)
         assert [i.runs for i in _review.classify_directory(team).runs] == ["npm ci"]
 
+    def test_a_workdir_pod_derives_no_command_from_a_lockfile(self, tmp_path: Path) -> None:
+        config = tmp_path / ".docket"
+        config.mkdir()
+        (tmp_path / "package-lock.json").write_text("{}")
+        assert _review.classify_directory(config, workdir=True).runs == ()
+
     def test_a_lockfile_beside_an_ordinary_directory_is_not_reviewed(self, tmp_path: Path) -> None:
         (tmp_path / "package-lock.json").write_text("{}")
         recipe = tmp_path / "recipe"
