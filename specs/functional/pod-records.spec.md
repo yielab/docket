@@ -1,12 +1,12 @@
 # Pod Records Specification
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: Implemented in part. The port (`RecordStore`, `kernel/records_port.py`), its SQLite adapter
 (`platform/records_sqlite.py`), the `kind: records` document
 (`pod update` and `pod export` carry it), `docket pod records` and the `rec__*` tools a hop's agent
 reads and writes records with ("The tools") and the two read routes of the HTTP API ("Over HTTP") are
 implemented. Nothing is proven against a live model yet.
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -211,9 +211,11 @@ SQLite adapter, SQLite's. docket does not translate it.
     of kind `write` (it writes a file in the project). A role that denies `record`, by its own
     `deniedTools` or its pod's, **MUST** lose add and update and keep `rec__query` and `rec__export`;
     one that denies `write` **MUST** lose `rec__export` and keep add, update and `rec__query`, because
-    a row lives outside the project and its jail. The `minimal` surface **MUST** keep
-    a record tool the allow-list in force names. `role-archetypes.spec.md` is the contract of those
-    rules.
+    a row lives outside the project and its jail. The `minimal` surface **MUST** keep every
+    record tool, as `full` does: records are a kind of their own, and the surface narrows only the
+    built-ins, so a role that can write a set is offered its add tool whatever the model profile. The
+    allow-list in force and the denials still apply on either surface.
+    `role-archetypes.spec.md` is the contract of those rules.
 38. No record tool **MUST** be `send`, and none has an approval of its own: a policy `ask` on `rec__*`
     is the operator's choice, through the ordinary approval path.
 39. The tools run in docket's process. The records file **MUST NOT** be under any root, cache or

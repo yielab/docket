@@ -196,6 +196,12 @@ class TestBuiltinHandlers:
 
 
 class TestDispatchChokepoint:
+    def test_a_record_tool_not_offered_says_what_to_declare(self, ctx: ToolContext) -> None:
+        res = dispatch_tool(_call("rec__notes__add"), ctx, builtin_registry())
+
+        assert res.denied and res.denial_kind == "invalid_call"
+        assert "rec__notes" in res.reason and "tools" in res.reason
+
     def test_unknown_tool_is_denied_with_a_readable_reason(self, ctx: ToolContext) -> None:
         res = dispatch_tool(_call("teleport"), ctx, builtin_registry())
         assert res.denied and "unknown tool" in res.reason
