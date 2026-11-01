@@ -953,7 +953,8 @@ Start the background service: the local HTTP API, sweeps, and what you turn on.
 
 Binds 127.0.0.1 unless --bind says otherwise. Always runs the sweeps and /status.json /metrics /health.
 --dispatch also runs every pod's queue (spends budget), --telegram polls the
-Telegram bot, --mcp serves docket's tools over stdio and runs nothing else.
+Telegram bot, --mcp serves docket's tools over stdio and runs nothing else (--mcp --read-only offers
+only the read tools).
 Stop it with `docket stop`.
 
 Example: docket start --dispatch

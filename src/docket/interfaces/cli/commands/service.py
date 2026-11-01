@@ -85,6 +85,9 @@ def cmd_start(
     mcp: bool = typer.Option(
         False, "--mcp", help="Serve the control plane as an MCP server on stdio instead"
     ),
+    read_only: bool = typer.Option(
+        False, "--read-only", help="With --mcp: register only the read tools (no writes)"
+    ),
     token_file: str | None = typer.Option(
         None,
         "--token-file",
@@ -95,13 +98,17 @@ def cmd_start(
 
     Binds 127.0.0.1 unless --bind says otherwise. Always runs the sweeps and /status.json /metrics /health.
     --dispatch also runs every pod's queue (spends budget), --telegram polls the
-    Telegram bot, --mcp serves docket's tools over stdio and runs nothing else.
+    Telegram bot, --mcp serves docket's tools over stdio and runs nothing else (--mcp --read-only offers
+    only the read tools).
     Stop it with `docket stop`.
 
     Example: docket start --dispatch
     """
 
     _process.make_non_dumpable()
+    if read_only and not mcp:
+        ui.error("--read-only applies to the MCP server", "Add --mcp")
+        raise typer.Exit(2)
     if mcp:
         if dispatch or telegram or token_file is not None:
             ui.error(
@@ -109,7 +116,7 @@ def cmd_start(
             )
             raise typer.Exit(2)
 
-        raise typer.Exit(_mcp.serve_stdio())
+        raise typer.Exit(_mcp.serve_stdio(read_only=read_only))
 
     existing = running_pid()
     if existing is not None:

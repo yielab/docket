@@ -881,7 +881,7 @@ document (`service-client.spec.md`); this registers and lists them, it makes no 
 #### docket start
 **Purpose**: Start the background service — refresh fleet status, serve the local HTTP API and
 optionally drive pod dispatch pipelines
-**Syntax**: `docket start [--port <n>] [--bind <addr>] [--interval <s>] [--dispatch] [--telegram] [--mcp] [--token-file <path>]`
+**Syntax**: `docket start [--port <n>] [--bind <addr>] [--interval <s>] [--dispatch] [--telegram] [--mcp] [--read-only] [--token-file <path>]`
 **Options**:
 - `--port`/`-p <n>`: Listen port for the HTTP API (default: 7331)
 - `--bind <addr>`: Listen address for the HTTP API (default: `127.0.0.1`, loopback only; any other address is reachable off this host)
@@ -893,6 +893,7 @@ optionally drive pod dispatch pipelines
 - `--mcp`: Serve docket's control plane as an MCP stdio server instead of the HTTP service
   (`mcp-server.spec.md`); it prints nothing to stdout but JSON-RPC and exits 2 when combined with
   `--dispatch`, `--telegram` or `--token-file`
+- `--read-only`: With `--mcp`, register only the seven read tools; exits 2 without `--mcp`
 - `--token-file <path>`: Write the Bearer token for the authenticated routes to this file (0600)
   instead of printing it
 **Output**: Serves the HTTP API on `http://<bind>:<port>/` — three unauthenticated read routes
@@ -901,7 +902,7 @@ contracts live in serve-read-api.spec.md and operator-api.spec.md.
 With `--dispatch`, also logs each dispatch hop. Records its pid in `$DOCKET_HOME/serve.pid`
 before serving and removes it on exit
 **Return**: 0 on clean shutdown (Ctrl-C or `docket stop`); 1 when a service is already running
-(its pid names it); 2 for `--mcp` with a flag that prints to stdout
+(its pid names it); 2 for `--mcp` with a flag that prints to stdout, or `--read-only` without `--mcp`
 
 #### docket stop
 **Purpose**: Stop the background service started by `docket start`
