@@ -235,6 +235,21 @@ class TestAStepWithAGateOrARoute:
         assert list_escalations(state="pending") == []
 
 
+class TestAPipelineThatGrewAfterTheEnqueue:
+    def test_a_conversation_task_is_refused_at_the_claim_not_run_on_its_first_step(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _, task_id = _start(monkeypatch, "one", conversation={"maxTurns": 3})
+        bind_pipeline(PROJECT, "name: talk\nsteps:\n  - chat: lead\n  - build: implementer\n")
+
+        _turn()
+
+        task = _the(task_id)
+        assert (task.status, task.hops) == ("failed", [])
+        assert "conversation" in task.reason and "one step" in task.reason
+        assert list_escalations(state="pending") == []
+
+
 class TestAnOrdinaryTask:
     def test_an_ok_hop_of_a_task_without_conversation_advances(
         self, monkeypatch: pytest.MonkeyPatch

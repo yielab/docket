@@ -102,4 +102,4 @@ def turn_escalation(
         PROJECT, "explain the cache", channel="cli", conversation={"maxTurns": max_turns}
     )[0]
     update_task(PROJECT, task.id, status="waiting_input")
-    return _esc.open_for_turn(task, "implementer", answer, pod=PROJECT)
+    return _esc.open_for_turn(task.id, "implementer", "implementer", answer, pod=PROJECT)

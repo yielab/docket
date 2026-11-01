@@ -214,7 +214,7 @@ class TaskWait(BaseModel):
 
 class CurrentHop(BaseModel):
     """The hop a running task is inside: the values of its ``hop_started`` event. ``model`` is the
-    planned model, ``cycle`` the rework count (operator-api.spec.md, "Task answers")."""
+    planned model, ``cycle`` the backward moves taken (operator-api.spec.md, "Task answers")."""
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 

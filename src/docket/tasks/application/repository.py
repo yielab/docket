@@ -149,6 +149,10 @@ class TaskRepository:
         """Every task, oldest first."""
         return self._store.load()
 
+    def changed_since(self, cursor: int) -> Records:
+        """The tasks whose ``rev`` is past *cursor*, the oldest change first."""
+        return sorted((r for r in self._store.load() if r.rev > cursor), key=lambda r: r.rev)
+
 
 def claimable(record: TaskRecord, *, resume: bool) -> bool:
     """Whether a dispatch run may claim *record*: see pod-dispatch.spec.md, "Claiming"."""

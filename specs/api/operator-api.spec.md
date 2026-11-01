@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.14.1
+**Version**: 7.14.2
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-01
 
@@ -252,7 +252,8 @@ is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod
 `current` names the hop a `running` task is inside: `{"stepId", "role", "member", "model",
 "startedAt", "cycle"}`. It is written where the hop's `hop_started` event is emitted, with the same
 values (`model` is the planned model, not the one that served; `cycle` counts the backward moves taken, `0`
-on a first pass), and cleared where its `hop_finished` event is emitted. The key is absent, never
+on a first pass), and cleared in the write that records the finished hop, so no read sees the hop recorded while `current`
+still names it, or `current` gone while the hop is missing. The key is absent, never
 `null`, on a task that is not inside a hop, and every move out of `running` removes it, so a task
 that dies mid-hop never shows a stale `current`. A task has one slot, and only an agent hop fills it: inside a parallel group it names the child
 that started last, and the key goes when that child ends even while a sibling runs, so on a

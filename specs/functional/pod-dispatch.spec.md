@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.13.1
+**Version**: 11.13.2
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1053,7 +1053,11 @@ turn. A turn is one hop of that step, with its own `hop_finished` and `usage`.
 4. **The token limit.** A conversation task with at least one turn whose `maxTokens` is spent
    before a turn MUST end `done`, not `failed` with `failureKind: "budget"`. A task with no turn
    keeps the failure.
-5. **No other task is changed.** A task without `conversation` advances on a successful hop as
+5. **A pipeline that grew.** A conversation task whose pipeline no longer has exactly one runnable
+   step when it is claimed (the pod's pipeline changed after the enqueue) MUST be refused at the claim,
+   `failed` with `failureKind: "dispatch_refused"` and a reason naming the step count, as the enqueue
+   refuses it; no hop runs.
+6. **No other task is changed.** A task without `conversation` advances on a successful hop as
    before.
 
 ### Task brief (ADR 0016)

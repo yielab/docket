@@ -68,6 +68,28 @@ def _refuse_input_for_level(project: str, task: TaskRecord, spec: _pipeline.Pipe
         raise TaskRunRefusal(message)
 
 
+def conversation_step_count(project: str, pipeline: str | None) -> int:
+    """The runnable steps a task naming *pipeline* (else the pod's own) would run: a conversation
+    needs exactly one. Raises ``DispatchError`` for a pipeline that resolves to nothing valid."""
+    spec = None
+    if pipeline:
+        task = TaskRecord(description="-", pipeline=pipeline)
+        spec = _task_pipeline(project, task, effective_pipeline(project, None))[0]
+    return len(resolve_pipeline_steps(project, spec)[0])
+
+
+def _refuse_conversation_steps(
+    project: str, task: TaskRecord, spec: _pipeline.PipelineSpec
+) -> None:
+    """A conversation task whose pipeline no longer has one step (the pod changed after the enqueue)
+    is refused at the claim, as the enqueue refuses it: ``TaskRunRefusal``."""
+    steps = len(resolve_pipeline_steps(project, spec)[0])
+    if task.conversation is not None and steps != 1:
+        raise TaskRunRefusal(
+            f"a conversation task needs a pipeline of one step; this one has {steps}"
+        )
+
+
 def _resolve_task_run(
     project: str,
     task: TaskRecord,
@@ -80,6 +102,7 @@ def _resolve_task_run(
     spec, source = _task_pipeline(project, task, default_spec, default_source)
     _task_gate(task)
     _refuse_input_for_level(project, task, spec)
+    _refuse_conversation_steps(project, task, spec)
     if spec is default_spec and not task.variables:
         return spec, default_vars, source
     # The task's own variables win over the run's.
@@ -322,10 +345,7 @@ def _park_turn(
     hop = outcome.hops[-1]
     hop.parked = True
     _escalations.open_for_turn(
-        ctx.task.model_copy(update={"hops": list(result.hops)}),
-        hop.step_id or hop.role,
-        hop.output,
-        pod=ctx.project,
+        ctx.task_id, hop.role, hop.step_id or hop.role, hop.output, pod=ctx.project
     )
     result.status = "waiting_input"
     result.reason = f"turn {len(result.hops)} of {conversation.max_turns} answered"

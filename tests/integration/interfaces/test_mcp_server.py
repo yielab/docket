@@ -513,7 +513,7 @@ class TestEveryToolCallIsAudited:
 
             entries = [e for e in _audit.read_audit() if e["action"].startswith("mcp.")]
             actions = [e["action"] for e in entries]
-            for tool in _mcp._TOOL_NAMES:
+            for tool in _mcp.tool_names():
                 assert actions.count(f"mcp.{tool}") == 1, f"expected exactly one mcp.{tool} entry"
 
 
