@@ -64,3 +64,42 @@ def test_a_refused_declaration_does_not_create_the_file(tmp_path: Path) -> None:
             RecordSet.model_construct(name="s", columns=[column], key=None)
         )
     assert not path.parent.exists()
+
+
+def _file_without_role(path: Path) -> None:
+    """A records file as it was written before `_role` existed: one set, one row, no such column."""
+    store = SqliteRecordStore(path)
+    store.declare(FLAGS)
+    store.add("flags", {"on": True, "n": 1}, RecordOrigin(task="t-0"))
+    with sqlite3.connect(path) as raw:
+        raw.execute('ALTER TABLE "flags" DROP COLUMN _role')
+
+
+def _columns(path: Path) -> list[str]:
+    with sqlite3.connect(path) as raw:
+        return [row[1] for row in raw.execute('PRAGMA table_info("flags")')]
+
+
+def test_a_file_written_before_role_gains_the_column_when_the_set_is_declared(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "records.sqlite"
+    _file_without_role(path)
+    assert "_role" not in _columns(path)
+
+    SqliteRecordStore(path).declare(FLAGS)
+
+    assert "_role" in _columns(path)
+    store = SqliteRecordStore(path)
+    store.add("flags", {"on": False, "n": 2}, RecordOrigin(task="t-1", role="lead"))
+    rows = store.read('SELECT n, "_role" FROM flags ORDER BY _id', ReadLimits(10, 1000)).rows
+    assert [tuple(r) for r in rows] == [(1, None), (2, "lead")]
+
+
+def test_a_write_to_a_file_written_before_role_still_records_the_role(tmp_path: Path) -> None:
+    path = tmp_path / "records.sqlite"
+    _file_without_role(path)
+
+    SqliteRecordStore(path).add("flags", {"on": True, "n": 3}, RecordOrigin(role="reviewer"))
+
+    assert "_role" in _columns(path)

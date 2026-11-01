@@ -150,6 +150,17 @@ def _create(db: sqlite3.Connection, record_set: RecordSet) -> None:
         _declare(db, record_set.name, column, column.name == record_set.key)
 
 
+def _add_role_column(db: sqlite3.Connection) -> None:
+    """Give each set of a file written before ``_role`` existed the nullable column; its old rows
+    keep no role."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name = '_declared'").fetchone() is None:
+        return
+    for (name,) in db.execute('SELECT DISTINCT set_name FROM "_declared"').fetchall():
+        columns = {row[1] for row in db.execute(f"PRAGMA table_info({_quote(name)})")}
+        if columns and "_role" not in columns:
+            db.execute(f"ALTER TABLE {_quote(name)} ADD COLUMN _role TEXT")
+
+
 def _authorize(action: int, *_: object) -> int:
     return sqlite3.SQLITE_OK if action in _READ_ACTIONS else sqlite3.SQLITE_DENY
 
@@ -171,6 +182,7 @@ class SqliteRecordStore:
             db.execute("PRAGMA journal_mode = WAL")
             db.execute("BEGIN IMMEDIATE")
             try:
+                _add_role_column(db)
                 yield db
             except BaseException:
                 db.execute("ROLLBACK")
