@@ -40,6 +40,7 @@ GET_ROUTES: tuple[Route, ...] = (
     Route("GET", "/tasks/<pod>/<id>/evidence", tasks.get_task_evidence, overlap=True),
     Route("GET", "/tasks/<pod>/<id>", tasks.get_tasks, bare=True, label="/tasks/<pod>[/<id>]"),
     Route("GET", "/pods/<pod>/corrections", pods.get_pod_corrections, overlap=True),
+    Route("GET", "/pods/<pod>/memory", pods.get_pod_memory),
     Route("GET", "/pods/<pod>/records", pod_records.get_pod_records),
     Route("GET", "/pods/<pod>/records/<set>", pod_records.get_pod_record_rows, inside="/records/"),
     Route("GET", "/pods", pods.get_pods),

@@ -29,7 +29,7 @@ from docket.interfaces.http import sweeps as _sweeps
 from docket.interfaces.http.auth import authorize
 from docket.interfaces.http.exchange import HttpExchange
 from docket.interfaces.http.routes.a2a_push import finished_channels
-from docket.interfaces.http.routes.health import SERVE_API_VERSION
+from docket.interfaces.http.routes.health import FEATURES, SERVE_API_VERSION
 from docket.interfaces.http.routes.table import ROUTES
 from docket.interfaces.http.routing import find_route
 from docket.interfaces.http.sweeps import (
@@ -66,6 +66,7 @@ def render_health(dispatch_on: bool = False) -> str:
     body = {
         "status": "ok",
         "apiVersion": SERVE_API_VERSION,
+        "features": list(FEATURES),
         "dispatch": {
             "on": dispatch_on,
             "inflight": inflight,
