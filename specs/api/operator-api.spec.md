@@ -26,7 +26,8 @@ This specification covers:
 - The `hop_started` / `hop_finished` trace events a consumer reads from `GET /traces/<pod>`
 - `GET /escalations`, the pauses a task waits on, one record each (`operator-loop.spec.md` area 11)
 - `GET /pods`, `GET /pods/<p>`, `POST /pods` with `ensure`, `POST /pods/<p>/apply`,
-  `GET /pods/<p>/corrections`, `GET /pods/<p>/records`, `GET /pods/<p>/records/<set>`
+  `GET /pods/<p>/corrections`, `GET /pods/<p>/memory`, `GET /pods/<p>/records`,
+  `GET /pods/<p>/records/<set>`
 - The `dispatch` block of `GET /health` under `--dispatch`
 - Re-attaching a client after a restart, and the `check_changed` approval a consumer sees
 - Status codes and error bodies
@@ -72,6 +73,7 @@ over 1 MiB is `413`.
 | `POST /pods` (`ensure`) | provision a pod, or find it |
 | `POST /pods/<p>/apply` | apply a directory of configuration to a pod |
 | `GET /pods/<p>/corrections?since=` | the corrections ledger, from a cursor |
+| `GET /pods/<p>/memory` | the pod's accepted memory entries, oldest first |
 | `GET /pods/<p>/records` | the pod's record sets with their columns and row counts |
 | `GET /pods/<p>/records/<set>?limit=&sql=` | a set's rows, or a read-only `SELECT`'s |
 | `GET /health` (dispatch block) | whether the sweep is on and what is in flight |
@@ -183,6 +185,12 @@ Query parameters:
 | `GET /pods/<p>/records/<set>` | `sql` | one read-only `SELECT`; absent reads the whole set newest first (`ORDER BY _id DESC`) |
 
 ## Output
+
+### Features
+
+`GET /status.json` and `GET /health` both carry `features`: the names of the features this build
+answers to, so a client can probe for one before it calls the route (`podMemory`, the pod memory
+route below). A name joins the list in the commit that makes the feature work, never before.
 
 ### Task answers
 
@@ -305,6 +313,11 @@ label or `null`; `gate` is the step's gate label or `null`. `hop_started` names 
 `hop_finished` names the *served* model the turn reported. `attempt` on `hop_started` is always `1`.
 
 ### Pod answers
+
+`GET /pods/<p>/memory` (`200`): `{"entries": [...]}`. Only the `accepted` entries, oldest first;
+each element is exactly an element of `docket pod memory list --json` (the CLI prints a bare
+array; the object wrapper is the one every HTTP route uses). A pod that is not dispatchable is
+`404`. Pending and refused entries are not served here.
 
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp",
 "workspaceKind": "codebase", "blueprint": "build", "members": 2, "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
