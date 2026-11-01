@@ -561,7 +561,45 @@ class TestRecordTools:
 
             assert sorted(narrowed.names()) == ["read", "rec__query"]
 
-    def test_the_minimal_surface_drops_record_tools_a_role_does_not_name(self) -> None:
+    def test_the_minimal_surface_keeps_record_tools_a_role_with_no_allow_list_holds(self) -> None:
         narrowed = registry_for_role(_records_registry(), "implementer", surface="minimal")
 
-        assert not [n for n in narrowed.names() if n.startswith("rec__")]
+        assert len([n for n in narrowed.names() if n.startswith("rec__")]) == 5
+
+
+class TestMinimalSurfaceOffersRecordTools:
+    """A record tool is a kind of its own: the surface narrows built-ins, not the pod's records."""
+
+    def test_a_role_with_no_allow_list_keeps_every_record_tool(self) -> None:
+        narrowed = registry_for_role(_records_registry(), "implementer", surface="minimal")
+
+        assert len([n for n in narrowed.names() if n.startswith("rec__")]) == 5
+
+    def test_the_surfaces_offer_a_role_the_same_record_tools(self) -> None:
+        def offered(surface: str) -> set[str]:
+            names = registry_for_role(_records_registry(), "implementer", surface=surface).names()
+            return {n for n in names if n.startswith("rec__")}
+
+        assert offered("minimal") == offered("full")
+
+    def test_a_role_whose_allow_list_leaves_records_out_is_offered_none(
+        self, tmp_path: Path
+    ) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", [], extra="tools: [read]\n")
+
+            narrowed = registry_for_role(
+                _records_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert narrowed.names() == ["read"]
+
+    def test_a_role_denied_write_is_offered_no_row_writer(self, tmp_path: Path) -> None:
+        with use_home(Home(tmp_path / ".docket")):
+            write_role_overlay("acme", "actor", ["write"])
+
+            narrowed = registry_for_role(
+                _records_registry(), "actor", project="acme", surface="minimal"
+            )
+
+            assert {n for n in narrowed.names() if n.startswith("rec__")} == {"rec__query"}

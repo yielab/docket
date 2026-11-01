@@ -100,9 +100,9 @@ def registry_for_role(
     the allow-list (*allow* when the step declared one, else *role*'s `tools`), then minus what
     *role* and its pod deny.
 
-    A ``minimal`` *surface* keeps ``MINIMAL_SURFACE``, the tool that ends the turn and each MCP,
-    service or record tool the allow-list in force names (*allow* replaces `tools` there too); ``full`` keeps
-    all. The allow-list keeps the names it lists and the tool that ends the turn, and an
+    A ``minimal`` *surface* keeps ``MINIMAL_SURFACE``, the tool that ends the turn, every record
+    tool (a pod's records are a kind of their own) and each MCP or service tool the allow-list in
+    force names (*allow* replaces `tools` there too); ``full`` keeps all. The allow-list keeps the names it lists and the tool that ends the turn, and an
     allow-list never grants a denied tool, because the denial runs last. Looks *role* up in the live
     archetype registry (*project*'s pod overlay, when given, resolving nearest-wins above the
     global overlay -- see `load_registry`) and removes every name in the **union** of its
@@ -142,11 +142,9 @@ def registry_for_role(
             lambda t: (
                 t.name in MINIMAL_SURFACE
                 or t.ends_turn
+                or t.name.startswith(RECORDS_TOOL_PREFIX)
                 or (
-                    (
-                        t.name.startswith((_roles.MCP_TOOL_PREFIX, RECORDS_TOOL_PREFIX))
-                        or bool(service_of_tool(t.name))
-                    )
+                    (t.name.startswith(_roles.MCP_TOOL_PREFIX) or bool(service_of_tool(t.name)))
                     and allowed is not None
                     and _roles.allow_list_names(allowed, t.name)
                 )

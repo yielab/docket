@@ -32,10 +32,21 @@ from docket.kernel.gate import (
     HandlerUnavailable,
     ToolDenialKind,
 )
+from docket.kernel.records import RECORDS_ALL_ENTRY, RECORDS_TOOL_PREFIX
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 from docket.kernel.tool_outcome import artifact_scope
 
 ToolKind = Literal["read", "write", "exec", "send", "record"]
+
+
+def _records_hint(name: str) -> str:
+    """What a refused record tool call should declare: the set (`rec__<set>`) or `rec`."""
+    parts = name[len(RECORDS_TOOL_PREFIX) :].split("__")
+    entry = RECORDS_TOOL_PREFIX + parts[0] if len(parts) > 1 else RECORDS_ALL_ENTRY
+    return (
+        f"; {name!r} is offered when the pod declares that record set and the role's or the "
+        f"step's tools list is empty or names {entry!r} (or {RECORDS_ALL_ENTRY!r} for every record tool)"
+    )
 
 
 @dataclass(frozen=True)
@@ -252,6 +263,8 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
         result.decision = "deny"
         result.denial_kind = "invalid_call"
         result.reason = f"unknown tool {call.name!r}; available: {', '.join(registry.names())}"
+        if call.name.startswith(RECORDS_TOOL_PREFIX):
+            result.reason += _records_hint(call.name)
         result.error = result.reason
         return result
 

@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 6.6.0
+**Version**: 6.7.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -458,7 +458,8 @@ directly — see "Provider catalog" below.
    the name the caller gives; the adapter **MUST NOT** name any tool itself.
 7. `toolSurface` is declared and resolved here; `DocketDriver` hands it to the turn
    (`LoopConfig.tool_surface`) and `registry_for_role` applies it (`agent-loop.spec.md`, "Tools and
-   calls per hop"): `minimal` offers `bash`, `read`, `glob`, `edit`, `write`, `verify`, the step's closing tool and every MCP
+   calls per hop"): `minimal` offers `bash`, `read`, `glob`, `edit`, `write`, `verify`, the step's closing tool, every record tool (`rec__*`: a
+   pod's records are a kind of their own, so a role that can write a set is offered it on either surface) and every MCP
    tool the allow-list in force names (the step's `tools` when it declares one, else the role's own; an exact
    `mcp__<server>__<tool>`, or `mcp__<server>` for every tool of that server), so a role that names an MCP tool keeps
    it, a role with no allow-list is offered no MCP tool, and naming another built-in (`grep`) does not widen the
