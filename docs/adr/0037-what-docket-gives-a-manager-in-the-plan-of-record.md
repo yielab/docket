@@ -153,7 +153,7 @@ that makes the feature work, never before.
      - Declare Tack's HTTP API as a `kind: service` with `baseUrl: http://127.0.0.1:3210` and
        `hosts: ["127.0.0.1"]`.
      - The call runs in docket's process, inside the declared perimeter, governed by each
-       operation's `access` (`read | send`), and audited.
+       operation's `access` (`read | send`). A `send` and a refusal are audited; a `read` is traced.
      - It works from a lights-out pod today.
    - **What P57-6 adds:** two tests and a sentence in the spec. One test pins the jailed-MCP
      loopback refusal. The other shows a lights-out pod calling a loopback service and being refused
