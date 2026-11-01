@@ -1,8 +1,8 @@
 # A2A binding (JSON-RPC over HTTP) -- contract spec
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: Implemented
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -94,7 +94,7 @@ other route (see "Agent card").
 
 `id` is a task id. The pod is found by looking the id up in every provisioned pod; no match is
 `-32001`. `tasks/cancel` is `cancel_task` with channel `a2a`; a task that
-nothing holds (still `pending`, or terminal: nothing was cancelled) is `-32002`.
+nothing can stop (terminal, or a run that refused: nothing was cancelled) is `-32002`; a `pending` task is cancelled.
 
 ### `tasks/pushNotificationConfig/set`
 
@@ -192,7 +192,7 @@ that is retried needs a new `tasks/pushNotificationConfig/set`.
 | `-32601` | unknown method |
 | `-32602` | a param of the wrong shape; no text part; no pod or an unknown pod; no `data` part with an `action`; an unknown or unoffered option; content that fails `requestedSchema` or a `pre_input` policy (`data.reason` `invalid` or `refused`); an `escalationId` no record has (`not_found`); a refused push config |
 | `-32001` | no task by that id |
-| `-32002` | `tasks/cancel` on a task nothing holds: `pending` or terminal |
+| `-32002` | `tasks/cancel` on a task nothing could cancel: terminal, or a run that refused |
 | `-32004` | a method docket does not implement (`message/stream` and the rest of the Scope list); `message/send` on a task with no pending escalation, or whose escalation is already settled (`data.reason` `not_pending`, the case `POST /escalations/<id>` answers `409`) |
 | `-32603` | an unexpected failure; the message never carries a stack trace or a token |
 

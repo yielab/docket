@@ -216,10 +216,22 @@ def test_cancel_with_nothing_in_flight_is_a_conflict(tmp_path: Path) -> None:
         task = _queue.enqueue_task_once("demo", "done already", channel="cli")[0]
         _set_task(task.id, status="done")
 
-        status, _body = _call("POST", f"{live_server}/tasks/demo/{task.id}/cancel")
+        status, body = _call("POST", f"{live_server}/tasks/demo/{task.id}/cancel")
 
         assert status == 409
+        assert body["code"] == "already_terminal"
         assert _status(task.id) == "done"
+
+
+def test_cancel_of_an_accepted_unclaimed_task_ends_it_cancelled(tmp_path: Path) -> None:
+    """A pending task nothing has claimed is cancelled over HTTP, not answered 409."""
+    with _seed_pod(tmp_path), _live_server() as live_server:
+        task = _queue.enqueue_task_once("demo", "not yet", channel="cli")[0]
+
+        status, body = _call("POST", f"{live_server}/tasks/demo/{task.id}/cancel")
+
+        assert (status, body) == (200, {"ok": True, "task": task.id, "status": "cancelled"})
+        assert _status(task.id) == "cancelled"
 
 
 def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:

@@ -223,6 +223,31 @@ def cancel_parked_task(
     return prior
 
 
+_UNCLAIMED = (_state.Status.pending, _state.Status.blocked)
+
+
+def cancel_unclaimed_task(project: str, task_id: str, *, channel: str, reason: str = "") -> str:
+    """Cancel a task no run holds yet (``pending``, or ``blocked`` behind a refusal): a locked flip
+    to ``cancelled`` under the same lock a claim takes, so a claim and a cancel cannot both win.
+    Audited ``task.cancel``. Returns the prior status, or ``""`` when the task is anywhere else."""
+    prior = ""
+
+    def _cancel(record: TaskRecord) -> bool:
+        nonlocal prior
+        if record.status not in _UNCLAIMED:
+            return False
+        prior = record.status.value
+        _transitions.apply_to_task(
+            record, _state.Status.cancelled, now=_clock.iso(), reason="cancelled by operator"
+        )
+        return True
+
+    TaskRepository.for_pod(project).update(task_id, _cancel)
+    if prior:
+        _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, reason))
+    return prior
+
+
 def _cancel_detail(project: str, task_id: str, was: str, channel: str, reason: str) -> str:
     detail = f"{project}/{task_id}: was={was} channel={channel}"
     return f"{detail} reason={reason}" if reason else detail
@@ -234,11 +259,13 @@ _LIVE_RUN_STATES = ("queued", "running")
 @dataclass(frozen=True)
 class TaskCancelOutcome:
     """What ``cancel_task`` found and did: the task's status after, the runs it asked to stop,
-    the parked state it cancelled from, whether a stale claim was settled, and the lines to show."""
+    the parked or unclaimed state it cancelled from, whether a stale claim was settled, and the
+    lines to show."""
 
     status: str
     cancelled_runs: tuple[str, ...] = ()
     parked_from: str = ""
+    unclaimed_from: str = ""
     reclaimed: bool = False
     messages: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
@@ -246,7 +273,14 @@ class TaskCancelOutcome:
     @property
     def cancelled(self) -> bool:
         """True when something was in flight and is now stopping, cancelled or settled."""
-        return bool(self.cancelled_runs or self.parked_from or self.reclaimed)
+        return bool(
+            self.cancelled_runs or self.parked_from or self.unclaimed_from or self.reclaimed
+        )
+
+    @property
+    def terminal(self) -> bool:
+        """True when the task was already over, so the cancel found nothing to stop."""
+        return not self.cancelled and self.status in _state.Status.TERMINAL
 
 
 def _live_run_ids(project: str, task_id: str, status: object) -> list[str]:
@@ -265,8 +299,8 @@ def _live_run_ids(project: str, task_id: str, status: object) -> list[str]:
 def cancel_task(
     project: str, task_id: str, *, channel: str, actor: str = "", reason: str = ""
 ) -> TaskCancelOutcome:
-    """Stop whatever holds *task_id*: its live runs, its parked state, or a stale ``running``
-    claim. One ``task.cancel`` audit entry per call that cancelled; raises ``TaskNotFoundError``."""
+    """Stop whatever holds *task_id*: its live runs, its parked state, a stale ``running`` claim,
+    or its place in the queue (``pending`` or ``blocked``, no run has it yet). One ``task.cancel`` audit entry per call that cancelled; raises ``TaskNotFoundError``."""
     repo = TaskRepository.for_pod(project)
     task = repo.get(task_id)
     if task is None:
@@ -282,7 +316,10 @@ def cancel_task(
         else:
             warnings.append(result.message)
     parked = cancel_parked_task(project, task_id, channel=channel, actor=actor, reason=reason)
-    if stopped and not parked:
+    unclaimed = (
+        "" if warnings else cancel_unclaimed_task(project, task_id, channel=channel, reason=reason)
+    )
+    if stopped and not parked and not unclaimed:
         _audit.audit_log(
             "task.cancel", _cancel_detail(project, task_id, "running", channel, reason)
         )
@@ -294,10 +331,11 @@ def cancel_task(
         reclaimed = current is None or current.status != _state.Status.running
     return TaskCancelOutcome(
         status="cancelled"
-        if stopped or parked
+        if stopped or parked or unclaimed
         else (current.status.value if current is not None else "unknown"),
         cancelled_runs=tuple(stopped),
         parked_from=parked,
+        unclaimed_from=unclaimed,
         reclaimed=reclaimed,
         messages=tuple(messages),
         warnings=tuple(warnings),

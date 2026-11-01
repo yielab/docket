@@ -114,6 +114,22 @@ class TestCancelTask:
 
         assert (outcome.status, outcome.parked_from) == ("cancelled", "waiting_input")
 
+    @pytest.mark.parametrize("status", ["pending", "blocked"])
+    def test_a_task_no_run_holds_yet_is_cancelled(self, pod_home: Path, status: str) -> None:
+        """An accepted, unclaimed task ends cancelled, is never claimable after, and is audited."""
+        from docket.governance import audit as _audit
+        from docket.tasks.application.repository import TaskRepository
+
+        task_id = self._seed(status)
+
+        outcome = _lifecycle.cancel_task("myapp", task_id, channel="http", reason="changed mind")
+
+        assert outcome.cancelled and not outcome.terminal
+        assert (outcome.status, outcome.unclaimed_from) == ("cancelled", status)
+        assert TaskRepository.for_pod("myapp").claim_next(resume=False) is None
+        cancels = [e for e in _audit.read_audit() if e.get("action") == "task.cancel"]
+        assert len(cancels) == 1 and f"was={status}" in cancels[0]["detail"]
+
     def test_a_stale_claim_is_settled_not_cancelled(self, pod_home: Path) -> None:
         """A running task whose claimant is gone ends failed and is reported as reclaimed."""
         task_id = self._seed("running", claim_pid=2**22 + 1)
@@ -129,6 +145,6 @@ class TestCancelTask:
 
         outcome = _lifecycle.cancel_task("myapp", task_id, channel="cli")
 
-        assert not outcome.cancelled and outcome.status == "done"
+        assert not outcome.cancelled and outcome.status == "done" and outcome.terminal
         with pytest.raises(_task.TaskNotFoundError):
             _lifecycle.cancel_task("myapp", "task-nope", channel="cli")

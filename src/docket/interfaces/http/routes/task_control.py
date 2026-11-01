@@ -32,7 +32,11 @@ def post_task_cancel(h: HttpExchange, rest: str) -> None:
         h._send_json_error(str(exc), 404)
         return
     if not outcome.cancelled:
-        h._send_json_error(f"task {task_id} is {outcome.status}; nothing to cancel", 409)
+        h._send_json_error(
+            f"task {task_id} is {outcome.status}; nothing to cancel",
+            409,
+            code="already_terminal" if outcome.terminal else "not_cancellable",
+        )
         return
     h._send_json({"ok": True, "task": task_id, "status": outcome.status})
 

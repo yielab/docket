@@ -538,11 +538,11 @@ def _task_cancel(
     ref: str = typer.Argument(..., help="Task id, short id or run id"),
     pod: str | None = pod_option(),
 ) -> None:
-    """Stop the run a task is in, cancel a parked task, and settle a claim left behind by a dead
-    dispatch.
+    """Stop the run a task is in, cancel a parked or queued task, and settle a claim left behind
+    by a dead dispatch.
 
     A live run is asked to stop and its processes are signalled. A task waiting for an answer or
-    an approval is cancelled and leaves the inbox. A task still marked running whose dispatcher
+    an approval is cancelled and leaves the inbox, and so is a task still waiting for its turn. A task still marked running whose dispatcher
     is gone is settled as failed, ready for `docket task retry`.
 
     Example: docket task cancel task-04ff
@@ -557,8 +557,8 @@ def _task_cancel(
         ui.success(line)
     for line in outcome.warnings:
         ui.warn(line)
-    if outcome.parked_from:
-        ui.success(f"Cancelled task {short_id(found.task_id)}; it was {outcome.parked_from}")
+    if was := outcome.parked_from or outcome.unclaimed_from:
+        ui.success(f"Cancelled task {short_id(found.task_id)}; it was {was}")
     if outcome.reclaimed:
         ui.success(f"Settled the stale claim on task {short_id(found.task_id)}")
     if not outcome.cancelled:
