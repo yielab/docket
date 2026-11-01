@@ -78,7 +78,7 @@ class TestModelsSetAudit:
         assert len(entries) == 1
         detail = entries[0]["detail"]
         assert "role=implementer" in detail
-        assert "anthropic/claude-sonnet-4-6" in detail  # before (built-in strong default)
+        assert "anthropic/claude-sonnet-5-5" in detail  # before (built-in strong default)
         assert "anthropic/claude-haiku-4-5" in detail  # after
         assert "->" in detail
 
@@ -142,11 +142,11 @@ class TestModelsPresetAudit:
         assert len(entries) == 1
         detail = entries[0]["detail"]
         assert "preset=openai" in detail
-        assert "default:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini" in detail
+        assert "default:anthropic/claude-sonnet-5-5->openai/gpt-4.1-mini" in detail
         # cheap-class role
-        assert "lead:anthropic/claude-haiku-4-5->openai/gpt-4.1-nano" in detail
+        assert "lead:anthropic/claude-haiku-5-5->openai/gpt-4.1-nano" in detail
         # strong-class role
-        assert "implementer:anthropic/claude-sonnet-4-6->openai/gpt-4.1-mini" in detail
+        assert "implementer:anthropic/claude-sonnet-5-5->openai/gpt-4.1-mini" in detail
         # every ALL_ROLES member is named, not just a summary count
         for role in (
             "lead",
@@ -182,7 +182,7 @@ class TestModelsResetAudit:
         entries = _audit_entries(oc_dir, "models.reset")
         assert len(entries) == 1
         detail = entries[0]["detail"]
-        assert "implementer:anthropic/claude-haiku-4-5->anthropic/claude-sonnet-4-6" in detail
+        assert "implementer:anthropic/claude-haiku-4-5->anthropic/claude-sonnet-5-5" in detail
         assert "default:" in detail
 
     def test_reset_without_yes_off_a_terminal_writes_no_entry(self, tmp_path: Path) -> None:

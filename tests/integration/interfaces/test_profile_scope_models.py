@@ -68,9 +68,10 @@ class TestCmdModels:
 
     def test_models_list_shows_pricing(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)
+        _run(["setup", "model", "set", "implementer", "anthropic/claude-haiku-4-5"], oc_dir)
         rc, out, _ = _run(["setup", "model"], oc_dir)
         assert rc == 0
-        assert "$" in out  # pricing column
+        assert "$" in out  # pricing column, for a model that has a price
 
     def test_models_set_role(self, tmp_path: Path) -> None:
         oc_dir = _setup_agent(tmp_path)

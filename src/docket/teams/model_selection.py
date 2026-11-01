@@ -365,7 +365,7 @@ def validate_model(model: str) -> tuple[str, list[str]]:
     )
     raise InvalidInput(
         f"Invalid model: '{model}'\n"
-        "Use a full provider/model ID (e.g. anthropic/claude-sonnet-4-6).\n"
+        "Use a full provider/model ID (e.g. anthropic/claude-sonnet-5-5).\n"
         f"Current role policy:\n{lines}\n"
         "Change a role's model: docket setup model set <role> <provider/model>"
     )

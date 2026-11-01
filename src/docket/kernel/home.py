@@ -126,7 +126,7 @@ class Home:
     # changes, so `docket setup` flags workspaces written by an older one.
     template_version: int = 5
     meta_file: str = ".docket-meta.json"
-    default_model: str = "anthropic/claude-sonnet-4-6"
+    default_model: str = "anthropic/claude-sonnet-5-5"
     sessions_dir_override: Path | None = None
     # Turn-loop bounds (agent/loop.py). Each is a stop condition against a confused
     # model, not a throughput knob: model round-trips, then tool calls however they are

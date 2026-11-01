@@ -87,8 +87,8 @@ class TestHopEvents:
                 assert set(event["payload"]) == keys
             started = [e["payload"] for e in events if e["event_type"] == "hop_started"]
             assert [p["model"] for p in started] == [
-                "anthropic/claude-haiku-4-5",
-                "anthropic/claude-sonnet-4-6",
+                "anthropic/claude-haiku-5-5",
+                "anthropic/claude-sonnet-5-5",
             ]
             assert [p["provider"] for p in started] == ["anthropic", "anthropic"]
             finished = [e["payload"] for e in events if e["event_type"] == "hop_finished"]
