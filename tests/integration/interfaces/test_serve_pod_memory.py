@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import pytest
 from tests.support import http as _support_http
 from tests.support import pods as _support_pods
 from tests.support.http import get as _get
@@ -24,12 +23,7 @@ pod_home = _support_pods.pod_home
 SUBJECT = "docket.interfaces.http.server"
 
 _TEST_TOKEN = "test-serve-token"
-_runner = CliRunner()
-
-
-@pytest.fixture(autouse=True)
-def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DOCKET_NO_HINTS", "1")
+_runner = CliRunner(env={"DOCKET_NO_HINTS": "1"})
 
 
 def _entry(path: str, status: str) -> dict[str, Any]:
