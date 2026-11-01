@@ -457,3 +457,32 @@ class TestOutcomeRoutingThroughDispatch:
         }
         # The built-in fail handling never fired.
         assert not any(e["event_type"] == "verdict_rejected" for e in events)
+
+    def test_a_route_back_to_an_earlier_step_counts_as_a_cycle(self) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-reviewer")
+        spec = _pipeline.PipelineSpec(
+            name="loop",
+            steps=[
+                _step.Step(id="plan", role="lead"),
+                _step.Step(
+                    id="review",
+                    role="reviewer",
+                    gate=_gates.VerdictGate(
+                        pattern=r"^\s*(APPROVE|FAIL)\b", pass_values=["approve"]
+                    ),
+                    on={"FAIL": {"goto": "plan", "max": 1}},
+                ),
+            ],
+        )
+        runner = _RoleRunner({"reviewer": "FAIL\nagain"})
+        task = TaskRecord(id="r1", description="work")
+        _executor.dispatch_task("myapp", task, runner=runner, spec=spec)
+
+        started = [e["payload"] for e in _trace_events("myapp") if e["event_type"] == "hop_started"]
+        assert [(p["step"], p["cycle"]) for p in started] == [
+            ("plan", 0),
+            ("review", 0),
+            ("plan", 1),
+            ("review", 1),
+        ]

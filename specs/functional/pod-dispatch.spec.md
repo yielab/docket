@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.13.0
+**Version**: 11.13.1
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1039,7 +1039,9 @@ turn. A turn is one hop of that step, with its own `hop_finished` and `usage`.
    had fewer than `maxTurns` turns, dispatch MUST persist the hop with `parked: true`, so the replay
    of the hop history re-enters the same step; open an escalation of kind `turn` whose `prompt` is
    the hop's answer (`operator-loop.spec.md` area 11 item 17); and end the claim `waiting_input`.
-   A turn that is gated before it reaches that point is not a turn that continues.
+   A turn that is gated before it reaches that point is not a turn that continues: a failed gate
+   fails the task, and an `on:` route is followed as in any task, so a route to `stop` or `fail` ends
+   the conversation with no escalation.
 2. **The turn that ends it.** The turn that makes the task's hops `maxTurns` MUST NOT be parked and
    MUST open no escalation: the task is `done`, and the answer of its last hop is the conversation's
    final answer.

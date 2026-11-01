@@ -65,10 +65,9 @@ def tool_names(read_only: bool = False) -> tuple[str, ...]:
 
 
 class McpToolError(InvalidInput):
-    """A tool's domain validation or lookup failed. Raised (never an inline
-    ``{"ok": false}``) so success stays the bare shape in specs/api/mcp-server.spec.md;
-    ``_build_server`` re-raises it as the SDK's ``ToolError``, the one exception whose message
-    reaches the client in an ``isError`` result (any other is reported as a crash, text withheld)."""
+    """A tool's domain validation or lookup failed. Raised so success stays the bare shape in
+    specs/api/mcp-server.spec.md; ``_build_server`` re-raises it as the SDK's ``ToolError``, the
+    one exception whose message reaches the client."""
 
 
 def _audit(tool: str, detail: str = "") -> None:

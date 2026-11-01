@@ -281,6 +281,11 @@ class UnitContext:
     task_gate: _gates.ExternalGate | None = None
     task_gate_step_id: str | None = None
 
+    @property
+    def cycle(self) -> int:
+        """The backward moves taken so far: rework cycles plus ``on:`` routes to an earlier step."""
+        return sum(self.rework_counts.values()) + sum(self.route_counts.values())
+
 
 def _hop_usage(run_res: _rd.TurnResult) -> dict[str, int] | None:
     """The turn's measured tokens as the hop record's ``usage`` block, or ``None``."""
@@ -523,7 +528,7 @@ def persist_hop_and_trace(
                 "member": hop.member_id,
                 "model": hop.model,
                 "provider": hop.provider,
-                "cycle": sum(ctx.rework_counts.values()),
+                "cycle": ctx.cycle,
                 "attempt": hop.attempts,
                 "ok": hop_ok,
                 "verdict": verdict,

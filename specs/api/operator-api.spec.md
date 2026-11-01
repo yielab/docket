@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.14.0
+**Version**: 7.14.1
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-01
 
@@ -251,10 +251,12 @@ is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod
 
 `current` names the hop a `running` task is inside: `{"stepId", "role", "member", "model",
 "startedAt", "cycle"}`. It is written where the hop's `hop_started` event is emitted, with the same
-values (`model` is the planned model, not the one that served; `cycle` is the rework count, `0` on
-a first pass), and cleared where its `hop_finished` event is emitted. The key is absent, never
+values (`model` is the planned model, not the one that served; `cycle` counts the backward moves taken, `0`
+on a first pass), and cleared where its `hop_finished` event is emitted. The key is absent, never
 `null`, on a task that is not inside a hop, and every move out of `running` removes it, so a task
-that dies mid-hop never shows a stale `current`. It is on both `GET /tasks/<pod>` and
+that dies mid-hop never shows a stale `current`. A task has one slot, and only an agent hop fills it: inside a parallel group it names the child
+that started last, and the key goes when that child ends even while a sibling runs, so on a
+`running` task an absent `current` means no agent hop is known to be in flight. It is on both `GET /tasks/<pod>` and
 `GET /tasks/<pod>/<id>`; a client probes for it with the `taskCurrent` feature.
 
 The task's `usage` and each `byModel` entry sum their hops' `input`, `cached`, `cacheWrite` and
@@ -313,7 +315,7 @@ Two typed records are among the event types of `trace-store.spec.md`, written in
              "durationMs": 94012, "error": ""}}
 ```
 
-`cycle` is the rework cycle (0 before any `REQUEST-CHANGES`); `verdict` is the Reviewer's
+`cycle` counts the backward moves taken so far: rework cycles after a `REQUEST-CHANGES` plus `on:` routes back to an earlier step (0 before any); `verdict` is the Reviewer's
 label or `null`; `gate` is the step's gate label or `null`. `hop_started` names the
 *planned* model (the step's `model` override, else the member's configured model), and
 `hop_finished` names the *served* model the turn reported. `attempt` on `hop_started` is always `1`.
