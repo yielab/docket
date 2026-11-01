@@ -11,6 +11,10 @@ headers:
   anthropic-version: "2023-06-01"
 pricesAsOf: "2026-06-11"
 models:
+  - id: claude-haiku-5-5
+  - id: claude-sonnet-5-5
+  - id: claude-opus-5-5
+  - id: claude-fable-5-1
   - id: claude-haiku-4-5
     price: {input: 0.80, output: 4.00, cacheRead: 0.08, cacheWrite: 1.00}
   - id: claude-haiku-3-5
@@ -23,7 +27,7 @@ models:
     price: {input: 15.00, output: 75.00, cacheRead: 1.50, cacheWrite: 18.75}
 presets:
   - name: anthropic
-    ranks: {economy: claude-haiku-4-5, standard: claude-sonnet-4-6, premium: claude-opus-4-6}
+    ranks: {economy: claude-haiku-5-5, standard: claude-sonnet-5-5, premium: claude-opus-5-5}
     note: >-
       Anthropic's native Messages API, with prompt caching on the system prompt and the latest
       message. A model with no known output cap fails the call and names the fix:

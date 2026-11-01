@@ -114,6 +114,19 @@ class TestBuiltinCatalog:
             spec = _provider.load_provider_document(path)
             assert spec.name
 
+    def test_the_anthropic_provider_lists_the_family_5_models_unpriced_and_ranks_them(self) -> None:
+        spec = _provider.load_catalog().get("anthropic")
+        assert spec is not None
+        rows = {row.id: row for row in spec.models}
+        family = ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1")
+        assert all(name in rows and rows[name].price is None for name in family)
+        preset = next(p for p in spec.presets if p.name == "anthropic")
+        assert preset.ranks == {
+            "economy": "claude-haiku-5-5",
+            "standard": "claude-sonnet-5-5",
+            "premium": "claude-opus-5-5",
+        }
+
     def test_default_model_is_the_anthropic_standard_rank(self) -> None:
         spec = _provider.load_catalog().get("anthropic")
         assert spec is not None

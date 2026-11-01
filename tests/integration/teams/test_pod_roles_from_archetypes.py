@@ -95,12 +95,12 @@ class TestRegistryRoleNames:
 class TestModelClassFallback:
     def test_legacy_roles_resolve_through_named_policy_row(self) -> None:
         role_models = {
-            "lead": "anthropic/claude-haiku-4-5",
-            "implementer": "anthropic/claude-sonnet-4-6",
-            "reviewer": "anthropic/claude-haiku-4-5",
+            "lead": "anthropic/claude-haiku-5-5",
+            "implementer": "anthropic/claude-sonnet-5-5",
+            "reviewer": "anthropic/claude-haiku-5-5",
         }
-        assert _mp.resolve_role_model("lead", role_models) == "anthropic/claude-haiku-4-5"
-        assert _mp.resolve_role_model("implementer", role_models) == "anthropic/claude-sonnet-4-6"
+        assert _mp.resolve_role_model("lead", role_models) == "anthropic/claude-haiku-5-5"
+        assert _mp.resolve_role_model("implementer", role_models) == "anthropic/claude-sonnet-5-5"
 
     def test_unlisted_cheap_archetype_resolves_via_economy_anchor(self, tmp_path: Path) -> None:
         with use_home(Home(tmp_path)):

@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 6.7.0
+**Version**: 6.8.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-11-01
@@ -53,9 +53,9 @@ directly — see "Provider catalog" below.
    its model row; there is no separate policy name. There is no `task` role.
 2. Each role **MUST** belong to one of two built-in classes, chosen for token efficiency:
    - **cheap** (high-volume, low reasoning density): `lead`, `monitor`,
-     `analyst`, `writer` → the economy rank anchor (default `anthropic/claude-haiku-4-5`)
+     `analyst`, `writer` → the economy rank anchor (default `anthropic/claude-haiku-5-5`)
    - **strong** (reasoning-dense): `implementer`, `reviewer`, `operator`, `researcher`, `actor` → the
-     standard rank anchor (default `anthropic/claude-sonnet-4-6`)
+     standard rank anchor (default `anthropic/claude-sonnet-5-5`)
 
    This table (`ROLE_CLASS`) is built from the `modelClass` of the nine archetypes, so
    `docket pod roles` and the policy report one class per role.
@@ -546,14 +546,14 @@ declining the confirmation exits 0 without changes.
 
 | Role | Class | Model | Why |
 | ---- | ----- | ----- | --- |
-| lead | cheap | claude-haiku-4-5 | (archetype description) |
-| monitor | cheap | claude-haiku-4-5 | (archetype description) |
-| analyst | cheap | claude-haiku-4-5 | (archetype description) |
-| writer | cheap | claude-haiku-4-5 | (archetype description) |
-| implementer | strong | claude-sonnet-4-6 | (archetype description) |
-| reviewer | strong | claude-sonnet-4-6 | (archetype description) |
-| operator | strong | claude-sonnet-4-6 | (archetype description) |
-| researcher | strong | claude-sonnet-4-6 | (archetype description) |
+| lead | cheap | claude-haiku-5-5 | (archetype description) |
+| monitor | cheap | claude-haiku-5-5 | (archetype description) |
+| analyst | cheap | claude-haiku-5-5 | (archetype description) |
+| writer | cheap | claude-haiku-5-5 | (archetype description) |
+| implementer | strong | claude-sonnet-5-5 | (archetype description) |
+| reviewer | strong | claude-sonnet-5-5 | (archetype description) |
+| operator | strong | claude-sonnet-5-5 | (archetype description) |
+| researcher | strong | claude-sonnet-5-5 | (archetype description) |
 
 The role set above is `ALL_ROLES`, keyed identically to `ROLE_CLASS`. A `docket-models.json`
 `roles:` key that no registry defines (not one of these, nor an operator or pod-overlay role) is
@@ -563,13 +563,20 @@ the role); `write_registry` keeps a `role.<name>` update only for such a role. A
 and applies in every pod that defines that role. A pod-scoped archetype with no row resolves
 per requirement 5.
 
-### Built-in Anthropic prices (USD per MTok)
+### Built-in Anthropic models and prices (USD per MTok)
+
+The built-in `anthropic` provider lists the family 5 ids the provider's `GET /v1/models` publishes
+(`claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-fable-5-1`) and its preset
+ranks them: economy `claude-haiku-5-5`, standard `claude-sonnet-5-5`, premium `claude-opus-5-5`.
+Those rows carry no `price`, so they report `n/a`, and no limit: a context window and an output cap
+come from `/models` once observed, or from `docket setup provider add anthropic --model <id>
+--max-tokens N`. The family 4 rows keep their dated prices:
 
 | Class | Model | Input | Output |
 | ----- | ----- | ----- | ------ |
 | cheap | claude-haiku-4-5 | 0.80 | 4.00 |
 | strong | claude-sonnet-4-6 | 3.00 | 15.00 |
-| (premium anchor) | claude-opus-4-6 | 15.00 | 75.00 |
+| (premium) | claude-opus-4-6 | 15.00 | 75.00 |
 
 Prices are the `price` fields of the built-in provider documents, a manual snapshot dated by each
 document's `pricesAsOf`, used for display and comparative estimates only — recorded spend comes
@@ -585,7 +592,7 @@ unpriced — gateways can route and re-price by provider/account — and report
 
 ```json
 {
-  "default": "anthropic/claude-sonnet-4-6",
+  "default": "anthropic/claude-sonnet-5-5",
   "roles":       { "implementer": "openai/gpt-4.1" },
   "rankAnchors": { "standard": "openai/gpt-4.1-mini" }
 }
@@ -606,12 +613,12 @@ success/failure contract — `0` on success, `1` on any error (invalid model, un
 ```bash
 $ docket setup model
 Role to model policy
-ROLE         MODEL                        PRICE         SOURCE   WHY
-lead         anthropic/claude-haiku-4-5   $0.80/$4.00   builtin  orchestrates the pod; never edits code
-implementer  anthropic/claude-sonnet-4-6  $3.00/$15.00  builtin  writes code in the project workspace
+ROLE         MODEL                        PRICE  SOURCE   WHY
+lead         anthropic/claude-haiku-5-5   n/a    builtin  orchestrates the pod; never edits code
+implementer  anthropic/claude-sonnet-5-5  n/a    builtin  writes code in the project workspace
 ...
-default  anthropic/claude-sonnet-4-6
-rank anchors  anthropic/claude-opus-4-6 -> anthropic/claude-sonnet-4-6 -> anthropic/claude-haiku-4-5
+default  anthropic/claude-sonnet-5-5
+rank anchors  anthropic/claude-opus-5-5 -> anthropic/claude-sonnet-5-5 -> anthropic/claude-haiku-5-5
 PRICE is an estimate from a snapshot, not recorded spend
 Change: docket setup model set <role|default> <provider/model>
 

@@ -305,6 +305,7 @@ class TestUnpricedModelSurfaces:
         with _seed_pod(tmp_path):
             model = "ai-gateway/acme/model-x"
             _fleet.set_model_both("demo-implementer", model)
+            _fleet.set_model_both("demo-lead", "anthropic/claude-haiku-4-5")
             result = CliRunner().invoke(_app, ["pod", "set", "budgetUsd", "3", "--pod", "demo"])
             assert result.exit_code == 0, result.output
             yield model
