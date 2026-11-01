@@ -72,7 +72,7 @@ are D-66, [ADR 0030](docs/adr/0030-organize-by-context-and-refactor-by-tool.md).
   - the README leads with the teams configuration makes, beside the reader's own coding assistant.
 
 **Release:** `v0.2.0-beta.4` is the latest published release (2026-10-06). `VERSION` declares
-`0.2.0-beta.6` (API 6, `exec` deleted); beta.5 and beta.6 are in `CHANGELOG.md` and untagged.
+`0.3.0-beta.1` (API 6), the next release and untagged; everything since `v0.2.0-beta.4` is in `CHANGELOG.md`.
 Cutting a release is a maintainer action through `release.yml` (then
 `scripts/update-homebrew-sha.sh` and a fast-forward of `main` from `develop`), not a board card.
 Every release keeps a `-beta.N` suffix until the project drops its beta warning.
@@ -349,8 +349,10 @@ today:
   `waiting_*` surfaces it calls are replaced by `GET /inbox` escalations and `POST /escalations/<id>`
   (operator-api 7.0.0, mcp-server 2.0.0, telegram-integration 5.0.0, operator-loop 3.0.x); its
   fixture capture is re-run against this build. Asked at the Phase 51 close (2026-10-25).
-- **A release.** `VERSION` is `0.2.0-beta.6`; the last tag is `v0.2.0-beta.4`. Cutting it publishes
-  the Phase 43-48 changes (API 6, `exec` deleted, one authored YAML form, isolation by detection).
+- **A release.** The next release is `0.3.0-beta.1` (decided 2026-11-01), which `VERSION` already declares; the last
+  tag is `v0.2.0-beta.4`. Cutting it publishes the changes since then (API 6, `exec` deleted, one authored YAML form,
+  isolation by detection, the outward pods of Phases 55-56, the manager asks of Phase 57). The `[Unreleased]` entries
+  of `CHANGELOG.md` fold into its section when it is cut, through `release.yml`.
 - **Decided 2026-10-30: a pod's records, ADR 0036 decisions 15-16** (accepted as written by the maintainer).
   The three choices the cards took by default stand: records belong to one pod (not shared); `rec__query` takes a
   read-only `SELECT` rather than a fixed filter language (reports need joins and grouping); an update
