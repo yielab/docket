@@ -1,6 +1,6 @@
 # Pod Records Specification
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 **Status**: Implemented in part. The port (`RecordStore`, `kernel/records_port.py`), its SQLite adapter
 (`platform/records_sqlite.py`), the `kind: records` document
 (`pod update` and `pod export` carry it), `docket pod records` and the `rec__*` tools a hop's agent
@@ -76,6 +76,10 @@ This specification does NOT cover:
    which the hop supplies and the model never does) and `_updated_at` (null until the first update).
    An update **MUST** set `_updated_at` and replace `_task`, `_session`, `_step` and `_role` with the
    updating hop's. A declared column **MUST NOT** begin with an underscore.
+8b. A records file written before `_role` existed **MUST** be adopted, not recreated: every `declare`
+   and every write opens its transaction by giving each declared set that lacks it a nullable `_role`
+   column (`ALTER TABLE ... ADD COLUMN`), so `pod update` fixes the file and a write never fails for
+   its absence. Rows written before keep a null `_role`; no row is rewritten.
 8a. A set declares a `scope`: `pod` (the default) or `task`. In a `task` set the key is unique within
    a task (an `add` of one key in two tasks makes two rows, in one task one), `update` **MUST** reach
    only a row whose `_task` is the writing hop's task (a row of another task is refused, naming the
