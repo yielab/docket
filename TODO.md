@@ -328,7 +328,7 @@ from `main`.
 
 ### P57-7 — a conversation task: the option, the `turn` escalation, how it resolves
 
-**Status:** TODO (P57-4 is merged) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + contract
+**Status:** DONE (merged to `develop`; the `conversation` feature name waits for P57-8)
 
 - **Trigger:** ADR 0037 decision 4 (Tack ask 4), first half.
 - **Creating one:**
@@ -379,7 +379,7 @@ from `main`.
 
 ### P57-8 — a conversation task runs turn by turn
 
-**Status:** TODO (after P57-1 and P57-7) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** TODO (P57-1 and P57-7 are merged)
 
 - **Trigger:** ADR 0037 decision 4, second half.
 - **When a turn's hop succeeds** on a conversation task with `turns < maxTurns`, the executor
@@ -394,6 +394,16 @@ from `main`.
   step's history (`kernel/ids.py::step_session_key`) brings the earlier turns.
 - **The token limit:** `hops/domain/gate_decisions.py::decide_task_tokens` (~277) ends a
   conversation task with at least one turn `done`, not `failed` with `budget`.
+- **From P57-7 (merged), what this card builds on and must finish:**
+  - `escalations.open_for_turn(task, step, answer, *, pod=project)` and `escalations.close_turn(record, reason)`
+    exist; `TaskRecord.conversation` is `{maxTurns, turns}` with `turns = len(task.hops)`, so the parked
+    hop must count as one turn and the turn that ends the conversation must not be counted twice.
+  - `operator/render.py::_TITLES` (~32) has no `turn` key: `render_escalation` raises `KeyError` on one
+    (CLI `task show`, `inbox`, notify). Add the entry, and decide `operator/notify.py::_NEEDS_YOU_KINDS`
+    (~56) with a test. The autonomy table has no `turn` row by design; do not add one.
+  - `RpcError.code` is now `rpc_code`; `DocketError.code` is a typed string.
+  - `hops/application/executor.py` is 547 lines and `tasks/application/record.py` 633: stay under the
+    1,000-line ceiling or park with the split proposal.
 - **Non-goals:**
   - multi-step conversations;
   - a reply mid-turn;
