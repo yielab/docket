@@ -234,7 +234,7 @@ from `main`.
 
 ### P57-4 — a read-scoped serve token
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged to `develop`; `readScope`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0037 decision 5, HTTP half (Tack ask 5).
 - **Goal:** `DOCKET_SERVE_READ_TOKEN`, read in `bootstrap.py` (~213), is a second token on
@@ -273,7 +273,7 @@ from `main`.
 
 ### P57-5 — `docket start --mcp --read-only`
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + CLI
+**Status:** DONE (merged to `develop`; no feature name) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + CLI
 
 - **Trigger:** ADR 0037 decision 5, MCP half.
 - **The `retry` split:** in `interfaces/cli/commands/mcp.py`, `retry_task_id` leaves `tool_queue`
@@ -328,7 +328,7 @@ from `main`.
 
 ### P57-7 — a conversation task: the option, the `turn` escalation, how it resolves
 
-**Status:** TODO (after P57-4) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + contract
+**Status:** TODO (P57-4 is merged) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + contract
 
 - **Trigger:** ADR 0037 decision 4 (Tack ask 4), first half.
 - **Creating one:**
@@ -349,6 +349,9 @@ from `main`.
   - `close`, and the expiry sweep (`tasks/application/escalation_sweep.py` ~39-57), move the task
     to `done`.
   - `EscalationNotPending` carries `code = "escalation_not_pending"`.
+  - `kernel/errors.py`: `DocketError` gains a typed `code: str = ""`, `EscalationNotPending` sets it, and
+    `interfaces/http/exchange.py::_send_refusal` reads it (P57-4 shipped a `getattr` there); the cancel
+    route (`routes/task_control.py` ~34-39) drops its hand-made code for the shared path.
 - **Non-goals:**
   - running the turn (P57-8);
   - a `/messages` route;
