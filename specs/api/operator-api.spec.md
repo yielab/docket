@@ -59,6 +59,7 @@ over 1 MiB is `413`.
 |---|---|
 | `POST /tasks/<pod>` | enqueue a task, optionally idempotent and addressable |
 | `GET /tasks/<pod>?externalRef=&status=` | list the pod's tasks, filtered |
+| `GET /tasks/<pod>?updatedSince=<n>` | the tasks changed since a cursor, with the next cursor |
 | `GET /tasks/<pod>/<id>` | one task record |
 | `POST /tasks/<pod>/<id>/cancel` | cancel a task that is not over |
 | `POST /tasks/<pod>/<id>/retry` | put a `blocked` or `failed` task back on the queue |
@@ -175,6 +176,7 @@ Query parameters:
 | Route | Parameter | Rule |
 |---|---|---|
 | `GET /tasks/<pod>` | `externalRef` | exact match; both parameters combine |
+| `GET /tasks/<pod>` | `updatedSince` | a non-negative decimal integer cursor (`0` starts from the beginning); the answer is `{"tasks": [...], "next": "<n>"}` and anything that is not such an integer is `400` with `code: bad_cursor`; see "Task cursor" |
 | `GET /tasks/<pod>` | `status` | one of `pending`, `running`, `waiting_input`, `waiting_approval`, `blocked`, `failed`, `done`, `cancelled`; any other value is `400` |
 | `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
 | `GET /pods/<p>/records/<set>` | `limit` | integer 1 to 1000, default 50; anything else is `400` |
@@ -245,6 +247,16 @@ The task's `usage` and each `byModel` entry sum their hops' `input`, `cached`, `
 `output`; the task-level `usage` is written when the task settles, so a task still in flight has
 only its hops' usage. `input` includes the cache reads and writes, so a consumer counting new tokens computes
 `input - cached + output`, the rule docket's own budget applies.
+
+`rev` is the task's position in its pod's change counter: an integer the store stamps, inside the
+locked write, on every task whose content changed in that write (and on a new one), with consecutive
+values for the tasks of one write. A task that was never written since the counter existed has no
+`rev`, read as `0`. `GET /tasks/<pod>?updatedSince=<n>` (`n` a non-negative decimal integer, `0`
+from the beginning) answers the tasks with `rev` greater than `n`, in `rev` order, each as in the
+plain list, as `{"tasks": [...], "next": "<n>"}`. `next` is the highest `rev` returned, or `n` itself
+when nothing changed. `status` and `externalRef` filter that changed set. A cursor that is not a non-negative decimal integer is
+`400` with `code: bad_cursor`. Without `updatedSince` the body is the plain `{"tasks": [...]}`
+(`serve-read-api.spec.md` "Task cursor").
 
 `POST .../cancel` (`200`): `{"ok": true, "task": "...", "status": "cancelled"}`.
 `POST .../retry` (`200`): `{"ok": true, "task": "...", "status": "pending"}`.
@@ -545,7 +557,7 @@ probe; the sweep ends the wait, nobody is asked.
 |---|---|
 | `200` | a read; an idempotent re-post; cancel/retry/apply/ensure done |
 | `201` | a new task or a new pod |
-| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables` of the wrong shape, a naive `since`, a bad `apply` body |
+| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` or an `updatedSince` of `GET /tasks/<pod>` (`code: bad_cursor`) that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
 | `404` | no pod (checked before an `apply` body is read), no task, no escalation (`GET` or `POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting |
