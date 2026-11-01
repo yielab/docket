@@ -23,7 +23,7 @@ import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.http import get as _get
 from tests.support.pods import seed_pod as _seed_pod
-from tests.support.pods import seed_pod_at_codebase
+from tests.support.pods import seed_pod_at_codebase, seed_pod_isolation_off
 
 from docket.hops.application import compose as _compose
 from docket.hops.application import sweep as _sweep
@@ -447,3 +447,60 @@ class TestTokenBudget:
             TaskRepository.for_pod("demo").update(created["task"], _spend)
             _status, spent = _get(f"{url}/tasks/demo/{created['task']}", token)
             assert spent["tokenBudget"] == 0
+
+
+class _WatchingDriver(FakeDriver):
+    """Reads the task over HTTP from inside each turn, as a client polling a running task would;
+    the Reviewer sends the work back once."""
+
+    def __init__(self, url: str, token: str, task_id: str) -> None:
+        super().__init__()
+        self._url, self._token, self._task_id = url, token, task_id
+        self._reviews = 0
+        self.seen: list[tuple[dict, dict]] = []  # type: ignore[type-arg]
+
+    def run_turn(self, agent_id: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        _status, one = _get(f"{self._url}/tasks/demo/{self._task_id}", self._token)
+        _status, listed = _get(f"{self._url}/tasks/demo", self._token)
+        self.seen.append((one, next(t for t in listed["tasks"] if t["id"] == self._task_id)))
+        result = super().run_turn(agent_id, *args, **kwargs)
+        if not agent_id.endswith("-reviewer"):
+            return result
+        self._reviews += 1
+        verdict = "REQUEST-CHANGES\nrename it" if self._reviews == 1 else "APPROVE"
+        return dataclasses.replace(result, output=verdict)
+
+
+class TestCurrentHop:
+    def test_a_running_task_names_its_hop_and_a_settled_one_does_not(self, tmp_path: Path) -> None:
+        with (
+            seed_pod_isolation_off(tmp_path, roles=("lead", "implementer", "reviewer")),
+            _live_server() as (url, token),
+        ):
+            task, _created = _application_queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            _status, before = _get(f"{url}/tasks/demo/{task.id}", token)
+            assert "current" not in before
+
+            driver = _WatchingDriver(url, token, task.id)
+            _sweep.dispatch_pod("demo", runner=driver)
+
+            for one, listed in driver.seen:
+                assert one["status"] == "running"
+                assert listed["current"] == one["current"]
+            hops = [one["current"] for one, _listed in driver.seen]
+            first = hops[0]
+            assert first["stepId"] and first["startedAt"] and first["model"]
+            assert (first["role"], first["member"], first["cycle"]) == (
+                "lead",
+                "demo-lead",
+                0,
+            )
+            implementer = [h for h in hops if h["role"] == "implementer"]
+            assert [h["cycle"] for h in implementer] == [0, 1]
+            assert implementer[0]["member"] == "demo-implementer"
+
+            _status, after = _get(f"{url}/tasks/demo/{task.id}", token)
+            assert after["status"] == "done"
+            assert "current" not in after
+            _status, listed_after = _get(f"{url}/tasks/demo", token)
+            assert all("current" not in t for t in listed_after["tasks"])

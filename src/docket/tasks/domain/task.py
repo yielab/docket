@@ -212,6 +212,20 @@ class TaskWait(BaseModel):
     outcome: str | None = Field(None, exclude_if=is_none)
 
 
+class CurrentHop(BaseModel):
+    """The hop a running task is inside: the values of its ``hop_started`` event. ``model`` is the
+    planned model, ``cycle`` the rework count (operator-api.spec.md, "Task answers")."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    step_id: str = Field(alias="stepId")
+    role: str
+    member: str
+    model: str
+    started_at: str = Field(alias="startedAt")
+    cycle: int = 0
+
+
 class TaskRecord(BaseModel):
     """One task of a pod's queue; its alias dump is the stored record."""
 
@@ -256,6 +270,8 @@ class TaskRecord(BaseModel):
     failure_kind: str | None = Field(None, alias="failureKind", exclude_if=is_none)
     blocked_reason: str | None = Field(None, alias="blockedReason", exclude_if=is_none)
     pending_approval_index: int | None = Field(None, alias="pendingApprovalIndex")
+    # The hop in flight; absent unless the task is running inside one.
+    current: CurrentHop | None = Field(None, exclude_if=is_none)
 
     # The execution: what running it produced.
     hops: list[HopResult] = Field(default_factory=list)

@@ -136,6 +136,8 @@ def decide(
             drop += ["failure_kind", "reason", "completed_at"]
     else:
         stale = failure_kind == FailureKind.stale_claim
+        if status == Status.running:
+            drop.append("current")
         if reason is not None:
             fields["reason"] = reason
         if not stale:
