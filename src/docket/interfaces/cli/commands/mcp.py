@@ -39,19 +39,29 @@ MISSING_SDK_HINT = (
     "(uv projects:      uv sync --extra mcp   or   uv pip install 'docket[mcp]')"
 )
 
-_TOOL_NAMES: tuple[str, ...] = (
+_READ_ONLY_TOOL_NAMES: tuple[str, ...] = (
     "status",
     "pods",
     "queue",
-    "delegate",
-    "dispatch",
     "runs",
     "inbox",
     "escalations",
     "cost",
+)
+
+_TOOL_NAMES: tuple[str, ...] = (
+    *_READ_ONLY_TOOL_NAMES,
+    "delegate",
+    "dispatch",
+    "retry",
     "resolve",
     "task_pregrant",
 )
+
+
+def tool_names(read_only: bool = False) -> tuple[str, ...]:
+    """The names a server registers: the seven read tools alone when ``read_only``, else all."""
+    return _READ_ONLY_TOOL_NAMES if read_only else _TOOL_NAMES
 
 
 class McpToolError(InvalidInput):
@@ -86,16 +96,22 @@ def tool_pods() -> dict[str, Any]:
     return {"pods": _queue.pod_roster()}
 
 
-def tool_queue(project: str, retry_task_id: str | None = None) -> dict[str, Any]:
-    """Show a pod's task queue (all statuses, not just pending). If ``retry_task_id`` is
-    given, first moves that one ``blocked`` or ``failed`` task back to ``pending`` (mirrors
-    `docket task retry`) — an error if it is in any other status."""
-    detail = f"project={project}"
-    if retry_task_id:
-        detail += f" retry={retry_task_id}"
-    _audit("queue", detail)
-    if retry_task_id and not _lifecycle.retry_task(project, retry_task_id):
-        raise McpToolError(f"'{retry_task_id}' is not a failed or blocked task in pod '{project}'.")
+def tool_queue(project: str) -> dict[str, Any]:
+    """Show a pod's task queue (all statuses, not just pending). Read-only."""
+    _audit("queue", f"project={project}")
+    records = TaskRepository.for_pod(project).list()
+    return {
+        "project": project,
+        "tasks": [r.model_dump(by_alias=True, mode="json") for r in records],
+    }
+
+
+def tool_retry(project: str, task_id: str) -> dict[str, Any]:
+    """Move one ``blocked`` or ``failed`` task back to ``pending`` (mirrors
+    `docket task retry`) -- an error if it is in any other status. Returns the pod's queue."""
+    _audit("retry", f"project={project} task={task_id}")
+    if not _lifecycle.retry_task(project, task_id):
+        raise McpToolError(f"'{task_id}' is not a failed or blocked task in pod '{project}'.")
     records = TaskRepository.for_pod(project).list()
     return {
         "project": project,
@@ -227,10 +243,10 @@ def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
 # ── SDK registration (only imported/executed when actually serving) ─────────
 
 
-def _build_server() -> Any:
-    """Construct the MCPServer instance with every tool registered. Only called from
-    ``serve_stdio()`` — importing ``mcp`` at module level would make the optional
-    dependency mandatory just to import ``docket.cli``."""
+def _build_server(read_only: bool = False) -> Any:
+    """Construct the MCPServer instance with its tools registered: every tool, or only the seven
+    read tools when ``read_only``. Only called from ``serve_stdio()`` -- importing ``mcp`` at
+    module level would make the optional dependency mandatory just to import ``docket.cli``."""
     from mcp.server import MCPServer
     from mcp.server.mcpserver.exceptions import ToolError
 
@@ -244,43 +260,53 @@ def _build_server() -> Any:
 
         return call
 
-    server = MCPServer(
-        name="docket",
-        instructions=(
+    if read_only:
+        instructions = (
+            "docket's control plane, read-only: pods, runs, escalations, the inbox, and cost. "
+            "Every call is audit-logged. This server cannot delegate, dispatch, retry or resolve."
+        )
+    else:
+        instructions = (
             "docket's control plane: pods, dispatch, runs, escalations, the inbox, and cost. "
-            "Every call is audit-logged; dispatch/delegate/resolve go through the "
-            "exact same gates as the docket CLI — nothing here bypasses an approval "
+            "Every call is audit-logged; dispatch/delegate/retry/resolve go through the "
+            "exact same gates as the docket CLI -- nothing here bypasses an approval "
             "or budget check."
-        ),
-    )
+        )
+    server = MCPServer(name="docket", instructions=instructions)
 
-    server.add_tool(expected(tool_status), name="status")
-    server.add_tool(expected(tool_pods), name="pods")
-    server.add_tool(expected(tool_queue), name="queue")
-    server.add_tool(expected(tool_delegate), name="delegate")
-    server.add_tool(expected(tool_dispatch), name="dispatch")
-    server.add_tool(expected(tool_runs), name="runs")
-    server.add_tool(expected(tool_resolve), name="resolve")
-    server.add_tool(expected(tool_task_pregrant), name="task_pregrant")
-    server.add_tool(expected(tool_inbox), name="inbox")
-    server.add_tool(expected(tool_escalations), name="escalations")
-    server.add_tool(expected(tool_cost), name="cost")
+    tools: dict[str, Callable[..., Any]] = {
+        "status": tool_status,
+        "pods": tool_pods,
+        "queue": tool_queue,
+        "delegate": tool_delegate,
+        "dispatch": tool_dispatch,
+        "runs": tool_runs,
+        "retry": tool_retry,
+        "resolve": tool_resolve,
+        "task_pregrant": tool_task_pregrant,
+        "inbox": tool_inbox,
+        "escalations": tool_escalations,
+        "cost": tool_cost,
+    }
+    for name in tool_names(read_only):
+        server.add_tool(expected(tools[name]), name=name)
     return server
 
 
-def serve_stdio() -> int:
+def serve_stdio(read_only: bool = False) -> int:
     """Run the MCP stdio server -- blocks until the client disconnects (Ctrl-C/EOF).
-    Returns 1 with an actionable hint (stderr) if the ``mcp`` SDK isn't installed,
+    ``read_only`` registers only the read tools. Returns 1 with an actionable hint (stderr) if the ``mcp`` SDK isn't installed,
     else 0. Never prints to stdout — that is the JSON-RPC transport once running."""
     try:
-        server = _build_server()
+        server = _build_server(read_only)
     except ImportError:
         print(MISSING_SDK_HINT, file=sys.stderr)
         return 1
 
+    names = tool_names(read_only)
     print(
         "docket start --mcp: stdio transport starting "
-        f"({len(_TOOL_NAMES)} tools: {', '.join(_TOOL_NAMES)}) — Ctrl-C/EOF to stop",
+        f"({len(names)} tools: {', '.join(names)}) — Ctrl-C/EOF to stop",
         file=sys.stderr,
     )
     with contextlib.suppress(KeyboardInterrupt):

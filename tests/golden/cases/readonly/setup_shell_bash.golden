@@ -25,11 +25,11 @@ _docket_verbs() {
 _docket_options() {
   case "$1" in
     "") echo "--version --help" ;;
-    "init") echo "--blueprint --pod --with --codebase --name --from --recipe --no-apply --accept --json --help" ;;
+    "init") echo "--blueprint --pod --with --codebase --workdir --name --from --recipe --no-apply --accept --json --help" ;;
     "status") echo "--all --json --history --days --pod --help" ;;
     "inbox") echo "--json --since --peek --help" ;;
     "run") echo "--resume --timeout --progress --no-prompt --pipeline --var --dry-run --pod --help" ;;
-    "start") echo "--port --bind --interval --dispatch --telegram --mcp --token-file --help" ;;
+    "start") echo "--port --bind --interval --dispatch --telegram --mcp --read-only --token-file --help" ;;
     "stop") echo "--wait --help" ;;
     "task") echo "--help" ;;
     "task add") echo "--priority --brief --external-ref --idempotency-key --base-ref --pipeline --gate --max-tokens --autonomy --var --pod --help" ;;

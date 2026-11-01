@@ -121,6 +121,24 @@ def test_mcp_refuses_the_flags_that_print_to_stdout(home: Path) -> None:
     assert runner.invoke(app, ["start", "--mcp", "--dispatch"]).exit_code == 2
 
 
+def test_read_only_without_mcp_is_refused(home: Path) -> None:
+    result = runner.invoke(app, ["start", "--read-only"])
+    assert result.exit_code == 2
+    assert "applies to the MCP server" in result.output
+
+
+def test_mcp_read_only_serves_the_read_tools_only(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[bool] = []
+    monkeypatch.setattr(
+        "docket.interfaces.cli.commands.mcp.serve_stdio",
+        lambda read_only=False: seen.append(read_only) or 0,
+    )
+    assert runner.invoke(app, ["start", "--mcp", "--read-only"]).exit_code == 0
+    assert seen == [True]
+
+
 @pytest.mark.parametrize(
     ("args", "expected"), [([], "127.0.0.1"), (["--bind", "127.0.0.2"], "127.0.0.2")]
 )
