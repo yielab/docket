@@ -20,6 +20,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from pathlib import Path
 
 from docket import bootstrap as _bootstrap
@@ -55,6 +56,8 @@ from docket.teams import conversations
 
 DEFAULT_PORT = _bootstrap.DEFAULT_PORT
 DEFAULT_INTERVAL = _bootstrap.DEFAULT_INTERVAL
+# The shortest nap before a wait pass, so a deadline the pass cannot clear never spins the loop.
+WAIT_WAKE_FLOOR_S = 0.25
 
 
 def render_health(dispatch_on: bool = False) -> str:
@@ -105,31 +108,48 @@ def _sweep_one_pod(project: str) -> None:
     except Exception as exc:
         print(f"[serve] sweep: pod {project} failed: {exc}")
     finally:
+        stale = None
         with _SWEEP_LOCK:
             _sweeps.sweep_inflight.pop(project, None)
             _sweeps.sweep_run_ids.pop(project, None)
+            if project in _sweeps.sweep_rerun:
+                _sweeps.sweep_rerun.discard(project)
+                if not sweep_stop.is_set():
+                    stale = _start_pod_sweep(project)
+        if stale is not None:
+            stale[1].shutdown(wait=False)
 
 
-def _submit_pod_sweep(project: str) -> bool:
-    """Start a sweep of *project* on the bounded pool unless one is still in flight.
-
-    The pool holds ``DISPATCH_SWEEP_WORKERS`` threads; a pod past that limit is claimed but
-    waits for a free worker. Returns whether a sweep was started."""
+def _start_pod_sweep(project: str) -> tuple[int, concurrent.futures.ThreadPoolExecutor] | None:
+    """Submit a sweep of *project* to the pool, making the pool first when the worker count
+    changed. Call with ``_SWEEP_LOCK`` held; returns the replaced pool, to shut down outside it."""
     global sweep_pool
     workers = max(1, current_home().dispatch_sweep_workers)
     stale = None
+    if sweep_pool is None or sweep_pool[0] != workers:
+        stale = sweep_pool
+        sweep_pool = (
+            workers,
+            concurrent.futures.ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="docket-sweep"
+            ),
+        )
+    _sweeps.sweep_inflight[project] = _threads.submit(sweep_pool[1], _sweep_one_pod, project)
+    return stale
+
+
+def _submit_pod_sweep(project: str, *, rerun: bool = False) -> bool:
+    """Start a sweep of *project* on the bounded pool unless one is still in flight.
+
+    The pool holds ``DISPATCH_SWEEP_WORKERS`` threads; a pod past that limit is claimed but
+    waits for a free worker. With *rerun*, a sweep already in flight sweeps once more when it
+    ends. Returns whether a sweep was started."""
     with _SWEEP_LOCK:
         if project in _sweeps.sweep_inflight:
+            if rerun:
+                _sweeps.sweep_rerun.add(project)
             return False
-        if sweep_pool is None or sweep_pool[0] != workers:
-            stale = sweep_pool
-            sweep_pool = (
-                workers,
-                concurrent.futures.ThreadPoolExecutor(
-                    max_workers=workers, thread_name_prefix="docket-sweep"
-                ),
-            )
-        _sweeps.sweep_inflight[project] = _threads.submit(sweep_pool[1], _sweep_one_pod, project)
+        stale = _start_pod_sweep(project)
     if stale is not None:
         stale[1].shutdown(wait=False)
     return True
@@ -198,7 +218,7 @@ def _run_sweeps(dispatch: bool = False) -> None:
             print(f"[serve] sweep: could not list dispatchable pods: {exc}")
             pods_to_dispatch = []
         for project in pods_to_dispatch:
-            _submit_pod_sweep(project)
+            _submit_pod_sweep(project, rerun=True)
         try:
             check_schedules(_clock.epoch())
         except Exception as exc:
@@ -215,10 +235,46 @@ def _run_sweeps(dispatch: bool = False) -> None:
             delete_channel(name)
 
 
-def _sweep_loop(interval: int, stop: threading.Event, dispatch: bool = False) -> None:
-    """Run _run_sweeps every *interval* seconds until *stop* is set, then wait for in-flight sweeps."""
-    while not stop.wait(interval):
-        _run_sweeps(dispatch)
+def _wait_pass(dispatch: bool) -> None:
+    """End the ``wait`` steps whose time has come and, when dispatching, sweep every pod so the
+    tasks they woke (and the probes that fell due) run now rather than at the next full pass."""
+    with contextlib.suppress(Exception):
+        _escalation_sweep.sweep_waits()
+    if not dispatch:
+        return
+    with contextlib.suppress(Exception):
+        for project in _queue.dispatchable_pods():
+            _submit_pod_sweep(project, rerun=True)
+
+
+def _seconds_to_wait_event(dispatch: bool) -> float | None:
+    """Seconds until the soonest ``wait`` deadline this loop can act on (a probe counts only when
+    dispatching, because only a dispatching sweep runs one); ``None`` when none is parked."""
+    try:
+        moment = _escalation_sweep.next_wait_event(probes=dispatch)
+    except Exception:
+        return None
+    if moment is None:
+        return None
+    return max(WAIT_WAKE_FLOOR_S, moment.timestamp() - _clock.epoch())
+
+
+def _sweep_loop(interval: float, stop: threading.Event, dispatch: bool = False) -> None:
+    """Run _run_sweeps every *interval* seconds until *stop* is set, then wait for in-flight
+    sweeps. Between full passes it also wakes at the soonest ``wait`` deadline and runs only the
+    wait pass, so a ``wait`` ends when its time comes, not up to *interval* later."""
+    next_full = time.monotonic() + interval
+    while True:
+        delay = next_full - time.monotonic()
+        ahead = _seconds_to_wait_event(dispatch)
+        wait_only = ahead is not None and ahead < delay
+        if stop.wait(ahead if wait_only and ahead is not None else max(0.0, delay)):
+            break
+        if wait_only:
+            _wait_pass(dispatch)
+        else:
+            _run_sweeps(dispatch)
+            next_full = time.monotonic() + interval
     _drain_sweeps()
 
 

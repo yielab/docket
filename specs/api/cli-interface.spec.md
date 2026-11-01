@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.8.0
+**Version**: 5.9.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -885,7 +885,7 @@ optionally drive pod dispatch pipelines
 **Options**:
 - `--port`/`-p <n>`: Listen port for the HTTP API (default: 7331)
 - `--bind <addr>`: Listen address for the HTTP API (default: `127.0.0.1`, loopback only; any other address is reachable off this host)
-- `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30)
+- `--interval`/`-i <s>`: Sweep refresh interval in seconds (default: 30). A `wait` step does not wait for it: it ends at its own deadline (pod-dispatch.spec.md "Wait steps")
 - `--dispatch`: On each refresh, also run every pod's pending tasks through its pipeline (real, costed LLM turns; budget-gated and traced). Off by default — plain `docket start` never dispatches on its own.
 - `--telegram`: Long-poll docket's own Telegram bot for `/status` `/delegate`
   `/answer` (needs the stored `TELEGRAM_BOT_TOKEN` credential; without it the channel stays

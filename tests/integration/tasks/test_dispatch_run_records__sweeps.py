@@ -135,19 +135,24 @@ class TestSweepWorkers:
             assert _runs.list_runs("pod-a")[0]["state"] == "succeeded"
             assert _runs.list_runs("pod-b")[0]["state"] == "succeeded"
 
-    def test_a_second_tick_skips_a_pod_still_in_flight(
+    def test_a_second_tick_waits_for_a_pod_still_in_flight_then_sweeps_it_once_more(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with self._two_pods(tmp_path, monkeypatch):
             release = threading.Event()
             started = threading.Event()
             calls: list[str] = []
+            overlap: list[int] = []
+            active: list[str] = []
 
             def _fake(proj: str, **kw: object) -> list[_task.TaskResult]:
                 calls.append(proj)
                 if proj == "pod-a":
+                    active.append(proj)
+                    overlap.append(len(active))
                     started.set()
                     assert release.wait(10)
+                    active.remove(proj)
                 return []
 
             monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _fake)
@@ -158,8 +163,9 @@ class TestSweepWorkers:
             finally:
                 release.set()
             assert _sweeps._drain_sweeps(timeout=10)
-            assert calls.count("pod-a") == 1
-            assert len(_runs.list_runs("pod-a")) == 1
+            assert max(overlap) == 1
+            assert calls.count("pod-a") == 2
+            assert len(_runs.list_runs("pod-a")) == 2
 
     def test_one_worker_is_serial(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         with (

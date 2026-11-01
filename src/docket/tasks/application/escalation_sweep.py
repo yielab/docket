@@ -29,7 +29,7 @@ from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.resolution import EscalationNotPending
 
-__all__ = ["sweep_escalations", "sweep_waits"]
+__all__ = ["next_wait_event", "sweep_escalations", "sweep_waits"]
 
 # Runs the probe command of a waiting task (the pod, the task) and says whether it exited 0.
 WaitProbe = Callable[[str, _task.TaskRecord], bool]
@@ -134,6 +134,24 @@ def sweep_waits(
             continue
         ended += _tick_wait(record, moment, probe)
     return ended
+
+
+def next_wait_event(*, probes: bool) -> _dt.datetime | None:
+    """When the soonest ``wait`` falls due: its due time, or with *probes* the next probe of a
+    wait that has one. ``None`` when no task is parked on a wait."""
+    soonest: _dt.datetime | None = None
+    for record in list_escalations(state="pending"):
+        if record.kind != "wait":
+            continue
+        task = TaskRepository.for_pod(record.pod).get(record.task)
+        wait = task.wait if task is not None else None
+        if wait is None or task is None or task.status != _state.Status.waiting_input:
+            continue
+        stamps = [wait.due_at] + ([wait.next_probe_at or ""] if probes and wait.until else [])
+        for moment in (_clock.parse_iso(stamp) for stamp in stamps if stamp):
+            if moment is not None and (soonest is None or moment < soonest):
+                soonest = moment
+    return soonest
 
 
 def sweep_escalations(now: str | None = None) -> int:

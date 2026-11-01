@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as _dt
 import json as _json
 from dataclasses import replace
 from pathlib import Path
@@ -238,12 +239,22 @@ def enqueue_task_once(
 
 
 def has_claimable_work(project: str) -> bool:
-    """Whether a resuming sweep of *project* could claim anything: a task it may claim, or a
-    ``running`` one whose claim may be stale. A sweep with neither records no run."""
+    """Whether a resuming sweep of *project* could claim anything: a task it may claim, a
+    ``running`` one whose claim may be stale, or a ``wait`` whose probe is due (the sweep runs
+    it before it claims). A sweep with none records no run."""
+    now = _clock.parse_iso(_clock.iso())
     return any(
-        r.status == _state.Status.running or claimable(r, resume=True)
+        r.status == _state.Status.running or claimable(r, resume=True) or _probe_due(r, now)
         for r in TaskRepository.for_pod(project).list()
     )
+
+
+def _probe_due(record: TaskRecord, now: _dt.datetime | None) -> bool:
+    wait = record.wait
+    if wait is None or not wait.until or record.status != _state.Status.waiting_input:
+        return False
+    due = _clock.parse_iso(wait.next_probe_at or "")
+    return due is not None and now is not None and due <= now
 
 
 def apply_transition(
