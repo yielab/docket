@@ -18,7 +18,7 @@ from docket.teams import fleet
 SERVE_API_VERSION = "6"
 
 # Feature names this build answers to, served as `features` by /status.json and /health.
-FEATURES: tuple[str, ...] = ("taskCurrent", "taskCursor", "podMemory")
+FEATURES: tuple[str, ...] = ("taskCurrent", "taskCursor", "podMemory", "readScope")
 
 
 def _with_token_budget(task: TaskRecord) -> dict[str, Any]:

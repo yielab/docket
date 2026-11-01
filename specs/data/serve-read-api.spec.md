@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 5.5.0
+**Version**: 5.6.0
 **Status**: Stable
 **Last Updated**: 2026-11-01
 
@@ -43,7 +43,8 @@ thread the server starts (sweeps, scheduled and webhook dispatches, the Telegram
 `/health` require no auth. Every other route requires `Authorization: Bearer <token>`, compared in
 constant time; the token is `DOCKET_SERVE_TOKEN` when set, otherwise a random one printed at
 startup (or written 0600 to `docket start --token-file <path>`). A server with no token refuses
-every authenticated request.
+every authenticated request. `DOCKET_SERVE_READ_TOKEN`, when set, is a second token that `GET` and
+`HEAD` accept and every other method refuses with `403` (`code: read_scope`).
 
 ## Structure
 
@@ -86,7 +87,7 @@ added in minor versions.
 ```json
 {
   "apiVersion": "6",
-  "features":   ["taskCurrent", "taskCursor", "podMemory"],
+  "features":   ["taskCurrent", "taskCursor", "podMemory", "readScope"],
   "timestamp":  "2026-06-25T10:00:00Z",
   "channels":   ["telegram"],
   "agents": [
@@ -112,7 +113,7 @@ added in minor versions.
 | Field | Type | Notes |
 |---|---|---|
 | `apiVersion` | string | Always `SERVE_API_VERSION`, currently `"6"`. |
-| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. Currently `["taskCurrent", "taskCursor", "podMemory"]`. |
+| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. Currently `["taskCurrent", "taskCursor", "podMemory", "readScope"]`. |
 | `channels` | string[] | Distinct channel names present in `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here**: a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
@@ -181,7 +182,7 @@ thread shared with `/health`.
 Liveness check. Always returns HTTP 200 while the process is alive.
 
 ```json
-{"status":"ok","apiVersion":"6","features":["taskCurrent", "taskCursor", "podMemory"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
+{"status":"ok","apiVersion":"6","features":["taskCurrent", "taskCursor", "podMemory", "readScope"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
 ```
 
 `apiVersion` is `SERVE_API_VERSION` and `features` is the list `/status.json` carries (the same names). `dispatch.on` is whether the server runs with `--dispatch`,
@@ -717,7 +718,7 @@ curl -s http://127.0.0.1:7331/metrics
 
 ```bash
 curl -s http://127.0.0.1:7331/health
-# {"status":"ok","apiVersion":"6","features":["taskCurrent", "taskCursor", "podMemory"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
+# {"status":"ok","apiVersion":"6","features":["taskCurrent", "taskCursor", "podMemory", "readScope"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
 ```
 
 ### Trigger a dispatch and poll its run (curl)

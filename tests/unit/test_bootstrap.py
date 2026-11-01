@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -59,20 +60,14 @@ def test_build_app_carries_every_handle(home: Home) -> None:
     assert app.driver is _driver.default_driver()
 
 
-def test_build_server_defaults_and_pinned_token(
-    home: Home, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("DOCKET_SERVE_TOKEN", "pinned")
-    plan = bootstrap.build_server(home)
+def test_build_server_defaults_and_pinned_token(home: Home) -> None:
+    plan = bootstrap.build_server(replace(home, serve_token="pinned"))
     assert (plan.port, plan.bind, plan.interval) == (7331, "127.0.0.1", 30)
     assert (plan.dispatch, plan.telegram, plan.token_file) == (False, False, None)
     assert plan.token == "pinned"
 
 
-def test_build_server_mints_a_fresh_token_per_plan(
-    home: Home, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("DOCKET_SERVE_TOKEN", raising=False)
+def test_build_server_mints_a_fresh_token_per_plan(home: Home) -> None:
     first = bootstrap.build_server(home, port=0, dispatch=True, token_file="t")
     second = bootstrap.build_server(home)
     assert first.token != second.token
@@ -80,15 +75,19 @@ def test_build_server_mints_a_fresh_token_per_plan(
     assert (first.port, first.dispatch, first.token_file) == (0, True, "t")
 
 
-def test_build_server_carries_the_read_token(home: Home) -> None:
-    pinned = {"DOCKET_SERVE_TOKEN": "pinned"}
-    assert bootstrap.build_server(home, env=pinned).read_token == ""
-    both = {**pinned, "DOCKET_SERVE_READ_TOKEN": "reader"}
-    plan = bootstrap.build_server(home, env=both)
+def test_build_server_carries_the_homes_read_token(home: Home) -> None:
+    plan = bootstrap.build_server(replace(home, serve_token="pinned", serve_read_token="reader"))
     assert (plan.token, plan.read_token) == ("pinned", "reader")
+    assert bootstrap.build_server(home).read_token == ""
 
 
-def test_build_server_refuses_a_read_token_equal_to_the_serve_token(home: Home) -> None:
-    same = {"DOCKET_SERVE_TOKEN": "same", "DOCKET_SERVE_READ_TOKEN": "same"}
+def test_resolve_serve_tokens_keeps_a_distinct_read_token() -> None:
+    assert bootstrap.resolve_serve_tokens("pinned", "") == ("pinned", "")
+    assert bootstrap.resolve_serve_tokens("pinned", "reader") == ("pinned", "reader")
+    random_token, read = bootstrap.resolve_serve_tokens("", "reader")
+    assert len(random_token) >= 32 and read == "reader"
+
+
+def test_resolve_serve_tokens_refuses_a_read_token_equal_to_the_serve_token() -> None:
     with pytest.raises(InvalidInput, match="DOCKET_SERVE_READ_TOKEN"):
-        bootstrap.build_server(home, env=same)
+        bootstrap.resolve_serve_tokens("same", "same")

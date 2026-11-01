@@ -9,9 +9,8 @@ from `current_home()` underneath; the `Home` a handle carries names which home i
 
 from __future__ import annotations
 
-import os
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -200,6 +199,18 @@ def build_app(home: Home) -> App:
     )
 
 
+def resolve_serve_tokens(serve_token: str, read_token: str) -> tuple[str, str]:
+    """The serve token (a fresh random one when *serve_token* is empty) and the read token, which
+    must differ from it."""
+    token = serve_token or secrets.token_urlsafe(32)
+    if read_token and read_token == token:
+        raise InvalidInput(
+            "DOCKET_SERVE_READ_TOKEN equals the serve token",
+            "give the read token its own value, or unset it",
+        )
+    return token, read_token
+
+
 def build_server(
     home: Home,
     *,
@@ -209,19 +220,11 @@ def build_server(
     dispatch: bool = False,
     telegram: bool = False,
     token_file: str | None = None,
-    env: Mapping[str, str] | None = None,
 ) -> ServerPlan:
     """The bearer token is ``DOCKET_SERVE_TOKEN`` when set, else a fresh random one. A
     ``DOCKET_SERVE_READ_TOKEN`` is a second token that may only read, and must differ from it."""
     bind_adapters()
-    env = os.environ if env is None else env
-    token = env.get("DOCKET_SERVE_TOKEN") or secrets.token_urlsafe(32)
-    read_token = env.get("DOCKET_SERVE_READ_TOKEN", "")
-    if read_token and read_token == token:
-        raise InvalidInput(
-            "DOCKET_SERVE_READ_TOKEN equals the serve token",
-            "give the read token its own value, or unset it",
-        )
+    token, read_token = resolve_serve_tokens(home.serve_token, home.serve_read_token)
     return ServerPlan(
         home=home,
         port=DEFAULT_PORT if port is None else port,

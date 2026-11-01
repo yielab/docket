@@ -1090,6 +1090,7 @@ No command emits any other exit code today.
 | `DOCKET_SANDBOX_PROBE` | `none` makes the Landlock probe report the kernel feature absent (tests that simulate a host with no backend) | unset (the kernel is probed) |
 | `SHELL` | Login shell name; `docket setup` uses it to name the completion command it offers | unset (bash assumed) |
 | `DOCKET_SERVE_TOKEN` | Fix `docket start`'s bearer token instead of generating one per run | unset (random) |
+| `DOCKET_SERVE_READ_TOKEN` | A second bearer token for `docket start` that may only read (`GET`, `HEAD`); it must differ from the serve token | unset (no read-only token) |
 | `DOCKET_LLM_BASE_URL` | Process-wide override that points every model at one endpoint (local dev, tests without stored config) | unset |
 | `DOCKET_LLM_API_KEY` | Process-wide API key override, paired with `DOCKET_LLM_BASE_URL` | unset |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `OPENROUTER_API_KEY`, `AI_GATEWAY_API_KEY`, `VERCEL_OIDC_TOKEN`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `DEEPSEEK_API_KEY`, `XAI_API_KEY`, `CEREBRAS_API_KEY`, `TOGETHER_API_KEY` | Per-provider API key, named by a built-in provider document's `auth.credentials` (`models/catalog.py`'s catalog), checked when neither `DOCKET_LLM_API_KEY` nor a catalog-resolved credential is already present; also checked against docket's own secret store (`docket setup provider add`). A provider absent from the catalog falls back to `<PROVIDER>_API_KEY` | unset |
