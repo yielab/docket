@@ -255,37 +255,46 @@ class TestToolQueue:
             assert result["project"] == "demo"
             assert [t["description"] for t in result["tasks"]] == ["task one", "task two"]
 
+    def test_call_is_audited(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, project="demo"):
+            _mcp.tool_queue("demo")
+            assert len(_audit_actions("mcp.queue")) == 1
+
+
+class TestToolRetry:
     @pytest.mark.parametrize("status", ["blocked", "failed"])
-    def test_retry_requeues_a_blocked_or_failed_task(self, tmp_path: Path, status: str) -> None:
+    def test_requeues_a_blocked_or_failed_task(self, tmp_path: Path, status: str) -> None:
         with _seed_pod(tmp_path, project="demo"):
             record = task(status=status)
             put_task("demo", record)
 
-            result = _mcp.tool_queue("demo", retry_task_id=record.id)
+            result = _mcp.tool_retry("demo", record.id)
 
             statuses = {t["id"]: t["status"] for t in result["tasks"]}
             assert statuses[record.id] == "pending"
 
-    def test_retry_unknown_task_raises(self, tmp_path: Path) -> None:
+    def test_unknown_task_raises(self, tmp_path: Path) -> None:
         with (
             _seed_pod(tmp_path, project="demo"),
             pytest.raises(_mcp.McpToolError, match="not a failed or blocked task"),
         ):
-            _mcp.tool_queue("demo", retry_task_id="task-does-not-exist")
+            _mcp.tool_retry("demo", "task-does-not-exist")
 
-    def test_retry_of_a_pending_task_raises(self, tmp_path: Path) -> None:
+    def test_a_pending_task_raises(self, tmp_path: Path) -> None:
         record = task()
         with (
             _seed_pod(tmp_path, project="demo"),
             pytest.raises(_mcp.McpToolError, match="not a failed or blocked task"),
         ):
             put_task("demo", record)
-            _mcp.tool_queue("demo", retry_task_id=record.id)
+            _mcp.tool_retry("demo", record.id)
 
     def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"):
-            _mcp.tool_queue("demo")
-            assert len(_audit_actions("mcp.queue")) == 1
+            record = task(status="failed")
+            put_task("demo", record)
+            _mcp.tool_retry("demo", record.id)
+            assert len(_audit_actions("mcp.retry")) == 1
 
 
 # ── dispatch (mutating, costed — the highest-stakes tool) ───────────────────
@@ -483,11 +492,15 @@ class TestEveryToolCallIsAudited:
                 t for t in TaskRepository.for_pod("demo").list() if t.status == Status.waiting_input
             )
 
+            failed = task(description="to retry", status="failed")
+            put_tasks("demo", failed, parked)
+
             monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", lambda proj, **kw: [])
 
             _mcp.tool_status()
             _mcp.tool_pods()
             _mcp.tool_queue("demo")
+            _mcp.tool_retry("demo", failed.id)
             _mcp.tool_delegate("demo", "a task")
             dispatch_result = _mcp.tool_dispatch("demo")
             _mcp.tool_runs()

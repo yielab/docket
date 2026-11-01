@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from tests.support.escalations import approval_escalation
 from tests.support.pods import seed_pod as _seed_pod
+from tests.support.tasks import put_task, task
 from tests.support.trace import audit_entries as _audit_actions
 
 from docket.interfaces.cli.commands import mcp as _mcp
@@ -68,6 +69,47 @@ class TestSingleCodePathOnRealSdk:
         tools = asyncio.run(server.list_tools())
         names = {t.name for t in tools}
         assert names == set(_mcp._TOOL_NAMES)
+        assert len(tools) == 12
+
+    def test_a_read_only_server_lists_exactly_the_seven_read_tools(self) -> None:
+        pytest.importorskip("mcp")
+        import asyncio
+
+        server = _mcp._build_server(read_only=True)
+        names = {t.name for t in asyncio.run(server.list_tools())}
+        assert names == {"status", "pods", "queue", "runs", "inbox", "escalations", "cost"}
+
+    def test_resolve_is_an_unknown_tool_on_a_read_only_server(self) -> None:
+        pytest.importorskip("mcp")
+        import asyncio
+
+        server = _mcp._build_server(read_only=True)
+        result = asyncio.run(_call(server, "resolve", {"escalation_id": "esc-1"}))
+        assert result.is_error is True
+
+    def test_queue_takes_no_retry_argument(self) -> None:
+        pytest.importorskip("mcp")
+        import asyncio
+
+        tools = asyncio.run(_mcp._build_server().list_tools())
+        queue = next(t for t in tools if t.name == "queue")
+        assert set(queue.input_schema["properties"]) == {"project"}
+
+    def test_retry_requeues_a_failed_task_over_the_real_transport(self, tmp_path: Path) -> None:
+        pytest.importorskip("mcp")
+        import asyncio
+
+        with _seed_pod(tmp_path, project="demo"):
+            record = task(status="failed")
+            put_task("demo", record)
+
+            result = asyncio.run(
+                _call(_mcp._build_server(), "retry", {"project": "demo", "task_id": record.id})
+            )
+
+            assert result.is_error is False
+            statuses = {t["id"]: t["status"] for t in result.structured_content["tasks"]}
+            assert statuses[record.id] == "pending"
 
 
 # ── hermetic environment for the real-transport round trips below ──────────
