@@ -298,7 +298,7 @@ from `main`.
 
 ### P57-6 — a lights-out pod reaches a loopback service; a jailed MCP server does not
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** tests + spec
+**Status:** DONE (merged to `develop`; both tests pass on unchanged `src/`) · **Size:** S · **Model:** Sonnet · **Kind:** tests + spec
 
 - **Trigger:** ADR 0037 decision 6 (Tack ask 6). Measure first, then prove the shape that fits.
 - **Goal:** two tests.
@@ -312,7 +312,7 @@ from `main`.
      - a pod that passes the lights-out profile (`hops/gates/profile.py` ~50-65: isolation on,
        network `none`, `consultMode: decide`) declares a `kind: service` with
        `baseUrl: http://127.0.0.1:<port>` and `hosts: ["127.0.0.1"]`;
-     - a turn's `svc__<name>__<op>` call reaches the listener and is audited;
+     - a turn's `svc__<name>__<op>` call reaches the listener and is traced (a `read` writes no audit row; a refusal does);
      - a second service on `127.0.0.2` with no `hosts` entry is refused by the perimeter
        (`platform/service_http.py::_connector` ~98-125), and the refusal is audited.
 - **Non-goals:**
