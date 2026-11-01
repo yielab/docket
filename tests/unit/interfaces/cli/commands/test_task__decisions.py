@@ -439,7 +439,7 @@ class TestTaskCancel:
 
     def test_a_task_with_nothing_in_flight_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            record = task()
+            record = task(status="done")
             put_task("demo", record)
 
             result = _task("cancel", record.id)

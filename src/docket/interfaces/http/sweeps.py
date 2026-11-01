@@ -3,11 +3,11 @@ from __future__ import annotations
 import concurrent.futures
 import signal
 import threading
-import time
 from collections.abc import Callable
 from typing import Any
 
 from docket.hops.application import sweep as _sweep
+from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
 from docket.kernel.home import current_home
 from docket.pipeline.application import schedule as _sched
@@ -74,13 +74,13 @@ def check_schedules(now_ts: float) -> None:
 def _drain_sweeps(timeout: float | None = None) -> bool:
     """Wait for every in-flight pod sweep, and the rerun one may start as it ends; True when none
     remain within *timeout*."""
-    deadline = None if timeout is None else time.monotonic() + timeout
+    deadline = None if timeout is None else _clock.monotonic() + timeout
     while True:
         with _SWEEP_LOCK:
             pending = [f for f in sweep_inflight.values() if not f.done()]
         if not pending:
             return True
-        left = None if deadline is None else max(0.0, deadline - time.monotonic())
+        left = None if deadline is None else max(0.0, deadline - _clock.monotonic())
         _done, not_done = concurrent.futures.wait(pending, timeout=left)
         if not_done:
             return False

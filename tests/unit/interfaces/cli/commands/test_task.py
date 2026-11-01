@@ -215,11 +215,19 @@ class TestTaskCancelRendering:
 
     def test_nothing_in_flight_exits_one(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            record = task(description="work")
+            record = task(description="work", status="done")
             put_task("demo", record)
             result = _runner.invoke(app, ["task", "cancel", record.id, "--pod", "demo"])
             assert result.exit_code == 1
             assert "Nothing is in flight to cancel" in result.output
+
+    def test_a_task_still_waiting_for_its_turn_is_cancelled(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            record = task(description="work")
+            put_task("demo", record)
+            result = _runner.invoke(app, ["task", "cancel", record.id, "--pod", "demo"])
+            assert result.exit_code == 0, result.output
+            assert "it was pending" in result.output
 
 
 class TestTaskAdd:

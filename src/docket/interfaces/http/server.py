@@ -20,7 +20,6 @@ import os
 import signal
 import sys
 import threading
-import time
 from pathlib import Path
 
 from docket import bootstrap as _bootstrap
@@ -242,9 +241,13 @@ def _wait_pass(dispatch: bool) -> None:
         _escalation_sweep.sweep_waits()
     if not dispatch:
         return
-    with contextlib.suppress(Exception):
-        for project in _queue.dispatchable_pods():
-            _submit_pod_sweep(project, rerun=True)
+    try:
+        pods = _queue.dispatchable_pods()
+    except Exception as exc:
+        print(f"[serve] sweep: could not list dispatchable pods: {exc}")
+        return
+    for project in pods:
+        _submit_pod_sweep(project, rerun=True)
 
 
 def _seconds_to_wait_event(dispatch: bool) -> float | None:
@@ -263,9 +266,9 @@ def _sweep_loop(interval: float, stop: threading.Event, dispatch: bool = False) 
     """Run _run_sweeps every *interval* seconds until *stop* is set, then wait for in-flight
     sweeps. Between full passes it also wakes at the soonest ``wait`` deadline and runs only the
     wait pass, so a ``wait`` ends when its time comes, not up to *interval* later."""
-    next_full = time.monotonic() + interval
+    next_full = _clock.monotonic() + interval
     while True:
-        delay = next_full - time.monotonic()
+        delay = next_full - _clock.monotonic()
         ahead = _seconds_to_wait_event(dispatch)
         wait_only = ahead is not None and ahead < delay
         if stop.wait(ahead if wait_only and ahead is not None else max(0.0, delay)):
@@ -274,7 +277,7 @@ def _sweep_loop(interval: float, stop: threading.Event, dispatch: bool = False) 
             _wait_pass(dispatch)
         else:
             _run_sweeps(dispatch)
-            next_full = time.monotonic() + interval
+            next_full = _clock.monotonic() + interval
     _drain_sweeps()
 
 
