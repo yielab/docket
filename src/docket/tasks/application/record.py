@@ -19,7 +19,7 @@ from docket.tasks.application import answers as _answers
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
-from docket.tasks.domain.task import HopResult, TaskRecord
+from docket.tasks.domain.task import CurrentHop, HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
 from docket.teams import conversations as _conv
 from docket.teams import fleet as _fleet
@@ -509,6 +509,7 @@ def persist_hop_and_trace(
             if isinstance(label, str)
             else ("pass" if hop.verify.get("exitCode") == 0 else "fail")
         )
+    clear_current_hop(ctx.project, ctx.task_id, hop.step_id or "")
     trace_locked(
         ctx.project,
         ctx.session_id,
@@ -586,6 +587,30 @@ def persist_hop_and_trace(
             failure_kind=_turn_failure_kind(ctx, run_res),
         )
     return None
+
+
+def set_current_hop(project: str, task_id: str, current: CurrentHop) -> None:
+    """Record the hop a running task has just started; a task no longer running keeps none."""
+
+    def _set(record: TaskRecord) -> bool:
+        if record.status != _state.Status.running:
+            return False
+        record.current = current
+        return True
+
+    TaskRepository.for_pod(project).update(task_id, _set)
+
+
+def clear_current_hop(project: str, task_id: str, step_id: str) -> None:
+    """Remove the hop record when it still names *step_id*, the step that has just finished."""
+
+    def _clear(record: TaskRecord) -> bool:
+        if record.current is None or record.current.step_id != step_id:
+            return False
+        record.current = None
+        return True
+
+    TaskRepository.for_pod(project).update(task_id, _clear)
 
 
 def persist_hop(project: str, task_id: str, hop: HopResult) -> None:

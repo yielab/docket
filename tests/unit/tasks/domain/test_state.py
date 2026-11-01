@@ -96,6 +96,11 @@ def test_a_retry_clears_the_previous_outcome_and_an_unblock_does_not() -> None:
     assert _state.decide("blocked", S.pending).drop == ("blocked_reason",)
 
 
+@pytest.mark.parametrize("to", sorted(_state.SETTLE_TARGETS, key=lambda s: s.value))
+def test_a_move_out_of_running_drops_the_hop_it_was_inside(to: S) -> None:
+    assert "current" in _state.decide("running", to, **_FACTS).drop  # type: ignore[arg-type]
+
+
 def test_a_stale_claim_is_evidence_not_a_finished_task() -> None:
     stale = _state.decide("running", S.failed, now="t", failure_kind=_state.FailureKind.stale_claim)
     assert "completed_at" not in stale.fields

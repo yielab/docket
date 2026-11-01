@@ -31,11 +31,12 @@ from docket.tasks.application.record import (
     gate_did_not_pass,
     hop_env,
     is_gate_failure_carryover,
+    set_current_hop,
     trace_locked,
 )
 from docket.tasks.domain.parts import Answer
 from docket.tasks.domain.request import TaskRequest
-from docket.tasks.domain.task import HopResult, TaskRecord
+from docket.tasks.domain.task import CurrentHop, HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
 from docket.teams import model_selection as _models
 from docket.teams import pod_settings as _pod_settings
@@ -561,6 +562,19 @@ def _compose_hop(
         _json.dumps({"hop": role, "agent": member_id}),
     )
     planned_model = hop_model(node, member_id)
+    cycle = sum(ctx.rework_counts.values())
+    set_current_hop(
+        ctx.project,
+        ctx.task_id,
+        CurrentHop(
+            step_id=node.step_id,
+            role=role,
+            member=member_id,
+            model=planned_model,
+            started_at=_clock.iso(),
+            cycle=cycle,
+        ),
+    )
     trace_locked(
         ctx.project,
         ctx.session_id,
@@ -574,7 +588,7 @@ def _compose_hop(
                 "member": member_id,
                 "model": planned_model,
                 "provider": planned_model.partition("/")[0] if "/" in planned_model else "",
-                "cycle": sum(ctx.rework_counts.values()),
+                "cycle": cycle,
                 "attempt": 1,
             }
         ),

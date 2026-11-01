@@ -233,6 +233,14 @@ with one, what its cap has left after its persisted hops (`maxTokens` minus the 
 usage), never below 0. It is computed on read, from the same values dispatch applies, and
 is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod>/<id>` return.
 
+`current` names the hop a `running` task is inside: `{"stepId", "role", "member", "model",
+"startedAt", "cycle"}`. It is written where the hop's `hop_started` event is emitted, with the same
+values (`model` is the planned model, not the one that served; `cycle` is the rework count, `0` on
+a first pass), and cleared where its `hop_finished` event is emitted. The key is absent, never
+`null`, on a task that is not inside a hop, and every move out of `running` removes it, so a task
+that dies mid-hop never shows a stale `current`. It is on both `GET /tasks/<pod>` and
+`GET /tasks/<pod>/<id>`; a client probes for it with the `taskCurrent` feature.
+
 The task's `usage` and each `byModel` entry sum their hops' `input`, `cached`, `cacheWrite` and
 `output`; the task-level `usage` is written when the task settles, so a task still in flight has
 only its hops' usage. `input` includes the cache reads and writes, so a consumer counting new tokens computes
