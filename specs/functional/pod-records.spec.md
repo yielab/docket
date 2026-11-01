@@ -1,6 +1,6 @@
 # Pod Records Specification
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 **Status**: Implemented in part. The port (`RecordStore`, `kernel/records_port.py`), its SQLite adapter
 (`platform/records_sqlite.py`), the `kind: records` document
 (`pod update` and `pod export` carry it), `docket pod records` and the `rec__*` tools a hop's agent
@@ -85,7 +85,9 @@ This specification does NOT cover:
    only a row whose `_task` is the writing hop's task (a row of another task is refused, naming the
    match, and is left as it was) and never changes `_task`, and a write whose `origin` has no task
    **MUST** be refused naming the set. `declare` and `plan` **MUST** refuse a change of scope, as
-   they refuse a change of key; the scope of a set declared before scopes existed is `pod`.
+   they refuse a change of key, and the refusal **MUST** say that declaring the set under another name
+   gives the other scope (its rows do not move); the scope of a set declared before scopes existed is
+   `pod`.
 9. A boolean column **MUST** be returned as `bool` and stored as 0 or 1.
 
 ### Queries

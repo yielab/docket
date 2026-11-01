@@ -173,7 +173,8 @@ def plan_change(current: RecordSet | None, wanted: RecordSet) -> SetChange:
     if wanted.scope != current.scope:
         raise RecordsError(
             f"set {name!r}: the scope is {current.scope!r}, not {wanted.scope!r}; "
-            "the scope cannot change; nothing was changed"
+            "the scope cannot change; declare the set under another name to get the other scope "
+            "(its rows do not move from this one); nothing was changed"
         )
     return SetChange(created=False, added=tuple(n for n in want if n not in have))
 

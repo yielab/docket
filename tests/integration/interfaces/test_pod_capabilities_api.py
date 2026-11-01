@@ -54,6 +54,16 @@ def test_a_read_only_role_can_still_write_proposal_rows(live_server: tuple[str, 
     assert "rec__tack_proposals__add" in reviewer["tools"]
 
 
+def test_the_parts_not_computed_are_named_so_their_absence_is_not_read_as_none(
+    live_server: tuple[str, str],
+) -> None:
+    _pod_with_proposals()
+
+    for capabilities in _members(*live_server).values():
+        assert capabilities["notComputed"] == ["mcp", "service"]
+        assert not [t for t in capabilities["tools"] if t.startswith(("mcp__", "svc__"))]
+
+
 def test_a_role_that_acts_on_the_project_says_so(live_server: tuple[str, str]) -> None:
     _pod_with_proposals()
 
