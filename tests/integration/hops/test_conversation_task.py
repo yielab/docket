@@ -6,6 +6,8 @@ every request. The oracle is the task a surface reads, its escalations, and what
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from tests.support.llm import RecordingScriptedBackend
 from tests.support.pods import bind_pipeline, build_pod
@@ -31,6 +33,14 @@ name: talk
 steps:
   - chat: lead
 """
+GATED = """\
+name: talk
+steps:
+  - chat: lead
+    gate: {{external: "{command}"}}
+    on:
+      pass: stop
+"""
 
 
 def _start(
@@ -40,10 +50,11 @@ def _start(
     conversation: dict[str, int] | None = None,
     max_tokens: int | None = None,
     pipeline: str = ONE_STEP,
+    codebase: Path | None = None,
 ) -> tuple[RecordingScriptedBackend, str]:
     """A pod bound to *pipeline*, a task queued on it and a chat double that answers each turn with
     the next of *answers*. Returns the double and the task id."""
-    build_pod(PROJECT, _pod.pod.DEFAULT_POD_ROLES, codebase=f"/src/{PROJECT}")
+    build_pod(PROJECT, _pod.pod.DEFAULT_POD_ROLES, codebase=str(codebase or f"/src/{PROJECT}"))
     bind_pipeline(PROJECT, pipeline)
     backend = RecordingScriptedBackend([_answer(text, usage) for text in answers])
     driver = DocketDriver(backend_factory=lambda model: backend)
@@ -53,6 +64,13 @@ def _start(
         PROJECT, "talk about caches", channel="http", **{k: v for k, v in options.items() if v}
     )
     return backend, task.id
+
+
+def _gate(tmp_path: Path, exit_code: int) -> str:
+    """The pipeline of ONE_STEP gated by a script that exits with *exit_code* (0 passes)."""
+    script = tmp_path / f"gate-{exit_code}.sh"
+    script.write_text(f"exit {exit_code}\n", encoding="utf-8")
+    return GATED.format(command=f"sh {script}")
 
 
 def _answer(text: str, usage: TokenUsage) -> ChatResponse:
@@ -177,6 +195,44 @@ class TestTheTokenLimit:
 
         task = _the(task_id)
         assert (task.status, task.failure_kind) == ("failed", "budget")
+
+
+class TestAStepWithAGateOrARoute:
+    def test_a_turn_whose_gate_fails_ends_the_task_failed_and_asks_no_one(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _, task_id = _start(
+            monkeypatch,
+            "one",
+            conversation={"maxTurns": 3},
+            pipeline=_gate(tmp_path, 1),
+            codebase=tmp_path,
+        )
+
+        _turn()
+
+        task = _the(task_id)
+        assert (task.status, task.failure_kind) == ("failed", "gate_failed")
+        assert [h.parked for h in task.hops] == [False]
+        assert list_escalations(state="pending") == []
+
+    def test_a_turn_whose_route_stops_ends_the_task_done_and_asks_no_one(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        _, task_id = _start(
+            monkeypatch,
+            "one",
+            conversation={"maxTurns": 3},
+            pipeline=_gate(tmp_path, 0),
+            codebase=tmp_path,
+        )
+
+        _turn()
+
+        task = _the(task_id)
+        assert task.status == "done", task.reason
+        assert [h.parked for h in task.hops] == [False]
+        assert list_escalations(state="pending") == []
 
 
 class TestAnOrdinaryTask:

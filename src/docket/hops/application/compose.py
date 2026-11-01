@@ -562,7 +562,7 @@ def _compose_hop(
         _json.dumps({"hop": role, "agent": member_id}),
     )
     planned_model = hop_model(node, member_id)
-    cycle = sum(ctx.rework_counts.values())
+    cycle = ctx.cycle
     set_current_hop(
         ctx.project,
         ctx.task_id,
