@@ -286,6 +286,11 @@ class TestTaskScope:
         with pytest.raises(RecordsError, match="scope"):
             scoped.plan(wide)
 
+    def test_the_scope_refusal_says_how_to_get_the_other_scope(self, scoped: RecordStore) -> None:
+        wide = PROPOSALS.model_copy(update={"scope": "pod"})
+        with pytest.raises(RecordsError, match="declare the set under another name"):
+            scoped.declare(wide)
+
     def test_a_pod_set_cannot_become_task_scoped(self, store: RecordStore) -> None:
         with pytest.raises(RecordsError, match="scope"):
             store.declare(LISTINGS.model_copy(update={"scope": "task"}))

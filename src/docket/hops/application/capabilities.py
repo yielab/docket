@@ -3,7 +3,8 @@
 Computed by ``registry_for_role``, the function that narrows a hop's tools each turn, applied to
 the tools docket itself declares: the built-ins and the pod's record tools. MCP and service tools
 are not listed, because a server's tools are known only once it is started and a service's only once
-its secret resolves; a ``GET`` does neither."""
+its secret resolves; a ``GET`` does neither. ``notComputed`` names those parts, so their absence
+is not read as "none"."""
 
 from __future__ import annotations
 
@@ -15,6 +16,8 @@ from docket.kernel.ports import records as _pod_records
 from docket.kernel.records import RECORDS_QUERY_TOOL, records_tool_name
 from docket.teams import records as _records
 from docket.teams import role_composer as _role_composer
+
+NOT_COMPUTED = ["mcp", "service"]
 
 
 def member_capabilities(project: str, role: str) -> dict[str, Any]:
@@ -32,4 +35,5 @@ def member_capabilities(project: str, role: str) -> dict[str, Any]:
             "write": [s.name for s in sets if records_tool_name(s.name, "add") in names],
             "query": RECORDS_QUERY_TOOL in names,
         },
+        "notComputed": list(NOT_COMPUTED),
     }

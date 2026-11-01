@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.10.0
+**Version**: 7.11.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-01
 
@@ -322,14 +322,17 @@ pod's record tools):
 ```json
 {"kinds": ["read", "record"],
  "tools": ["glob", "grep", "read", "rec__query", "rec__tack_proposals__add", "rec__tack_proposals__update"],
- "records": {"write": ["tack_proposals"], "query": true}}
+ "records": {"write": ["tack_proposals"], "query": true},
+ "notComputed": ["mcp", "service"]}
 ```
 
 `kinds` is the distinct tool kinds (`read`, `write`, `exec`, `send`, `record`) of `tools`, the tool names the
 role holds; `records.write` names the sets it can add to and `records.query` says whether it holds
 `rec__query`. A role that denies `write` still lists `record` and its sets (`pod-records.spec.md`
 requirement 37). MCP and service tools are not listed: a server's tools are known only once it is
-started and a service's only once its secret resolves, and a `GET` does neither.
+started and a service's only once its secret resolves, and a `GET` does neither. `notComputed` is
+`["mcp", "service"]` on every entry, saying those parts were not worked out, so a missing `mcp__*` or
+`svc__*` tool is not read as a role that has none.
 A pod that is not dispatchable is `404`. A pod whose stored settings no longer validate is `500`
 with the error envelope naming the setting.
 
