@@ -24,9 +24,10 @@ MAX_POST_BODY_BYTES = 1024 * 1024
 class HttpExchange(BaseHTTPRequestHandler):
     """The request/response surface shared by every route. ``serve_token`` (a `run_serve`
     subclass attribute) empty means "disallow all auth" -- never an accidental unauthenticated
-    pass-through."""
+    pass-through. ``read_token`` empty means no read-scoped token exists."""
 
     serve_token: str = ""
+    read_token: str = ""
     dispatch_on: bool = False
     # Bounds every blocking socket read (request line, headers, body) so a
     # client that opens a connection and never finishes sending cannot pin a
@@ -67,14 +68,14 @@ class HttpExchange(BaseHTTPRequestHandler):
 
     def _send_refusal(self, exc: DocketError) -> None:
         """Answer a refused request by the kind of its error: not found, in conflict with the
-        state the request met, or unprocessable."""
+        state the request met, or unprocessable; a ``code`` the error carries goes on the wire."""
         if isinstance(exc, NotFound):
             status = 404
         elif isinstance(exc, Conflict):
             status = 409
         else:
             status = 422
-        self._send_json_error(exc.message, status)
+        self._send_json_error(exc.message, status, code=str(getattr(exc, "code", "")))
 
     def _read_body(self) -> bytes | None:
         """Read a POST body up to `MAX_POST_BODY_BYTES`, sending `413` and
