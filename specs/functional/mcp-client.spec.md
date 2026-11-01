@@ -364,6 +364,8 @@ This specification does NOT cover:
     unknown-key error. With isolation off, or no `launch`, the argv **MUST** be the server's own,
     unchanged. Under Docker (`docket setup sandbox backend docker`) the server binary must exist in
     the image.
+    A stdio server shares the turn's network, so under network `none` it reaches no TCP address,
+    loopback included.
 
 ## Interface Contracts
 

@@ -153,6 +153,8 @@ This specification does NOT cover:
     address **MUST** be refused (`refusal="service_not_allowed"`) unless the host is listed
     in `hosts` explicitly: being the `base_url` host is not enough. System proxy settings **MUST NOT**
     apply, since a proxy would move the connection past the check.
+    A service is how a lights-out pod, whose jail has network `none`, reaches a local HTTP API:
+    the call is docket's own, so the listed loopback host is reachable where a jailed child is not.
 30. A header name **MUST** be an HTTP token and a header value **MUST NOT** contain CR, LF or NUL; a
     header named `Host`, `Content-Length` or `Transfer-Encoding` **MUST** be refused. A violation is
     refused (`refusal="service_bad_request"`) before any socket is opened.
