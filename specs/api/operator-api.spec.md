@@ -52,7 +52,12 @@ It does NOT cover:
 ## Syntax
 
 Every route below requires `Authorization: Bearer <token>` (the token `docket start` prints or
-writes with `--token-file`); `401` comes before any other check. `<pod>` is a project id, validated
+writes with `--token-file`); `401` comes before any other check. `DOCKET_SERVE_READ_TOKEN`, when set,
+is a second Bearer token that may only read: it is allowed on every `GET` and `HEAD` route the serve
+token is allowed on, and on a `POST` route it is answered `403` with `code: read_scope` before the
+handler runs, so nothing is written. The read token has no file and is never printed; `docket start`
+refuses to start when it equals the serve token. `/status.json`, `/metrics` and `/health` stay open.
+`<pod>` is a project id, validated
 as a project id (a bad one is `400`). Bodies are JSON objects; a malformed body is `400`, a body
 over 1 MiB is `413`.
 
@@ -572,6 +577,7 @@ probe; the sweep ends the wait, nobody is asked.
 | `201` | a new task or a new pod |
 | `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` or an `updatedSince` of `GET /tasks/<pod>` (`code: bad_cursor`) that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables` of the wrong shape, a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
+| `403` | the read-scoped token (`DOCKET_SERVE_READ_TOKEN`) on a `POST` route (`code: read_scope`) |
 | `404` | no pod (checked before an `apply` body is read), no task, no escalation (`GET` or `POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting |
 | `413` | a request body over 1 MiB |
@@ -579,7 +585,9 @@ probe; the sweep ends the wait, nobody is asked.
 | `500` | `POST /pods` could not provision (the attempt is rolled back); `GET /pods/<p>` for a pod whose stored settings are invalid |
 
 `GET /tasks/<pod>` for a pod with no queue answers `200` with an empty list. Error bodies are
-`{"ok": false, "error": "<sentence>"}`, with the extra keys the examples show.
+`{"ok": false, "error": "<sentence>"}`, with the extra keys the examples show. A refusal that
+carries a stable `code` (a `DocketError` with a `code` attribute, or a route naming one) puts it on
+the wire as `"code"`, whichever route answers it.
 
 ## Validation
 
