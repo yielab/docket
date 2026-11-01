@@ -31,7 +31,7 @@ class TestChannelFor:
         with pytest.raises(RpcError) as refused:
             a2a_push.channel_for("demo", "task-abc", {"url": url})
 
-        assert refused.value.code == -32602
+        assert refused.value.rpc_code == -32602
 
     @pytest.mark.parametrize("field", ["token", "authentication"])
     def test_a_credential_field_is_refused_because_no_value_is_ever_stored(
@@ -40,7 +40,7 @@ class TestChannelFor:
         with pytest.raises(RpcError) as refused:
             a2a_push.channel_for("demo", "task-abc", {"url": "http://h/x", field: {"a": "b"}})
 
-        assert refused.value.code == -32602
+        assert refused.value.rpc_code == -32602
         assert field in refused.value.message
 
 

@@ -715,10 +715,12 @@ keeps no copy of it, and every surface prints from it.
    | `gate` | a pipeline `approval` gate fires before a hop | `approve_once`, `deny` | `deny` |
    | `check_changed` | a finished task's diff edits what checks it | `approve_once`, `deny` | `deny` |
    | `wait` | a `wait` step parked the task (`pod-dispatch.spec.md` "Wait steps") | `resume` | `block` |
+   | `turn` | a conversation task's hop finished a turn short of its `maxTurns` (item 17) | `reply` (content `{text: string}`), `close` | `deny` |
 
    `policy` and `onExpiry` are not fixed per kind: they are the autonomy table's row for the
    kind at the task's level (item 12), so the `onExpiry` column above is the L3 value, which is
-   also what a pause with no queued task gets.
+   also what a pause with no queued task gets. A `turn` is outside the table: nobody there ends
+   the conversation, so its `policy` and `onExpiry` are `deny` at every level.
 3. **Task link.** `TaskRecord.escalations` lists, oldest first, the id of every escalation opened
    for the task, and is absent while empty. It is the only trace of a pause the task keeps: a task
    holds no question, no approval token and no answer, and reads them from the records it lists.
@@ -900,6 +902,30 @@ keeps no copy of it, and every surface prints from it.
     and none of them carries `call`. `outward` is additive in `operator-v2`; a client that does
     not know it ignores it.
 
+17. **Turns (ADR 0037 decision 4).** A task created with `conversation: {maxTurns}`
+    (`operator-api.spec.md`) continues as an escalation of kind `turn`, not as a new verb.
+    `open_for_turn(task, step, answer, *, pod)` (`tasks/application/escalations.py`) opens it: the
+    record has the task, the step, `prompt` the turn's answer (redacted), `options` `reply` then
+    `close`, `requestedSchema` `{type: object, properties: {text: {type: string}}, required:
+    [text]}`, `policy` `deny`, `onExpiry` `deny` and `expiresAt` the pod's `approvalExpiryHours`
+    from now. It is listed on the task like any other and traced `escalation_asked`. Running the
+    turn that opens it (parking the hop, replay) is dispatch's, not this item's.
+    - `resolve` with `reply` and `{text}` screens the text, reopens the task `pending` (the one
+      status change, as a consult does) and leaves the re-run to the next claim; `appliedAt` stays
+      unset. A `reply` without a string `text` is `422`.
+    - `resolve` with `close` (it takes no content) moves the task `waiting_input` to `done` and
+      stamps the record applied at once. No other option is offered: `decline` and `cancel` are
+      `422`.
+    - `sweep_escalations` ends a `turn` past its `expiresAt` the same way as `close`: the task is
+      `done`, not `blocked`, because nobody spoke and the conversation is over; the record is
+      `expired`.
+    - A task cancelled while it waits stays `cancelled`; resolving its `turn` is `409`.
+    - A `resolve` of a record that no longer waits raises `EscalationNotPending`, whose `code` is
+      `escalation_not_pending` (`kernel/errors.py::DocketError.code`); `POST /escalations/<id>`
+      puts it on the wire beside `error`.
+    A client **MUST** ignore a kind it does not know (additive in `operator-v2`); one that renders
+    a `turn` takes the `message` from the record's `prompt`.
+
 ### Profile lines (ADR 0025 D2)
 
 1. When a dispatchable pod's effective profile (`security-gates.spec.md` "Profiles") is
@@ -955,7 +981,7 @@ class TaskView(BaseModel): ...         # id/pod/status/a2aState/reason/descripti
 class InboxView(BaseModel): ...        # needsYou (TaskView | EscalationView)/failed/doneSince/
                                         # running/next/escalations/decided
 
-EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed", "wait"]
+EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed", "wait", "turn"]
 class Resolution(BaseModel): ...       # optionId/content/by/channel/at/appliedAt
 class Escalation(BaseModel): ...       # requirement area 11's fields
 class EscalationAffordances(BaseModel): ...  # options/acceptsText/resolveUrl

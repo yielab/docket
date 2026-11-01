@@ -19,6 +19,7 @@ from docket.tasks.domain.state import Status
 _GATE_LABELS = ("pass", "fail", "needs_human")
 TASK_STATUSES = frozenset(status.value for status in Status)
 _REF_MAX = 200
+MAX_CONVERSATION_TURNS = 20
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,15 @@ class TaskRestrictions(BaseModel):
     policies: list[dict[str, Any]] | None = Field(None, exclude_if=is_none)
 
 
+class TaskConversation(BaseModel):
+    """A task that continues turn by turn: at most ``maxTurns`` turns, each followed by a ``turn``
+    escalation until the limit."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    max_turns: StrictInt = Field(alias="maxTurns", ge=1, le=MAX_CONVERSATION_TURNS)
+
+
 class TaskOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -75,6 +85,7 @@ class TaskOptions(BaseModel):
     restrictions: TaskRestrictions | None = None
     autonomy: Literal["L3", "L4", "L5"] | None = None
     variables: dict[Annotated[StrictStr, Field(min_length=1)], StrictStr] | None = None
+    conversation: TaskConversation | None = None
 
 
 def _describe(exc: ValidationError) -> str:
@@ -124,6 +135,7 @@ def validate_task_options(
     restrictions: Any = None,
     autonomy: Any = None,
     variables: Any = None,
+    conversation: Any = None,
 ) -> TaskOptions:
     """Validate the raw values (``None`` is unset) against *rules*; raises TaskOptionsError, or its
     subclass TaskRestrictionError for a restriction that would widen."""
@@ -138,6 +150,7 @@ def validate_task_options(
         "restrictions": restrictions,
         "autonomy": autonomy,
         "variables": variables,
+        "conversation": conversation,
     }
     try:
         options = TaskOptions.model_validate({k: v for k, v in raw.items() if v is not None})

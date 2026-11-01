@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.http import get as _get
+from tests.support.pods import bind_one_step_pipeline, seed_pod_at_codebase, seed_pod_isolation_off
 from tests.support.pods import seed_pod as _seed_pod
-from tests.support.pods import seed_pod_at_codebase, seed_pod_isolation_off
 
 from docket.hops.application import compose as _compose
 from docket.hops.application import sweep as _sweep
@@ -380,6 +380,76 @@ class TestAddressableTask:
         with _seed_pod(tmp_path), _live_server() as (url, _token):
             status, _body = _get(f"{url}/tasks/demo/task-x")
             assert status == 401
+
+
+class TestConversationTask:
+    def test_a_one_step_pod_takes_a_conversation_and_answers_it_with_its_turns(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            bind_one_step_pipeline("demo")
+            status, created = _post(
+                f"{url}/tasks/demo", {"description": "chat", "conversation": {"maxTurns": 3}}, token
+            )
+            assert status == 201
+            _status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+            assert record["conversation"] == {"maxTurns": 3, "turns": 0}
+            _status, listed = _get(f"{url}/tasks/demo", token)
+            assert listed["tasks"][0]["conversation"] == {"maxTurns": 3, "turns": 0}
+
+    def test_the_turns_are_the_finished_hops_and_are_not_read_back(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            bind_one_step_pipeline("demo")
+            _status, created = _post(
+                f"{url}/tasks/demo", {"description": "chat", "conversation": {"maxTurns": 3}}, token
+            )
+            TaskRepository.for_pod("demo").update(
+                created["task"], lambda r: r.hops.append(HopResult(role="lead", ok=True)) or True
+            )
+            _status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+            assert record["conversation"] == {"maxTurns": 3, "turns": 1}
+            stored = TaskRepository.for_pod("demo").get(created["task"])
+            assert stored is not None and stored.conversation is not None
+            assert stored.conversation.max_turns == 3
+
+    def test_a_pipeline_of_more_than_one_step_is_refused_and_nothing_is_enqueued(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            status, body = _post(
+                f"{url}/tasks/demo", {"description": "chat", "conversation": {"maxTurns": 3}}, token
+            )
+            assert status == 400
+            assert body["code"] == "conversation_needs_one_step"
+            assert _queue() == []
+
+    def test_a_wrongly_shaped_conversation_is_400(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            bind_one_step_pipeline("demo")
+            for conversation in ({"maxTurns": 0}, {"maxTurns": 21}, {"maxTurns": "3"}, {}, 3):
+                status, _body = _post(
+                    f"{url}/tasks/demo",
+                    {"description": "x", "conversation": conversation},
+                    token,
+                )
+                assert status == 400, conversation
+            assert _queue() == []
+
+    def test_an_unknown_pod_is_still_404_and_an_unknown_pipeline_is_left_to_the_claim(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            body = {"description": "x", "conversation": {"maxTurns": 2}}
+            status, _body = _post(f"{url}/tasks/nopod", body, token)
+            assert status == 404
+            status, _body = _post(f"{url}/tasks/demo", {**body, "pipeline": "nope"}, token)
+            assert status == 201
+
+    def test_a_task_without_one_has_no_conversation_key(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path), _live_server() as (url, token):
+            _status, created = _post(f"{url}/tasks/demo", {"description": "plain"}, token)
+            _status, record = _get(f"{url}/tasks/demo/{created['task']}", token)
+            assert "conversation" not in record
 
 
 def _app_repo(root: Path) -> Path:

@@ -28,6 +28,8 @@ class EscalationNotPending(Conflict):
     """The pause no longer waits. *already_so* is true when it ended the way the caller asked,
     which a repeated command should read as a warning and not as a failure."""
 
+    code = "escalation_not_pending"
+
     def __init__(self, message: str, hint: str = "", *, already_so: bool = False) -> None:
         super().__init__(message, hint)
         self.already_so = already_so

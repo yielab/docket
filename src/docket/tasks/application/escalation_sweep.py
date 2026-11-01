@@ -4,7 +4,7 @@ Each ``pending`` escalation past its ``expiresAt`` ends the way its own ``onExpi
 denies the approval it names (the task it gated fails ``approval_denied`` through the follow-up the
 denial always ran), ``block`` blocks the task waiting on its question. A question never fails a
 task, so a ``deny`` that names no approval blocks, and an approval fails closed, so a ``block``
-that names one denies. A pending escalation whose pause already ended (its task was cancelled) is
+that names one denies. A ``turn`` is closed instead: its conversation task is ``done``, since nobody spoke. A pending escalation whose pause already ended (its task was cancelled) is
 settled ``expired`` without side effects, and unconsumed pre-grants past their deadline are
 denied. A second sweep over the same pauses adds nothing. See operator-loop.spec.md "Escalations".
 A ``wait`` is ended by ``sweep_waits`` instead (pod-dispatch.spec.md "Wait steps"): its deadline
@@ -170,6 +170,11 @@ def sweep_escalations(now: str | None = None) -> int:
             continue
         if not pause_is_live(record):
             settle_escalation(record.id, "expired")
+            continue
+        if record.kind == "turn":
+            if _escalations.close_turn(record, "conversation expired: nobody replied"):
+                _escalation_expiry.expire(record.id)
+                ended += 1
             continue
         token = tokens.get(record.id, "")
         if (_deny if record.on_expiry == "deny" else _block)(record, token):

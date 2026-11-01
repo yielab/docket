@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -20,3 +21,8 @@ def test_v11_files_exist_and_check_passes() -> None:
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_the_published_v2_inbox_schema_names_the_turn_kind() -> None:
+    schema = json.loads((ROOT / "docs/contracts/operator-v2/inbox.schema.json").read_text())
+    assert "turn" in schema["$defs"]["EscalationView"]["properties"]["kind"]["enum"]
