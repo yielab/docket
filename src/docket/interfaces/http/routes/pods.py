@@ -1,4 +1,5 @@
-"""Reads of the pods: ``GET /pods``, ``GET /pods/<pod>`` and ``GET /pods/<pod>/corrections``."""
+"""Reads of the pods: ``GET /pods``, ``GET /pods/<pod>``, ``GET /pods/<pod>/corrections`` and
+``GET /pods/<pod>/memory``."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel.errors import DispatchError
 from docket.tasks.application import corrections as _corrections
 from docket.tasks.application import queue as _queue
+from docket.teams import memory as _pod_memory
 from docket.teams import pod_settings as _pod_settings
 
 
@@ -52,3 +54,14 @@ def get_pod_corrections(h: HttpExchange, project: str) -> None:
     next_cursor = _corrections.utc_z(str(records[-1].get("ts", "")) if records else since)
     body = json.dumps({"corrections": records, "next": next_cursor}).encode("utf-8")
     h._send(body, "application/json")
+
+
+def get_pod_memory(h: HttpExchange, project: str) -> None:
+    """``GET /pods/<pod>/memory``: the accepted entries, oldest first (operator-api.spec.md)."""
+    if h._reject_bad_project_id(project):
+        return
+    if project not in _queue.dispatchable_pods():
+        h._send_json_error(f"no pod '{project}'", 404)
+        return
+    entries = [e.to_dict() for e in _pod_memory.list_entries(project, status="accepted")]
+    h._send(json.dumps({"entries": entries}).encode("utf-8"), "application/json")
