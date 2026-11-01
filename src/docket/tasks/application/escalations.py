@@ -57,10 +57,12 @@ __all__ = [
     "approval_opened",
     "approval_refused",
     "attach",
+    "close_turn",
     "decided_approval",
     "decided_consult",
     "open_for_approval",
     "open_for_question",
+    "open_for_turn",
     "open_for_wait",
     "resolve",
     "wake_wait",
@@ -74,6 +76,13 @@ _DENY = "deny"
 # its alias.
 _CANCEL = "cancel"
 _RESUME = Option(id="resume", label="Resume", description="End the wait now and run the next step.")
+_REPLY = Option(id="reply", label="Reply", description="Send the next message of the conversation.")
+_CLOSE = Option(id="close", label="Close", description="End the conversation now.")
+_TURN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"text": {"type": "string"}},
+    "required": ["text"],
+}
 # How a `wait` ends: the step after it runs, or its probe's ceiling passed.
 WAIT_RESUMED = "resumed"
 WAIT_TIMEOUT = "timeout"
@@ -265,6 +274,48 @@ def open_for_wait(*, pod: str, task_id: str, step: str, prompt: str, due_at: str
     )
 
 
+def open_for_turn(task: TaskRecord, step: str, answer: str, *, pod: str) -> Escalation:
+    """Open the ``turn`` escalation of the conversation *task* after a turn of *step* that ended
+    with *answer*: ``reply`` with a text, or ``close``. Nobody there ends the conversation at the
+    pod's approval expiry, so the record's ``policy`` and ``onExpiry`` are ``deny`` at every level."""
+    hours = load_pod_settings(pod).approval_expiry_hours
+    return _store(
+        Escalation(
+            id=new_escalation_id(),
+            task=task.id,
+            pod=pod,
+            step=step,
+            role=task.hops[-1].role if task.hops else "",
+            kind="turn",
+            caused_by=step,
+            prompt=_redact(answer),
+            options=[_REPLY, _CLOSE],
+            requested_schema=dict(_TURN_SCHEMA),
+            asked_at=_clock.iso(),
+            expires_at=(_clock.now() + _dt.timedelta(hours=hours)).isoformat(),
+            on_expiry="deny",
+            policy="deny",
+            level=_level_of(pod, task.id),
+        )
+    )
+
+
+def close_turn(record: Escalation, reason: str) -> bool:
+    """End the conversation waiting on the ``turn`` *record*: its task is ``done``. Whether this
+    call ended it; a task no longer waiting on the record (cancelled, answered) is left alone."""
+    closed: list[bool] = []
+
+    def _close(task: TaskRecord) -> bool:
+        if task.status != _state.Status.waiting_input or record.id not in task.escalations:
+            return False
+        _transitions.apply_to_task(task, _state.Status.done, reason=reason)
+        closed.append(True)
+        return True
+
+    TaskRepository.for_pod(record.pod).update(record.task, _close)
+    return bool(closed)
+
+
 def wake_wait(record: Escalation, outcome: str) -> bool:
     """Wake the task waiting on the ``wait`` escalation *record*: stamp *outcome* and reopen it
     ``pending``, or block it ``wait_expired`` on a ``timeout`` with no route. Whether this call
@@ -403,7 +454,7 @@ def _checked_content(
 ) -> dict[str, Any] | None:
     """*content* as *escalation* accepts it: a decline carries none, an approval a reason, a
     question what its schema allows."""
-    if option == _DECLINE.id:
+    if option in (_DECLINE.id, _CLOSE.id):
         return None
     if escalation.kind in _APPROVAL_KINDS:
         _reason_of(content)
@@ -505,6 +556,20 @@ def _receive_wait(escalation: Escalation) -> None:
         )
 
 
+def _receive_close(escalation: Escalation, by: str, channel: str) -> None:
+    """End the conversation the ``turn`` *escalation* waits on. A task that no longer waits on it
+    is ``EscalationNotPending``."""
+    if not close_turn(escalation, "conversation closed"):
+        raise EscalationNotPending(
+            f"task {escalation.task!r} is not waiting on escalation {escalation.id}"
+        )
+    audit_log(
+        "task.answer",
+        f"project={escalation.pod} task={escalation.task} step={escalation.step} "
+        f"channel={channel} actor={by} action=close",
+    )
+
+
 def _wake_waiting_turn(
     token: str, option: str | None, *, project: str, channel: str, content: dict[str, Any] | None
 ) -> None:
@@ -584,6 +649,8 @@ def resolve(
         _wake_waiting_turn(token, option, project=escalation.pod, channel=channel, content=body)
     elif escalation.kind == "wait":
         _receive_wait(escalation)
+    elif escalation.kind == "turn" and option == _CLOSE.id:
+        _receive_close(escalation, by, channel)
     else:
         _receive_question(escalation, option, body, by, channel)
         applied = False

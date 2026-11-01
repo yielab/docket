@@ -6,6 +6,7 @@ import json
 
 from docket.hops.application import interruptions as _interruptions
 from docket.interfaces.http.exchange import HttpExchange
+from docket.kernel.errors import Conflict
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
@@ -32,10 +33,11 @@ def post_task_cancel(h: HttpExchange, rest: str) -> None:
         h._send_json_error(str(exc), 404)
         return
     if not outcome.cancelled:
-        h._send_json_error(
-            f"task {task_id} is {outcome.status}; nothing to cancel",
-            409,
-            code="already_terminal" if outcome.terminal else "not_cancellable",
+        h._send_refusal(
+            Conflict(
+                f"task {task_id} is {outcome.status}; nothing to cancel",
+                code="already_terminal" if outcome.terminal else "not_cancellable",
+            )
         )
         return
     h._send_json({"ok": True, "task": task_id, "status": outcome.status})

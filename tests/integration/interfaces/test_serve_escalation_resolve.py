@@ -19,6 +19,7 @@ from tests.support.escalations import (
     approval_escalation,
     consult_escalation,
     input_escalation,
+    turn_escalation,
 )
 from tests.support.http import get as _get
 from tests.support.http import post as _post
@@ -130,8 +131,28 @@ class TestResolveRoute:
         )
 
         assert (status, body["ok"]) == (409, False)
+        assert body["code"] == "escalation_not_pending"
         assert "apr-" not in body["error"]
         assert read_escalation(escalation.id) == settled
+
+    def test_a_turn_is_replied_to_then_closed_and_a_repeat_is_a_conflict(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        escalation = turn_escalation()
+
+        status, body = _post(
+            f"{url}/escalations/{escalation.id}",
+            {"optionId": "reply", "content": {"text": "go on"}},
+            token=token,
+        )
+        assert (status, body["state"], body["kind"]) == (200, "resolved", "turn")
+        assert stored_task(PROJECT, escalation.task).status == "pending"
+
+        status, body = _post(
+            f"{url}/escalations/{escalation.id}", {"optionId": "close"}, token=token
+        )
+        assert (status, body["code"]) == (409, "escalation_not_pending")
 
     def test_an_unknown_escalation_is_not_found(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

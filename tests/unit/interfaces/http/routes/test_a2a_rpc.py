@@ -33,13 +33,13 @@ class TestRefusals:
     ) -> None:
         error = a2a_rpc.refusal(raised)
 
-        assert (error.code, error.data) == (code, {"reason": reason})
+        assert (error.rpc_code, error.data) == (code, {"reason": reason})
         assert error.message == raised.message
 
     def test_an_error_nobody_mapped_hides_its_text(self) -> None:
         error = a2a_rpc.refusal(DocketError("token apr-secret leaked"))
 
-        assert error.code == -32603
+        assert error.rpc_code == -32603
         assert "apr-secret" not in json.dumps(a2a_rpc.failure(1, error))
 
 
@@ -74,7 +74,7 @@ class TestEnvelope:
         with pytest.raises(a2a_rpc.RpcError) as refused:
             a2a_rpc.parse_request(body)
 
-        assert refused.value.code == -32600
+        assert refused.value.rpc_code == -32600
 
     def test_params_that_are_not_an_object_are_invalid_params(self) -> None:
         body = {"jsonrpc": "2.0", "id": 1, "method": "tasks/get", "params": [1]}
@@ -82,7 +82,7 @@ class TestEnvelope:
         with pytest.raises(a2a_rpc.RpcError) as refused:
             a2a_rpc.parse_request(body)
 
-        assert refused.value.code == -32602
+        assert refused.value.rpc_code == -32602
 
     def test_a_request_without_params_has_an_empty_object(self) -> None:
         request = a2a_rpc.parse_request({"jsonrpc": "2.0", "id": None, "method": "tasks/get"})

@@ -14,12 +14,17 @@ from pathlib import Path
 
 
 class DocketError(Exception):
-    """A failure with something to tell the operator: what went wrong, and optionally what to do."""
+    """A failure with something to tell the operator: what went wrong, and optionally what to do.
+    ``code`` is a stable machine-readable name for it, empty when the kind says enough."""
 
-    def __init__(self, message: str, hint: str = "") -> None:
+    code: str = ""
+
+    def __init__(self, message: str, hint: str = "", *, code: str = "") -> None:
         super().__init__(message)
         self.message = message
         self.hint = hint
+        if code:
+            self.code = code
 
 
 class InvalidInput(DocketError, ValueError):
