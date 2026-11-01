@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 5.4.0
+**Version**: 5.5.0
 **Status**: Stable
 **Last Updated**: 2026-11-01
 
@@ -86,7 +86,7 @@ added in minor versions.
 ```json
 {
   "apiVersion": "6",
-  "features":   ["podMemory"],
+  "features":   ["taskCurrent", "taskCursor", "podMemory"],
   "timestamp":  "2026-06-25T10:00:00Z",
   "channels":   ["telegram"],
   "agents": [
@@ -112,7 +112,7 @@ added in minor versions.
 | Field | Type | Notes |
 |---|---|---|
 | `apiVersion` | string | Always `SERVE_API_VERSION`, currently `"6"`. |
-| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. Currently `["podMemory"]`. |
+| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. Currently `["taskCurrent", "taskCursor", "podMemory"]`. |
 | `channels` | string[] | Distinct channel names present in `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here**: a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
@@ -181,7 +181,7 @@ thread shared with `/health`.
 Liveness check. Always returns HTTP 200 while the process is alive.
 
 ```json
-{"status":"ok","apiVersion":"6","features":["podMemory"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
+{"status":"ok","apiVersion":"6","features":["taskCurrent", "taskCursor", "podMemory"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
 ```
 
 `apiVersion` is `SERVE_API_VERSION` and `features` is the list `/status.json` carries (the same names). `dispatch.on` is whether the server runs with `--dispatch`,
@@ -717,7 +717,7 @@ curl -s http://127.0.0.1:7331/metrics
 
 ```bash
 curl -s http://127.0.0.1:7331/health
-# {"status":"ok","apiVersion":"6","features":["podMemory"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
+# {"status":"ok","apiVersion":"6","features":["taskCurrent", "taskCursor", "podMemory"],"dispatch":{"on":false,"inflight":[],"stopping":false,"workers":4}}
 ```
 
 ### Trigger a dispatch and poll its run (curl)

@@ -23,7 +23,7 @@ fake_home = _support_home.fake_home
 class TestRenderHealth:
     def test_health_body(self, fake_home: Path) -> None:
         body = json.loads(http_server.render_health())
-        assert set(body) == {"status", "apiVersion", "dispatch"}
+        assert set(body) == {"status", "apiVersion", "features", "dispatch"}
         assert body["status"] == "ok"
         assert body["apiVersion"] == health.SERVE_API_VERSION
 
