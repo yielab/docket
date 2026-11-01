@@ -207,6 +207,11 @@ class Home:
     # unattended way out to the network.
     fetch_allowed_domains: tuple[str, ...] = ()
 
+    # `docket start`'s bearer tokens: the serve token (empty: a random one per run) and a second
+    # token that may only read (empty: none).
+    serve_token: str = ""
+    serve_read_token: str = ""
+
     @classmethod
     def from_environ(cls, env: Mapping[str, str]) -> Home:
         return cls(
@@ -259,6 +264,8 @@ class Home:
             export_flush_timeout_s=_float(env, "EXPORT_FLUSH_TIMEOUT_S", 5.0),
             mcp_client_timeout_s=_float(env, "MCP_CLIENT_TIMEOUT_S", 10),
             mcp_client_max_timeout_s=_float(env, "MCP_CLIENT_MAX_TIMEOUT_S", 60),
+            serve_token=env.get("DOCKET_SERVE_TOKEN", ""),
+            serve_read_token=env.get("DOCKET_SERVE_READ_TOKEN", ""),
             fetch_max_response_bytes=_int(env, "FETCH_MAX_RESPONSE_BYTES", 200000),
             fetch_timeout_s=_float(env, "FETCH_TIMEOUT_S", 15),
             fleet_file_override=_optional_path(env, "FLEET_FILE"),

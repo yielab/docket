@@ -642,6 +642,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "unset (random)",
     ),
     (
+        ("DOCKET_SERVE_READ_TOKEN",),
+        "A second bearer token for `docket start` that may only read (`GET`, `HEAD`); it must differ from the serve token",
+        "unset (no read-only token)",
+    ),
+    (
         ("DOCKET_LLM_BASE_URL",),
         "Process-wide override that points every model at one endpoint (local dev, tests without stored config)",
         "unset",
