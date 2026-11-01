@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from docket.hops.application import executor as _executor
+from docket.hops.application import steps as _steps
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
@@ -15,6 +17,7 @@ from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import request as _request
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.state import Status
+from docket.teams.settings import pod_task_list_path
 
 # POST /tasks body name -> enqueue_task_once option, for the addressable-task fields.
 _TASK_OPTION_FIELDS: tuple[tuple[str, str], ...] = (
@@ -28,7 +31,23 @@ _TASK_OPTION_FIELDS: tuple[tuple[str, str], ...] = (
     ("restrictions", "restrictions"),
     ("autonomy", "autonomy"),
     ("variables", "variables"),
+    ("conversation", "conversation"),
 )
+
+
+def _conversation_steps(project: str, body: dict[str, Any]) -> int | None:
+    """The runnable steps a conversation task here would run; ``None`` for any other body, and
+    while that is unknown (no pod, bad name), which the enqueue and the claim refuse themselves."""
+    if "conversation" not in body or not pod_task_list_path(project).parent.is_dir():
+        return None
+    spec, name = None, body.get("pipeline")
+    try:
+        if isinstance(name, str) and name:
+            task, base = _task.TaskRecord(description="-", pipeline=name), _steps.effective_pipeline
+            spec = _steps._task_pipeline(project, task, base(project, None))[0]
+        return len(_executor.resolve_pipeline_steps(project, spec)[0])
+    except DispatchError:
+        return None
 
 
 def post_task(h: HttpExchange, project: str) -> None:
@@ -85,6 +104,11 @@ def post_task(h: HttpExchange, project: str) -> None:
             return
         request = request_raw
 
+    steps = _conversation_steps(project, task_body)
+    if steps not in (None, 1):
+        msg = f"a conversation task needs a pipeline of one step; this one has {steps}"
+        h._send_json_error(msg, 400, code="conversation_needs_one_step")
+        return
     options = {key: task_body.get(name) for key, name in _TASK_OPTION_FIELDS if name in task_body}
     try:
         task, created = _queue.enqueue_task_once(
