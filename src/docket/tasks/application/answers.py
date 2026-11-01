@@ -1,9 +1,10 @@
 """What a person told a task, read from the escalations it lists.
 
 A task keeps no copy of an answer. ``answers_of`` is every resolved question as the entry a hop's
-prompt renders; ``consult_note`` is the answer to a parked consultation the re-run hop of its step
-ends its message with, until a hop of that step has been persisted (``consult_note_delivered``
-stamps the record ``applied_at``). Every function takes the task record and reads the store.
+prompt renders; ``consult_note`` is the answer to a parked consultation, or the reply to a
+conversation's ``turn``, the re-run hop of its step ends its message with, until a hop of that step
+has been persisted (``consult_note_delivered`` stamps the record ``applied_at``). Every function
+takes the task record and reads the store.
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ from docket.tasks.domain.task import TaskRecord
 __all__ = ["answers_of", "consult_note", "consult_note_delivered"]
 
 _DECLINE = "decline"
+_NOTED_KINDS = ("consult", "turn")
+_REPLY = "reply"
 
 
 def _listed(task: TaskRecord) -> list[Escalation]:
@@ -54,7 +57,7 @@ def _undelivered(task: TaskRecord, step_id: str) -> list[Escalation]:
     return [
         e
         for e in _listed(task)
-        if e.kind == "consult"
+        if e.kind in _NOTED_KINDS
         and e.state == "resolved"
         and e.step == step_id
         and e.resolution is not None
@@ -63,14 +66,17 @@ def _undelivered(task: TaskRecord, step_id: str) -> list[Escalation]:
 
 
 def consult_note(task: TaskRecord, step_id: str) -> str:
-    """The operator's answer to *step_id*'s parked consultation, as a trailing message block
-    (empty when the step has none waiting to be heard)."""
+    """The operator's answer to *step_id*'s parked consultation, or the reply to its conversation's
+    last turn, as a trailing message block (empty when the step has none waiting to be heard)."""
     waiting = _undelivered(task, step_id)
     if not waiting:
         return ""
     e = waiting[-1]
     resolution = e.resolution
     assert resolution is not None
+    if e.kind == "turn":
+        text = str((resolution.content or {}).get("text", ""))
+        return f"\n\nThe operator replied:\n{text}\n" if resolution.option_id == _REPLY else ""
     declined = resolution.option_id == _DECLINE
     answer = AnswerResultV11(
         action="decline" if declined else "accept",

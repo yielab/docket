@@ -1030,6 +1030,30 @@ dispatches the queue that already exists and is unchanged.
    neither in `needsYou` nor in `running` (its escalation is under `escalations`), and its
    `a2aState` is `WORKING` (operator-loop.spec.md areas 1 and 5).
 
+### A conversation task (ADR 0037)
+
+A task created with `conversation: {maxTurns}` (`operator-api.spec.md`) runs its one step turn by
+turn. A turn is one hop of that step, with its own `hop_finished` and `usage`.
+
+1. **A turn that continues.** When a turn's hop succeeds (and passes its gates) and the task has
+   had fewer than `maxTurns` turns, dispatch MUST persist the hop with `parked: true`, so the replay
+   of the hop history re-enters the same step; open an escalation of kind `turn` whose `prompt` is
+   the hop's answer (`operator-loop.spec.md` area 11 item 17); and end the claim `waiting_input`.
+   A turn that is gated before it reaches that point is not a turn that continues.
+2. **The turn that ends it.** The turn that makes the task's hops `maxTurns` MUST NOT be parked and
+   MUST open no escalation: the task is `done`, and the answer of its last hop is the conversation's
+   final answer.
+3. **The reply is the next turn's note.** The re-run of the step MUST end its message with the text
+   of the resolved `turn` escalation's `reply` (the same path that carries a consult's answer,
+   `consult_note`), and the record MUST be stamped applied once a hop of the step is persisted. The
+   turns before it come from the step's durable history (`session-history.spec.md`), not from the
+   message.
+4. **The token limit.** A conversation task with at least one turn whose `maxTokens` is spent
+   before a turn MUST end `done`, not `failed` with `failureKind: "budget"`. A task with no turn
+   keeps the failure.
+5. **No other task is changed.** A task without `conversation` advances on a successful hop as
+   before.
+
 ### Task brief (ADR 0016)
 
 1. **Parsing.** `parse_brief(text)` reads the **last** fenced ` ```json ` block in *text* and, only

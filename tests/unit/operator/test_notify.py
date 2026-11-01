@@ -19,6 +19,7 @@ from docket.kernel.operator_contract import (
     EscalationAffordances,
     EscalationView,
     InboxView,
+    Option,
     QuestionV11,
     Resolution,
     TaskView,
@@ -169,6 +170,40 @@ def _decided(*, id: str = "esc-0123456789ab", level: str = "L5") -> EscalationVi
         resolution=Resolution(option_id="deny", by="policy", channel="policy", at="2026-09-28Z"),
         affordances=EscalationAffordances(options=[], accepts_text=False, resolve_url=f"/{id}"),
     )
+
+
+def _turn() -> EscalationView:
+    """A pending `turn` escalation of a conversation task, its prompt the model's answer."""
+    return _approval(task="t1").model_copy(
+        update={
+            "kind": "turn",
+            "prompt": "the model's answer",
+            "options": [
+                Option(id="reply", label="Reply", description="x"),
+                Option(id="close", label="Close", description="x"),
+            ],
+        }
+    )
+
+
+class TestTurnEvents:
+    def test_a_turn_is_heard_as_input_required_by_a_needs_you_channel(self) -> None:
+        events, _snapshot = _notify.diff_events(
+            {}, InboxView(needs_you=[_turn()]), now="2026-09-28T00:00:00Z"
+        )
+
+        assert [e.kind for e in events] == ["task.input_required"]
+        needs_you = types.SimpleNamespace(on=["needs_you"])
+        assert _notify._matches_on(needs_you, events[0].kind) is True
+
+    def test_the_answer_is_withheld_below_conversation_and_the_option_ids_are_not(self) -> None:
+        minimal = _notify.render_data(_turn(), "minimal")
+        full = _notify.render_data(_turn(), "conversation")
+
+        assert "question" not in minimal and "the model's answer" not in repr(minimal)
+        assert [o["id"] for o in minimal["options"]] == ["reply", "close"]
+        assert full["question"] == "the model's answer"
+        assert full["kind"] == "turn"
 
 
 class TestDecidedEvents:

@@ -321,6 +321,27 @@ def test_task_token_decision(left: int | None, kind: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("failure_kind", "conversation", "turns", "ends"),
+    [
+        ("budget", True, 1, True),
+        ("budget", True, 0, False),
+        ("budget", False, 3, False),
+        ("needs_human", True, 2, False),
+        ("", True, 2, False),
+    ],
+)
+def test_only_a_conversation_that_answered_ends_on_the_token_budget(
+    failure_kind: str, conversation: bool, turns: int, ends: bool
+) -> None:
+    assert (
+        _d.conversation_ends_on_budget(
+            failure_kind=failure_kind, conversation=conversation, turns_done=turns
+        )
+        is ends
+    )
+
+
+@pytest.mark.parametrize(
     ("cap", "spent", "estimated", "kind", "reason"),
     [
         (0.0, 99.0, False, "advance", ""),
