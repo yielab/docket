@@ -700,6 +700,10 @@ The command writes `config/docket-mcp-servers.json`. Its tools appear in a turn 
     top-level key.
 - **Webhooks.** Use `POST /dispatch/<project>` with the `docket start` bearer token. Set
   `DOCKET_SERVE_TOKEN` to make that token stable.
+- **A read-only token.** `DOCKET_SERVE_READ_TOKEN` is a second bearer token that may only read: `GET`
+  and `HEAD` answer as for the serve token, and any `POST` answers `403` with `code: read_scope`.
+  `docket start` refuses to start when it equals the serve token. It has no token file and is
+  never printed.
 - **Telegram.** `docket setup notify bind <p>-lead` binds a chat. It writes `fleet.json` `bindings` and
   `docket-conversations.json`.
 - **Nobody watching: the `lights-out` profile.** `docket setup profile lights-out` (every pod) or

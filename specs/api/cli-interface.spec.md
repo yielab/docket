@@ -982,6 +982,7 @@ sets:
 | `DOCKET_NO_TRACE` | `1` disables trace-store writes | unset |
 | `DOCKET_NO_HINTS` | `1` silences every `→ Next:` line | unset |
 | `DOCKET_SERVE_TOKEN` | Fix `docket start`'s Bearer token instead of generating one | unset |
+| `DOCKET_SERVE_READ_TOKEN` | A second Bearer token for `docket start` that may only read (`GET`/`HEAD`); it must differ from the serve token | unset |
 | `NO_COLOR` | Any value selects plain mode (The console voice) | unset |
 
 `DOCKET_APPROVAL_MODE` is not an environment variable despite its name: it is a key of the `env`
