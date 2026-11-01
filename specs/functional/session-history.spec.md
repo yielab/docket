@@ -1,9 +1,9 @@
 # Session History Specification
 
-**Version**: 1.10.0
+**Version**: 1.10.1
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-11-01
 
 ## Purpose
 

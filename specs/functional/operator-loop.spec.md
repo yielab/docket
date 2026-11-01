@@ -1,9 +1,9 @@
 # Operator Loop Specification
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
