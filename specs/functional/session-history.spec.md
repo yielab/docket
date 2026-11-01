@@ -68,6 +68,9 @@ This specification does NOT cover:
    output, cached and cache-write tokens, plus a `turns` count of the appends that carried usage).
 8. Appending to the same session key concurrently **MUST NOT** be able to silently drop either
    append's messages.
+9. The turns of a conversation task (`pod-dispatch.spec.md` "A conversation task") share the key of
+   its one step, so each turn's request carries the user and assistant messages of the turns before
+   it.
 
 ### Compaction and atomicity
 

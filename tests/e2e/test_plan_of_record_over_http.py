@@ -232,3 +232,107 @@ def test_a_task_that_asks_for_wider_permissions_is_refused(
     enqueued = [r for r in oracles.audit_rows(w) if r["action"] == "task.enqueue"]
     assert [created["task"] in r["detail"] for r in enqueued] == [True]
     assert model.requests == []
+
+
+CHAT = "name: chat\nsteps:\n  - chat: lead\n"
+
+
+def _chat_world(world: Callable[..., World], model: FakeModel) -> World:
+    w = world(model)
+    w.make_pod(CHAT)
+    w.docket("pod", "set", "pipeline", str(w.pipeline))
+    return w
+
+
+def _turn_over_http(w: World, svc: Service, task_id: str, turns: int) -> dict[str, Any]:
+    """Wait until *turns* hops are on the task and it is waiting for a reply; the task as served."""
+
+    def parked() -> bool:
+        _, shown = svc.get(f"/tasks/{w.pod}/{task_id}")
+        return shown["status"] == "waiting_input" and len(shown["hops"]) == turns
+
+    w.wait_for(parked, 30, f"turn {turns} to wait for a reply")
+    _, shown = svc.get(f"/tasks/{w.pod}/{task_id}")
+    assert isinstance(shown, dict)
+    return shown
+
+
+def _reply_over_http(w: World, svc: Service, shown: dict[str, Any], text: str) -> None:
+    status, answered = svc.post(
+        f"/escalations/{shown['escalations'][-1]}",
+        {"optionId": "reply", "content": {"text": text}, "actor": "board"},
+    )
+    assert (status, answered["state"]) == (200, "resolved")
+    assert svc.post(f"/dispatch/{w.pod}")[0] == 200
+
+
+def test_a_three_turn_conversation_is_driven_by_replies_over_http(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(script={"lead": [say("one"), say("two"), say("three")]})
+    w = _chat_world(world, model)
+
+    with w.service() as svc:
+        status, created = svc.post(
+            f"/tasks/{w.pod}", {"description": "talk it over", "conversation": {"maxTurns": 3}}
+        )
+        assert (status, created["status"]) == (201, "pending")
+        task_id = str(created["task"])
+        statuses = ["pending"]
+
+        first = _turn_over_http(w, svc, task_id, 1)
+        statuses.append(first["status"])
+        assert first["conversation"] == {"maxTurns": 3, "turns": 1}
+        _, pending = svc.get(f"/escalations/{first['escalations'][-1]}")
+        assert (pending["kind"], pending["prompt"], pending["state"]) == ("turn", "one", "pending")
+        assert [o["id"] for o in pending["options"]] == ["reply", "close"]
+        _reply_over_http(w, svc, first, "and the second?")
+
+        second = _turn_over_http(w, svc, task_id, 2)
+        statuses.append(second["status"])
+        _reply_over_http(w, svc, second, "and the third?")
+
+        done = _wait_for_status(w, svc, task_id, "done")
+        statuses.append(done["status"])
+        stale = second["escalations"][-1]
+        late_status, late = svc.post(
+            f"/escalations/{stale}", {"optionId": "reply", "content": {"text": "x"}}
+        )
+
+    assert statuses == ["pending", "waiting_input", "waiting_input", "done"]
+    assert done["conversation"] == {"maxTurns": 3, "turns": 3}
+    assert [h["output"] for h in done["hops"]] == ["one", "two", "three"]
+    assert all(h["usage"] for h in done["hops"])
+    assert len(done["escalations"]) == 2
+    assert (late_status, late["code"]) == (409, "escalation_not_pending")
+    requests = model.by_role("lead")
+    assistant_turns = [
+        [m["content"] for m in r.messages if m["role"] == "assistant"] for r in requests
+    ]
+    assert assistant_turns == [[], ["one"], ["one", "two"]]
+    assert "and the third?" in requests[2].last_user_text
+    oracles.assert_transitions_legal(statuses)
+    oracles.assert_log_verifies(w)
+
+
+def test_a_conversation_ends_when_the_operator_closes_it(
+    world: Callable[..., World], fake_model: Callable[..., FakeModel]
+) -> None:
+    model = fake_model(script={"lead": [say("one")]})
+    w = _chat_world(world, model)
+
+    with w.service() as svc:
+        _, created = svc.post(
+            f"/tasks/{w.pod}", {"description": "talk it over", "conversation": {"maxTurns": 5}}
+        )
+        task_id = str(created["task"])
+        first = _turn_over_http(w, svc, task_id, 1)
+
+        status, closed = svc.post(
+            f"/escalations/{first['escalations'][-1]}", {"optionId": "close", "actor": "board"}
+        )
+        done = _wait_for_status(w, svc, task_id, "done")
+
+    assert (status, closed["state"]) == (200, "resolved")
+    assert [h["output"] for h in done["hops"]] == ["one"]
+    assert len(model.by_role("lead")) == 1
