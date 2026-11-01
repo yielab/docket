@@ -13,14 +13,29 @@ Covers:
 from __future__ import annotations
 
 import stat
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from docket.interfaces.http import server
 from docket.kernel import threads as _threads
+from docket.kernel.home import current_home, use_home
 
 SUBJECT = "docket.interfaces.http.server"
+
+PinToken = Callable[[str], object]
+
+
+@pytest.fixture
+def pin_token() -> Iterator[PinToken]:
+    """Pin the serve token of the current home for the test."""
+    with ExitStack() as stack:
+        yield lambda token: stack.enter_context(
+            use_home(replace(current_home(), serve_token=token))
+        )
 
 
 # ── token file option ──────────────────────────────────────────────────────────
@@ -39,11 +54,11 @@ class _FakeServer:
 
 class TestTokenFileOption:
     def test_token_written_to_file_with_0600(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin_token: PinToken
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
         monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "fixed-test-token-abc")
+        pin_token("fixed-test-token-abc")
 
         token_path = tmp_path / "serve-token.txt"
         server.run_serve(port=0, interval=30, token_file=str(token_path))
@@ -56,11 +71,12 @@ class TestTokenFileOption:
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
+        pin_token: PinToken,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
         monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "should-not-appear-on-stdout")
+        pin_token("should-not-appear-on-stdout")
 
         token_path = tmp_path / "serve-token.txt"
         server.run_serve(port=0, interval=30, token_file=str(token_path))
@@ -73,11 +89,12 @@ class TestTokenFileOption:
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
+        pin_token: PinToken,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
         monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "printed-token-xyz")
+        pin_token("printed-token-xyz")
 
         server.run_serve(port=0, interval=30)
 
@@ -85,11 +102,11 @@ class TestTokenFileOption:
         assert "printed-token-xyz" in out
 
     def test_creates_parent_directories(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pin_token: PinToken
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
         monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "nested-dir-token")
+        pin_token("nested-dir-token")
 
         token_path = tmp_path / "nested" / "dir" / "serve-token.txt"
         server.run_serve(port=0, interval=30, token_file=str(token_path))
@@ -110,11 +127,14 @@ class TestBindSemanticsDocumented:
         assert "127.0.0.1" in (server.run_serve.__doc__ or "")
 
     def test_startup_banner_prints_bind_address(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        pin_token: PinToken,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
         monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "banner-test-token")
+        pin_token("banner-test-token")
 
         server.run_serve(port=0, interval=30)
         out = capsys.readouterr().out
@@ -122,11 +142,14 @@ class TestBindSemanticsDocumented:
         assert "loopback-only" in out
 
     def test_non_loopback_bind_gets_a_warning(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        pin_token: PinToken,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         monkeypatch.setattr(server, "_run_sweeps", lambda *_a: None)
         monkeypatch.setattr(_threads, "ContextHTTPServer", _FakeServer)
-        monkeypatch.setenv("DOCKET_SERVE_TOKEN", "warn-test-token")
+        pin_token("warn-test-token")
 
         server.run_serve(port=0, interval=30, bind="0.0.0.0")
         out = capsys.readouterr().out
