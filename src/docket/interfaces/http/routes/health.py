@@ -17,6 +17,9 @@ from docket.teams import fleet
 # Pinned by tests/unit/test_serve__read_api.py (TestApiContract).
 SERVE_API_VERSION = "6"
 
+# Feature names this build answers to, served as `features` by /status.json and /health.
+FEATURES: tuple[str, ...] = ("podMemory",)
+
 
 def _with_token_budget(task: TaskRecord) -> dict[str, Any]:
     """*task*'s alias dump plus ``tokenBudget``, the measured-token ceiling its next hop runs under."""
@@ -73,6 +76,7 @@ def build_status() -> dict[str, Any]:
 
     return {
         "apiVersion": SERVE_API_VERSION,
+        "features": list(FEATURES),
         "timestamp": _clock.stamp(),
         "channels": channels,
         "agents": agents,
