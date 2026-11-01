@@ -66,7 +66,7 @@ class TestSubscribe:
         tracefile = trace.project_trace_dir("proj") / "s5.jsonl"
         line = tracefile.read_text(encoding="utf-8").splitlines()[0]
         assert re.fullmatch(
-            r'\{"ts": "[^"]+", "project": "proj", "session_id": "s5", '
+            r'\{"ts": "[^"]+", "ts_us": "[^"]+", "project": "proj", "session_id": "s5", '
             r'"agent_role": "reviewer", "event_type": "session_start", "payload": \{"a": 1\}\}',
             line,
         ), line
@@ -80,6 +80,12 @@ class TestTaskId:
         assert record["task_id"] == "task-1"
         keys = list(record.keys())
         assert keys.index("task_id") == keys.index("event_type") + 1
+
+    def test_a_record_carries_a_microsecond_stamp_in_its_second(self) -> None:
+        trace.trace_event("demo", "s-us", "lead", "tool_call", "{}")
+
+        record = json.loads(trace.export_lines("demo")[-1])
+        assert record["ts_us"].startswith(record["ts"][:-1] + ".") and record["ts_us"].endswith("Z")
 
     def test_task_id_key_absent_when_not_given(self) -> None:
         trace.trace_event("proj", "s7", "reviewer", "session_start", "{}")

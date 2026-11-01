@@ -205,6 +205,7 @@ def trace_event(
 
     record: dict[str, Any] = {
         "ts": _clock.stamp(),
+        "ts_us": _clock.stamp_us(),
         "project": project,
         "session_id": session_id,
         "agent_role": agent_role,
@@ -233,6 +234,7 @@ def trace_event(
 def _end_record(project: str, session_id: str) -> dict[str, Any]:
     return {
         "ts": _clock.stamp(),
+        "ts_us": _clock.stamp_us(),
         "project": project,
         "session_id": session_id,
         "agent_role": "unknown",

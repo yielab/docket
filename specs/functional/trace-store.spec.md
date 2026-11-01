@@ -1,10 +1,10 @@
 # Trace Store Specification
 
-**Version**: 5.0.0
+**Version**: 5.1.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
-**Last Updated**: 2026-10-29
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -55,7 +55,8 @@ This specification does NOT cover:
 
 1. Every accepted event **MUST** be appended as one JSON object per line to
    `$TRACES_DIR/<project>/<session_id>.jsonl`, containing at minimum `ts` (UTC, second
-   precision, `YYYY-MM-DDTHH:MM:SSZ`), `project`, `session_id`, `agent_role`, `event_type`, and
+   precision, `YYYY-MM-DDTHH:MM:SSZ`), `ts_us` (the same instant to the microsecond,
+   `YYYY-MM-DDTHH:MM:SS.ffffffZ`, from the kernel clock; it orders the events of one second), `project`, `session_id`, `agent_role`, `event_type`, and
    `payload` (a JSON value; a payload that fails to parse as JSON **MUST** be wrapped as
    `{"text": <redacted string>}` rather than rejected). A trace file is created mode 0600, and
    a project directory the write creates is mode 0700.

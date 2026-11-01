@@ -90,6 +90,11 @@ def stamp_ms() -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%S") + f".{moment.microsecond // 1000:03d}Z"
 
 
+def stamp_us() -> str:
+    """``2026-10-22T09:30:00.123456Z`` -- microseconds, to order what one second holds."""
+    return now().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
 def today() -> date:
     return now().date()
 

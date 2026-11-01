@@ -62,6 +62,19 @@ def _trace_line_ts(line: str) -> str:
     return str(parsed.get("ts", ""))
 
 
+def _trace_line_order(line: str) -> tuple[str, str]:
+    """The place of *line* in a page: its second, then its microsecond stamp, so two events of one
+    second come out in the order they happened whatever session file holds them. A line with no
+    stamp (written before it existed) sorts first in its second, and equal keys keep file order."""
+    try:
+        parsed = json.loads(line)
+    except (json.JSONDecodeError, RecursionError):
+        return "", ""
+    if not isinstance(parsed, dict):
+        return "", ""
+    return str(parsed.get("ts", "")), str(parsed.get("ts_us", ""))
+
+
 def _decode_trace_cursor(raw: str) -> tuple[str, int]:
     """Decode a `since` value into (ts, lines already delivered at ts).
 
@@ -97,7 +110,7 @@ def _traces_page(project: str, since: str) -> tuple[list[str], str]:
     # multi-session project replays the events that happened to follow the
     # anchor in glob order. Stable, so same-second lines keep their file order,
     # and unkeyable ("") lines sort to the front where the skip loop expects them.
-    lines = sorted(_trace.export_lines(project, cursor_ts), key=_trace_line_ts)
+    lines = sorted(_trace.export_lines(project, cursor_ts), key=_trace_line_order)
 
     # Hold back anything from a second that might not be closed yet (see the
     # rationale above `_TRACE_HOLD_BACK_S`) -- an unkeyable ("") line always passes through,
