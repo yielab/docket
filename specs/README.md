@@ -96,40 +96,40 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.1 | Complete |
-| Agent Loop | 3.10.1 | Implemented and live |
+| Agent Loop | 3.11.0 | Implemented and live |
 | API Keys | 2.2.0 | Complete |
 | Audit | 3.3.2 | Implemented |
 | Config Format | 2.10.1 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
-| Model Profiles | 6.6.0 | Complete |
+| Model Profiles | 6.8.0 | Complete |
 | Observability Export | 3.2.0 | Implemented and live |
 | Pipeline Format | 4.6.0 | Implemented |
-| Pod Blueprints | 4.1.0 | Implemented |
-| Pod Dispatch | 11.9.0 | Implemented |
-| Role Archetypes | 5.4.1 | Implemented |
-| Security Gates | 3.5.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Pod Blueprints | 4.2.0 | Implemented |
+| Pod Dispatch | 11.13.0 | Implemented |
+| Role Archetypes | 5.6.0 | Implemented |
+| Security Gates | 3.6.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.4.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
-| Pod Records | 1.4.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
-| Session History | 1.10.0 | Implemented and live |
+| Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
+| Session History | 1.10.1 | Implemented and live |
 | Session Scoping | 4.0.1 | Complete |
 | Telegram Integration | 5.0.0 | Implemented |
-| Trace Store | 5.0.0 | Implemented and live |
+| Trace Store | 5.1.0 | Implemented and live |
 | Workspace Structure | 4.0.0 | Complete |
-| CLI Interface | 5.7.2 | Complete |
+| CLI Interface | 5.10.0 | Complete |
 | MCP Client | 3.1.0 | Implemented and wired to the live turn path |
 | Runtime Library | 2.3.0 | Implemented (artifact-tested; **not published to any index**) |
-| MCP Server | 2.0.1 | Implemented |
-| CLI JSON Shapes | 4.6.2 | Complete |
+| MCP Server | 2.1.0 | Implemented |
+| CLI JSON Shapes | 4.7.0 | Complete |
 | docket-meta schema | 5.6.0 | Complete |
 | Docket Store | 3.2.0 | Implemented |
-| Operator API | 7.6.0 | Implemented (Phase 43, ADR 0027) |
-| A2a Binding | 1.2.0 | Implemented |
-| Serve Read API | 5.3.0 | Stable |
+| Operator API | 7.14.0 | Implemented (Phase 43, ADR 0027) |
+| A2a Binding | 1.3.1 | Implemented |
+| Serve Read API | 5.6.0 | Stable |
 | Adoption Benchmark | 2.3.1 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.4.1 | Active |
 | Starter Journey | 2.1.0 | Implemented |
-| Operator Loop | 3.3.0 | Implemented |
+| Operator Loop | 3.5.0 | Implemented |
 | User Stories | 2.1.1 | Active |
 
 ## Tools
