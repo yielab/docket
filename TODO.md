@@ -118,7 +118,7 @@ from `main`.
 
 ### P57-1 — `current` on a running task
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged to `develop`; feature `taskCurrent`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0037 decision 1 (Tack ask 1).
 - **Goal:** while a hop runs, its task carries
@@ -160,7 +160,7 @@ from `main`.
 
 ### P57-2 — a cursor over every task a pod holds
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+**Status:** DONE (merged to `develop`; feature `taskCursor`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0037 decision 2 (Tack ask 2).
 - **The counter:** the task file `{"tasks": [...]}` gains a counter, and every task carries `rev`.
@@ -202,7 +202,7 @@ from `main`.
 
 ### P57-3 — pod memory over HTTP, read only, and the `features` list
 
-**Status:** TODO · **Size:** S · **Model:** Haiku · **Kind:** behaviour + spec
+**Status:** DONE (merged to `develop`; feature `podMemory`) · **Size:** S · **Model:** Haiku · **Kind:** behaviour + spec
 
 - **Trigger:** ADR 0037 decision 3 (Tack ask 3), and the probe list of the Decision preamble.
 - **The memory route:** `GET /pods/<pod>/memory` answers `{"entries": [...]}`.
