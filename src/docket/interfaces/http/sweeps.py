@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import signal
 import threading
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -16,6 +17,9 @@ from docket.tasks.application import runs as _runs
 _SWEEP_LOCK = threading.Lock()
 sweep_inflight: dict[str, concurrent.futures.Future[None]] = {}
 sweep_run_ids: dict[str, str] = {}
+# Pods a periodic pass found sweeping already: each sweeps once more when its sweep ends, so work
+# that became claimable meanwhile is not left to the next pass.
+sweep_rerun: set[str] = set()
 # How long a second stop signal waits for cancelled sweep runs to settle before exiting anyway.
 SWEEP_ABANDON_WAIT_S = 5.0
 
@@ -68,11 +72,18 @@ def check_schedules(now_ts: float) -> None:
 
 
 def _drain_sweeps(timeout: float | None = None) -> bool:
-    """Wait for every in-flight pod sweep; True when none remain within *timeout*."""
-    with _SWEEP_LOCK:
-        pending = list(sweep_inflight.values())
-    _done, not_done = concurrent.futures.wait(pending, timeout=timeout)
-    return not not_done
+    """Wait for every in-flight pod sweep, and the rerun one may start as it ends; True when none
+    remain within *timeout*."""
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        with _SWEEP_LOCK:
+            pending = [f for f in sweep_inflight.values() if not f.done()]
+        if not pending:
+            return True
+        left = None if deadline is None else max(0.0, deadline - time.monotonic())
+        _done, not_done = concurrent.futures.wait(pending, timeout=left)
+        if not_done:
+            return False
 
 
 def _pending_sweeps() -> int:

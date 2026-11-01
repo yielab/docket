@@ -69,7 +69,10 @@ def cmd_start(
         help="Listen address (default 127.0.0.1, loopback only; any other is reachable off this host)",
     ),
     interval: int = typer.Option(
-        30, "--interval", "-i", help="Sweep refresh interval in seconds (default 30)"
+        30,
+        "--interval",
+        "-i",
+        help="Sweep refresh interval in seconds (default 30); a wait step ends at its own deadline",
     ),
     dispatch: bool = typer.Option(
         False,

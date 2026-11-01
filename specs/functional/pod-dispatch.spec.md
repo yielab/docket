@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.11.0
+**Version**: 11.12.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -985,7 +985,15 @@ dispatches the queue that already exists and is unchanged.
    probe, so a due timer wakes on every periodic sweep of `docket start`, dispatching or not; a probe
    is a command, so it runs only in a sweep that dispatches: `dispatch_pod` calls it, with the probe
    and its own pod, before it claims anything (`docket run`, the `docket start --dispatch` sweep,
-   `POST /dispatch/<pod>`). For each wait, in this order:
+   `POST /dispatch/<pod>`). The periodic interval (`docket start --interval`, default 30 s) is not
+   the precision of a wait: the sweep loop also wakes at the soonest `dueAt` (and, when it
+   dispatches, the soonest `nextProbeAt`) and runs a wait pass, never sooner than 0.25 s after the
+   last, that calls `sweep_waits` with no probe and, when dispatching, sweeps every pod so the task
+   it woke is claimed in that pass. A sweep request for a pod whose sweep is still running makes
+   that sweep run once more when it ends, so a task woken meanwhile is not left to the next pass; a
+   manual `POST /dispatch/<pod>` that meets a running sweep is still refused and queues nothing. A
+   pod with a probe due counts as having work for a dispatching sweep (`has_claimable_work`), so the
+   probe runs without any other claimable task. For each wait, in this order:
    - **Probe due** (`nextProbeAt` reached, `until` set, a probe supplied): run it. Exit `0` settles
      the wait by `resolve` (option `resume`, `by` `probe`, channel `sweep`) and wakes the task
      `resumed`. Any other result, a timeout or a refusal of the jail counts as not met: `probes` grows
