@@ -9,6 +9,7 @@ from tests.support.fakes import FakeJail
 
 from docket import bootstrap
 from docket.hops.application import driver as _driver
+from docket.kernel.errors import InvalidInput
 from docket.kernel.home import Home
 from docket.kernel.ports import SandboxAvailability
 
@@ -77,3 +78,17 @@ def test_build_server_mints_a_fresh_token_per_plan(
     assert first.token != second.token
     assert len(first.token) >= 32
     assert (first.port, first.dispatch, first.token_file) == (0, True, "t")
+
+
+def test_build_server_carries_the_read_token(home: Home) -> None:
+    pinned = {"DOCKET_SERVE_TOKEN": "pinned"}
+    assert bootstrap.build_server(home, env=pinned).read_token == ""
+    both = {**pinned, "DOCKET_SERVE_READ_TOKEN": "reader"}
+    plan = bootstrap.build_server(home, env=both)
+    assert (plan.token, plan.read_token) == ("pinned", "reader")
+
+
+def test_build_server_refuses_a_read_token_equal_to_the_serve_token(home: Home) -> None:
+    same = {"DOCKET_SERVE_TOKEN": "same", "DOCKET_SERVE_READ_TOKEN": "same"}
+    with pytest.raises(InvalidInput, match="DOCKET_SERVE_READ_TOKEN"):
+        bootstrap.build_server(home, env=same)

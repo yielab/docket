@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,6 +21,7 @@ from docket.governance import gate as _gate
 from docket.governance import security as _security
 from docket.governance.ports import bind_approval_escalations, bind_approval_follow_up
 from docket.hops.application import driver as _driver
+from docket.kernel.errors import InvalidInput
 from docket.kernel.home import Home, current_home
 from docket.kernel.ports import (
     SandboxAvailability,
@@ -164,6 +165,7 @@ class ServerPlan:
     dispatch: bool
     telegram: bool
     token: str
+    read_token: str
     token_file: str | None
     store: Store
     driver: _driver.DocketDriver
@@ -207,10 +209,19 @@ def build_server(
     dispatch: bool = False,
     telegram: bool = False,
     token_file: str | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> ServerPlan:
-    """The bearer token is ``DOCKET_SERVE_TOKEN`` when set, else a fresh random one."""
+    """The bearer token is ``DOCKET_SERVE_TOKEN`` when set, else a fresh random one. A
+    ``DOCKET_SERVE_READ_TOKEN`` is a second token that may only read, and must differ from it."""
     bind_adapters()
-    token = os.environ.get("DOCKET_SERVE_TOKEN") or secrets.token_urlsafe(32)
+    env = os.environ if env is None else env
+    token = env.get("DOCKET_SERVE_TOKEN") or secrets.token_urlsafe(32)
+    read_token = env.get("DOCKET_SERVE_READ_TOKEN", "")
+    if read_token and read_token == token:
+        raise InvalidInput(
+            "DOCKET_SERVE_READ_TOKEN equals the serve token",
+            "give the read token its own value, or unset it",
+        )
     return ServerPlan(
         home=home,
         port=DEFAULT_PORT if port is None else port,
@@ -219,6 +230,7 @@ def build_server(
         dispatch=dispatch,
         telegram=telegram,
         token=token,
+        read_token=read_token,
         token_file=token_file,
         store=build_store(home),
         driver=build_driver(home),

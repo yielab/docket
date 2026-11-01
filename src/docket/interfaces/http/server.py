@@ -42,6 +42,7 @@ from docket.interfaces.http.sweeps import (
 from docket.interfaces.telegram.poll import telegram_poll_loop
 from docket.kernel import clock as _clock
 from docket.kernel import threads as _threads
+from docket.kernel.errors import InvalidInput
 from docket.kernel.home import current_home
 from docket.models import provider_lifecycle as _provider_lifecycle
 from docket.observability import trace
@@ -300,7 +301,7 @@ class _DocketHandler(HttpExchange):
         if found is None:
             return False
         route, arg = found
-        if route.auth and not authorize(self):
+        if route.auth and not authorize(self, self.command):
             return True
         route.handler(self, arg)
         return True
@@ -348,19 +349,24 @@ def run_serve(
     to an idle, periodically-retried wait rather than failing to start if no bot token is
     configured. ``token_file`` writes the bearer token to that path (0600) instead of stdout, for
     a context less private than a terminal (e.g. a systemd journal)."""
-    plan = _bootstrap.build_server(
-        current_home(),
-        port=port,
-        bind=bind,
-        interval=interval,
-        dispatch=dispatch,
-        telegram=telegram,
-        token_file=token_file,
-    )
+    try:
+        plan = _bootstrap.build_server(
+            current_home(),
+            port=port,
+            bind=bind,
+            interval=interval,
+            dispatch=dispatch,
+            telegram=telegram,
+            token_file=token_file,
+        )
+    except InvalidInput as exc:
+        print(f"docket start: {exc.message} ({exc.hint})", file=sys.stderr)
+        raise SystemExit(2) from exc
     actual_port = plan.port
 
     class _BoundHandler(_DocketHandler):
         serve_token = plan.token
+        read_token = plan.read_token
         dispatch_on = plan.dispatch
 
     global sweep_stop
