@@ -246,6 +246,10 @@ class TaskRecord(BaseModel):
     # Pipeline variables that belong to this task; merged over the run's at claim.
     variables: dict[str, str] = Field(default_factory=dict, exclude_if=_is_empty)
 
+    # The position in the pod's change counter, stamped by the task store inside its locked write
+    # on every task that changed; absent until the first such write.
+    rev: int = Field(0, exclude_if=_is_empty)
+
     # The lifecycle: where the task stands.
     status: Status = Status.pending
     started_at: str | None = Field(None, alias="startedAt")

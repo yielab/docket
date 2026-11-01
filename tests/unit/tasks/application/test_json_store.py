@@ -98,3 +98,62 @@ def test_concurrent_modifies_never_lose_a_task(tmp_path: Path) -> None:
         t.join(timeout=10)
 
     assert sorted(r.description for r in store.load()) == sorted(f"t{i}" for i in range(n))
+
+
+def _stored_revs(path: Path) -> dict[str, int | None]:
+    return {t["id"]: t.get("rev") for t in json.loads(path.read_text())["tasks"]}
+
+
+def test_two_changed_tasks_get_consecutive_revs(tmp_path: Path) -> None:
+    path = tmp_path / "TASK_LIST.json"
+    store = JsonTaskStore(path)
+
+    def _two(records: list[TaskRecord]) -> bool:
+        records.append(TaskRecord(id="task-1", description="a"))
+        records.append(TaskRecord(id="task-2", description="b"))
+        return True
+
+    store.modify(_two)
+    assert _stored_revs(path) == {"task-1": 1, "task-2": 2}
+
+
+def test_only_the_task_that_changed_is_restamped(tmp_path: Path) -> None:
+    path = tmp_path / "TASK_LIST.json"
+    store = JsonTaskStore(path)
+    store.modify(lambda r: bool(r.extend([TaskRecord(id="t1", description="a")])) or True)
+    store.modify(lambda r: bool(r.extend([TaskRecord(id="t2", description="b")])) or True)
+
+    def _rename(records: list[TaskRecord]) -> bool:
+        records[0].description = "a2"
+        return True
+
+    store.modify(_rename)
+    assert _stored_revs(path) == {"t1": 3, "t2": 2}
+
+
+def test_a_write_that_changes_no_task_stamps_nothing(tmp_path: Path) -> None:
+    path = tmp_path / "TASK_LIST.json"
+    store = JsonTaskStore(path)
+    store.modify(lambda r: bool(r.extend([TaskRecord(id="t1", description="a")])) or True)
+    before = path.read_bytes()
+
+    def _touch(records: list[TaskRecord]) -> bool:
+        records[0].description = records[0].description
+        return True
+
+    store.modify(_touch)
+    assert path.read_bytes() == before
+
+
+def test_a_task_file_with_no_counter_is_stamped_by_the_first_write_that_changes_it(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "TASK_LIST.json"
+    _seed(path, {"id": "t1", "description": "a"}, {"id": "t2", "description": "b"})
+
+    def _rename(records: list[TaskRecord]) -> bool:
+        records[1].description = "b2"
+        return True
+
+    JsonTaskStore(path).modify(_rename)
+    assert _stored_revs(path) == {"t1": None, "t2": 1}

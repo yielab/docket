@@ -143,6 +143,64 @@ class TestQueueShapeMatchesTheRecordDump:
                     assert "id" in task and "created" in task
 
 
+class TestTaskCursor:
+    def _poll(self, url: str, token: str, cursor: str, extra: str = "") -> tuple[int, dict]:  # type: ignore[type-arg]
+        return _get(f"{url}/tasks/demo?updatedSince={cursor}{extra}", token)
+
+    def test_a_cursor_walks_every_task_once_and_a_status_move_reappears_one(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path, project="demo"), _live_server() as (url, token):
+            routine, _ = _application_queue.enqueue_task_once(
+                "demo", "From a routine", channel="routine", idempotency_key="r:1"
+            )
+            cli, _ = _application_queue.enqueue_task_once("demo", "From the CLI", channel="cli")
+
+            status, body = self._poll(url, token, "0")
+            assert status == 200
+            assert [(t["id"], t["channel"]) for t in body["tasks"]] == [
+                (routine.id, "routine"),
+                (cli.id, "cli"),
+            ]
+            assert [t["rev"] for t in body["tasks"]] == [1, 2]
+            assert body["next"] == "2"
+
+            status, again = self._poll(url, token, body["next"])
+            assert (status, again) == (200, {"tasks": [], "next": "2"})
+
+            status, _ = _post(f"{url}/tasks/demo/{cli.id}/cancel", {}, token)
+            assert status == 200
+            _, moved = self._poll(url, token, body["next"])
+            assert [(t["id"], t["status"]) for t in moved["tasks"]] == [(cli.id, "cancelled")]
+            assert moved["next"] == "3"
+
+    def test_status_and_external_ref_filter_the_changed_set(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, project="demo"), _live_server() as (url, token):
+            _application_queue.enqueue_task_once("demo", "one", channel="cli", external_ref="A")
+            two, _ = _application_queue.enqueue_task_once(
+                "demo", "two", channel="cli", external_ref="B"
+            )
+
+            _, by_ref = self._poll(url, token, "0", "&externalRef=B")
+            assert [t["id"] for t in by_ref["tasks"]] == [two.id]
+            assert by_ref["next"] == "2"
+            _, none = self._poll(url, token, "0", "&status=done")
+            assert none == {"tasks": [], "next": "0"}
+
+    def test_a_cursor_that_is_not_an_integer_is_400_bad_cursor(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, project="demo"), _live_server() as (url, token):
+            for bad in ("abc", "-1", "1.5"):
+                status, body = self._poll(url, token, bad)
+                assert status == 400
+                assert body["code"] == "bad_cursor"
+
+    def test_without_the_cursor_the_body_has_no_next(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path, project="demo"), _live_server() as (url, token):
+            _application_queue.enqueue_task_once("demo", "one", channel="cli")
+            _, body = _get(f"{url}/tasks/demo", token)
+            assert set(body) == {"tasks"}
+
+
 class TestPromptManifestOnTheTask:
     def test_a_hop_shows_the_shipped_prompts_hashes(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path, project="demo"), _live_server() as (url, token):

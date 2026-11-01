@@ -343,6 +343,29 @@ has one, as `operator-api.spec.md` states, in the list and in the single-task bo
   `{"tasks": []}` — indistinguishable at this endpoint, matching the repository's contract (it has
   no notion of "pod exists but is empty" vs. "no pod").
 
+#### Task cursor
+
+`GET /tasks/<project>?updatedSince=<n>` lets a polling consumer (e.g. Tack) resume over the pod's
+tasks without re-reading the queue. It answers `{"tasks": [...], "next": "<n>"}`:
+
+- **Counter.** The task file keeps a counter and each task carries an integer `rev`. Inside the
+  store's locked read-modify-write, every task whose content changed (or that is new) gets the
+  next counter value, so no writer can miss the stamp, whichever channel enqueued or moved the
+  task. Tasks changed by one write get consecutive values. A task file written before the counter
+  existed is not migrated: its tasks read as `rev` `0` and are stamped by the first write that
+  changes them.
+- **Page.** The tasks with `rev` greater than the cursor, in `rev` order, each with its `channel`
+  and `externalRef`. `updatedSince=0` starts from the beginning. `next` is the highest `rev`
+  returned, or the incoming cursor when nothing changed. `status` and `externalRef` filter the
+  changed set, and `next` is taken from the tasks returned.
+- **Latest state once.** A task is state, not an event: a task changed twice between two polls
+  appears once, in its latest state. A task that was deleted from the file is not reported.
+- **Not the traces cursor.** The cursor is an integer, not `<ts>:<n>`. A counter stamped under the
+  write lock is exactly-once, so there is no one-second hold-back. A client treats it as opaque.
+- **`400`.** A cursor that is not a non-negative decimal integer answers `400` with
+  `{"ok": false, "error": ..., "code": "bad_cursor"}`.
+- Without `updatedSince` the response is the plain `{"tasks": [...]}` with no `next`.
+
 ### GET /traces/&lt;project&gt;
 
 Requires `Authorization: Bearer <token>`. Returns raw trace JSONL for one project, cursor'd by an

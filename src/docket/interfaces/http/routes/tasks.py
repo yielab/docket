@@ -16,7 +16,8 @@ from docket.tasks.domain import task as _task
 
 
 def get_tasks(h: HttpExchange, rest: str) -> None:
-    """``GET /tasks/<pod>`` lists a pod's tasks (``status`` / ``externalRef`` filter them);
+    """``GET /tasks/<pod>`` lists a pod's tasks (``status`` / ``externalRef`` filter them;
+    ``updatedSince`` answers only those changed after a counter value, with the next one);
     ``GET /tasks/<pod>/<id>`` answers one. The bare ``/tasks`` is the missing-project `400`."""
     if not rest:
         h._send_json_error("Missing project", 400)
@@ -28,11 +29,23 @@ def get_tasks(h: HttpExchange, rest: str) -> None:
         _send_one_task(h, project, task_id)
         return
     query = _urlparse.parse_qs(_urlparse.urlsplit(h.path).query)
-    tasks = _filter_tasks(h, TaskRepository.for_pod(project).list(), query)
+    all_tasks = TaskRepository.for_pod(project).list()
+    cursor = query.get("updatedSince", [None])[0]
+    if cursor is not None:
+        if not cursor.isascii() or not cursor.isdecimal():
+            h._send_json_error(
+                f"updatedSince '{cursor}' is not a non-negative integer", 400, code="bad_cursor"
+            )
+            return
+        all_tasks = sorted((t for t in all_tasks if t.rev > int(cursor)), key=lambda t: t.rev)
+    tasks = _filter_tasks(h, all_tasks, query)
     if tasks is None:
         return
     listed = [_with_token_budget(task) for task in tasks]
-    h._send(json.dumps({"tasks": listed}).encode("utf-8"), "application/json")
+    body: dict[str, object] = {"tasks": listed}
+    if cursor is not None:
+        body["next"] = str(max((t.rev for t in tasks), default=int(cursor)))
+    h._send(json.dumps(body).encode("utf-8"), "application/json")
 
 
 def get_task_evidence(h: HttpExchange, rest: str) -> None:
