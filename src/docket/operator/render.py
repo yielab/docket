@@ -25,7 +25,7 @@ __all__ = [
 ]
 
 _LABEL_MAX = 80
-_QUESTION_KINDS: frozenset[EscalationKind] = frozenset({"consult", "input"})
+_QUESTION_KINDS: frozenset[EscalationKind] = frozenset({"consult", "input", "turn"})
 _CONVERSATION_LEVELS = frozenset({"conversation", "full"})
 _ACTION_LEVELS = frozenset({"actions", "conversation", "full"})
 # The title is fixed text so that no level can leak model or tool text through it.
@@ -36,6 +36,7 @@ _TITLES: dict[EscalationKind, str] = {
     "consult": "consultation",
     "input": "input requested",
     "wait": "waiting",
+    "turn": "conversation turn",
 }
 # An approval of a call that acts outside the machine says so, whatever the level.
 _OUTWARD_TITLE = "action leaves the pod"

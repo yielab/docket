@@ -285,6 +285,12 @@ def decide_task_tokens(*, left: int | None, max_tokens: object, role: str) -> Ga
     )
 
 
+def conversation_ends_on_budget(*, failure_kind: str, conversation: bool, turns_done: int) -> bool:
+    """Whether a failure on the task token budget ends a conversation instead of failing it: the
+    task is a conversation and at least one turn was answered before the limit."""
+    return conversation and failure_kind == "budget" and turns_done > 0
+
+
 def decide_pod_budget(*, cap: float, spent: float, estimated: bool, role: str) -> GateDecision:
     """The pod's spend against its *cap* before a hop. No cap, or spend under it, advances; a
     tripped cap blocks the task (and the shell pauses the Lead)."""

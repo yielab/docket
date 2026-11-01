@@ -18,6 +18,8 @@ from docket.operator import render as _render
 
 SUBJECT = "docket.operator.render"
 
+LEVELS = ("minimal", "actions", "conversation", "full")
+
 
 def _view(kind: str = "consult", **over: Any) -> EscalationView:
     options = [
@@ -133,6 +135,32 @@ class TestApproval:
             ("deny", "Deny"),
         ]
         assert not any(o.recommended for o in rendered.options)
+
+
+class TestTurn:
+    def _turn(self) -> EscalationView:
+        return _view(
+            "turn",
+            prompt="the model's answer",
+            options=[
+                Option(id="reply", label="Reply", description="send the next message"),
+                Option(id="close", label="Close", description="end it"),
+            ],
+            recommendation=None,
+            onExpiry="deny",
+        )
+
+    def test_a_turn_has_a_fixed_title_and_keeps_the_model_answer_for_conversation(self) -> None:
+        shown = {level: _render.render_escalation(self._turn(), level) for level in LEVELS}
+
+        assert {r.title for r in shown.values()} == {"conversation turn"}
+        assert [shown[level].prompt for level in LEVELS] == [
+            None,
+            None,
+            "the model's answer",
+            "the model's answer",
+        ]
+        assert all([o.id for o in r.options] == ["reply", "close"] for r in shown.values())
 
 
 def test_the_ids_line_marks_the_recommended_option() -> None:

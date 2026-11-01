@@ -18,6 +18,7 @@ from docket.hops.application.steps import (
     _task_pipeline,
     effective_pipeline,
 )
+from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates.post_hop import (
     _external_failure_kind,
     _latest_evidence,
@@ -34,6 +35,7 @@ from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
 from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
+from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.record import (
     Runner,
     UnitContext,
@@ -300,6 +302,36 @@ def _route_outcome(
 _ROUTE_FAILURE_KINDS: dict[str, str] = {"REJECT": "rejected"}
 
 
+def _park_turn(
+    ctx: UnitContext, node: _orch.PlannedNode, outcome: UnitOutcome, result: TaskResult
+) -> bool:
+    """A conversation task's agent turn that succeeded short of ``maxTurns`` parks the hop (replay
+    re-enters the step), opens the ``turn`` escalation with its answer and ends the claim
+    ``waiting_input``. The turn that reaches ``maxTurns`` is not parked: the task ends ``done``."""
+    conversation = ctx.task.conversation
+    if (
+        conversation is None
+        or not outcome.hops
+        or len(result.hops) >= conversation.max_turns
+        or not isinstance(node, _orch.PlannedUnit)
+        or node.run is not None
+        or node.input is not None
+        or node.wait is not None
+    ):
+        return False
+    hop = outcome.hops[-1]
+    hop.parked = True
+    _escalations.open_for_turn(
+        ctx.task.model_copy(update={"hops": list(result.hops)}),
+        hop.step_id or hop.role,
+        hop.output,
+        pod=ctx.project,
+    )
+    result.status = "waiting_input"
+    result.reason = f"turn {len(result.hops)} of {conversation.max_turns} answered"
+    return True
+
+
 def _run_pipeline(
     ctx: UnitContext,
     runtime_steps: tuple[_orch.PlannedNode, ...],
@@ -356,6 +388,15 @@ def _run_pipeline(
             result.status = "waiting_input"
             result.reason = outcome.reason
             break
+        answered = sum(1 for h in prior if h.ok)
+        if outcome.kind == "failed" and _decide.conversation_ends_on_budget(
+            failure_kind=outcome.failure_kind,
+            conversation=ctx.task.conversation is not None,
+            turns_done=answered,
+        ):
+            result.status = "done"
+            result.reason = f"token budget reached after {answered} turns"
+            break
         if outcome.kind == "failed":
             result.status = "failed"
             result.reason = outcome.reason
@@ -394,6 +435,8 @@ def _run_pipeline(
             pipeline_index = next_index
             continue
         if outcome.kind == "advance" and _block_on_missing_resources(ctx, outcome, result):
+            break
+        if outcome.kind == "advance" and _park_turn(ctx, node, outcome, result):
             break
         pipeline_index += 1
 
