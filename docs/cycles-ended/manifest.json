@@ -886,5 +886,13 @@
     "heading": "▶ PHASE 56 — an external service is declared, a pod keeps records (D-77 amendments, ADR 0036 decisions 13-16) · CLOSED 2026-10-30",
     "bytes": 58780,
     "sha256": "d580d2a4f13d8819e7cb8820843f68dd590a633e4219e81287847b2f58d5604e"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 57 — what docket gives a manager in the plan of record (D-79, ADR 0037) · CLOSED 2026-11-01",
+    "bytes": 20798,
+    "sha256": "bbc9656508a35a4bfeb2e8c67ed6f40163f0759233d8134517772312033100c0"
   }
 ]
