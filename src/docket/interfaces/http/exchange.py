@@ -56,8 +56,13 @@ class HttpExchange(BaseHTTPRequestHandler):
     def _send_json(self, payload: dict[str, Any], status: int = 200) -> None:
         self._send(json.dumps(payload).encode(), "application/json", status)
 
-    def _send_json_error(self, msg: str, status: int = 400) -> None:
-        body = json.dumps({"ok": False, "error": msg}).encode()
+    def _send_json_error(self, msg: str, status: int = 400, *, code: str = "") -> None:
+        """Answer `{"ok": false, "error": msg}`, plus a stable `code` when the caller must tell
+        two refusals of the same status apart."""
+        payload: dict[str, object] = {"ok": False, "error": msg}
+        if code:
+            payload["code"] = code
+        body = json.dumps(payload).encode()
         self._send(body, "application/json", status)
 
     def _send_refusal(self, exc: DocketError) -> None:

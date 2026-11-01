@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.9.0
+**Version**: 7.10.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -60,7 +60,7 @@ over 1 MiB is `413`.
 | `POST /tasks/<pod>` | enqueue a task, optionally idempotent and addressable |
 | `GET /tasks/<pod>?externalRef=&status=` | list the pod's tasks, filtered |
 | `GET /tasks/<pod>/<id>` | one task record |
-| `POST /tasks/<pod>/<id>/cancel` | stop a running or parked task |
+| `POST /tasks/<pod>/<id>/cancel` | cancel a task that is not over |
 | `POST /tasks/<pod>/<id>/retry` | put a `blocked` or `failed` task back on the queue |
 | `GET /tasks/<pod>/<id>/diff` | what the task's branch changed |
 | `GET /escalations?since=<seq>&pod=&task=` | the escalation records after a cursor, each joined with its pause |
@@ -137,12 +137,15 @@ without one runs in place unprepared (`pod-dispatch.spec.md` "Task worktrees" re
 ### `POST /tasks/<pod>/<id>/cancel`
 
 Body optional: `{"reason"?: string, "actor"?: string}`; `actor` is a label for the audit entry,
-default `http`. Cancels a `running` task (kills the hop's process group, as `docket task cancel`
-does) or a parked one (`waiting_input` or `waiting_approval`); the CLI runs the same function.
-Audited `task.cancel` with channel `http` and the reason. `404` for an unknown pod or task; `409`
-when nothing is in flight to cancel (a terminal task). The answer's `status` is `cancelled` when a
-run was stopped or a parked task cancelled, else the task's own status after a stale claim was
-settled (`failed`).
+default `http`. Cancels a task in any state that is not over: a `running` one (kills the hop's
+process group, as `docket task cancel` does), a parked one (`waiting_input` or `waiting_approval`)
+and one no run holds yet (`pending`, or `blocked`), which ends `cancelled` under the lock a claim
+takes, so it is never claimed after; the CLI runs the same function. Audited `task.cancel` with
+channel `http` and the reason. `404` for an unknown pod or task; `409` when nothing could be
+cancelled, and its body carries a stable `code` beside `error`: `already_terminal` for a task that
+is `done`, `failed` or `cancelled`, `not_cancellable` for any other task that nothing could stop (a
+run that refused). The answer's `status` is `cancelled` when a run was stopped or a parked or
+unclaimed task cancelled, else the task's own status after a stale claim was settled (`failed`).
 
 ### `POST /tasks/<pod>/<id>/retry`
 

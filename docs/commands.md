@@ -156,11 +156,11 @@ Example: docket task retry task-04ff
 
 **Usage:** `docket task cancel`
 
-Stop the run a task is in, cancel a parked task, and settle a claim left behind by a dead
-dispatch.
+Stop the run a task is in, cancel a parked or queued task, and settle a claim left behind
+by a dead dispatch.
 
 A live run is asked to stop and its processes are signalled. A task waiting for an answer or
-an approval is cancelled and leaves the inbox. A task still marked running whose dispatcher
+an approval is cancelled and leaves the inbox, and so is a task still waiting for its turn. A task still marked running whose dispatcher
 is gone is settled as failed, ready for `docket task retry`.
 
 Example: docket task cancel task-04ff
