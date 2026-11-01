@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **What docket gives a manager in the plan of record (D-79, ADR 0037, Phase 57).** All additive on API 6,
+  each probed through the new `features` list on `/health` and `/status.json` (`taskCurrent`, `taskCursor`,
+  `podMemory`, `readScope`, `conversation`):
+  - a running task carries `current`, the hop it is inside, and carries nothing between hops;
+  - `GET /tasks/<pod>?updatedSince=<n>` returns the tasks that changed past the integer `rev` cursor, with
+    `next`; a bad cursor is `400` with `code: bad_cursor`;
+  - `GET /pods/<pod>/memory` returns the accepted entries of a pod's memory;
+  - `DOCKET_SERVE_READ_TOKEN` is a second serve token that can only read (`403 read_scope` on a write), and
+    `docket start --mcp --read-only` registers only the read tools;
+  - a task created with `conversation: {maxTurns}` runs one step turn by turn: each turn but the last opens an
+    escalation of kind `turn`, answered through `POST /escalations/<id>` with `reply` (a text) or `close`;
+  - an error body from a refused request now carries a string `code` where the refusal has one.
+  A jailed MCP server has no network, and a lights-out pod reaches a loopback service through a declared
+  `kind: service` with `hosts`. The `cycle` of a hop now counts an `on:` route back as well as a rework.
 - **`workspaceKind` on `GET /pods` rows and `GET /pods/<p>`**: `"codebase"` or `"workdir"`, the kind
   the pod was provisioned with. A client no longer infers a folder pod from an empty `codebase` or
   `repoConfigDir`, which also read empty for a code pod whose codebase is missing. Additive: the

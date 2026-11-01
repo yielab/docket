@@ -20338,3 +20338,369 @@ Five waves, twenty-one cards, and P56-22 added at the close. P56-15 goes first b
 final three; it owns the only script of the phase. P56-21 closes the shapes: after it, a blueprint is a
 roster and a pipeline, a recipe is what a blueprint cannot carry, and nothing is shipped twice.
 
+## ▶ PHASE 57 — what docket gives a manager in the plan of record (D-79, ADR 0037) · CLOSED 2026-11-01
+
+> **Closed 2026-11-01.** The eight cards are merged into `develop` and the six pulls of Tack's ADR 0034 are
+> answered on API 6, each probed through the `features` list (`taskCurrent`, `taskCursor`, `podMemory`,
+> `readScope`, `conversation`). A fix pass followed the first close run and a review: `cycle` counts an `on:`
+> route back, a hop and the end of its `current` are one write, a conversation is refused at the claim when
+> its pipeline grew, the cursor rule lives in `TaskRepository.changed_since`, the MCP tools are one table.
+>
+> **Evidence.** The default suite, the agent lane, the suite without the sandbox, the escape matrix, the nine
+> goldens, `validate-specs`, `gen_cli_docs --check` and `split_board check` pass. Three tests failed once
+> under load and pass alone (see the follow-ups). **A real run** drove a three-turn conversation and a
+> close over HTTP against `anthropic/claude-haiku-5-5` in a throwaway home on port 7398: each turn parked
+> on a `turn` escalation, the model saw the turns before it, usage was measured, `close` ended the task
+> `done`, and `updatedSince`, a bad cursor (400 `bad_cursor`) and `/pods/<pod>/memory` answered as specified.
+> **The live service on :7399 was not restarted**, so it still runs the code from before the phase.
+
+> **Trigger:** scoped request, Tack's ADR 0034 "What this asks of docket" (accepted 2026-11-01),
+> six additive pulls. The decisions and the two departures from the request are in
+> [ADR 0037](docs/adr/0037-what-docket-gives-a-manager-in-the-plan-of-record.md):
+> - no `/messages` route, because a turn is an escalation (ADR 0032);
+> - no `placement: host`, because a lights-out pod reaches Tack through a declared service
+>   (ADR 0024).
+>
+> The ADR was accepted by the maintainer on 2026-11-01.
+>
+> **Rules of the phase:**
+> - The HTTP API stays `"6"`.
+> - A card amends its own section of a spec, spec first.
+> - The integrator owns, at merge:
+>   - each spec's `Version`/`Last Updated` line;
+>   - the `FEATURES` tuple in `interfaces/http/routes/health.py`. P57-3 creates it. The integrator
+>     adds each other card's feature name at that card's merge; a card names its feature but does
+>     not edit the tuple.
+> - The report to Tack, per card: the commit, the exact field and route shapes, and the feature
+>   name. The integrator writes it.
+>
+> **Order:**
+> - Wave 1 runs four lanes that share no file:
+>   - A: P57-1;
+>   - B: P57-2;
+>   - C: P57-3, then P57-4, then P57-5;
+>   - D: P57-6.
+>
+>   The exception is `tasks/domain/task.py`. P57-1 and P57-2 each add one field to it, on distinct
+>   lines, and the integrator merges A before B.
+> - Wave 2 runs P57-7, then P57-8. They need P57-1 (`compose.py`, `record.py`) and P57-4
+>   (`exchange.py`) merged first.
+> - Opus plans, integrates and reviews the P57-7/P57-8 diff. It is not a worker.
+
+### P57-1 — `current` on a running task
+
+**Status:** DONE (merged to `develop`; feature `taskCurrent`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0037 decision 1 (Tack ask 1).
+- **Goal:** while a hop runs, its task carries
+  `current: {stepId, role, member, model, startedAt, cycle}`. The field is absent, not null, at every
+  other time.
+- **Writing and clearing it:**
+  - It is written to the record where `hop_started` is emitted (`hops/application/compose.py`
+    ~564-581), with the same values, through `TaskRepository.update`.
+  - It is cleared where `hop_finished` is emitted (`tasks/application/record.py`
+    `persist_hop_and_trace` ~513).
+  - `tasks/domain/state.py::decide` (~90-148) adds `current` to `drop` on every move out of
+    `running`.
+- **Non-goals:**
+  - no route change: both routes already serialize through `routes/health.py::_with_token_budget`;
+  - no in-memory registry;
+  - no served model (that stays on `hop_finished`).
+- **Spec:** `specs/api/operator-api.spec.md`, the task shape. Add the field, when it is present,
+  and that `model` is the planned model.
+- **Change:**
+  - `tasks/domain/task.py`: a `CurrentHop` model and the field, with alias + `exclude_if` as
+    `max_tokens` does (~241);
+  - `state.py`;
+  - `compose.py`;
+  - `record.py`;
+  - feature name `taskCurrent` (the integrator adds it).
+- **Acceptance (RED first):**
+  - `tests/unit/tasks/domain/test_state.py`: `decide` from `running` to each settle status drops
+    `current`.
+  - `tests/integration/interfaces/test_serve_tasks_endpoint.py`, a new test:
+    - a fake chat port reads `GET /tasks/<pod>/<id>` and the list from inside the turn;
+    - both carry `current` with the step, role, member, model and `cycle: 0`;
+    - `current` is absent before claim and after `done`;
+    - a gate that sends the step back once shows `cycle: 1` on the second hop.
+  - The fixture `tests/fixtures/task-records/` loads unchanged.
+- **Gate:**
+  - the touched unit files and the one integration file, under `timeout 120`;
+  - `tests/architecture` (3 s);
+  - `tests/e2e -n auto` (42 s; the wire changes).
+
+### P57-2 — a cursor over every task a pod holds
+
+**Status:** DONE (merged to `develop`; feature `taskCursor`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0037 decision 2 (Tack ask 2).
+- **The counter:** the task file `{"tasks": [...]}` gains a counter, and every task carries `rev`.
+  - `tasks/application/json_store.py`'s locked `read_modify_write` (~28) compares each task's dump
+    (without `rev`) before and after `fn`.
+  - A changed or new task gets the next counter value, so every writer is covered at the one place.
+- **The route:** `GET /tasks/<pod>?updatedSince=<n>` answers `{"tasks": [...], "next": "<n>"}`:
+  - the tasks with `rev > n`, in `rev` order;
+  - `next` is the highest `rev` returned, or `n` itself when nothing changed;
+  - it combines with the `status` and `externalRef` filters (`routes/tasks.py::_filter_tasks` ~75);
+  - a non-integer cursor answers 400, `code: bad_cursor`;
+  - without `updatedSince`, the response stays byte for byte what it is today.
+- **Non-goals:**
+  - a timestamp cursor;
+  - tombstones (ADR 0037, "Not decided");
+  - migrating a task file that has no counter (no compatibility; the first write stamps the tasks
+    it changes).
+- **Spec:**
+  - `specs/api/operator-api.spec.md`: the list route and `rev`;
+  - `specs/data/serve-read-api.spec.md`: a "Task cursor" section beside the traces cursor. Say
+    "latest state once", not "every event".
+- **Change:**
+  - `tasks/domain/task.py` (`rev`);
+  - `tasks/application/json_store.py`;
+  - `interfaces/http/routes/tasks.py`;
+  - feature name `taskCursor` (the integrator adds it).
+- **Acceptance (RED first):**
+  - `tests/unit/tasks/application/test_json_store.py`:
+    - an unchanged write stamps nothing;
+    - two changed tasks get consecutive values.
+  - `tests/integration/interfaces/test_serve_tasks_endpoint.py`:
+    - one task enqueued by the routine path (`tasks/application/routines.py` ~211) and one by the
+      CLI path (`interfaces/cli/commands/task.py` ~189);
+    - `updatedSince=0` returns both, once, with `channel` `routine` and `cli`;
+    - polling `next` returns `[]` with the same `next`;
+    - moving one task's status makes only it reappear;
+    - `updatedSince=abc` answers 400 `bad_cursor`.
+- **Gate:** the two files, `tests/architecture`, `tests/e2e -n auto`.
+
+### P57-3 — pod memory over HTTP, read only, and the `features` list
+
+**Status:** DONE (merged to `develop`; feature `podMemory`) · **Size:** S · **Model:** Haiku · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0037 decision 3 (Tack ask 3), and the probe list of the Decision preamble.
+- **The memory route:** `GET /pods/<pod>/memory` answers `{"entries": [...]}`.
+  - It returns `teams/memory.py::list_entries(pod, status="accepted")` (~473), mapped through
+    `MemoryEntry.to_dict()` (~132).
+  - It sits behind the serve token. An unknown pod answers 404.
+  - The route row goes before the `/pods/<pod>` catch-all in `interfaces/http/routes/table.py`
+    (~42-46), shaped like the `/corrections` row.
+  - The handler is a copy of the pattern in `routes/pods.py::get_pod_corrections` (~60).
+- **The `features` list:**
+  - `interfaces/http/routes/health.py` gains `FEATURES: tuple[str, ...] = ("podMemory",)`;
+  - `build_status` (~59-80) and `/health` (`interfaces/http/server.py` ~63-78) both answer
+    `"features": list(FEATURES)`.
+- **Non-goals:** pending or refused entries over HTTP; writes.
+- **Spec:**
+  - `specs/api/operator-api.spec.md`: the route, and `features` with its rule (a name appears in
+    the commit that makes it work);
+  - `specs/data/serve-read-api.spec.md`: `/status.json`.
+- **Acceptance (RED first):** a new file
+  `tests/integration/interfaces/test_serve_pod_memory.py`, modelled on
+  `test_serve_pods_corrections.py`:
+  - a pod with one accepted, one pending and one refused entry returns exactly the accepted one,
+    equal to the CLI's element;
+  - no token gets 401;
+  - an unknown pod gets 404;
+  - `/status.json` and `/health` list `podMemory`.
+- **Gate:** the new file plus `tests/unit/interfaces/http/test_routing.py`,
+  `tests/unit/interfaces/http/routes/test_health.py`, `tests/architecture`, `tests/e2e -n auto`.
+
+### P57-4 — a read-scoped serve token
+
+**Status:** DONE (merged to `develop`; `readScope`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
+
+- **Trigger:** ADR 0037 decision 5, HTTP half (Tack ask 5).
+- **Goal:** `DOCKET_SERVE_READ_TOKEN`, read in `bootstrap.py` (~213), is a second token on
+  `ServerPlan` and on `HttpExchange` (`interfaces/http/exchange.py` ~29).
+  - `authorize` (`interfaces/http/auth.py` ~21) takes the method, which `server.py::_route`
+    (~296-305) passes.
+  - Answers by token and method:
+
+    | Token | Method | Answer |
+    | --- | --- | --- |
+    | serve token | any | allowed |
+    | read token | `GET`/`HEAD` | allowed |
+    | read token | `POST` | 403, `code: read_scope` |
+    | anything else | any | 401 |
+
+  - A read token equal to the serve token is refused at start.
+  - `_send_refusal` (`exchange.py` ~68) passes a `DocketError`'s `code` to the wire. P57-7 needs
+    this.
+- **Non-goals:**
+  - a token file for the read token;
+  - scopes beyond read and full;
+  - auth on `/status.json`, `/metrics` and `/health`, which stay open.
+- **Spec:**
+  - `specs/api/operator-api.spec.md`: auth;
+  - `docs/CONFIGURATION.md`: the variable;
+  - `specs/api/cli-interface.spec.md`, if `start` documents its environment.
+- **Change:** `bootstrap.py`, `interfaces/http/auth.py`, `exchange.py`, `server.py`,
+  feature name `readScope` (the integrator adds it).
+- **Acceptance (RED first):** `tests/integration/interfaces/test_server__bearer_auth.py`:
+  - for every row of `POST_ROUTES`, the read token gets 403 `read_scope` and nothing is written
+    (the task file is unchanged);
+  - for every authenticated `GET` row, the read token gets what the serve token gets;
+  - a wrong token gets 401.
+  - `tests/unit/test_bootstrap.py`: equal tokens are refused.
+- **Gate:** the two files, `tests/architecture`, `tests/e2e -n auto`.
+
+### P57-5 — `docket start --mcp --read-only`
+
+**Status:** DONE (merged to `develop`; no feature name) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec + CLI
+
+- **Trigger:** ADR 0037 decision 5, MCP half.
+- **The `retry` split:** in `interfaces/cli/commands/mcp.py`, `retry_task_id` leaves `tool_queue`
+  (~89) for a new write tool `retry`. The full server lists twelve tools.
+- **The flag:**
+  - `--read-only` (`interfaces/cli/commands/service.py::cmd_start` ~64-112) is refused without
+    `--mcp`.
+  - It passes `read_only=True` to `serve_stdio`/`_build_server` (~230-271), which then registers
+    only `status`, `pods`, `queue`, `runs`, `inbox`, `escalations` and `cost`.
+  - The stderr list and the `instructions` string (~249) follow the registered set.
+- **Non-goals:** a caller check inside `resolve`.
+- **Spec:**
+  - `specs/api/mcp-server.spec.md`: the tool list and read-only mode;
+  - `specs/api/cli-interface.spec.md`: the flag;
+  - goldens and `docs/commands.md` via `scripts/gen_cli_docs.py`.
+- **Acceptance (RED first):** `tests/integration/interfaces/test_mcp_server.py`:
+  - `tools/list` on a read-only server returns exactly the seven names;
+  - calling `resolve` is an unknown tool;
+  - the full server lists twelve, and `retry` re-queues a failed task.
+  - `tests/unit/kernel/test_service.py`: `--read-only` without `--mcp` is refused.
+- **Gate:** the two files, `tests/architecture`, goldens (4 s), `gen_cli_docs.py --check`.
+
+### P57-6 — a lights-out pod reaches a loopback service; a jailed MCP server does not
+
+**Status:** DONE (merged to `develop`; both tests pass on unchanged `src/`) · **Size:** S · **Model:** Sonnet · **Kind:** tests + spec
+
+- **Trigger:** ADR 0037 decision 6 (Tack ask 6). Measure first, then prove the shape that fits.
+- **Goal:** two tests.
+  1. *The measurement.* `tests/integration/sandbox/test_mcp_jail_network.py`, skipped without
+     Landlock, modelled on `tests/integration/agent/test_mcp_stdio_root.py`:
+     - a stdio MCP server whose tool connects to a listener on `127.0.0.1:<free port>`;
+     - `mcp_client` with `StdioLaunch(sandbox="auto", network=False, ...)` gets the tool's EPERM
+       error and the listener receives nothing;
+     - with `network=True` (the control) the listener receives the bytes.
+  2. *The fitting shape.* `tests/integration/hops/test_lights_out_service.py`:
+     - a pod that passes the lights-out profile (`hops/gates/profile.py` ~50-65: isolation on,
+       network `none`, `consultMode: decide`) declares a `kind: service` with
+       `baseUrl: http://127.0.0.1:<port>` and `hosts: ["127.0.0.1"]`;
+     - a turn's `svc__<name>__<op>` call reaches the listener and is traced (a `read` writes no audit row; a refusal does);
+     - a second service on `127.0.0.2` with no `hosts` entry is refused by the perimeter
+       (`platform/service_http.py::_connector` ~98-125), and the refusal is audited.
+- **Non-goals:**
+  - `placement: host`;
+  - a per-port perimeter;
+  - an in-process HTTP MCP client (ADR 0037, "Not decided").
+- **Spec:**
+  - `specs/functional/mcp-client.spec.md` (~40): one sentence. A stdio server shares the turn's
+    network, so under network `none` it reaches no TCP address, loopback included.
+  - `specs/functional/service-client.spec.md`: one sentence. A service is how a lights-out pod
+    reaches a local HTTP API.
+- **Gate:** the two new files, `tests/architecture`.
+
+### P57-7 — a conversation task: the option, the `turn` escalation, how it resolves
+
+**Status:** DONE (merged to `develop`; the `conversation` feature name waits for P57-8)
+
+- **Trigger:** ADR 0037 decision 4 (Tack ask 4), first half.
+- **Creating one:**
+  - `POST /tasks/<pod>` accepts `conversation: {maxTurns}`, validated in `tasks/domain/options.py`
+    (`maxTurns`: `StrictInt`, 1-20; the constant is `MAX_CONVERSATION_TURNS`). The field joins
+    `_TASK_OPTION_FIELDS` (`interfaces/http/routes/task_create.py` ~20-31).
+  - It is stored on `TaskRecord` and answered as `conversation: {maxTurns, turns}`. `turns` is a
+    computed field: the task's finished hops of its one step.
+  - A pipeline of more than one step (`resolve_pipeline_steps`) answers 400,
+    `code: conversation_needs_one_step`.
+- **The `turn` escalation:**
+  - `EscalationKind` (`kernel/operator_contract.py` ~255) gains `turn`, and the operator-v2 schemas
+    are regenerated (`scripts/gen_operator_schemas.py`).
+  - `tasks/application/escalations.py` gains `open_for_turn(task, step, answer)`:
+    - the options are `reply` (content `{text: string}`) and `close`;
+    - the record names its kind's `whenNobody` and an expiry that closes it.
+  - In `resolve` (~538), `reply` re-queues the task as a consult does (`_receive_question` ~455).
+  - `close`, and the expiry sweep (`tasks/application/escalation_sweep.py` ~39-57), move the task
+    to `done`.
+  - `EscalationNotPending` carries `code = "escalation_not_pending"`.
+  - `kernel/errors.py`: `DocketError` gains a typed `code: str = ""`, `EscalationNotPending` sets it, and
+    `interfaces/http/exchange.py::_send_refusal` reads it (P57-4 shipped a `getattr` there); the cancel
+    route (`routes/task_control.py` ~34-39) drops its hand-made code for the shared path.
+- **Non-goals:**
+  - running the turn (P57-8);
+  - a `/messages` route;
+  - a new task status.
+- **Spec:**
+  - `specs/functional/operator-loop.spec.md` §11 (the kind, its options, its expiry);
+  - `specs/api/operator-api.spec.md` (the create body, the wire field, the 409 code);
+  - `specs/api/a2a-binding.spec.md`: one line, `message/send` resolves a `turn` like any pending
+    escalation.
+- **Acceptance (RED first):**
+  - `tests/unit/tasks/domain/test_options.py`: `maxTurns` 0, 21 and `"3"` are refused.
+  - `tests/integration/tasks/test_escalation_turn.py`:
+    - a `turn` opened on a `waiting_input` task resolves with `reply` to `pending`;
+    - resolving with `close` moves it to `done`;
+    - an expired `turn` moves it to `done`, not `blocked`;
+    - a second resolve gets `EscalationNotPending` with its code.
+  - `tests/integration/interfaces/test_serve_escalation_resolve.py`: that 409 carries
+    `code: escalation_not_pending`.
+  - `tests/contracts/`: the regenerated schema.
+- **Gate:**
+  - the files;
+  - `gen_operator_schemas.py --check` (or its test);
+  - `tests/architecture`;
+  - `tests/e2e -n auto`.
+
+### P57-8 — a conversation task runs turn by turn
+
+**Status:** DONE (merged to `develop`; feature `conversation`)
+
+- **Trigger:** ADR 0037 decision 4, second half.
+- **When a turn's hop succeeds** on a conversation task with `turns < maxTurns`, the executor
+  (`hops/application/executor.py` ~304-433, the outcome loop ~355):
+  - records the hop `parked=True`, so `replay_pipeline_position` (`tasks/application/record.py`
+    ~101) re-enters the same step unchanged;
+  - calls `open_for_turn` with the hop's answer;
+  - ends `waiting_input`.
+- **On the turn that reaches `maxTurns`** the task ends `done`.
+- **The reply as the next turn's note:** `tasks/application/answers.py::consult_note` (~65) also
+  renders the resolved `turn`'s `text` as the note, and `consult_note_delivered` stamps it. The
+  step's history (`kernel/ids.py::step_session_key`) brings the earlier turns.
+- **The token limit:** `hops/domain/gate_decisions.py::decide_task_tokens` (~277) ends a
+  conversation task with at least one turn `done`, not `failed` with `budget`.
+- **From P57-7 (merged), what this card builds on and must finish:**
+  - `escalations.open_for_turn(task, step, answer, *, pod=project)` and `escalations.close_turn(record, reason)`
+    exist; `TaskRecord.conversation` is `{maxTurns, turns}` with `turns = len(task.hops)`, so the parked
+    hop must count as one turn and the turn that ends the conversation must not be counted twice.
+  - `operator/render.py::_TITLES` (~32) has no `turn` key: `render_escalation` raises `KeyError` on one
+    (CLI `task show`, `inbox`, notify). Add the entry, and decide `operator/notify.py::_NEEDS_YOU_KINDS`
+    (~56) with a test. The autonomy table has no `turn` row by design; do not add one.
+  - `RpcError.code` is now `rpc_code`; `DocketError.code` is a typed string.
+  - `hops/application/executor.py` is 547 lines and `tasks/application/record.py` 633: stay under the
+    1,000-line ceiling or park with the split proposal.
+- **Non-goals:**
+  - multi-step conversations;
+  - a reply mid-turn;
+  - changing a consult.
+- **Spec:**
+  - `specs/functional/pod-dispatch.spec.md`: a conversation task's outcome;
+  - `specs/functional/session-history.spec.md`: one sentence, turns share the step's history.
+- **Acceptance (RED first):** `tests/integration/hops/test_conversation_task.py`, with a recording
+  fake chat port:
+  - `maxTurns: 3`, then reply, reply;
+  - the three model requests carry the earlier turns' user and assistant messages;
+  - three hops, each with `usage`;
+  - after turn 3 the task is `done` with no pending escalation;
+  - a reply to turn 2's escalation gets 409 `escalation_not_pending`;
+  - a task whose `maxTokens` runs out after turn 1 is `done`;
+  - a non-conversation task's ok hop still advances (regression).
+  - E2E: `tests/e2e/test_plan_of_record_over_http.py` gains one conversation over HTTP: create,
+    reply via `POST /escalations/<id>`, close.
+  - feature name `conversation` (the integrator adds it).
+- **Gate:**
+  - the new file;
+  - `tests/unit/hops/application/test_executor.py`;
+  - `tests/unit/tasks/application/test_record.py`;
+  - `tests/architecture`;
+  - `tests/e2e -n auto`.
+- **Phase close (integrator):**
+  - the full gate list of `CLAUDE.md`'s testing budget;
+  - one real run on the live home: a three-turn conversation on `app-dev`.
+
