@@ -57,6 +57,20 @@ class TestAdd:
         assert len(repo.list()) == 2
 
 
+class TestChangedSince:
+    def test_only_tasks_changed_after_the_cursor_come_back_oldest_change_first(
+        self, repo: TaskRepository
+    ) -> None:
+        for name in ("task-1", "task-2", "task-3"):
+            repo.add(TaskRecord(id=name, description=name))
+        repo.update("task-1", lambda record: setattr(record, "priority", "low"))
+        by_rev = {t.id: t.rev for t in repo.list()}
+
+        assert [t.id for t in repo.changed_since(0)] == ["task-2", "task-3", "task-1"]
+        assert [t.id for t in repo.changed_since(by_rev["task-2"])] == ["task-3", "task-1"]
+        assert repo.changed_since(by_rev["task-1"]) == []
+
+
 class TestUpdate:
     def test_a_function_changes_one_task_and_the_change_is_stored(
         self, repo: TaskRepository

@@ -39,30 +39,6 @@ MISSING_SDK_HINT = (
     "(uv projects:      uv sync --extra mcp   or   uv pip install 'docket[mcp]')"
 )
 
-_READ_ONLY_TOOL_NAMES: tuple[str, ...] = (
-    "status",
-    "pods",
-    "queue",
-    "runs",
-    "inbox",
-    "escalations",
-    "cost",
-)
-
-_TOOL_NAMES: tuple[str, ...] = (
-    *_READ_ONLY_TOOL_NAMES,
-    "delegate",
-    "dispatch",
-    "retry",
-    "resolve",
-    "task_pregrant",
-)
-
-
-def tool_names(read_only: bool = False) -> tuple[str, ...]:
-    """The names a server registers: the seven read tools alone when ``read_only``, else all."""
-    return _READ_ONLY_TOOL_NAMES if read_only else _TOOL_NAMES
-
 
 class McpToolError(InvalidInput):
     """A tool's domain validation or lookup failed. Raised so success stays the bare shape in
@@ -239,12 +215,35 @@ def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
     raise McpToolError(f"Project '{agent_id}' not found.")
 
 
+# Each tool by name, with whether it only reads: the read tools come first, and a read-only server
+# registers those alone.
+_TOOLS: dict[str, tuple[Callable[..., Any], bool]] = {
+    "status": (tool_status, True),
+    "pods": (tool_pods, True),
+    "queue": (tool_queue, True),
+    "runs": (tool_runs, True),
+    "inbox": (tool_inbox, True),
+    "escalations": (tool_escalations, True),
+    "cost": (tool_cost, True),
+    "delegate": (tool_delegate, False),
+    "dispatch": (tool_dispatch, False),
+    "retry": (tool_retry, False),
+    "resolve": (tool_resolve, False),
+    "task_pregrant": (tool_task_pregrant, False),
+}
+
+
+def tool_names(read_only: bool = False) -> tuple[str, ...]:
+    """The names a server registers: the read tools alone when ``read_only``, else all."""
+    return tuple(name for name, (_fn, reads) in _TOOLS.items() if reads or not read_only)
+
+
 # ── SDK registration (only imported/executed when actually serving) ─────────
 
 
 def _build_server(read_only: bool = False) -> Any:
-    """Construct the MCPServer instance with its tools registered: every tool, or only the seven
-    read tools when ``read_only``. Only called from ``serve_stdio()`` -- importing ``mcp`` at
+    """Construct the MCPServer instance with its tools registered: every tool, or only the read
+    tools when ``read_only``. Only called from ``serve_stdio()`` -- importing ``mcp`` at
     module level would make the optional dependency mandatory just to import ``docket.cli``."""
     from mcp.server import MCPServer
     from mcp.server.mcpserver.exceptions import ToolError
@@ -273,22 +272,8 @@ def _build_server(read_only: bool = False) -> Any:
         )
     server = MCPServer(name="docket", instructions=instructions)
 
-    tools: dict[str, Callable[..., Any]] = {
-        "status": tool_status,
-        "pods": tool_pods,
-        "queue": tool_queue,
-        "delegate": tool_delegate,
-        "dispatch": tool_dispatch,
-        "runs": tool_runs,
-        "retry": tool_retry,
-        "resolve": tool_resolve,
-        "task_pregrant": tool_task_pregrant,
-        "inbox": tool_inbox,
-        "escalations": tool_escalations,
-        "cost": tool_cost,
-    }
     for name in tool_names(read_only):
-        server.add_tool(expected(tools[name]), name=name)
+        server.add_tool(expected(_TOOLS[name][0]), name=name)
     return server
 
 

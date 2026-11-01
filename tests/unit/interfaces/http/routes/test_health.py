@@ -56,7 +56,13 @@ class TestBuildStatus:
         assert health.build_status()["apiVersion"] == health.SERVE_API_VERSION
 
     def test_features_list_the_feature_names(self, fake_home: Path) -> None:
-        assert health.build_status()["features"] == list(health.FEATURES)
+        assert health.build_status()["features"] == [
+            "taskCurrent",
+            "taskCursor",
+            "podMemory",
+            "readScope",
+            "conversation",
+        ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:
         assert health.build_status()["channels"] == ["telegram"]

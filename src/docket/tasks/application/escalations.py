@@ -274,18 +274,18 @@ def open_for_wait(*, pod: str, task_id: str, step: str, prompt: str, due_at: str
     )
 
 
-def open_for_turn(task: TaskRecord, step: str, answer: str, *, pod: str) -> Escalation:
-    """Open the ``turn`` escalation of the conversation *task* after a turn of *step* that ended
-    with *answer*: ``reply`` with a text, or ``close``. Nobody there ends the conversation at the
-    pod's approval expiry, so the record's ``policy`` and ``onExpiry`` are ``deny`` at every level."""
+def open_for_turn(task_id: str, role: str, step: str, answer: str, *, pod: str) -> Escalation:
+    """Open the ``turn`` escalation of conversation task *task_id* after *role*'s turn at *step* that
+    ended with *answer*: ``reply`` with a text, or ``close``. Nobody there ends it at the pod's
+    approval expiry, so ``policy`` and ``onExpiry`` are ``deny`` at every level."""
     hours = load_pod_settings(pod).approval_expiry_hours
     return _store(
         Escalation(
             id=new_escalation_id(),
-            task=task.id,
+            task=task_id,
             pod=pod,
             step=step,
-            role=task.hops[-1].role if task.hops else "",
+            role=role,
             kind="turn",
             caused_by=step,
             prompt=_redact(answer),
@@ -295,7 +295,7 @@ def open_for_turn(task: TaskRecord, step: str, answer: str, *, pod: str) -> Esca
             expires_at=(_clock.now() + _dt.timedelta(hours=hours)).isoformat(),
             on_expiry="deny",
             policy="deny",
-            level=_level_of(pod, task.id),
+            level=_level_of(pod, task_id),
         )
     )
 

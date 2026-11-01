@@ -514,7 +514,6 @@ def persist_hop_and_trace(
             if isinstance(label, str)
             else ("pass" if hop.verify.get("exitCode") == 0 else "fail")
         )
-    clear_current_hop(ctx.project, ctx.task_id, hop.step_id or "")
     trace_locked(
         ctx.project,
         ctx.session_id,
@@ -606,18 +605,6 @@ def set_current_hop(project: str, task_id: str, current: CurrentHop) -> None:
     TaskRepository.for_pod(project).update(task_id, _set)
 
 
-def clear_current_hop(project: str, task_id: str, step_id: str) -> None:
-    """Remove the hop record when it still names *step_id*, the step that has just finished."""
-
-    def _clear(record: TaskRecord) -> bool:
-        if record.current is None or record.current.step_id != step_id:
-            return False
-        record.current = None
-        return True
-
-    TaskRepository.for_pod(project).update(task_id, _clear)
-
-
 def persist_hop(project: str, task_id: str, hop: HopResult) -> None:
     """Append one just-completed hop to the task's record, called after every hop (not only
     at task end) so a crash loses at most the in-flight hop. Also refreshes ``claimedAt``,
@@ -627,6 +614,8 @@ def persist_hop(project: str, task_id: str, hop: HopResult) -> None:
 
     def _append(record: TaskRecord) -> None:
         record.hops.append(hop)
+        if record.current is not None and record.current.step_id == (hop.step_id or ""):
+            record.current = None
         record.cost_usd = round(sum(h.cost_usd for h in record.hops), 6)
         record.claimed_at = _clock.iso()
 

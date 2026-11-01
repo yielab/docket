@@ -68,7 +68,7 @@ class TestSingleCodePathOnRealSdk:
         server = _mcp._build_server()
         tools = asyncio.run(server.list_tools())
         names = {t.name for t in tools}
-        assert names == set(_mcp._TOOL_NAMES)
+        assert names == set(_mcp.tool_names())
         assert len(tools) == 12
 
     def test_a_read_only_server_lists_exactly_the_seven_read_tools(self) -> None:
@@ -218,7 +218,7 @@ class TestRealTransportRoundTrip:
             server = _mcp._build_server()
 
             for name in ("approvals_list", "approvals_grant", "approvals_deny", "task_answer"):
-                assert name not in _mcp._TOOL_NAMES
+                assert name not in _mcp.tool_names()
                 result = asyncio.run(_call(server, name, {}))
                 assert result.is_error is True
                 assert _audit_actions(f"mcp.{name}") == []

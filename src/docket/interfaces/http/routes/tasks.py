@@ -29,15 +29,14 @@ def get_tasks(h: HttpExchange, rest: str) -> None:
         _send_one_task(h, project, task_id)
         return
     query = _urlparse.parse_qs(_urlparse.urlsplit(h.path).query)
-    all_tasks = TaskRepository.for_pod(project).list()
+    repository = TaskRepository.for_pod(project)
     cursor = query.get("updatedSince", [None])[0]
-    if cursor is not None:
-        if not cursor.isascii() or not cursor.isdecimal():
-            h._send_json_error(
-                f"updatedSince '{cursor}' is not a non-negative integer", 400, code="bad_cursor"
-            )
-            return
-        all_tasks = sorted((t for t in all_tasks if t.rev > int(cursor)), key=lambda t: t.rev)
+    if cursor is not None and not (cursor.isascii() and cursor.isdecimal()):
+        h._send_json_error(
+            f"updatedSince '{cursor}' is not a non-negative integer", 400, code="bad_cursor"
+        )
+        return
+    all_tasks = repository.list() if cursor is None else repository.changed_since(int(cursor))
     tasks = _filter_tasks(h, all_tasks, query)
     if tasks is None:
         return

@@ -76,7 +76,7 @@ class TestToolResolve:
         assert stored_task(PROJECT, escalation.task).status == "waiting_input"
 
     def test_it_is_one_of_the_tools_the_server_exposes(self) -> None:
-        assert "resolve" in _mcp._TOOL_NAMES
+        assert "resolve" in _mcp.tool_names()
 
 
 class TestResolveReplacesTheOlderTools:
@@ -103,5 +103,5 @@ class TestResolveReplacesTheOlderTools:
 
     def test_the_retired_tools_are_gone(self) -> None:
         for name in ("approvals_list", "approvals_grant", "approvals_deny", "task_answer"):
-            assert name not in _mcp._TOOL_NAMES
+            assert name not in _mcp.tool_names()
             assert not hasattr(_mcp, f"tool_{name}")

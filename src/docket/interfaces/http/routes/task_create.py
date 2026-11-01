@@ -8,7 +8,6 @@ from typing import Any
 from pydantic import ValidationError
 
 from docket.hops.application import executor as _executor
-from docket.hops.application import steps as _steps
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel import brief as _brief
 from docket.kernel.errors import DispatchError
@@ -40,12 +39,9 @@ def _conversation_steps(project: str, body: dict[str, Any]) -> int | None:
     while that is unknown (no pod, bad name), which the enqueue and the claim refuse themselves."""
     if "conversation" not in body or not pod_task_list_path(project).parent.is_dir():
         return None
-    spec, name = None, body.get("pipeline")
+    name = body.get("pipeline")
     try:
-        if isinstance(name, str) and name:
-            task, base = _task.TaskRecord(description="-", pipeline=name), _steps.effective_pipeline
-            spec = _steps._task_pipeline(project, task, base(project, None))[0]
-        return len(_executor.resolve_pipeline_steps(project, spec)[0])
+        return _executor.conversation_step_count(project, name if isinstance(name, str) else None)
     except DispatchError:
         return None
 
