@@ -45,8 +45,8 @@ turn is a separate feature that lives in the turn path (`DocketDriver.run_turn`;
 Every tool call MUST go through the same paths a CLI invocation (or, where one exists, a
 `docket start` HTTP call) would:
 
-1. **Audited.** Every tool call — including the seven read-only ones (`status`, `pods`, `queue`
-   without `retry_task_id`, `runs`, `inbox`, `escalations`, `cost`), which have no other audited
+1. **Audited.** Every tool call — including the seven read-only ones (`status`, `pods`, `queue`,
+   `runs`, `inbox`, `escalations`, `cost`), which have no other audited
    surface anywhere in this project — writes an audit-log entry (action
    `mcp.<tool>`) that participates in the same `seq`/`prev_hash` tamper-evidence chain as every
    other audit entry (see `audit.spec.md`). This entry is written unconditionally, before the
@@ -66,8 +66,14 @@ Every tool call MUST go through the same paths a CLI invocation (or, where one e
 ## Syntax
 
 ```
-docket start --mcp
+docket start --mcp [--read-only]
 ```
+
+`--read-only` registers only the seven read tools (`status`, `pods`, `queue`, `runs`, `inbox`,
+`escalations`, `cost`): `delegate`, `dispatch`, `retry`, `resolve` and `task_pregrant` are then
+unknown tools, and the `instructions` string and the stderr startup list name only the registered
+set. `--read-only` without `--mcp` prints a usage error (to stderr) and exits `2`. The restriction
+is the registered set, not a caller check inside any tool: `resolve` has none.
 
 `docket start --mcp` combined with `--dispatch`, `--telegram` or `--token-file` prints a usage error
 (to stderr — see stdio discipline below) and exits `2`. `--mcp` runs only the MCP server: no HTTP
@@ -147,19 +153,27 @@ Members are ordered Lead-first, matching `docket pod show`'s own member ordering
 
 ### `queue`
 
-**Purpose**: Show a pod's task queue (all statuses, not just pending); optionally re-queue one
-`blocked` or `failed` task first.
+**Purpose**: Show a pod's task queue (all statuses, not just pending). Read-only.
 **Arguments**:
 
 - `project` (string, required)
-- `retry_task_id` (string, optional) — mirrors `docket task retry <task-id>`: a `blocked` or
-  `failed` task goes back to `pending`, keeping its hops and clearing its block/failure fields,
-  and the retry is audited as `task.retry` in addition to `mcp.queue`
 
 **Output**: `{"project": "myapp", "tasks": [...]}` — the pod's task records as stored (see
-`pod-dispatch.spec.md`); the retry, when given, is applied before the queue is read.
-**Failure modes**: raises if `retry_task_id` is given but does not name a `blocked` or `failed`
-task in that project's queue (the message says "not a failed or blocked task").
+`pod-dispatch.spec.md`).
+
+### `retry`
+
+**Purpose**: Move one `blocked` or `failed` task back to `pending` (mirrors
+`docket task retry <task-id>`). A write tool: absent from a `--read-only` server.
+**Arguments**:
+
+- `project` (string, required)
+- `task_id` (string, required) — the task goes back to `pending`, keeping its hops and clearing
+  its block/failure fields; the retry is audited as `task.retry` in addition to `mcp.retry`
+
+**Output**: `{"project": "myapp", "tasks": [...]}` — the pod's queue after the retry.
+**Failure modes**: raises if `task_id` does not name a `blocked` or `failed` task in that
+project's queue (the message says "not a failed or blocked task").
 
 ### `delegate`
 
@@ -301,7 +315,8 @@ the SDK itself, before docket's tool code runs at all).
 
 ## Options
 
-`docket start --mcp` takes no command-line options or flags today.
+`docket start --mcp` takes one option: `--read-only`, which registers only the seven read tools.
+It is refused (exit `2`) without `--mcp`.
 
 ## Output
 
@@ -315,7 +330,7 @@ serving the protocol, until its stdin closes or it is interrupted.
 |------|---------|
 | 0 | `docket start --mcp` shut down cleanly (stdin closed, or Ctrl-C) |
 | 1 | The optional `mcp` SDK is not installed |
-| 2 | `docket start --mcp` combined with `--dispatch`, `--telegram` or `--token-file` (usage error) |
+| 2 | `docket start --mcp` combined with `--dispatch`, `--telegram` or `--token-file`, or `--read-only` without `--mcp` (usage error) |
 
 A tool call's own success/failure is expressed inside the MCP protocol (`CallToolResult.isError`),
 not as a process exit code — the server process itself only exits when the transport session ends.
@@ -324,12 +339,13 @@ not as a process exit code — the server process itself only exits when the tra
 
 - Every tool call MUST write exactly one `mcp.<tool>` audit-log entry, written
   unconditionally before the underlying operation runs.
-- `dispatch`, `delegate` and `resolve` MUST call the same
+- `dispatch`, `delegate`, `retry` and `resolve` MUST call the same
   functions the CLI and `docket start` call — no duplicated or parallel implementation.
 - `dispatch` MUST create a run record (source `"mcp"`) and return its id before the dispatch
   pipeline itself has necessarily finished (or even started) running.
 - `resolve` MUST tag the resolution with `channel="mcp"` and `by="mcp"`.
-- The tool list MUST be exactly the eleven below; a pause is listed by `escalations` and settled by
+- The tool list MUST be exactly the twelve below, and exactly the seven read tools under
+  `--read-only`; a pause is listed by `escalations` and settled by
   `resolve` whatever its kind, and no tool takes an approval token or a task id and an `action`.
 - `resolve` MUST call the function every other surface calls (`operator-loop.spec.md` area 10): a
   second call on the same escalation raises `McpToolError`.
@@ -380,8 +396,8 @@ concern, not docket's — see Scope above).
 
 ## Implementation
 
-- `src/docket/interfaces/cli/commands/mcp.py`: the eleven tool functions (`tool_status` ... `tool_task_pregrant`, `tool_resolve`),
-  `_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
+- `src/docket/interfaces/cli/commands/mcp.py`: the twelve tool functions (`tool_status` ... `tool_task_pregrant`, `tool_retry`, `tool_resolve`),
+  `_TOOL_NAMES`, `_READ_ONLY_TOOL_NAMES`, `MISSING_SDK_HINT`, `McpToolError`, `serve_stdio`
 - `src/docket/interfaces/cli/commands/service.py`: the `docket start` command and its `--mcp` flag handling
 - `src/docket/hops/application/sweep.py`: `dispatch_pod`
 - `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `pod_roster`
