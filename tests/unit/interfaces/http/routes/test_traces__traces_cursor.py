@@ -136,6 +136,54 @@ class TestMultipleSessionFiles:
         )
 
 
+class TestSameSecondOrder:
+    """Lines of one second keep the order they were written in, not the order of their files."""
+
+    def _line(self, session: str, event: str, ts_us: str) -> dict[str, object]:
+        return {
+            "ts": "2026-08-04T12:00:00Z",
+            "ts_us": ts_us,
+            "project": "demo",
+            "session_id": session,
+            "agent_role": "lead",
+            "event_type": event,
+            "payload": {},
+        }
+
+    def test_a_page_orders_one_second_by_the_microsecond_stamp(
+        self, traces_home: Path, fake_clock: _FakeClock
+    ) -> None:
+        from tests.support.trace import write_trace
+
+        pdir = _trace.project_trace_dir("demo")
+        # "aaa" sorts first by filename but its event happened last.
+        write_trace(pdir, "aaa", [self._line("aaa", "session_end", "2026-08-04T12:00:00.900000Z")])
+        write_trace(pdir, "zzz", [self._line("zzz", "hop_finished", "2026-08-04T12:00:00.100000Z")])
+        fake_clock.tick(5)
+
+        events, _cursor = traces._traces_page("demo", "")
+
+        assert [json.loads(e)["event_type"] for e in events] == ["hop_finished", "session_end"]
+
+    def test_a_line_with_no_microsecond_stamp_keeps_a_fixed_place(
+        self, traces_home: Path, fake_clock: _FakeClock
+    ) -> None:
+        from tests.support.trace import write_trace
+
+        pdir = _trace.project_trace_dir("demo")
+        old = self._line("zzz", "tool_call", "")
+        del old["ts_us"]
+        write_trace(pdir, "zzz", [old])
+        write_trace(pdir, "aaa", [self._line("aaa", "session_end", "2026-08-04T12:00:00.100000Z")])
+        fake_clock.tick(5)
+
+        first, _ = traces._traces_page("demo", "")
+        second, _ = traces._traces_page("demo", "")
+
+        assert first == second
+        assert [json.loads(e)["event_type"] for e in first] == ["tool_call", "session_end"]
+
+
 class TestCrossFileSameSecondRace:
     """The exact race the hold-back rule closes -- see the module comment
     above `_trace_line_ts` in serve.py for why filename-order concatenation

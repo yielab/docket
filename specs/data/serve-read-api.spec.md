@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 5.3.0
+**Version**: 5.4.0
 **Status**: Stable
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-11-01
 
 ## Purpose
 
@@ -361,8 +361,10 @@ session; a caller that wants a fleet-wide view aggregates client-side across cal
 
 - Each element of `events` is the **verbatim JSONL line** (a JSON string, not a re-parsed/re-keyed
   object) exactly as `export_lines` returned it — no field is added, removed or renamed. A page is
-  ordered by `ts` across the project's session files (stable, so same-second lines keep their file
-  order).
+  ordered by `ts` across the project's session files, then within a second by the line's `ts_us`
+  (`trace-store.spec.md` requirement 1), then by file order, so two events of one second come out in
+  the order they happened in whichever session file they sit, the same on every run. A line with no
+  `ts_us` (written before the key existed) sorts first in its second.
 - **`task_id`.** A pod-dispatch hop's line may carry a `task_id` key (`trace-store.spec.md`
   requirement 19), identifying which claimed task the record belongs to. A line is delivered
   verbatim, so it flows through unchanged; a caller that does not recognize the key **MUST**
