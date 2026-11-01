@@ -252,7 +252,7 @@ class TaskView(BaseModel):
     brief: TaskBrief | None = None
 
 
-EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed", "wait"]
+EscalationKind = Literal["approval", "consult", "input", "gate", "check_changed", "wait", "turn"]
 EscalationState = Literal["pending", "resolved", "expired", "decided"]
 EscalationPolicy = Literal["person", "recommendation", "deny", "fail", "machine"]
 EscalationExpiry = Literal["deny", "block"]

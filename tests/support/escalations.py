@@ -91,3 +91,15 @@ def input_escalation() -> Escalation:
     (record,) = list_escalations()
     assert record.kind == "input"
     return record
+
+
+def turn_escalation(
+    *, answer: str = "The cache layer is a dict.", max_turns: int = 3
+) -> Escalation:
+    """A conversation task waiting on a `turn` after one finished turn, as a turn-running hop
+    leaves it."""
+    task = _queue.enqueue_task_once(
+        PROJECT, "explain the cache", channel="cli", conversation={"maxTurns": max_turns}
+    )[0]
+    update_task(PROJECT, task.id, status="waiting_input")
+    return _esc.open_for_turn(task, "implementer", answer, pod=PROJECT)

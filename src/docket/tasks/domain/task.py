@@ -20,7 +20,7 @@ from docket.kernel import handoff as _handoff
 from docket.kernel import ids as _ids
 from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import DispatchError
-from docket.tasks.domain.options import TaskGate, TaskRestrictions
+from docket.tasks.domain.options import TaskConversation, TaskGate, TaskRestrictions
 from docket.tasks.domain.parts import Prepared, TaskUsage, Worktree, is_none
 from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.state import Status
@@ -259,6 +259,8 @@ class TaskRecord(BaseModel):
     autonomy: str | None = Field(None, exclude_if=is_none)
     # Pipeline variables that belong to this task; merged over the run's at claim.
     variables: dict[str, str] = Field(default_factory=dict, exclude_if=_is_empty)
+    # Set when the task continues turn by turn; dumped as ``{maxTurns, turns}``.
+    conversation: TaskConversation | None = Field(None, exclude_if=is_none)
 
     # The position in the pod's change counter, stamped by the task store inside its locked write
     # on every task that changed; absent until the first such write.
@@ -300,6 +302,18 @@ class TaskRecord(BaseModel):
     @classmethod
     def _unset_variables_is_empty(cls, value: object) -> object:
         return {} if value is None else value
+
+    @field_validator("conversation", mode="before")
+    @classmethod
+    def _turns_are_not_stored_input(cls, value: object) -> object:
+        if isinstance(value, dict):
+            return {k: v for k, v in value.items() if k != "turns"}
+        return value
+
+    @field_serializer("conversation")
+    def _dump_conversation(self, value: TaskConversation | None) -> dict[str, int] | None:
+        """``turns`` is computed from the hops at every dump, never read back."""
+        return None if value is None else {"maxTurns": value.max_turns, "turns": len(self.hops)}
 
     @property
     def worktree_dir(self) -> str:

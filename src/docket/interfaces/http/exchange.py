@@ -75,7 +75,7 @@ class HttpExchange(BaseHTTPRequestHandler):
             status = 409
         else:
             status = 422
-        self._send_json_error(exc.message, status, code=str(getattr(exc, "code", "")))
+        self._send_json_error(exc.message, status, code=exc.code)
 
     def _read_body(self) -> bytes | None:
         """Read a POST body up to `MAX_POST_BODY_BYTES`, sending `413` and

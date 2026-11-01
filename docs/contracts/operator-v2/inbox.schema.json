@@ -61,7 +61,8 @@
             "input",
             "gate",
             "check_changed",
-            "wait"
+            "wait",
+            "turn"
           ],
           "title": "Kind",
           "type": "string"

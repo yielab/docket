@@ -53,6 +53,16 @@ def test_every_field_round_trips_verbatim() -> None:
     }
 
 
+@pytest.mark.parametrize("turns", [1, 20])
+def test_a_conversation_keeps_its_turn_limit_within_the_bounds(turns: int) -> None:
+    options = _ok(conversation={"maxTurns": turns}).model_dump(by_alias=True, exclude_none=True)
+    assert options == {"conversation": {"maxTurns": turns}}
+
+
+def test_the_turn_limit_is_the_documented_constant() -> None:
+    assert _to.MAX_CONVERSATION_TURNS == 20
+
+
 def test_a_gate_keeps_only_the_keys_it_was_given() -> None:
     assert _ok(gate={"command": "x"}).model_dump(by_alias=True, exclude_none=True) == {
         "gate": {"command": "x"}
@@ -76,6 +86,13 @@ def test_a_gate_keeps_only_the_keys_it_was_given() -> None:
         {"max_tokens": 0},
         {"max_tokens": True},
         {"max_tokens": 1.5},
+        {"conversation": {"maxTurns": 0}},
+        {"conversation": {"maxTurns": 21}},
+        {"conversation": {"maxTurns": "3"}},
+        {"conversation": {"maxTurns": True}},
+        {"conversation": {}},
+        {"conversation": {"maxTurns": 3, "extra": 1}},
+        {"conversation": 3},
         {"autonomy": "L9"},
         {"autonomy": "l4"},
         {"autonomy": 4},

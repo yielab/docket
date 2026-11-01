@@ -89,6 +89,7 @@ other route (see "Agent card").
   `cancel` choose the option `decline`, or `deny` for an approval, a gate and a changed check.
   `resolve` does not run the continuation: dispatch applies it when it claims the task, so the
   `Task` of the answer reads `SUBMITTED` (or `WORKING` once claimed) and ends `COMPLETED`.
+  A pending `turn` escalation (`operator-loop.spec.md` area 11 item 17) resolves like any other: `accept` with `content.optionId` `reply` and `content.text`, or `content.optionId` `close`.
 
 ### `tasks/get`, `tasks/cancel`
 

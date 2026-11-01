@@ -30,11 +30,12 @@ UNSUPPORTED = -32004
 
 
 class RpcError(DocketError):
-    """A failure that answers a JSON-RPC request: *code*, a sentence and optional *data*."""
+    """A failure that answers a JSON-RPC request: *code*, a sentence and optional *data*. The
+    integer is ``rpc_code``: ``code`` is the string name a ``DocketError`` carries."""
 
     def __init__(self, code: int, message: str, data: dict[str, Any] | None = None) -> None:
         super().__init__(message)
-        self.code = code
+        self.rpc_code = code
         self.data = data
 
 
@@ -66,7 +67,7 @@ def success(request_id: Any, result: object) -> dict[str, Any]:
 
 
 def failure(request_id: Any, error: RpcError) -> dict[str, Any]:
-    body: dict[str, Any] = {"code": error.code, "message": error.message}
+    body: dict[str, Any] = {"code": error.rpc_code, "message": error.message}
     if error.data is not None:
         body["data"] = error.data
     return {"jsonrpc": "2.0", "id": request_id, "error": body}
