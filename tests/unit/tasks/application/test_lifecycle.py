@@ -130,6 +130,39 @@ class TestCancelTask:
         cancels = [e for e in _audit.read_audit() if e.get("action") == "task.cancel"]
         assert len(cancels) == 1 and f"was={status}" in cancels[0]["detail"]
 
+    @pytest.mark.parametrize("status", ["pending", "waiting_input", "running"])
+    def test_the_audit_entry_names_the_actor_the_caller_sent(
+        self, pod_home: Path, monkeypatch: pytest.MonkeyPatch, status: str
+    ) -> None:
+        """A cancel from any state audits the caller's label, and the channel's name without one."""
+        from docket.governance import audit as _audit
+        from docket.tasks.application import run_cancellation as _run_cancellation
+        from docket.tasks.application import runs as _runs
+
+        if status == "running":
+            monkeypatch.setattr(
+                _runs,
+                "list_runs",
+                lambda project=None: [{"id": "run-a", "state": "running", "taskIds": []}],
+            )
+            monkeypatch.setattr(
+                _runs,
+                "cancel_run",
+                lambda run_id, *, source="cli": _run_cancellation.CancelOutcome(
+                    ok=True, message="asked"
+                ),
+            )
+        named = self._seed(status)
+        unnamed = self._seed(status)
+
+        _lifecycle.cancel_task("myapp", named, channel="http", actor="tack:op")
+        _lifecycle.cancel_task("myapp", unnamed, channel="cli")
+
+        details = [e["detail"] for e in _audit.read_audit() if e.get("action") == "task.cancel"]
+        assert len(details) == 2
+        assert "channel=http" in details[0] and "actor=tack:op" in details[0]
+        assert "channel=cli" in details[1] and "actor=cli" in details[1]
+
     def test_a_stale_claim_is_settled_not_cancelled(self, pod_home: Path) -> None:
         """A running task whose claimant is gone ends failed and is reported as reclaimed."""
         task_id = self._seed("running", claim_pid=2**22 + 1)

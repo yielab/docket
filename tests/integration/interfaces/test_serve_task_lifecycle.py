@@ -234,6 +234,24 @@ def test_cancel_of_an_accepted_unclaimed_task_ends_it_cancelled(tmp_path: Path) 
         assert _status(task.id) == "cancelled"
 
 
+def test_cancel_audits_the_actor_in_the_body_and_http_without_one(tmp_path: Path) -> None:
+    """The body's `actor` labels the `task.cancel` entry; with no body the label is `http`."""
+    with _seed_pod(tmp_path), _live_server() as live_server:
+        named = _queue.enqueue_task_once("demo", "one", channel="cli")[0]
+        unnamed = _queue.enqueue_task_once("demo", "two", channel="cli")[0]
+
+        by_body = _call(
+            "POST", f"{live_server}/tasks/demo/{named.id}/cancel", body={"actor": "tack:op"}
+        )
+        bare = _call("POST", f"{live_server}/tasks/demo/{unnamed.id}/cancel")
+
+        assert by_body[0] == bare[0] == 200
+        details = [e["detail"] for e in _audit.read_audit() if e.get("action") == "task.cancel"]
+        assert len(details) == 2
+        assert named.id in details[0] and "actor=tack:op" in details[0]
+        assert unnamed.id in details[1] and "actor=http" in details[1]
+
+
 def test_cancel_of_a_parked_task_ends_it_cancelled(tmp_path: Path) -> None:
     """A task waiting for an answer is cancelled over HTTP and audited with the channel."""
     with _seed_pod(tmp_path), _live_server() as live_server:

@@ -190,7 +190,7 @@ def test_the_pending_scan_opens_no_settled_file(monkeypatch: pytest.MonkeyPatch)
     assert store.read_escalation(done[0].id) == done[0]
 
 
-def test_a_settled_record_leaves_the_pending_directory_and_keeps_its_seq() -> None:
+def test_a_settled_record_leaves_the_pending_directory_with_the_next_seq() -> None:
     folder = current_home().escalations_dir
     mine = store.write_escalation(escalation_record())
     resolved = store.write_escalation(escalation_record())
@@ -205,9 +205,11 @@ def test_a_settled_record_leaves_the_pending_directory_and_keeps_its_seq() -> No
     assert not (folder / f"{mine.id}.json").exists()
     assert not (folder / f"{resolved.id}.json").exists()
     settled = store.read_escalation(mine.id)
-    assert settled is not None and (settled.state, settled.seq) == ("expired", mine.seq)
+    assert settled is not None and settled.state == "expired"
+    assert (settled.seq, stored.seq) == (resolved.seq + 1, resolved.seq + 2)
     assert store.resolve_escalation(resolved.id, resolution) is None
     assert store.mark_escalation_applied(resolved.id, "2026-10-25T10:05:00Z") is True
+    assert store.read_escalation(resolved.id).seq == stored.seq  # type: ignore[union-attr]
     path = folder / "settled" / f"{resolved.id}.json"
     assert oct(os.stat(path).st_mode & 0o777) == "0o600"
     assert oct(os.stat(path.parent).st_mode & 0o777) == "0o700"
