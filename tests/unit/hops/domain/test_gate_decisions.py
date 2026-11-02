@@ -364,6 +364,7 @@ def test_pod_budget_decision(
 
     assert (decision.kind, decision.reason) == (kind, reason)
     if kind == "blocked":
+        assert decision.failure_kind == "pod_budget"
         assert decision.event == "budget_exceeded"
         assert dict(decision.detail) == {
             "spent": spent,

@@ -397,6 +397,7 @@ def _run_pipeline(
         if outcome.kind == "blocked":
             result.status = "blocked"
             result.reason = outcome.reason
+            result.failure_kind = outcome.failure_kind
             _pause_lead_for_budget(ctx.project)
             break
         if outcome.kind == "waiting_approval":

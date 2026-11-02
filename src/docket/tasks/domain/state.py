@@ -29,8 +29,10 @@ class Status(StrEnum):
 class FailureKind(StrEnum):
     """The ``failureKind`` values the task state itself writes or reads back.
 
-    Hop and gate outcomes carry further kinds as plain strings (``gate_failed``, ``rejected``,
-    ``budget``, ``run_cancelled`` and the driver's own); they pass through unchanged."""
+    Hop and gate outcomes carry further kinds as plain strings (``gate_failed``,
+    ``gate_needs_human``, ``gate_error``, ``rejected``, ``budget``, ``base_ref``, ``prepare``,
+    ``pipeline`` and the driver's own); they pass through unchanged. A task that settles
+    ``failed`` with none of them takes ``hop_failed``."""
 
     stale_claim = "stale_claim"
     dispatch_refused = "dispatch_refused"
@@ -38,6 +40,8 @@ class FailureKind(StrEnum):
     approval_expired = "approval_expired"
     check_changed = "check_changed"
     needs_human = "needs_human"
+    hop_failed = "hop_failed"
+    pod_budget = "pod_budget"
 
 
 # A ``failed`` task ``--resume`` may reclaim: a swept crash, or a settled deterministic refusal.
@@ -135,6 +139,8 @@ def decide(
         if retry:
             drop += ["failure_kind", "reason", "completed_at"]
     else:
+        if to == Status.failed and not failure_kind:
+            failure_kind = FailureKind.hop_failed
         stale = failure_kind == FailureKind.stale_claim
         if status == Status.running:
             drop.append("current")
@@ -146,6 +152,8 @@ def decide(
             fields["pending_approval_index"] = pending_index
         elif to == Status.blocked:
             fields["blocked_reason"] = blocked_reason
+            if failure_kind:
+                fields["failure_kind"] = failure_kind
             drop.append("wait")
         elif to != Status.waiting_input:
             drop.append("wait")

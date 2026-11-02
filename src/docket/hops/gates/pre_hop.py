@@ -143,7 +143,7 @@ def _gate_budget(ctx: UnitContext, role: str) -> UnitOutcome | None:
     trace_locked(
         ctx.project, ctx.session_id, role, decision.event, _json.dumps(dict(decision.detail))
     )
-    return UnitOutcome(kind="blocked", reason=decision.reason)
+    return UnitOutcome(kind="blocked", reason=decision.reason, failure_kind=decision.failure_kind)
 
 
 def hop_model(node: _orch.PlannedUnit, member_id: str) -> str:

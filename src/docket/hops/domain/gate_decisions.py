@@ -300,6 +300,7 @@ def decide_pod_budget(*, cap: float, spent: float, estimated: bool, role: str) -
     return GateDecision(
         "blocked",
         reason=f"pod budget reached ({spent_label} ≥ ${cap:.2f}) before {role}",
+        failure_kind="pod_budget",
         event="budget_exceeded",
         detail={
             "spent": round(spent, 6),
