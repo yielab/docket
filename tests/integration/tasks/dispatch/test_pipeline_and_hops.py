@@ -26,6 +26,7 @@ from docket.tasks.domain import task as _task
 from docket.tasks.domain.parts import Worktree
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
+from docket.teams import pod as _podcore
 from docket.teams import resources as _res
 from docket.teams import settings as _settings
 
@@ -318,6 +319,19 @@ class TestPipeline:
             roles_called = [c[0].rsplit("-", 1)[-1] for c in runner.calls]
             assert roles_called == ["lead", "implementer"]
 
+    def test_a_failed_hop_without_a_specific_kind_settles_the_task_as_hop_failed(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path, roles=_pod.pod.FULL_POD_ROLES):
+            _queue.enqueue_task_once("demo", "Break early", channel="cli")
+
+            res = _sweep.dispatch_pod("demo", runner=FakeDriver(fail_role="implementer"))[0]
+
+            assert res.status == "failed"
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.status == "failed"
+            assert stored.model_dump(by_alias=True, mode="json")["failureKind"] == "hop_failed"
+
     def test_typed_run_cancellation_cancels_task_and_stops_pipeline(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             task = _queue.enqueue_task_once("demo", "Stop cleanly", channel="cli")[0]
@@ -360,7 +374,11 @@ class TestPipeline:
             assert runner.calls == []  # nothing dispatched
             # A blocked task stays blocked (it is never silently rewritten back
             # to pending) — it only re-enters pending via unblock_pod/retry_task.
-            assert TaskRepository.for_pod("demo").list()[0].status == "blocked"
+            stored = TaskRepository.for_pod("demo").list()[0]
+            assert stored.status == "blocked"
+            assert stored.model_dump(by_alias=True, mode="json")["failureKind"] == "pod_budget"
+            lead_id = _podcore.member_id("demo", "lead")
+            assert _fleet.meta_get(lead_id, "pausedReason") == "budget"
 
     def test_no_cross_pod_dispatch(self, tmp_path: Path) -> None:
         # Two pods exist; dispatching 'demo' must never touch 'other'.
