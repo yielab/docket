@@ -533,7 +533,17 @@ def pod_summary(project: str) -> dict[str, Any]:
         "members": len(_pod.members_of(ids, project)),
         "profile": _profile.effective_profile(project),
         "queue": task_counts(project),
+        **_pause_fields(project),
     }
+
+
+def _pause_fields(project: str) -> dict[str, Any]:
+    """``paused`` always; ``pausedReason`` only while the Lead is paused (operator-api.spec.md,
+    "Pod answers")."""
+    lead = _pod.member_id(project, "lead")
+    if not AgentMeta.coerce_paused(_fleet.meta_get(lead, "paused", "")):
+        return {"paused": False}
+    return {"paused": True, "pausedReason": _fleet.meta_get(lead, "pausedReason", "") or "budget"}
 
 
 def pod_detail(project: str) -> dict[str, Any]:
@@ -558,6 +568,7 @@ def pod_detail(project: str) -> dict[str, Any]:
         "workspaceKind": str(_pod_settings.workspace_kind(project)),
         "repoConfigDir": _repo_config_dir(project),
         "readOnly": [str(path) for path in _pod_settings.effective_read_only(project)],
+        **_pause_fields(project),
     }
 
 
