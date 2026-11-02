@@ -440,6 +440,9 @@ unknown pod, is `404`.
 
 Each entry is an `EscalationView` (`operator-loop.spec.md` area 11 item 7): the stored record
 plus `affordances`, its `state` joined with the pause it names, in `seq` order.
+`seq` is the record's last change: stamped when it is created and stamped again when it settles
+(`resolved` or `expired`), so a record's final state comes back through `since`. Stamping
+`resolution.appliedAt` is bookkeeping and does not move it.
 `since` is an integer `seq` (default `0`): only records with a greater `seq` are returned, whatever
 their state, so a poller never misses a record that settled between two reads. `pod` and `task`
 narrow the list. `next` is the highest `seq` returned, else `since`; pass it back as `since`. A

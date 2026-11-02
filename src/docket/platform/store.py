@@ -284,18 +284,22 @@ def _record_path(escalation_id: str) -> Path:
     return settled if settled.exists() else _escalation_path(escalation_id)
 
 
+def _issue_seq_unlocked(folder: Path) -> int:
+    """Increment ``_seq.json`` in *folder* and return the new value. The caller holds *folder*'s
+    per-directory lock, the one lock the counter and every pending record share, so no second
+    acquisition is made (the lock is not re-entrant)."""
+    counter = folder / "_seq.json"
+    issued = int(_read_json_unlocked(counter).get("seq", 0)) + 1
+    _atomic_write(counter, json.dumps({"seq": issued}, indent=2) + "\n")
+    return issued
+
+
 def next_escalation_seq() -> int:
     """The next ``seq`` for an escalation: one counter file, incremented under the store lock."""
     folder = current_home().escalations_dir
     mkdir_private(folder)
-    issued: list[int] = []
-
-    def _bump(doc: dict[str, Any]) -> dict[str, Any]:
-        issued[:] = [int(doc.get("seq", 0)) + 1]
-        return {"seq": issued[0]}
-
-    read_modify_write(folder / "_seq.json", _bump)
-    return issued[0]
+    with with_lock(folder / "_seq.json"):
+        return _issue_seq_unlocked(folder)
 
 
 def write_escalation(escalation: Escalation) -> Escalation:
@@ -379,17 +383,22 @@ def list_escalations(
 def _settle_pending(
     escalation_id: str, change: Callable[[Escalation], Escalation | None]
 ) -> Escalation | None:
-    """Apply *change* to the record while it is ``pending`` and move the result to ``settled/``;
-    the record as stored, or ``None`` when it was not pending (another caller settled it first)."""
+    """Apply *change* to the record while it is ``pending`` and move the result to ``settled/``
+    with the next ``seq``, so a cursor that read it pending sees it settle; the record as stored,
+    or ``None`` when it was not pending (another caller settled it first)."""
     path = _escalation_path(escalation_id)
     moved: list[Escalation] = []
     with with_lock(path):
         current = _parse_escalation(_read_json_unlocked(path))
         if current is None or current.state != "pending":
             return None
-        settled = change(current)
-        if settled is None:
+        changed = change(current)
+        if changed is None:
             return None
+        # The counter and the pending record share this directory's lock, which is held.
+        settled = changed.model_copy(
+            update={"seq": _issue_seq_unlocked(current_home().escalations_dir)}
+        )
         mkdir_private(_settled_dir())
         write_json(_settled_path(escalation_id), settled.model_dump(by_alias=True, mode="json"))
         path.unlink(missing_ok=True)

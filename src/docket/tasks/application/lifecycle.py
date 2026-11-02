@@ -219,14 +219,16 @@ def cancel_parked_task(
             continue
         with _contextlib.suppress(_ap.ApprovalError, _ap.ApprovalNoop):
             _ap.approval_deny(tokens[escalation_id], channel, actor=actor)
-    _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, reason))
+    _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, actor, reason))
     return prior
 
 
 _UNCLAIMED = (_state.Status.pending, _state.Status.blocked)
 
 
-def cancel_unclaimed_task(project: str, task_id: str, *, channel: str, reason: str = "") -> str:
+def cancel_unclaimed_task(
+    project: str, task_id: str, *, channel: str, actor: str = "", reason: str = ""
+) -> str:
     """Cancel a task no run holds yet (``pending``, or ``blocked`` behind a refusal): a locked flip
     to ``cancelled`` under the same lock a claim takes, so a claim and a cancel cannot both win.
     Audited ``task.cancel``. Returns the prior status, or ``""`` when the task is anywhere else."""
@@ -244,12 +246,16 @@ def cancel_unclaimed_task(project: str, task_id: str, *, channel: str, reason: s
 
     TaskRepository.for_pod(project).update(task_id, _cancel)
     if prior:
-        _audit.audit_log("task.cancel", _cancel_detail(project, task_id, prior, channel, reason))
+        _audit.audit_log(
+            "task.cancel", _cancel_detail(project, task_id, prior, channel, actor, reason)
+        )
     return prior
 
 
-def _cancel_detail(project: str, task_id: str, was: str, channel: str, reason: str) -> str:
-    detail = f"{project}/{task_id}: was={was} channel={channel}"
+def _cancel_detail(
+    project: str, task_id: str, was: str, channel: str, actor: str, reason: str
+) -> str:
+    detail = f"{project}/{task_id}: was={was} channel={channel} actor={actor or channel}"
     return f"{detail} reason={reason}" if reason else detail
 
 
@@ -317,11 +323,13 @@ def cancel_task(
             warnings.append(result.message)
     parked = cancel_parked_task(project, task_id, channel=channel, actor=actor, reason=reason)
     unclaimed = (
-        "" if warnings else cancel_unclaimed_task(project, task_id, channel=channel, reason=reason)
+        ""
+        if warnings
+        else cancel_unclaimed_task(project, task_id, channel=channel, actor=actor, reason=reason)
     )
     if stopped and not parked and not unclaimed:
         _audit.audit_log(
-            "task.cancel", _cancel_detail(project, task_id, "running", channel, reason)
+            "task.cancel", _cancel_detail(project, task_id, "running", channel, actor, reason)
         )
     reclaimed = False
     current = repo.get(task_id)

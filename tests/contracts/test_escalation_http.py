@@ -211,3 +211,46 @@ def test_a_parked_input_is_served_as_an_escalation_the_task_names(
         names = {view["id"]: "<escalation-id>", task_id: "<task-id>"}
         check("escalation-input", view, names)
         check("inbox-input", inbox, names)
+
+
+def test_a_cursor_sees_a_record_that_resolves_after_it_was_read(
+    parked: tuple[Service, str],
+) -> None:
+    service, _ = parked
+    _, body = service.get("/escalations?since=0")
+    (pending,) = body["escalations"]
+    cursor = body["next"]
+
+    status, _ = service.post(f"/escalations/{pending['id']}", {"optionId": "redis"})
+    _, after = service.get(f"/escalations?since={cursor}")
+
+    assert status == 200
+    (settled,) = after["escalations"]
+    assert (settled["id"], settled["state"]) == (pending["id"], "resolved")
+    assert settled["seq"] > cursor and after["next"] == settled["seq"]
+    assert service.get(f"/escalations?since={after['next']}")[1]["escalations"] == []
+
+
+def test_a_cursor_sees_a_record_that_expires_after_it_was_read(
+    tmp_path: Path, fake_model: Any
+) -> None:
+    model: FakeModel = fake_model(
+        script={"implementer": [call("consult", "k1", **QUESTION), say("done")]}
+    )
+    w, _ = park(tmp_path, model, PIPELINE)
+    with w.service(dispatch=False) as service:
+        _, body = service.get("/escalations?since=0")
+        (pending,) = body["escalations"]
+        cursor = body["next"]
+
+    w.env["DOCKET_CLOCK_OFFSET_S"] = str(10 * 86400)
+    with w.service(dispatch=False) as service:
+        w.wait_for(
+            lambda: service.get(f"/escalations?since={cursor}")[1]["escalations"],
+            what="the question to expire",
+        )
+        _, after = service.get(f"/escalations?since={cursor}")
+
+    (settled,) = after["escalations"]
+    assert (settled["id"], settled["state"]) == (pending["id"], "expired")
+    assert settled["seq"] > cursor and after["next"] == settled["seq"]

@@ -103,7 +103,9 @@ directory's lock when it settles, so the scan the inbox repeats reads only the l
 6. `settle_escalation(id, state)` MUST move the pending record *id* to `state` under the record's
    lock and return whether it was moved. A record
    that is no longer `pending` is left as it is. A record settled by `settle_escalation` or by
-   `resolve_escalation` leaves `escalations/` for `escalations/settled/`, keeping its `seq`.
+   `resolve_escalation` leaves `escalations/` for `escalations/settled/` with the next `seq`,
+   stamped under the same lock, so a cursor that read the pending record sees the settled one
+   (`mark_escalation_applied` keeps the `seq`).
 7. `prune_settled_escalations(retention_s=None, dry_run=False, now=None)` MUST delete the files under
    `escalations/settled/` whose modification time is older than the retention window (default
    `Home.trace_retention_s`, the knob that bounds traces) and return the count removed (or, under
