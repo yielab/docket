@@ -62,6 +62,16 @@ class _HopComposition:
     layers: list[_manifest.Layer] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ComposedHop:
+    """What composing a hop leaves for its persisted record: the prompt manifest, and the instant
+    and cycle its own ``hop_started`` event carries (a parallel group's children each have theirs)."""
+
+    manifest: dict[str, Any]
+    started_at: str
+    cycle: int
+
+
 _VERIFY_SENTENCE = (
     "Your work is accepted only if `{}` exits 0. Run it with the `verify` tool and fix what it "
     "reports before you finish."
@@ -509,8 +519,9 @@ def _compose_hop(
     member_id: str,
     prior_snapshot: list[HopResult],
     rework_hop: HopResult | None,
-) -> tuple[str, dict[str, str] | None, dict[str, Any]]:
-    """Build this hop's prompt/environment and its prompt manifest, and emit its
+) -> tuple[str, dict[str, str] | None, ComposedHop]:
+    """Build this hop's prompt/environment, its prompt manifest and the start its ``hop_started``
+    event carries, and emit its
     ``context_composed``/``tool_call`` trace pair. A downstream hop's message gets an extra checkout note naming the real
     implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
     step_override = ctx.step_instructions.get(node.step_id, "")
@@ -563,6 +574,7 @@ def _compose_hop(
     )
     planned_model = hop_model(node, member_id)
     cycle = ctx.cycle
+    started_at = _clock.iso()
     set_current_hop(
         ctx.project,
         ctx.task_id,
@@ -571,7 +583,7 @@ def _compose_hop(
             role=role,
             member=member_id,
             model=planned_model,
-            started_at=_clock.iso(),
+            started_at=started_at,
             cycle=cycle,
         ),
     )
@@ -648,7 +660,11 @@ def _compose_hop(
         # through without asking again.
         env = dict(env or {})
         env[_rd.DOCKET_PREGRANTS] = _json.dumps(pregrants_raw)
-    return message, env, _manifest.build_manifest(composition.layers, planned_model)
+    return (
+        message,
+        env,
+        ComposedHop(_manifest.build_manifest(composition.layers, planned_model), started_at, cycle),
+    )
 
 
 def _brief_from_step(prior: list[HopResult], step_id: str) -> _brief.TaskBrief | None:

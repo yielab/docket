@@ -13,10 +13,12 @@ import dataclasses
 import json
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,9 @@ from docket.hops.application import sweep as _sweep
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import current_home, use_home
 from docket.kernel.threads import ContextHTTPServer
+from docket.observability import trace as _trace
+from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _application_queue
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.task import HopResult, TaskRecord
@@ -632,3 +637,128 @@ class TestCurrentHop:
             assert "current" not in after
             _status, listed_after = _get(f"{url}/tasks/demo", token)
             assert all("current" not in t for t in listed_after["tasks"])
+
+
+def _hop_events(project: str, name: str) -> dict[tuple[str, int], datetime]:
+    """The instant of each ``hop_started`` or ``hop_finished`` event, by (step, cycle)."""
+    found: dict[tuple[str, int], datetime] = {}
+    for tracefile in (current_home().traces_dir / project).glob("*.jsonl"):
+        for event in _trace.read_trace(tracefile):
+            if event["event_type"] == name:
+                payload = event["payload"]
+                found[(payload["step"], payload["cycle"])] = datetime.fromisoformat(event["ts_us"])
+    return found
+
+
+def _seen_at(stamp: str) -> datetime:
+    return datetime.fromisoformat(stamp)
+
+
+def _assert_times_match_the_trace(hops: list[dict], project: str = "demo") -> None:  # type: ignore[type-arg]
+    started = _hop_events(project, "hop_started")
+    finished = _hop_events(project, "hop_finished")
+    assert len(started) == len(finished) == len(hops)
+    for hop in hops:
+        key = (hop["stepId"], hop["cycle"])
+        # Each time is taken just before its event is stamped, so the event is never earlier.
+        for field, event in (("startedAt", started[key]), ("finishedAt", finished[key])):
+            lag = (event - _seen_at(hop[field])).total_seconds()
+            assert 0 <= lag < 0.5, (key, field, lag)
+        assert _seen_at(hop["startedAt"]) <= _seen_at(hop["finishedAt"])
+
+
+class _ReworkOnce(FakeDriver):
+    """The Reviewer sends the work back once."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._reviews = 0
+
+    def run_turn(self, agent_id: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        result = super().run_turn(agent_id, *args, **kwargs)
+        if not agent_id.endswith("-reviewer"):
+            return result
+        self._reviews += 1
+        verdict = "REQUEST-CHANGES\nrename it" if self._reviews == 1 else "APPROVE"
+        return dataclasses.replace(result, output=verdict)
+
+
+class _SlowFirstChild(FakeDriver):
+    """The first child of a parallel group takes longer than its sibling."""
+
+    def run_turn(self, agent_id: str, session_key: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if session_key.endswith("implement-a"):
+            time.sleep(0.15)
+        return super().run_turn(agent_id, session_key, *args, **kwargs)
+
+
+class TestHopTimes:
+    def test_a_two_step_task_shows_each_hop_with_its_times_and_cycle_zero(
+        self, tmp_path: Path
+    ) -> None:
+        with (
+            seed_pod_isolation_off(tmp_path, roles=("lead", "implementer")),
+            _live_server() as (url, token),
+        ):
+            task, _created = _application_queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
+
+            _status, body = _get(f"{url}/tasks/demo/{task.id}", token)
+
+            hops = body["hops"]
+            assert [h["role"] for h in hops] == ["lead", "implementer"]
+            assert [h["cycle"] for h in hops] == [0, 0]
+            _assert_times_match_the_trace(hops)
+
+    def test_a_step_sent_back_once_shows_its_second_hop_in_cycle_one(self, tmp_path: Path) -> None:
+        with (
+            seed_pod_isolation_off(tmp_path, roles=("lead", "implementer", "reviewer")),
+            _live_server() as (url, token),
+        ):
+            task, _created = _application_queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            _sweep.dispatch_pod("demo", runner=_ReworkOnce())
+
+            _status, body = _get(f"{url}/tasks/demo/{task.id}", token)
+
+            hops = body["hops"]
+            implementer = [h for h in hops if h["role"] == "implementer"]
+            assert [h["cycle"] for h in implementer] == [0, 1]
+            assert implementer[0]["finishedAt"] <= implementer[1]["startedAt"]
+            _assert_times_match_the_trace(hops)
+
+    def test_each_child_of_a_parallel_group_has_its_own_times(self, tmp_path: Path) -> None:
+        spec = _pipeline.PipelineSpec(
+            name="fanout",
+            steps=[
+                _step.Step(
+                    id="fanout",
+                    parallel=[
+                        _step.Step(id="implement-a", role="implementer"),
+                        _step.Step(id="implement-b", role="implementer"),
+                    ],
+                )
+            ],
+        )
+        with (
+            seed_pod_isolation_off(tmp_path, roles=("lead", "implementer")),
+            _live_server() as (url, token),
+        ):
+            task, _created = _application_queue.enqueue_task_once("demo", "Ship it", channel="cli")
+            _sweep.dispatch_pod("demo", runner=_SlowFirstChild(), spec=spec)
+
+            _status, body = _get(f"{url}/tasks/demo/{task.id}", token)
+
+            hops = body["hops"]
+            assert sorted(h["stepId"] for h in hops) == ["implement-a", "implement-b"]
+            _assert_times_match_the_trace(hops)
+            by_step = {h["stepId"]: h for h in hops}
+            assert by_step["implement-b"]["finishedAt"] < by_step["implement-a"]["finishedAt"]
+
+
+class TestOldHopsCarryNoTimes:
+    def test_a_hop_recorded_without_times_dumps_without_the_keys(self) -> None:
+        hop = HopResult.model_validate({"role": "implementer", "ok": True})
+
+        dumped = hop.model_dump(by_alias=True, mode="json")
+
+        assert not {"startedAt", "finishedAt", "cycle"} & dumped.keys()

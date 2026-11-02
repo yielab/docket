@@ -243,6 +243,17 @@ read it is unaffected. A hop's `artifact` may also carry `assumptions` and `ques
 strings, absent when empty) from the hop's `handoff` call; a question there is information for the
 next hop and the operator, and never parks the task.
 
+Each hop that ran an agent turn also carries `startedAt`, `finishedAt` and `cycle`: the two
+instants (ISO 8601 UTC with microseconds and an explicit offset, the format of `current.startedAt`)
+and the rework cycle (an integer, `0` on a first pass) of the hop's own `hop_started` and
+`hop_finished` events. Each is stamped where its event is emitted, so it is within milliseconds of
+that event's `ts_us` (the event's `ts` is the same instant cut to the second). They belong to the
+hop, never copied from `current`, which has one slot and so would give a child of a parallel group
+its sibling's start. A hop with no agent turn (a command or gate step, a wait, a resolution) has no
+such events and carries none of the three, as does a hop recorded before the rule: the keys are
+absent, never `null`. There is no duration field; a client subtracts. A client probes for them
+with the `hopTimes` feature.
+
 `tokenBudget` is the measured-token ceiling the next hop of the task would run under: the
 configured per-turn budget (`AGENT_LOOP_TOKEN_BUDGET`) for a task without `maxTokens`; for a task
 with one, what its cap has left after its persisted hops (`maxTokens` minus the hops' counted
