@@ -1,8 +1,8 @@
 # Docket JSON Store Specification
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Implemented
-**Last updated**: 2026-10-25
+**Last updated**: 2026-11-02
 
 ## Purpose
 

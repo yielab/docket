@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **What a plan of record needs to follow a team it does not run (D-80, Phase 58).** Additive on API 6,
+  each probed through `features`:
+  - `settledCursor`: an escalation that is resolved or expires gets the next `seq`, so
+    `GET /escalations?since=<n>` returns its final state to a poller that read it pending. Before,
+    a decision settled from the CLI or Telegram never came back through the cursor;
+  - `failureKinds`: a task that settles `failed` always carries `failureKind`, `hop_failed` when
+    nothing more specific applies, and a task blocked by the pod's spent budget carries `pod_budget`;
+  - `podPause`: `GET /pods` rows and `GET /pods/<p>` carry `paused` and, while paused, `pausedReason`;
+  - `hopTimes`: each hop on a task that ran an agent turn carries `startedAt`, `finishedAt` and `cycle`,
+    stamped where its own `hop_started` and `hop_finished` events are emitted, so a client no longer
+    reads them from the trace.
+  `task.cancel` in the audit log now records the `actor` the caller sent (`http` or `cli` by default),
+  as the operator API spec already said.
 - **What docket gives a manager in the plan of record (D-79, ADR 0037, Phase 57).** All additive on API 6,
   each probed through the new `features` list on `/health` and `/status.json` (`taskCurrent`, `taskCursor`,
   `podMemory`, `readScope`, `conversation`):

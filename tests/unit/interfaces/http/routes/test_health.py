@@ -62,6 +62,10 @@ class TestBuildStatus:
             "podMemory",
             "readScope",
             "conversation",
+            "settledCursor",
+            "failureKinds",
+            "podPause",
+            "hopTimes",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

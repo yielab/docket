@@ -521,8 +521,7 @@ def _compose_hop(
     rework_hop: HopResult | None,
 ) -> tuple[str, dict[str, str] | None, ComposedHop]:
     """Build this hop's prompt/environment, its prompt manifest and the start its ``hop_started``
-    event carries, and emit its
-    ``context_composed``/``tool_call`` trace pair. A downstream hop's message gets an extra checkout note naming the real
+    event carries, and emit its ``context_composed``/``tool_call`` trace pair. A downstream hop's message gets an extra checkout note naming the real
     implementation worktree, when allocated -- see pod-dispatch.spec.md ("Downstream worktree continuity")."""
     step_override = ctx.step_instructions.get(node.step_id, "")
     verify_plan = None if role == "lead" else _verify.plan_for_hop(ctx, node, member_id)
@@ -660,11 +659,8 @@ def _compose_hop(
         # through without asking again.
         env = dict(env or {})
         env[_rd.DOCKET_PREGRANTS] = _json.dumps(pregrants_raw)
-    return (
-        message,
-        env,
-        ComposedHop(_manifest.build_manifest(composition.layers, planned_model), started_at, cycle),
-    )
+    manifest = _manifest.build_manifest(composition.layers, planned_model)
+    return message, env, ComposedHop(manifest, started_at, cycle)
 
 
 def _brief_from_step(prior: list[HopResult], step_id: str) -> _brief.TaskBrief | None:

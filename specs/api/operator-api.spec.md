@@ -268,9 +268,10 @@ is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod
 `pod_budget` (status `blocked`: the pod's `budgetUsd` was spent before a hop; the reason text
 keeps the dollar figure, the field never does), and `hop_failed`, the default of a failed task
 whose hop or step carried no more specific kind. The default is applied once, where the task
-settles `failed`, never by a producer. The key is absent on a task that is not `failed` and not
-blocked on the pod budget, and on a record written before the rule. A client probes for the rule
-with the `failureKinds` feature.
+settles `failed`, never by a producer. A claim clears the key, and so does a retry; an unblock
+keeps it until the next claim, so a `pending` task can still carry the kind of the block it left.
+A record written before the rule can lack it. A client probes for the rule with the
+`failureKinds` feature.
 
 `current` names the hop a `running` task is inside: `{"stepId", "role", "member", "model",
 "startedAt", "cycle"}`. It is written where the hop's `hop_started` event is emitted, with the same
