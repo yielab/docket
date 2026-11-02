@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.14.2
+**Version**: 7.15.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-02
 
 ## Purpose
 
@@ -337,6 +337,15 @@ enum `"codebase"` or `"workdir"`, read from the kind the pod was provisioned wit
 `codebase` is `""` both for a `workdir` pod and for a `codebase` pod whose codebase is not recorded.
 `blueprint` is the shape the pod was provisioned with (`build`, `respond`, `operate`, `routine`; its
 Lead's `blueprint`), `""` for a pod provisioned without one.
+
+Every row of `GET /pods` and the `GET /pods/<p>` object also carry `paused` (boolean, always
+present). A pod is paused while its Lead's meta holds `paused: true`, which a spent budget sets
+(`pausedReason: "budget"`); while it is, every claim is refused and queued work waits. When
+`paused` is `true` the same object carries `pausedReason`, a non-empty string (`"budget"` when the
+meta names no reason); when `paused` is `false` the key is absent, not `null` and not `""`. The
+fields are read from the Lead's meta on each request, so they follow the pause as `docket run
+--resume` or a changed budget clears it. There is no route to clear a pause. `docket pod show
+--json` does not carry the pair.
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
 `pod`, `blueprint`, `members`, `settings`, `approvalMode`, `pipeline` with its `steps`, `network`,
