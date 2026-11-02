@@ -105,6 +105,12 @@ class HopResult(BaseModel):
     # runtime driver reports no served model (pod-dispatch.spec.md, "Hop events and task usage").
     model: str = ""
     provider: str = ""
+    # The instants of this hop's own ``hop_started`` and ``hop_finished`` events and the rework
+    # cycle they carry; absent on a hop with no agent turn and on one recorded before the fields
+    # (operator-api.spec.md, "Task answers"). Never read from ``CurrentHop``, which has one slot.
+    started_at: str | None = Field(None, alias="startedAt", exclude_if=is_none)
+    finished_at: str | None = Field(None, alias="finishedAt", exclude_if=is_none)
+    cycle: int | None = Field(None, exclude_if=is_none)
     # Which prompts this hop's turn was composed from (``hops/application/manifest.py``): per
     # layer ``{layer, name, version, sha256, scope, tokens}``, then ``model``, ``family``,
     # ``class`` and ``profile``. Empty for a hop recorded before the manifest existed.

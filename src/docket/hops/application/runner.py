@@ -247,7 +247,7 @@ def execute_unit(
         return approval_outcome
 
     approved = approved_calls_for(ctx.task_id, role)
-    message, env, manifest = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
+    message, env, composed = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
     hop_first_ts = _clock.stamp()
     run_res, attempt = _run_hop_turn(ctx, node, role, member_id, history_session_key, message, env)
 
@@ -265,7 +265,9 @@ def execute_unit(
         attempt,
         hop_first_ts,
         prior_snapshot,
-        manifest,
+        composed.manifest,
+        started_at=composed.started_at,
+        cycle=composed.cycle,
     )
 
     early_outcome = persist_hop_and_trace(

@@ -325,6 +325,8 @@ def build_hop_result(
     first_ts: str = "",
     prior: list[HopResult] | None = None,
     manifest: dict[str, Any] | None = None,
+    started_at: str | None = None,
+    cycle: int | None = None,
 ) -> HopResult:
     """Build this hop's persisted record and handoff artifact. A ``handoff`` call supplies the
     summary, verdict, assumptions and questions unless a guardrail rewrote the reply. The verdict
@@ -392,6 +394,8 @@ def build_hop_result(
         trace=_hop_trace_link(ctx, first_ts),
         repo_files=dict(run_res.repo_files),
         prompt_manifest=manifest or {},
+        started_at=started_at,
+        cycle=cycle,
     )
 
 
@@ -514,6 +518,7 @@ def persist_hop_and_trace(
             if isinstance(label, str)
             else ("pass" if hop.verify.get("exitCode") == 0 else "fail")
         )
+    hop.finished_at = _clock.iso()
     trace_locked(
         ctx.project,
         ctx.session_id,
