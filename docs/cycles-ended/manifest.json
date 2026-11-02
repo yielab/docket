@@ -894,5 +894,13 @@
     "heading": "▶ PHASE 57 — what docket gives a manager in the plan of record (D-79, ADR 0037) · CLOSED 2026-11-01",
     "bytes": 20798,
     "sha256": "bbc9656508a35a4bfeb2e8c67ed6f40163f0759233d8134517772312033100c0"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ Phase 58: what a plan of record needs to follow a team it does not run (D-80) · CLOSED 2026-11-02",
+    "bytes": 13367,
+    "sha256": "a4c479d8845aab21d29afa71eaea85e4ab0fd3c5b2147ed597cd66de1d9795b9"
   }
 ]

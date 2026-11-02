@@ -16,8 +16,8 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **ACTIVE: Phase 58** (D-80, 2026-11-01): what a plan of record needs to follow a team it does not run.
-> Four cards below, from the manager audit of 2026-11-01 and Tack's answer the same day.
+> **No active phase.** Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
+> not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
 > **Phase 57** (D-79, [ADR 0037](docs/adr/0037-what-docket-gives-a-manager-in-the-plan-of-record.md)) closed 2026-11-01. Before it, Phase 56 (D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16) closed
 > 2026-10-30: an external service is declared, not programmed; a pod keeps records; one judge; one home layout; the
 > four team shapes. Its section is archived and what it leaves open is under "Phase 56" in the follow-ups below.
@@ -82,198 +82,6 @@ scope in one pass over the same files, parks at least once.
 `main` moves only
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
-
-## ▶ Phase 58: what a plan of record needs to follow a team it does not run (D-80, planned 2026-11-01)
-
-**Trigger.** Tack's Phase 85 (its ADR 0034) runs a manager over docket teams through Tack's board.
-On 2026-11-01 an audit read both repositories, and Tack's maintainer session answered which fields
-Tack would read. Its priority was the escalation cursor and the failure kinds first, then the pod
-pause and the hop times. The audit also found two places where docket's code contradicts its spec:
-the escalation cursor and the cancel audit entry. Everything is additive on API 6. Each field joins
-the `features` list (`interfaces/http/routes/health.py:21`) in the commit that makes it work, and the
-integrator adds the name, as in Phase 57.
-
-**Not in this phase:**
-- caller identity or scopes (docket stays single-operator; Tack's ADR 0034 decision 1 keeps a manager
-  off docket's control plane);
-- `actor` on enqueue and retry, and `updatedAt` on a task. Tack would not read either today, so each
-  waits in the follow-ups under "Phase 58".
-
-**Waves, by file contention:**
-
-| Wave | Cards | Why this order |
-|---|---|---|
-| 1 | P58-1 ∥ P58-2 ∥ P58-3 | separate files (`platform/store.py` and `tasks/application/lifecycle.py`; `tasks/domain/state.py`, `record.py`, `executor.py` and `gate_decisions.py`; `hops/application/report.py`) and separate spec sections |
-| 2 | P58-4 | `record.py` again, after P58-2 merges; `tasks/domain/task.py` |
-
-### P58-1 — The escalation cursor sees settlements, and cancel audits its actor
-
-**Status:** DONE (merged 2026-11-02, `a6142d9d`) · **Size:** S · **Model:** Sonnet · **Kind:** fix (spec drift) + spec
-
-- **Trigger:** two places where the code contradicts the spec, read 2026-11-01 at `d62a24fc`.
-  - *Escalation cursor.* `specs/api/operator-api.spec.md` ~443 says of `GET /escalations?since=`
-    that "a poller never misses a record that settled between two reads". But `seq` is stamped only
-    when a record is created (`platform/store.py::write_escalation` ~301-307), and
-    `_settle_pending` (~379-398) moves the record to `settled/` with its old `seq`. Expected: a
-    poller holding cursor `n` sees a record that resolves or expires after it read `n`. Actual: it
-    never sees it. Tack's adapter polls this route and misses a decision someone resolves from the
-    CLI or Telegram.
-  - *Cancel audit.* The spec (~148) says the cancel body's `actor` "is a label for the audit entry,
-    default `http`". `tasks/application/lifecycle.py::_cancel_detail` (~250-252) drops it.
-    Expected: `task.cancel` records `actor=<label>`. Actual: no actor.
-- **Goal:**
-  - A record gets the next `seq` again each time it settles (`resolved`, `expired`), so its final
-    state comes back through `since`.
-  - `task.cancel` audits the actor the caller sent, with the channel's own default.
-  - Feature name: `settledCursor`, so a client knows whether `since` brings back settlements.
-- **Non-goals:**
-  - No new `seq` when `resolution.appliedAt` is stamped (`mark_escalation_applied` ~410): that is
-    internal bookkeeping, not a state a poller acts on.
-  - No actor on retry or enqueue (a follow-up).
-  - No change to `GET /inbox` or to notify, which diffs the inbox rather than reading `seq`.
-- **Change:**
-  - `platform/store.py::_settle_pending`: give the settled record `seq=next_escalation_seq()`
-    inside the record's lock. Before relying on that, check that no path takes the `_seq.json`
-    lock and then a record lock, since that order would deadlock.
-  - `tasks/application/lifecycle.py`: `_cancel_detail` and its callers carry `actor`. The CLI's
-    default is the CLI's label; HTTP's is `http`.
-  - Spec `operator-api.spec.md`: `seq` is "the record's last change: stamped at creation and again
-    when it settles". The cancel section stays as written, since it now matches the code.
-- **Acceptance (RED first):**
-  - `tests/contracts/test_escalation_http.py`, two new tests:
-    - Open a pending escalation, read `GET /escalations?since=0` and keep `next` as `n`. Resolve it
-      through `POST /escalations/<id>`. Then `GET /escalations?since=n` returns that record once,
-      with `state: "resolved"`, `seq > n`, and the new `next`.
-    - The same with the expiry sweep (`tasks/application/escalation_sweep.py`), for
-      `state: "expired"`.
-    - Oracle: before the change both answers are empty.
-  - The test home of `tests/unit/tasks/application/test_lifecycle.py` (or the integration file
-    that already cancels over HTTP) gets a test: cancel with `{"actor": "tack:op"}` leaves an audit
-    entry `task.cancel` whose detail holds `actor=tack:op`; without a body it holds `actor=http`.
-- **Gate:**
-  - the two touched test files, under `timeout 120`;
-  - `tests/architecture` (3 s);
-  - `tests/e2e -n auto` (42 s: the HTTP answer changes).
-
-### P58-2 — A failed or budget-blocked task always names its kind
-
-**Status:** DONE (merged 2026-11-02, `c77e6de8`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec
-
-- **Trigger:** Tack's maintainer session asked for it (2026-11-01). Tack's adapter decides from
-  `failureKind` (`needs_human`, `prepare`, `approval_denied`, `approval_expired`, anything else is
-  "failed"), and today it cannot tell two cases apart:
-  - an ordinary failed hop leaves `failureKind` empty: `tasks/application/record.py::_turn_failure_kind`
-    (~443-453) returns `""`, and `hops/application/executor.py` ~420-425 copies it only when it is set;
-  - a pod whose `budgetUsd` tripped blocks the task with free text only.
-    `hops/domain/gate_decisions.py::decide_pod_budget` (~294-310) gives no kind, and the executor
-    (~396-400) pauses the Lead.
-- **Goal:**
-  - Every task that settles `failed` carries a non-empty `failureKind`. A hop that failed with no more
-    specific kind gets `hop_failed`.
-  - The pod-budget block carries `failureKind: "pod_budget"`.
-  - Feature name: `failureKinds`.
-- **Non-goals:**
-  - The kinds that already exist (`budget`, `base_ref`, `prepare`, `pipeline`, the gate kinds, the
-    driver's own) do not change.
-  - No dollar figure is added to the wire. The reason text keeps the one it has.
-- **Change:**
-  - `tasks/domain/state.py::FailureKind` (~29-40): add `hop_failed` and `pod_budget`, and make the
-    docstring list the kinds that pass through.
-  - `record.py` or the executor's `failed` branch: the default comes in at one place, where the
-    result settles, never at each producer.
-  - `gate_decisions.py::decide_pod_budget`: `failure_kind="pod_budget"`.
-  - Spec `operator-api.spec.md`, the task shape: the closed list of the kinds docket itself writes,
-    and that `failed` always carries one.
-- **Acceptance (RED first):**
-  - `tests/unit/hops/domain/test_gate_decisions.py` (or that module's mirror): a tripped pod budget
-    decides `blocked` with `failure_kind == "pod_budget"`.
-  - Integration, with the fake chat port the task-record tests already use:
-    - a hop that fails with no specific kind settles the task `failed` with
-      `failureKind: "hop_failed"` on `GET /tasks/<pod>/<id>`;
-    - a pod with `budgetUsd` already spent settles the task `blocked` with `failureKind:
-      "pod_budget"`, and the Lead is paused as before.
-  - `tests/fixtures/task-records/` load unchanged.
-- **Gate:**
-  - the touched unit and integration files, under `timeout 120`;
-  - `tests/architecture` (3 s);
-  - `tests/e2e -n auto` (42 s).
-
-### P58-3 — A pod says when it is paused, and why
-
-**Status:** DONE (merged 2026-11-02, `9c11c837`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec
-
-- **Trigger:** Tack's maintainer session asked for it (2026-11-01). A budget pause lives in the
-  Lead's meta (`hops/gates/pre_hop.py::_pause_lead_for_budget` ~61-67: `paused`, `pausedReason`).
-  `claim_next_task` then refuses every claim and only traces `paused_refused`
-  (`tasks/application/queue.py` ~381-390). No HTTP route shows the pause: `report.py` has no hit,
-  and neither does `routes/` or `_agent_record` in `/status.json` (`routes/health.py` ~40-60). Tack's
-  auto-start keeps queueing work that nobody will claim, and Tack's team report cannot say why.
-- **Goal:**
-  - `GET /pods/<p>` (`hops/application/report.py::pod_detail` ~539) carries `paused: bool` and, when
-    paused, `pausedReason: string`.
-  - `GET /pods` (`pod_summary`; `pod_report` feeds `docket pod show --json`, which does not carry
-    the pair) carries the same pair for each pod.
-  - Feature name: `podPause`.
-- **Non-goals:**
-  - No route to clear a pause: `docket run --resume` stays the way, and a plan of record names it.
-  - No change to what pauses a pod.
-- **Change:**
-  - `report.py`: read the Lead's meta through the fleet reader the report already uses.
-  - Spec `operator-api.spec.md`, the pod report: the two fields, when they appear, and what clears
-    them.
-- **Acceptance (RED first):**
-  - An integration test next to `tests/integration/interfaces/test_serve_pods_corrections.py`:
-    - a pod whose Lead meta holds `paused: true, pausedReason: "budget"` answers both routes with
-      `paused: true` and `pausedReason: "budget"`;
-    - after the resume path clears the meta, the answer is `paused: false` with no `pausedReason`.
-- **Gate:**
-  - the new test file, under `timeout 120`;
-  - `tests/architecture` (3 s);
-  - `tests/e2e -n auto` (42 s).
-
-### P58-4 — Each hop on the task record carries its start, its end and its cycle
-
-**Status:** DONE (merged 2026-11-02, `5b0fabca`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P58-2 (`record.py`)
-
-- **Trigger:** Tack's maintainer session asked for it (2026-11-01). Tack's activity view and its
-  run steps take a step's times and its rework cycle from the trace (`hop_started`/`hop_finished`,
-  `GET /traces/<pod>`, a `<ts>:<n>` cursor with a one-second hold-back). The task record has none
-  of them (`tasks/domain/task.py::HopResult` ~48-113), and `current` keeps them only while the hop
-  runs.
-- **Goal:**
-  - Every hop persisted on a task carries `startedAt` and `finishedAt` (ISO 8601 UTC, as
-    `current.startedAt`) and `cycle` (an integer, as `current.cycle`).
-  - The values are the ones the hop's own `hop_started` and `hop_finished` events carry.
-  - Feature name: `hopTimes`.
-- **Non-goals:**
-  - The values are not copied from `current`. It has one slot, and in a parallel group it names the
-    child that started last, so it would give the other children the wrong start.
-  - No duration field: the client subtracts.
-  - The trace events do not change.
-- **Change:**
-  - `HopResult`: three optional fields with alias and `exclude_if`, as `max_tokens` does.
-  - `hops/application/compose.py` ~564-581, where `hop_started` is emitted: the start and the
-    cycle travel with the hop.
-  - `record.py::persist_hop_and_trace`, where `hop_finished` is emitted: the end is stamped in the
-    same write.
-  - Spec `operator-api.spec.md`, the hop shape.
-- **Acceptance (RED first):**
-  - `tests/integration/interfaces/test_serve_tasks_endpoint.py`, with the fake chat port:
-    - a two-step task shows both hops with `startedAt <= finishedAt` and `cycle: 0`;
-    - a gate that sends the step back once shows the repeated step's second hop with `cycle: 1`;
-    - each hop's times equal its `hop_started`/`hop_finished` timestamps in the trace.
-  - The fixture records in `tests/fixtures/task-records/` (no times) still load.
-- **Gate:**
-  - the touched files, under `timeout 120`;
-  - `tests/architecture` (3 s);
-  - `tests/e2e -n auto` (42 s).
-
-**Phase close (integrator):**
-- the four feature names in `health.py` and in `specs/data/serve-read-api.spec.md` ~116;
-- one default-suite run;
-- the phase-close checks in "How work runs" item 5.6;
-- a note to Tack's maintainer that lists the new names (Tack's fake docket follows them);
-- the ROADMAP row and D-80 marked complete.
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
@@ -373,6 +181,12 @@ that already own the files.
     carry no `failureKind`. Trigger: a client that has to tell those blocks apart.
   - `docket pod show --json` does not carry `paused`/`pausedReason` (`pod_report` feeds it;
     `cli-json-shapes.spec.md`). Trigger: an operator who reads the pause from the CLI JSON.
+- *Phase 58 close (2026-11-02).* Seen once in the real run, not reproduced.
+  - `POST /tasks/<pod>/<id>/cancel` sent a few milliseconds after `POST /tasks/<pod>` answered `409
+    not_cancellable` ("is running; nothing to cancel"). The spec says a `running` task is cancelled by
+    killing its hop's process group, so the claim had likely set `running` before any run or hop was there
+    to stop. A client that cancels right after enqueueing gets a refusal for a task that then runs.
+    Trigger: a second sighting, or Tack cancelling a task it just queued.
 - *Phase 57 close (2026-11-01).* Loose ends of the phase, none a card yet; each waits on its trigger.
   - Park order. `_park_turn` marks the hop parked after it was persisted unparked and opens the `turn` escalation
     while the task is still `running` (`hops/application/executor.py`). A crash between leaves an unparked hop and a
