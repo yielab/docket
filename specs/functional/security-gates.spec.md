@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.12.0
+**Version**: 3.12.1
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1221,8 +1221,9 @@ material, may be read as saying otherwise.
      imports only the standard library and `pypdf`; a copy because a development checkout's source
      tree lies outside the jail's read roots, while the interpreter and its site-packages lie under
      `sys.prefix` and `sys.base_prefix`, which the jail always reads). No external binary and no
-     read grant is needed. The extractor lowers its own `RLIMIT_AS` and `RLIMIT_CPU` before it
-     parses, so a document that inflates past memory is refused, not swapped; it writes each
+     read grant is needed. The extractor lowers its own `RLIMIT_AS` (best effort: macOS does not
+     enforce it, and there memory is bounded only by the deadline) and `RLIMIT_CPU` (mandatory: a host that
+     refuses it refuses the PDF) before it parses, so a document that inflates past memory is refused, not swapped; it writes each
      page's text to stdout, and a failure is exit 1 with one stderr line. With **Docker** the image
      has no docket interpreter, so the command is the image's own `pdftotext -enc UTF-8 -nopgbrk -q
      -- in.pdf -` (poppler): the one place an extractor is external, an image without it is

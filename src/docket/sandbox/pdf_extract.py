@@ -3,13 +3,15 @@
 It runs only inside the jail, as a copy of this file beside ``in.pdf`` (the copy is why it imports
 nothing of docket: a development checkout's source tree lies outside the jail's read roots, while
 the interpreter and ``pypdf`` lie under ``sys.prefix``). It imports the standard library and
-``pypdf`` alone. It lowers its own address-space and CPU limits before it opens the document, so a
-document that inflates past memory fails here and takes nothing else down. A failure is exit 1
+``pypdf`` alone. It lowers its own address-space (best effort: macOS does not enforce it) and CPU limits
+before it opens the document, so a document that inflates past memory fails here and takes nothing
+else down. A failure is exit 1
 with one line on stderr; the caller treats any non-zero exit as a refusal and drops the output.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import resource
@@ -25,6 +27,19 @@ def _limit(which: int, value: int) -> None:
     _, hard = resource.getrlimit(which)
     cap = value if hard == resource.RLIM_INFINITY else min(value, hard)
     resource.setrlimit(which, (cap, cap))
+
+
+def _apply_limits() -> str | None:
+    """Lower both limits; the reason the CPU limit could not be set, else ``None``. The address-space
+    limit is best effort: macOS does not enforce ``RLIMIT_AS`` and ``setrlimit`` may refuse it, and
+    there memory is bounded only by the caller's deadline (security-gates.spec.md, fetch)."""
+    with contextlib.suppress(ValueError, OSError):
+        _limit(resource.RLIMIT_AS, MEMORY_BYTES)
+    try:
+        _limit(resource.RLIMIT_CPU, CPU_SECONDS)
+    except (ValueError, OSError) as ex:
+        return f"cannot bound the reader's CPU time: {ex}"
+    return None
 
 
 def _fail(reason: str) -> int:
@@ -49,8 +64,9 @@ def _extract(path: str) -> int:
 def main(argv: list[str]) -> int:
     if len(argv) != 1:
         return _fail("usage: extract.py in.pdf")
-    _limit(resource.RLIMIT_AS, MEMORY_BYTES)
-    _limit(resource.RLIMIT_CPU, CPU_SECONDS)
+    unbounded = _apply_limits()
+    if unbounded is not None:
+        return _fail(unbounded)
     try:
         return _extract(argv[0])
     except MemoryError:
