@@ -364,7 +364,7 @@ from `main`.
 
 ### P61-4 — One escalation per question
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-2
+**Status:** DONE 2026-11-03 (live: a web-research task asked two questions, `GET /escalations` showed parts 1/2 and 2/2, the task stayed `waiting_input` after one answer and finished with both) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-2
 (`builtin_tools.py`), P61-3 (`health.py`)
 
 - **Trigger:** `esc-7b6ebde7f664` asked three things in one message, and its option A bundled three
@@ -653,6 +653,11 @@ P61-2 (the facts it states)
 - *`capability_missing` for a tool is "a name the role could hold".* P61-3 chose that over "a tool another member
   holds" so a deliberate `deniedTools` is not a gap. A Reviewer calling a record write it may not use now fails
   the task `capability_missing` (`tests/e2e/test_workdir_pod.py` follows).
+- *Sibling consult parts and expiry.* P61-4: if one part expires (`onExpiry: block`) the others become unanswerable
+  (`tasks/application/escalation_sweep.py`); `operator/inbox.py` `_pending_id` shows only the newest pending part
+  while `/escalations` lists all (live: `docket inbox` printed one question for a two-part consult); if the parked
+  token's question is lost, parts 1..n-1 stay orphaned on a failed task. Trigger: a two-part consult that expires,
+  or a person who cannot find the first question in the inbox.
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
