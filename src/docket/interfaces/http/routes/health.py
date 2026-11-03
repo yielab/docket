@@ -28,6 +28,7 @@ FEATURES: tuple[str, ...] = (
     "failureKinds",
     "podPause",
     "hopTimes",
+    "retryContinues",
 )
 
 

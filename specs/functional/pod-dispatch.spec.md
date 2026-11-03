@@ -1,10 +1,10 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.13.2
+**Version**: 11.14.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -243,6 +243,13 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    and route counts, and (if resuming mid-rework) which hop's text still needs to reach the rework
    target -- the same decision a live run makes -- so a task resumed mid-rework re-enters the
    rework Implementer hop, never a stale position past the Reviewer.
+6. A persisted hop that failed (`ok` false) and did not park **MUST** replay like a parked one:
+   the position is that hop's own index, the rework state that led to it (the rework hop and the
+   counts) is kept, and it consumes no rework cycle. A retry of a failed task, and `--resume`, so
+   run the failed step again instead of skipping to the next. A failed hop that carries a routing
+   decision (`nextStep`) keeps following that route. A step that runs again while its latest hop
+   failed, and whose session already holds rounds, **MUST** receive the continuation message of
+   "Retries and the failure-kind taxonomy" requirement 6 in place of its prompt.
 
 ### Deterministic refusal inside a claimed task
 
@@ -580,6 +587,15 @@ wired agent's conversation current with the task it is working.
    and the `retry_after_s` value that failure carried (`null` when the endpoint named none) -- and
    **MUST** refresh the task's `claimedAt` (see "Per-hop incremental persistence") before sleeping,
    so a long retry loop is never swept as a stale claim by a concurrent dispatcher.
+6. A step that runs again continues its session when the session holds rounds the failed attempt
+   made: a retried task whose latest hop for the step failed ("Per-hop incremental persistence"
+   requirement 6), and an in-place retry (requirement 3) after an attempt that made the step's
+   session grow. In both cases the turn **MUST** send one continuation message in place of the
+   step's prompt, built by a pure function: that the previous turn on this step stopped before it
+   finished and the error, the hop's summary when it has one, up to 20 changed paths read from the
+   step's working tree, and the instruction to continue from where it stopped, not to start over,
+   and to finish as the step asks. An attempt that failed before the session grew is retried with
+   the original message. Starting over is a new task, never a retry mode.
 
 ### Timeout configuration
 

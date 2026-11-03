@@ -66,6 +66,7 @@ class TestBuildStatus:
             "failureKinds",
             "podPause",
             "hopTimes",
+            "retryContinues",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

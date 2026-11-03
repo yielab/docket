@@ -5,8 +5,10 @@ import json as _json
 from collections.abc import Callable
 
 from docket.agent import ports as _rd
+from docket.agent import session as _session
 from docket.hops.application import driver as _dr
 from docket.hops.application.compose import _compose_hop
+from docket.hops.domain.continuation import continuation_message
 from docket.hops.gates.post_hop import _apply_output_guardrails, _evaluate_hop_gates
 from docket.hops.gates.pre_hop import (
     _gate_budget,
@@ -23,6 +25,7 @@ from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
+from docket.platform import git as _git
 from docket.tasks.application import runs as _runs
 from docket.tasks.application.actions import ParkedCall, approved_calls_for
 from docket.tasks.application.record import (
@@ -99,6 +102,32 @@ def _sum_usage(a: _rd.TokenUsage | None, b: _rd.TokenUsage | None) -> _rd.TokenU
     )
 
 
+_CONTINUED_PATHS = 20
+
+
+def _summary_of(hop: HopResult) -> str:
+    return hop.artifact.summary if hop.artifact is not None else hop.output
+
+
+def _continuation_text(ctx: UnitContext, prior: list[HopResult], error: str, summary: str) -> str:
+    """The continuation message for a step's next turn: the stop's *error* and *summary* and the
+    paths changed in the step's working tree (``hops/domain/continuation.py``)."""
+    cwd = when_cwd(ctx, prior)
+    changed = _git.git_changed_files(cwd, all_untracked=True)[:_CONTINUED_PATHS] if cwd else []
+    return continuation_message(error, summary, changed)
+
+
+def _failed_hop_to_continue(
+    prior: list[HopResult], node: _orch.PlannedUnit, session_key: str
+) -> HopResult | None:
+    """The step's latest hop when it failed (not parked) and its session already holds rounds:
+    the turn that runs now continues that session instead of starting over."""
+    mine = [h for h in prior if (h.step_id or h.role) == node.step_id]
+    if not mine or mine[-1].ok or mine[-1].parked:
+        return None
+    return mine[-1] if _session.load_messages(session_key) else None
+
+
 def _run_hop_turn(
     ctx: UnitContext,
     node: _orch.PlannedUnit,
@@ -107,13 +136,15 @@ def _run_hop_turn(
     history_session_key: str,
     message: str,
     env: dict[str, str] | None,
+    prior: list[HopResult],
 ) -> tuple[_rd.TurnResult, int]:
     """Run this hop's agent turn, retrying only a retryable failure in place (a non-zero
     exit or bad verdict is a real answer and stops here) -- see pod-dispatch.spec.md
     ("Retries and the failure-kind taxonomy"). Returns the total tries made. A step's own
     ``retries``/``timeout`` override wins over the pod's role-based budget and turn timeout.
     A step's own ``model`` (pipeline-format.spec.md "Steps" Req. 10) is resolved once per call
-    and passed to the production driver only, for this hop alone -- see "Per-hop execution"."""
+    and passed to the production driver only, for this hop alone -- see "Per-hop execution".
+    A re-run over persisted rounds sends a continuation, not *message* (requirement 6 there)."""
     retry_budget = node.retries if node.retries is not None else retries_for_role(role)
     hop_timeout = node.timeout if node.timeout is not None else ctx.resolved_turn_timeout
     resolved_model: str | None = None
@@ -163,13 +194,19 @@ def _run_hop_turn(
             )
         return ctx.run(member_id, history_session_key, turn_message, hop_timeout, env)
 
+    failed_hop = _failed_hop_to_continue(prior, node, history_session_key)
+    if failed_hop is not None:
+        message = _continuation_text(ctx, prior, failed_hop.error, _summary_of(failed_hop))
     attempt = 1
     while True:
+        rounds_before = len(_session.load_messages(history_session_key))
         run_res = _call(message)
         if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
             break
         if attempt > retry_budget:
             break
+        if len(_session.load_messages(history_session_key)) > rounds_before:
+            message = _continuation_text(ctx, prior, run_res.error, run_res.output)
         trace_locked(
             ctx.project,
             ctx.session_id,
@@ -249,7 +286,9 @@ def execute_unit(
     approved = approved_calls_for(ctx.task_id, role)
     message, env, composed = _compose_hop(ctx, node, role, member_id, prior_snapshot, rework_hop)
     hop_first_ts = _clock.stamp()
-    run_res, attempt = _run_hop_turn(ctx, node, role, member_id, history_session_key, message, env)
+    run_res, attempt = _run_hop_turn(
+        ctx, node, role, member_id, history_session_key, message, env, prior_snapshot
+    )
 
     hop_output, hop_ok, hop_error = _apply_output_guardrails(ctx, role, run_res)
 

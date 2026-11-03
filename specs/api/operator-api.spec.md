@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.15.0
+**Version**: 7.16.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-11-02
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -160,8 +160,12 @@ unclaimed task cancelled, else the task's own status after a stale claim was set
 
 No body. A `blocked` or `failed` task flips to `pending` keeping its hops, with `blockedReason`,
 `failureKind` and `reason` cleared; audited `task.retry`. A task in any other status is `409`, an
-unknown task `404`. A rework that must start from the previous attempt's branch is a new `POST /tasks/<pod>` with
-`baseRef` set to that branch, not a retry.
+unknown task `404`. The next run starts at the step whose hop failed, not after it, and that step
+continues its session: its turn receives a message saying the previous turn stopped before it
+finished, with the error, the hop's summary, up to 20 changed paths and the instruction to continue
+rather than start over (`pod-dispatch.spec.md`, "Retries and the failure-kind taxonomy"). A client
+probes for this with the `retryContinues` feature. A rework that must start from the previous
+attempt's branch is a new `POST /tasks/<pod>` with `baseRef` set to that branch, not a retry.
 
 ### `POST /pods`
 

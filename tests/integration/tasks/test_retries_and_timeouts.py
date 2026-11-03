@@ -25,6 +25,7 @@ from tests.support.tasks import claims_gone_stale, stored_task, update_task
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
+from docket.agent import session as _session
 from docket.hops.application import driver_support as _driver_support
 from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _application_runner
@@ -375,6 +376,61 @@ class TestHopRetryLoop:
 
 
 # ── timeout resolution: turn vs verify, independently settable and applied ────────
+
+
+class _PersistingRunner:
+    """A fake driver whose implementer turns append *rounds* messages to the step session on the
+    first attempt (when it fails with *kind*) and record every message it is sent."""
+
+    def __init__(self, rounds: int, kind: str = "daemon_error"):
+        self.rounds = rounds
+        self.kind = kind
+        self.messages: list[str] = []
+
+    def __call__(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        if not agent_id.endswith("implementer"):
+            return _rd.TurnResult(True, "done", 0.0, {})
+        self.messages.append(message)
+        if len(self.messages) == 1:
+            _session.append_messages(
+                session_key,
+                [_rd.user(message), _rd.assistant("started")][: self.rounds],
+            )
+            return _rd.TurnResult(False, "", 0.0, {}, "dropped", failure_kind=self.kind)
+        return _rd.TurnResult(True, "done", 0.0, {})
+
+
+class TestAnInPlaceRetryContinuesPersistedRounds:
+    def test_a_failed_attempt_that_grew_the_session_is_continued(self, tmp_path: Path) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-implementer")
+        runner = _PersistingRunner(rounds=2)
+        task = TaskRecord(id="t9", description="build the widget")
+        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
+        assert res.status == "done"
+        assert len(runner.messages) == 2
+        assert "build the widget" in runner.messages[0]
+        assert "stopped before it finished" in runner.messages[1]
+        assert "dropped" in runner.messages[1]
+        assert "build the widget" not in runner.messages[1]
+
+    def test_a_failed_attempt_that_persisted_nothing_is_retried_with_the_original(
+        self, tmp_path: Path
+    ) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-implementer")
+        runner = _PersistingRunner(rounds=0)
+        task = TaskRecord(id="t10", description="build the widget")
+        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
+        assert res.status == "done"
+        assert runner.messages[1] == runner.messages[0]
 
 
 class TestTimeoutResolution:
