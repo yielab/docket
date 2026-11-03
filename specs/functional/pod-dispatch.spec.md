@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.3.0
+**Version**: 12.4.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
