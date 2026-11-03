@@ -38,6 +38,7 @@ from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
 from docket.teams.apply import lock as _lock
+from docket.teams.apply import needs as _needs
 from docket.teams.apply.check import (
     directory_send_problems,
     member_names,
@@ -510,6 +511,7 @@ def plan_apply(project: str, directory: Path) -> ApplyPlan:
         raise PodApplyError("pod.yaml: 'description' must be a string")
     pipeline_name = manifest.get("pipeline")
     exporter_names = _plan_exporters(manifest)
+    _needs.declared_needs(manifest)
 
     base_registry = _arch.load_registry(project)
     role_items, role_writes, merged_archetypes = _plan_roles(directory, base_registry, project)

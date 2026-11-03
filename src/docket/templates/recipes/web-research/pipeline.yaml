@@ -15,15 +15,15 @@ steps:
         - web-a: researcher
           model: cheap
           instructions: >-
-            Work the first half of the Lead's sub-questions. Search with the search server's
-            tools, then read the most relevant pages on the allowed hosts. Reply with the
-            findings and the URL of every page you used.
+            Work the first half of the Lead's sub-questions. Fetch a search page from an
+            allowed search site, then read the most relevant pages on the allowed hosts. Reply
+            with the findings and the URL of every page you used.
         - web-b: researcher
           model: cheap
           instructions: >-
-            Work the second half of the Lead's sub-questions. Search with the search server's
-            tools, then read the most relevant pages on the allowed hosts. Reply with the
-            findings and the URL of every page you used.
+            Work the second half of the Lead's sub-questions. Fetch a search page from an
+            allowed search site, then read the most relevant pages on the allowed hosts. Reply
+            with the findings and the URL of every page you used.
         - repo: researcher
           model: cheap
           instructions: >-

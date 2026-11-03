@@ -8,6 +8,7 @@ from docket.governance import review as _governance_review
 from docket.interfaces.cli.render import ui
 from docket.observability import exporter as _exporter
 from docket.teams.apply import model as _model
+from docket.teams.apply import needs as _needs
 from docket.teams.apply import recipes as _recipes
 from docket.teams.apply import review as _review
 
@@ -91,3 +92,10 @@ def render_exporter_states(names: tuple[str, ...]) -> None:
         else:
             line = f"exporter {name}: {state} -> docket setup export enable {name}"
         ui.console.print(f"  {escape(line)}")
+
+
+def render_recipe_needs(project: str, directory: Path) -> None:
+    """Print one line per need *directory*'s ``pod.yaml`` declares, as *project* is now, and
+    nothing for a recipe that declares none. The one block ``init`` and ``pod update`` share."""
+    for line in _needs.readiness(project, _recipes.recipe_needs(directory)):
+        ui.console.print(f"  {escape(line.render())}")

@@ -26,6 +26,7 @@ from docket.interfaces.cli.render import ui
 from docket.interfaces.cli.render.apply import (
     render_apply_header,
     render_apply_plan,
+    render_recipe_needs,
     render_review,
     render_run_items,
     run_item_label,
@@ -410,6 +411,10 @@ def run_init(req: InitRequest) -> int:
     ui.console.print()
     ui.console.print("This machine")
     _setup_sandbox.print_sandbox_block()
+
+    if apply_source is not None and not req.no_apply:
+        ui.console.print()
+        render_recipe_needs(aid, apply_source)
 
     if not _setup.readiness().endpoint.ok:
         ui.warn("No model endpoint yet")

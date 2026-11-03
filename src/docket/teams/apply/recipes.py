@@ -14,6 +14,7 @@ from docket.teams import config_docs as _config_docs
 from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod
 from docket.teams import roles as _roles
+from docket.teams.apply import needs as _needs
 from docket.teams.apply.model import PodApplyError
 
 
@@ -115,6 +116,15 @@ def _recipe_manifest(directory: Path) -> dict[str, Any]:
         return _config_docs.load_document(manifest_file, kind="pod").doc
     except _config_docs.ConfigDocError:
         return {}
+
+
+def recipe_needs(directory: Path) -> tuple[str, ...]:
+    """What *directory*'s ``pod.yaml`` declares its work still needs (``teams.apply.needs``);
+    empty when it declares none. A malformed list is ``plan_apply``'s to refuse, not read here."""
+    try:
+        return _needs.declared_needs(_recipe_manifest(directory))
+    except PodApplyError:
+        return ()
 
 
 def _recipe_pipeline_file(directory: Path, pipeline_name: str | None) -> Path | None:

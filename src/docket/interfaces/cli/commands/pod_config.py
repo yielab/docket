@@ -21,7 +21,12 @@ from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
 from docket.interfaces.cli.render import ui
-from docket.interfaces.cli.render.apply import _render_items, render_apply_header, render_apply_plan
+from docket.interfaces.cli.render.apply import (
+    _render_items,
+    render_apply_header,
+    render_apply_plan,
+    render_recipe_needs,
+)
 from docket.kernel.errors import CanonicalFormRefused, DispatchError
 from docket.kernel.home import current_home
 from docket.pipeline.domain import plan as _orch
@@ -163,6 +168,7 @@ def _apply_directory(
             ui.success(f"Applied {len(changed)} change(s) to pod '{project}' from {directory}")
         else:
             ui.success(f"Pod '{project}' already matches {directory}")
+        render_recipe_needs(project, directory)
         _contract.next_step("docket pod show")
 
 

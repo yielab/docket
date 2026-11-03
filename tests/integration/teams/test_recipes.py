@@ -112,13 +112,6 @@ def test_every_recipe_has_a_readme_and_some_content() -> None:
         assert has_pipeline or has_roles or has_members or has_servers, recipe_dir
 
 
-def test_web_research_readme_states_both_prerequisites() -> None:
-    """The web-research README names the fetch allowlist and the search server's MCP command."""
-    readme = (RECIPES_DIR / "web-research" / "README.md").read_text(encoding="utf-8")
-    assert "FETCH_ALLOWED_DOMAINS=<hosts>" in readme
-    assert "docket setup mcp add searxng --kind read -- " in readme
-
-
 def _loaded(path: Path) -> _pipeline.PipelineLoadResult:
     return _pipeline.load_pipeline(path.read_text(encoding="utf-8"), roles=ROLE_NAMES)
 

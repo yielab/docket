@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.3.0
+**Version**: 4.4.0
 **Status**: Implemented
 **Last Updated**: 2026-11-03
 
@@ -253,14 +253,15 @@ overlay, policies, members, pipeline binding, settings) into one command.
      pod-scoped MCP server list;
    - `pipelines/<name>.yaml|yml`: named pipelines (see "Pod-local pipelines");
    - `pipeline.yaml`, or the file `pod.yaml`'s `pipeline` key names: the pod's bound pipeline;
-   - `pod.yaml`: a manifest of nine top-level keys. `kind: pod` and `name` are the envelope
+   - `pod.yaml`: a manifest of ten top-level keys. `kind: pod` and `name` are the envelope
      (`config-format.spec.md`); `members` (a list of role names to add if absent), `settings` (a
      mapping of any settable `docket pod set <key> <value>` key), `pipeline` (a filename inside
      *dir*, default `pipeline.yaml` when that file exists), `description` (a string, read only for
      display, requirement 9, never applied to the pod), `exporters` (a list of
      observability-destination names, requirement 11, reported and recorded, never activated),
      `prepare` (a string, the install command of a task's worktree, requirement 13), and
-     `protects` (a list of path globs a task may not change without a person, requirement 14).
+     `protects` (a list of path globs a task may not change without a person, requirement 14), and
+     `needs` (a list of what the recipe's work still needs once applied, requirement 16).
 
    An unrecognized top-level `pod.yaml` key, a `members`/`settings` value of the wrong type, a
    `description` that is not a string, or an `exporters` entry that is not a plain string naming a
@@ -493,6 +494,34 @@ overlay, policies, members, pipeline binding, settings) into one command.
     stale from the current archetype and metadata (`--dry-run` shows the diffs without writing; an
     in-sync pod is a no-op), never touching the operator-owned `INSTRUCTIONS.md`, and writes one
     `pod.sync` audit entry per re-rendered member; `--json` with no argument exits 1.
+
+16. **A recipe says what its work still needs (ADR 0036 decision 17).** `pod.yaml`'s optional
+    `needs:` is a list drawn from exactly three names: `fetch-hosts` (the pod's `fetch` has at
+    least one host), `search-host` (a known search site is among those hosts, or a search service
+    is declared) and `isolation` (a jail enforces: isolation is recorded on and a sandbox backend
+    exists). A value that is not a list, or an entry outside the three names, **MUST** be rejected
+    naming `needs` before anything is written. `needs` is part of what a recipe declares, not pod
+    state: apply records nothing for it and `docket pod export` does not write it back. After the
+    plan is applied, `docket pod update <dir>` (after its result line) and `docket init
+    --recipe`/a discovered `.docket/` (at the end of its output, after init has recorded isolation
+    on where a backend is detected, so the line is never stale) **MUST** print, from one function,
+    one line per declared need and nothing for a recipe that declares none, computed from the effective set (`effective_fetch_domains`: the machine's list
+    plus the pod's `fetchDomains`) and `jail_enforces`, never re-derived:
+    - `needs fetch-hosts: ready (<n> hosts)`, else `needs fetch-hosts: the researchers cannot read
+      the web -> docket pod set fetchDomains <hosts> --pod <pod>`;
+    - `needs search-host: ready`, else `needs search-host: no search site is allowed ->
+      docket pod set fetchDomains '<current hosts>,html.duckduckgo.com' --pod <pod>` (the quoted value is the effective hosts, comma-joined, then the search site). A search site
+      is one of a short constant list of known search hosts (`html.duckduckgo.com` first) that the
+      effective set allows by `platform/fetch.py` `host_allowed`, the matcher `fetch` itself uses; a
+      declared `kind: service` (the pod's own or the operator's) whose name or an operation name
+      contains `search` also counts;
+    - `needs isolation: ready`, else, when isolation is not recorded on, `needs isolation: PDFs are
+      not read, isolation is off -> docket setup sandbox on`, and when it is on but this machine
+      has no sandbox backend, `needs isolation: PDFs are not read, no sandbox backend ->
+      docket setup sandbox backend docker`.
+    Each not-ready line names exactly one command. The block is informational: it **MUST NOT**
+    change the exit status, refuse or alter the apply, or write any setting, and `--dry-run`
+    prints no block.
 
 ### Pod manifests: export
 

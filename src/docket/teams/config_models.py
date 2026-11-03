@@ -132,6 +132,7 @@ class PodDocument(BaseModel):
     exporters: list[str] | None = None
     prepare: str | None = None
     protects: list[str] | None = None
+    needs: list[str] | None = None
 
 
 class RoutineTask(BaseModel):

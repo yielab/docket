@@ -548,5 +548,6 @@ _MANIFEST_KEYS = frozenset(
         "exporters",
         "prepare",
         "protects",
+        "needs",
     }
 )

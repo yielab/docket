@@ -107,6 +107,21 @@
       ],
       "default": null,
       "title": "Protects"
+    },
+    "needs": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Needs"
     }
   },
   "required": [

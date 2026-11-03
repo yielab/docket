@@ -4,32 +4,35 @@ Lead -> (Researcher A | Researcher B | Researcher C, in parallel) -> Analyst -> 
 
 The Lead splits the question into sub-questions. Three Researchers run on the cheap model
 class (`model: cheap` on each child step) with disjoint instructions: two work the web, the
-third works the repository with `grep` and `read`. Each web Researcher searches through a
-search server and reads the pages it picks with `fetch`. The pages stay in the Researcher's
-own session; only its reply reaches the Analyst as a handoff. The Analyst and the Writer are
-the built-in `analyst` and `writer` roles.
+third works the repository with `grep` and `read`. docket has no search tool: a search site is
+a host. Each web Researcher fetches a search page from an allowed search site (for example
+`https://html.duckduckgo.com/html/?q=...`) and then reads the pages it picks with `fetch`. A PDF
+among them is read by docket's own interpreter inside the jail. The pages stay in the
+Researcher's own session; only its reply reaches the Analyst as a handoff. The Analyst and the
+Writer are the built-in `analyst` and `writer` roles.
 
 ## Prerequisites
 
-Two things must be in place before the web Researchers can work. Both are set by the
-operator, not by this recipe.
+Three things must be in place before the web Researchers can work. All are set by the operator,
+not by this recipe, and `pod.yaml` declares them as `needs:` so `docket init --recipe` and
+`docket pod update` print which are still missing, each with the one command that fixes it.
 
-1. The hosts whose pages the Researchers may read:
-
-   ```bash
-   FETCH_ALLOWED_DOMAINS=<hosts>
-   ```
-
-2. A search server, declared through MCP with `--kind read`. docket has no built-in search. The
-   example below is a self-hosted SearXNG behind its MCP server: no vendor and no key, with
-   the operator's own SearXNG host on the allowlist above.
+1. The hosts whose pages the Researchers may read, and a search site among them (ADR 0036
+   decision 17). `fetchDomains` replaces the pod's list, so give the whole list:
 
    ```bash
-   docket setup mcp add searxng --kind read -- <searxng-mcp-server-command>
+   docket pod set fetchDomains 'html.duckduckgo.com,*.wikipedia.org'
    ```
 
-   A hosted search API works through the same command: pass its key with `--env KEY=VALUE`
-   (`docket setup mcp list` shows the value as `****`).
+   `*.wikipedia.org` covers every subdomain but not the apex. A search API with a key is a
+   declared service instead (`kind: service`, added with `docket setup service add`), which also satisfies the
+   search check.
+
+2. Isolation on, which PDFs need because docket reads them in the jail:
+
+   ```bash
+   docket setup sandbox on
+   ```
 
 ## Apply it
 
@@ -46,7 +49,8 @@ again (a second run plans every item `skip`). `--dry-run` prints the plan withou
 
 ## Files
 
-- `pod.yaml` - what `apply` reads: `members: [researcher, analyst, writer]`.
+- `pod.yaml` - what `apply` reads: `members: [researcher, analyst, writer]` and
+  `needs: [fetch-hosts, search-host, isolation]`.
 - `pipeline.yaml` - `lead` (Lead) -> `research` (parallel group: `web-a`, `web-b` and `repo`,
   all Researchers on `model: cheap`) -> `analyst` -> `writer`.
 

@@ -81,7 +81,7 @@ runs the team your files describe, beside the coding assistant you already use. 
 its own; `/status.json` and `/metrics` feed your own board. Agents use only the tools a role
 allows: read, search and edit files, shell commands (background processes stop when the turn ends)
 and `fetch`, which reads a web page as text from hosts you allow and nowhere else. The
-`web-research` recipe adds search through a server you declare.
+`web-research` recipe searches through a search site you allow in `fetchDomains` (there is no search tool).
 
 ## What a team can do
 
