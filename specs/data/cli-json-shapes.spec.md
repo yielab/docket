@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 5.0.0
+**Version**: 5.1.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-11-03
 
@@ -16,7 +16,7 @@ Covers every command that has a `--json` flag:
 
 - `init` (only its refused-review answer), `status` (also `--all` and `--history`), `inbox`.
 - `task list`, `task show <ref>`, `task diff <ref>`, `task trace <ref>`.
-- `pod show`, `pod show <member>`, `pod memory list`, `pod update`, `pod roles`, `pod policies`,
+- `pod show`, `pod show <member>`, `pod plan`, `pod memory list`, `pod update`, `pod roles`, `pod policies`,
   `pod recipes`.
 - `setup` (readiness), `setup --fix` (health checks), `setup sandbox [status]`,
   `setup model [list]`, `setup provider list|show`, `setup notify list|show`,
@@ -355,6 +355,33 @@ An unset `approvalMode` resolves per caller: `wait` on a terminal, `park` withou
 value that fails validation (e.g. a hand-edited `.docket-meta.json`) prints an error to stderr
 naming the offending key and exits 1, with nothing on stdout, instead of showing that key's
 default. A pod that does not exist exits 1.
+
+### `docket pod plan --json`
+
+A bare object: the limits a run of the planned pipeline would start under, resolved before any run.
+Composes existing resolvers only and writes nothing.
+
+```json
+{
+  "pod":          "string",
+  "source":       "string (where the pipeline came from, as the text output's Source: line)",
+  "pipeline":     "string (the pipeline's name)",
+  "steps": [
+    { "id": "string", "timeoutS": { "value": "integer seconds", "source": "step | pod | default" } }
+  ],
+  "guards": {
+    "rounds":   { "value": "integer", "source": "default" },
+    "toolCalls": { "value": "integer", "source": "default" }
+  },
+  "budgetTokens": "integer | null (the pod's cap; null = none)"
+}
+```
+
+`steps` lists the agent steps that would run, in run order, a `parallel` step's branches in its place;
+a command, ask or wait step and a step whose role the pod lacks are left out. `timeoutS` is
+`hops/domain/budget.py::resolve_seconds` over the step's `timeout`, the pod's `turnTimeoutS` and
+`AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`. A pod or pipeline that does not resolve exits 1 with nothing on
+stdout, as the text form does.
 
 ### `docket pod show <member> --json`
 

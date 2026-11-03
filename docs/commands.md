@@ -304,7 +304,8 @@ Example: docket pod validate .docket
 Show the steps the pod's pipeline would run, from the real executor.
 
 Without --pipeline the pod's bound pipeline is planned, else its default
-order. Nothing is started and no tokens are spent.
+order. Also shows each agent step's clock and where it came from, the
+guards and the pod's token cap. Nothing is started and no tokens are spent.
 
 Example: docket pod plan --pipeline review.yaml
 

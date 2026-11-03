@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.12.0
+**Version**: 5.13.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-11-03
@@ -574,11 +574,16 @@ one; a file target prints neither
 **Purpose**: Show the steps the pod's pipeline would run, from the real executor
 (`resolve_plan`/`render_plan`) — never a second, drift-prone pretty-printer. See
 `pipeline-format.spec.md` for the file format and `pod-dispatch.spec.md` for how it runs
-**Syntax**: `docket pod plan [--pipeline FILE] [--pod <p>]`
+**Syntax**: `docket pod plan [--pipeline FILE] [--json] [--pod <p>]`
 **Options**: `--pipeline FILE` plans that file (validated like `pod validate`, a document with no
-`kind:` accepted as a pipeline) instead of the pod's bound or default pipeline
-**Output**: A header, `Source: <where the pipeline came from>`, and the rendered plan; nothing
-executes and no tokens are spent
+`kind:` accepted as a pipeline) instead of the pod's bound or default pipeline; `--json` prints the
+shape in cli-json-shapes.spec.md instead of the text
+**Output**: A header, `Source: <where the pipeline came from>`, the rendered plan, and a `Limits`
+block: each agent step's clock as `<id>  <seconds>s (<step|pod|default>)`, the guards `rounds` and
+`toolCalls` with their value and `default`, and `budgetTokens <n>` or `budgetTokens none`. The
+clock is resolved by the resolver the runner uses (`hops/domain/budget.py::resolve_seconds`) from
+the step's `timeout`, the pod's `turnTimeoutS` and the machine default; nothing executes and no
+tokens are spent
 **Return**: `0` on success; `1` on an invalid or missing file or an unresolvable pod
 
 **`pod check`**

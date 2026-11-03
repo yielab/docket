@@ -16,6 +16,7 @@ from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import steps as _steps
+from docket.hops.domain import budget as _budget
 from docket.interfaces.cli.commands import agents as _agents
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.target import TargetError, pod_option
@@ -34,6 +35,7 @@ from docket.teams import pod_settings as _pod_settings
 from docket.teams import records as _records
 from docket.teams import role_schema as _role_schema
 from docket.teams import roles as _arch
+from docket.teams import settings as _settings
 from docket.teams.apply import check as _check
 from docket.teams.apply import model as _model
 from docket.teams.apply import plan as _pod_apply
@@ -322,11 +324,13 @@ def _validate_default() -> Path:
 def cmd_plan(
     pod: str | None = pod_option(),
     pipeline: str | None = typer.Option(None, "--pipeline", help="Plan this pipeline file"),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
 ) -> None:
     """Show the steps the pod's pipeline would run, from the real executor.
 
     Without --pipeline the pod's bound pipeline is planned, else its default
-    order. Nothing is started and no tokens are spent.
+    order. Also shows each agent step's clock and where it came from, the
+    guards and the pod's token cap. Nothing is started and no tokens are spent.
 
     Example: docket pod plan --pipeline review.yaml"""
     project = _contract.require_pod(pod)
@@ -338,14 +342,55 @@ def cmd_plan(
         source = (
             f"file '{pipeline}'" if spec is not None else _steps.effective_pipeline_source(project)
         )
+        pod_turn = _settings.pod_turn_timeout(project)
+        cap = _settings.pod_budget(project)
     except DispatchError as ex:
         _fail(str(ex))
     plan = _orch.resolve_plan(effective, roster, registry=_arch.load_registry(project))
+    clocks = _step_clocks(plan, pod_turn)
+    home = current_home()
+    guards = {
+        "rounds": _budget.Limit(home.agent_loop_max_iterations, "default"),
+        "toolCalls": _budget.Limit(home.agent_loop_max_tool_calls, "default"),
+    }
+    if json_out:
+        _contract.emit_json(
+            {
+                "pod": project,
+                "source": source,
+                "pipeline": plan.pipeline_name,
+                "steps": [{"id": sid, "timeoutS": asdict(c)} for sid, c in clocks],
+                "guards": {name: asdict(g) for name, g in guards.items()},
+                "budgetTokens": cap,
+            }
+        )
+        return
     ui.header("Pipeline plan", project)
     ui.console.print(f"Source: {source}")
     ui.console.print()
     ui.console.print(_orch.render_plan(plan), markup=False)
     ui.console.print()
+    lines = ["Limits"]
+    lines += [f"  {sid}  {c.value}s ({c.source})" for sid, c in clocks]
+    lines += [f"  {name}  {g.value} ({g.source})" for name, g in guards.items()]
+    lines.append(f"  budgetTokens  {cap if cap is not None else 'none'}")
+    ui.console.print("\n".join(lines), markup=False)
+    ui.console.print()
+
+
+def _step_clocks(
+    plan: _orch.ExecutionPlan, pod_turn: int | None
+) -> list[tuple[str, _budget.Limit]]:
+    """Each agent step's clock, by the runner's own resolver over the same three layers."""
+    default = _settings.resolve_timeout(None, None)
+    units: list[_orch.PlannedUnit] = []
+    for node in plan.nodes:
+        units.extend(node.children if isinstance(node, _orch.PlannedGroup) else [node])
+    return [
+        (u.step_id, _budget.resolve_seconds(step=u.timeout, pod=pod_turn, default=default))
+        for u in units
+        if u.run is None and u.input is None and u.wait is None and not u.skipped
+    ]
 
 
 def _plan_spec(pipeline: str, project: str) -> _pipeline.PipelineSpec:

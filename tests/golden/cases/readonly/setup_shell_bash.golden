@@ -54,7 +54,7 @@ _docket_options() {
     "pod update") echo "--pod --dry-run --json --accept --help" ;;
     "pod export") echo "--pod --force --help" ;;
     "pod validate") echo "--help" ;;
-    "pod plan") echo "--pod --pipeline --help" ;;
+    "pod plan") echo "--pod --pipeline --json --help" ;;
     "pod check") echo "--role --hook --tool --arg --pod --help" ;;
     "pod recipes") echo "--json --help" ;;
     "pod roles") echo "--pod --json --help" ;;

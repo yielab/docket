@@ -354,7 +354,8 @@ steps:
 `docket pod set <key> <value>` validates before writing and is audited as
 `pod.config`; `docket pod unset <key>` restores the default. A hand-edited value that fails validation is
 not ignored: `pod show` and `docket run` both refuse, naming the key. Confirm with
-`docket pod plan`, which prints the resolved rework budget and steps.
+`docket pod plan`, which prints each agent step's clock with its source (`step`, `pod` or
+`default`), the guards (`rounds`, `toolCalls`) and the pod's `budgetTokens` or `none`.
 
 ```json
 {

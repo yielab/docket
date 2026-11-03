@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,16 @@ steps:
   - plan: lead
   - build: implementer
     verify: null
+"""
+
+_TIMED_PIPELINE = """\
+kind: pipeline
+name: timed
+steps:
+  - build: implementer
+    timeout: 1200
+    verify: null
+  - review: reviewer
 """
 
 _INVALID_PIPELINE = """\
@@ -153,6 +164,59 @@ class TestPipelinePlanCli:
         f = tmp_path / "broken.pipeline.yaml"
         f.write_text(_INVALID_PIPELINE)
         assert _plan("--pipeline", str(f)).exit_code == 1
+
+    def test_plan_shows_each_steps_clock_the_guards_and_the_pod_cap(self, tmp_path: Path) -> None:
+        _write_meta("demo-lead", {"turnTimeoutS": 600})
+        _write_meta("demo-implementer")
+        _write_meta("demo-reviewer")
+        f = tmp_path / "timed.pipeline.yaml"
+        f.write_text(_TIMED_PIPELINE)
+
+        result = _plan("--pipeline", str(f))
+
+        assert result.exit_code == 0
+        assert "build  1200s (step)" in result.output
+        assert "review  600s (pod)" in result.output
+        assert "rounds  200 (default)" in result.output
+        assert "toolCalls  400 (default)" in result.output
+        assert "budgetTokens  none" in result.output
+
+    def test_plan_names_the_default_clock_and_the_pod_token_cap(self, tmp_path: Path) -> None:
+        _write_meta("demo-lead", {"budgetTokens": 500000})
+        _write_meta("demo-implementer")
+        _write_meta("demo-reviewer")
+        f = tmp_path / "timed.pipeline.yaml"
+        f.write_text(_TIMED_PIPELINE)
+
+        result = _plan("--pipeline", str(f))
+
+        assert "review  300s (default)" in result.output
+        assert "budgetTokens  500000" in result.output
+
+    def test_plan_json_carries_the_same_limits(self, tmp_path: Path) -> None:
+        _write_meta("demo-lead", {"turnTimeoutS": 600, "budgetTokens": 500000})
+        _write_meta("demo-implementer")
+        _write_meta("demo-reviewer")
+        f = tmp_path / "timed.pipeline.yaml"
+        f.write_text(_TIMED_PIPELINE)
+
+        result = _plan("--pipeline", str(f), "--json")
+
+        assert result.exit_code == 0
+        assert json.loads(result.stdout) == {
+            "pod": "demo",
+            "source": f"file '{f}'",
+            "pipeline": "timed",
+            "steps": [
+                {"id": "build", "timeoutS": {"value": 1200, "source": "step"}},
+                {"id": "review", "timeoutS": {"value": 600, "source": "pod"}},
+            ],
+            "guards": {
+                "rounds": {"value": 200, "source": "default"},
+                "toolCalls": {"value": 400, "source": "default"},
+            },
+            "budgetTokens": 500000,
+        }
 
     def test_plan_renders_from_the_real_executor_not_a_second_printer(self) -> None:
         """`plan`'s output must come from pipeline.domain.plan.render_plan/resolve_plan -- the

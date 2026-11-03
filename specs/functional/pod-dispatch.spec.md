@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.0.0
+**Version**: 12.1.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -623,7 +623,9 @@ wired agent's conversation current with the task it is working.
    calls are machine guards (`AGENT_LOOP_MAX_ITERATIONS`, 200, and `AGENT_LOOP_MAX_TOOL_CALLS`,
    400; agent-loop.spec.md requirement 104) that no step, role or task declares, so
    `maxIterations` and `maxToolCalls` are refused by validation (pipeline-format.spec.md "Steps"
-   requirement 12). The sources reach `LoopConfig` and a stop that a limit caused names its source
+   requirement 12). `docket pod plan` shows each agent step's clock, the guards and the pod's
+   `budgetTokens` before a run, through the same `resolve_seconds` call and never a copy of the chain
+   (cli-interface.spec.md `pod plan`). The sources reach `LoopConfig` and a stop that a limit caused names its source
    and the key that raises it. Tokens are the task's `maxTokens`, never a step key.
    `verifyTimeoutS` and `verify:` gates keep their own clock.
 
