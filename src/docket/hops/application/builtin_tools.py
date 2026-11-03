@@ -13,6 +13,7 @@ from docket.agent.tools.registry import (
     str_arg,
 )
 from docket.agent.tools.screening import screen_tool_result
+from docket.governance import secrets as _secrets
 from docket.governance.security import SAFE_BINS
 from docket.hops.application import process_tools
 from docket.kernel import clock as _clock
@@ -237,11 +238,36 @@ def _consult_tool() -> Tool:
     )
 
 
+def _credential_in_url(url: str) -> str:
+    """The rule a *url* breaks by carrying a credential, else "": userinfo, or text (as written or
+    percent-decoded once) that `redact(personal=False)` would change. Never quotes the url."""
+    try:
+        has_userinfo = "@" in urllib.parse.urlsplit(url).netloc
+    except ValueError:
+        has_userinfo = False
+    if has_userinfo:
+        return "userinfo"
+    for text in (url, urllib.parse.unquote(url)):
+        if _secrets.redact(text, personal=False) != text:
+            return "credential shape"
+    return ""
+
+
 def _fetch_tool(fetch_url: Any, allowed: tuple[str, ...]) -> Tool:
     """The `fetch` built-in over *fetch_url*, reaching the hosts in *allowed* only."""
 
     def _fetch_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         url = str_arg(args, "url")
+        rule = _credential_in_url(url)
+        if rule:
+            return ToolOutcome(
+                False,
+                error=(
+                    f"fetch refused: the URL carries a credential ({rule}); "
+                    "a key belongs in a declared service, never in a URL"
+                ),
+                refusal="fetch_secret_in_url",
+            )
         outcome: ToolOutcome = fetch_url(url, allowed, _int_arg(args, "timeout"))
         host = (urllib.parse.urlsplit(url).hostname or "").lower()
         return screen_tool_result(

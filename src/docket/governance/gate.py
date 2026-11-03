@@ -405,14 +405,22 @@ def _task_pregrant(
     return (pre, tool_name, digest)
 
 
+def _url_host(url: str) -> str:
+    """The lower-cased host of *url*, or "?" when it has none or does not parse."""
+    try:
+        return (urllib.parse.urlsplit(url).hostname or "?").lower()
+    except ValueError:
+        return "?"
+
+
 def audit_refusal(call: GateCall, ctx: GateContext, kind: str) -> None:
     """Audit a refusal a handler made itself: tool, kind and the attempted path or host only (a
     service call: the method and host its tool names)."""
     if kind in ("service_not_allowed", "service_bad_request"):
         target = call.audit_detail
-    elif kind == "fetch_not_allowed":
-        host = urllib.parse.urlsplit(str(call.args.get("url", ""))).hostname or "?"
-        target = f"host={host.lower()!r}"
+    elif kind in ("fetch_not_allowed", "fetch_secret_in_url"):
+        host = _url_host(str(call.args.get("url", "")))
+        target = f"host={host!r}"
     else:
         target = f"path={str(call.args.get('path', ''))!r}"
     audit_tool_decision("tool.refused", call.tool.name, ctx, f"kind={kind} {target}")

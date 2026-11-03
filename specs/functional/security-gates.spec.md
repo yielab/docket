@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.9.0
+**Version**: 3.10.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -326,7 +326,9 @@ contains them, and whether isolation is on by default is a maintainer decision (
 5. `unlisted-secret-shape`: `secret-pii-redact` masks fixed shapes (provider API keys, GitHub and
    AWS tokens, `*_PASSWORD=`, JWTs, private key blocks, `Bearer` credentials, email addresses); a
    secret spelled out, reversed, base64-encoded or shaped like none of them (a card number) is not
-   masked.
+   masked. The same limit bounds the `fetch` URL rule ("Network egress and the `fetch` tool"
+   requirement 8): a key in a URL that is double percent-encoded, split across a path and a query,
+   or shaped like none of the patterns reaches the host.
 
 ### Docket-launched process classification
 
@@ -753,7 +755,7 @@ rewrite its own gate for the next turn.
 14. **Every refusal inside a handler is audited as `tool.refused`.** A file tool's
     `PathEscapeError` and a `fetch` allowlist refusal are returned by the handler as a failed
     `ToolOutcome`, so the gate verdict never saw them. `ToolOutcome` carries a typed `refusal`
-    (`""`, `path_escape` or `fetch_not_allowed`); `dispatch_tool` **MUST** write exactly one
+    (`""`, `path_escape`, `fetch_not_allowed` or `fetch_secret_in_url`); `dispatch_tool` **MUST** write exactly one
     `tool.refused` audit entry for an outcome whose `refusal` is set, naming `tool`, `agent`,
     `role`, `project`, `kind` and, for a path tool, the attempted `path` argument (for `fetch`,
     the host). The entry **MUST NOT** carry any file content, command output or URL query, and the
@@ -1204,7 +1206,8 @@ material, may be read as saying otherwise.
      from a PDF or another document is not `fetch`'s job.
    - **Known limits.** `fetch` is still an outbound channel through its URL: a path or query a
      model composes can carry data to an allowed host, whatever the host is (a narrower channel than
-     the open paths of requirement 1, and not closed here). The perimeter checks where a request goes, not
+     the open paths of requirement 1). Requirement 8 refuses a URL that carries a credential; any
+     other data a URL carries is not closed here. The perimeter checks where a request goes, not
      what a public host serves: hostile text from a public host is `pre_input`'s job (requirement 6).
      The port is not restricted, and a host name an operator lists exactly is trusted with whatever
      address it resolves to.
@@ -1276,6 +1279,31 @@ material, may be read as saying otherwise.
    JSON surfaces carry `networkEnforced` (true only when that fact holds and the mode is `none`).
    `docket pod show --json` and the pod answers of the HTTP API carry `network.enforced`, the same
    boolean, beside `{mode, scope}`.
+8. **A `fetch` URL that carries a credential is refused, at every host.** A GET's URL carries
+   whatever the model writes into it, to a host nobody vetted; a key belongs in a declared service
+   (service-client.spec.md), never in the model's hand. The `fetch` handler **MUST** refuse, before
+   `fetch_url` runs (so before any socket, and whether or not the host is allowed), a URL that:
+   - **carries userinfo** (`https://user:pw@host/`, or a bare `user@host`); or
+   - **changes under `secrets.redact(text, personal=False)`**, applied to the URL as written and to
+     the URL percent-decoded once (`unquote`). The credential shapes of `secret-pii-redact` and the
+     exact values of the home's secret store and credential-shaped environment variables count; an
+     e-mail address, a phone number or a name does not, so
+     `https://example.org/?q=ana%40example.org` is fetched. The scan covers the whole URL text: path,
+     query and fragment alike.
+
+   The refusal is `ToolOutcome(ok=False, refusal="fetch_secret_in_url")`. Its error names the rule
+   that matched (`userinfo` or `credential shape`) and **MUST NOT** quote any part of the URL; the
+   `tool.refused` entry (requirement 14) holds `kind=fetch_secret_in_url host='<host>'` and nothing
+   of the path, query, fragment or userinfo. The model's own next turn sees only that error. No
+   policy stands in for this: a home holds only the policies its operator installed, and the
+   shipped credential shapes run only on output.
+
+   **Known limits** (`unlisted-secret-shape`, "Known limits" 5): a key percent-encoded **twice**
+   (`%2573k-...` decodes once to `%73k-...`), spelled out, split between path and query, or shaped
+   like none of the patterns is not seen, and neither is a secret a model recomposes from pieces.
+   The rule closes the credential shapes docket knows; it does not bound what else a URL carries,
+   and it sets no length cap on a query.
+
 15. **The model sees the command rules before it runs anything.** The `bash` tool's description
     **MUST** state, from the rules the turn's gate actually applies, what runs without approval and
     what needs it: one sentence of the form `Runs without approval: <names>. Needs approval:
@@ -1776,6 +1804,13 @@ ToolOutcome(ok=False, content='', refusal='fetch_not_allowed',
 >>> fetch_url("http://searxng.lan:8080/search?q=docket", ("searxng.lan",))  # exact: kept
 ToolOutcome(ok=True, content='HTTP 200 application/json\n\n{"results": []}', error='')
 
+>>> # the `fetch` tool, not `fetch_url`: the handler refuses before any request is built
+>>> fetch(url="https://api.example.com/search?q=sk-ant-<20+ characters>")
+ToolOutcome(ok=False, content='', refusal='fetch_secret_in_url',
+            error="fetch refused: the URL carries a credential shape; a key belongs in a declared service")
+>>> fetch(url="https://user:pw@api.example.com/status")      # error names "userinfo"; same refusal
+>>> fetch(url="https://api.example.com/search?q=ana%40example.org")   # an address is not a credential
+
 >>> fetch_url("https://api.example.com/report.pdf", allowed)
 ToolOutcome(ok=False, content='', refusal='fetch_not_allowed',
             error="content type 'application/pdf' is not text; fetch reads text pages")
@@ -1879,6 +1914,10 @@ $ git clone https://anywhere.example/repo.git
   check); both are skipped, with a reason, on a host lacking the backend, never silently passing.
 - A real exec jail's environment **MUST NOT** include the host environment (Exec sandbox 6).
   `sandbox="off"` **MUST** receive the host environment minus docket's credentials.
+- `fetch` **MUST NOT** call `fetch_url` for a URL that carries userinfo or whose text, as written
+  or percent-decoded once, changes under `redact(personal=False)` (Network egress and the `fetch`
+  tool 8): the stub opener receives no call, and neither the tool result nor the audit log holds the
+  key. A URL with an e-mail address in its query **MUST** still reach the opener.
 - `fetch` **MUST NOT** open a connection to a host absent from the member's allowed set: the refusal
   happens before an opener is built, not merely before the content is returned.
 - A redirect `fetch` follows **MUST NOT** land on a host absent from the allowed set: the set

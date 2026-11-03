@@ -213,6 +213,17 @@ class TestASendCall:
         assert f"kind={kind} method=GET host='api.example.com'" in entry["detail"]
         assert "secret-query" not in entry["detail"]
 
+    def test_a_fetch_that_carried_a_credential_names_the_kind_and_host_only(self) -> None:
+        url = "https://user:pw0rd@Example.org/p/sk-ant-FAKEFAKEFAKEFAKEFAKEFAKE?q=1#frag"
+        call = GateCall(_Tool("fetch", "read"), "c", {"url": url})
+
+        _gate.audit_refusal(call, _Ctx(), "fetch_secret_in_url")
+
+        (entry,) = [e for e in _audit.read_audit() if e["action"] == "tool.refused"]
+        assert "kind=fetch_secret_in_url host='example.org'" in entry["detail"]
+        for leaked in ("pw0rd", "FAKEFAKE", "user", "path=", "frag", "q=1"):
+            assert leaked not in entry["detail"]
+
     def test_a_denied_send_writes_tool_send(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _verdict(monkeypatch, "deny", reason="no sending")
 

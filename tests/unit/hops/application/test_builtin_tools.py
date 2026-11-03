@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import urllib.parse
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,8 +27,11 @@ from docket.agent.ports import ToolCall
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.registry import (
     ToolContext,
+    ToolRegistry,
     dispatch_tool,
 )
+from docket.governance import audit as _audit
+from docket.governance import secrets as _secrets
 from docket.hops.application import builtin_tools
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.clock import use_clock
@@ -511,3 +515,102 @@ class TestPodFetch:
         self._pod("docs", fetchDomains="docs.python.org", deniedTools="fetch")
         narrowed = registry_for_role(builtin_registry("docs"), "implementer", project="docs")
         assert "fetch" not in narrowed.names()
+
+
+class TestFetchRefusesACredentialInItsUrl:
+    """A `fetch` URL that carries a credential is refused before `fetch_url` runs, at any host."""
+
+    KEY = "sk-ant-" + "FAKE" * 6
+    STORED = "zz/Opaque+Stored/Value/0123456789"
+
+    @staticmethod
+    def _fetch(url: str, allowed: tuple[str, ...] = ("example.org",)) -> tuple[object, list[str]]:
+        seen: list[str] = []
+
+        def _stub(called: str, _allowed: tuple[str, ...], _timeout: object) -> ToolOutcome:
+            seen.append(called)
+            return ToolOutcome(True, content="page")
+
+        registry = ToolRegistry()
+        registry.register(builtin_tools._fetch_tool(_stub, allowed))
+        context = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer", project="docs")
+        call = ToolCall(id="c", name="fetch", arguments=json.dumps({"url": url}))
+        return dispatch_tool(call, context, registry), seen
+
+    def _assert_refused_without_the_value(
+        self,
+        url: str,
+        leaked: tuple[str, ...],
+        *,
+        rule: str,
+        allowed: tuple[str, ...] = ("example.org",),
+    ) -> None:
+        result, seen = self._fetch(url, allowed)
+        assert seen == []
+        assert not result.ok  # type: ignore[attr-defined]
+        assert rule in result.error  # type: ignore[attr-defined]
+        audit = json.dumps(_audit.read_audit())
+        (entry,) = [e for e in _audit.read_audit() if e["action"] == "tool.refused"]
+        assert "kind=fetch_secret_in_url" in str(entry["detail"])
+        for value in leaked:
+            assert value not in repr(result) and value not in audit
+
+    @pytest.mark.parametrize(
+        "template",
+        [
+            "https://example.org/?q={k}",
+            "https://example.org/search?lang=en&api_key={k}",
+            "https://example.org/v1/{k}/items",
+            "https://example.org/page#{k}",
+        ],
+        ids=["query", "named-query-param", "path", "fragment"],
+    )
+    def test_a_provider_key_shape_anywhere_in_the_url_is_refused(self, template: str) -> None:
+        self._assert_refused_without_the_value(
+            template.format(k=self.KEY), (self.KEY, "FAKEFAKE"), rule="credential shape"
+        )
+
+    def test_a_percent_encoded_key_is_refused(self) -> None:
+        encoded = "".join(f"%{byte:02X}" for byte in f"api_key={self.KEY}".encode())
+        assert self.KEY not in encoded
+        self._assert_refused_without_the_value(
+            f"https://example.org/?q={encoded}", (self.KEY, "FAKEFAKE"), rule="credential shape"
+        )
+
+    @pytest.mark.parametrize("userinfo", ["u:pw0rd@", "u@"], ids=["user-and-password", "user-only"])
+    def test_userinfo_is_refused(self, userinfo: str) -> None:
+        self._assert_refused_without_the_value(
+            f"https://{userinfo}example.org/", ("pw0rd", "u:pw"), rule="userinfo"
+        )
+
+    @pytest.mark.parametrize("encode", [False, True], ids=["raw", "percent-encoded"])
+    def test_a_stored_secret_value_is_refused(self, encode: bool) -> None:
+        _secrets.store_secret("PLAIN_NAME", self.STORED)
+        text = urllib.parse.quote(self.STORED, safe="") if encode else self.STORED
+        self._assert_refused_without_the_value(
+            f"https://example.org/?q={text}", (self.STORED, "Opaque"), rule="credential shape"
+        )
+
+    def test_the_rule_holds_at_a_host_off_the_allowlist(self) -> None:
+        result, seen = self._fetch(f"https://elsewhere.example/?q={self.KEY}")
+        assert seen == [] and not result.ok  # type: ignore[attr-defined]
+        (entry,) = [e for e in _audit.read_audit() if e["action"] == "tool.refused"]
+        assert "kind=fetch_secret_in_url host='elsewhere.example'" in str(entry["detail"])
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.org/?q=ana%40example.org",
+            "https://example.org/?q=ana@example.org",
+            "https://example.org/docs/api-keys-and-tokens?page=2",
+        ],
+        ids=["encoded-address", "raw-address", "benign-words"],
+    )
+    def test_an_address_or_ordinary_words_are_not_a_credential(self, url: str) -> None:
+        result, seen = self._fetch(url)
+        assert seen == [url] and result.ok  # type: ignore[attr-defined]
+
+    def test_a_key_encoded_twice_is_the_known_limit_and_reaches_the_fetch(self) -> None:
+        url = "https://example.org/?q=%2573k-ant-" + "FAKE" * 6
+        result, seen = self._fetch(url)
+        assert seen == [url] and result.ok  # type: ignore[attr-defined]
