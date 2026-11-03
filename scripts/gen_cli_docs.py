@@ -474,7 +474,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("DISPATCH_RETRIES_DEFAULT",),
-        "Retry attempts after the first try for a retryable dispatch-hop failure (timeout/`daemon_error` only), for any role with no per-role override",
+        "Model requests sent again after the first try when one times out or hits a `daemon_error`, within the same turn, for any role with no per-role override",
         "`2`",
     ),
     (

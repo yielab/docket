@@ -100,7 +100,7 @@ from `main`.
 
 ### P60-1 — A transient failure is retried per request, inside the turn
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
+**Status:** DONE 2026-11-03 (a request retried in the turn; live: two `request_retry` events then `timeout` at 2 s and 4 s) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
 
 - **Trigger:**
   - The three failed requests had 10-17k input tokens; each ended the turn (`agent/loop.py`
@@ -212,7 +212,7 @@ from `main`.
 
 ### P60-3 — A failed Implementer hop keeps its work after a transport stop
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
+**Status:** DONE 2026-11-03 (a failed Implementer hop keeps its work) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
 
 - **Trigger:** `task-61932818`'s hop record has `files_changed: []` and Tack shows "This run changed
   no files", while the task worktree holds `guard.ts` and `guard.test.ts` modified and
@@ -241,7 +241,7 @@ from `main`.
 
 ### P61-1 — The pod report says whether its network is enforced, and where its folder is
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
+**Status:** DONE 2026-11-03 (live: `GET /pods/web-research` `network.enforced` agrees with `docket status`) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
 
 - **Trigger:**
   - `network` is `{mode, scope}` (`hops/application/report.py` ~416-418; members ~361-363), and
@@ -432,6 +432,13 @@ P61-2 (the facts it states)
 > `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
 
 **Phases 60-61 (planned 2026-11-03).** Left out of the cards on purpose:
+- *Dead retry plumbing after P60-1.* `UnitContext.do_sleep`/`on_retry` (`tasks/application/record.py`
+  ~261-263), `executor.dispatch_task`'s `on_retry`/`sleep` (~475-580) and `sweep._touch` (~161) have no
+  reader. Delete with P61-3, which owns `record.py` next.
+- *`NOT_ENFORCED` wording.* "isolation off" is also what a machine with isolation on and no backend prints
+  (`teams/network_posture.py`); changing it moves a golden and security-gates requirement 14. `pod_summary`
+  probes the backend per row. Trigger: an operator misreads the line, or a pod list slower than 50 ms.
+- *Is `capability_missing` pinned?* Whether P61-3's kind joins `_PINNED_FAILURE_KINDS` (`record.py`).
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after

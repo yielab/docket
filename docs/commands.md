@@ -1054,7 +1054,7 @@ No command emits any other exit code today.
 | `CONTEXT_BYTES_PER_TOKEN` | Bytes-per-token estimator behind the static-context guards behind the prompt budget | `4` |
 | `CONTEXT_TOKEN_BUDGET` | Soft cap on the static per-turn context (SOUL+AGENTS+TOOLS+HEARTBEAT+MEMORY.md); prompt composition truncates past it | `6000` |
 | `DISTILL_TIMEOUT_S` | Wall-clock bound on the one driver-backed summarising turn session compaction runs | `120` |
-| `DISPATCH_RETRIES_DEFAULT` | Retry attempts after the first try for a retryable dispatch-hop failure (timeout/`daemon_error` only), for any role with no per-role override | `2` |
+| `DISPATCH_RETRIES_DEFAULT` | Model requests sent again after the first try when one times out or hits a `daemon_error`, within the same turn, for any role with no per-role override | `2` |
 | `DISPATCH_RETRIES_LEAD`, `DISPATCH_RETRIES_IMPLEMENTER`, `DISPATCH_RETRIES_REVIEWER` | Per-role override of `DISPATCH_RETRIES_DEFAULT` | same as `DISPATCH_RETRIES_DEFAULT` |
 | `DISPATCH_RETRY_BACKOFF_S` | Linear backoff base between retries — attempt N waits N times this many seconds | `2` |
 | `DISPATCH_RETRY_MAX_WAIT_S` | Ceiling on a retry's sleep, whichever of the linear backoff or the endpoint's own `Retry-After` asked for longer | `60` |
