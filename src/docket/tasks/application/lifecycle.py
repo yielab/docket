@@ -172,7 +172,8 @@ def reclaim_stale_running(project: str) -> None:
 
 def retry_task(project: str, task_id: str) -> bool:
     """Re-queue one ``blocked`` or ``failed`` task: a locked flip to ``pending`` that keeps its
-    hops and audits ``task.retry``. Returns False if not found or in any other status."""
+    hops and audits ``task.retry``. The kept hops are replayed, so the step whose hop failed runs
+    again and continues its session. Returns False if not found or in any other status."""
     found = False
 
     def _retry(record: TaskRecord) -> bool:

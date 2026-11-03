@@ -13,7 +13,10 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
+from docket.pipeline.domain import gates as _gates
+from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import record as _record
+from docket.tasks.domain.task import HopResult
 
 SUBJECT = "docket.tasks.application.record"
 
@@ -45,3 +48,58 @@ class TestParkedApprovalToken:
 
     def test_none_when_the_prefix_matches_but_no_token_field_is_present(self) -> None:
         assert _record._parked_approval_token("approval_parked: tool='bash'") is None
+
+
+def _unit(step_id: str, gate: _gates.Gate | None = None) -> _orch.PlannedUnit:
+    return _orch.PlannedUnit(
+        step_id=step_id,
+        role=step_id,
+        agent=None,
+        archetype=None,
+        member_id=f"pod-{step_id}",
+        gate=gate,
+        retries=None,
+        timeout=None,
+    )
+
+
+def _hop(step_id: str, *, ok: bool = True, verdict: str | None = None) -> HopResult:
+    output = verdict.upper() if verdict else "done"
+    return HopResult(role=step_id, step_id=step_id, ok=ok, output=output)
+
+
+_REVIEW_GATE = _gates.VerdictGate(
+    pattern=r"^(APPROVE|REQUEST-CHANGES)\b",
+    passValues=["approve"],
+    rework=_gates.ReworkEdge(to="implementer", when=["request-changes"], maxCycles=2),
+)
+
+
+class TestReplayPipelinePosition:
+    """A failed hop replays to its own index, like a parked one, and consumes no cycle."""
+
+    def _steps(self) -> tuple[_orch.PlannedUnit, ...]:
+        return (_unit("lead"), _unit("implementer"), _unit("reviewer", _REVIEW_GATE))
+
+    def test_a_failed_hop_runs_again_instead_of_the_next_step(self) -> None:
+        pos = _record.replay_pipeline_position(
+            self._steps(), [_hop("lead"), _hop("implementer", ok=False)]
+        )
+        assert pos.pipeline_index == 1
+
+    def test_a_failed_hop_after_a_rework_keeps_the_rework_state(self) -> None:
+        review = _hop("reviewer", verdict="request-changes")
+        pos = _record.replay_pipeline_position(
+            self._steps(),
+            [_hop("lead"), _hop("implementer"), review, _hop("implementer", ok=False)],
+        )
+        assert pos.pipeline_index == 1
+        assert pos.rework_hop is review
+        assert pos.rework_counts == {"reviewer": 1}
+
+    def test_the_run_after_a_failed_hop_moves_on_once_it_succeeds(self) -> None:
+        pos = _record.replay_pipeline_position(
+            self._steps(),
+            [_hop("lead"), _hop("implementer", ok=False), _hop("implementer")],
+        )
+        assert pos.pipeline_index == 2

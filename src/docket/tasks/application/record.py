@@ -105,10 +105,10 @@ def replay_pipeline_position(
     ("Per-hop incremental persistence and crash recovery" for why a completed-roles set can't
     resume once rework reruns a role; "Parallel step groups" item 6 for the known group-resume
     limit this function's trailing loop implements). Matches a verdict gate's ``rework`` edge
-    by step id, not a hardcoded role. Only replays *non-terminal* history -- a terminal outcome
-    is decided/persisted synchronously in the same ``dispatch_task`` call, and an ordinary
-    graded-failure ``failed`` task is never reclaimed for resume (only one tagged with a
-    RESUMABLE_FAILURE_KINDS reason)."""
+    by step id, not a hardcoded role. A failed hop (not parked, no routing decision) replays to
+    its own index with the rework state that led to it, so a retry or resume runs that step
+    again. A graded-failure ``failed`` task is never reclaimed for resume, only an operator's
+    retry or one tagged with a RESUMABLE_FAILURE_KINDS reason."""
     id_to_index = {node.step_id: i for i, node in enumerate(runtime_steps)}
     pi = 0
     rework_counts: dict[str, int] = {}
@@ -130,6 +130,11 @@ def replay_pipeline_position(
             # neither applies. Resume re-runs this exact index (not the one
             # after it), carrying no rework state forward.
             rework_hop = None
+            pi = idx
+            continue
+        if not hop.ok and not hop.next_step:
+            # A failed hop decided nothing: it reached no gate and consumed no cycle. The step
+            # runs again from this index with the rework state that led to it.
             pi = idx
             continue
         if hop.next_step:
