@@ -249,7 +249,6 @@ class _TurnState(TurnState):
     """The orchestrator: ``TurnState`` plus the collaborators that act on it (budget,
     compaction and request fit, the tool step), and the request/response phase between them."""
 
-    finalization_attempted: bool = False
     close_attempted: bool = False
     close_forced: bool = False
     close_reply: str = ""
@@ -322,13 +321,13 @@ class _TurnState(TurnState):
             trace_task_id=trace_task_id,
         )
 
-    # Falls back to one tool-free terminal attempt when the ordinary
-    # tool-enabled round no longer fits the remaining turn budget. A non-None
+    # Lands on one tool-free report request when a budget bound would stop the turn, or when
+    # the ordinary tool-enabled round no longer fits the remaining token budget. A non-None
     # last element means stop now.
     def prepare_request_or_finalize(
         self,
     ) -> tuple[list[ChatMessage], list[ToolSpec], bool, AgentLoopResult | None]:
-        """Fit the task request, or enter terminal finalization instead."""
+        """Fit the task request, or enter the landing instead."""
         (
             messages,
             normal_estimated_input,
@@ -348,27 +347,23 @@ class _TurnState(TurnState):
                     failure_kind=fit_failure_kind or "invalid_output",
                 ),
             )
-
-        request_tools = self.tool_specs
-        normal_budget_error = self.budget.prospective_budget_error(
-            normal_estimated_input, purpose="tool-enabled task"
-        )
-        if not normal_budget_error:
-            return messages, request_tools, False, None
-
-        if self.finalization_attempted:
-            return (
-                [],
-                [],
-                False,
-                self.done(
-                    ok=False,
-                    stop_reason="token_budget",
-                    error=normal_budget_error,
-                ),
+        if self.landing is None:
+            normal_budget_error = self.budget.prospective_budget_error(
+                normal_estimated_input, purpose="tool-enabled task"
             )
-        self.finalization_attempted = True
-        terminal_messages = _finalization_messages(messages)
+            if not normal_budget_error:
+                return messages, self.tool_specs, False, None
+            self.land("token_budget", normal_budget_error)
+        return self.enter_landing(messages, normal_estimated_input)
+
+    def enter_landing(
+        self, messages: list[ChatMessage], normal_estimated_input: int
+    ) -> tuple[list[ChatMessage], list[ToolSpec], bool, AgentLoopResult | None]:
+        """The landing request: the trailing ask naming the bound, no tools, fitted and budgeted."""
+        assert self.landing is not None
+        stop = self.budget_stop_for(self.landing)
+        assert stop is not None
+        terminal_messages = _finalization_messages(messages, stop)
         final_estimated_input, final_fit_error = self.budget.preflight_request(
             terminal_messages,
             [],
@@ -385,7 +380,11 @@ class _TurnState(TurnState):
             final_reason = "finalization_exceeds_remaining_turn_budget"
         else:
             final_status = "entered"
-            final_reason = "normal_request_exceeds_remaining_turn_budget"
+            final_reason = (
+                "normal_request_exceeds_remaining_turn_budget"
+                if self.landing == "token_budget"
+                else f"{self.landing}_reached"
+            )
         _trace_terminal_finalization(
             self.project,
             self.trace_key,
@@ -412,16 +411,12 @@ class _TurnState(TurnState):
                 ),
             )
         if final_budget_error:
-            return (
-                [],
-                [],
-                False,
-                self.done(
-                    ok=False,
-                    stop_reason="token_budget",
-                    error=final_budget_error,
-                ),
+            error = (
+                final_budget_error
+                if self.landing == "token_budget"
+                else f"{self.landing_error}; {final_budget_error}"
             )
+            return [], [], False, self.landed(error=error)
         return terminal_messages, [], True, None
 
     # Returns the assistant message to dispatch tools for, or None with a
@@ -531,12 +526,10 @@ class _TurnState(TurnState):
             return (
                 None,
                 response.usage,
-                self.done(
-                    ok=False,
-                    stop_reason="token_budget",
+                self.landed(
                     error=(
-                        "terminal finalization requested tool calls even though no tools were "
-                        "advertised; none were dispatched or persisted"
+                        f"{self.landing_error}; the terminal report requested tool calls even "
+                        "though no tools were advertised; none were dispatched or persisted"
                     ),
                 ),
             )
@@ -554,6 +547,8 @@ class _TurnState(TurnState):
             )
         if not assistant_msg.tool_calls:
             append_messages(self.session_key, [assistant_msg], usage=response.usage)
+            if finalizing:  # the landing's answer is the report, never a success
+                return None, response.usage, self.landed(output=assistant_msg.content)
             return (
                 None,
                 response.usage,

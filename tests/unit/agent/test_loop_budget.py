@@ -7,7 +7,12 @@ from collections.abc import Callable
 
 import pytest
 
-from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
+from docket.agent.loop_budget import (
+    LANDING_TIMEOUT_S,
+    MIN_OUTPUT_TOKENS,
+    TurnBudget,
+    budget_notice,
+)
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_types import AgentLoopResult, LoopConfig
 from docket.agent.ports import BudgetStop, TokenUsage
@@ -88,17 +93,19 @@ class TestCalibrate:
 
 
 class TestCheckIterationBounds:
-    """Each ceiling ends the turn with its own stop reason, in a fixed order."""
+    """Rounds, wall clock and tool calls select the landing; spent tokens and cancellation stop."""
 
-    def test_the_iteration_ceiling_stops_the_turn(self, make_turn_state: MakeState) -> None:
+    def test_the_iteration_ceiling_selects_the_landing(self, make_turn_state: MakeState) -> None:
         state = make_turn_state(LoopConfig(max_iterations=1))
         budget = TurnBudget(state)
         timeout, stop = budget.check_iteration_bounds()
-        assert stop is None and timeout > 0
-        _timeout, stop = budget.check_iteration_bounds()
-        assert stop is not None
-        assert stop.stop_reason == "max_iterations"
-        assert stop.error == "exceeded max_iterations=1"
+        assert stop is None and timeout > 0 and state.landing is None
+        timeout, stop = budget.check_iteration_bounds()
+        assert stop is None and timeout == min(state.cfg.request_timeout_s, LANDING_TIMEOUT_S)
+        assert (state.landing, state.landing_error) == (
+            "max_iterations",
+            "exceeded max_iterations=1",
+        )
 
     def test_a_known_source_names_the_owner_and_the_key_that_raises_the_limit(
         self, make_turn_state: MakeState
@@ -106,30 +113,30 @@ class TestCheckIterationBounds:
         state = make_turn_state(LoopConfig(max_iterations=1, max_iterations_source="step"))
         budget = TurnBudget(state)
         budget.check_iteration_bounds()
-        _timeout, stop = budget.check_iteration_bounds()
-        assert stop is not None
-        assert stop.error == "exceeded max_iterations=1 (source: step; raise maxIterations)"
+        budget.check_iteration_bounds()
+        assert (
+            state.landing_error == "exceeded max_iterations=1 (source: step; raise maxIterations)"
+        )
 
     def test_a_wall_clock_from_the_pod_names_turn_timeout(self, make_turn_state: MakeState) -> None:
         cfg = LoopConfig(wall_clock_timeout_s=10, wall_clock_source="pod")
-        _timeout, stop = TurnBudget(
-            make_turn_state(cfg, clock=lambda: 11.0)
-        ).check_iteration_bounds()
-        assert stop is not None
-        assert "(source: pod; raise turnTimeoutS)" in stop.error
+        state = make_turn_state(cfg, clock=lambda: 11.0)
+        TurnBudget(state).check_iteration_bounds()
+        assert "(source: pod; raise turnTimeoutS)" in state.landing_error
 
     def test_a_default_source_names_the_machine_variable(self, make_turn_state: MakeState) -> None:
         cfg = LoopConfig(max_tool_calls=3, max_tool_calls_source="default")
         state = make_turn_state(cfg, tool_calls_executed=3)
-        _timeout, stop = TurnBudget(state).check_iteration_bounds()
-        assert stop is not None
-        assert "(source: default; raise AGENT_LOOP_MAX_TOOL_CALLS)" in stop.error
+        TurnBudget(state).check_iteration_bounds()
+        assert "(source: default; raise AGENT_LOOP_MAX_TOOL_CALLS)" in state.landing_error
 
-    def test_the_wall_clock_ceiling_stops_the_turn(self, make_turn_state: MakeState) -> None:
+    def test_the_wall_clock_ceiling_selects_the_landing_with_a_grace_timeout(
+        self, make_turn_state: MakeState
+    ) -> None:
         state = make_turn_state(LoopConfig(wall_clock_timeout_s=10), clock=lambda: 11.0)
-        _timeout, stop = TurnBudget(state).check_iteration_bounds()
-        assert stop is not None
-        assert (stop.stop_reason, stop.failure_kind) == ("timeout", "budget_exhausted")
+        timeout, stop = TurnBudget(state).check_iteration_bounds()
+        assert stop is None and state.landing == "timeout"
+        assert timeout == min(state.cfg.request_timeout_s, LANDING_TIMEOUT_S)
 
     def test_the_request_timeout_is_cut_to_the_remaining_wall_clock(
         self, make_turn_state: MakeState
@@ -148,11 +155,19 @@ class TestCheckIterationBounds:
         assert stop is not None
         assert stop.stop_reason == "token_budget"
 
-    def test_the_tool_call_ceiling_stops_the_turn(self, make_turn_state: MakeState) -> None:
+    def test_the_tool_call_ceiling_selects_the_landing(self, make_turn_state: MakeState) -> None:
         state = make_turn_state(LoopConfig(max_tool_calls=3), tool_calls_executed=3)
         _timeout, stop = TurnBudget(state).check_iteration_bounds()
-        assert stop is not None
-        assert stop.stop_reason == "max_tool_calls"
+        assert stop is None and state.landing == "max_tool_calls"
+
+    def test_the_first_bound_in_check_order_is_the_landing(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(
+            LoopConfig(max_iterations=0, max_tool_calls=3), tool_calls_executed=3
+        )
+        TurnBudget(state).check_iteration_bounds()
+        assert state.landing == "max_iterations"
 
     def test_cancellation_is_checked_before_the_iteration_counts(
         self, make_turn_state: MakeState
@@ -175,6 +190,8 @@ class TestARunOutBoundIsABudgetStop:
             _timeout, stop = budget.check_iteration_bounds()
             if stop is not None:
                 return stop
+            if state.landing is not None:
+                return state.landed()
         raise AssertionError("no bound fired")
 
     @pytest.mark.parametrize(
@@ -234,3 +251,51 @@ class TestARunOutBoundIsABudgetStop:
         _timeout, stop = TurnBudget(state).check_iteration_bounds()
         assert stop is not None
         assert (stop.failure_kind, stop.budget_stop) == ("run_cancelled", None)
+
+
+class TestBudgetNotice:
+    """The notice names each bound at a quarter or less, once per turn."""
+
+    def test_nothing_is_said_while_every_bound_has_more_than_a_quarter(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(LoopConfig(max_iterations=8, max_tool_calls=8), iteration=5)
+        assert budget_notice(state) == ""
+        assert not state.notice_sent
+
+    @pytest.mark.parametrize(
+        ("cfg", "state_kwargs", "clock", "figure"),
+        [
+            (
+                LoopConfig(max_tool_calls=8),
+                {"tool_calls_executed": 6},
+                0.0,
+                "2 of 8 tool calls left",
+            ),
+            (
+                LoopConfig(token_budget=1_000),
+                {"total_usage": TokenUsage(input_tokens=760)},
+                0.0,
+                "240 of 1000 tokens left",
+            ),
+            (LoopConfig(wall_clock_timeout_s=100), {}, 80.0, "20 of 100 s left"),
+        ],
+    )
+    def test_each_bound_at_a_quarter_is_named_with_what_is_left(
+        self,
+        make_turn_state: MakeState,
+        cfg: LoopConfig,
+        state_kwargs: dict[str, object],
+        clock: float,
+        figure: str,
+    ) -> None:
+        state = make_turn_state(cfg, clock=lambda: clock, **state_kwargs)
+        notice = budget_notice(state)
+        assert notice.startswith("[docket] This step's budget is running out: ")
+        assert figure in notice
+        assert state.notice_sent
+
+    def test_it_is_said_once(self, make_turn_state: MakeState) -> None:
+        state = make_turn_state(LoopConfig(max_iterations=4), iteration=3)
+        assert budget_notice(state) != ""
+        assert budget_notice(state) == ""

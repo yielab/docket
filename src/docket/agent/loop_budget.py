@@ -11,13 +11,48 @@ import math
 
 from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
 from docket.agent.loop_state import TurnState
-from docket.agent.loop_trace import _trace_request_fit
-from docket.agent.loop_types import AgentLoopResult, limit_origin
+from docket.agent.loop_trace import _trace_budget_notice, _trace_request_fit
+from docket.agent.loop_types import AgentLoopResult, StopReason, limit_origin
 from docket.agent.ports import ChatMessage, ToolSpec
 
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
 # The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
 MIN_OUTPUT_TOKENS = 256
+# The request timeout of a landing past the rounds or wall-clock limit (requirement 51).
+LANDING_TIMEOUT_S = 60
+_NOTICE = (
+    "[docket] This step's budget is running out: {left}. Finish the current change, run the "
+    "checks, leave the tree consistent; when it ends you will be asked for a report."
+)
+_NOTICE_UNITS = {"rounds": "rounds", "toolCalls": "tool calls", "tokens": "tokens", "time": "s"}
+
+
+def budget_notice(state: TurnState) -> str:
+    """The line telling the model a bound has a quarter or less left (requirement 108), traced and
+    returned the first time any of the four is there; ``""`` after that and while none is."""
+    if state.notice_sent:
+        return ""
+    cfg = state.cfg
+    remaining_time = cfg.wall_clock_timeout_s - (state.clock() - state.started)
+    figures = (
+        ("rounds", cfg.max_iterations - state.iteration, cfg.max_iterations),
+        ("toolCalls", cfg.max_tool_calls - state.tool_calls_executed, cfg.max_tool_calls),
+        ("tokens", cfg.token_budget - state.total_usage.counted_tokens, cfg.token_budget),
+        ("time", int(remaining_time), int(cfg.wall_clock_timeout_s)),
+    )
+    low = [(b, max(0, left), limit) for b, left, limit in figures if left * 4 <= limit]
+    if not low:
+        return ""
+    state.notice_sent = True
+    _trace_budget_notice(
+        state.project,
+        state.trace_key,
+        state.ctx.role,
+        [{"bound": b, "left": left, "limit": limit} for b, left, limit in low],
+        task_id=state.trace_task_id,
+    )
+    left = ", ".join(f"{n} of {limit} {_NOTICE_UNITS[b]} left" for b, n, limit in low)
+    return _NOTICE.format(left=left)
 
 
 class TurnBudget:
@@ -118,48 +153,57 @@ class TurnBudget:
         )
 
     # A non-None second element means stop now; otherwise the first element is
-    # this iteration's request timeout.
+    # this iteration's request timeout and a bound reached is on ``state.landing``.
     def check_iteration_bounds(self) -> tuple[int, AgentLoopResult | None]:
-        """Cancellation plus the four per-iteration ceilings, in bound-check order."""
+        """Cancellation, then the four per-iteration ceilings, in bound-check order. A bound
+        that would stop the turn selects the landing (requirement 51) instead, except spent
+        counted tokens, which leave no room for it."""
         if self.state.cancellation_requested():
             return 0, self.state.cancelled()
         self.state.iteration += 1
-        if self.state.iteration > self.state.cfg.max_iterations:
-            return 0, self.state.done(
-                ok=False,
-                stop_reason="max_iterations",
-                error=(
-                    f"exceeded max_iterations={self.state.cfg.max_iterations}"
-                    + limit_origin("max_iterations", self.state.cfg.max_iterations_source)
-                ),
+        if self.state.landing is None:
+            stop = self.select_landing()
+            if stop is not None:
+                return 0, stop
+        return self.request_timeout(), None
+
+    def select_landing(self) -> AgentLoopResult | None:
+        """Select the first bound reached as the landing; a hard stop for spent tokens."""
+        cfg = self.state.cfg
+        if self.state.iteration > cfg.max_iterations:
+            self.state.land(
+                "max_iterations",
+                f"exceeded max_iterations={cfg.max_iterations}"
+                + limit_origin("max_iterations", cfg.max_iterations_source),
             )
-        elapsed = self.state.clock() - self.state.started
-        if elapsed > self.state.cfg.wall_clock_timeout_s:
-            return 0, self.state.done(
-                ok=False,
-                stop_reason="timeout",
-                error=(
-                    f"exceeded wall_clock_timeout_s={self.state.cfg.wall_clock_timeout_s}"
-                    + limit_origin("wall_clock", self.state.cfg.wall_clock_source)
-                ),
+        elif self.state.clock() - self.state.started > cfg.wall_clock_timeout_s:
+            self.state.land(
+                "timeout",
+                f"exceeded wall_clock_timeout_s={cfg.wall_clock_timeout_s}"
+                + limit_origin("wall_clock", cfg.wall_clock_source),
             )
-        if self.state.total_usage.counted_tokens > self.state.cfg.token_budget:
-            return 0, self.state.done(
+        elif self.state.total_usage.counted_tokens > cfg.token_budget:
+            return self.state.done(
                 ok=False,
                 stop_reason="token_budget",
                 error=(
-                    f"exceeded token_budget={self.state.cfg.token_budget} "
+                    f"exceeded token_budget={cfg.token_budget} "
                     f"(used {self.state.total_usage.counted_tokens})"
                 ),
             )
-        if self.state.tool_calls_executed >= self.state.cfg.max_tool_calls:
-            return 0, self.state.done(
-                ok=False,
-                stop_reason="max_tool_calls",
-                error=(
-                    f"exceeded max_tool_calls={self.state.cfg.max_tool_calls}"
-                    + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source)
-                ),
+        elif self.state.tool_calls_executed >= cfg.max_tool_calls:
+            self.state.land(
+                "max_tool_calls",
+                f"exceeded max_tool_calls={cfg.max_tool_calls}"
+                + limit_origin("max_tool_calls", cfg.max_tool_calls_source),
             )
-        remaining = max(1, int(self.state.cfg.wall_clock_timeout_s - elapsed))
-        return min(self.state.cfg.request_timeout_s, remaining), None
+        return None
+
+    def request_timeout(self) -> int:
+        """This request's timeout: the wall clock left, or the grace of a landing past it."""
+        cfg = self.state.cfg
+        remaining = int(cfg.wall_clock_timeout_s - (self.state.clock() - self.state.started))
+        past: tuple[StopReason | None, ...] = ("max_iterations", "timeout")
+        if self.state.landing in past or (self.state.landing and remaining < 1):
+            return min(cfg.request_timeout_s, LANDING_TIMEOUT_S)
+        return min(cfg.request_timeout_s, max(1, remaining))

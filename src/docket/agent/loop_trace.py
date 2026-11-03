@@ -319,6 +319,24 @@ def _trace_terminal_finalization(
     )
 
 
+def _trace_budget_notice(
+    project: str,
+    session_key: str,
+    role: str,
+    bounds: list[dict[str, object]],
+    task_id: str = "",
+) -> None:
+    """The notice before a landing: which bounds had a quarter or less left, figures only."""
+    tracer.trace_event(
+        project,
+        session_key,
+        role,
+        "budget_warning",
+        json.dumps({"action": "notice", "bounds": bounds}),
+        task_id=task_id,
+    )
+
+
 def _trace_prompt_composed(
     project: str,
     session_key: str,

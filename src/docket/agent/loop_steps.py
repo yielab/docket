@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from typing import Any
 
+from docket.agent.loop_budget import budget_notice
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_tool_call, _trace_tool_result
 from docket.agent.loop_types import AgentLoopResult, limit_origin
@@ -108,16 +110,14 @@ class ToolStep:
             self.state.tool_calls_executed + len(assistant_msg.tool_calls)
             > self.state.cfg.max_tool_calls
         ):
-            return self.state.done(
-                ok=False,
-                stop_reason="max_tool_calls",
-                error=(
-                    f"model requested {len(assistant_msg.tool_calls)} tool call(s), which would "
-                    f"exceed max_tool_calls={self.state.cfg.max_tool_calls} (already used "
-                    f"{self.state.tool_calls_executed}); none of this batch was executed"
-                    + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source)
-                ),
+            self.state.land(
+                "max_tool_calls",
+                f"model requested {len(assistant_msg.tool_calls)} tool call(s), which would "
+                f"exceed max_tool_calls={self.state.cfg.max_tool_calls} (already used "
+                f"{self.state.tool_calls_executed}); none of this batch was executed"
+                + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source),
             )
+            return None
 
         tool_msgs: list[ChatMessage] = []
         batch_cancelled = False
@@ -172,6 +172,17 @@ class ToolStep:
             if result.denial_kind == "approval_parked" and approval_parked is None:
                 approval_parked = result
 
+        if (
+            tool_msgs
+            and closing_output is None
+            and not batch_cancelled
+            and approval_unavailable is None
+            and approval_parked is None
+        ):
+            notice = budget_notice(self.state)
+            if notice:
+                last = tool_msgs[-1]
+                tool_msgs[-1] = replace(last, content=f"{last.content}\n{notice}")
         messages.append(assistant_msg)
         messages.extend(tool_msgs)
         # One append per iteration, the whole atomic unit at once — never the

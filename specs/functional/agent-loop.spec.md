@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.14.0
+**Version**: 3.15.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -88,19 +88,21 @@ This specification does NOT cover:
 6. The loop **MUST** stop with `stop_reason="final_message"` and `ok=True` when a response carries
    no tool calls. This **MUST** be the only stop reason for which `ok` is `True`.
 7. The loop **MUST** stop with `stop_reason="max_iterations"` once the configured maximum number of
-   model round-trips would be exceeded, without making a further model call. The result carries
-   `failure_kind="budget_exhausted"` (requirement 107).
+   model round-trips would be exceeded. The one request it makes instead is the landing of
+   requirements 51-54, not another round. The result carries `failure_kind="budget_exhausted"`
+   (requirement 107).
 8. The loop **MUST** stop with `stop_reason="max_tool_calls"` once the configured maximum number of
    dispatched tool calls is reached or would be exceeded. A single response's tool-call batch
    **MUST** be dispatched wholly or not at all — never partially — so a batch that would push the
-   total over the cap is refused in full before any call in it runs. The result carries
+   total over the cap is refused in full before any call in it runs, and is not persisted. The
+   next request is the landing of requirements 51-54. The result carries
    `failure_kind="budget_exhausted"` (requirement 107).
 9. The loop **MUST** stop with `stop_reason="timeout"` once the configured wall-clock budget for
    the whole turn has elapsed, checked between iterations. Each request's own timeout is the
    smaller of `request_timeout_s` and the wall-clock budget left. The tool clamp of requirement
-   98 keeps a tool from running past that budget. The result carries
-   `failure_kind="budget_exhausted"`, never `timeout`, which now names only a request or transport
-   timeout (requirement 107).
+   98 keeps a tool from running past that budget. The request made once it has elapsed is the
+   landing of requirements 51-54. The result carries `failure_kind="budget_exhausted"`, never
+   `timeout`, which now names only a request or transport timeout (requirement 107).
 10. The loop **MUST** stop with `stop_reason="token_budget"` once the turn's cumulative *counted*
     token usage exceeds the configured budget. Counted tokens are `TokenUsage.counted_tokens`:
     `input_tokens - cached_tokens + output_tokens` (a cache read is never counted; a cache write is
@@ -433,41 +435,55 @@ This specification does NOT cover:
     before transport. The comparison **MUST** add counted usage (requirement 10) from prior
     completions to the prospective request-input estimate and the output reserve of requirement 46.
     Estimates **MUST NOT** be added to `TokenUsage`.
-51. When a normal tool-enabled task request would exceed that prospective cumulative bound, the
-    loop **MUST** make at most one finalization attempt. That request **MUST** explicitly ask for a
-    truthful terminal response from work already completed as a trailing `user` message appended
-    after the complete current request (the request-only instruction is never persisted, and the
-    leading system message and every earlier message **MUST** stay byte-identical to the
-    preceding request so the cached prefix is reused), advertise no tools, preserve the
-    current durable representation of the complete task and whole assistant/tool-result atomic
-    units, and itself pass both the per-request context-window check and the cumulative
-    turn-budget check before transport. This cumulative decision **MUST** be made on the complete
-    current request before request-fit compaction; when it selects finalization, no raw
-    current-turn unit may first be replaced by a summary merely to fit an ordinary round that the
-    remaining turn budget cannot fund. If the complete request initially fits the cumulative
-    budget and requirement 47 accepts a whole-unit durable summary to satisfy the endpoint window,
-    later summary usage may still select finalization; that request **MUST** use the exact
-    reloaded durable summary, never a stale pre-compaction snapshot. In both branches atomic units
-    are preserved: raw units when budget selects finalization first, or the accepted durable
-    replacement when window-fit compaction was selected first.
-52. If the tool-free finalization request fails the endpoint-window check, it **MUST** return
-    `stop_reason="context_fit"`; a context-window failure is never reported as cumulative spend. If
-    the request fits that window but cannot fit the cumulative turn budget, the loop **MUST**
-    return `stop_reason="token_budget"` and `failure_kind="budget_exhausted"` without another backend
-    call. Its error **MUST** report the configured budget, measured usage, prospective input
-    estimate, output reserve, and remaining measured budget without exposing message content.
-53. A finalization response carrying any tool call **MUST NOT** dispatch or persist that call and
-    **MUST** terminate with `stop_reason="token_budget"` and `failure_kind="budget_exhausted"`. A
-    tool-free, non-truncated response is persisted normally and remains the sole successful
-    `final_message` outcome. Backend failure, truncation, and timeout keep their fail-closed
-    outcomes; none causes a second finalization attempt. A truncated ordinary or finalization
-    response persists only its non-zero endpoint-reported usage metadata — never its assistant
-    content or tool calls.
-54. Entering or refusing finalization **MUST** emit one privacy-safe `budget_warning` event on the
-    resolved trace coordinate. Its payload **MUST** distinguish the action/status and include the
-    configured budget, prior measured usage, remaining measured tokens, normal/finalization input
-    estimates, output reserve, and an explicit estimate marker. It **MUST NOT** contain messages,
-    prompts, tool arguments, tool results, or model output.
+51. The landing. When any budget bound would stop the turn, the loop **MUST** make at most one
+    finalization request, the landing, instead. The four triggers are: the next round would pass
+    `max_iterations`; a response's tool-call batch would pass `max_tool_calls` (the batch is
+    refused and not persisted, requirement 8); the wall-clock budget is spent (requirement 9); or a
+    normal tool-enabled task request would exceed the prospective cumulative token bound
+    (requirement 50). The landing **MUST** explicitly ask for a truthful terminal response from
+    work already completed, naming the bound that was reached (rounds, tool calls, time or the
+    token budget) and asking what is done, what is left and whether the checks ran. It is a
+    trailing `user` message appended after the complete current request (the request-only
+    instruction is never persisted, and the leading system message and every earlier message
+    **MUST** stay byte-identical to the preceding request so the cached prefix is reused). It
+    advertises no tools, preserves the current durable representation of the complete task and
+    whole assistant/tool-result atomic units, and itself passes both the per-request
+    context-window check and the cumulative turn-budget check before transport. A landing for
+    rounds or time is one grace request past that limit, with its own request timeout
+    `min(request_timeout_s, 60)`. The token decision **MUST** be made on the complete current
+    request before request-fit compaction; when it selects the landing, no raw current-turn unit
+    may first be replaced by a summary merely to fit an ordinary round that the remaining turn
+    budget cannot fund. If the complete request initially fits the cumulative budget and
+    requirement 47 accepts a whole-unit durable summary to satisfy the endpoint window, later
+    summary usage may still select the landing; that request **MUST** use the exact reloaded
+    durable summary, never a stale pre-compaction snapshot. In both branches atomic units are
+    preserved: raw units when budget selects the landing first, or the accepted durable
+    replacement when window-fit compaction was selected first. The wire above is unchanged for
+    every bound: only the trailing instruction differs.
+52. If the landing fails the endpoint-window check, it **MUST** return `stop_reason="context_fit"`;
+    a context-window failure is never reported as cumulative spend. If the request fits that window
+    but cannot fit the cumulative turn budget, the loop **MUST** return `failure_kind=
+    "budget_exhausted"` without another backend call, with `stop_reason="token_budget"` when the
+    token bound selected the landing and the landing's own stop reason otherwise. Its error
+    **MUST** report the configured budget, measured usage, prospective input estimate, output
+    reserve, and remaining measured budget without exposing message content.
+53. The landing's answer is a report, never a success. A tool-free, non-truncated answer **MUST**
+    be persisted normally and returned as `output` with `ok=False`, the `stop_reason` of the bound
+    that selected the landing (`max_iterations`, `max_tool_calls`, `timeout` or `token_budget`),
+    `failure_kind="budget_exhausted"` and its `budget_stop` (requirement 107); it **MUST NOT** be
+    returned as `final_message`. A landing response carrying any tool call **MUST NOT** dispatch
+    or persist that call and **MUST** terminate with that same stop reason and `failure_kind`, with
+    no output. Backend failure, truncation, and timeout keep their fail-closed outcomes; none
+    causes a second landing. A truncated ordinary or landing response persists only its non-zero
+    endpoint-reported usage metadata — never its assistant content or tool calls. (Before version
+    3.15.0 a tool-free token landing answer was `ok=True` with `final_message`; the assertions on
+    that outcome changed because this requirement did.)
+54. Entering or refusing the landing **MUST** emit one privacy-safe `budget_warning` event on the
+    resolved trace coordinate with `action="terminal_finalization"`. Its payload **MUST**
+    distinguish the status and include the configured budget, prior measured usage, remaining
+    measured tokens, normal/finalization input estimates, output reserve, and an explicit estimate
+    marker. It **MUST NOT** contain messages, prompts, tool arguments, tool results, or model
+    output.
 55. After the backend-error and truncation checks keep their more specific outcomes, a successful,
     non-truncated response that carries tool calls and whose counted usage crosses the hard
     cumulative limit **MUST NOT** dispatch or persist tool calls from that response and **MUST**
@@ -814,12 +830,13 @@ This specification does NOT cover:
     `pod` or `default`; the pod only for time). A `LoopConfig` built by a caller that names no
     source keeps the empty string.
 105. A turn whose `max_iterations`, `max_tool_calls` or `wall_clock_timeout_s` is reached **MUST** end
-    by requirement 7, 8 or 9 with `ok=False`, no further backend call and the error
+    by requirement 7, 8 or 9 with `ok=False`, no further round and the error
     `exceeded <bound>=<N>`. When the source is known the error continues
     `(source: <source>; raise <key>)`, naming the key that raises that limit (`maxIterations` or
     `maxToolCalls` on the step; `timeout` on the step or `turnTimeoutS` on the pod; the
     `AGENT_LOOP_*` variable when the source is `default`). With `maxToolCalls: 3` and a model that
-    asks for a tool each round, three calls run and the hop ends before a fourth request.
+    asks for a tool each round, three calls run and the hop ends with one tool-free landing
+    request (requirement 51) in place of a fourth round.
 106. A repeated identical call is the no_progress stop of requirements 77-79 and nothing else:
     its limit is `LoopConfig.no_progress_rounds`, and no second repeat detector exists.
 107. Running out of budget is its own outcome. Every `ok=False` result whose `stop_reason` is
@@ -832,6 +849,18 @@ This specification does NOT cover:
     `budget_stop`. `DocketDriver` copies `budget_stop` onto the `TurnResult` unchanged. A request or
     transport timeout of the backend is `failure_kind="timeout"` with `stop_reason="backend_error"`
     and is not a budget stop.
+
+108. The first time any bound has a quarter or less left, the loop **MUST** append one line to the
+    last tool result of that round, before the round is persisted: `[docket] This step's budget is
+    running out: <what is left>. Finish the current change, run the checks, leave the tree
+    consistent; when it ends you will be asked for a report.` The four bounds are rounds, tool
+    calls, measured counted tokens (requirement 10) and the wall clock; `<what is left>` names each
+    bound at or under a quarter as `<left> of <limit> <unit> left`. The notice **MUST** appear at
+    most once per turn, **MUST NOT** be added to a round whose batch ends the turn through a closing
+    tool, a cancellation or an unanswered approval, and **MUST** emit one
+    `budget_warning` event with `action="notice"` carrying the bound names with their `left` and
+    `limit` figures and no message or tool content. With `max_iterations=8` the notice is in round
+    6's last tool result and in no other.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
@@ -981,7 +1010,7 @@ result = run_agent_turn(backend, builtin_registry(), ctx, "agent:demo:default", 
 ### A confused model that never stops requesting tools
 
 Given a backend that always replies with another tool call, `run_agent_turn` with
-`LoopConfig(max_iterations=60)` (the default) makes at most 60 model calls total, then returns
+`LoopConfig(max_iterations=60)` (the default) makes at most 60 model calls and one tool-free landing request, then returns
 `AgentLoopResult(ok=False, stop_reason="max_iterations", failure_kind="budget_exhausted")` — never an
 unbounded loop.
 

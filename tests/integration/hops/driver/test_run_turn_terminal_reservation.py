@@ -122,7 +122,8 @@ class TestRunTurn:
             "budget-agent", session_key, "repair module.py and validate it", 60
         )
 
-        assert result.ok
+        assert not result.ok
+        assert (result.failure_kind, result.stop_reason) == ("budget_exhausted", "token_budget")
         assert result.output == "fixed and validated without another optional tool round"
         assert (ws / "module.py").read_text() == "VALUE = 'fixed'\n"
         assert len(backend.calls) == 3
@@ -231,7 +232,8 @@ class TestRunTurn:
             "window-budget-agent", session_key, "inspect and report truthfully", 60
         )
 
-        assert result.ok
+        assert not result.ok
+        assert (result.failure_kind, result.stop_reason) == ("budget_exhausted", "token_budget")
         assert result.output == "truthful terminal response"
         assert len(backend.calls) == 2
         assert [bool(tools) for tools in backend.tools_seen] == [True, False]

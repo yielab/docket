@@ -218,10 +218,11 @@ class TestStopConditions:
         assert result.stop_reason == "max_iterations"
         assert result.failure_kind == "budget_exhausted"
         assert result.budget_stop == BudgetStop("rounds", 3, 3, "default")
-        # Exactly 3 calls were made -- not 4, not unbounded. This is the
+        # Three rounds and the one landing request -- not 5, not unbounded. This is the
         # numeric assertion that makes the guard meaningful: a config change
         # that silently allowed one extra iteration would fail this.
-        assert backend.call_count == 3
+        assert backend.call_count == 4
+        assert result.tool_calls_executed == 3
 
     def test_max_tool_calls_stops_before_dispatching_an_over_budget_batch(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -238,6 +239,7 @@ class TestStopConditions:
         assert result.failure_kind == "budget_exhausted"
         assert result.budget_stop == BudgetStop("toolCalls", 2, 2, "default")
         assert result.tool_calls_executed == 2
+        assert backend.call_count == 3  # two rounds and the landing, whose tool call is refused
 
     def test_a_hop_capped_at_three_calls_ends_after_the_third_with_the_fixed_message(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -250,9 +252,9 @@ class TestStopConditions:
         )
 
         assert result.stop_reason == "max_tool_calls"
-        assert result.error == "exceeded max_tool_calls=3"
+        assert result.error.startswith("exceeded max_tool_calls=3;")
         assert result.tool_calls_executed == 3
-        assert backend.call_count == 3
+        assert backend.call_count == 4  # three rounds and the landing
 
     def test_max_tool_calls_never_dispatches_a_partial_batch(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -268,7 +270,8 @@ class TestStopConditions:
                     message=assistant("", tool_calls=calls),
                     finish_reason="tool_calls",
                     usage=TokenUsage(input_tokens=10, output_tokens=5),
-                )
+                ),
+                _final("nothing was run"),
             ]
         )
         config = _loop.LoopConfig(max_tool_calls=3)
@@ -279,8 +282,10 @@ class TestStopConditions:
         assert result.ok is False
         assert result.stop_reason == "max_tool_calls"
         assert result.tool_calls_executed == 0
+        assert result.output == "nothing was run"
         record = load_session(session_key)
-        assert len(record.messages) == 1  # only the user turn; nothing orphaned
+        # the user turn and the landing's report; the rejected batch left nothing orphaned
+        assert [m.role for m in record.messages] == ["user", "assistant"]
 
     def test_allowed_executed_call_resets_consecutive_tool_denials(
         self, ctx: ToolContext, registry: ToolRegistry

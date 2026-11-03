@@ -76,7 +76,7 @@ class TestTerminalResponseReservation:
         assert len(backend.calls) == 2
         assert all(backend.tool_specs), "ordinary completions must retain the narrowed tool set"
 
-    def test_forces_one_explicit_tool_free_finalization_that_succeeds(
+    def test_forces_one_explicit_tool_free_finalization_whose_answer_is_the_report(
         self, ctx: ToolContext, registry: ToolRegistry
     ) -> None:
         backend = self._backend(
@@ -102,7 +102,8 @@ class TestTerminalResponseReservation:
             trace_session_key="task-budget-finalize",
         )
 
-        assert result.ok
+        assert not result.ok
+        assert (result.stop_reason, result.failure_kind) == ("token_budget", "budget_exhausted")
         assert result.output == "implemented and validated"
         assert result.usage.total_tokens == 80
         assert len(backend.calls) == 2
@@ -170,12 +171,14 @@ class TestTerminalResponseReservation:
             config=_loop.LoopConfig(token_budget=100, max_tokens=10),
         )
 
-        assert result.ok
+        assert not result.ok
+        assert (result.stop_reason, result.failure_kind) == ("token_budget", "budget_exhausted")
         previous, finalization = backend.calls
         assert finalization[: len(previous)] == previous
         assert finalization[0] == previous[0]
         assert finalization[-1].role == "user"
         assert "terminal response" in finalization[-1].content.lower()
+        assert "token budget" in finalization[-1].content
         assert not any("terminal response" in message.content.lower() for message in previous)
 
     def test_finalization_after_window_compaction_uses_exact_durable_summary(
@@ -263,7 +266,8 @@ class TestTerminalResponseReservation:
             config=_loop.LoopConfig(token_budget=210, max_tokens=10),
         )
 
-        assert result.ok
+        assert not result.ok
+        assert (result.stop_reason, result.failure_kind) == ("token_budget", "budget_exhausted")
         assert result.output == "done from durable history"
         assert result.usage.total_tokens == 125
         assert [bool(tools) for tools in backend.tool_specs] == [True, False, False]

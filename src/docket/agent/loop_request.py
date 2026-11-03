@@ -5,7 +5,15 @@ import json
 from dataclasses import asdict
 
 from docket.agent import ports as _ports
-from docket.agent.ports import ChatBackend, ChatMessage, TokenUsage, ToolSpec, assistant, user
+from docket.agent.ports import (
+    BudgetStop,
+    ChatBackend,
+    ChatMessage,
+    TokenUsage,
+    ToolSpec,
+    assistant,
+    user,
+)
 
 
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:
@@ -136,17 +144,30 @@ def _build_reduction_candidates(
     return candidate_ranges
 
 
-_FINALIZATION_INSTRUCTION = (
-    "The remaining cumulative turn budget cannot safely fund another tool-enabled round. "
-    "Return the truthful terminal response now using only the work already completed and the "
-    "tool results above. Do not request any tools. If the task is incomplete, say so explicitly."
+_LANDING_ASK = (
+    " Return the truthful terminal response now: what is done, what is left and whether the "
+    "checks ran, using only the work already completed and the tool results above. Do not "
+    "request any tools. If the task is incomplete, say so explicitly."
 )
+_FINALIZATION_INSTRUCTION = (
+    "The remaining cumulative token budget cannot safely fund another tool-enabled round."
+    + _LANDING_ASK
+)
+_LANDING_UNITS = {"rounds": "rounds", "toolCalls": "tool calls", "time": "seconds of time"}
 
 
-def _finalization_messages(current: list[ChatMessage]) -> list[ChatMessage]:
+def _finalization_instruction(stop: BudgetStop) -> str:
+    """The landing's ask, naming the bound the turn reached (agent-loop.spec.md requirement 51)."""
+    if stop.bound == "tokens":
+        return _FINALIZATION_INSTRUCTION
+    unit = _LANDING_UNITS[stop.bound]
+    return f"This step has used all of its {unit} ({stop.limit})." + _LANDING_ASK
+
+
+def _finalization_messages(current: list[ChatMessage], stop: BudgetStop) -> list[ChatMessage]:
     # A trailing user message keeps every earlier message byte-identical to the previous
     # request, so the cached prefix is reused. Request-only; never written to durable history.
-    return [*current, user(_FINALIZATION_INSTRUCTION)]
+    return [*current, user(_finalization_instruction(stop))]
 
 
 def _closing_messages(current: list[ChatMessage], reply: str, tool: str) -> list[ChatMessage]:

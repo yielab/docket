@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.16.0
+**Version**: 11.17.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -1768,6 +1768,9 @@ parsing for any verdict-gated step (`parse_verdict`).
     task `maxTokens`), as agent-loop.spec.md requirement 104 resolves it. `treeChanged` is `true`
     when the pin found a dirty tree and so made a new commit. No other failed hop is probed or
     pinned, a non-Implementer hop that ran out of budget included.
+    A hop that ran out of budget carries the report it was asked for (agent-loop.spec.md requirement
+    53) as its `output` and its artifact `summary`, whatever its role. No verdict is parsed from that
+    text and no gate runs on the hop, so a verdict-gated Reviewer that ran out cannot approve.
 
 ### Hop evidence (ADR 0017)
 
