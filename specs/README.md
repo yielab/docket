@@ -97,7 +97,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.1 | Complete |
 | Agent Loop | 3.15.0 | Implemented and live |
-| API Keys | 2.2.0 | Complete |
+| API Keys | 2.3.0 | Complete |
 | Audit | 3.3.2 | Implemented |
 | Config Format | 2.10.1 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
@@ -121,7 +121,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | MCP Server | 2.1.0 | Implemented |
 | CLI JSON Shapes | 4.7.0 | Complete |
 | docket-meta schema | 5.6.0 | Complete |
-| Docket Store | 3.3.0 | Implemented |
+| Docket Store | 3.4.0 | Implemented |
 | Operator API | 7.17.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.1 | Implemented |
 | Serve Read API | 5.9.0 | Stable |
