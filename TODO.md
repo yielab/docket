@@ -202,7 +202,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-2 — Running out of budget is its own outcome, and the work is kept
 
-**Status:** IN-PROGRESS (@sonnet-p59-2) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-1, P59-4
+**Status:** DONE 2026-11-03 (merged; only an Implementer hop that ended `budget_exhausted` is pinned) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-1, P59-4
 
 - **Trigger:** in the incident the hop was reported as `invalid_output`, and its three changed
   files were not in the task's patch.

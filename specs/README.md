@@ -96,7 +96,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.1 | Complete |
-| Agent Loop | 3.13.0 | Implemented and live |
+| Agent Loop | 3.14.0 | Implemented and live |
 | API Keys | 2.2.0 | Complete |
 | Audit | 3.3.2 | Implemented |
 | Config Format | 2.10.1 | Implemented |
@@ -105,7 +105,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Observability Export | 3.2.0 | Implemented and live |
 | Pipeline Format | 4.7.0 | Implemented |
 | Pod Blueprints | 4.2.0 | Implemented |
-| Pod Dispatch | 11.15.0 | Implemented |
+| Pod Dispatch | 11.16.0 | Implemented |
 | Role Archetypes | 5.7.0 | Implemented |
 | Security Gates | 3.6.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.4.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
@@ -122,9 +122,9 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | CLI JSON Shapes | 4.7.0 | Complete |
 | docket-meta schema | 5.6.0 | Complete |
 | Docket Store | 3.3.0 | Implemented |
-| Operator API | 7.16.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.17.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.1 | Implemented |
-| Serve Read API | 5.8.0 | Stable |
+| Serve Read API | 5.9.0 | Stable |
 | Adoption Benchmark | 2.3.1 | Implemented |
 | Input Validation | 2.1.1 | Implemented |
 | Test Framework | 4.4.1 | Active |
