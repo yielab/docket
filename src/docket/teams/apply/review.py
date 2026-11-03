@@ -20,8 +20,14 @@ from docket.teams.apply.routines import routine_files
 from docket.teams.models import WorkspaceKind
 from docket.teams.workspace import prepare as _prepare
 
-# `allowCommands` and `network` are run items; `networkGrant` is never applied from a repository.
-_NOT_ADDED_SETTINGS = ("allowCommands", "network", _pod_settings.NETWORK_GRANT_KEY)
+# `allowCommands`, `network` and `fetchDomains` are run items; `networkGrant` is never applied from
+# a repository.
+_NOT_ADDED_SETTINGS = (
+    "allowCommands",
+    "network",
+    "fetchDomains",
+    _pod_settings.NETWORK_GRANT_KEY,
+)
 REPO_REFUSED_COMMANDS: tuple[str, ...] = ("sh", "bash", "zsh", "dash", "sudo", "ssh", "nc", "socat")
 
 
@@ -143,6 +149,12 @@ def _prepare_runs(directory: Path, manifest: dict[str, Any], workdir: bool) -> l
     return [] if _prepare.is_off(command) else [RunItem("prepare", "prepare", command)]
 
 
+def _listed(raw: Any) -> list[str]:
+    """The sorted, deduplicated non-blank entries of a list or comma-separated setting."""
+    items = raw if isinstance(raw, list) else str(raw).split(",")
+    return sorted({str(n).strip() for n in items if str(n).strip()})
+
+
 def classify_directory(directory: Path, *, workdir: bool = False) -> PlanReview:
     """Read-only split of *directory* into adds and run-on-this-machine items; needs no pod, only
     whether the pod it is for works in a folder (*workdir*)."""
@@ -172,13 +184,13 @@ def classify_directory(directory: Path, *, workdir: bool = False) -> PlanReview:
     for plugin in sorted(plugins_dir.glob("*.py")) if plugins_dir.is_dir() else []:
         sha = hashlib.sha256(plugin.read_bytes()).hexdigest()[:12]
         runs.append(RunItem("plugin", plugin.name, f"{plugin.name} sha256:{sha}"))
-    raw_allow = settings.get("allowCommands", [])
-    allowed = raw_allow if isinstance(raw_allow, list) else str(raw_allow).split(",")
-    names = sorted({str(n).strip() for n in allowed if str(n).strip()})
+    names = _listed(settings.get("allowCommands", []))
     if names:
         runs.append(RunItem("allow-commands", "allowCommands", ", ".join(names)))
     if str(settings.get("network", "")) == "open":
         runs.append(RunItem("network", "network", "open"))
+    if hosts := _listed(settings.get("fetchDomains", [])):
+        runs.append(RunItem("fetch-domains", "fetchDomains", ", ".join(hosts)))
     runs.extend(_prepare_runs(directory, manifest, workdir))
     runs.extend(_loosened_denials(directory))
     for sub, kind in (("roles", "role"), ("policies", "policy")):

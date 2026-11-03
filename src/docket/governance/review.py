@@ -16,7 +16,7 @@ from docket.kernel.ports import git as _git
 from docket.platform import read_json, read_modify_write
 
 CODE_LENGTH = 16
-_NAMES_NO_FILE = frozenset({"allow-commands", "network", "role-loosens"})
+_NAMES_NO_FILE = frozenset({"allow-commands", "fetch-domains", "network", "role-loosens"})
 
 
 @dataclass(frozen=True)

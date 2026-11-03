@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.4.0
+**Version**: 4.5.0
 **Status**: Implemented
 **Last Updated**: 2026-11-03
 
@@ -410,7 +410,9 @@ overlay, policies, members, pipeline binding, settings) into one command.
     (in `pipeline.yaml` and in each `pipelines/<name>.yaml`), a step gate's command (`verify:
     <command>`, `gate: {external: <command>}`, inside a `parallel` group too; a `verify: true` that defers to the member's
     `verifyCmd` runs nothing the repository wrote), MCP server commands, plugins, a `network: open`
-    setting, `allowCommands`, a role overlay that removes a built-in role's denied tool, and the
+    setting, a non-empty `fetchDomains` list (kind `fetch-domains`, name `fetchDomains`, the
+    sorted hosts joined by `, `; it widens where the pod reaches as `network: open` does, so it is
+    a run item and not also listed as an add), `allowCommands`, a role overlay that removes a built-in role's denied tool, and the
     install command a task's worktree runs (`prepare`, requirement 13). A shipped recipe resolved
     by name **MUST** be exempt. When the second group is non-empty and the repository's remembered
     review (`$DOCKET_HOME/reviewed-repos.json`, 0600, written through the single JSON store) does
@@ -553,7 +555,9 @@ reproduced on a second machine.
    - `pod.yaml`: `kind: pod` and `name: <project>` first, then `members` (every non-Lead role the
      pod's roster has), `settings` (every settable key other than `pipeline`, `prepare` and
      `protects`, which are top-level, that the pod has set; a key left at its default is never
-     written, so a fresh pod has no `settings` key; `configSource`/`configDigest`, outside the
+     written, so a fresh pod has no `settings` key; `fetchDomains` is written without the any-host
+     entry `*`, which is the machine's recorded grant (`fetchGrant`) and never part of a document,
+     and is left out when nothing else remains; `configSource`/`configDigest`, outside the
      settable set, are never written, requirement 6), `exporters` (the recorded list, requirement
      11, only when non-empty), `prepare` and `protects` (top-level, only when set).
 

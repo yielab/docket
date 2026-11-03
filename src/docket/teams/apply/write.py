@@ -185,6 +185,9 @@ def _export_manifest(project: str, directory: Path) -> None:
         if key in ("pipeline", "prepare", "protects"):
             continue  # top-level, never a `settings` entry (see `_settings_with_top_level`)
         value, source = settings_doc.value_and_source(key, project)
+        if key == "fetchDomains" and value is not None:
+            kept = [h for h in str(value).split(",") if h and h != _pod_settings.FETCH_ANY]
+            value = ",".join(kept) or None  # `*` is the machine's recorded grant, not a document's
         if source == "set" and value is not None:
             settings_out[key] = value
 
