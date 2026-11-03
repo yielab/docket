@@ -101,7 +101,7 @@ from `main`.
 
 ### P62-1 — The PDF reader runs docket's own Python in the jail, with no external binary
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-8 (done)
+**Status:** DONE 2026-11-03 (live: with no read grant, a web-research fetch of the arXiv paper 1706.03762 returned 30,037 chars of text from docket's own interpreter in the jail; the Seatbelt and Docker paths are untested) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-8 (done)
 
 - **Trigger:**
   - The maintainer's request (2026-11-03): installing docket and running `docket init` must be enough to
@@ -227,6 +227,11 @@ from `main`.
   `platform` module. Also stale: the `ToolContext.read_only` comment ("only a jailed bash reads them",
   `agent/tools/registry.py` ~94), and a `setup check` line for `pdftotext`. The `header n chars` of a PDF result counts
   the returned text, not the full extraction.
+- *PDF reading, after P62-1.* `setup check` still has no line for the PDF reader (TODO's older mentions of a
+  `pdftotext` check are stale: the extractor is docket's own `pypdf`); an encrypted PDF is refused (only the empty
+  password is tried and AES needs `cryptography`); `pypdf` decodes about 30 MB/s, so a real stream bomb ends by the
+  1 GiB memory limit or the deadline after ~30 s of CPU. The jail runs a copy of `pdf_extract.py` beside `in.pdf`
+  because `-m docket...` fails when docket is editable. Trigger: a PDF a user needs that these refuse.
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
