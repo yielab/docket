@@ -20,6 +20,7 @@ from tests.support.loop_harness import (
 
 from docket.agent import loop as _loop
 from docket.agent.ports import (
+    BudgetStop,
     ChatMessage,
     ChatResponse,
     TokenUsage,
@@ -215,7 +216,8 @@ class TestStopConditions:
 
         assert result.ok is False
         assert result.stop_reason == "max_iterations"
-        assert result.failure_kind == "invalid_output"
+        assert result.failure_kind == "budget_exhausted"
+        assert result.budget_stop == BudgetStop("rounds", 3, 3, "default")
         # Exactly 3 calls were made -- not 4, not unbounded. This is the
         # numeric assertion that makes the guard meaningful: a config change
         # that silently allowed one extra iteration would fail this.
@@ -233,6 +235,8 @@ class TestStopConditions:
 
         assert result.ok is False
         assert result.stop_reason == "max_tool_calls"
+        assert result.failure_kind == "budget_exhausted"
+        assert result.budget_stop == BudgetStop("toolCalls", 2, 2, "default")
         assert result.tool_calls_executed == 2
 
     def test_a_hop_capped_at_three_calls_ends_after_the_third_with_the_fixed_message(
@@ -382,7 +386,10 @@ class TestStopConditions:
 
         assert result.ok is False
         assert result.stop_reason == "timeout"
-        assert result.failure_kind == "timeout"
+        assert result.failure_kind == "budget_exhausted"
+        assert result.budget_stop is not None
+        assert (result.budget_stop.bound, result.budget_stop.limit) == ("time", 5)
+        assert result.budget_stop.used >= 5
 
     def test_the_turn_sets_the_tools_deadline_from_the_clock_it_checks(
         self, ctx: ToolContext, registry: ToolRegistry
@@ -415,7 +422,8 @@ class TestStopConditions:
 
         assert result.ok is False
         assert result.stop_reason == "token_budget"
-        assert result.failure_kind == "invalid_output"
+        assert result.failure_kind == "budget_exhausted"
+        assert result.budget_stop == BudgetStop("tokens", 44, 45, "default")
         assert result.usage.total_tokens > 44
         assert (
             backend.call_count == 3

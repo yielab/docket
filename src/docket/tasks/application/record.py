@@ -19,6 +19,7 @@ from docket.tasks.application import answers as _answers
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
+from docket.tasks.domain.parts import BudgetOutcome
 from docket.tasks.domain.task import CurrentHop, HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
 from docket.teams import conversations as _conv
@@ -354,7 +355,8 @@ def build_hop_result(
     diff_ref: str | None = None
     evidence: dict[str, Any] | None = None
     diff = ""
-    if hop_ok:
+    kept = _keeps_its_work(role, run_res)
+    if hop_ok or kept:
         prior_diff = next(
             (h.artifact.diff for h in reversed(prior or []) if h.artifact and h.artifact.diff), ""
         )
@@ -405,6 +407,30 @@ def build_hop_result(
         prompt_manifest=manifest or {},
         started_at=started_at,
         cycle=cycle,
+        budget=_budget_outcome(ctx, run_res, tree_changed=kept and bool(files_changed)),
+    )
+
+
+def _keeps_its_work(role: str, run_res: _rd.TurnResult) -> bool:
+    """True for an Implementer hop that ran out of budget: its tree is pinned though it failed."""
+    return role == "implementer" and run_res.failure_kind == "budget_exhausted"
+
+
+def _budget_outcome(
+    ctx: UnitContext, run_res: _rd.TurnResult, *, tree_changed: bool
+) -> BudgetOutcome | None:
+    """The hop's ``budget`` record from the turn's stop, or ``None`` for a turn that was not one.
+    Tokens set by a task's ``maxTokens`` are owned by the task."""
+    stop = run_res.budget_stop
+    if stop is None:
+        return None
+    source = "task" if stop.bound == "tokens" and ctx.task.max_tokens is not None else stop.source
+    return BudgetOutcome(
+        bound=stop.bound,
+        limit=stop.limit,
+        used=stop.used,
+        source=source,
+        tree_changed=tree_changed,
     )
 
 
@@ -454,10 +480,10 @@ def _parked_consult_question(
 
 
 def _turn_failure_kind(ctx: UnitContext, run_res: _rd.TurnResult) -> str:
-    """``"budget"`` when the turn loop stopped on the token budget a task ``maxTokens`` set,
+    """``"budget"`` when the turn ran out of rounds, tool calls, tokens or time,
     ``"needs_human"`` when it stopped because the task's autonomy level denies a call that needs
     approval (a pod's own ``approvalMode: refuse`` keeps the unmarked failure it always had)."""
-    if run_res.stop_reason == "token_budget" and ctx.task.max_tokens is not None:
+    if run_res.failure_kind == "budget_exhausted":
         return "budget"
     if run_res.stop_reason == "approval_unavailable" and _autonomy.table_denies_approval(
         ctx.project, _autonomy.effective_level(ctx.project, ctx.task.autonomy)

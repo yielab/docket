@@ -110,12 +110,20 @@ def _summary_of(hop: HopResult) -> str:
     return hop.artifact.summary if hop.artifact is not None else hop.output
 
 
-def _continuation_text(ctx: UnitContext, prior: list[HopResult], error: str, summary: str) -> str:
+def _continuation_text(
+    ctx: UnitContext,
+    prior: list[HopResult],
+    error: str,
+    summary: str,
+    pinned: tuple[str, ...] = (),
+) -> str:
     """The continuation message for a step's next turn: the stop's *error* and *summary* and the
-    paths changed in the step's working tree (``hops/domain/continuation.py``)."""
+    paths changed in the step's working tree, after the *pinned* paths the failed hop already
+    committed (``hops/domain/continuation.py``)."""
     cwd = when_cwd(ctx, prior)
-    changed = _git.git_changed_files(cwd, all_untracked=True)[:_CONTINUED_PATHS] if cwd else []
-    return continuation_message(error, summary, changed)
+    dirty = _git.git_changed_files(cwd, all_untracked=True) if cwd else []
+    changed = [*pinned, *(p for p in dirty if p not in pinned)]
+    return continuation_message(error, summary, changed[:_CONTINUED_PATHS])
 
 
 def _failed_hop_to_continue(
@@ -201,7 +209,8 @@ def _run_hop_turn(
 
     failed_hop = _failed_hop_to_continue(prior, node, history_session_key)
     if failed_hop is not None:
-        message = _continuation_text(ctx, prior, failed_hop.error, _summary_of(failed_hop))
+        pinned = tuple(failed_hop.artifact.files_changed) if failed_hop.artifact else ()
+        message = _continuation_text(ctx, prior, failed_hop.error, _summary_of(failed_hop), pinned)
     attempt = 1
     while True:
         rounds_before = len(_session.load_messages(history_session_key))

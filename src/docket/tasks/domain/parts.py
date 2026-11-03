@@ -5,12 +5,13 @@ A key the writer omits when it has nothing to say is absent from the dump (``exc
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "Answer",
+    "BudgetOutcome",
     "Prepared",
     "TaskUsage",
     "UsageTotals",
@@ -39,6 +40,18 @@ class Worktree(_Part):
     common_dir: str | None = Field(None, alias="commonDir", exclude_if=is_none)
     fallback_reason: str | None = Field(None, alias="fallbackReason", exclude_if=is_none)
     pruned_at: str | None = Field(None, alias="prunedAt", exclude_if=is_none)
+
+
+class BudgetOutcome(_Part):
+    """Which bound ended a hop that ran out of budget and whether its work was pinned: the limit
+    and the figure used (counts; seconds for ``time``; counted tokens), who set the limit, and
+    whether the hop left a dirty tree that docket committed on the task branch."""
+
+    bound: Literal["rounds", "toolCalls", "tokens", "time"]
+    limit: int
+    used: int
+    source: str
+    tree_changed: bool = Field(alias="treeChanged")
 
 
 class Prepared(_Part):

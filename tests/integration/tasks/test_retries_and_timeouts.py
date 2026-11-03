@@ -114,6 +114,7 @@ class TestRetryPolicy:
         assert {"timeout", "daemon_error"} == _application_runner._RETRYABLE_FAILURE_KINDS
         assert "nonzero_exit" not in _application_runner._RETRYABLE_FAILURE_KINDS
         assert "invalid_output" not in _application_runner._RETRYABLE_FAILURE_KINDS
+        assert "budget_exhausted" not in _application_runner._RETRYABLE_FAILURE_KINDS
 
     def test_unknown_role_falls_back_to_default_budget(self) -> None:
         assert (
@@ -220,6 +221,49 @@ class TestHopRetryLoop:
         # 2 retries configured => 3 total attempts (1 first try + 2 retries).
         assert impl_hop.attempts == 3
         assert impl_hop.ok is False
+
+    def test_a_loop_wall_clock_stop_is_tried_once(self, tmp_path: Path) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-implementer")
+        calls: list[str] = []
+        stop = _rd.BudgetStop("time", 300, 301, "default")
+
+        def _runner(
+            agent_id: str,
+            session_key: str,
+            message: str,
+            timeout: int,
+            env: dict[str, str] | None = None,
+        ) -> _rd.TurnResult:
+            calls.append(agent_id)
+            if not agent_id.endswith("implementer"):
+                return _rd.TurnResult(True, "done", 0.0, {})
+            return _rd.TurnResult(
+                False,
+                "",
+                0.0,
+                {},
+                "exceeded wall_clock_timeout_s=300",
+                failure_kind="budget_exhausted",
+                stop_reason="timeout",
+                budget_stop=stop,
+            )
+
+        task = TaskRecord(id="t2b", description="work")
+        res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+        assert res.status == "failed"
+        impl_hop = next(h for h in res.hops if h.role == "implementer")
+        assert impl_hop.attempts == 1
+        assert calls.count("myapp-implementer") == 1
+        assert res.failure_kind == "budget"
+        assert impl_hop.budget is not None
+        assert impl_hop.budget.model_dump(by_alias=True) == {
+            "bound": "time",
+            "limit": 300,
+            "used": 301,
+            "source": "default",
+            "treeChanged": False,
+        }
 
     def test_nonzero_exit_never_retries(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead")

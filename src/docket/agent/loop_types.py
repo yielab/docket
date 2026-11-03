@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from docket.agent.ports import FailureKind, TokenUsage
+from docket.agent.ports import BudgetStop, FailureKind, TokenUsage
 from docket.kernel.home import current_home
 
 StopReason = Literal[
@@ -130,3 +130,5 @@ class AgentLoopResult:
     provider: str = ""
     #: The arguments of the ``ends_turn`` tool call that closed the turn; ``None`` otherwise.
     closing_args: dict[str, Any] | None = None
+    #: Set exactly when ``failure_kind == "budget_exhausted"`` (agent-loop.spec.md requirement 107).
+    budget_stop: BudgetStop | None = None

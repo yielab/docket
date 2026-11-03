@@ -54,13 +54,30 @@ if TYPE_CHECKING:
 
 # Only "timeout"/"daemon_error" are retryable (a transient hiccup talking to the
 # model backend, not a real answer) — see hops/application/runner.py's _RETRYABLE_FAILURE_KINDS.
+# "timeout" is a request or transport timeout; a turn that ran out of rounds, tool calls, tokens
+# or wall-clock time is "budget_exhausted" and carries a ``BudgetStop``.
 FailureKind = Literal[
     "timeout",
     "daemon_error",
     "nonzero_exit",
     "invalid_output",
     "run_cancelled",
+    "budget_exhausted",
 ]
+
+BudgetBound = Literal["rounds", "toolCalls", "tokens", "time"]
+
+
+@dataclass(frozen=True)
+class BudgetStop:
+    """Which bound a ``budget_exhausted`` turn hit: its *limit*, what it had *used* (counts;
+    seconds for time; counted tokens) and the *source* that set the limit."""
+
+    bound: BudgetBound
+    limit: int
+    used: int
+    source: str
+
 
 # Internal dispatch→driver coordinate for a downstream hop that must inspect
 # the worktree which produced its handoff. The shipped driver validates it
@@ -171,6 +188,8 @@ class TurnResult:
     # The arguments of the ``ends_turn`` tool call that closed the turn (the ``handoff`` tool's
     # structured outcome); ``None`` when the turn closed on text.
     closing_args: dict[str, Any] | None = field(default=None, kw_only=True)
+    # Set exactly when ``failure_kind == "budget_exhausted"``: the bound, its limit and the figure used.
+    budget_stop: BudgetStop | None = field(default=None, kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────

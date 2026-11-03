@@ -21,7 +21,7 @@ from docket.kernel import ids as _ids
 from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import DispatchError
 from docket.tasks.domain.options import TaskConversation, TaskGate, TaskRestrictions
-from docket.tasks.domain.parts import Prepared, TaskUsage, Worktree, is_none
+from docket.tasks.domain.parts import BudgetOutcome, Prepared, TaskUsage, Worktree, is_none
 from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.state import Status
 
@@ -111,6 +111,9 @@ class HopResult(BaseModel):
     started_at: str | None = Field(None, alias="startedAt", exclude_if=is_none)
     finished_at: str | None = Field(None, alias="finishedAt", exclude_if=is_none)
     cycle: int | None = Field(None, exclude_if=is_none)
+    # Set only on a hop whose turn ran out of rounds, tool calls, tokens or time
+    # (operator-api.spec.md, "Task answers"); absent on every other hop and on one recorded before.
+    budget: BudgetOutcome | None = Field(None, exclude_if=is_none)
     # Which prompts this hop's turn was composed from (``hops/application/manifest.py``): per
     # layer ``{layer, name, version, sha256, scope, tokens}``, then ``model``, ``family``,
     # ``class`` and ``profile``. Empty for a hop recorded before the manifest existed.
@@ -134,6 +137,7 @@ class HopResult(BaseModel):
         "trace",
         "repo_files",
         "prompt_manifest",
+        "budget",
         mode="wrap",
     )
     @classmethod

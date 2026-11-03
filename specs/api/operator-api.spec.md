@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.16.0
+**Version**: 7.17.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-03
 
@@ -264,6 +264,15 @@ with one, what its cap has left after its persisted hops (`maxTokens` minus the 
 usage), never below 0. It is computed on read, from the same values dispatch applies, and
 is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod>/<id>` return.
 
+A hop that ran out of rounds, tool calls, tokens or wall-clock time (never a request timeout) is
+`ok: false` and carries `budget`: `{"bound": "rounds" | "toolCalls" | "tokens" | "time", "limit",
+"used", "source", "treeChanged"}`. `limit` and `used` are counts, seconds for `time` and counted
+tokens for `tokens`; `source` is who set the limit (`step`, `role`, `pod`, `default`, or `task` for
+tokens under a task `maxTokens`); `treeChanged` is `true` when the hop left a dirty tree that
+docket committed on the task branch, so the hop's `artifact.files_changed` and the task's diff show
+the work. The key is absent on every other hop and on a hop recorded before the rule. A client
+probes for it with the `budgetOutcome` feature.
+
 `failureKind` names why a task did not finish, and a consumer decides from it. A task that settles
 `failed` **MUST** carry a non-empty one, and a `blocked` task whose pod budget tripped carries
 `pod_budget`. The kinds docket itself writes are closed: `stale_claim`, `dispatch_refused`, `base_ref`,
@@ -275,7 +284,10 @@ whose hop or step carried no more specific kind. The default is applied once, wh
 settles `failed`, never by a producer. A claim clears the key, and so does a retry; an unblock
 keeps it until the next claim, so a `pending` task can still carry the kind of the block it left.
 A record written before the rule can lack it. A client probes for the rule with the
-`failureKinds` feature.
+`failureKinds` feature. `budget` means the work ran out of budget, not that it failed on its merits:
+the last hop's `budget` says which bound, and its pinned work is on the task branch. It covers the
+task's `maxTokens` and each hop bound (rounds, tool calls, wall clock, tokens), and is never retried
+in place.
 
 `current` names the hop a `running` task is inside: `{"stepId", "role", "member", "model",
 "startedAt", "cycle"}`. It is written where the hop's `hop_started` event is emitted, with the same

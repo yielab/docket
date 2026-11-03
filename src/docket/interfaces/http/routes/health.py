@@ -29,6 +29,7 @@ FEATURES: tuple[str, ...] = (
     "podPause",
     "hopTimes",
     "retryContinues",
+    "budgetOutcome",
 )
 
 

@@ -360,6 +360,16 @@ class TestHopResultModel:
         assert hop.verification_skipped is True
         assert "verification_skipped" not in hop.model_dump(by_alias=True)
 
+    def test_a_hop_budget_round_trips_and_is_absent_when_unset(self) -> None:
+        budget = {"bound": "rounds", "limit": 3, "used": 3, "source": "step", "treeChanged": True}
+        hop = _task.HopResult.model_validate({"role": "implementer", "budget": budget})
+        assert hop.model_dump(by_alias=True, mode="json")["budget"] == budget
+        assert "budget" not in _task.HopResult(role="lead").model_dump(by_alias=True, mode="json")
+
+    def test_a_malformed_hop_budget_degrades_to_none(self) -> None:
+        hop = _task.HopResult.model_validate({"role": "lead", "budget": {"bound": "mana"}})
+        assert hop.budget is None
+
     def test_a_key_the_hop_does_not_have_is_ignored_and_not_written_back(self) -> None:
         hop = _task.HopResult.model_validate({"role": "lead", "typo": 1})
         assert "typo" not in hop.model_dump(by_alias=True)

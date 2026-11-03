@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from docket.agent.loop_types import AgentLoopResult, LoopConfig, StopReason
-from docket.agent.ports import ChatBackend, FailureKind, TokenUsage, ToolSpec
+from docket.agent.ports import BudgetStop, ChatBackend, FailureKind, TokenUsage, ToolSpec
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 
 
@@ -58,6 +58,11 @@ class TurnState:
         retry_after_s: float | None = None,
         closing_args: dict[str, Any] | None = None,
     ) -> AgentLoopResult:
+        """The turn's result. A failed stop on a budget bound (rounds, tool calls, wall clock,
+        tokens) is always ``budget_exhausted`` with its ``budget_stop``, whatever the caller passed."""
+        budget_stop = None if ok else self.budget_stop_for(stop_reason)
+        if budget_stop is not None:
+            failure_kind = "budget_exhausted"
         return AgentLoopResult(
             ok=ok,
             output=output,
@@ -72,7 +77,37 @@ class TurnState:
             model=self.last_model,
             provider=self.last_provider,
             closing_args=closing_args,
+            budget_stop=budget_stop,
         )
+
+    def budget_stop_for(self, stop_reason: StopReason) -> BudgetStop | None:
+        """Which bound a stop ran out of, with its limit, the figure used and the owner that set
+        it; ``None`` for a stop that is not a budget stop (agent-loop.spec.md requirement 107)."""
+        cfg = self.cfg
+        if stop_reason == "max_iterations":
+            used = min(self.iteration, cfg.max_iterations)
+            return BudgetStop(
+                "rounds", cfg.max_iterations, used, cfg.max_iterations_source or "default"
+            )
+        if stop_reason == "max_tool_calls":
+            return BudgetStop(
+                "toolCalls",
+                cfg.max_tool_calls,
+                self.tool_calls_executed,
+                cfg.max_tool_calls_source or "default",
+            )
+        if stop_reason == "timeout":
+            return BudgetStop(
+                "time",
+                int(cfg.wall_clock_timeout_s),
+                int(self.clock() - self.started),
+                cfg.wall_clock_source or "default",
+            )
+        if stop_reason == "token_budget":
+            return BudgetStop(
+                "tokens", cfg.token_budget, self.total_usage.counted_tokens, "default"
+            )
+        return None
 
     def cancellation_requested(self) -> bool:
         return self.ctx.cancellation_check is not None and self.ctx.cancellation_check()
