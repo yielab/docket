@@ -31,7 +31,7 @@ class DocketCli < Formula
   # resource here or the installed `docket` dies on `import typer` (found by the
   # first Homebrew install, 2026-10-07). Regenerate with
   #   brew update-python-resources --print-only --ignore-non-pypi-packages \
-  #     --extra-packages typer,rich,pydantic,pydantic-settings,filelock,pyyaml \
+  #     --extra-packages typer,rich,pydantic,pydantic-settings,filelock,pyyaml,pypdf \
   #     yielab/docket-cli/docket-cli
   # scripts/update-homebrew-sha.sh rewrites only the FIRST sha256 (the asset).
   resource "annotated-doc" do
@@ -77,6 +77,11 @@ class DocketCli < Formula
   resource "pygments" do
     url "https://files.pythonhosted.org/packages/49/2e/ced460408999b33da6b31b0021b0f37d329e202d4169aeb164493778f25b/pygments-2.21.0.tar.gz"
     sha256 "610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c"
+  end
+
+  resource "pypdf" do
+    url "https://files.pythonhosted.org/packages/1e/e1/ec8f4d155c997c45917153a5521e60d6ee6389d68abdcbc8e44e564caffc/pypdf-6.21.4.tar.gz"
+    sha256 "c8817e3f888d47a087872ded69812c1ef30cacb871d6e053e0c00bbaf0bc2163"
   end
 
   resource "python-dotenv" do

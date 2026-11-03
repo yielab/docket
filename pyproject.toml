@@ -58,6 +58,7 @@ dependencies = [
     "pydantic-settings>=2",
     "filelock>=3.13",
     "pyyaml>=6",
+    "pypdf>=6.21.4",
 ]
 
 [tool.hatch.build]

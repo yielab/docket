@@ -676,13 +676,15 @@ reaches the network through allowlisted interpreters. Inside the sandbox the net
 by default, leaving `fetch` as the only path; `docket setup sandbox network open` (or a pod's
 `network` setting) grants it.
 
-**PDFs.** `fetch` reads a PDF's text with `pdftotext` (poppler), only inside the jail: isolation
-must be on (`docket setup sandbox on`), because a hostile PDF is never parsed in docket's own
-process. The jail has one private directory, no network and no credential, and the run is killed at
+**PDFs.** `fetch` reads a PDF's text only inside the jail: isolation must be on
+(`docket setup sandbox on`), because a hostile PDF is never parsed in docket's own process. On
+Landlock and Seatbelt the reader is docket's own Python and `pypdf`, installed with docket, so a
+new install needs no other program and no read grant. The jail has one private directory, no
+network and no credential; the reader also limits its own memory and CPU, and the run is killed at
 the fetch deadline. A PDF is read up to `FETCH_MAX_DOCUMENT_BYTES` (default 10,000,000 bytes; a
-larger one is refused whole, never truncated). A `pdftotext` outside the jail's default read roots,
-such as a Homebrew prefix, needs `docket setup sandbox read add <prefix>` (its install prefix); with
-Docker the image (`DOCKET_SANDBOX_IMAGE`) must carry it.
+larger one is refused whole, never truncated). With Docker the image has no docket interpreter, so
+it is the one place an extractor is external: the image (`DOCKET_SANDBOX_IMAGE`) must carry
+`pdftotext` (poppler), and one without it is refused naming the image.
 
 **Isolation (opt-in).** Off by default: tools run on the host. `docket setup sandbox on` jails
 `bash`, stdio MCP servers, verify commands and `run:` steps with Landlock (Linux) or seatbelt

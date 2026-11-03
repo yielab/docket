@@ -1,8 +1,9 @@
-"""``pdf_text``: a PDF's text is read by the extractor in the jail, and every other path refuses."""
+"""``pdf_text``: a PDF's text is read by docket's own interpreter in the jail, and every other path refuses."""
 
 from __future__ import annotations
 
 import dataclasses
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -21,7 +22,7 @@ SUBJECT = "docket.hops.application.pdf_text"
 
 _ROOT = Path("/jail/root")
 _GRANT = Path("/grants/brew")
-_FOUND = "/opt/brew/bin/pdftotext"
+_OWN = (sys.executable, "-I", "extract.py", "in.pdf")
 
 
 class _Runner:
@@ -71,7 +72,6 @@ def _read(
     *,
     workdir: _Workdir | None = None,
     sandbox: str = "auto",
-    found: str | None = _FOUND,
     seconds: float = 10.0,
     body: bytes = b"%PDF-1.4",
 ) -> tuple[ToolOutcome, _Workdir]:
@@ -85,7 +85,6 @@ def _read(
         deadline=_clock.monotonic() + seconds,
         run=runner,
         workdir=spy,
-        which=lambda _name: found,
     )
     return out, spy
 
@@ -141,42 +140,53 @@ class TestFailsClosed:
         assert runner.runs == []
 
 
-class TestTheExtractorMustBeThere:
-    def test_missing_from_path_names_poppler(self, fake_jail: FakeJail) -> None:
+class TestTheExtractor:
+    @pytest.mark.parametrize("backend", ["landlock", "seatbelt"])
+    def test_docket_s_own_interpreter_runs_the_extractor_with_no_lookup(
+        self, fake_jail: FakeJail, backend: str
+    ) -> None:
         runner = _Runner()
-        out, _ = _read(_backend(fake_jail, "landlock"), runner, found=None)
+        out, _ = _read(_backend(fake_jail, backend), runner)
 
-        assert not out.ok
-        assert "pdftotext" in out.error and "poppler" in out.error
-        assert runner.runs == []
+        assert out.ok
+        assert runner.runs[0].command == _OWN
+        assert runner.runs[0].read_only == (_GRANT,)  # the operator's grants, none added
 
-    def test_a_jail_that_cannot_execute_it_names_the_read_grant_for_its_prefix(
+    def test_a_jail_that_cannot_start_the_interpreter_gives_its_reason_and_no_poppler_advice(
         self, fake_jail: FakeJail
     ) -> None:
-        denied = _fetch.Ran(
-            127, b"", b"jail: cannot run /opt/brew/bin/pdftotext: Permission denied\n"
-        )
+        denied = _fetch.Ran(127, b"", b"jail: cannot run /x/python: Permission denied\n")
         out, _ = _read(_backend(fake_jail, "landlock"), _Runner(denied))
 
         assert not out.ok
-        assert "docket setup sandbox read add /opt/brew" in out.error
+        assert "Permission denied" in out.error
+        assert "poppler" not in out.error and "read add" not in out.error
+
+    def test_docker_runs_the_images_own_pdftotext(self, fake_jail: FakeJail) -> None:
+        runner = _Runner()
+        out, _ = _read(_backend(fake_jail, "docker"), runner)
+
+        assert out.ok
+        assert runner.runs[0].command == (
+            "pdftotext", "-enc", "UTF-8", "-nopgbrk", "-q", "--", "in.pdf", "-",
+        )  # fmt: skip
 
     def test_docker_without_it_names_the_image(self, fake_jail: FakeJail) -> None:
         runner = _Runner(_fetch.Ran(127, b"", b"exec: not found\n"))
-        out, _ = _read(_backend(fake_jail, "docker"), runner, found=None)
+        out, _ = _read(_backend(fake_jail, "docker"), runner)
 
         assert not out.ok
         assert current_home().sandbox_docker_image in out.error
-        assert runner.runs[0].command[0] == _pdf.EXTRACTOR  # the image's own, not a host path
+        assert "pdftotext" in out.error
 
     def test_a_non_zero_exit_gives_the_first_line_of_stderr_bounded(
         self, fake_jail: FakeJail
     ) -> None:
-        err = b"Syntax Error: " + b"x" * 1000 + b"\nsecond line\n"
+        err = b"PdfReadError: " + b"x" * 1000 + b"\nsecond line\n"
         out, _ = _read(_backend(fake_jail, "landlock"), _Runner(_fetch.Ran(1, b"", err)))
 
         assert not out.ok
-        assert out.error.startswith("pdftotext exited 1: Syntax Error: ")
+        assert out.error.startswith("the PDF reader exited 1: PdfReadError: ")
         assert "second line" not in out.error
         assert len(out.error) < 400
 
@@ -196,9 +206,7 @@ class TestWhatTheRunnerIsGiven:
         assert run.read_only == (_GRANT,)
         assert not set(run.env) & jail.credential_names()
         assert run.env["TMPDIR"] == str(_ROOT)
-        assert run.command == (
-            _FOUND, "-enc", "UTF-8", "-nopgbrk", "-q", "--", "in.pdf", "-",
-        )  # fmt: skip
+        assert run.command == _OWN
         assert spy.bodies == [b"%PDF-1.7 bytes"]
         assert (spy.opened, spy.closed) == (1, 1)
 
