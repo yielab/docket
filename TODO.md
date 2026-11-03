@@ -319,7 +319,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-4 — Budgets are declared where the work is declared, and the machine only defaults
 
-**Status:** IN-PROGRESS (@sonnet-p59-4) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-5 (spec file)
+**Status:** DONE 2026-11-03 (merged; the stale-claim oracle reproduced, so the per-round claim refresh shipped) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-5 (spec file)
 
 - **Trigger:** each per-hop bound is declared somewhere else, under rules that disagree (ADR 0038,
   "What the code and a run say today"):

@@ -96,17 +96,17 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.1 | Complete |
-| Agent Loop | 3.12.0 | Implemented and live |
+| Agent Loop | 3.13.0 | Implemented and live |
 | API Keys | 2.2.0 | Complete |
 | Audit | 3.3.2 | Implemented |
 | Config Format | 2.10.1 | Implemented |
 | Cost Tracking | 1.13.0 | Implemented, recorded dollars unavailable |
 | Model Profiles | 6.8.0 | Complete |
 | Observability Export | 3.2.0 | Implemented and live |
-| Pipeline Format | 4.6.0 | Implemented |
+| Pipeline Format | 4.7.0 | Implemented |
 | Pod Blueprints | 4.2.0 | Implemented |
-| Pod Dispatch | 11.14.0 | Implemented |
-| Role Archetypes | 5.6.0 | Implemented |
+| Pod Dispatch | 11.15.0 | Implemented |
+| Role Archetypes | 5.7.0 | Implemented |
 | Security Gates | 3.6.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.4.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
