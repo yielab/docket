@@ -82,8 +82,12 @@ class TestNetworkText:
         home = tmp_path / ".docket"
         home.mkdir()
         with use_home(Home(home)):
-            text = pod_report.network_text({"mode": "none", "scope": "default"})
+            text = pod_report.network_text({"mode": "none", "scope": "default", "enforced": False})
             assert "not enforced" in text and "egress is open" in text
+
+    def test_none_that_a_jail_enforces_says_the_jail_cuts_it(self) -> None:
+        text = pod_report.network_text({"mode": "none", "scope": "default", "enforced": True})
+        assert text == "none (default); jailed tool calls have no network"
 
 
 _PIPELINE = """\

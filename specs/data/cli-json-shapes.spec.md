@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 5.1.0
+**Version**: 5.2.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-11-03
 
@@ -318,7 +318,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
     "source":    "set | unset"
   },
   "pipeline":     { "source": "string", "steps": ["step, below (absent when the pipeline does not resolve)"] },
-  "network":      { "mode": "open | none", "scope": "default | global | pod" },
+  "network":      { "mode": "open | none", "scope": "default | global | pod", "enforced": "boolean (true only when mode is none, isolation is on and a sandbox backend exists)" },
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
   "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
@@ -428,7 +428,7 @@ winning scope's skill is listed (ADR 0013).
     "credential": { "name": "string (may be empty)", "source": "override | env | store | none" },
     "model":      { "id": "string", "contextWindow": "number | null", "maxTokens": "number | null", "contextWindowSource": "declared | observed | unknown", "maxTokensSource": "declared | observed | unknown", "source": "declared | observed | unknown", "observedAt": "YYYY-MM-DD | \"\"" }
   },
-  "network":   { "mode": "open | none", "scope": "default | global | pod" },
+  "network":   { "mode": "open | none", "scope": "default | global | pod", "enforced": "boolean (as in pod show)" },
   "prompt": {
     "budgetTokens": "number",
     "budgetSource": "env | window | default",

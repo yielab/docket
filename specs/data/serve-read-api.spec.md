@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 6.0.0
+**Version**: 6.1.0
 **Status**: Stable
 **Last Updated**: 2026-11-03
 
@@ -111,7 +111,7 @@ added in minor versions.
 | Field | Type | Notes |
 |---|---|---|
 | `apiVersion` | string | Always `SERVE_API_VERSION`, currently `"6"`. |
-| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. Currently `["taskCurrent", "taskCursor", "podMemory", "readScope", "conversation", "settledCursor", "failureKinds", "podPause", "hopTimes", "retryContinues", "budgetOutcome"]`. |
+| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. Currently `["taskCurrent", "taskCursor", "podMemory", "readScope", "conversation", "settledCursor", "failureKinds", "podPause", "hopTimes", "retryContinues", "budgetOutcome", "networkEnforced", "podWorkDir"]`. |
 | `channels` | string[] | Distinct channel names present in `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here**: a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |

@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 3.6.0
+**Version**: 3.7.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -1214,9 +1214,11 @@ material, may be read as saying otherwise.
    cut unless isolation is on. With isolation off and mode `none` the line reads `none (<scope>),
    not enforced: isolation off, egress is open`, carries no `ok` marker, and the status phrase
    reads `network none (not enforced: isolation off)`. With isolation on the line reads
-   `none (<scope>); jailed tool calls have no network`. The JSON surfaces carry `networkEnforced`
-   (true only when isolation is on and the mode is `none`). `docket pod show --json` keeps
-   `{mode, scope}`.
+   `none (<scope>); jailed tool calls have no network`. "Isolation is on" means one fact the posture
+   function takes: isolation is recorded on **and** a sandbox backend exists on this machine. The
+   JSON surfaces carry `networkEnforced` (true only when that fact holds and the mode is `none`).
+   `docket pod show --json` and the pod answers of the HTTP API carry `network.enforced`, the same
+   boolean, beside `{mode, scope}`.
 15. **The model sees the command rules before it runs anything.** The `bash` tool's description
     **MUST** state, from the rules the turn's gate actually applies, what runs without approval and
     what needs it: one sentence of the form `Runs without approval: <names>. Needs approval:

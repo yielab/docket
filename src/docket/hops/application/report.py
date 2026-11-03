@@ -45,17 +45,32 @@ from docket.teams import roles as _archetypes
 from docket.teams import settings as _settings
 from docket.teams.apply import lock as _lock
 from docket.teams.apply import review as _review
-from docket.teams.models import AgentKind, AgentMeta
+from docket.teams.models import AgentKind, AgentMeta, WorkspaceKind
 from docket.teams.workspace import skills as _skills
 
 
 def network_text(net: dict[str, Any]) -> str:
-    """The network line, worded by ``teams.network_posture`` so it never claims a cut network
-    while isolation is off."""
+    """The network line, worded by ``teams.network_posture`` from the report's own ``enforced``
+    so it never claims a cut network the report says is open."""
     posture = _network_posture.network_posture(
-        str(net["mode"]), str(net["scope"]), isolation_on=_fleet.get_isolation_enabled()
+        str(net["mode"]), str(net["scope"]), jailed=bool(net["enforced"])
     )
     return posture.line
+
+
+def _network_report(project: str) -> dict[str, Any]:
+    """``network`` as the reports and ``GET /pods`` carry it: the effective mode, its scope and
+    whether a jail that runs enforces it."""
+    mode, scope = _pod_settings.effective_network(project or None)
+    posture = _network_posture.network_posture(mode, scope, jailed=_network_posture.jail_enforces())
+    return {"mode": mode, "scope": scope, "enforced": posture.enforced}
+
+
+def _work_dir_fields(project: str) -> dict[str, str]:
+    """``workDir`` for a ``workdir`` pod (its Lead's folder), nothing for a ``codebase`` pod."""
+    if _pod_settings.workspace_kind(project) != WorkspaceKind.workdir:
+        return {}
+    return {"workDir": _fleet.meta_get(_pod.member_id(project, "lead"), "workDir", "") or ""}
 
 
 def _roots_for(agent_id: str, meta: AgentMeta) -> tuple[Path, ...]:
@@ -358,9 +373,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
         "policies": _policies_for_role(role, project),
         "pipeline": pipeline,
         "podSettings": pod_settings_report,
-        "network": dict(
-            zip(("mode", "scope"), _pod_settings.effective_network(project or None), strict=True)
-        ),
+        "network": _network_report(project),
         "projectInstructions": {"files": list(pi_files), "source": pi_source},
         "skills": skills_report,
         "exporters": _exporters_report(),
@@ -413,9 +426,8 @@ def pod_report(project: str) -> dict[str, Any]:
             "source": "set" if _settings.pod_approval_mode_is_set(project) else "unset",
         },
         "pipeline": _pipeline_report(project),
-        "network": dict(
-            zip(("mode", "scope"), _pod_settings.effective_network(project), strict=True)
-        ),
+        "network": _network_report(project),
+        **_work_dir_fields(project),
         **record,
     }
 
@@ -526,7 +538,9 @@ def pod_summary(project: str) -> dict[str, Any]:
         "blueprint": _blueprint(project),
         "members": len(_pod.members_of(ids, project)),
         "profile": _profile.effective_profile(project),
+        "network": _network_report(project),
         "queue": task_counts(project),
+        **_work_dir_fields(project),
         **_pause_fields(project),
     }
 

@@ -1,0 +1,351 @@
+{
+  "row": {
+    "name": "research",
+    "codebase": "",
+    "workspaceKind": "workdir",
+    "blueprint": "respond",
+    "members": 5,
+    "profile": "attended",
+    "network": {
+      "mode": "none",
+      "scope": "default",
+      "enforced": true
+    },
+    "queue": {
+      "pending": 0,
+      "running": 0,
+      "waitingInput": 0,
+      "waitingApproval": 0,
+      "blocked": 0,
+      "failed": 0,
+      "done": 0,
+      "cancelled": 0
+    },
+    "workDir": "<home>/state/workspaces/pods/research/workdir",
+    "paused": false
+  },
+  "detail": {
+    "pod": "research",
+    "blueprint": "respond",
+    "members": [
+      {
+        "id": "research-lead",
+        "role": "lead",
+        "model": {
+          "value": "anthropic/claude-haiku-5-5",
+          "source": "policy"
+        },
+        "workspace": "<home>/state/workspaces/projects/research-lead",
+        "verifyCmd": "",
+        "capabilities": {
+          "kinds": [
+            "read"
+          ],
+          "tools": [
+            "consult",
+            "glob",
+            "grep",
+            "read",
+            "skill"
+          ],
+          "records": {
+            "write": [],
+            "query": false
+          },
+          "notComputed": [
+            "mcp",
+            "service"
+          ]
+        }
+      },
+      {
+        "id": "research-reviewer",
+        "role": "reviewer",
+        "model": {
+          "value": "anthropic/claude-sonnet-5-5",
+          "source": "policy"
+        },
+        "workspace": "<home>/state/workspaces/projects/research-reviewer",
+        "verifyCmd": "",
+        "capabilities": {
+          "kinds": [
+            "read"
+          ],
+          "tools": [
+            "consult",
+            "glob",
+            "grep",
+            "read",
+            "skill"
+          ],
+          "records": {
+            "write": [],
+            "query": false
+          },
+          "notComputed": [
+            "mcp",
+            "service"
+          ]
+        }
+      },
+      {
+        "id": "research-researcher",
+        "role": "researcher",
+        "model": {
+          "value": "anthropic/claude-sonnet-5-5",
+          "source": "policy"
+        },
+        "workspace": "<home>/state/workspaces/projects/research-researcher",
+        "verifyCmd": "",
+        "capabilities": {
+          "kinds": [
+            "exec",
+            "read",
+            "write"
+          ],
+          "tools": [
+            "bash",
+            "consult",
+            "edit",
+            "glob",
+            "grep",
+            "process_output",
+            "process_stop",
+            "read",
+            "skill",
+            "write"
+          ],
+          "records": {
+            "write": [],
+            "query": false
+          },
+          "notComputed": [
+            "mcp",
+            "service"
+          ]
+        }
+      },
+      {
+        "id": "research-writer",
+        "role": "writer",
+        "model": {
+          "value": "anthropic/claude-haiku-5-5",
+          "source": "policy"
+        },
+        "workspace": "<home>/state/workspaces/projects/research-writer",
+        "verifyCmd": "",
+        "capabilities": {
+          "kinds": [
+            "read",
+            "write"
+          ],
+          "tools": [
+            "consult",
+            "edit",
+            "glob",
+            "grep",
+            "read",
+            "skill",
+            "write"
+          ],
+          "records": {
+            "write": [],
+            "query": false
+          },
+          "notComputed": [
+            "mcp",
+            "service"
+          ]
+        }
+      },
+      {
+        "id": "research-actor",
+        "role": "actor",
+        "model": {
+          "value": "anthropic/claude-sonnet-5-5",
+          "source": "policy"
+        },
+        "workspace": "<home>/state/workspaces/projects/research-actor",
+        "verifyCmd": "",
+        "capabilities": {
+          "kinds": [
+            "read"
+          ],
+          "tools": [
+            "glob",
+            "read"
+          ],
+          "records": {
+            "write": [],
+            "query": false
+          },
+          "notComputed": [
+            "mcp",
+            "service"
+          ]
+        }
+      }
+    ],
+    "settings": {
+      "budgetTokens": {
+        "value": null,
+        "source": "default"
+      },
+      "maxReworkCycles": {
+        "value": 1,
+        "source": "default"
+      },
+      "turnTimeoutS": {
+        "value": null,
+        "source": "default"
+      },
+      "verifyTimeoutS": {
+        "value": null,
+        "source": "default"
+      },
+      "approvalMode": {
+        "value": "wait",
+        "source": "default"
+      },
+      "approvalExpiryHours": {
+        "value": 24,
+        "source": "default"
+      },
+      "inputExpiryHours": {
+        "value": 72,
+        "source": "default"
+      },
+      "allowCommands": {
+        "value": "",
+        "source": "default"
+      },
+      "pipeline": {
+        "value": null,
+        "source": "default"
+      },
+      "schedule": {
+        "value": null,
+        "source": "default"
+      },
+      "projectInstructions": {
+        "value": "",
+        "source": "default"
+      },
+      "mcpServers": {
+        "value": null,
+        "source": "default"
+      },
+      "deniedTools": {
+        "value": "",
+        "source": "default"
+      },
+      "requireVerify": {
+        "value": false,
+        "source": "default"
+      },
+      "maxConsultationsPerTask": {
+        "value": 3,
+        "source": "default"
+      },
+      "consultMode": {
+        "value": "park",
+        "source": "default"
+      },
+      "network": {
+        "value": "open",
+        "source": "default"
+      },
+      "profile": {
+        "value": "attended",
+        "source": "default"
+      },
+      "readOnly": {
+        "value": "",
+        "source": "default"
+      },
+      "prepare": {
+        "value": "",
+        "source": "default"
+      },
+      "protects": {
+        "value": "",
+        "source": "default"
+      }
+    },
+    "approvalMode": {
+      "effective": "park",
+      "source": "unset"
+    },
+    "pipeline": {
+      "source": "blueprint 'respond'",
+      "steps": [
+        {
+          "id": "intake",
+          "kind": "agent",
+          "role": "lead",
+          "modelClass": "cheap",
+          "gate": null,
+          "rework": []
+        },
+        {
+          "id": "research",
+          "kind": "agent",
+          "role": "researcher",
+          "modelClass": "strong",
+          "gate": null,
+          "rework": []
+        },
+        {
+          "id": "draft",
+          "kind": "agent",
+          "role": "writer",
+          "modelClass": "cheap",
+          "gate": null,
+          "rework": []
+        },
+        {
+          "id": "review",
+          "kind": "agent",
+          "role": "reviewer",
+          "modelClass": "strong",
+          "gate": "verdict",
+          "rework": [
+            {
+              "when": [
+                "request-changes"
+              ],
+              "to": "draft",
+              "max": 1
+            }
+          ]
+        },
+        {
+          "id": "act",
+          "kind": "agent",
+          "role": "actor",
+          "modelClass": "strong",
+          "gate": null,
+          "rework": []
+        }
+      ]
+    },
+    "network": {
+      "mode": "none",
+      "scope": "default",
+      "enforced": true
+    },
+    "workDir": "<home>/state/workspaces/pods/research/workdir",
+    "configSource": "",
+    "configDigest": "",
+    "drift": "",
+    "profile": {
+      "name": "attended",
+      "violations": []
+    },
+    "pipelineSource": "blueprint 'respond'",
+    "workspaceKind": "workdir",
+    "repoConfigDir": "",
+    "readOnly": [],
+    "paused": false
+  }
+}

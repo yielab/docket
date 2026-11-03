@@ -69,7 +69,7 @@ def _isolation_phrase() -> str:
     state = sandbox_state()
     backend = str(state["backend"])
     isolation_on = state["isolation"] == "on"
-    network = _np.network_posture(str(state["network"]), "", isolation_on=isolation_on).short
+    network = _np.network_posture(str(state["network"]), "", jailed=_np.jail_enforces()).short
     if isolation_on:
         return f"on ({backend}, network {network})"
     found = "no backend found" if backend == "none" else f"{backend} found"

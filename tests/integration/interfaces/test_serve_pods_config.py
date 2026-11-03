@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -12,6 +13,7 @@ from typing import Any
 import pytest
 
 from docket.governance import audit as _audit
+from docket.hops.application import report as _pod_report
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
@@ -174,3 +176,81 @@ def test_a_pod_with_no_recorded_codebase_is_refused(server: str, tmp_path: Path)
     assert status == 400
     assert "no recorded codebase" in body["error"]
     assert "reviewCode" not in body
+
+
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "operator-v2"
+
+
+def _get(url: str) -> tuple[int, dict[str, Any]]:
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"Bearer {_TOKEN}")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return resp.status, json.loads(resp.read())
+
+
+def _with_home_placeholder(value: Any, home: Path) -> Any:
+    """*value* with the home directory's path replaced by ``<home>``."""
+    if isinstance(value, dict):
+        return {k: _with_home_placeholder(v, home) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_with_home_placeholder(v, home) for v in value]
+    if isinstance(value, str):
+        return value.replace(str(home), "<home>")
+    return value
+
+
+def _folder_pod(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ``respond`` pod on a machine that records isolation on and has a sandbox backend."""
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+    _fleet.set_sandbox_isolation()
+    status, _ = _post(f"{url}/pods", {"name": "research", "blueprint": "respond"})
+    assert status == 201
+
+
+def test_a_folder_pod_reports_its_network_and_its_folder(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _folder_pod(server, monkeypatch)
+    folder = str(Home(tmp_path / ".docket").pod_work_dir("research"))
+
+    status, detail = _get(f"{server}/pods/research")
+    assert status == 200
+    assert detail["network"] == {"mode": "none", "scope": "default", "enforced": True}
+    assert detail["workDir"] == folder
+    assert _pod_report.member_report("research-lead")["network"]["enforced"] is True
+
+    rows = {row["name"]: row for row in _get(f"{server}/pods")[1]["pods"]}
+    assert rows["research"]["network"]["enforced"] is True
+    assert rows["research"]["workDir"] == folder
+    assert "workDir" not in rows["demo"]
+    assert "workDir" not in _get(f"{server}/pods/demo")[1]
+
+    features = _get(f"{server}/status.json")[1]["features"]
+    assert {"networkEnforced", "podWorkDir"} <= set(features)
+
+
+def test_the_pod_reach_answers_are_the_recorded_fixture(
+    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _folder_pod(server, monkeypatch)
+    row = next(r for r in _get(f"{server}/pods")[1]["pods"] if r["name"] == "research")
+    actual = _with_home_placeholder(
+        {"row": row, "detail": _get(f"{server}/pods/research")[1]}, tmp_path / ".docket"
+    )
+    if record := os.environ.get("OPERATOR_RECORD_DIR"):
+        Path(record, "pod-reach.json").write_text(json.dumps(actual, indent=2) + "\n", "utf-8")
+        return
+    recorded = json.loads((_FIXTURES / "pod-reach.json").read_text(encoding="utf-8"))
+    assert actual == recorded
+
+
+def test_network_is_not_enforced_without_a_backend(
+    server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _folder_pod(server, monkeypatch)
+    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+    detail = _get(f"{server}/pods/research")[1]
+    assert detail["network"]["enforced"] is False
+    assert _pod_report.member_report("research-lead")["network"]["enforced"] is False
+    rows = {row["name"]: row for row in _get(f"{server}/pods")[1]["pods"]}
+    assert rows["research"]["network"]["enforced"] is False

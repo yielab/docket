@@ -80,6 +80,8 @@ class TestBuildStatus:
             "hopTimes",
             "retryContinues",
             "budgetOutcome",
+            "networkEnforced",
+            "podWorkDir",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

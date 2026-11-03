@@ -30,6 +30,8 @@ FEATURES: tuple[str, ...] = (
     "hopTimes",
     "retryContinues",
     "budgetOutcome",
+    "networkEnforced",
+    "podWorkDir",
 )
 
 

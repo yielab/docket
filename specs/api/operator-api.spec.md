@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.19.0
+**Version**: 7.20.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-03
 
@@ -373,7 +373,7 @@ array; the object wrapper is the one every HTTP route uses). A pod that is not d
 `404`. Pending and refused entries are not served here.
 
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp",
-"workspaceKind": "codebase", "blueprint": "build", "members": 2, "profile": "lights-out", "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
+"workspaceKind": "codebase", "blueprint": "build", "members": 2, "profile": "lights-out", "network": {"mode": "none", "scope": "default", "enforced": true}, "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
 "waitingInput": 0, "blocked": 0, "failed": 0, "done": 4, "cancelled": 0}}]}`; `queue` carries the
 counts `status --json` prints under `tasks`: one per task status. `workspaceKind` is the closed
 enum `"codebase"` or `"workdir"`, read from the kind the pod was provisioned with (its Lead's
@@ -381,6 +381,15 @@ enum `"codebase"` or `"workdir"`, read from the kind the pod was provisioned wit
 `codebase` is `""` both for a `workdir` pod and for a `codebase` pod whose codebase is not recorded.
 `blueprint` is the shape the pod was provisioned with (`build`, `respond`, `operate`, `routine`; its
 Lead's `blueprint`), `""` for a pod provisioned without one.
+
+`network` is `{mode, scope, enforced}` on every row, on the `GET /pods/<p>` object and on each of its
+`members`. `enforced` is a boolean: `true` only when `mode` is `none`, isolation is on and a sandbox
+backend exists on this machine (the same fact `docket status` words), so an `open` pod, a machine
+with isolation off and a machine with no backend all read `false`. A client reads it instead of
+inferring a cut network from `mode`. A client probes for it with the `networkEnforced` feature.
+A `workdir` pod's row and its `GET /pods/<p>` object also carry `workDir`, the absolute path of the
+folder its tasks run in (its Lead's `workDir`); a `codebase` pod carries no `workDir` key, and the
+key is never `null`. A client probes for it with the `podWorkDir` feature.
 
 Every row of `GET /pods` and the `GET /pods/<p>` object also carry `paused` (boolean, always
 present). A pod is paused while its Lead's meta holds `paused: true`, which a spent budget sets
