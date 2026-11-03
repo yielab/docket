@@ -505,7 +505,7 @@ P61-2 (the facts it states)
 
 ### P61-7 — A `fetch` URL that carries a credential is refused
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-4
+**Status:** DONE 2026-11-03 (live: a web-research fetch of a URL with a fake key shape was refused naming the rule, and the audit row holds the host only) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-4
 (`builtin_tools.py`), P61-6 (the `fetch` section of `security-gates.spec.md`)
 
 - **Trigger:** the same request. With `*`, `fetch` is an outbound channel: a GET's URL carries
@@ -543,7 +543,7 @@ P61-2 (the facts it states)
 
 ### P61-8 — `fetch` reads a PDF's text through the jail
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-6
+**Status:** DONE 2026-11-03 (PARTIAL on the live step: the jail path is proven by the integration test with real Landlock and the real pdftotext, and live the PDF fetch fails closed naming `docket setup sandbox read add <prefix>`; the read of an arXiv PDF through the grant was not run, because the maintainer must grant the Homebrew prefix (a permission rule denied the grant to the agent)) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-6
 (`platform/fetch.py`'s text rule), P61-7 (`_fetch_handler`)
 
 - **Trigger:** the maintainer's decision (2026-11-03). Research reads papers and reports, so
@@ -664,6 +664,11 @@ P61-2 (the facts it states)
   export at a privacy level that sends tool arguments (`full`) of a run that had a refusal; then redact call
   arguments with the same `secrets.redact` before the trace writes them. Also unmatched: a double-encoded key, a
   stored secret of 8 characters or fewer, and the keyring backend (the spec lists them under `unlisted-secret-shape`).
+- *`run_jailed` lives in `platform/fetch.py`.* P61-8 put the jailed Popen, process-group kill and bounded read there
+  because `tests/guards/test_no_subprocess_in_core.py` forbids `subprocess` in `hops/`. Move it to its own
+  `platform` module. Also stale: the `ToolContext.read_only` comment ("only a jailed bash reads them",
+  `agent/tools/registry.py` ~94), and a `setup check` line for `pdftotext`. The `header n chars` of a PDF result counts
+  the returned text, not the full extraction.
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
