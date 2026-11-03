@@ -96,7 +96,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.0.1 | Complete |
-| Agent Loop | 3.11.0 | Implemented and live |
+| Agent Loop | 3.12.0 | Implemented and live |
 | API Keys | 2.2.0 | Complete |
 | Audit | 3.3.2 | Implemented |
 | Config Format | 2.10.1 | Implemented |

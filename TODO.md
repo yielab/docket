@@ -420,7 +420,7 @@ Record rounds per hop before and after P59-5, on the same task.
 ---
 ### P59-5 — Fewer wasted rounds: `edit` prints the relative path, the Implementer batches its reads
 
-**Status:** IN-PROGRESS (@sonnet-p59-5) · **Size:** S · **Model:** Sonnet · **Kind:** fix + prompt
+**Status:** DONE 2026-11-03 (merged 8520e6c9; effect on rounds measured at the phase close) · **Size:** S · **Model:** Sonnet · **Kind:** fix + prompt
 
 - **Trigger:** in the incident, `write` answered `wrote src/lib/safety/bot-check.ts`, but `edit`
   answered `replaced 1 occurrence(s) in /…/.docket/state/workspaces/…/guard.ts`
