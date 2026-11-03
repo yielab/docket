@@ -416,7 +416,7 @@ def render_tool_surface() -> list[str]:
 
 
 HOP_MESSAGE_POLICY = "p53-4"
-_NAMED_PATH = "src/docket/hops/application/compose.py"
+_NAMED_PATH = "src/docket/teams/workspace/repo_map.py"
 
 
 def _repo_root() -> str:

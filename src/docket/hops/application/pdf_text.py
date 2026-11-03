@@ -18,7 +18,6 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 
-from docket.agent.tools.builtins.toolbox import SandboxMode
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Refused
 from docket.kernel.home import current_home
@@ -107,7 +106,7 @@ def _outcome(ran: _fetch.Ran, found: str | None, backend: str) -> ToolOutcome:
 def pdf_text(
     body: bytes,
     *,
-    sandbox: SandboxMode,
+    sandbox: str,
     roots: tuple[Path, ...],
     cache_dir: Path | None,
     read_only: tuple[Path, ...],
