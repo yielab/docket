@@ -104,7 +104,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Model Profiles | 7.1.0 | Complete |
 | Observability Export | 3.3.0 | Implemented and live |
 | Pipeline Format | 4.8.0 | Implemented |
-| Pod Blueprints | 4.4.0 | Implemented |
+| Pod Blueprints | 4.5.0 | Implemented |
 | Pod Dispatch | 12.4.0 | Implemented |
 | Role Archetypes | 5.8.0 | Implemented |
 | Security Gates | 3.12.1 | Implemented (gate always on; init turns isolation on where a backend is detected) |
