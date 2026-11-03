@@ -271,13 +271,49 @@ prose, connectors and policy, documented, never shipped as a blueprint.
 
 *Cards:* Phase 56, P56-10..P56-20 on `TODO.md`; P56-3 and P56-5 carry decision 16.
 
+## Third amendment, 2026-11-03: a pod declares the web it reads
+
+**Status: accepted 2026-11-03** by the maintainer, from the maintainer's request the same day (Tack's
+report on a `web-research` task). Decisions 1 to 16 are unchanged; this moves "a per-pod `fetch` allowlist" out
+of *Deferred* on a scoped request instead of its trigger.
+
+**Why.** A research pod asked a person for three things docket already knew it lacked. `GET
+/pods/web-research` showed `network: {mode: none, scope: default}` and no member holding `fetch`:
+`FETCH_ALLOWED_DOMAINS` is one machine list of exact hosts (`kernel/home.py:275-279`,
+`platform/fetch.py:259-262`), empty by default, so the only way to let one pod read the web was to
+let every pod read the same hosts. `fetch` runs in docket's process, outside the jail
+(`platform/fetch.py`), which is why the jail's `none` never decided it and why it can be scoped per
+pod without touching the jail (finding 8).
+
+Options weighed:
+
+| Option | For | Against |
+| --- | --- | --- |
+| Keep the machine list | nothing new | one pod's research host is every pod's |
+| A pod list of hosts, `*.` for subdomains | scoped, auditable, the shape `allowCommands` already has | a list to keep |
+| "Any host" for a pod, granted like `network open --widen` | research over unknown sites works | any page is untrusted input to a model that may hold `write` |
+| A search tool | finds sources | needs a provider and its credential; refused in ADR 0034 |
+
+17. **A pod declares the hosts its `fetch` reads.** The pod setting `fetchDomains` is a list of
+    hosts; an entry `*.example.org` matches every subdomain of `example.org` and not the apex. The
+    hosts a member's `fetch` reaches are the machine's `FETCH_ALLOWED_DOMAINS` (which also accepts
+    `*.`) plus its pod's list; the redirect guard holds to the same set. `*` alone means any host,
+    and only `docket pod set fetchDomains '*' --widen` writes it: it says what opens, asks `[y/N]`,
+    records and audits the grant, as decision 12 does; `pod update` and the HTTP apply never write
+    it. `fetch` stays a GET with no headers, body or token. A member's `capabilities.tools` lists
+    `fetch` only when that set is not empty and its role does not deny it, and
+    `capabilities.fetchDomains` lists the set. There is no search tool: a search site is a host
+    (`html.duckduckgo.com`), and a search API is a declared service (decision 13).
+
+*Cards:* Phase 61, P61-2 on `TODO.md`.
+
 ## Not doing
 
 - Native browser, mail, chat or CRM tools, and methods, headers or bodies on `fetch`: capability comes
   from MCP servers or from a declared service (decision 13), docket keeps the gate (the reasoning that
   refused a native search tool, ADR 0034). A declared service is configuration, not a tool per product.
   OAuth flows and token refresh belong to the server that wraps the API.
-- An HTTP or SSE MCP transport, a `task`-long MCP session, a per-pod `fetch` allowlist (deferred).
+- An HTTP or SSE MCP transport, a `task`-long MCP session (deferred).
 - Per-host network rules inside the jail: it is all or nothing (finding 8), which is why a widened
   pod's outward roles hold no `exec`.
 - An unredacted copy of an outward call anywhere but the pending approval record: not in the
@@ -292,7 +328,6 @@ prose, connectors and policy, documented, never shipped as a blueprint.
 ## Deferred, with triggers
 
 - **HTTP/SSE MCP transport.** Trigger: the first real pod whose connector exists only hosted.
-- **A per-pod `fetch` allowlist.** Trigger: two pods on one machine that need different hosts.
 - **`lifetime: task` for an MCP server.** Trigger: a recorded run in which a following hop needed
   the previous hop's session.
 - **A structured-output gate** (a result that must match a schema). Trigger: a recorded run whose

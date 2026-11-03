@@ -86,3 +86,39 @@ dialect already sends, not an A2A `Task`; the client reads the state with `tasks
 config with a `token` or `authentication` is refused, because a channel document stores credential
 names and never values. The task-scoped channel is never deleted when its task ends; a later
 sweep may remove it.
+
+## Amendment, 2026-11-03: one question per escalation, and a missing capability is not a question
+
+**Status: accepted 2026-11-03** by the maintainer, from the maintainer's request the same day (Tack's
+report on a `web-research` task). Decisions 1 to 5 are unchanged.
+
+**Why.** Four steps of one research task met the same three gaps, each handed off `ok`, and the
+last opened one consult whose message held three blockers and whose option A asked for three things
+at once (network or exported sources, the team folder's path, and implicitly the records tool).
+Every gap was in docket's own configuration: the Lead had already been refused `unknown tool
+'rec__tack_proposals__add'` with the note that the tool "is offered when the pod declares that
+record set", the pod's network was `none`, and the folder existed but neither the pod report nor
+the hop message gave its path.
+
+Options weighed for several questions:
+
+| Option | For | Against |
+| --- | --- | --- |
+| `questions[]` on one escalation | one record per pause | `resolve` takes one `option_id` (decision 2); the answer, the render, Telegram, A2A and the operator-v2 schemas all change |
+| One escalation per question | every surface already handles it; one additive field | a person sees several records for one step |
+
+6. **One question per escalation.** `consult` takes `questions` (one to five), each with its own
+   `kind`, `message`, `options` and `recommendation`, and docket opens one escalation per question:
+   same task, step and role, each with `part: {index, count}` (1-based) so a client groups them.
+   The step stays parked until every part is settled; the answers return to the turn together, in
+   question order. The tool's description says an option is one action; docket does not try to
+   check it.
+7. **A gap in docket's own configuration is a failure, not a question.** When `dispatch_tool`
+   refuses a call because of something docket can name and fix from its configuration (a tool the
+   pod has but the role lacks, a record set the pod does not declare or the role may not write,
+   `fetch` not held or a host outside its set), the turn stops at once with `failure_kind
+   capability_missing`; the hop records `capabilityMissing: {kind, name, fix}` and the task fails
+   with `failureKind: capability_missing`, never an escalation. A tool name docket does not know at
+   all stays an ordinary refusal the model can recover from.
+
+*Cards:* Phase 61, P61-3 (decision 7) and P61-4 (decision 6) on `TODO.md`.

@@ -16,7 +16,9 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **No active phase.** Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) closed 2026-11-03
+> ## ▶ ACTIVE BOARD — WAVE 60-61 (2026-11-03): Phases 60 and 61
+>
+> **Active: Phases 60 (D-82) and 61 (D-83)**, accepted 2026-11-03, below, in four waves; no card is claimed yet. Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) closed 2026-11-03
 > (decision 5 amended before the push): a step's budget is a checkpoint, not a cliff, and docket keeps no dollars. Its
 > section is archived and what it leaves open is under "Phase 59" in the follow-ups below. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
 > not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
@@ -27,7 +29,7 @@
 > closed 2026-10-30; Phases 52 to 54 closed 2026-10-29. The integration branch is `develop`. A new phase starts from
 > a measured trigger or a maintainer request.
 
-## How work runs on this board (read before claiming a card)
+## How to use this board (read before claiming a card)
 
 1. **One card is one worker run.** Its steps are ordered; each step ends green and committed. A run
    that does not finish parks at its last green commit and the card's Status names what is left; the
@@ -85,11 +87,366 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
+## ▶ PHASE 60 ACTIVE — WAVE 60-61 · a transient failure costs a request, not a step (D-82) · accepted 2026-11-03
+
+> From an app-dev Implementer step (`task-61932818`, 2026-11-03) that failed `hop_failed` after three
+> requests to haiku-5-5 each received no byte in 120 s, while the other 152 requests of the live home
+> took p99 11.6 s. Measured in the traces and the stored sessions of `~/.docket` (2026-10-24..11-03);
+> the maintainer's analysis is in the gitignored `internal-docs/audits/`. API stays 6.
+>
+> **Waves (by file):** 1: P60-1 ‖ P60-3 ‖ P61-1 · 2: P60-2 (after P60-1) ‖ P61-2 · 3: P61-3 ‖ P61-5 ·
+> 4: P61-4. P60-1 owns `agent/loop*.py`, `agent/ports.py`, `driver_support.py`, `runner.py`; P60-3 owns
+> `tasks/application/record.py` until P61-3.
+
+### P60-1 — A transient failure is retried per request, inside the turn
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
+
+- **Trigger:**
+  - The three failed requests had 10-17k input tokens; each ended the turn (`agent/loop.py`
+    ~470-481), and `hops/application/runner.py::_run_hop_turn` (~141-260) re-ran it: the session
+    was compacted (three summary requests, ~25 s) and the model re-read for 6-8 rounds. The step's
+    two retries (`DISPATCH_RETRIES_*`) were spent on three stalls in nine minutes; the step ran
+    532 s on a 300 s clock, because every attempt gets a fresh clock and a fresh token budget.
+  - By code, not yet seen: `agent/loop_budget.py::request_timeout` (~202-209) cuts a request to
+    the clock left; when it fires the adapter returns `timeout`, which the runner retries with a
+    fresh clock. ADR 0038: `timeout` means only a request or transport timeout.
+- **Goal:**
+  - One function sends a request and retries `timeout` and `daemon_error` up to the step's retry
+    count (step `retries`, then `DISPATCH_RETRIES_<ROLE>`, then `DISPATCH_RETRIES_DEFAULT`, as
+    today), sleeping `min(max(DISPATCH_RETRY_BACKOFF_S × n, Retry-After), DISPATCH_RETRY_MAX_WAIT_S)`.
+    The task request and the compaction summary request (`loop_compaction.py` ~112, ~208) both use
+    it. A retry whose wait does not fit in the clock left is not made. Each retry is traced as
+    `request_retry` `{attempt, retries, failureKind, error, retryAfterS}`.
+  - A request whose timeout was the clock left, not `request_timeout_s`, ends the turn
+    `budget_exhausted` `{bound: time}` under P59-3's landing rules, never `timeout`.
+  - The hop's in-place retry is deleted: the loop in `_run_hop_turn`, `_RETRYABLE_FAILURE_KINDS`,
+    the backoff sleep and the `hop_retry` event. One turn per hop. The hop's `attempts` is
+    `1 + TurnResult.request_retries`.
+- **Non-goals:** streaming (follow-up below); changing `AGENT_LOOP_REQUEST_TIMEOUT_S` (120 s is what
+  a full 8,192-token reply needs at the slowest measured 90 tokens/s); retrying anything after a
+  response body arrived (`invalid_output`, a truncated reply); a new setting.
+- **Change:**
+  - `agent/loop_request.py` (the retrying send); `agent/loop.py` ~433-481 (the request site);
+    `agent/loop_compaction.py` ~112, ~208; `agent/loop_budget.py::request_timeout` (say whether the
+    clock set the timeout); `agent/loop_types.py` (`LoopConfig.request_retries`,
+    `AgentLoopResult.request_retries`); `agent/ports.py` `TurnResult` (~187-201);
+    `hops/application/driver_support.py::_loop_config` (~329; the count travels like the hop
+    timeout's source); `hops/application/runner.py` (~49, ~141-260).
+  - Specs: `agent-loop.spec.md` a "Transport retries" section after "Per-request endpoint fit"
+    (~382) and the clock-cut request under "Stop conditions" (~85); `pod-dispatch.spec.md`
+    "Retries and the failure-kind taxonomy" 2-6 (~563-605): retries move to the request,
+    `attempts` counts requests tried, requirement 6 keeps only the retried-task half.
+- **Acceptance (RED first):**
+  - `tests/unit/agent/test_loop.py`, fake backend and fake sleep:
+    - `[timeout, ok]` ends ok with `request_retries == 1`, one `request_retry` event, and no message
+      from the failed request in the session. Oracle: before the change the turn ends `ok: false`.
+    - `[timeout] × 3` with retries 2 ends `failure_kind == "timeout"` after three requests and sleeps
+      `[2, 4]`; `daemon_error` with `retry_after_s=5` sleeps 5.
+  - `tests/unit/agent/test_loop_budget.py`: a clock of 10 s, a request sent with 3 s left, the
+    transport timeout fires → `budget_exhausted` `{bound: time}`; the same with `request_timeout_s`
+    the smaller limit → `timeout`. Oracle: before, both are `timeout`.
+  - `tests/unit/agent/test_loop_compaction.py`: a summary request `[timeout, ok]` compacts.
+  - `tests/integration/tasks/test_retries_and_timeouts.py`: a fake driver returning `daemon_error`
+    runs once, `attempts == 1 + its request_retries`, and no `hop_retry` event exists. Oracle:
+    before, three runs.
+  - Real run (integrator, phase close): a throwaway home and pod on haiku-5-5 with
+    `AGENT_LOOP_REQUEST_TIMEOUT_S=8` (the measured p90 is 7.5 s, so about one request in ten times out and three in a row is rare): the
+    trace holds `request_retry` events and the task ends `done`.
+- **Gate:** the four files under `timeout 120`; `tests/architecture` (3 s); `tests/e2e -n auto`
+  (42 s: `attempts` on the HTTP task).
+
+### P60-2 — The hosted profile sizes the kept history from the model's window
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P60-1
+(`loop_types.py`, `loop_compaction.py`, `driver_support.py`)
+
+- **Trigger (live home, 152 Anthropic requests):**
+  - 57 requests (37 %) report `cacheMiss: messages_changed` and fall back to the 5,116-token
+    system-and-tools prefix. Cache writes are 696k tokens against ~238k for a prefix that only
+    grows (2.9×), and a write counts as a new token toward every budget.
+  - Replaying the 113 requests of the stored sessions through `condense_history`: 43 (38 %) rewrite
+    an earlier message, every one a batch boundary of `session-history.spec.md` requirement 30,
+    none from requirement 32. The batch is 6,000 characters with a 3,000 low water
+    (`agent/session.py` ~67-73, ~330), sized for a 32k window and applied to a 1M one.
+  - Turn-start compaction uses the role's context budget (8,000 for the Implementer;
+    `session_compaction.py` ~438 calls `budget_for_role` without the window), because
+    `LoopConfig.history_budget_tokens` (`loop_types.py` ~90) has no writer. The step above was
+    compacted from 21k to 8k tokens on each retry.
+  - The same replay with the history budget below (25,000 tokens: 18,750 / 9,375 characters):
+    21 of 113 (19 %).
+- **Goal:**
+  - `BudgetShares` gains `history` (a share of the window in (0, 1]). `hosted` declares
+    `history: 0.025`; `local` declares none. The resolved history budget is
+    `max(role context budget, floor(window × share))`, and the role's context budget without a
+    share or a window (today).
+  - The driver writes `LoopConfig.history_budget_tokens` from it; turn-start compaction already
+    takes that parameter.
+  - `condense_history`'s whole-results budget is `max(6000, history_tokens × bytes_per_token × 3 //
+    16)` (3/16 is today's ratio: 6,000 of the 32,000 characters an 8,000-token history holds) and
+    its low water half of it; `HISTORY_LOW_WATER_CHARS` is deleted. A role budget of 8,000
+    gives 6,000 and 3,000, so `local` stays byte for byte.
+- **Non-goals:** a second cache breakpoint (follow-up below); `local`'s numbers; the role's
+  `tokenBudget` for the compiled context (`compose.py` ~369); any number keyed by model id.
+- **Change:** `models/catalog.py` (`BudgetShares` ~117, `ProfileBudgets` ~134, `BUILTIN_PROFILES`
+  ~157, `_budgets_of` ~169); `hops/application/driver_support.py` (`_turn_budgets` ~191,
+  `_loop_config` ~329); `agent/loop_compaction.py::messages_for_durable` (~244); `agent/session.py`
+  (~67-73, `_batch_cut` ~327, `condense_history` ~356). Specs: `model-profiles.spec.md` "Model
+  profiles" 1-2 (~430-445); `session-history.spec.md` 29-31 (~156-188), the boundary promise
+  unchanged.
+- **Acceptance (RED first):**
+  - `tests/unit/models/test_catalog__profile.py`: `hosted` with a 1,000,000 window and a role budget
+    of 8,000 resolves 25,000; with 200,000 it resolves 8,000; `local` with 32,768 resolves 8,000. A
+    provider document with `budgets: {history: 0}` is refused naming the field.
+  - `tests/unit/agent/test_session__condense.py`: a history of 25,000 gives 18,750 and 9,375, and a
+    fixture of growing results moves the cut once where 6,000 moved it three times; at 8,000 the
+    existing cases pass unchanged.
+  - `tests/unit/agent/test_loop_compaction.py`: a 21,000-token session with
+    `history_budget_tokens=25000` is not compacted at turn start; with 8,000 it is. Oracle: before
+    the change the first is compacted.
+  - `scripts/maint/context_replay.py tests/fixtures/context-replay` under the local policy: no step
+    worse than recorded (P52-2's oracle).
+  - Real run (integrator): one app-dev task on haiku-5-5 reports `messages_changed` on at most 20 %
+    of its requests (37 % before).
+- **Gate:** the three unit files under `timeout 120`; `tests/architecture`; the replay bench.
+
+### P60-3 — A failed Implementer hop keeps its work after a transport stop
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
+
+- **Trigger:** `task-61932818`'s hop record has `files_changed: []` and Tack shows "This run changed
+  no files", while the task worktree holds `guard.ts` and `guard.test.ts` modified and
+  `src/lib/botcheck/` new. `tasks/application/record.py::_keeps_its_work` (~413-415) pins only
+  `budget_exhausted`, narrower than ADR 0038 decision 2.
+- **Goal:** an Implementer hop that ended `budget_exhausted`, `timeout` or `daemon_error` is pinned
+  as P59-2 pins it (commit, `filesChanged`, evidence); it stays `ok: false`, and `budget` stays
+  `null` for a transport stop.
+- **Non-goals:** other roles; approvals, `invalid_output`, `no_progress` and cancellation keep
+  today's behaviour (P61-3 adds `capability_missing`).
+- **Change:** `record.py` ~413-415; `pod-dispatch.spec.md` "Implementer diff producer" (~1717).
+- **Acceptance (RED first):** a new `tests/integration/tasks/test_failed_hop_keeps_work.py`: a fake
+  Implementer driver writes `app.txt` and returns `timeout` → the hop is `ok: false` with
+  `artifact.filesChanged == ["app.txt"]` and the task branch has a commit holding it; a Reviewer
+  hop that ends `timeout` pins nothing. Oracle: before, `filesChanged == []`.
+- **Gate:** that file; `tests/architecture`; `tests/e2e -n auto` (the HTTP task shape).
+
+## ▶ PHASE 61 ACTIVE — WAVE 60-61 · a pod says what it can reach (D-83) · accepted 2026-11-03
+
+> Tack's request, carried by the maintainer, from `task-6d3fc1e9` on `web-research`: four steps met
+> the same three gaps, each handed off `ok`, and the writer opened one consult that mixed them
+> (`esc-7b6ebde7f664`; option A asked for three things). Verified live on `GET /pods/web-research`
+> and in the code. Every change is additive on API 6, announced in `features`, and its new JSON is
+> captured under `tests/fixtures/operator-v2/` for Tack. No contract version moves. ADR 0036
+> decision 17 and ADR 0032 decisions 6-7 are written; the cards build them.
+
+### P61-1 — The pod report says whether its network is enforced, and where its folder is
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** none
+
+- **Trigger:**
+  - `network` is `{mode, scope}` (`hops/application/report.py` ~416-418; members ~361-363), and
+    `GET /pods` rows carry none (`pod_summary` ~518-531). `teams/network_posture.py::network_posture`
+    (~28) computes `enforced` from isolation alone, not the backend, and only the CLI uses it.
+  - Tack read `workdir: null` because no field carries it: all six `web-research` members hold
+    `workDir` (`pods/web-research/workdir`, present on disk).
+- **Goal:** `network.enforced: bool` on the pod, each member and each `GET /pods` row (which gains
+  `network`): true only when the mode is `none`, isolation is on
+  (`teams/fleet.py::get_isolation_enabled` ~249) and a backend exists
+  (`sandbox_availability().backend != "none"`). `network_posture` takes that one fact, so the CLI
+  and HTTP agree. A `workdir` pod's report and row carry `workDir`. Features `networkEnforced` and
+  `podWorkDir` (`interfaces/http/routes/health.py` `FEATURES` ~21-33).
+- **Non-goals:** per-pod isolation; what `none` means.
+- **Change:** `teams/network_posture.py`; `report.py` (~361, ~416, ~518, ~543); `health.py`; specs
+  `specs/api/operator-api.spec.md` (the pod shape), `specs/data/serve-read-api.spec.md` (~114).
+- **Acceptance (RED first):**
+  - `tests/unit/teams/test_network_posture.py`: `none` with isolation on and a backend → enforced;
+    isolation off → not; isolation on and backend `none` → not; `open` → not. Oracle: before, the
+    third is enforced.
+  - `tests/integration/interfaces/test_serve_pods_config.py`: a workdir pod's `GET /pods/<pod>` has
+    `network.enforced` and `workDir`; its `GET /pods` row has `network.enforced`; `/status.json`
+    lists both features. The response, home path normalized to `<home>`, is
+    `tests/fixtures/operator-v2/pod-reach.json`, and the test compares against it.
+  - Live (integrator): after `./install.sh` and a service restart, `GET /pods/web-research` on :7399
+    shows `enforced` agreeing with `docket status`.
+- **Gate:** the two files; `tests/architecture`; `tests/e2e -n auto` (HTTP API).
+
+### P61-2 — A pod declares the hosts its `fetch` reads
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-1
+(`report.py`, `health.py`)
+
+- **Trigger:** the maintainer's request (Tack's report): `web-research` could read the web only
+  through the machine's exact-host list (`kernel/home.py` ~275-279, `platform/fetch.py` ~218,
+  ~259-262), empty by default. ADR 0036 decision 17.
+- **Goal:** decision 17 as written. The pod setting `fetchDomains` (`*.host` for subdomains, never the
+  apex; `*` only through `pod set fetchDomains '*' --widen`, recorded and audited like the network
+  grant). `FETCH_ALLOWED_DOMAINS` accepts `*.`. One matcher serves the call and the redirect guard.
+  `platform` imports nothing above it, so `fetch_url` (`platform/fetch.py` ~243) takes the allowed
+  set as an argument and `allowed_domains()` (~218) goes; `builtin_tools.py` passes the member's
+  set. `_offered_fetch` (`hops/application/builtin_tools.py` ~487-490, ~623) offers `fetch` when the
+  member's set (machine plus pod) is not empty; `member_capabilities`
+  (`hops/application/capabilities.py` ~23-39) lists it only then and adds `fetchDomains`; the pod
+  report adds the pod's declared `fetchDomains`. Feature `podFetch`.
+- **Non-goals:** a search tool; methods, headers or bodies; network rules inside the jail;
+  `pod update` or the HTTP apply writing `*`.
+- **Change:** `teams/pod_settings.py` (the setting and the grant beside the network one, ~50,
+  ~591-607); `platform/fetch.py`; `builtin_tools.py`; `capabilities.py`; `report.py`; `health.py`;
+  specs `security-gates.spec.md` (fetch), `agent-loop.spec.md` requirement 83 (~697), the pod and
+  member shapes in `operator-api.spec.md`.
+- **Acceptance (RED first):**
+  - `tests/unit/platform/test_fetch.py`: `*.example.org` allows `a.example.org` and
+    `b.a.example.org`, refuses `example.org` and `badexample.org`; a redirect to an unlisted host is
+    refused.
+  - `tests/unit/teams/test_pod_settings.py`: `fetchDomains` set and cleared; `*` refused without
+    `--widen` and recorded with its date and audited with it; a document carrying `*` through
+    `pod update` is refused.
+  - `tests/unit/hops/application/test_builtin_tools.py`: an empty machine list and a pod list
+    `[docs.python.org]` offer `fetch` reaching that host only; a role denying `fetch` gets none.
+    Oracle: before, no `fetch` is offered.
+  - `test_serve_pods_config.py`: the member's `capabilities.tools` has `fetch` and `fetchDomains ==
+    ["docs.python.org"]`; fixture `tests/fixtures/operator-v2/pod-fetch.json`.
+  - Live (integrator): `docket pod set fetchDomains '*.wikipedia.org' --pod web-research`, then a
+    research task: the trace shows an allowed `fetch` of an `es.wikipedia.org` page and a refused
+    one elsewhere.
+- **Gate:** the four files; `tests/architecture`; `tests/e2e -n auto`.
+
+### P61-3 — A configuration gap ends the step with `capability_missing`
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P60-1
+(`agent/`), P60-3 (`record.py`), P61-2 (the `fetch` fix, `health.py`)
+
+- **Trigger:** in `task-6d3fc1e9` the Lead was refused twice `unknown tool
+  'rec__tack_proposals__add'` with "offered when the pod declares that record set", and handed off
+  `ok`; the researcher and the analyst reported no network and handed off `ok`; the writer asked a
+  person. ADR 0032 decision 7.
+- **Goal:**
+  - The driver gives the turn the tool names the pod offers any member and its declared record
+    sets (`capabilities.py`). `dispatch_tool` returns a typed gap `{kind, name, fix}` for:
+    - `tool`: a tool another member holds, or a declared service or MCP server offers, missing
+      from this role; the fix names the role's `tools`.
+    - `records`: `rec__<set>__*` for a set the pod does not declare (declare `records/<set>.yaml`,
+      then `docket pod update`), or one the role may not write (add `rec__<set>` to its `tools`).
+    - `fetch`: `fetch` not held while the task's pod could hold it (`docket pod set fetchDomains
+      <host> --pod <pod>`). A host outside the set stays an ordinary refusal whose text names the
+      same command: a researcher may try several hosts, and one miss is not a gap.
+    The pod's names reach `dispatch_tool` as one typed value on the registry, computed in
+    `driver_support.py` (hops); `agent/` reads no pod, fleet or records module.
+  - The loop stops at the first gap, like the `approval_parked` stop (`agent-loop.spec.md` ~617),
+    with `failure_kind capability_missing`. The hop records `capabilityMissing {kind, name, fix}`;
+    the task fails `failureKind: capability_missing` with `reason` "<role> needs <kind> '<name>':
+    <fix>"; no escalation is opened; an Implementer's work is kept (P60-3's set gains it). Feature
+    `capabilityMissing`.
+  - `pod-dispatch.spec.md`'s failure-kind list (~2268) gains `capability_missing`, and also
+    `hop_failed` and `pod_budget`, which the enum has (`tasks/domain/state.py` ~29-44) and the list
+    lacks.
+- **Non-goals:** spotting a network failure inside `bash` (no deterministic signal; P61-5 tells the
+  model); a name no member has (stays `invalid_call`); a missing workdir (follow-up below).
+- **Change:** `agent/tools/registry.py` (the unknown-tool refusal); `agent/loop_steps.py` (the
+  stop); `agent/ports.py` `FailureKind` (~59-66); `tasks/domain/state.py`; `tasks/domain/task.py`
+  (`HopResult`); `record.py` (`_turn_failure_kind`, `_keeps_its_work`);
+  `hops/application/driver_support.py` (the pod's names); `health.py`. Specs: `agent-loop.spec.md`
+  (a "capability_missing stop" beside ~617), `pod-dispatch.spec.md` (~563 requirement 1, ~2268),
+  the task and hop shapes in `operator-api.spec.md`.
+- **Acceptance (RED first):**
+  - `tests/unit/agent/tools/test_registry__dispatch.py`: each kind returns its gap and fix; a name
+    no member has is `invalid_call` as today.
+  - `tests/unit/agent/test_loop_steps.py`: a turn whose second call meets a gap stops after it with
+    `capability_missing` and sends no further request. Oracle: before, the turn goes on.
+  - A new `tests/integration/tasks/test_capability_missing.py`: a lead → writer pod whose Lead calls
+    `rec__tack_proposals__add` with no set declared: the task is `failed` with `failureKind ==
+    "capability_missing"`, the hop has `capabilityMissing == {kind: "records", name:
+    "tack_proposals", fix: ...}`, no escalation exists and the writer never runs. Fixture
+    `tests/fixtures/operator-v2/task-capability-missing.json`.
+  - The fix sentences pass the CLI invocation linter (`tests/guards/`).
+  - Live (integrator): the same `web-research` task re-run from Tack fails at the Lead with that fix
+    instead of reaching the writer.
+- **Gate:** the three files and the linter guard; `tests/architecture`; `tests/e2e -n auto`.
+
+### P61-4 — One escalation per question
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-2
+(`builtin_tools.py`), P61-3 (`health.py`)
+
+- **Trigger:** `esc-7b6ebde7f664` asked three things in one message, and its option A bundled three
+  requests. ADR 0032 decision 6.
+- **Goal:** `consult` takes `questions` (one to five), each `{kind, message, options,
+  recommendation}`, in place of today's top-level fields. `consult.run` opens one escalation per
+  question, each with `part: {index, count}` (1-based; `{1, 1}` for one question, absent on other
+  kinds). The step stays parked until every part is settled, and the answers reach the turn
+  together in question order. A pod in `consultMode: decide` decides each part by its
+  recommendation. The tool's description says an option is one action. Feature `consultParts`.
+- **Non-goals:** `questions[]` on one escalation; checking options mechanically; Telegram beyond
+  showing `1/3`.
+- **Change:** `builtin_tools.py` (`_consult_tool` ~186-222, `_consult_handler` ~114);
+  `tasks/application/consult.py` (~163, ~206); `tasks/application/escalations.py`
+  (`open_for_question` ~214-249, `decided_consult` ~352, `resolve` ~603);
+  `hops/application/resolutions.py` (`_unapplied` ~110, `apply_resolutions` ~197: a question's
+  parts are applied together, and none while one is pending); `kernel/operator_contract.py`
+  (`_EscalationFields` ~289-316, `as_question` ~325); `docs/contracts/operator-v2/question.schema.json`
+  (additive `part`, no version change). Specs: `operator-loop.spec.md` "11. Escalations" (~690) and
+  "Consult" (~1036), `specs/api/operator-api.spec.md` (~478), `specs/data/docket-store.spec.md`
+  "Escalation records" (~73).
+- **Acceptance (RED first):**
+  - `tests/integration/tasks/test_consult_budget.py` or a new sibling: three questions open three
+    escalations on one task and step with parts 1/3 to 3/3; answering one leaves the task parked;
+    answering all sends the three answers, in order, in the turn's next request. Under
+    `consultMode: decide` the three are decided. Oracle: before, one escalation.
+  - `tests/contracts/test_escalation_http.py` (35 s): `GET /escalations` shows `part`; new fixture
+    `tests/fixtures/operator-v2/escalation-consult-parts.json`; `escalation-consult.json` gains
+    `part: {index: 1, count: 1}`.
+  - Live (integrator): a `web-research` task told to ask two independent questions shows two
+    escalations in `docket inbox` and in Tack.
+- **Gate:** the two files; `tests/architecture`; `tests/e2e -n auto`.
+
+### P61-5 — The hop message states the member's reach and folder
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-1,
+P61-2 (the facts it states)
+
+- **Trigger:** in `task-6d3fc1e9` the researcher and the analyst learned "no internet" by failing on
+  DNS, and the writer "could not find the team folder's path": a workdir hop reads only "the pod's
+  working directory" (`hops/application/compose.py` `_WORKDIR_LINE` ~136, `_root_line` ~142), and
+  neither `compose.py` nor `teams/identity.py` states the network, the web or the record sets.
+- **Goal:** `_hop_message` (~307) carries a short block from the facts the pod report serves: the
+  working folder's path (workdir pods); the network (`none, enforced by the jail` · `none, not
+  enforced: isolation is off` · `open`); the web (`fetch reads <hosts>, outside the jail` · `no web
+  access`); the record sets the role may write, or none. It goes in the hop message, beside the
+  working-directory line it already carries, because these facts are the pod's and the task's,
+  not the member's identity. Its wording lives where ADR 0035 keeps hop text, under
+  that ADR's version rule.
+- **Non-goals:** listing tools (the tool list does); repeating the block in a continuation message.
+- **Change:** `compose.py` (~136-142, ~307) and the hop text file ADR 0035 names; the hop message
+  section of `pod-dispatch.spec.md`; goldens whose hop text gains the block, regenerated with a diff
+  that shows only the block, named in the commit body.
+- **Acceptance (RED first):** `tests/unit/hops/application/test_compose__hop_message.py`: a workdir
+  pod with network `none` enforced, `fetchDomains [docs.python.org]` and `tack_proposals` writable
+  by the role reads exactly those four facts; a codebase pod with nothing reads `none`, `no web
+  access`, no records. Oracle: before, none of the lines exist. Live (integrator): the first request
+  of a `web-research` task holds the block (`prompt_composed`).
+- **Gate:** that file; `tests/golden/run.sh verify-all` (4 s); `tests/architecture`.
+
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
 > dedup is persisted (`operator/notify.py`), the `kind:`-less canonical-document advisory is gone, and
 > `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
+
+**Phases 60-61 (planned 2026-11-03).** Left out of the cards on purpose:
+- *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
+  because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
+  `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
+  its retries.
+- *A cache breakpoint at the condensed boundary.* Replayed: with P60-2's sizes, a miss would re-send
+  69 % of what it re-sends without one. Trigger: after P60-2, `messages_changed` on more than 20 % of
+  a real task's requests.
+- *A missing workdir folder.* Not seen: `web-research`'s exists, and Tack's `workdir: null` was the
+  absent field (P61-1). Trigger: a dispatch whose recorded `workDir` is gone; then the docket-owned
+  default is recreated, and a declared location becomes a profile violation and a `POST /tasks` 422.
+- *A network failure inside `bash`.* No deterministic signal; P61-5 states the posture. Trigger: a
+  recorded hop that tried the network after its message said `none`.
+- *Approvals for shell idioms.* 7 of the live home's 9 failed hops (2026-10-24..11-03, mostly before
+  Phase 59) parked on `$(`, `${` or a redirect to `/tmp`. Trigger: a week after Phase 59 in which
+  approvals park more than one Implementer hop in five.
 
 **Toolchain read grants (dropped from Phase 48).** A sibling project's gates failed with exit 126 under the
 jail until each toolchain under `$HOME` (`~/.nvm`, `~/.pyenv`, `~/.cargo`) was granted by hand with
