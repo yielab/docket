@@ -17,7 +17,7 @@
 > finishing a card well matters more than running two at once.
 >
 > **Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) is reopened** (decision 5 amended 2026-11-03), nine cards
-> below, five done: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
+> below, seven done: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
 > not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
 > **Phase 57** (D-79, [ADR 0037](docs/adr/0037-what-docket-gives-a-manager-in-the-plan-of-record.md)) closed 2026-11-01. Before it, Phase 56 (D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16) closed
 > 2026-10-30: an external service is declared, not programmed; a pod keeps records; one judge; one home layout; the
@@ -474,7 +474,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-6 — Rounds and tool calls are guards, not budgets
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec (deletion) · **After:** P59-3
+**Status:** DONE 2026-11-03 (c7de0938) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec (deletion) · **After:** P59-3
 
 - **Trigger:** the amendment in the phase trigger (an explicit scoped request). A round or a tool call
   is not a cost, and as a declared budget it cut legitimate work: the incident stopped on rounds at
@@ -534,7 +534,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-7 — A pod's budget is tokens: `budgetTokens` replaces `budgetUsd`
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec (rename by script, then by hand) · **After:** P59-6 (`pod-dispatch.spec.md`)
+**Status:** DONE 2026-11-03 (6c4474fc) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec (rename by script, then by hand) · **After:** P59-6 (`pod-dispatch.spec.md`)
 
 - **Trigger:** the amendment. `budgetUsd` gates a dollar estimate (`hops/gates/pre_hop.py`
   `pod_gating_cost` ~40-62 prices tokens through the catalog; `DocketDriver` records no cost), and
