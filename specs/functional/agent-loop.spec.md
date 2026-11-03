@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 3.11.0
+**Version**: 3.12.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -699,6 +699,8 @@ This specification does NOT cover:
     `wrote <path>: N bytes, M lines, ends with newline: yes|no (created|overwritten)`, where
     `<path>` is the workspace-relative path other tools print, N the UTF-8 byte count of the file
     written, M its line count, and the parenthesis says whether the file existed before the call.
+    `edit` **MUST** reply `replaced N occurrence(s) in <path>` with the same workspace-relative
+    `<path>`, never the absolute path of the root it resolved under.
 87. A tool call whose required argument is declared `"type": "string"` in the tool's parameter
     schema but arrives as another JSON type (`null`, a number, an object) **MUST** be refused with
     `invalid_call` through `dispatch_tool` like a missing argument (requirement 2); the value

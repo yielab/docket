@@ -217,7 +217,9 @@ def edit_file(
     except OSError as ex:
         return ToolOutcome(False, error=f"cannot write {path}: {ex}")
     replaced = occurrences if replace_all else 1
-    return ToolOutcome(True, content=f"replaced {replaced} occurrence(s) in {target}")
+    return ToolOutcome(
+        True, content=f"replaced {replaced} occurrence(s) in {_display_path(roots, target)}"
+    )
 
 
 def _not_found(path: str, text: str, old_string: str) -> str:
