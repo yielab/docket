@@ -5,10 +5,12 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable
 
+import pytest
+
 from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
 from docket.agent.loop_state import TurnState
-from docket.agent.loop_types import LoopConfig
-from docket.agent.ports import TokenUsage
+from docket.agent.loop_types import AgentLoopResult, LoopConfig
+from docket.agent.ports import BudgetStop, TokenUsage
 
 SUBJECT = "docket.agent.loop_budget"
 
@@ -127,7 +129,7 @@ class TestCheckIterationBounds:
         state = make_turn_state(LoopConfig(wall_clock_timeout_s=10), clock=lambda: 11.0)
         _timeout, stop = TurnBudget(state).check_iteration_bounds()
         assert stop is not None
-        assert (stop.stop_reason, stop.failure_kind) == ("timeout", "timeout")
+        assert (stop.stop_reason, stop.failure_kind) == ("timeout", "budget_exhausted")
 
     def test_the_request_timeout_is_cut_to_the_remaining_wall_clock(
         self, make_turn_state: MakeState
@@ -161,3 +163,74 @@ class TestCheckIterationBounds:
         assert stop is not None
         assert stop.stop_reason == "run_cancelled"
         assert state.iteration == 0
+
+
+class TestARunOutBoundIsABudgetStop:
+    """Rounds, tool calls, wall clock and tokens end the turn as `budget_exhausted` and say how much."""
+
+    def _stop(self, state: TurnState) -> AgentLoopResult:
+        budget = TurnBudget(state)
+        stop = None
+        for _ in range(state.cfg.max_iterations + 1):
+            _timeout, stop = budget.check_iteration_bounds()
+            if stop is not None:
+                return stop
+        raise AssertionError("no bound fired")
+
+    @pytest.mark.parametrize(
+        ("bound", "cfg", "state_kwargs", "clock", "expected"),
+        [
+            (
+                "rounds",
+                LoopConfig(max_iterations=2, max_iterations_source="step"),
+                {},
+                0.0,
+                BudgetStop("rounds", 2, 2, "step"),
+            ),
+            (
+                "toolCalls",
+                LoopConfig(max_tool_calls=3, max_tool_calls_source="role"),
+                {"tool_calls_executed": 3},
+                0.0,
+                BudgetStop("toolCalls", 3, 3, "role"),
+            ),
+            (
+                "time",
+                LoopConfig(wall_clock_timeout_s=10, wall_clock_source="pod"),
+                {},
+                11.0,
+                BudgetStop("time", 10, 11, "pod"),
+            ),
+            (
+                "tokens",
+                LoopConfig(token_budget=100),
+                {"total_usage": TokenUsage(input_tokens=101)},
+                0.0,
+                BudgetStop("tokens", 100, 101, "default"),
+            ),
+        ],
+    )
+    def test_each_bound_returns_the_kind_and_the_figures(
+        self,
+        make_turn_state: MakeState,
+        bound: str,
+        cfg: LoopConfig,
+        state_kwargs: dict[str, object],
+        clock: float,
+        expected: BudgetStop,
+    ) -> None:
+        state = make_turn_state(cfg, clock=lambda: clock, **state_kwargs)
+        stop = self._stop(state)
+        assert (stop.ok, stop.failure_kind, stop.budget_stop) == (
+            False,
+            "budget_exhausted",
+            expected,
+        )
+        assert expected.bound == bound
+
+    def test_a_cancelled_turn_carries_no_budget_stop(self, make_turn_state: MakeState) -> None:
+        base = make_turn_state()
+        state = make_turn_state(ctx=dataclasses.replace(base.ctx, cancellation_check=lambda: True))
+        _timeout, stop = TurnBudget(state).check_iteration_bounds()
+        assert stop is not None
+        assert (stop.failure_kind, stop.budget_stop) == ("run_cancelled", None)

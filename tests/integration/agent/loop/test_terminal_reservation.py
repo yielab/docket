@@ -304,7 +304,7 @@ class TestTerminalResponseReservation:
 
         assert not result.ok
         assert result.stop_reason == "token_budget"
-        assert result.failure_kind == "invalid_output"
+        assert result.failure_kind == "budget_exhausted"
         assert "used 80" in result.error
         assert "input 15 + output reserve 10" in result.error
         assert "remaining 20" in result.error
@@ -382,7 +382,7 @@ class TestTerminalResponseReservation:
 
         assert not result.ok
         assert result.stop_reason == "token_budget"
-        assert result.failure_kind == "invalid_output"
+        assert result.failure_kind == "budget_exhausted"
         assert result.tool_calls_executed == 1
         assert len(backend.calls) == 2
         assert backend.tool_specs[1] == []

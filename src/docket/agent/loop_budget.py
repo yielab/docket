@@ -132,7 +132,6 @@ class TurnBudget:
                     f"exceeded max_iterations={self.state.cfg.max_iterations}"
                     + limit_origin("max_iterations", self.state.cfg.max_iterations_source)
                 ),
-                failure_kind="invalid_output",
             )
         elapsed = self.state.clock() - self.state.started
         if elapsed > self.state.cfg.wall_clock_timeout_s:
@@ -143,7 +142,6 @@ class TurnBudget:
                     f"exceeded wall_clock_timeout_s={self.state.cfg.wall_clock_timeout_s}"
                     + limit_origin("wall_clock", self.state.cfg.wall_clock_source)
                 ),
-                failure_kind="timeout",
             )
         if self.state.total_usage.counted_tokens > self.state.cfg.token_budget:
             return 0, self.state.done(
@@ -153,7 +151,6 @@ class TurnBudget:
                     f"exceeded token_budget={self.state.cfg.token_budget} "
                     f"(used {self.state.total_usage.counted_tokens})"
                 ),
-                failure_kind="invalid_output",
             )
         if self.state.tool_calls_executed >= self.state.cfg.max_tool_calls:
             return 0, self.state.done(
@@ -163,7 +160,6 @@ class TurnBudget:
                     f"exceeded max_tool_calls={self.state.cfg.max_tool_calls}"
                     + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source)
                 ),
-                failure_kind="invalid_output",
             )
         remaining = max(1, int(self.state.cfg.wall_clock_timeout_s - elapsed))
         return min(self.state.cfg.request_timeout_s, remaining), None

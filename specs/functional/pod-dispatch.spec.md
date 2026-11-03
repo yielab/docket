@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.15.0
+**Version**: 11.16.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -559,15 +559,16 @@ wired agent's conversation current with the task it is working.
 ### Retries and the failure-kind taxonomy
 
 1. Every agent turn's outcome (`TurnResult`) **MUST** carry a `failure_kind` on failure: `timeout`
-   (the turn exceeded its timeout), `daemon_error` (the stable label for a runtime or transport
+   (a request or transport timeout, never a budget), `budget_exhausted` (the turn ran out of rounds,
+   tool calls, tokens or wall-clock time -- agent-loop.spec.md requirement 107), `daemon_error` (the stable label for a runtime or transport
    failure), `nonzero_exit` (an invoked process returned a real non-zero result), `invalid_output`
    (the runtime returned output that could not be used, including a turn stopped on an approval it
    could not get), or `run_cancelled` (the owning run's cancellation signal was observed -- see
    "Cancellation"). A successful turn carries no `failure_kind`. The `daemon_error` spelling is
    persisted API vocabulary; it does not imply an external process dependency.
 2. Only `timeout` and `daemon_error` **MUST** be treated as retryable -- a transient hiccup, not a
-   real answer. `nonzero_exit` and `invalid_output` (and, separately, a bad Reviewer
-   verdict -- see that gate) **MUST NEVER** be retried: retrying a real failure risks masking it
+   real answer. `budget_exhausted`, `nonzero_exit` and `invalid_output` (and, separately, a bad
+   Reviewer verdict -- see that gate) **MUST NEVER** be retried in place: retrying a real failure risks masking it
    as transient and burns budget for nothing.
 3. A retryable failure **MUST** be retried in place, up to a per-role budget
    (`DISPATCH_RETRIES_PER_ROLE`, default 2 additional attempts -- 3 total tries -- for each of the
@@ -593,8 +594,8 @@ wired agent's conversation current with the task it is working.
    requirement 6), and an in-place retry (requirement 3) after an attempt that made the step's
    session grow. In both cases the turn **MUST** send one continuation message in place of the
    step's prompt, built by a pure function: that the previous turn on this step stopped before it
-   finished and the error, the hop's summary when it has one, up to 20 changed paths read from the
-   step's working tree, and the instruction to continue from where it stopped, not to start over,
+   finished and the error, the hop's summary when it has one, up to 20 changed paths (the failed hop's pinned `files_changed`, "Implementer diff producer"
+   requirement 10, then the step's working tree), and the instruction to continue from where it stopped, not to start over,
    and to finish as the step asks. An attempt that failed before the session grew is retried with
    the original message. Starting over is a new task, never a retry mode.
 
@@ -1715,7 +1716,8 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 ### Implementer diff producer
 
-1. After a **successful** hop, dispatch **MUST** attempt to populate that hop's artifact
+1. After a **successful** hop, and after an Implementer hop that ended `budget_exhausted` (requirement
+   10), dispatch **MUST** attempt to populate that hop's artifact
    `files_changed`/`diff_ref`/`diff` before the artifact is constructed. `diff_ref` and the
    `evidence` of "Hop evidence" are Implementer-only (`None` for every other role); `files_changed`
    and `diff` are filled for any role whose hop left the working tree changed (requirements 6-8).
@@ -1756,6 +1758,16 @@ parsing for any verdict-gated step (`parse_verdict`).
    then `docket task <id>, <role> hop`), so a pipeline with no Implementer (a research or content
    team) leaves its work on the branch. Its `diff_ref` and `evidence` stay `None`; in place, nothing
    is committed for it.
+
+10. An Implementer hop that ended `budget_exhausted` is probed and pinned exactly as a successful one
+    is (requirements 2-6 and the pin of "Hop evidence"): a dirty tree is committed on the task
+    branch, and the artifact carries `files_changed`, `diff_ref`, `diff` and the `evidence`. The hop
+    stays `ok: false`, so no gate reads it as finished, and its record carries `budget`:
+    `{bound, limit, used, source, treeChanged}` (operator-api.spec.md "Task answers"). `source` is the
+    owner of the limit that stopped it (`step`, `role`, `pod`, `default`; `task` for tokens under a
+    task `maxTokens`), as agent-loop.spec.md requirement 104 resolves it. `treeChanged` is `true`
+    when the pin found a dirty tree and so made a new commit. No other failed hop is probed or
+    pinned, a non-Implementer hop that ran out of budget included.
 
 ### Hop evidence (ADR 0017)
 
@@ -2248,13 +2260,14 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    `retry_task`, or `unblock_pod`. Never claimable by any dispatch run, the same
    posture `waiting_approval` has.
 9. Failure kinds. A `failed` task's `failureKind` **MUST** be one of: `stale_claim`,
-   `dispatch_refused`, `base_ref`, `pipeline`, `prepare`, `budget`, `rejected`, `gate_failed`,
+   `dispatch_refused`, `base_ref`, `pipeline`, `prepare`, `budget` (a hop ended `budget_exhausted`, or
+   the task's `maxTokens` was spent), `rejected`, `gate_failed`,
    `gate_needs_human`, `gate_error`, `approval_denied`, `approval_expired` (nobody answered an
    approval by its `expiresAt`, "Parked approvals" item 5), `check_changed`, `needs_human` (a tool
    call needed approval at autonomy level `L5`, security-gates.spec.md "Autonomy levels" item 4),
    or absent for an ordinary
    graded hop or gate failure (a hop's own `TurnResult.failure_kind`, see "Retries", is not copied
-   onto the task). A new terminal result replaces any earlier `failureKind`.
+   onto the task, except that `budget_exhausted` becomes `budget`). A new terminal result replaces any earlier `failureKind`.
 10. Transitions. A task's `status` **MUST** change only through `tasks.domain.state.decide`, applied by
     `tasks.application.transitions.apply_to_task` (the one assignment of `status`; an architecture
     test refuses a second). `decide` is pure: given the record's status, the target and the facts
@@ -2602,7 +2615,8 @@ queue.)
 - A gate (budget, require_approval, `mechanical`, `verdict`, `external`) **MUST NOT** be bypassed by
   an otherwise-`ok` turn -- `ok=True` is necessary but not sufficient for pipeline advancement past a
   gated hop, for any role or archetype, not only the four built-in ones.
-- A hop's failure **MUST NOT** be retried unless its `failure_kind` is `timeout` or `daemon_error`.
+- A hop's failure **MUST NOT** be retried in place unless its `failure_kind` is `timeout` or
+  `daemon_error`. A loop wall-clock stop is `budget_exhausted`, tried once.
   Cooperative run cancellation always surfaces as non-retryable `run_cancelled`; a killed external
   subprocess may surface as a non-retryable `nonzero_exit` or negative-signal exit.
 - A paused pod's queue **MUST NOT** yield any claim until the pause is explicitly cleared.

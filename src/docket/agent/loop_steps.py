@@ -117,7 +117,6 @@ class ToolStep:
                     f"{self.state.tool_calls_executed}); none of this batch was executed"
                     + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source)
                 ),
-                failure_kind="invalid_output",
             )
 
         tool_msgs: list[ChatMessage] = []

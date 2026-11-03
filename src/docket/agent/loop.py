@@ -365,7 +365,6 @@ class _TurnState(TurnState):
                     ok=False,
                     stop_reason="token_budget",
                     error=normal_budget_error,
-                    failure_kind="invalid_output",
                 ),
             )
         self.finalization_attempted = True
@@ -421,7 +420,6 @@ class _TurnState(TurnState):
                     ok=False,
                     stop_reason="token_budget",
                     error=final_budget_error,
-                    failure_kind="invalid_output",
                 ),
             )
         return terminal_messages, [], True, None
@@ -524,7 +522,6 @@ class _TurnState(TurnState):
                         f"(used {self.total_usage.counted_tokens}); response was not persisted "
                         "and its tool calls were not dispatched"
                     ),
-                    failure_kind="invalid_output",
                 ),
             )
 
@@ -541,7 +538,6 @@ class _TurnState(TurnState):
                         "terminal finalization requested tool calls even though no tools were "
                         "advertised; none were dispatched or persisted"
                     ),
-                    failure_kind="invalid_output",
                 ),
             )
         if not assistant_msg.tool_calls and self.closing_call_due(finalizing):

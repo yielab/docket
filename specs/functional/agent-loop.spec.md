@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.13.0
+**Version**: 3.14.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -88,15 +88,19 @@ This specification does NOT cover:
 6. The loop **MUST** stop with `stop_reason="final_message"` and `ok=True` when a response carries
    no tool calls. This **MUST** be the only stop reason for which `ok` is `True`.
 7. The loop **MUST** stop with `stop_reason="max_iterations"` once the configured maximum number of
-   model round-trips would be exceeded, without making a further model call.
+   model round-trips would be exceeded, without making a further model call. The result carries
+   `failure_kind="budget_exhausted"` (requirement 107).
 8. The loop **MUST** stop with `stop_reason="max_tool_calls"` once the configured maximum number of
    dispatched tool calls is reached or would be exceeded. A single response's tool-call batch
    **MUST** be dispatched wholly or not at all — never partially — so a batch that would push the
-   total over the cap is refused in full before any call in it runs.
+   total over the cap is refused in full before any call in it runs. The result carries
+   `failure_kind="budget_exhausted"` (requirement 107).
 9. The loop **MUST** stop with `stop_reason="timeout"` once the configured wall-clock budget for
    the whole turn has elapsed, checked between iterations. Each request's own timeout is the
    smaller of `request_timeout_s` and the wall-clock budget left. The tool clamp of requirement
-   98 keeps a tool from running past that budget.
+   98 keeps a tool from running past that budget. The result carries
+   `failure_kind="budget_exhausted"`, never `timeout`, which now names only a request or transport
+   timeout (requirement 107).
 10. The loop **MUST** stop with `stop_reason="token_budget"` once the turn's cumulative *counted*
     token usage exceeds the configured budget. Counted tokens are `TokenUsage.counted_tokens`:
     `input_tokens - cached_tokens + output_tokens` (a cache read is never counted; a cache write is
@@ -104,7 +108,7 @@ This specification does NOT cover:
     counts) and **MUST NOT** be computed from the bytes-per-token estimate used for compaction. A
     response that carries no tool calls is the exception: it is already paid, so it is persisted
     and returned `ok` even when it crosses the budget (requirement 55 refuses only a response with
-    tool calls).
+    tool calls). The result carries `failure_kind="budget_exhausted"` (requirement 107).
 11. A backend failure (`ChatResponse.ok=False`) **MUST** stop the loop with
     `stop_reason="backend_error"` and the backend's own `failure_kind`, without raising.
 12. `AgentLoopResult.failure_kind` **MUST** be `None` if and only if `ok` is `True`.
@@ -449,11 +453,11 @@ This specification does NOT cover:
 52. If the tool-free finalization request fails the endpoint-window check, it **MUST** return
     `stop_reason="context_fit"`; a context-window failure is never reported as cumulative spend. If
     the request fits that window but cannot fit the cumulative turn budget, the loop **MUST**
-    return `stop_reason="token_budget"` and `failure_kind="invalid_output"` without another backend
+    return `stop_reason="token_budget"` and `failure_kind="budget_exhausted"` without another backend
     call. Its error **MUST** report the configured budget, measured usage, prospective input
     estimate, output reserve, and remaining measured budget without exposing message content.
 53. A finalization response carrying any tool call **MUST NOT** dispatch or persist that call and
-    **MUST** terminate with `stop_reason="token_budget"` and `failure_kind="invalid_output"`. A
+    **MUST** terminate with `stop_reason="token_budget"` and `failure_kind="budget_exhausted"`. A
     tool-free, non-truncated response is persisted normally and remains the sole successful
     `final_message` outcome. Backend failure, truncation, and timeout keep their fail-closed
     outcomes; none causes a second finalization attempt. A truncated ordinary or finalization
@@ -818,6 +822,16 @@ This specification does NOT cover:
     asks for a tool each round, three calls run and the hop ends before a fourth request.
 106. A repeated identical call is the no_progress stop of requirements 77-79 and nothing else:
     its limit is `LoopConfig.no_progress_rounds`, and no second repeat detector exists.
+107. Running out of budget is its own outcome. Every `ok=False` result whose `stop_reason` is
+    `max_iterations`, `max_tool_calls`, `timeout` (the loop's wall clock) or `token_budget`
+    **MUST** carry `failure_kind="budget_exhausted"` and a typed `budget_stop`:
+    `bound` (`rounds`, `toolCalls`, `time` or `tokens`), `limit`, `used` (rounds and tool calls as
+    counted, time in whole seconds, tokens as counted tokens) and `source` (the `LoopConfig`
+    `*_source` of that bound, `default` when it names none). `no_progress`, `tool_denials`,
+    `context_fit`, `run_cancelled` and the approval stops keep their kinds and carry no
+    `budget_stop`. `DocketDriver` copies `budget_stop` onto the `TurnResult` unchanged. A request or
+    transport timeout of the backend is `failure_kind="timeout"` with `stop_reason="backend_error"`
+    and is not a budget stop.
 
 Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tests and code.
 
@@ -857,6 +871,12 @@ class LoopConfig:                              # frozen
     summary_input_budget_tokens: int | None = None # None follows resolved history budget
     context_window_tokens: int | None = None # selected endpoint's registered input+output window
 
+class BudgetStop:                # frozen; agent/ports.py (requirement 107)
+    bound: Literal["rounds", "toolCalls", "tokens", "time"]
+    limit: int
+    used: int
+    source: str                  # step | role | pod | default, or task for tokens
+
 class AgentLoopResult:
     ok: bool
     output: str
@@ -866,6 +886,7 @@ class AgentLoopResult:
     usage: TokenUsage
     error: str
     failure_kind: FailureKind | None
+    budget_stop: BudgetStop | None   # set exactly when failure_kind == "budget_exhausted" (107)
     raw: dict[str, Any]
     retry_after_s: float | None   # from the backend's Retry-After, when it sent one
     model: str                    # the last response's resolved model
@@ -961,7 +982,7 @@ result = run_agent_turn(backend, builtin_registry(), ctx, "agent:demo:default", 
 
 Given a backend that always replies with another tool call, `run_agent_turn` with
 `LoopConfig(max_iterations=60)` (the default) makes at most 60 model calls total, then returns
-`AgentLoopResult(ok=False, stop_reason="max_iterations", failure_kind="invalid_output")` — never an
+`AgentLoopResult(ok=False, stop_reason="max_iterations", failure_kind="budget_exhausted")` — never an
 unbounded loop.
 
 ### A truncated reply carrying a tool call

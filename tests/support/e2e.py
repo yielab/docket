@@ -212,6 +212,16 @@ class World:
         assert isinstance(shown, dict)
         return shown
 
+    def stored_task(self, task_id: str) -> dict[str, Any]:
+        """The task as the pod's queue file holds it: its hops and ``failureKind`` included."""
+        queue = (
+            self.home / "state" / "workspaces" / "projects" / f"{self.pod}-lead" / "TASK_LIST.json"
+        )
+        records = json.loads(queue.read_text(encoding="utf-8"))
+        tasks = records["tasks"] if isinstance(records, dict) else records
+        found: dict[str, Any] = next(t for t in tasks if t["id"] == task_id)
+        return found
+
     @contextlib.contextmanager
     def service(self, *, dispatch: bool = True, interval: int = 1) -> Iterator[Service]:
         """Run ``docket start`` on a free port, wait until it listens, stop it on exit."""
