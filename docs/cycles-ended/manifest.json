@@ -926,5 +926,13 @@
     "heading": "▶ PHASE 61 ACTIVE — WAVE 60-61 · a pod says what it can reach (D-83) · accepted 2026-11-03",
     "bytes": 30633,
     "sha256": "0629babb0f8efedf3ba1d201817983db4a40c2a00bc9b2413a0a7dcb694e1157"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 62 ACTIVE — WAVE 62 · a new user can research without knowing what to install (D-84) · accepted 2026-11-03",
+    "bytes": 7635,
+    "sha256": "e2bc35a6d75bc8526fa7176f8fbf2eea88b6befacc278e4905bd7c037dc093f1"
   }
 ]

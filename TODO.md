@@ -16,9 +16,9 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> ## ▶ ACTIVE BOARD — WAVE 62 (2026-11-03): Phase 62
+> ## ▶ BOARD — no active phase (Phases 60, 61 and 62 closed 2026-11-03)
 >
-> **Active: Phase 62 (D-84)**, accepted 2026-11-03, below, in two waves; no card is claimed yet. Phases 60 (D-82) and 61 (D-83) closed 2026-11-03: a transient failure costs a request, a pod says what it can reach, and `fetch` keeps the perimeter. Their sections are archived and what they leave open is in the follow-ups below. Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) closed 2026-11-03
+> **No active phase.** Phases 60 (D-82), 61 (D-83) and 62 (D-84) closed 2026-11-03: a transient failure costs a request, a pod says what it can reach, and `fetch` keeps the perimeter. Their sections are archived and what they leave open is in the follow-ups below. Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) closed 2026-11-03
 > (decision 5 amended before the push): a step's budget is a checkpoint, not a cliff, and docket keeps no dollars. Its
 > section is archived and what it leaves open is under "Phase 59" in the follow-ups below. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
 > not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
@@ -87,97 +87,6 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
-## ▶ PHASE 62 ACTIVE — WAVE 62 · a new user can research without knowing what to install (D-84) · accepted 2026-11-03
-
-> From the maintainer (2026-11-03): installing docket and running `docket init --recipe web-research`
-> must be enough, and what is still missing must be told, not found as a refusal. P61-8 reads a PDF
-> through `pdftotext`, which a new user must install, and which needs a manual read grant when it lies
-> outside `/usr` and `/opt` (Linuxbrew does). The maintainer accepted one new base dependency to fix
-> it. API stays 6.
->
-> **Waves (by file):** 1: P62-1 · 2: P62-2 (it reports P62-1's readiness). P62-1 owns
-> `hops/application/pdf_text.py`, `sandbox/pdf_extract.py`, `pyproject.toml`, `uv.lock` and the
-> Homebrew formula; P62-2 owns `teams/apply/recipes.py` and the `web-research` recipe.
-
-### P62-1 — The PDF reader runs docket's own Python in the jail, with no external binary
-
-**Status:** DONE 2026-11-03 (live: with no read grant, a web-research fetch of the arXiv paper 1706.03762 returned 30,037 chars of text from docket's own interpreter in the jail; the Seatbelt and Docker paths are untested) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-8 (done)
-
-- **Trigger:**
-  - The maintainer's request (2026-11-03): installing docket and running `docket init` must be enough to
-    read a PDF.
-  - P61-8 needs poppler, and on Linuxbrew (or any prefix outside Landlock's `DEFAULT_RO`) it also needs
-    a manual `docket setup sandbox read add`.
-  - The jail already reads `sys.prefix` and `sys.base_prefix` (`sandbox/landlock.py` ~97-98,
-    `sandbox/seatbelt.py` ~46), so docket's own interpreter runs in it with no grant.
-- **Goal:**
-  - `pypdf` (pure Python, BSD, no required dependencies) becomes a **base** dependency, not an extra:
-    `pyproject.toml`, `uv.lock` and a `resource "pypdf"` block in `Formula/docket-cli.rb` (16 already).
-  - A new `src/docket/sandbox/pdf_extract.py` imports only the standard library and `pypdf`. It sets its
-    own `RLIMIT_AS` (for example 1 GiB) and `RLIMIT_CPU` before it parses, reads `in.pdf` and writes the
-    text of each page to stdout. A failure is exit 1 with one stderr line. The `docket.sandbox` package
-    is already imported in the jail (`-m docket.sandbox.jail`): check that its `__init__` stays light.
-  - In `hops/application/pdf_text.py`, for Landlock and Seatbelt, `EXTRACTOR` and `_ARGS` (~28-29)
-    become `(sys.executable, "-I", "-m", "docket.sandbox.pdf_extract", "in.pdf")`. The `which()` lookup
-    and the poppler refusal go.
-  - Everything else stays as P61-8 has it: one fresh root, network off, no credential, the deadline,
-    the output cap and the fail-closed refusals.
-  - **Docker backend:** the image has no docket venv. Keep the image's `pdftotext` there, as today, or
-    refuse naming a fix; the worker chooses and documents that it is the one place an extractor is
-    external.
-- **Non-goals:** OCR; layout and tables; keeping `pdftotext` as an option on Landlock or Seatbelt (one
-  path, no fallback).
-- **Change:** `pyproject.toml`, `uv.lock`, `Formula/docket-cli.rb`; `sandbox/pdf_extract.py` (new);
-  `hops/application/pdf_text.py`; `tests/unit/hops/application/test_pdf_text.py`;
-  `tests/integration/hops/test_pdf_text__jail.py`; a bomb fixture and the script under `scripts/maint/`
-  that generates it. Specs: `security-gates.spec.md` `fetch` (the PDF rule now says docket's interpreter
-  and `pypdf`), `docs/CONFIGURATION.md` wherever it names poppler. The architecture tests must accept
-  `sandbox/pdf_extract.py` importing a third-party package.
-- **Acceptance (RED first):**
-  - Integration: with no `pdftotext` anywhere on `PATH` (a `PATH` holding only the shell's dirs) and no
-    read grant recorded, `tests/fixtures/documents/hola.pdf` gives "Hola docket". Oracle: on P61-8 this
-    is refused with "install poppler".
-  - Integration: a PDF that inflates past `RLIMIT_AS` (a compressed-stream bomb, generated by the
-    committed script) is refused and no process is left.
-  - Integration: the escape probes (read the token, open a socket, sleep) are rerun against the
-    extractor's command through a fake module seam, or kept as the fake-on-`PATH` test for Docker only;
-    either way each probe is seen to fail inside the jail.
-  - Unit: no `which()` call is made for Landlock or Seatbelt.
-- **Live (integrator):** with the Linuxbrew `pdftotext` hidden from `PATH` and still no read grant, a
-  `web-research` `fetch` of an arXiv PDF returns text. This also clears P61-8's open live step.
-- **Gate:** the two test files; `tests/architecture`; `tests/e2e -n auto`; the escape matrix; `uv build`
-  (the dependency changed).
-
-### P62-2 — A recipe says what its work still needs when it is applied
-
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P62-1
-(it reports P62-1's readiness)
-
-- **Trigger:** the same request. `src/docket/templates/recipes/web-research/README.md` lists its
-  prerequisites in prose, and still says exact hosts in `FETCH_ALLOWED_DOMAINS` and an MCP search
-  server, both stale after P61-2 and ADR 0036 decision 17. Nothing checks them, so a new user finds
-  each gap as a refusal.
-- **Goal:**
-  - `docket init --recipe web-research` and `docket pod update web-research` end with a short readiness
-    block computed from facts the pod report already serves (P61-1, P61-2):
-    - the pod's `fetchDomains` (empty: "the researchers cannot read the web: `docket pod set
-      fetchDomains ...`");
-    - whether a search host is in the set (for example `html.duckduckgo.com`) or a search service is
-      declared;
-    - whether isolation is on (no: "PDFs are not read: `docket setup sandbox on`").
-  - Each line that is not ready names one command. The README is rewritten to `pod set fetchDomains` and
-    a search site as a host, in the same commit. The block is informational: the apply never fails on it.
-  - Where the prerequisites are declared is the worker's decision; the suggestion is a `needs:` list in
-    the recipe's `pod.yaml`, read by `teams/apply/recipes.py`, so other recipes can use it, kept to
-    these three facts.
-- **Non-goals:** writing any setting for the user; a wizard; checking that a search site answers.
-- **Acceptance (RED first):** for a fresh home with isolation off and no `fetchDomains`, the apply
-  output lists three not-ready lines, each with its command, and writes nothing more than today
-  (oracle: today it prints none). After `pod set fetchDomains 'html.duckduckgo.com,*.wikipedia.org'`
-  with isolation on, it reports all ready.
-- **Gate:** the recipes apply test (`tests/integration/teams/test_recipes.py`); `tests/architecture`;
-  `gen_cli_docs --check` if the output is documented.
-
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
@@ -237,6 +146,10 @@ from `main`.
   before the next release tag (or earlier, a user on a Mac): run `hola.pdf` and the bomb fixture through
   `tests/integration/hops/test_pdf_text__jail.py` on a Seatbelt host with the macOS probe-branch technique, and
   once through the Docker backend.
+- *`pod export` drops a recipe's `needs`* (`teams/apply/write.py` ~191, the manifest built there), by design: `needs` is
+  a recipe declaration, not pod state. The "search service" check is a heuristic (a declared service whose name or an
+  operation name contains "search"), and the known search hosts are a constant in `teams/apply/needs.py`. Trigger: a
+  recipe that needs a fact these do not cover, or a search host that is not on the list.
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
