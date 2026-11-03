@@ -7,7 +7,7 @@ import dataclasses
 import json
 import time
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 from tests.support import home as _support_home
@@ -15,10 +15,12 @@ from tests.support import llm as _support_llm
 from tests.support import pods as _support_pods
 from tests.support.cli import call as _call
 
+from docket.agent.ports import CapabilityGap
 from docket.agent.tools import registry as core_tools
 from docket.agent.tools import screening
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.capability_gap import PodOffer
 from docket.agent.tools.registry import (
     Pregrant,
     Tool,
@@ -284,6 +286,101 @@ class TestDispatchChokepoint:
         # test_gated_command_is_not_executed) -- unresolved here too.
         assert (refused.decision, refused.executed) == ("deny", False)
         assert (failed.decision, failed.executed, failed.ok) == ("allow", True, False)
+
+
+def _pod_offer(**changes: Any) -> PodOffer:
+    base = PodOffer(
+        pod="demo",
+        holdable=frozenset({"read", "write", "rec__notes__add"}),
+        record_sets=frozenset({"notes"}),
+        fetch_declarable=True,
+    )
+    return dataclasses.replace(base, **changes)
+
+
+class TestCapabilityGap:
+    """A name the pod offers but the role does not hold is a typed gap; any other unknown name is not."""
+
+    @staticmethod
+    def _registry(offer: PodOffer | None) -> ToolRegistry:
+        registry = builtin_registry()
+        registry.offer = offer
+        return registry
+
+    def _gap(self, ctx: ToolContext, name: str, offer: PodOffer | None) -> ToolResult:
+        ctx.role = "lead"
+        ctx.project = "demo"
+        registry = self._registry(offer).without("write", "fetch")
+        return dispatch_tool(_call(name), ctx, registry)
+
+    def test_a_tool_the_role_could_hold_names_the_roles_tools(self, ctx: ToolContext) -> None:
+        res = self._gap(ctx, "write", _pod_offer())
+
+        assert res.denied and not res.executed
+        assert res.denial_kind == "capability_missing"
+        assert res.gap == CapabilityGap(
+            "tool",
+            "write",
+            "list 'write' in the tools of role 'lead' (its roles/lead.yaml, or the step's tools), "
+            "then run `docket pod update --pod demo`",
+        )
+        assert res.reason == f"lead needs tool 'write': {res.gap.fix}"
+        assert res.as_tool_output().startswith("REFUSED [capability_missing]:")
+
+    def test_a_record_set_the_pod_does_not_declare_says_to_declare_it(
+        self, ctx: ToolContext
+    ) -> None:
+        res = self._gap(ctx, "rec__tack_proposals__add", _pod_offer())
+
+        assert res.denial_kind == "capability_missing"
+        assert res.gap == CapabilityGap(
+            "records",
+            "tack_proposals",
+            "declare records/tack_proposals.yaml in the pod's configuration, "
+            "then run `docket pod update --pod demo`",
+        )
+
+    def test_a_declared_set_the_role_may_not_use_says_to_list_the_set(
+        self, ctx: ToolContext
+    ) -> None:
+        res = self._gap(ctx, "rec__notes__add", _pod_offer())
+
+        assert res.denial_kind == "capability_missing"
+        assert res.gap == CapabilityGap(
+            "records",
+            "notes",
+            "list 'rec__notes' in the tools of role 'lead' (its roles/lead.yaml, or the step's "
+            "tools), then run `docket pod update --pod demo`",
+        )
+
+    def test_fetch_missing_while_the_pod_could_hold_it_names_the_setting(
+        self, ctx: ToolContext
+    ) -> None:
+        res = self._gap(ctx, "fetch", _pod_offer())
+
+        assert res.denial_kind == "capability_missing"
+        assert res.gap == CapabilityGap(
+            "fetch", "fetch", "run `docket pod set fetchDomains <host> --pod demo`"
+        )
+
+    @pytest.mark.parametrize(
+        ("name", "offer"),
+        [
+            ("teleport", _pod_offer()),
+            ("rec__notes__bogus", _pod_offer()),
+            ("fetch", _pod_offer(fetch_declarable=False)),
+            ("write", None),
+            ("rec__tack_proposals__add", None),
+        ],
+    )
+    def test_any_other_unknown_name_stays_an_invalid_call(
+        self, ctx: ToolContext, name: str, offer: PodOffer | None
+    ) -> None:
+        res = self._gap(ctx, name, offer)
+
+        assert res.denied and res.denial_kind == "invalid_call"
+        assert res.gap is None
+        assert "unknown tool" in res.reason
 
 
 class TestParkMode:

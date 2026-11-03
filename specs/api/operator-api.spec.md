@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.21.0
+**Version**: 7.22.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-03
 
@@ -277,12 +277,24 @@ docket committed on the task branch, so the hop's `artifact.files_changed` and t
 the work. The key is absent on every other hop and on a hop recorded before the rule. A client
 probes for it with the `budgetOutcome` feature.
 
+A hop whose turn stopped on a gap in the pod's configuration is `ok: false` and carries
+`capabilityMissing`: `{"kind": "tool" | "records" | "fetch", "name", "fix"}`. `kind` says what the
+turn called that the pod lacks (a tool its role does not list, a record set the pod does not
+declare or the role may not use, `fetch` while the pod declares no host); `name` is that tool, set
+or `fetch`; `fix` is one sentence that names the key or command that closes the gap, so a plan of
+record shows it to a person without parsing the hop's `error`. The task settles `failed` with
+`failureKind: "capability_missing"` and a `reason` of `<role> needs <kind> '<name>': <fix>`; no
+escalation is opened, and an Implementer's work is kept as for a transport stop. The key is
+absent on every other hop and on a hop recorded before the rule (additive on API 6). A client
+probes for it with the `capabilityMissing` feature.
+
 `failureKind` names why a task did not finish, and a consumer decides from it. A task that settles
 `failed` **MUST** carry a non-empty one, and a `blocked` task whose pod budget tripped carries
 `pod_budget`. The kinds docket itself writes are closed: `stale_claim`, `dispatch_refused`, `base_ref`,
 `prepare`, `pipeline`, `budget`, `needs_human`, `approval_denied`, `approval_expired`,
 `check_changed`, `rejected`, the gate kinds `gate_failed`, `gate_needs_human` and `gate_error`,
-`pod_budget` (status `blocked`: the pod's `budgetTokens` was spent before a hop; the reason text
+`capability_missing` (a hop's turn called what the pod's configuration lacks; the hop's
+`capabilityMissing` says what and how to close it), `pod_budget` (status `blocked`: the pod's `budgetTokens` was spent before a hop; the reason text
 keeps the token counts, the field never does), and `hop_failed`, the default of a failed task
 whose hop or step carried no more specific kind. The default is applied once, where the task
 settles `failed`, never by a producer. A claim clears the key, and so does a retry; an unblock

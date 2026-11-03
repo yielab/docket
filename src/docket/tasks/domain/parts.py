@@ -56,6 +56,16 @@ class BudgetOutcome(_Part):
     tree_changed: bool = Field(alias="treeChanged")
 
 
+class CapabilityMissing(_Part):
+    """The gap in a pod's configuration that stopped a hop: what the turn called (``kind`` is
+    ``tool``, ``records`` or ``fetch``), its ``name`` and the ``fix``, one sentence that names the
+    key or command that closes it."""
+
+    kind: Literal["tool", "records", "fetch"]
+    name: str
+    fix: str
+
+
 class Prepared(_Part):
     """What the prepare step ran for this task and whether its cache entry was reused."""
 

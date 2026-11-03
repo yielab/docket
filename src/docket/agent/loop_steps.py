@@ -2,8 +2,8 @@
 
 ``ToolStep`` sends every call through ``dispatch_tool`` (the single chokepoint), persists the
 assistant message and all its tool results as one atomic unit, and ends the turn on a
-cancelled batch, an unanswerable or parked approval, the consecutive-denial ceiling, a
-no-progress streak, or a successful call of an ``ends_turn`` tool.
+cancelled batch, an unanswerable or parked approval, a gap in the pod's configuration, the
+consecutive-denial ceiling, a no-progress streak, or a successful call of an ``ends_turn`` tool.
 """
 
 from __future__ import annotations
@@ -123,6 +123,7 @@ class ToolStep:
         batch_cancelled = False
         approval_unavailable: ToolResult | None = None
         approval_parked: ToolResult | None = None
+        capability_missing: ToolResult | None = None
         round_entries: list[tuple[str, str, bool, str]] = []
         closing_output: str | None = None
         closing_args: dict[str, Any] | None = None
@@ -171,6 +172,8 @@ class ToolStep:
                 approval_unavailable = result
             if result.denial_kind == "approval_parked" and approval_parked is None:
                 approval_parked = result
+            if result.denial_kind == "capability_missing" and capability_missing is None:
+                capability_missing = result
 
         if (
             tool_msgs
@@ -178,6 +181,7 @@ class ToolStep:
             and not batch_cancelled
             and approval_unavailable is None
             and approval_parked is None
+            and capability_missing is None
         ):
             notice = budget_notice(self.state)
             if notice:
@@ -214,6 +218,16 @@ class ToolStep:
                 stop_reason="approval_parked",
                 error=approval_parked_error(approval_parked),
                 failure_kind="invalid_output",
+            )
+        if capability_missing is not None and capability_missing.gap is not None:
+            # A gap in docket's own configuration: nothing the model does can close it, so the
+            # turn ends here and the task says what to change.
+            return self.state.done(
+                ok=False,
+                stop_reason="capability_missing",
+                error=capability_missing.reason,
+                failure_kind="capability_missing",
+                capability_gap=capability_missing.gap,
             )
         denial_limit = self.state.cfg.max_consecutive_tool_denials
         if denial_limit > 0 and len(self.consecutive_denial_kinds) >= denial_limit:

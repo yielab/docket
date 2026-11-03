@@ -658,13 +658,18 @@ def test_the_records_recipe_captures_one_row_per_key_and_the_pod_shows_it_and_th
     assert "R-2" in w.docket("pod", "records", "entries", "--pod", w.pod).out
     assert "rec__query" in model.by_role("reviewer")[0].tools
 
-    # a reviewer holds no record write: the tool is not offered and a call to it is refused
-    w.add_task("Capture nothing new", "--pipeline", "capture")
-    _run(w)
+    # a reviewer holds no record write: the tool is not offered, and a call to it ends the step as
+    # a gap in the pod's configuration (the role's tools), writing no row
+    second = w.add_task("Capture nothing new", "--pipeline", "capture")
+    w.docket("run", "--pod", w.pod, "--timeout", "30", check=False)
     reviewer_requests = model.by_role("reviewer")
     assert all("rec__entries__add" not in r.tools for r in reviewer_requests)
-    refused = reviewer_requests[-1].tool_result("s1")
-    assert refused is not None and "rec__entries__add" in refused, refused
+    stopped = w.stored_task(second)
+    assert (stopped["status"], stopped["failureKind"]) == ("failed", "capability_missing")
+    reviewer_hop = stopped["hops"][-1]
+    assert reviewer_hop["role"] == "reviewer" and reviewer_hop["ok"] is False
+    assert reviewer_hop["capabilityMissing"]["kind"] == "records"
+    assert reviewer_hop["capabilityMissing"]["name"] == "entries"
     assert [r["ref"] for r in _entries(w)] == ["R-1", "R-2"]
     oracles.assert_log_verifies(w)
 

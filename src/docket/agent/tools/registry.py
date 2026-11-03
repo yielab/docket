@@ -17,12 +17,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from docket.agent.ports import ToolCall, ToolCallArgumentsError, ToolSpec, tool_gate
+from docket.agent.ports import CapabilityGap, ToolCall, ToolCallArgumentsError, ToolSpec, tool_gate
 
 # ToolOutcome is re-exported: callers outside the chokepoint build one without importing the
 # handler module, which only this module may import.
 from docket.agent.tools.builtins import background
 from docket.agent.tools.builtins.toolbox import SandboxMode
+from docket.agent.tools.capability_gap import PodOffer, gap_for
 from docket.agent.tools.mcp_client import HopSessions
 from docket.kernel.gate import (
     DEFAULT_MAX_CONSULTATIONS,
@@ -141,6 +142,8 @@ class ToolResult:
     denial_kind: ToolDenialKind | None = None
     policy_id: str = ""
     approval_token: str = ""
+    # Set exactly when ``denial_kind == "capability_missing"``.
+    gap: CapabilityGap | None = None
 
     @property
     def denied(self) -> bool:
@@ -209,6 +212,9 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        # What the turn's pod offers beyond this registry; ``None`` for a turn that serves no task.
+        # Survives ``without``, so the role-narrowed registry dispatch uses carries it.
+        self.offer: PodOffer | None = None
 
     def register(self, tool: Tool) -> None:
         """Add *tool*, replacing any same-named entry."""
@@ -227,6 +233,7 @@ class ToolRegistry:
     def without(self, *names: str) -> ToolRegistry:
         """A copy with *names* removed (e.g. a read-only Reviewer registry)."""
         clone = ToolRegistry()
+        clone.offer = self.offer
         for name, tool in self._tools.items():
             if name not in names:
                 clone.register(tool)
@@ -261,6 +268,12 @@ def dispatch_tool(call: ToolCall, ctx: ToolContext, registry: ToolRegistry) -> T
     tool = registry.get(call.name)
     if tool is None:
         result.decision = "deny"
+        gap = gap_for(call.name, registry, ctx.role, registry.offer)
+        if gap is not None:
+            result.denial_kind = "capability_missing"
+            result.gap = gap
+            result.reason = result.error = gap.message(ctx.role)
+            return result
         result.denial_kind = "invalid_call"
         result.reason = f"unknown tool {call.name!r}; available: {', '.join(registry.names())}"
         if call.name.startswith(RECORDS_TOOL_PREFIX):

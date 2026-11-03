@@ -55,6 +55,9 @@ reported as ``AgentLoopResult.stop_reason``:
   Terminal on its own for the same reason as ``approval_unavailable``: there
   is somebody who *could* eventually answer, but not on this thread, right
   now — the task resumes elsewhere once a human resolves the token.
+- ``capability_missing`` — a tool call named something the pod's configuration could give the
+  role (an unlisted tool, a record set, ``fetch``). Terminal on its own: nothing the model does
+  closes the gap, so the turn ends after its batch is persisted, carrying the typed gap.
 - ``no_progress`` — ``LoopConfig.no_progress_rounds`` consecutive tool rounds
   each repeated a round already seen earlier in the turn (same tools, same
   canonical arguments, same outcomes). ``0`` disables the check.

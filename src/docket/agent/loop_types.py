@@ -9,7 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from docket.agent.ports import BudgetBound, BudgetStop, FailureKind, TokenUsage, raise_key
+from docket.agent.ports import (
+    BudgetBound,
+    BudgetStop,
+    CapabilityGap,
+    FailureKind,
+    TokenUsage,
+    raise_key,
+)
 from docket.kernel.home import current_home
 
 StopReason = Literal[
@@ -26,6 +33,7 @@ StopReason = Literal[
     "run_cancelled",
     "approval_unavailable",
     "approval_parked",
+    "capability_missing",
     "no_progress",
 ]
 
@@ -124,3 +132,5 @@ class AgentLoopResult:
     closing_args: dict[str, Any] | None = None
     #: Set exactly when ``failure_kind == "budget_exhausted"`` (agent-loop.spec.md requirement 107).
     budget_stop: BudgetStop | None = None
+    #: Set exactly when ``stop_reason == "capability_missing"`` (agent-loop.spec.md requirement 114).
+    capability_gap: CapabilityGap | None = None

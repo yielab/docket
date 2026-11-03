@@ -567,11 +567,13 @@ wired agent's conversation current with the task it is working.
    tool calls, tokens or wall-clock time -- agent-loop.spec.md requirement 107), `daemon_error` (the stable label for a runtime or transport
    failure), `nonzero_exit` (an invoked process returned a real non-zero result), `invalid_output`
    (the runtime returned output that could not be used, including a turn stopped on an approval it
-   could not get), or `run_cancelled` (the owning run's cancellation signal was observed -- see
+   could not get), `capability_missing` (the turn called a tool, a record set or `fetch` that the
+   pod's configuration lacks and a named key or command would add -- agent-loop.spec.md
+   requirement 113), or `run_cancelled` (the owning run's cancellation signal was observed -- see
    "Cancellation"). A successful turn carries no `failure_kind`. The `daemon_error` spelling is
    persisted API vocabulary; it does not imply an external process dependency.
 2. Only `timeout` and `daemon_error` **MUST** be treated as retryable -- a transient hiccup, not a
-   real answer. `budget_exhausted`, `nonzero_exit` and `invalid_output` (and, separately, a bad
+   real answer. `budget_exhausted`, `capability_missing`, `nonzero_exit` and `invalid_output` (and, separately, a bad
    Reviewer verdict -- see that gate) **MUST NEVER** be retried: retrying a real failure risks masking it
    as transient and burns budget for nothing.
 3. A retryable failure **MUST** be retried per request, inside the turn, not by running the hop's
@@ -1761,12 +1763,12 @@ parsing for any verdict-gated step (`parse_verdict`).
    team) leaves its work on the branch. Its `diff_ref` and `evidence` stay `None`; in place, nothing
    is committed for it.
 
-10. An Implementer hop that ended `budget_exhausted`, `timeout` or `daemon_error` (the last attempt,
-    when retries ran out) is probed and pinned exactly as a successful one is (requirements 2-6 and
+10. An Implementer hop that ended `budget_exhausted`, `timeout`, `daemon_error` or
+    `capability_missing` (the last attempt, when retries ran out) is probed and pinned exactly as a successful one is (requirements 2-6 and
     the pin of "Hop evidence"): a dirty tree is committed on the task branch, and the artifact
     carries `files_changed`, `diff_ref`, `diff` and the `evidence`. The hop stays `ok: false`, so no
-    gate reads it as finished. A `timeout` or `daemon_error` stop is a transport stop and its record
-    carries no `budget` (`null`); a `budget_exhausted` stop carries `budget`:
+    gate reads it as finished. A `timeout`, `daemon_error` or `capability_missing` stop carries no
+    `budget` (`null`); a `budget_exhausted` stop carries `budget`:
     `{bound, limit, used, source, raise, treeChanged}` (operator-api.spec.md "Task answers"). `source`
     is the owner of the limit that stopped it (`step`, `pod`, `default`; for tokens `task` under a
     task `maxTokens` and `pod_budget` under a pod `budgetTokens`), as agent-loop.spec.md
@@ -2298,9 +2300,14 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
    `gate_needs_human`, `gate_error`, `approval_denied`, `approval_expired` (nobody answered an
    approval by its `expiresAt`, "Parked approvals" item 5), `check_changed`, `needs_human` (a tool
    call needed approval at autonomy level `L5`, security-gates.spec.md "Autonomy levels" item 4),
-   or absent for an ordinary
+   `capability_missing` (a hop's turn stopped on a gap in the pod's configuration, "Retries and the
+   failure-kind taxonomy" item 1: the hop records `capabilityMissing {kind, name, fix}`, the task's
+   `reason` is `<role> needs <kind> '<name>': <fix>`, and no escalation is opened), `hop_failed`
+   (the default of a task that settles `failed` with no more specific kind) or `pod_budget` (status
+   `blocked`, the pod's `budgetTokens` was spent before a hop), or
+   absent for an ordinary
    graded hop or gate failure (a hop's own `TurnResult.failure_kind`, see "Retries", is not copied
-   onto the task, except that `budget_exhausted` becomes `budget`). A new terminal result replaces any earlier `failureKind`.
+   onto the task, except that `budget_exhausted` becomes `budget` and `capability_missing` stays). A new terminal result replaces any earlier `failureKind`.
 10. Transitions. A task's `status` **MUST** change only through `tasks.domain.state.decide`, applied by
     `tasks.application.transitions.apply_to_task` (the one assignment of `status`; an architecture
     test refuses a second). `decide` is pure: given the record's status, the target and the facts

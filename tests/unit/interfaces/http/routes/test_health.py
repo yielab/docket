@@ -83,6 +83,7 @@ class TestBuildStatus:
             "networkEnforced",
             "podWorkDir",
             "podFetch",
+            "capabilityMissing",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

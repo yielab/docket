@@ -78,10 +78,6 @@ def _seed_pod(tmp_path: Path, project: str = "demo") -> Path:
     return current_home().root
 
 
-def _no_sleep(_seconds: float) -> None:
-    """Injected in place of time.sleep so retry-loop tests run instantly."""
-
-
 # ── failure_kind classification ────────────────────────────────────────────────
 #
 # There is no daemon-facing driver and no subprocess-backed `agent_run` to
@@ -175,7 +171,7 @@ class TestOneTurnPerHop:
             }
         )
         task = TaskRecord(id="t1", description="work")
-        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=runner)
         assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
         assert impl_hop.attempts == 3 and impl_hop.ok is False
@@ -186,7 +182,7 @@ class TestOneTurnPerHop:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
         task = TaskRecord(id="t1b", description="work")
-        res = _executor.dispatch_task("myapp", task, runner=_ScriptedRunner({}), sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=_ScriptedRunner({}))
         assert res.status == "done"
         assert all(h.attempts == 1 for h in res.hops)
 
@@ -209,7 +205,7 @@ class TestOneTurnPerHop:
             _write_meta("myapp-lead")
             _write_meta("myapp-implementer")
             task = TaskRecord(id="t1c", description="work")
-            _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+            _executor.dispatch_task("myapp", task, runner=_runner)
         assert seen["implementer"] == "5"
         assert seen["lead"] == str(tuned.dispatch_retries_default)
 
@@ -221,7 +217,7 @@ class TestOneTurnPerHop:
         _write_meta("myapp-implementer")
         runner = _PersistingRunner(rounds=2)
         task = TaskRecord(id="t9", description="build the widget")
-        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=runner)
         assert res.status == "failed"
         assert len(runner.messages) == 1 and "build the widget" in runner.messages[0]
 
@@ -252,7 +248,7 @@ class TestOneTurnPerHop:
             )
 
         task = TaskRecord(id="t2b", description="work")
-        res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=_runner)
         assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
         assert impl_hop.attempts == 1
@@ -287,7 +283,7 @@ class TestOneTurnPerHop:
             return _rd.TurnResult(False, "", {}, "exit 1", failure_kind="nonzero_exit")
 
         task = TaskRecord(id="t3", description="work")
-        res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=_runner)
         assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
         assert impl_hop.attempts == 1
@@ -314,7 +310,7 @@ class TestOneTurnPerHop:
             return _rd.TurnResult(True, output, {})
 
         task = TaskRecord(id="t4", description="work")
-        res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+        res = _executor.dispatch_task("myapp", task, runner=_runner)
         assert res.status == "failed"
         assert "unparseable" in res.reason
         # The single re-ask for a verdict line is not a retry: one attempt, one extra request.
@@ -371,7 +367,7 @@ class TestTimeoutResolution:
         seen = _TimeoutSpy()
         with use_home(dataclasses.replace(current_home(), agent_loop_wall_clock_timeout_s=45.0)):
             task = TaskRecord(id="t45", description="work")
-            res = _executor.dispatch_task("myapp", task, runner=seen.runner, sleep=_no_sleep)
+            res = _executor.dispatch_task("myapp", task, runner=seen.runner)
         assert res.status == "done"
         assert seen.values and set(seen.values) == {45}
 
@@ -381,7 +377,7 @@ class TestTimeoutResolution:
         seen = _TimeoutSpy()
         with use_home(dataclasses.replace(current_home(), agent_loop_wall_clock_timeout_s=45.0)):
             _queue.enqueue_task_once("myapp", "work", channel="http")
-            results = _sweep.dispatch_pod("myapp", runner=seen.runner, sleep=_no_sleep)
+            results = _sweep.dispatch_pod("myapp", runner=seen.runner)
         assert [r.status for r in results] == ["done"]
         assert seen.values and set(seen.values) == {900}
 
@@ -393,7 +389,7 @@ class TestTimeoutResolution:
             name="solo", steps=[_step.Step(id="build", role="implementer", timeout=1200)]
         )
         task = TaskRecord(id="t12", description="work")
-        _executor.dispatch_task("myapp", task, runner=seen.runner, sleep=_no_sleep, spec=spec)
+        _executor.dispatch_task("myapp", task, runner=seen.runner, spec=spec)
         assert seen.values == [1200]
 
     def test_the_server_wide_variables_are_gone(self) -> None:
@@ -456,7 +452,7 @@ class TestTimeoutResolution:
         try:
             fake_jail.run_command = _spy_run_command
             task = TaskRecord(id="t8", description="work")
-            res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+            res = _executor.dispatch_task("myapp", task, runner=_runner)
         finally:
             mp.undo()
 

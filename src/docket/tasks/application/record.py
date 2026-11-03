@@ -19,7 +19,7 @@ from docket.tasks.application import answers as _answers
 from docket.tasks.application import escalations as _escalations
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
-from docket.tasks.domain.parts import BudgetOutcome
+from docket.tasks.domain.parts import BudgetOutcome, CapabilityMissing
 from docket.tasks.domain.task import CurrentHop, HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
 from docket.teams import conversations as _conv
@@ -258,9 +258,7 @@ class UnitContext:
     override_index: int | None
     track_pid: bool
     run: Runner
-    do_sleep: Callable[[float], None]
     on_hop: Callable[[HopResult], None] | None
-    on_retry: Callable[[], None] | None
     # Each step id's own already-interpolated `instructions` override (see
     # `_pipeline.step_instructions_by_id`/`interpolate_instructions`); a step
     # absent here defers to its role's own hop instruction. Defaulted so
@@ -407,16 +405,27 @@ def build_hop_result(
         started_at=started_at,
         cycle=cycle,
         budget=_budget_outcome(run_res, tree_changed=kept and bool(files_changed)),
+        capability_missing=_capability_record(run_res),
     )
 
 
-_PINNED_FAILURE_KINDS = frozenset({"budget_exhausted", "timeout", "daemon_error"})
+_PINNED_FAILURE_KINDS = frozenset(
+    {"budget_exhausted", "timeout", "daemon_error", "capability_missing"}
+)
 
 
 def _keeps_its_work(role: str, run_res: _rd.TurnResult) -> bool:
-    """True for an Implementer hop that ran out of budget or lost its transport: its tree is pinned
-    though it failed."""
+    """True for an Implementer hop that ran out of budget, lost its transport or met a gap in the
+    pod's configuration: its tree is pinned though it failed."""
     return role == "implementer" and run_res.failure_kind in _PINNED_FAILURE_KINDS
+
+
+def _capability_record(run_res: _rd.TurnResult) -> CapabilityMissing | None:
+    """The hop's ``capabilityMissing`` from the turn's stop, or ``None`` for a turn that met no gap."""
+    gap = run_res.capability_gap
+    if gap is None:
+        return None
+    return CapabilityMissing(kind=gap.kind, name=gap.name, fix=gap.fix)
 
 
 def _budget_outcome(run_res: _rd.TurnResult, *, tree_changed: bool) -> BudgetOutcome | None:
@@ -483,10 +492,13 @@ def _parked_consult_question(
 
 def _turn_failure_kind(ctx: UnitContext, run_res: _rd.TurnResult) -> str:
     """``"budget"`` when the turn ran out of rounds, tool calls, tokens or time,
+    ``"capability_missing"`` when it stopped on a gap in the pod's configuration,
     ``"needs_human"`` when it stopped because the task's autonomy level denies a call that needs
     approval (a pod's own ``approvalMode: refuse`` keeps the unmarked failure it always had)."""
     if run_res.failure_kind == "budget_exhausted":
         return "budget"
+    if run_res.failure_kind == "capability_missing":
+        return _state.FailureKind.capability_missing
     if run_res.stop_reason == "approval_unavailable" and _autonomy.table_denies_approval(
         ctx.project, _autonomy.effective_level(ctx.project, ctx.task.autonomy)
     ):
@@ -619,7 +631,11 @@ def persist_hop_and_trace(
         return UnitOutcome(
             kind="failed",
             hops=[hop],
-            reason=f"{role} hop failed: {hop_error or 'no result'}",
+            reason=(
+                hop_error
+                if run_res.capability_gap is not None
+                else f"{role} hop failed: {hop_error or 'no result'}"
+            ),
             failure_kind=_turn_failure_kind(ctx, run_res),
         )
     return None

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import fnmatch as _fnmatch
 import json as _json
-import time as _time
 from collections.abc import Callable
 from typing import Any, Literal
 
@@ -472,8 +471,6 @@ def dispatch_task(
     verify_timeout: int | None = None,
     resume_from: list[HopResult] | None = None,
     on_hop: Callable[[HopResult], None] | None = None,
-    on_retry: Callable[[], None] | None = None,
-    sleep: Callable[[float], None] | None = None,
     spec: _pipeline.PipelineSpec | None = None,
     variables: dict[str, Any] | None = None,
     approval_default: Literal["wait", "park"] = "wait",
@@ -489,8 +486,7 @@ def dispatch_task(
     refusal (skipped, not re-invoked) -- including a hop that parked mid-turn, replayed by its
     own exact index (ADR 0016 SS2, see ``replay_pipeline_position``); *turn_timeout*/
     *verify_timeout* override the pod Lead's meta then ``AGENT_LOOP_WALL_CLOCK_TIMEOUT_S``,
-    unless a step declares its own. *on_retry* fires before each retry so the caller can refresh
-    the task's claim before it goes stale. *variables* is this run's already-resolved pipeline variable
+    unless a step declares its own. *variables* is this run's already-resolved pipeline variable
     namespace (``dispatch_pod`` validates and resolves it before calling here) -- used only to
     interpolate any step's own ``instructions`` text (pipeline-format.spec.md); a direct caller
     that skips ``dispatch_pod`` gets no unresolved-reference refusal, only best-effort
@@ -513,7 +509,6 @@ def dispatch_task(
     # than duck-typing) keeps every existing 5-arg-Callable test double
     # working completely unchanged.
     track_pid = runner is None
-    do_sleep = sleep or _time.sleep
     task_id = task.id
     session_id = f"agent:{project}:{task_id}"
 
@@ -575,9 +570,7 @@ def dispatch_task(
             override_index=applied.gate_override_index,
             track_pid=track_pid,
             run=run,
-            do_sleep=do_sleep,
             on_hop=on_hop,
-            on_retry=on_retry,
             step_instructions=step_instructions,
             variables={k: str(v) for k, v in resolved_vars.items()},
             route_counts=route_counts,

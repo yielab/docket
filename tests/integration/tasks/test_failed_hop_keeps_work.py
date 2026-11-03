@@ -1,4 +1,4 @@
-"""An Implementer hop that stops on a transport failure keeps the work it wrote; no other hop does."""
+"""An Implementer hop that stops on a transport failure or a configuration gap keeps the work it wrote; no other hop does."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def _run(tmp_path: Path, runner: _WritesThenStops) -> tuple[HopResult, Path, str
     return hop, Path(task.worktree.dir), task.worktree.branch
 
 
-@pytest.mark.parametrize("kind", ["timeout", "daemon_error"])
+@pytest.mark.parametrize("kind", ["timeout", "daemon_error", "capability_missing"])
 def test_an_implementer_transport_stop_pins_the_file_it_wrote(
     tmp_path: Path, kind: FailureKind
 ) -> None:

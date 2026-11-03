@@ -42,6 +42,7 @@ class FailureKind(StrEnum):
     needs_human = "needs_human"
     hop_failed = "hop_failed"
     pod_budget = "pod_budget"
+    capability_missing = "capability_missing"
 
 
 # A ``failed`` task ``--resume`` may reclaim: a swept crash, or a settled deterministic refusal.

@@ -63,6 +63,7 @@ FailureKind = Literal[
     "invalid_output",
     "run_cancelled",
     "budget_exhausted",
+    "capability_missing",
 ]
 
 BudgetBound = Literal["rounds", "toolCalls", "tokens", "time"]
@@ -107,6 +108,21 @@ class BudgetStop:
     def raise_key(self) -> str:
         """What raises this limit, from the same value the stop message names."""
         return raise_key(self.bound, self.source)
+
+
+@dataclass(frozen=True)
+class CapabilityGap:
+    """What a turn called that the pod's configuration lacks: the *kind* (a ``tool`` the role does
+    not list, a ``records`` set the pod does not declare or the role may not use, ``fetch``), its
+    *name* and the one-sentence *fix* that names the key or command that closes the gap."""
+
+    kind: Literal["tool", "records", "fetch"]
+    name: str
+    fix: str
+
+    def message(self, role: str) -> str:
+        """The refusal and the stop's error: ``<role> needs <kind> '<name>': <fix>``."""
+        return f"{role} needs {self.kind} '{self.name}': {self.fix}"
 
 
 # Internal dispatch→driver coordinate for a downstream hop that must inspect
@@ -224,6 +240,8 @@ class TurnResult:
     # Model requests the turn sent again after a transient failure (agent-loop.spec.md 111); a
     # hop's ``attempts`` is ``1 + request_retries``.
     request_retries: int = field(default=0, kw_only=True)
+    # Set exactly when ``failure_kind == "capability_missing"`` (agent-loop.spec.md requirement 114).
+    capability_gap: CapabilityGap | None = field(default=None, kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────

@@ -14,7 +14,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from docket.agent.loop_types import AgentLoopResult, LoopConfig, StopReason
-from docket.agent.ports import BudgetStop, ChatBackend, FailureKind, TokenUsage, ToolSpec
+from docket.agent.ports import (
+    BudgetStop,
+    CapabilityGap,
+    ChatBackend,
+    FailureKind,
+    TokenUsage,
+    ToolSpec,
+)
 from docket.agent.tools.registry import ToolContext, ToolRegistry
 
 
@@ -82,6 +89,7 @@ class TurnState:
         failure_kind: FailureKind | None = None,
         retry_after_s: float | None = None,
         closing_args: dict[str, Any] | None = None,
+        capability_gap: CapabilityGap | None = None,
     ) -> AgentLoopResult:
         """The turn's result. A failed stop on a budget bound (rounds, tool calls, wall clock,
         tokens) is always ``budget_exhausted`` with its ``budget_stop``, whatever the caller passed."""
@@ -104,6 +112,7 @@ class TurnState:
             provider=self.last_provider,
             closing_args=closing_args,
             budget_stop=budget_stop,
+            capability_gap=capability_gap,
         )
 
     def budget_stop_for(self, stop_reason: StopReason) -> BudgetStop | None:

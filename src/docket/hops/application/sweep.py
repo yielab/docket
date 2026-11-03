@@ -30,7 +30,6 @@ from docket.tasks.application.queue import (
     claim_next_task,
     prepare_claimed_task,
     refuse_claimed_task,
-    touch_claim,
 )
 from docket.tasks.application.record import Runner, persist_hop
 from docket.tasks.application.repository import TaskRepository
@@ -73,7 +72,6 @@ def dispatch_pod(
     verify_timeout: int | None = None,
     max_tasks: int | None = None,
     resume: bool = False,
-    sleep: Callable[[float], None] | None = None,
     spec: _pipeline.PipelineSpec | None = None,
     variables: dict[str, Any] | None = None,
     approval_default: Literal["wait", "park"] = "wait",
@@ -147,9 +145,6 @@ def dispatch_pod(
         def _persist(hop: HopResult, _project: str = project, _task_id: str = task_id) -> None:
             persist_hop(_project, _task_id, hop)
 
-        def _touch(_project: str = project, _task_id: str = task_id) -> None:
-            touch_claim(_project, _task_id)
-
         res = dispatch_task(
             project,
             task,
@@ -158,8 +153,6 @@ def dispatch_pod(
             verify_timeout=verify_timeout,
             resume_from=resume_hops,
             on_hop=_persist,
-            on_retry=_touch,
-            sleep=sleep,
             spec=spec if source == "default" else run_spec,
             variables=run_vars,
             approval_default=approval_default,

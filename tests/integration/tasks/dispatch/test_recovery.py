@@ -314,7 +314,6 @@ class TestDeterministicRefusalSettlesTheClaim:
                 _fleet.set_sandbox_isolation(mode="non-main")
                 monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
                 action = "isolation.refused"
-            slept: list[float] = []
             calls: list[str] = []
 
             def _never(model: str) -> Any:
@@ -324,14 +323,13 @@ class TestDeterministicRefusalSettlesTheClaim:
             monkeypatch.setattr(_dr, "default_driver", lambda: DocketDriver(backend_factory=_never))
             _queue.enqueue_task_once("demo", "refused posture", channel="cli")
 
-            results = _sweep.dispatch_pod("demo", sleep=slept.append)
+            results = _sweep.dispatch_pod("demo")
 
             assert [r.status for r in results] == ["failed"]
             task = TaskRepository.for_pod("demo").list()[0]
             assert task.status == "failed"
             assert task.failure_kind == "dispatch_refused"
             assert not calls
-            assert slept == []
             assert len([e for e in _audit.read_audit() if e["action"] == action]) == 1
 
             if posture == "network":

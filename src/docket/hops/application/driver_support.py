@@ -28,6 +28,7 @@ from docket.agent.tools import mcp_tools as _mcp
 from docket.agent.tools import mcp_types as _mcp_types
 from docket.agent.tools import records_tools as _records_tools
 from docket.agent.tools import service_tools as _service_tools
+from docket.agent.tools.capability_gap import FETCH, PodOffer
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.application.base_view import base_commit_view
@@ -46,9 +47,10 @@ from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import records as _records
+from docket.teams import role_composer as _role_composer
 from docket.teams import services as _services
 from docket.teams.models import AgentMeta
-from docket.teams.roles import BUILTIN_TOOL_KINDS
+from docket.teams.roles import BUILTIN_TOOL_KINDS, load_registry
 from docket.teams.workspace import repo_view as _repo_view
 
 
@@ -163,6 +165,28 @@ def _load_records_tools(registry: ToolRegistry, project: str = "") -> list[str]:
     for problem in problems:
         tool_gate.audit_event("records.unavailable", problem)
     return _records_tools.load_records_tools(registry, store=_pod_records.open(project), sets=sets)
+
+
+def pod_offer(registry: ToolRegistry, project: str, role: str, surface: str) -> PodOffer:
+    """What *project* offers *role* beyond the tools its registry holds: the names the role would
+    hold if its `tools` listed them (the full *registry* narrowed by *surface* and the role's and the
+    pod's denials only), the declared record sets, and whether `fetch` is denied by neither."""
+    holdable = _role_composer.registry_for_role(
+        registry, role, project, surface=surface, allow=tuple(registry.names())
+    )
+    sets, _problems = _records.pod_record_sets(project)
+    archetype = load_registry(project).get(role)
+    try:
+        pod_denied = _pod_settings.PodSettings.load_for(project).denied_tools
+    except _pod_settings.PodSettingsError:
+        pod_denied = ()
+    denied = set(pod_denied) | set(archetype.denied_tools if archetype is not None else ())
+    return PodOffer(
+        pod=project,
+        holdable=frozenset(holdable.names()),
+        record_sets=frozenset(s.name for s in sets),
+        fetch_declarable=FETCH not in denied,
+    )
 
 
 def _load_agent_meta(agent_id: str) -> AgentMeta | None:
@@ -501,5 +525,6 @@ def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:
         provider=result.provider,
         closing_args=result.closing_args,
         budget_stop=result.budget_stop,
+        capability_gap=result.capability_gap,
         request_retries=result.request_retries,
     )

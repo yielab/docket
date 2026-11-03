@@ -1,0 +1,16 @@
+{
+  "status": "failed",
+  "failureKind": "capability_missing",
+  "reason": "lead needs records 'tack_proposals': declare records/tack_proposals.yaml in the pod's configuration, then run `docket pod update --pod demo`",
+  "escalations": [],
+  "hop": {
+    "role": "lead",
+    "ok": false,
+    "error": "lead needs records 'tack_proposals': declare records/tack_proposals.yaml in the pod's configuration, then run `docket pod update --pod demo`",
+    "capabilityMissing": {
+      "kind": "records",
+      "name": "tack_proposals",
+      "fix": "declare records/tack_proposals.yaml in the pod's configuration, then run `docket pod update --pod demo`"
+    }
+  }
+}

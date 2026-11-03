@@ -96,9 +96,7 @@ def _later_hop_env(task_id: str, role: str = "implementer") -> dict[str, str]:
         override_index=None,
         track_pid=False,
         run=lambda *a, **k: _rd.TurnResult(True, "", {}),
-        do_sleep=lambda s: None,
         on_hop=None,
-        on_retry=None,
     )
     member = _pod.pod.member_id(PROJECT, role)
     node = _orch.PlannedUnit(

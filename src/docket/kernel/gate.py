@@ -28,6 +28,7 @@ ToolDenialKind = Literal[
     "run_cancelled",
     "approval_unavailable",
     "approval_parked",
+    "capability_missing",
 ]
 
 

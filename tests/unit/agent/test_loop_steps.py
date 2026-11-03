@@ -11,8 +11,9 @@ from docket.agent import loop_steps as _steps
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_steps import ToolStep, _ProgressDetector
 from docket.agent.loop_types import LoopConfig
-from docket.agent.ports import ChatMessage, TokenUsage, ToolCall, assistant
+from docket.agent.ports import CapabilityGap, ChatMessage, TokenUsage, ToolCall, assistant
 from docket.agent.tools.builtins.toolbox import ToolOutcome
+from docket.agent.tools.capability_gap import PodOffer
 from docket.agent.tools.registry import Tool, ToolRegistry
 
 SUBJECT = "docket.agent.loop_steps"
@@ -106,6 +107,53 @@ class TestDispatchToolBatch:
         assert stop is not None
         assert stop.stop_reason == "tool_denials"
         assert "count=1" in stop.error
+
+
+class TestCapabilityMissingStop:
+    """A gap in the pod's configuration ends the turn after its batch is persisted."""
+
+    def _state(self, make_turn_state: MakeState) -> TurnState:
+        registry = _echo_registry()
+        registry.offer = PodOffer(
+            pod="demo",
+            holdable=frozenset({"echo", "write"}),
+            record_sets=frozenset(),
+            fetch_declarable=False,
+        )
+        return make_turn_state(registry=registry)
+
+    def test_the_second_call_meeting_a_gap_stops_the_turn_after_the_batch(
+        self, make_turn_state: MakeState, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        appended: list[list[ChatMessage]] = []
+        monkeypatch.setattr(
+            _steps, "append_messages", lambda key, msgs, **kw: appended.append(list(msgs))
+        )
+        state = self._state(make_turn_state)
+        calls = [
+            ToolCall(id="c1", name="echo", arguments='{"text": "hi"}'),
+            ToolCall(id="c2", name="write", arguments="{}"),
+            ToolCall(id="c3", name="echo", arguments='{"text": "again"}'),
+        ]
+        stop = ToolStep(state).dispatch_tool_batch([], assistant("", calls), TokenUsage())
+
+        assert stop is not None
+        assert stop.ok is False
+        assert stop.stop_reason == "capability_missing"
+        assert stop.failure_kind == "capability_missing"
+        assert isinstance(stop.capability_gap, CapabilityGap)
+        assert (stop.capability_gap.kind, stop.capability_gap.name) == ("tool", "write")
+        assert stop.error == f"implementer needs tool 'write': {stop.capability_gap.fix}"
+        assert [m.role for m in appended[0]] == ["assistant", "tool", "tool", "tool"]
+
+    def test_a_denial_that_is_not_a_gap_does_not_stop_the_turn(
+        self, make_turn_state: MakeState, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(_steps, "append_messages", lambda *a, **k: None)
+        state = self._state(make_turn_state)
+        message = assistant("", [ToolCall(id="c1", name="teleport", arguments="{}")])
+
+        assert ToolStep(state).dispatch_tool_batch([], message, TokenUsage()) is None
 
 
 class TestStopIfNoProgress:

@@ -11,6 +11,9 @@ import re
 import time
 from pathlib import Path
 
+from docket.agent.tools.capability_gap import PodOffer, gap_for
+from docket.agent.tools.registry import ToolRegistry
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -56,6 +59,23 @@ class TestRoots:
 
     def test_every_leaf_has_an_example_line(self) -> None:
         assert len(list(lint.leaf_examples())) > 40
+
+
+class TestCapabilityGapFixes:
+    def test_every_fix_a_gap_prints_is_a_live_invocation(self) -> None:
+        offer = PodOffer(
+            pod="demo",
+            holdable=frozenset({"write", "rec__notes__add"}),
+            record_sets=frozenset({"notes"}),
+            fetch_declarable=True,
+        )
+        names = ("write", "rec__other__add", "rec__notes__add", "fetch")
+        fixes = [gap.fix for n in names if (gap := gap_for(n, ToolRegistry(), "lead", offer))]
+
+        assert len(fixes) == len(names)
+        for fix in fixes:
+            assert lint.invocations(fix, False), fix
+            assert lint.lint_text("fix", fix) == [], fix
 
 
 class TestPlanted:

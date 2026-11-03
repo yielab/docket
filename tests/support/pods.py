@@ -449,9 +449,7 @@ def unit_context(
         override_index=override_index,
         track_pid=False,
         run=run or (lambda *a, **k: _rd.TurnResult(True, "", {})),
-        do_sleep=lambda seconds: None,
         on_hop=on_hop,
-        on_retry=None,
     )
 
 

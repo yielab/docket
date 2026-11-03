@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -37,7 +37,7 @@ This specification covers:
 - Request-fit convergence, so a durable suffix or prefix is never summarized repeatedly without
   intervening growth
 - The typed stops: consecutive tool denials, run cancellation, `approval_unavailable`,
-  `approval_parked`, and `no_progress`
+  `approval_parked`, `capability_missing`, and `no_progress`
 - The output shape of the `glob`, `grep` and `read` built-ins and the condition under which
   `fetch` is registered
 
@@ -166,7 +166,9 @@ This specification does NOT cover:
 27. A tool call requesting a name the role's archetype denies **MUST** be refused by
     `dispatch_tool` as an unknown tool — the same refusal path an unrelated hallucinated tool name
     takes — never a distinct "forbidden for your role" code path. The model is not advertised the
-    tool, and if a call for it arrives anyway, the registry genuinely does not contain it.
+    tool, and if a call for it arrives anyway, the registry genuinely does not contain it. The one
+    exception is a name the role could hold if its `tools` listed it: that is a gap in docket's
+    configuration, not a denial, and requirement 113 stops the turn on it.
 28. `run_agent_turn` **MUST NOT** contain a branch on a specific role's name (e.g.
     `if ctx.role == "reviewer"`) to decide what to narrow — the denylist is data on the archetype
     (see `role-archetypes.spec.md`'s "Per-role tool sets"), and `registry_for_role` is the single,
@@ -666,6 +668,38 @@ This specification does NOT cover:
     plus `approval_token`), so a consumer parses one format. A `gate_denied` or `invalid_call`
     result elsewhere in the batch **MUST NOT** be made terminal by this requirement.
 
+### The capability_missing stop (ADR 0032 decision 7)
+
+113. When a hop serves a task, `DocketDriver` **MUST** put one typed value, `PodOffer`, on the
+    turn's registry (`ToolRegistry.offer`): the pod's name, the tool names the turn's role would
+    hold if its `tools` (or the step's) listed them (the registry narrowed by the profile's surface
+    and the role's and the pod's denials only), the pod's declared record-set names, and whether
+    the pod could hold `fetch`. `hops/application/driver_support.py` computes it; `agent/` reads no
+    pod, fleet or records module. `dispatch_tool` **MUST** answer a name the narrowed registry
+    lacks with a `CapabilityGap` `{kind, name, fix}` and `denial_kind="capability_missing"` in
+    exactly these cases, and no other:
+    - `tool`: a name in the offer's tool names (an unlisted built-in, MCP or service tool); `fix`
+      names the role's `tools`.
+    - `records`: `rec__<set>__<operation>` for a set the pod does not declare (`fix`: declare
+      `records/<set>.yaml`, then `docket pod update`), or a name in the offer's tool names for a
+      declared set the role may not use (`fix`: add `rec__<set>`, or `rec` for a tool of the pod,
+      to its `tools`).
+    - `fetch`: `fetch` when no tool of that name is in the offer and neither the role nor the pod
+      denies it; `fix`: `docket pod set fetchDomains <host> --pod <pod>`. A call to `fetch` for a
+      host outside the pod's set is an ordinary refusal, never a gap.
+
+    A name nothing offers, a verb a declared set lacks, and a tool a role or the pod denies stay
+    `invalid_call` (requirement 27). The refusal text of a gap is `<role> needs <kind> '<name>':
+    <fix>`; a registry with no offer (a turn that serves no task) never returns a gap.
+114. A batch with a result whose `denial_kind == "capability_missing"` **MUST** stop the turn
+    exactly as requirement 75 stops it for `approval_parked`: independently of
+    `max_consecutive_tool_denials`, after that batch's complete-batch persistence and with no
+    further backend request. The loop **MUST** return `stop_reason="capability_missing"`,
+    `failure_kind="capability_missing"` and the first gap in the batch as
+    `AgentLoopResult.capability_gap`; its error is the gap's refusal text. `DocketDriver` copies
+    the gap onto `TurnResult.capability_gap` unchanged. An approval stop earlier in the same batch
+    wins.
+
 ### The no_progress stop (ADR 0019)
 
 77. After each round of tool calls the loop **MUST** compute a round fingerprint: the set of
@@ -738,7 +772,8 @@ This specification does NOT cover:
     `fetch` tool", requirement 2). The registered tool's handler reaches that set only and passes it
     to `fetch_url`. With an empty set `fetch` **MUST NOT** appear in `specs()`, so the model is not
     offered it, and a call naming it is refused as an unknown tool like any other unregistered
-    name. `DocketDriver.registry_factory` takes the hop's project (`Callable[[str],
+    name -- or, in a hop that serves a task whose pod could hold it, is the `capability_missing`
+    stop of requirement 113. `DocketDriver.registry_factory` takes the hop's project (`Callable[[str],
     ToolRegistry]`, default `builtin_registry`).
 
 ### Request projection
@@ -860,7 +895,8 @@ This specification does NOT cover:
     (`role-archetypes.spec.md`, "Tools and calls per hop" requirement 5); a `hosted` row declares `full`, which leaves
     the request byte-identical to a profile-less one. A call that names a `rec__*` tool the hop is not offered is refused
     `invalid_call` like any unknown tool, and its reason adds what to declare: the set (`rec__<set>`) or `rec` in the
-    `tools` of the step or of the role.
+    `tools` of the step or of the role. In a hop that serves a task, a set the pod does not declare and
+    a tool the role could hold if it listed it are instead the `capability_missing` stop of requirement 113.
 104. Rounds and tool calls are guards owned by the machine, not budgets: no step, role or task
     declares them (`pipeline-format.spec.md` "Steps" requirement 12). `DocketDriver` **MUST** take
     `LoopConfig.max_iterations` and `LoopConfig.max_tool_calls` from the current `Home`
@@ -919,7 +955,8 @@ Requirement numbers 21, 22 and 76 are unused; the numbers above are cited by tes
 StopReason = Literal[
     "final_message", "max_iterations", "max_tool_calls",
     "timeout", "token_budget", "truncated", "backend_error", "compaction_failed", "context_fit",
-    "tool_denials", "run_cancelled", "approval_unavailable", "approval_parked", "no_progress",
+    "tool_denials", "run_cancelled", "approval_unavailable", "approval_parked",
+    "capability_missing", "no_progress",
 ]
 
 MIN_OUTPUT_TOKENS = 256
@@ -955,6 +992,11 @@ class BudgetStop:                # frozen; agent/ports.py (requirement 107)
     source: str                  # step | pod | default, or task for tokens
     # property raise_key: str   # the key or variable that raises the limit (105)
 
+class CapabilityGap:             # frozen; agent/ports.py (requirement 113)
+    kind: Literal["tool", "records", "fetch"]
+    name: str
+    fix: str                     # one sentence that names the key or command that closes the gap
+
 class AgentLoopResult:
     ok: bool
     output: str
@@ -965,6 +1007,7 @@ class AgentLoopResult:
     error: str
     failure_kind: FailureKind | None
     budget_stop: BudgetStop | None   # set exactly when failure_kind == "budget_exhausted" (107)
+    capability_gap: CapabilityGap | None  # set exactly when stop_reason == "capability_missing" (114)
     raw: dict[str, Any]
     retry_after_s: float | None   # from the backend's Retry-After, when it sent one
     request_retries: int = 0      # transport retries made over the turn (111)
@@ -1088,6 +1131,7 @@ result = run_agent_turn(backend, builtin_registry(), ctx, "agent:rev-1:default",
 # if it requests one anyway, dispatch_tool's tool_result answers
 # "REFUSED [invalid_call]: unknown tool ..."
 # result.ok can still be True — the turn completes normally, just without that call executing
+# (a name the role could hold if its `tools` listed it is instead the capability_missing stop)
 ```
 
 ### The system prompt reaches the model
@@ -1149,8 +1193,10 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
   accounting, the per-iteration ceilings), `MIN_OUTPUT_TOKENS`
 - `src/docket/agent/loop_compaction.py`: `TurnCompaction` (the tool-free summariser,
   `run_compaction`, the request-fit reduction around the task message)
+- `src/docket/agent/tools/capability_gap.py`: `PodOffer` and `gap_for`, the gap rules of
+  requirement 113
 - `src/docket/agent/loop_steps.py`: `ToolStep` (the tool batch through `dispatch_tool`, the
-  denial ceiling, no-progress), `approval_unavailable_error`, `approval_parked_error`
+  denial ceiling, the approval and capability stops, no-progress), `approval_unavailable_error`, `approval_parked_error`
 - `src/docket/agent/loop_trace.py`, `src/docket/agent/loop_request.py`: the `prompt_composed`,
   `session_compaction`, `request_fit`, `budget_warning`, `llm_call`, `tool_call` and
   `tool_result` emitters; token accounting

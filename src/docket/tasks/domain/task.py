@@ -21,7 +21,14 @@ from docket.kernel import ids as _ids
 from docket.kernel.brief import TaskBrief
 from docket.kernel.errors import DispatchError
 from docket.tasks.domain.options import TaskConversation, TaskGate, TaskRestrictions
-from docket.tasks.domain.parts import BudgetOutcome, Prepared, TaskUsage, Worktree, is_none
+from docket.tasks.domain.parts import (
+    BudgetOutcome,
+    CapabilityMissing,
+    Prepared,
+    TaskUsage,
+    Worktree,
+    is_none,
+)
 from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.state import Status
 
@@ -113,6 +120,11 @@ class HopResult(BaseModel):
     # Set only on a hop whose turn ran out of rounds, tool calls, tokens or time
     # (operator-api.spec.md, "Task answers"); absent on every other hop and on one recorded before.
     budget: BudgetOutcome | None = Field(None, exclude_if=is_none)
+    # Set only on a hop whose turn stopped on a gap in the pod's configuration
+    # (operator-api.spec.md, "Task answers"); absent on every other hop and on one recorded before.
+    capability_missing: CapabilityMissing | None = Field(
+        None, alias="capabilityMissing", exclude_if=is_none
+    )
     # Which prompts this hop's turn was composed from (``hops/application/manifest.py``): per
     # layer ``{layer, name, version, sha256, scope, tokens}``, then ``model``, ``family``,
     # ``class`` and ``profile``. Empty for a hop recorded before the manifest existed.
@@ -137,6 +149,7 @@ class HopResult(BaseModel):
         "repo_files",
         "prompt_manifest",
         "budget",
+        "capability_missing",
         mode="wrap",
     )
     @classmethod
