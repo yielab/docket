@@ -16,8 +16,8 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) is active** (accepted 2026-11-03), five cards
-> below: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
+> **Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) is reopened** (decision 5 amended 2026-11-03), eight cards
+> below, five done: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
 > not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
 > **Phase 57** (D-79, [ADR 0037](docs/adr/0037-what-docket-gives-a-manager-in-the-plan-of-record.md)) closed 2026-11-01. Before it, Phase 56 (D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16) closed
 > 2026-10-30: an external service is declared, not programmed; a pod keeps records; one judge; one home layout; the
@@ -84,7 +84,7 @@ scope in one pass over the same files, parks at least once.
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
 
-## ▶ Phase 59: a step's budget is a checkpoint, not a cliff (D-81) · ACTIVE 2026-11-03 (ADR and names accepted)
+## ▶ Phase 59: a step's budget is a checkpoint, not a cliff (D-81) · REOPENED 2026-11-03 (decision 5 amended: a budget, a clock and guards)
 
 **Trigger.**
 - *The incident.* The maintainer asked for this on 2026-11-02, from a real run. Task `task-0a050f9c` on
@@ -100,6 +100,16 @@ from `main`.
   - the Reviewer runs, and its diff probe commits the Implementer's unverified tree under the
     Reviewer's hop;
   - the task settles `done`.
+- *The amendment (2026-11-03, the maintainer's request, before the phase was pushed).* "A cleaner
+  design, without infinite variables to configure." After P59-1..P59-5 merged, four bounds were
+  declared across up to five layers, and the evidence says two of them are not budgets:
+  - the incident stopped on rounds at 6 % of its tokens;
+  - the 42-round real run finished about two tool calls under the default cap of 40;
+  - `budgetUsd` gates a dollar estimate, and the live home's `claude-haiku-5-5` has no catalog
+    price, so the pod's cap there never trips (`pod show` warns "unpriced").
+  ADR 0038 decision 5 now separates a budget (tokens: the task's `maxTokens`, the pod's
+  `budgetTokens`), a clock (seconds: step, pod, machine) and guards (rounds, tool calls: machine
+  constants). Cards P59-6..P59-8 carry it out.
 - *A token-budget landing passes as success.* Requirements 51-53 of `agent-loop.spec.md` return the
   finalization answer as `ok=True, final_message`, so an unfinished hop reaches its gate.
 
@@ -124,12 +134,22 @@ Each waits under "Phase 59" in the follow-ups.
 | 2 | P59-4 | `agent-loop.spec.md` again (after P59-5); `agent/ports.py`, `driver_support.py`, `runner.py` ~118 (after P59-1), the step, plan and archetype schemas, `teams/settings.py`, `kernel/home.py`, the HTTP dispatch sites |
 | 3 | P59-2 | `record.py` after P59-1; `ports.py`, `driver_support.py` and `agent-loop.spec.md` after P59-4; the loop's stop sites |
 | 4 | P59-3 | the loop's finalization, `record.py` and `agent-loop.spec.md` again, after P59-2's `budget_exhausted` |
+| 5 | P59-6 | the step, plan, short-form and archetype schemas, `budget.py`, `driver_support.py`, `compose.py`, `ports.py`, `kernel/home.py`, `agent-loop.spec.md`: the files P59-4 grew |
+| 6 | P59-7 | `teams/` settings and provisioning, the pre-hop gate, the CLI and HTTP pod surfaces, `cost-tracking.spec.md`: no file of P59-6 except `pod-dispatch.spec.md` |
+| 7 | P59-8 | `interfaces/cli/commands/pod_config.py` (`cmd_plan`) after P59-6 and P59-7 settle what it prints |
 
-**Phase close (integrator).** Real runs, against `claude-haiku-5-5`:
-- the live `app-dev` task `task-0a050f9c`, retried: it continues its step and runs the checks;
-- a throwaway-home run with a step `maxIterations: 6`: a notice, a landing report, `failureKind: budget`
-  with a patch, then a retry that finishes;
-- one multi-file task long enough to pass 40 rounds under a declared budget.
+**Phase close (integrator).** Real runs, against `claude-haiku-5-5`. The first three passed on
+2026-11-03 before the amendment; the last three run after P59-8:
+- the live `app-dev` task `task-0a050f9c`, retried: it continues its step and runs the checks (it
+  continued, ran lint and tsc, then parked on an `.env.local.example` edit that was denied);
+- a throwaway-home run with a step `maxIterations: 4`: a notice, a landing report, `failureKind: budget`
+  with a patch, then a retry that finishes (passed);
+- one multi-file task long enough to pass 40 rounds under a declared budget (42 rounds, `done`);
+- after the amendment, a task queued with a small `maxTokens`: a notice, a landing, `failureKind:
+  budget`, `source: task`;
+- the 42-round task again with only a step `timeout` declared: it finishes, no guard near;
+- a pod with a small `budgetTokens`: the next task is blocked `pod_budget`, the pod paused, and
+  `run --resume` after raising it continues.
 
 Record rounds per hop before and after P59-5, on the same task.
 
@@ -319,7 +339,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-4 — Budgets are declared where the work is declared, and the machine only defaults
 
-**Status:** DONE 2026-11-03 (merged; the stale-claim oracle reproduced, so the per-round claim refresh shipped) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-5 (spec file)
+**Status:** DONE 2026-11-03, amended by P59-6 (its step and role rounds/tool-call keys are deleted; the time chain, the deleted `DISPATCH_*` and the claim refresh stay) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-5 (spec file)
 
 - **Trigger:** each per-hop bound is declared somewhere else, under rules that disagree (ADR 0038,
   "What the code and a run say today"):
@@ -449,6 +469,129 @@ Record rounds per hop before and after P59-5, on the same task.
   - `tests/architecture` (3 s);
   - `tests/e2e -n auto` (42 s: a tool's output changes).
 
+### P59-6 — Rounds and tool calls are guards, not budgets
+
+**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec (deletion) · **After:** P59-3
+
+- **Trigger:** the amendment in the phase trigger (an explicit scoped request). A round or a tool call
+  is not a cost, and as a declared budget it cut legitimate work: the incident stopped on rounds at
+  6 % of its tokens, and the 42-round run finished about two calls under the old default of 40.
+- **Goal (ADR 0038 decision 5, amended):**
+  - No step, role or task declares rounds or tool calls. Delete the step keys `maxIterations` and
+    `maxToolCalls` (`pipeline/domain/step.py` ~140-181, `plan.py` ~87-92 and ~209-210,
+    `short_form.py` ~30-31 and ~258-259), the archetype keys (`teams/role_schema.py` ~88-136,
+    ~168-171, ~233-234; `teams/config_models.py` ~47-48; `teams/roles.py` ~417-418 and ~467-470), the
+    hop coordinates `DOCKET_HOP_MAX_TOOL_CALLS` and `DOCKET_HOP_MAX_ITERATIONS` (`agent/ports.py`
+    ~143-148, `hops/application/compose.py` ~666-669) and both role schema copies (regenerate with
+    `scripts/gen_config_schemas.py`). `maxToolCalls` on a step and an archetype predates Phase 59;
+    it goes too.
+  - `hops/domain/budget.py` keeps only the time chain (`resolve_seconds`); `resolve_hop_budget`,
+    `HopBudget` and the `role` source are deleted. `driver_support.py` ~352-378 reads rounds and
+    tool calls from `Home` with `source: default`.
+  - The guards: `AGENT_LOOP_MAX_ITERATIONS` defaults to 200 and `AGENT_LOOP_MAX_TOOL_CALLS` to 400
+    (`kernel/home.py` ~135-136 and ~241-242). Both env vars stay, for tests and an emergency.
+  - A guard stop keeps its landing and report; its message names the env var, not a YAML key.
+  - A pipeline or role that still carries either key is refused by validation, naming the key and
+    saying a step declares only its `timeout` (no silent ignore).
+- **Non-goals:** the outcome, landing, notice, pin and retry of P59-1..P59-3 are unchanged; the step's
+  `tools` allow-list stays; time and tokens are untouched.
+- **Docs:** `docs/CONFIGURATION.md` "Budgets" (~330-355) becomes the three-row table (budget, clock,
+  guards); `docs/troubleshooting.md` ~146-154; `docs/commands.md` regenerated by `gen_cli_docs.py`.
+- **Specs:** `pipeline-format.spec.md` "Steps" (the two keys), `role-archetypes.spec.md` "Tools and
+  calls per hop", `agent-loop.spec.md` (requirements 104-105, "Tunables", the example),
+  `pod-dispatch.spec.md` where it names the step keys.
+- **Outside the repo (integrator, after merge):** `~/.claude/skills/onboard-project/scripts/apply.sh`
+  ~14-138 and `references/blueprint-format.md` write `maxIterations` on build steps; they must
+  stop. Tack is told.
+- **Acceptance (RED first):**
+  - `tests/unit/pipeline/domain/test_step__spec.py`: a step with `maxIterations: 5` or
+    `maxToolCalls: 5` is refused naming the key. Oracle: today both are kept.
+  - `tests/unit/teams/test_role_schema.py`: the same for an archetype.
+  - `tests/unit/hops/domain/test_budget.py`: only the time chain remains (step, pod, default).
+  - `tests/integration/hops/driver/test_hop_tools.py`: with nothing set, a model that asks for a tool
+    every round stops at `AGENT_LOOP_MAX_ITERATIONS` with `source: default`; with the env set to 2
+    it makes two requests and the landing.
+  - `rg -n "maxIterations|maxToolCalls|DOCKET_HOP_MAX_(ITERATIONS|TOOL_CALLS)|resolve_hop_budget" src
+    scripts docs specs --glob '!docs/adr/**' --glob '!docs/cycles-ended/**'` names only the refusal
+    and its test.
+- **Gate:** the files above under `timeout 120`; `tests/architecture`; `tests/e2e -n auto` (the
+  pipeline format changes); `gen_config_schemas.py --check`, `gen_cli_docs.py --check`,
+  `validate-specs.sh`.
+
+### P59-7 — A pod's budget is tokens: `budgetTokens` replaces `budgetUsd`
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec (rename by script, then by hand) · **After:** P59-6 (`pod-dispatch.spec.md`)
+
+- **Trigger:** the amendment. `budgetUsd` gates a dollar estimate (`hops/gates/pre_hop.py`
+  `pod_gating_cost` ~40-62 prices tokens through the catalog; `DocketDriver` records no cost), and
+  with an unpriced model (`claude-haiku-5-5`, the live home's) it never trips.
+- **Goal:**
+  - The pod setting `budgetTokens` (int > 0; unset or absent = no pod cap) replaces `budgetUsd`
+    everywhere: `teams/pod_settings.py` ~61, ~117, ~238; `teams/settings.py::pod_budget` ~37-39;
+    `teams/models.py` ~67-73; `teams/member_workspace.py` ~148-215, ~252-274;
+    `teams/pod_provisioning.py` ~104 and ~299-437; `teams/blueprints.py` ~84-110 and ~247-274;
+    the CLI (`pod.py` ~79-94 and ~342, `pod_settings.py` ~215 and ~296, `agents.py` ~459-468,
+    `status.py` ~249-260, `pod_show.py` ~42, `setup_check.py` ~260-267, `setup_check_budget.py`,
+    `run.py` ~248); HTTP (`routes/health.py` ~56-70, `routes/pod_create.py` ~56-84).
+  - The gate compares the pod's counted tokens (`input - cached + output`, the measure `maxTokens`
+    uses) with `budgetTokens`, over the same members and the same window the estimate used;
+    `decide_pod_budget` (`hops/domain/gate_decisions.py` ~294-303) takes integers and no
+    `estimated` flag. `pod_budget`, the pause, `pausedReason` and `run --resume` are unchanged.
+  - The pricing estimate stays where it informs (`docket status`), labelled, and gates nothing. The
+    "unpriced" warning on the budget goes.
+  - The blueprints set no pod budget (the build, respond and operate defaults of 20, 30 and 15 USD
+    go): a pod cap is opt-in, and a task's `maxTokens` and the per-turn default already bound spend.
+  - The `frugal` recipe (`templates/recipes/frugal/pod.yaml` ~8, `README.md`) declares a token cap;
+    `examples/configs/agents.{yaml,json}` follow.
+  - No compatibility: a document or request that still carries `budgetUsd` is refused naming
+    `budgetTokens`.
+- **Non-goals:** the task's `maxTokens`, the per-turn token budget and the hop's `budget` record are
+  unchanged; no new `features` name (the shape of `pod_budget` does not change).
+- **Change by script:** the mechanical rename (`budgetUsd` -> `budgetTokens`, `budget_usd` ->
+  `budget_tokens`, float -> int) is one throwaway script under the scratchpad, run once, then
+  finished by hand (CONTRIBUTING "a script is a means").
+- **Specs:** `cost-tracking.spec.md` (the cap and the gate), `pod-dispatch.spec.md` (the pre-hop
+  gate), `docket-meta.spec.md`, `pod-blueprints.spec.md`, `cli-json-shapes.spec.md`,
+  `specs/acceptance/user-stories.md`. Docs: `CONFIGURATION.md`, `recipes.md`, `troubleshooting.md`,
+  `README.md`, `QUICK-START-DOCKET.md`, `commands.md` regenerated.
+- **Acceptance (RED first):**
+  - `tests/integration/tasks/test_autopause.py`: a pod with `budgetTokens: 1000` whose earlier hops
+    counted 1 200 tokens blocks the next task with `pod_budget` and pauses, on a model with no
+    catalog price. Oracle: today `budgetUsd` never trips on an unpriced model.
+  - `tests/unit/teams/test_pod_settings.py`: `budgetTokens: 0`, `-1` and `"x"` are refused;
+    `budgetUsd` is refused naming `budgetTokens`.
+  - `tests/integration/interfaces/test_pod_config_settings.py`: `docket pod set budgetTokens 500000`
+    then `pod show` lists it with source `set`.
+  - `tests/unit/teams/test_blueprints.py`: no blueprint carries a pod budget.
+  - `rg -n "budgetUsd|budget_usd|default_budget_usd" src scripts docs specs examples
+    --glob '!docs/adr/**' --glob '!docs/cycles-ended/**'` names only the refusal and its test.
+- **Gate:** the files above under `timeout 120`; `tests/architecture`; `tests/e2e -n auto` (the HTTP
+  pod shape changes); `gen_cli_docs.py --check`, `gen_config_schemas.py --check`, `validate-specs.sh`.
+
+### P59-8 — `pod plan` shows each step's clock and the budget, with their sources
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-6, P59-7
+
+- **Trigger:** no command shows a resolved limit before a run; the operator learns it only from a
+  stop message. `docs/CONFIGURATION.md` ~357 says `docket pod plan` confirms the limits, and it
+  prints only the rework budget and each step's role and gate (seen 2026-11-03 on a throwaway pod).
+- **Goal:** `docket pod plan` (`interfaces/cli/commands/pod_config.py::cmd_plan` ~322-360) prints,
+  per agent step, its clock with the source (`step`, `pod` or `default`), and once, the guards
+  (rounds and tool calls, `default`) and the pod's `budgetTokens` or "none". `--json` carries the
+  same. It reads the same resolver the runner uses (`hops/domain/budget.py::resolve_seconds`), never
+  a copy of the chain.
+- **Non-goals:** no change to `pod show`; no new command; tokens per task are the task's and are
+  not shown here.
+- **Specs:** the `pod plan` requirement in the spec that owns it (find it with
+  `rg -n "pod plan" specs/functional`), `cli-json-shapes.spec.md` for `--json`. Docs:
+  `CONFIGURATION.md` ~357.
+- **Acceptance (RED first):** the `cmd_plan` test file (`rg -l "Pipeline plan" tests/`): a pipeline
+  whose build step declares `timeout: 1200` on a pod with `turnTimeoutS: 600` prints `1200s (step)`
+  for build and `600s (pod)` for review, the guards with `default`, and `budgetTokens none`. Oracle:
+  today none of these lines exist.
+- **Gate:** that file under `timeout 120`; `tests/architecture`; the CLI goldens
+  (`bash tests/golden/run.sh verify-all`) if a golden captures `pod plan`; `gen_cli_docs.py --check`.
+
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
@@ -524,22 +667,26 @@ that already own the files.
   credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
   path (ADR first, then `docket setup secret set`, then a per-site grant like the network grant, then a real run with a
   throwaway account) are in `internal-docs/design/site-credentials-for-a-pod.md`. No card yet.
+- *Phase 59 merges and real runs (2026-11-03).* Seen while merging or in the first three real runs.
+  - The `bash` clamp is `max(1, int(deadline - now))`, so a hop clock of 2 s ends a clamped command at 1 s and
+    the clock is not yet spent (`agent/loop_steps.py`). Round it up when a `time` stop is seen to need a
+    second request.
+  - Only an Implementer hop that ended `budget_exhausted` is pinned (ADR 0038 decision 2 reads wider). Trigger:
+    a plan of record that needs the tree of another failed Implementer hop in the patch.
+  - `--resume`'s lease still uses the pod's `turnTimeoutS` + `verifyTimeoutS` and ignores a step's `timeout`;
+    the per-round claim refresh covers a live claim.
+  - A `budget_exhausted` stop for a finalization reply that carried tool calls is a model misbehaviour with
+    `stop_reason: token_budget`; it lands as a budget outcome. Trigger: one seen in a real trace.
+  - A policy `ask` on `.env.local.example` (a template, no secret) stopped the retried app-dev task. Trigger:
+    the operator wants templates exempt from `block-destructive`.
 - *Phase 59 planning (2026-11-02).* Left out of the phase by ADR 0038; each waits on its trigger.
   - docket continuing a budget-stopped hop on its own (ADR 0038 decision 6). Trigger: the same task
     retried after a `budget` stop with `treeChanged: true` three times in a week (audit `task.retry`
     plus the hop's `budget`).
   - A stall detector beyond identical calls (rounds that only re-read what the session already
     holds). Trigger: three Implementer `budget` stops with `treeChanged: false` in real runs.
-  - Default `maxIterations` per built-in role. Trigger: the `budget` stops of at least 20 real hops
-    show one role reaching the default and another never near it.
   - The 300 s default hop clock (`AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` after P59-4). Trigger: a `time` budget stop
     whose last `bash` the clamp killed (requirement 98's marker).
-  - A per-step budget sent with one task by the plan of record (`task.budget`, for one large task on
-    a pipeline shared with short ones). Trigger: Tack's runner asks for it, in an issue or an ADR of
-    its own.
-  - A machine ceiling over budgets a repository declares (`pod update` shows them and the operator
-    accepts; `maxTokens` and `budgetUsd` already cap spend). Trigger: a pod applied from a
-    repository its operator does not own.
   - Parallel-group resume re-runs a group's ok children with their original prompt over their
     sessions (`pod-dispatch.spec.md` "Parallel step groups" item 6). Trigger: a group child re-run
     observed in a real retry.

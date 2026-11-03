@@ -2,8 +2,11 @@
 
 **Status:** Accepted (2026-11-02, the maintainer's request). Phase 59 in `TODO.md` carries it out.
 The maintainer accepted the decisions, including 5 and 6, and the names they introduce
-(`budget_exhausted`, `failureKind: budget`, the hop's `budget`, `source`, `maxIterations`,
-`retryContinues`) on 2026-11-03.
+(`budget_exhausted`, `failureKind: budget`, the hop's `budget`, `source`, `retryContinues`) on
+2026-11-03. **Amended 2026-11-03**, before Phase 59 was pushed: decision 5 is rewritten (a budget,
+a clock and guards). Rounds and tool calls are guards owned by the machine, not budgets declared on
+a step or a role; tokens are the budget, and a pod's `budgetTokens` replaces `budgetUsd`. The step
+and role `maxIterations`/`maxToolCalls` that P59-4 shipped are deleted.
 
 **Question:** A real Implementer hop stopped at `max_iterations=20` with its change written but not
 verified. It had used 6 % of its token budget and 77 s. What should a hop's budget be, what must
@@ -64,8 +67,8 @@ models are all handled by one structure?
 
 ## Decisions
 
-1. **Running out of budget is its own outcome.** Four bounds are budget bounds: rounds, tool calls,
-   tokens and wall clock. Hitting any of them yields `failure_kind="budget_exhausted"` on the turn
+1. **Running out of budget is its own outcome.** Four bounds stop a turn this way: rounds, tool
+   calls, tokens and wall clock (decision 5 says which are budgets and which are guards). Hitting any of them yields `failure_kind="budget_exhausted"` on the turn
    and `failureKind: "budget"` on the task. The hop record carries `budget: {bound, limit, used,
    treeChanged}`. It is never retried in place. `timeout` now means only a request or transport
    timeout. `no_progress`, the denial ceiling, cancellation and approvals keep their own kinds,
@@ -96,37 +99,40 @@ models are all handled by one structure?
      applies to an in-place transient retry whose failed attempt persisted rounds.
    - "Start over" is not a retry mode. It is a new task, optionally with `baseRef` set to the old
      branch, as `operator-api.spec.md` already says.
-5. **A budget has three owners, and each declares it in one place.** One precedence rule applies
-   to every bound: the most specific declaration wins, and the machine only fills a gap.
-   - **The work owns the size of one attempt**: rounds, tool calls and time per hop. The place is
-     the pipeline step in the repository's YAML (`maxIterations`, `maxToolCalls`, `timeout`).
-     There it is versioned with the pipeline, shown by `pod update` and accepted by the operator.
-     A role carries a default for every step that runs it (`maxIterations`, `maxToolCalls` on the
-     archetype). The pod's `turnTimeoutS` stays the pod-wide default for time, because a
-     repository's slow part, its test suite, belongs to the repository. The chain is step > role >
-     pod (time only) > machine. `docket run --timeout` keeps its place: one person's choice for one
-     run, in the pod's slot.
-   - **The spender owns the spend**: the task's `maxTokens` (the plan of record) and the pod's
-     `budgetUsd`. Tokens are never a step key, because the same pipeline runs tasks of different
-     worth.
-   - **The machine owns only the defaults**, in environment variables, used when nothing is
-     declared. A machine value never overrides a declaration:
-     - `DISPATCH_TURN_TIMEOUT_S` and `DISPATCH_VERIFY_TIMEOUT_S` are deleted;
-     - the time default is one value, `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, read by
-       `resolve_timeout` in place of the `DEFAULT_TIMEOUT` constant.
-   - **Every resolved limit says where it came from**: `source: step | role | pod | default`.
-     It appears on the hop's `budget`, and the stop message names the key that raises it.
-   - **No new levels.** There is no pod-level `maxIterations` or `maxToolCalls` and no
-     pipeline-wide defaults block. Each step names its role, so a pod's per-role need is written on
-     its steps.
-   - **The rounds default rises from 20 to 60.** It is a backstop against cheap loops: tokens and
-     time bound cost, and decision 3 makes reaching it a checkpoint with a report. 60 is a
-     judgment, about four times the measured maximum, not a measured need.
-   - **A long declared budget must not look like a crash.** Today the claim is refreshed only when
+5. **A budget, a clock and guards; each has one owner** (amended 2026-11-03). Three questions were
+   one word: how much a task may spend, how long a step may take, and when a loop has run away.
+   - **The budget is tokens, owned by the spender.** The task's `maxTokens` (the plan of record,
+     `docket task add --max-tokens`) bounds one task. A pod's `budgetTokens` bounds the pod's
+     counted tokens across tasks; reaching it blocks the task with `pod_budget` and pauses the pod,
+     as `budgetUsd` did. `budgetUsd` is deleted: docket records no dollars, so it gated an estimate
+     from a price table, and a model with no catalog price was never gated at all. Tokens are
+     never a step key, because the same pipeline runs tasks of different worth. A dollar figure
+     stays an estimate in `docket status`, and nothing gates on it.
+   - **The clock is seconds per hop, owned by the work.** The step's `timeout`, then the pod's
+     `turnTimeoutS` (a repository's slow part, its test suite, belongs to the repository), then
+     the machine's `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, read by `resolve_timeout` in place of the
+     `DEFAULT_TIMEOUT` constant. `docket run --timeout` keeps its place, one person's choice for
+     one run, in the pod's slot. `DISPATCH_TURN_TIMEOUT_S` and `DISPATCH_VERIFY_TIMEOUT_S` are
+     deleted: a machine value never overrides a declaration.
+   - **Rounds, tool calls and identical repeats are guards, owned by the machine.** They catch a
+     loop that ran away; they do not size work, so no step, role or task declares them. A round or
+     a tool call is not a cost: a cap on them, set as a budget, cut legitimate work (the incident
+     stopped at 6 % of its tokens; a 42-round task finished about two calls under the old default
+     of 40) and needed four layers of configuration. The guards are `AGENT_LOOP_MAX_ITERATIONS`,
+     200, and `AGENT_LOOP_MAX_TOOL_CALLS`, 400, plus `no_progress`. Both numbers are judgments, far
+     above every measured hop (short hops at most 14 rounds; the long one 42 rounds and about 38
+     calls), so tokens and time stop a costly hop first. A guard stop is still `budget_exhausted`
+     with a landing and a report, and its `source` is always `default`.
+   - **Every resolved limit says where it came from**: `source: task | step | pod | default`. It
+     appears on the hop's `budget`, the stop message names the key that raises it, and
+     `docket pod plan` prints each step's resolved clock and the token budget with their sources.
+   - **No other levels.** No per-task budget object, no per-step map of budgets, no
+     pipeline-wide defaults block, no machine ceiling over what a repository declares.
+   - **A long declared clock must not look like a crash.** Today the claim is refreshed only when
      a process starts (`driver_support.py` ~446) and at a hop's end. The stale-claim sweep
      (`max(CLAIM_STALE_TIMEOUT, lease)`) and `--resume`'s lease (`turnTimeoutS + verifyTimeoutS`)
      could therefore fail a hop that is still making rounds. The claim is refreshed every model
-     round. This is read from the code, not reproduced; P59-4's RED test settles it.
+     round (P59-4 reproduced the stale sweep and shipped the refresh).
 6. **Continuing is the plan of record's call, not docket's.** docket does not auto-continue a hop
    that ran out. It supplies the facts: the bound, the report, the pinned diff, and whether the tree
    changed. Tack or the operator decides whether another budget is worth spending. Spending
@@ -142,7 +148,7 @@ models are all handled by one structure?
 | Case | What happens after Phase 59 |
 | --- | --- |
 | Short task, slightly over budget (the incident) | Notice at 75 %; landing report; task `failed`/`budget` with the patch; one retry continues and runs the checks |
-| Long multi-file feature | The step declares `maxIterations`/`timeout`; in-turn compaction (requirements 47-56) keeps the context bounded; if it still runs out, each budget is a checkpoint with a report |
+| Long multi-file feature | The step declares its `timeout`, the task's `maxTokens` sizes its spend, the guards sit far above it; in-turn compaction (requirements 47-56) keeps the context bounded; if it still runs out, the stop is a checkpoint with a report |
 | Long test suite | A bash call is clamped to the remaining time; the time bound lands with a report; the hop is not retried in place; `verify:` gates run outside the turn |
 | Confused model, re-reading | Tokens and time bound the cost; `no_progress` stops identical repeats; the report and `treeChanged: false` tell the plan of record not to continue |
 | Reviewer runs out | The hop fails with `budget`; no verdict is read; the task never passes on a forced answer |
@@ -155,9 +161,9 @@ models are all handled by one structure?
 - These items each wait on a trigger in `TODO.md`'s follow-ups under "Phase 59":
   - automatic continuation inside docket (decision 6);
   - a stall detector beyond identical calls;
-  - per-role default budgets in the built-in archetypes;
-  - the 300 s default hop clock;
-  - a per-step budget sent with one task by the plan of record;
-  - a machine ceiling over budgets a repository declares.
+  - the 300 s default hop clock.
+- Decided against by the 2026-11-03 amendment of decision 5, so no longer waiting: per-role default
+  budgets, a per-step budget sent with one task (a task sizes its spend with `maxTokens`), and a
+  machine ceiling over what a repository declares.
 - Parallel-group resume, which re-runs a group's ok children (`pod-dispatch.spec.md` "Parallel step
   groups" item 6), is a known limit and is not changed here.
