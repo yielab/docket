@@ -135,7 +135,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-1 — A retry re-runs the step that failed, and continues it
 
-**Status:** IN-PROGRESS (@sonnet-p59-1) · **Size:** M · **Model:** Sonnet · **Kind:** fix (wrong outcome) + spec
+**Status:** DONE 2026-11-03 (merged; `retryContinues` joins `features`) · **Size:** M · **Model:** Sonnet · **Kind:** fix (wrong outcome) + spec
 
 - **Trigger:** the reproduction in the phase trigger. `replay_pipeline_position`
   (`tasks/application/record.py` ~101-197) ends every non-parked hop with `pi = idx + 1` (~184),
