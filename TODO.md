@@ -312,7 +312,7 @@ from `main`.
 
 ### P61-3 — A configuration gap ends the step with `capability_missing`
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P60-1
+**Status:** DONE 2026-11-03 (feature `capabilityMissing` live on the reinstalled service; the Tack task rerun was not made, the stop is proven by the integration test) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P60-1
 (`agent/`), P60-3 (`record.py`), P61-2 (the `fetch` fix, `health.py`)
 
 - **Trigger:** in `task-6d3fc1e9` the Lead was refused twice `unknown tool
@@ -400,7 +400,7 @@ from `main`.
 
 ### P61-5 — The hop message states the member's reach and folder
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-1,
+**Status:** DONE 2026-11-03 (live: the first request of a web-research hop holds Working folder, Network, Web and Records lines) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-1,
 P61-2 (the facts it states)
 
 - **Trigger:** in `task-6d3fc1e9` the researcher and the analyst learned "no internet" by failing on
@@ -427,7 +427,7 @@ P61-2 (the facts it states)
 
 ### P61-6 — `fetch` keeps the service perimeter at any host
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-2
+**Status:** DONE 2026-11-03 (live: exact `localhost` read the service, a PDF was refused as not text, hosts off the list were refused, es.wikipedia.org read) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-2
 (`platform/fetch.py`, the `fetch` section of `security-gates.spec.md`)
 
 - **Trigger:** the maintainer's request (2026-11-03): a research pod must read sites nobody here
@@ -647,6 +647,12 @@ P61-2 (the facts it states)
 - *A pod.yaml `fetchDomains` is not a run item.* `teams/apply/review.py` `_NOT_ADDED_SETTINGS`: should adding
   hosts need `accept`? Also `_export_manifest` exports a pod's `*` as `fetchDomains: '*'`, which `pod update`
   refuses. Trigger: the first repo that ships `fetchDomains`. Tack: `pod-reach.json` gained `fetchDomains`.
+- *The fetch refusal for a host off the pod's list does not name the pod command.* `platform/fetch.py` ~279 says
+  "add it to FETCH_ALLOWED_DOMAINS, or to the pod's fetchDomains"; P61-3's card wanted the exact `docket pod set`
+  command. `platform` does not know the pod. Trigger: a hop that stops on this refusal and a person asks how.
+- *`capability_missing` for a tool is "a name the role could hold".* P61-3 chose that over "a tool another member
+  holds" so a deliberate `deniedTools` is not a gap. A Reviewer calling a record write it may not use now fails
+  the task `capability_missing` (`tests/e2e/test_workdir_pod.py` follows).
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
