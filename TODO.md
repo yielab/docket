@@ -94,8 +94,8 @@ from `main`.
 > took p99 11.6 s. Measured in the traces and the stored sessions of `~/.docket` (2026-10-24..11-03);
 > the maintainer's analysis is in the gitignored `internal-docs/audits/`. API stays 6.
 >
-> **Waves (by file):** 1: P60-1 ‖ P60-3 ‖ P61-1 · 2: P60-2 (after P60-1) ‖ P61-2 · 3: P61-3 ‖ P61-5 ·
-> 4: P61-4. P60-1 owns `agent/loop*.py`, `agent/ports.py`, `driver_support.py`, `runner.py`; P60-3 owns
+> **Waves (by file):** 1: P60-1 ‖ P60-3 ‖ P61-1 · 2: P60-2 (after P60-1) ‖ P61-2 · 3: P61-3 ‖ P61-5 ‖
+> P61-6 · 4: P61-4 · 5: P61-7 · 6: P61-8. P60-1 owns `agent/loop*.py`, `agent/ports.py`, `driver_support.py`, `runner.py`; P60-3 owns
 > `tasks/application/record.py` until P61-3.
 
 ### P60-1 — A transient failure is retried per request, inside the turn
@@ -425,6 +425,201 @@ P61-2 (the facts it states)
   of a `web-research` task holds the block (`prompt_composed`).
 - **Gate:** that file; `tests/golden/run.sh verify-all` (4 s); `tests/architecture`.
 
+### P61-6 — `fetch` keeps the service perimeter at any host
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-2
+(`platform/fetch.py`, the `fetch` section of `security-gates.spec.md`)
+
+- **Trigger:** the maintainer's request (2026-11-03): a research pod must read sites nobody here
+  controls, "a solid and secure implementation, not a patch". P61-2 opens `*.host` and `*`, but
+  `fetch_url` (`platform/fetch.py` ~243-315) checks only the host *name*. It opens through
+  `urllib.request.build_opener` (~276) with the environment's proxies and a second, unchecked DNS
+  lookup. So under `*`, `http://127.0.0.1:8081/` (this machine's model endpoint),
+  `http://localhost:7399/` (docket's own API), `http://169.254.169.254/` (cloud metadata), a LAN
+  address, or a public name that resolves to any of these is reached from docket's process, outside
+  the jail. A redirect from https to http is followed (`_DomainLockedRedirectHandler` ~182-213). A
+  binary body (a PDF) is decoded as UTF-8 and handed to the model (~303-305). The service caller
+  already closes the first three (`platform/service_http.py`: `address_refused` ~115; `_connector`
+  ~157-182 connects only to the address it has just checked; `ProxyHandler({})` ~314;
+  `_PerimeterRedirects` ~226-250; ADR 0036 decision 13). `fetch` was left on the older guard.
+- **Goal:** one perimeter for every outbound HTTP call docket makes itself.
+  - Move the address check, the checked connector, the two handlers and the redirect guard from
+    `service_http.py` to `platform/perimeter.py`. This is a pure move: `pytest --co` and
+    `tests/architecture` are its check. Then `fetch_url` and `call_operation` both open through it.
+    `fetch.py` keeps no opener of its own.
+  - **Addresses.** Every address a host resolves to is checked, and the socket connects to that
+    checked address (no second lookup, so rebinding cannot swap it).
+    - A private, loopback, link-local, multicast or unparseable address is refused before a byte is
+      sent.
+    - Exception: the host is an *exact* entry of the member's set, not one matched by `*.` or `*`.
+      This keeps the recipe's self-hosted SearXNG working (`searxng.lan`, `localhost`).
+    - An IP-literal URL is checked the same way.
+  - **No environment proxy.** `HTTP_PROXY` and `HTTPS_PROXY` are ignored, as the service caller
+    already does.
+  - **Redirects.** Each hop is checked by P61-2's matcher and then by the address check. https to
+    http is refused.
+  - **Text only.**
+    - A body is text when its content type is `text/*`, `application/json`, `application/xml`,
+      `application/javascript`, `*+json` or `*+xml`.
+    - With no content type, a body is text when it has no NUL byte in its first 8 KB.
+    - Anything else is refused as `content type 'application/pdf' is not text; fetch reads text
+      pages`, and none of the body reaches the model.
+  - **Refusals.** Each is `ToolOutcome(ok=False, refusal="fetch_not_allowed")`, so the existing
+    audit path (`governance/gate.py` `audit_refusal` ~408-418) records the host. The error text
+    names the resolved address and the fix ("list the exact host in the pod's fetchDomains").
+- **Non-goals:**
+  - extracting text from a PDF or another document (follow-up below);
+  - a port rule;
+  - methods, headers or bodies (ADR 0036 "Not doing");
+  - a search tool (decision 17);
+  - rendering JavaScript;
+  - an operator-configured egress proxy.
+- **Change:** `platform/perimeter.py` (new, moved from `service_http.py` ~115-250);
+  `platform/service_http.py` (imports it; `call_operation` ~277-347); `platform/fetch.py` (~182-213
+  goes, ~276, ~300-315); `tests/unit/platform/test_perimeter.py` (the moved cases from
+  `test_service_http.py` ~43); `tests/unit/platform/test_fetch.py`;
+  `tests/integration/platform/test_fetch__wire.py`. Spec: `security-gates.spec.md` "`fetch`: an
+  inspectable path" (~1120-1185): the address, proxy, downgrade and text rules. Also its known
+  limits: `fetch` is still an outbound channel through its URL (P61-7), and a public host that
+  serves hostile text is `pre_input`'s job (~1186).
+- **Acceptance (RED first):**
+  - `test_fetch__wire.py`, with a local server on `127.0.0.1` that counts requests:
+    - set `*`: `http://127.0.0.1:<port>/` and `http://localhost:<port>/` are refused, and the server
+      counts 0;
+    - set `localhost` (exact): the fetch is allowed and the server counts 1;
+    - set `localhost`, with `HTTP_PROXY` pointing at a closed port: the fetch still reaches the
+      server directly;
+    - set `localhost, *`: a redirect from `localhost` to `127.0.0.1` is refused.
+    - Oracle: on P61-2 alone, the `*` case counts 1.
+  - `test_perimeter.py`:
+    - the addresses already at `test_service_http.py` ~43, plus an IPv4-mapped IPv6 one, are refused
+      and a public one is not;
+    - an https to http redirect is refused;
+    - a resolver seam that answers a public address and then a private one is called once, and the
+      connection goes to the first answer.
+  - `test_fetch.py` (the `_fetch_with` seam ~82): `application/pdf` returns `ok=False` with an empty
+    content and the type in the error; `application/ld+json` and an untyped UTF-8 body pass.
+  - `test_service_http.py` passes unchanged: the move keeps the services' behaviour.
+- **Gate:** the four test files; `tests/architecture`; `tests/e2e -n auto` (42 s; `fetch`'s output
+  changes).
+
+### P61-7 — A `fetch` URL that carries a credential is refused
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-4
+(`builtin_tools.py`), P61-6 (the `fetch` section of `security-gates.spec.md`)
+
+- **Trigger:** the same request. With `*`, `fetch` is an outbound channel: a GET's URL carries
+  whatever the model writes into it, to a host nobody vetted.
+  - ADR 0036 decision 2 keeps `send` and `fetch` out of one hop, but not this.
+  - The shipped credential shapes run only `on: output`, for logging
+    (`templates/policies/secret-pii-redact.yaml`), and never on a call's arguments.
+  - A home holds only the policies its operator installed, so a policy is not the place for this.
+- **Goal:** `_fetch_handler` (`hops/application/builtin_tools.py` ~228) refuses, before `fetch_url`
+  is called:
+  - a URL with userinfo (`user:pw@host`);
+  - a URL whose percent-decoded text changes under `governance/secrets.redact(personal=False)`
+    (~213). That function covers the credential shapes and the exact stored secret values; with
+    `personal=False`, an e-mail address in a search query is not a credential.
+
+  The rule holds at every host. A key belongs in a declared service (ADR 0036 decision 13), never in
+  the model's hand. The refusal is `refusal="fetch_secret_in_url"`, and `audit_refusal` (~408) gains
+  it with the host only. The error says which rule matched and never quotes the value.
+- **Non-goals:** a secret that is encoded, split or shaped like none of the patterns (known limit
+  `unlisted-secret-shape`, `security-gates.spec.md` ~326, which gains `fetch`); a length cap on
+  queries.
+- **Change:** `builtin_tools.py` (`_fetch_handler` ~228); `governance/gate.py` (`audit_refusal`
+  ~408-418); `tests/unit/hops/application/test_builtin_tools.py`; `tests/unit/governance/test_gate.py`
+  (or the file whose `SUBJECT` is `gate`). Spec: `security-gates.spec.md`'s `fetch` section and
+  limit 5.
+- **Acceptance (RED first):**
+  - `test_builtin_tools.py` (`_fetch_tool` takes `fetch_url` as an argument, so a stub records its
+    calls):
+    - `https://example.org/?q=<a provider-key shape>` and `https://u:pw@example.org/` are refused,
+      the stub is never called, and the error and the audit detail hold no key;
+    - `https://example.org/?q=ana%40example.org` reaches the stub.
+    - Oracle: before, the stub receives the key.
+  - `test_gate.py`: `audit_refusal(..., "fetch_secret_in_url")` writes `host=` only.
+- **Gate:** the two files; `tests/architecture`; `tests/e2e -n auto` (42 s).
+
+### P61-8 — `fetch` reads a PDF's text through the jail
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-6
+(`platform/fetch.py`'s text rule), P61-7 (`_fetch_handler`)
+
+- **Trigger:** the maintainer's decision (2026-11-03). Research reads papers and reports, so
+  `fetch` reads a PDF's text. A hostile PDF is parsed inside the jail, never in docket's own
+  process. After P61-6, `fetch` refuses `application/pdf`. A PDF is usually over the 200,000-byte
+  cap (`kernel/home.py` ~176), and a truncated PDF does not parse.
+- **Goal:**
+  - **`fetch_url`** (`platform/fetch.py`) hands its caller a PDF body as typed bytes, beside its
+    content type, in place of P61-6's refusal. A PDF is a body of type `application/pdf`, or an
+    untyped body that starts with `%PDF-`. Every other non-text body stays refused.
+    - A PDF is read up to `FETCH_MAX_DOCUMENT_BYTES` (default 10,000,000; `Home`, `docs/CONFIGURATION.md`).
+    - A larger one is refused whole, never truncated. The refusal names the setting.
+  - **`hops/application/pdf_text.py`** (new) turns the bytes into text through the `kernel.ports.jail`
+    port, the way `agent/tools/mcp_client.py` `_jailed_command` (~88) builds its argv. It does not
+    use `sandbox` modules directly.
+    - The bytes go to a fresh 0700 directory under the jail's temp dir. That directory is the
+      jail's only root. The network is off. The read-only paths are the operator's grants
+      (`ctx.read_only`, `docket setup sandbox read add`). The environment is the jail's temp
+      variables only, so no credential passes.
+    - It runs `pdftotext -enc UTF-8 -nopgbrk -q -- in.pdf -`. The extractor's name is one module
+      constant.
+    - The run is bounded by what is left of the fetch deadline, and its process group is killed
+      at the deadline. Its output is capped like any tool output. The directory is removed in a
+      `finally`.
+  - **Fail closed**, each refusal naming its fix:
+    - the recorded backend is `none` (isolation off, or no backend): "reading a PDF needs the jail".
+      There is never an unjailed run.
+    - `pdftotext` is not on `PATH`: name poppler.
+    - the jail cannot execute it (outside `/usr`, `/opt` and the other default read roots, for
+      example a Homebrew prefix): name `docket setup sandbox read add <its prefix>`.
+    - with the docker backend, an image without it: name the image.
+    - a non-zero exit: give the first line of stderr, bounded.
+  - **Result.** `HTTP 200 application/pdf; <n> chars of text`, then the text. It passes `pre_input`
+    like every `fetch` result (`security-gates.spec.md` fetch requirement 6). A refusal is `ok=False`
+    with `refusal="fetch_not_allowed"` and no page bytes.
+- **Non-goals:**
+  - other document types (`.docx`, images, OCR);
+  - layout or tables;
+  - a pure-Python parser in docket's process (the maintainer's decision);
+  - a `setup check` line (follow-up below);
+  - caching extracted text.
+- **Change:** `platform/fetch.py`; `kernel/home.py` (~176, the setting); `docs/CONFIGURATION.md`;
+  `hops/application/pdf_text.py` (new); `hops/application/builtin_tools.py` (`_fetch_handler`
+  ~228); `tests/unit/hops/application/test_pdf_text.py`;
+  `tests/integration/hops/test_pdf_text__jail.py` with the fixture `tests/fixtures/documents/hola.pdf`
+  (a minimal hand-written PDF holding "Hola docket"). Spec: `security-gates.spec.md`'s `fetch` section
+  (the PDF rule, the jail, fail closed), its known limits (the extracted text is untrusted text), and
+  agent-loop requirement 83's tool text. That is nine files, with the fixture counted; the seam
+  between fetch's bytes and the extractor stays in one card, so no two green cards break it.
+- **Acceptance (RED first):**
+  - `test_pdf_text.py`, with an injected runner (no I/O in `unit/`):
+    - backend `none`: refused, and the runner is never called;
+    - extractor missing: refused with the fix;
+    - non-zero exit: stderr's first line, bounded;
+    - output over the cap: truncation is announced;
+    - the runner receives one root, network off and an environment with no credential name
+      (`jail.credential_names()`).
+  - `test_pdf_text__jail.py` (integration, Landlock or Seatbelt detected):
+    - the fixture gives text holding "Hola docket", and the temp directory is gone afterwards.
+    - With a fake `pdftotext` first on `PATH` (a script that reads `$DOCKET_HOME/token`, opens a
+      socket to `127.0.0.1` and sleeps): the read and the socket fail inside the jail, the call is
+      refused at the deadline, and no process is left in its group.
+    - With isolation recorded off, the fake leaves no marker file.
+    - Skip only when `pdftotext` is absent, and say so in the skip reason.
+  - `test_fetch.py` (`_fetch_with` ~82):
+    - a `%PDF-` body with no type comes back as bytes, not text;
+    - a PDF over `FETCH_MAX_DOCUMENT_BYTES` is refused, never truncated;
+    - an `image/png` body stays refused.
+    - Oracle: on P61-6, every PDF is refused.
+  - Live (integrator): a `web-research` task with `*.arxiv.org` in `fetchDomains`, on this
+    machine's Homebrew `pdftotext` after `docket setup sandbox read add <the Homebrew prefix>`. The
+    trace shows a `fetch` of an arXiv PDF answered with text.
+- **Gate:** the three test files; `tests/architecture`; `tests/e2e -n auto` (42 s);
+  `tests/integration/sandbox/test_escape_matrix.py` (it is the jail's own check, and this card adds
+  a jailed launch).
+
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
 > Re-checked against the code on 2026-10-24; paths are current. Removed as no longer true: notification
@@ -432,6 +627,13 @@ P61-2 (the facts it states)
 > `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
 
 **Phases 60-61 (planned 2026-11-03).** Left out of the cards on purpose:
+- *PDF reading in `setup check`.* After P61-8, `docket setup check` could report whether a PDF is
+  readable: whether `pdftotext` is found, whether the jail can execute it, and whether isolation is
+  on. Trigger: an operator's first PDF refusal for a missing grant.
+- *The `web-research` recipe after P61-2.* Its README (`templates/recipes/web-research/README.md`)
+  still tells the operator to list exact hosts in `FETCH_ALLOWED_DOMAINS` and to declare search as an
+  MCP server. Once P61-2 and P61-6 are merged, the README teaches `pod set fetchDomains` and a search
+  site as a host (ADR 0036 decision 17). Trigger: P61-6 merged.
 - *Dead retry plumbing after P60-1.* `UnitContext.do_sleep`/`on_retry` (`tasks/application/record.py`
   ~261-263), `executor.dispatch_task`'s `on_retry`/`sleep` (~475-580) and `sweep._touch` (~161) have no
   reader. Delete with P61-3, which owns `record.py` next.
