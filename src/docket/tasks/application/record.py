@@ -395,7 +395,6 @@ def build_hop_result(
         provider=run_res.provider,
         ok=hop_ok,
         output=hop_output,
-        cost_usd=run_res.cost_usd,
         error=withhold_approval_token(hop_error),
         attempts=attempt,
         step_id=node.step_id,
@@ -521,17 +520,7 @@ def persist_hop_and_trace(
         role,
         "tool_result" if hop_ok else "error",
         hop.output or hop_error or "",
-        cost_usd=run_res.cost_usd or None,
     )
-    if run_res.cost_usd:
-        trace_locked(
-            ctx.project,
-            ctx.session_id,
-            role,
-            "cost_charged",
-            _json.dumps({"role": role}),
-            cost_usd=run_res.cost_usd,
-        )
 
     # The hop's closing events are written, so its trace window can now be closed; this precedes
     # `on_hop` so the persisted record's `lastTs` covers them (evidence-v1).
@@ -655,7 +644,6 @@ def persist_hop(project: str, task_id: str, hop: HopResult) -> None:
         record.hops.append(hop)
         if record.current is not None and record.current.step_id == (hop.step_id or ""):
             record.current = None
-        record.cost_usd = round(sum(h.cost_usd for h in record.hops), 6)
         record.claimed_at = _clock.iso()
 
     updated = TaskRepository.for_pod(project).update(task_id, _append)

@@ -152,7 +152,6 @@ _STRUCTURAL_KEYS: dict[str, tuple[str, ...]] = {
     "guardrail_block": ("hook", "policy", "action"),
     "approval_granted": ("token",),
     "approval_denied": ("token",),
-    "cost_charged": ("role",),
     "budget_warning": (
         "action",
         "status",

@@ -49,9 +49,7 @@ class TestApiContract:
     """Break one of these → you've changed the API contract → bump SERVE_API_VERSION."""
 
     # /status.json top-level keys
-    STATUS_TOP_LEVEL_KEYS = frozenset(
-        {"apiVersion", "timestamp", "channels", "agents", "totalCostUsd"}
-    )
+    STATUS_TOP_LEVEL_KEYS = frozenset({"apiVersion", "timestamp", "channels", "agents"})
 
     # /status.json per-agent keys
     AGENT_KEYS = frozenset(
@@ -64,7 +62,6 @@ class TestApiContract:
             "registered",
             "bindings",
             "lastActivity",
-            "costUsd",
             "budgetTokens",
         }
     )
@@ -73,9 +70,7 @@ class TestApiContract:
     METRIC_NAMES = frozenset(
         {
             "docket_agents_total",
-            "docket_agent_cost_usd",
             "docket_agent_turns_total",
-            "docket_cost_usd_total",
             "docket_approvals_pending_total",
             "docket_inbox_items",
         }
@@ -116,10 +111,6 @@ class TestApiContract:
         agents = health.build_status()["agents"]
         for agent in agents:
             assert agent["kind"] == "project"
-
-    def test_total_cost_is_float(self, api_home: Path) -> None:
-        st = health.build_status()
-        assert isinstance(st["totalCostUsd"], float)
 
     def test_metrics_stable_names_present(self, api_home: Path) -> None:
         text = metrics.render_metrics()

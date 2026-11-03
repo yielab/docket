@@ -412,12 +412,9 @@ class _SecureBuildRunner:
                 return _rd.TurnResult(
                     ok=True,
                     output="REQUEST-CHANGES\nSanitize the raw SQL string in query.py.",
-                    cost_usd=0.01,
                     raw={},
                 )
-            return _rd.TurnResult(
-                ok=True, output="APPROVE - injection risk fixed", cost_usd=0.01, raw={}
-            )
+            return _rd.TurnResult(ok=True, output="APPROVE - injection risk fixed", raw={})
         return FakeDriver()(member_id, session_id, message, timeout, env)
 
 

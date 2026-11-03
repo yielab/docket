@@ -46,13 +46,12 @@ from docket.teams import fleet as _fleet
 class FakeDriver:
     """In-memory ``RuntimeDriver`` double — deterministic, no subprocess, no disk.
 
-    ``ok``/``cost``/``fail_role`` mirror the original ``_RecordingRunner`` shims'
+    ``ok``/``fail_role`` mirror the original ``_RecordingRunner`` shims'
     constructor exactly, so existing call sites port over by substituting the
     class name. ``run_turn`` records every call in ``calls`` for assertions.
     """
 
     ok: bool = True
-    cost: float = 0.02
     fail_role: str | None = None
     error: str = "boom"
     failure_kind: FailureKind | None = None
@@ -95,8 +94,8 @@ class FakeDriver:
         self.calls.append((agent_id, session_key, message, timeout, env))
         role = agent_id.rsplit("-", 1)[-1]
         if self.fail_role and role == self.fail_role:
-            return TurnResult(False, "", 0.0, {}, self.error, failure_kind=self.failure_kind)
-        return TurnResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
+            return TurnResult(False, "", {}, self.error, failure_kind=self.failure_kind)
+        return TurnResult(self.ok, f"done by {agent_id}", {"output": "x"})
 
     def list_sessions(self, agent_id: str) -> list[SessionSummary]:
         return list(self.sessions_by_agent.get(agent_id, []))
@@ -107,7 +106,6 @@ class FakeDriver:
     def capabilities(self) -> DriverCapabilities:
         return DriverCapabilities(
             driver_name="fake",
-            reports_cost_usd=self.cost > 0,
             supports_sessions=True,
         )
 

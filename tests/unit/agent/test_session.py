@@ -47,7 +47,7 @@ def _recording_driver() -> tuple[_sess.SessionSummaryRunner, list[str]]:
         env: dict[str, str] | None = None,
     ) -> TurnResult:
         calls.append(message)
-        return TurnResult(True, "ok summary", 0.0, {})
+        return TurnResult(True, "ok summary", {})
 
     return _driver, calls
 
@@ -55,13 +55,13 @@ def _recording_driver() -> tuple[_sess.SessionSummaryRunner, list[str]]:
 def _failing_driver(
     agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None = None
 ) -> TurnResult:
-    return TurnResult(False, "", 0.0, {}, "boom", failure_kind="timeout")
+    return TurnResult(False, "", {}, "boom", failure_kind="timeout")
 
 
 def _empty_reply_driver(
     agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None = None
 ) -> TurnResult:
-    return TurnResult(True, "   ", 0.0, {})
+    return TurnResult(True, "   ", {})
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -356,7 +356,7 @@ class TestCompactSessionSuccess:
             env: dict[str, str] | None = None,
         ) -> TurnResult:
             seen_keys.append(session_key)
-            return TurnResult(True, "summary", 0.0, {})
+            return TurnResult(True, "summary", {})
 
         result = _session_compaction.compact_session(
             "agent:x:default",
@@ -392,7 +392,7 @@ class TestCompactSessionSuccess:
                     budget_tokens=1,
                 )
             )
-            return TurnResult(True, "summary", 0.0, {})
+            return TurnResult(True, "summary", {})
 
         result = _session_compaction.compact_session(
             "agent:x:default",
@@ -457,7 +457,7 @@ class TestCompactSessionSuccess:
             env: dict[str, str] | None = None,
         ) -> TurnResult:
             prompts.append(message)
-            return TurnResult(True, f"bounded round {len(prompts)}", 0.0, {})
+            return TurnResult(True, f"bounded round {len(prompts)}", {})
 
         result = _session_compaction.compact_session(
             key,
@@ -500,8 +500,8 @@ class TestCompactSessionSuccess:
             nonlocal calls
             calls += 1
             if calls == 2:
-                return TurnResult(False, "", 0.0, {}, "later timeout", "timeout")
-            return TurnResult(True, "first bounded summary", 0.0, {})
+                return TurnResult(False, "", {}, "later timeout", "timeout")
+            return TurnResult(True, "first bounded summary", {})
 
         result = _session_compaction.compact_session(
             key,

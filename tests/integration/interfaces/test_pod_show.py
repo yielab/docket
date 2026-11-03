@@ -108,7 +108,7 @@ class TestPodShowMatchesRealDispatch:
             _fleet.meta_set(lead, "allowCommands", "curl")
 
             _queue.enqueue_task_once("demo", "do the thing", channel="cli")
-            runner = FakeDriver(cost=0.01)
+            runner = FakeDriver()
             results = _sweep.dispatch_pod("demo", runner=runner)
             assert results[0].status == "done"
 

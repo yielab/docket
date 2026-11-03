@@ -423,8 +423,6 @@ class TestCapabilities:
     def test_capabilities_reports_this_driver_honestly(self) -> None:
         caps = DocketDriver().capabilities()
         assert caps.driver_name == "docket"
-        # cost_usd is never populated by this driver -- see run_turn/usage.
-        assert caps.reports_cost_usd is False
         # list_sessions/usage are real, unlike a driver with
         # no durable store at all.
         assert caps.supports_sessions is True
@@ -452,7 +450,6 @@ class TestSessionIntrospection:
         report = driver.usage("chat-agent")
         assert report.totals.input_tokens == 16
         assert report.totals.output_tokens == 7
-        assert report.totals.cost_usd == 0.0
         assert report.by_day == []
 
     def test_list_sessions_is_scoped_to_the_agent_id_prefix(self) -> None:

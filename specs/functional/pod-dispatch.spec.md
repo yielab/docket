@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.19.0
+**Version**: 12.0.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -78,7 +78,7 @@ This specification does NOT cover:
    timestamp: concurrent enqueues under the same millisecond would otherwise collide and leak
    false ordering), `status: "pending"`, a `created` timestamp, `priority` (`high`/`normal`/`low`;
    any other value is stored as `normal`), `channel`, an empty `hops` array,
-   `costUsd: 0.0`, `reason: ""`, and `claimedAt`/`startedAt`/`completedAt` all unset. The record
+   `reason: ""`, and `claimedAt`/`startedAt`/`completedAt` all unset. The record
    carries no claim token: a stale claim is read from `claimPid` with `claimedAt`, and `channel`
    says where the task came from.
    Enqueue screens the description through `pre_input` once: a `block` raises `DispatchError` and
@@ -89,7 +89,7 @@ This specification does NOT cover:
    (`operator-loop.spec.md` area 11).
    Enqueueing into a project with no pod raises `DispatchError`.
 2. Every read of a pod's queue (`TaskRepository.list`) **MUST** fill each field enqueue does not write with
-   its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`, `costUsd`,
+   its default (`priority`, `status`, `startedAt`, `completedAt`, `reason`,
    `claimedAt`, `pendingApprovalIndex`,
    a fresh empty `hops` list, `created`, `id`); no
    separate migration step exists or is required.
@@ -195,8 +195,8 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
 ### Per-hop incremental persistence and crash recovery
 
 1. As each hop completes -- success or failure, including every rework hop (see "Reviewer verdict
-   gate") -- its record **MUST** be appended to the task's persisted `hops[]` array immediately
-   (and the task's `costUsd` recomputed from them), not held in memory until the whole task
+   gate") -- its record **MUST** be appended to the task's persisted `hops[]` array immediately,
+   not held in memory until the whole task
    finishes. A crash between hop *N* finishing and hop *N+1* starting therefore loses at most the
    in-flight attempt, never a completed hop.
 2. Every hop-completion persist, every retry attempt (see "Retries") and every `started`
@@ -472,8 +472,8 @@ wired agent's conversation current with the task it is working.
 
 1. Each hop **MUST** be one real agent turn via the `RuntimeDriver` port's `run_turn`. With no
    injected runner, dispatch calls `default_driver().run_turn` (`DocketDriver`); dispatch never
-   simulates or skips a turn to save usage. `DocketDriver` reports measured tokens but no USD
-   cost, as specified under "Runtime driver resolution" below.
+   simulates or skips a turn to save usage. `DocketDriver` reports measured tokens and no dollar
+   figure, as specified under "Runtime driver resolution" below.
 2. The message handed to each role **MUST** thread prior hops' output so a later role sees what
    earlier roles produced, subject to the per-role token budget (see "Bounded hop prompts" below);
    the Reviewer's message additionally states their required verdict-marker reply
@@ -493,8 +493,7 @@ wired agent's conversation current with the task it is working.
    comes from the variables dispatch sets, not from `HOME`.
 4. Every hop **MUST** emit a `context_composed` event (the composed prompt's byte accounting -- see
    "Bounded hop prompts"), a `tool_call` hop marker and a `hop_started` event before the turn, and
-   a `tool_result` (on success) or `error` (on failure) event after it; a nonzero-cost turn **MUST**
-   additionally emit a `cost_charged` event.
+   a `tool_result` (on success) or `error` (on failure) event after it.
 5. A planned unit whose pipeline step declared its own `model` (`pipeline-format.spec.md`'s
    "Steps" Requirement 10) **MUST** run that hop on the resolved model instead of the target agent's
    own role-policy model -- resolution (`cheap`/`strong` via the live rank anchors, else the literal
@@ -1156,8 +1155,8 @@ turn. A turn is one hop of that step, with its own `hop_finished` and `usage`.
    and all their sessions, the measure `maxTokens` uses) against the pod's budget cap (the Lead's
    `budgetTokens`; absent = no cap). A task's own `maxTokens` is checked first ("Per-hop
    execution" requirement 8).
-2. The count is measured tokens only (`pod_counted_tokens`): no catalog price, estimate or model
-   name enters the gate, so a model with no catalog price is gated like any other.
+2. The count is measured tokens only (`pod_counted_tokens`): no rate, estimate or model
+   name enters the gate, so every model is gated alike.
 3. If the cap is met or exceeded, the task **MUST** transition to `blocked` (see "blocked and
    terminal-failure re-entry"; `blockedReason` persisted as the reason, `pod budget reached
    (<spent> of <cap> tokens counted) before <role>`) and the pipeline **MUST NOT** attempt the
@@ -1594,11 +1593,10 @@ parsing for any verdict-gated step (`parse_verdict`).
    approval, and audit). An **injected** `runner` (a test double or explicit alternate
    implementation) always wins; this requirement governs the no-injected-runner path used by real
    `docket run`, `docket run --pipeline` and `docket start` invocations.
-2. A driver-backed hop's `cost_usd` **MUST** stay `0.0` when the resolved driver's
-   `capabilities().reports_cost_usd` is `False` (true for `DocketDriver`, always) -- real measured
-   token counts are still recorded (`MeasuredUsage`, surfaced through `aggregate_cost`), but a token
-   count **MUST NOT** be converted into a dollar figure at this boundary. The budget gate reads
-   the tokens (`pod_counted_tokens`) and needs no cost.
+2. A hop and a task carry no cost field. Real measured token counts are recorded
+   (`MeasuredUsage`, surfaced through `aggregate_usage`), and a token count **MUST NOT** be
+   converted into a dollar figure at this boundary. The budget gate reads the tokens
+   (`pod_counted_tokens`) and needs no rate.
 
 ### Cancellation
 
@@ -1666,7 +1664,7 @@ parsing for any verdict-gated step (`parse_verdict`).
    the underlying error (`<role> hop failed: <error>`), and **MUST NOT** attempt any later hop. A
    `pre_output` `block` verdict fails an otherwise successful hop the same way
    (`security-gates.spec.md`).
-2. A `failed` task **MUST** persist its full per-hop record (`role`, `member`, `ok`, `costUsd`,
+2. A `failed` task **MUST** persist its full per-hop record (`role`, `member`, `ok`,
    `error`, `attempts`) so a caller can see exactly which hop stopped the pipeline, how many
    attempts it took, and why.
 
@@ -1871,7 +1869,7 @@ counts to attribute usage to.
    gated step; `0` before any rework) and `attempt` (always `1`: retries are `hop_retry` events, not
    new starts).
 2. Every hop **MUST** write a `hop_finished` trace event after its closing record (`tool_result` or
-   `error`, and `cost_charged` when present) and before the hop is persisted. Its payload is the
+   `error`) and before the hop is persisted. Its payload is the
    `hop_started` keys, with `attempt` set to the hop's total tries (`HopResult.attempts`), and these
    additional keys: `ok` (the hop's outcome), `verdict` (`HopResult.artifact.verdict`, or `null`),
    `gate` (the mechanical gate's `pass`/`fail` from its exit code, an external gate's `label`, or
@@ -2380,8 +2378,7 @@ hop records. It scores nothing and carries no dollar figure.
    terminal-failure re-entry") before it reclaims stale claims.
 6. A run prints one line per task (`[<task-id>] done — <n> hop(s)`, or `[<task-id>] <status> —
    <reason>`), then one summary line (`<n> done · <n> failed`, then `· <n> waiting` and
-   `· <n> blocked` when non-zero, then `· <tokens> tokens (~$<x> est.)`, the dollar figure a
-   labelled estimate, never billed spend) and one `Next:` line (`docket inbox` when anything failed,
+   `· <n> blocked` when non-zero, then `· <tokens> tokens`, measured, with no dollar figure) and one `Next:` line (`docket inbox` when anything failed,
    waits or is blocked, else `docket status`). It exits 1 when the run record ended `failed`.
 
 ### An escalation for every park
@@ -2430,7 +2427,6 @@ hop_retry                    # before each retry attempt of a retryable failure
 tool_result                  # after a successful hop; also {"verification": "passed"|"skipped", ...}
                              #   for a gate command that passed or a mechanical gate with no command
 error                        # after a failed hop (in place of tool_result)
-cost_charged                 # after any hop with nonzero cost
 hop_finished                 # after the hop's closing events, before the hop is persisted
 guardrail_check              # a pre_output policy verdict other than allow on a hop's output
 guardrail_block              # a pre_output block failed the hop
@@ -2478,7 +2474,7 @@ $ docket run
 -> Running 1 pending task(s) through: lead → implementer
 verification skipped — verifyCmd not set for myapp-implementer
 ok   [task-3f2a1c9e-...] done — 2 hop(s)
-ok 1 done · 0 failed · 6.1k tokens (~$0.00 est.)
+ok 1 done · 0 failed · 6.1k tokens
 -> Next: docket status
 ```
 
@@ -2488,7 +2484,7 @@ ok 1 done · 0 failed · 6.1k tokens (~$0.00 est.)
 $ docket run
 -> Running 1 pending task(s) through: lead → implementer → reviewer
 x   [task-91a2c410-...] failed — reviewer rejected after 1 rework cycle(s): REQUEST-CHANGES
-x 0 done · 1 failed · 18.4k tokens (~$0.00 est.)
+x 0 done · 1 failed · 18.4k tokens
 -> Next: docket inbox
 ```
 
@@ -2501,7 +2497,7 @@ x 0 done · 1 failed · 18.4k tokens (~$0.00 est.)
 $ docket run
 -> Running 1 pending task(s) through: lead → implementer → reviewer
 ok   [task-7c1e2b90-...] done — 5 hop(s)
-ok 1 done · 0 failed · 31.0k tokens (~$0.00 est.)
+ok 1 done · 0 failed · 31.0k tokens
 -> Next: docket status
 ```
 
@@ -2516,7 +2512,7 @@ $ docket run
 -> Running 2 pending task(s) through: lead → implementer
   Pod budget cap: 500000 tokens (0 counted so far)
 !   [task-c410e91a-...] blocked — pod budget reached (512340 of 500000 tokens counted) before implementer
-ok 0 done · 0 failed · 1 blocked · 2.3k tokens (~$0.04 est.)
+ok 0 done · 0 failed · 1 blocked · 2.3k tokens
 -> Next: docket inbox
 
 $ docket pod set budgetTokens 1000000
@@ -2535,7 +2531,7 @@ Lead stays paused. A positive new cap re-queues the blocked task and clears the 
 $ docket run --resume
 -> Running 0 pending, 0 resumable, 1 running (reclaimed only if the claim is stale) task(s) through: lead → implementer → reviewer
 ok   [task-a1b2c3d4-...] done — 3 hop(s)
-ok 1 done · 0 failed · 9.7k tokens (~$0.00 est.)
+ok 1 done · 0 failed · 9.7k tokens
 -> Next: docket status
 ```
 
@@ -2551,7 +2547,7 @@ The pod's pipeline declares `gate: {type: approval}` on its implementer step.
 $ docket run
 -> Running 1 pending task(s) through: lead → implementer
 !   [task-9a1b2c3d-...] waiting_approval — approval required before implementer hop (escalation=esc-...)
-ok 0 done · 0 failed · 1 waiting · 1.8k tokens (~$0.00 est.)
+ok 0 done · 0 failed · 1 waiting · 1.8k tokens
 -> Next: docket inbox
 
 $ docket task answer task-9a1b2c3d --option approve_once
@@ -2561,7 +2557,7 @@ ok Approved task-9a1b2c3d-4e5f
 $ docket run
 -> Running 1 pending task(s) through: lead → implementer
 ok   [task-9a1b2c3d-...] done — 2 hop(s)
-ok 1 done · 0 failed · 5.2k tokens (~$0.00 est.)
+ok 1 done · 0 failed · 5.2k tokens
 -> Next: docket status
 ```
 
@@ -2595,7 +2591,7 @@ queue.)
   persisted to the pod's `TASK_LIST.json` before the first hop runs.
 - After each hop, that hop's record (including `attempts`) **MUST** be persisted and `claimedAt`
   refreshed, before the next hop is attempted.
-- After a run reaches a terminal or waiting state, the task's `status`, `reason`, `hops`, `costUsd`
+- After a run reaches a terminal or waiting state, the task's `status`, `reason`, `hops`
   and `usage` **MUST** be persisted back.
 - A `blocked` task **MUST** stay `blocked` in storage -- it is never rewritten to `pending` by
   `dispatch_pod` itself.
@@ -2684,7 +2680,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,
   `verdict_event_names`, resume (`replay_pipeline_position`,
   `_group_complete`)
-- `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost` (the `docket run` summary's estimate, P59-8 deletes it); gates (`_gate_budget`,
+- `src/docket/hops/gates/pre_hop.py`: gates (`_gate_budget`,
   `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`, `_check_brief_resources`,
   `_park_if_check_changed`)
 - `src/docket/hops/gates/post_hop.py`: gates (`_evaluate_mechanical_gate`,

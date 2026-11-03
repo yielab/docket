@@ -71,7 +71,7 @@ class _CrashOnRoleRunner:
         self.calls.append(role)
         if role == self.crash_role:
             raise RuntimeError("simulated crash")
-        return _rd.TurnResult(True, f"done by {agent_id}", 0.01, {"output": "x"})
+        return _rd.TurnResult(True, f"done by {agent_id}", {"output": "x"})
 
 
 class _VerdictAwareRunner:
@@ -93,7 +93,7 @@ class _VerdictAwareRunner:
         self.calls.append((agent_id, session_key, message, timeout, env))
         role = agent_id.rsplit("-", 1)[-1]
         output = "APPROVE - looks good" if role == "reviewer" else f"done by {agent_id}"
-        return _rd.TurnResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, {"output": output})
 
 
 def _alien_step_spec() -> _pipeline.PipelineSpec:
@@ -509,7 +509,7 @@ class TestRunCliPrologue:
 
             _pod.build_pod_from_blueprint("rsch", "respond", location="", description="")
             _queue.enqueue_task_once("rsch", "look into it", channel="cli")
-            monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
+            monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True))
 
             _endpoint_ready(monkeypatch)
             result = CliRunner().invoke(app, ["run", "--pod", "rsch"])

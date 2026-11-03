@@ -9,22 +9,16 @@ auth:
 credentialPrefix: sk-ant-
 headers:
   anthropic-version: "2023-06-01"
-pricesAsOf: "2026-06-11"
 models:
   - id: claude-haiku-5-5
   - id: claude-sonnet-5-5
   - id: claude-opus-5-5
   - id: claude-fable-5-1
   - id: claude-haiku-4-5
-    price: {input: 0.80, output: 4.00, cacheRead: 0.08, cacheWrite: 1.00}
   - id: claude-haiku-3-5
-    price: {input: 0.80, output: 4.00, cacheRead: 0.08, cacheWrite: 1.00}
   - id: claude-sonnet-4-6
-    price: {input: 3.00, output: 15.00, cacheRead: 0.30, cacheWrite: 3.75}
   - id: claude-sonnet-4-5
-    price: {input: 3.00, output: 15.00, cacheRead: 0.30, cacheWrite: 3.75}
   - id: claude-opus-4-6
-    price: {input: 15.00, output: 75.00, cacheRead: 1.50, cacheWrite: 18.75}
 presets:
   - name: anthropic
     ranks: {economy: claude-haiku-5-5, standard: claude-sonnet-5-5, premium: claude-opus-5-5}

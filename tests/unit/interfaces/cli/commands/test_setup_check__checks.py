@@ -33,9 +33,8 @@ def _isolation_on() -> None:
 def _write_session(
     home: Path, session_key: str, *, input_tokens: int, output_tokens: int = 0
 ) -> None:
-    """Seed a docket-native session with measured tokens and no recorded cost -- a
-    pod-dispatch hop's turns land here through ``DocketDriver``, whose ``cost_usd`` is
-    always ``0.0`` by design (see agent/ports.py)."""
+    """Seed a docket-native session with measured tokens -- a pod-dispatch hop's turns land
+    here through ``DocketDriver`` (see agent/ports.py)."""
     from urllib.parse import quote
 
     sdir = home / "state" / "sessions" / quote(session_key, safe="")
@@ -255,7 +254,6 @@ class TestChecks:
             assert rows == [
                 {
                     "id": "myshop",
-                    "costUsd": 0.0,
                     "tokens": 2500,
                     "budgetTokens": 3000,
                     "pct": 83,
@@ -267,8 +265,8 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path, monkeypatch):
-            cost = {"myshop": ("", 0.0, 500)}
-            issues = _setup_check_budget._check_runaway(["myshop"], cost)
+            turns = {"myshop": 500}
+            issues = _setup_check_budget._check_runaway(["myshop"], turns)
             out = capsys.readouterr().out
             assert issues == 1
             assert "runaway" in out
@@ -277,18 +275,18 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed(tmp_path, monkeypatch):
-            cost = {"myshop": ("", 1.0, 10)}
-            assert _setup_check_budget._check_runaway(["myshop"], cost) == 0
+            turns = {"myshop": 10}
+            assert _setup_check_budget._check_runaway(["myshop"], turns) == 0
             strict = dataclasses.replace(current_home(), runaway_turns_threshold=5)
             with use_home(strict):
-                assert _setup_check_budget._check_runaway(["myshop"], cost) == 1
+                assert _setup_check_budget._check_runaway(["myshop"], turns) == 1
 
     def test_runaway_ok(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path, monkeypatch):
-            cost = {"myshop": ("", 1.0, 10)}
-            assert _setup_check_budget._check_runaway(["myshop"], cost) == 0
+            turns = {"myshop": 10}
+            assert _setup_check_budget._check_runaway(["myshop"], turns) == 0
             assert "ok" in capsys.readouterr().out
 
     def test_provider_coverage_missing_key(

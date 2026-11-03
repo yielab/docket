@@ -124,9 +124,8 @@ See `docket setup model` for the current role→model table and all available pr
 docket status
 docket status --all  # Every pod
 ```
-Token counts here are real and measured; the dollar column is not — docket's own turn loop
-reports no billed spend today. See
-[Cost reporting and its limits](README.md#known-limits).
+Token counts here are real and measured. docket shows no dollar figure; your provider's bill is
+the record of spend. See [Known limits](README.md#known-limits).
 
 #### 4. **Check the per-turn context footprint**
 `docket setup --fix` estimates the tokens re-sent every turn from the files that

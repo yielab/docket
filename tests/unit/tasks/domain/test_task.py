@@ -265,13 +265,11 @@ class TestGroupResume:
 
 class TestHopResultModel:
     def test_the_dump_is_the_persisted_hop(self) -> None:
-        hop = _task.HopResult(
-            role="reviewer", member_id="m", ok=True, output="APPROVE", cost_usd=0.12345678
-        )
+        hop = _task.HopResult(role="reviewer", member_id="m", ok=True, output="APPROVE")
         dumped = hop.model_dump(by_alias=True, mode="json")
         assert dumped["member"] == "m"
         assert dumped["stepId"] == "reviewer"
-        assert dumped["costUsd"] == 0.123457
+        assert "costUsd" not in dumped
         assert dumped["repoFiles"] is None
         assert dumped["nextStep"] is None
         assert dumped["artifact"]["summary"] == "APPROVE"
@@ -399,7 +397,6 @@ _ALWAYS_PRESENT = {
     "reason",
     "pendingApprovalIndex",
     "hops",
-    "costUsd",
 }
 
 

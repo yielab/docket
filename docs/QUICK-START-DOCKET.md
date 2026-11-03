@@ -10,7 +10,7 @@ docket's plain voice (`ok`, `->`, `!`); on a terminal the same lines read `✓`,
 > [!WARNING]
 > **Beta / early-stage software.** The steps work and are test-backed, but expect rough edges
 > and breaking changes between versions. Verify results against your own install, and treat
-> every cost figure as an estimate, not a provider bill.
+> every token count as docket's own measurement, not a provider's bill.
 
 **You need:** Python 3.11+, Git, Bash, and one OpenAI-compatible chat-completions endpoint with
 function-tool support. Nothing to install for the sandbox: `docket init` turns isolation on when
@@ -168,7 +168,7 @@ docket run
 ```text
 -> Running 1 pending task(s) through: lead → implementer → security-vetter
 ok   [task-6e046891-e910-4778-92ce-4560364bfaa9] done — 3 hop(s)
-ok 1 done · 0 failed · 36.3k tokens (~$0.00 est.)
+ok 1 done · 0 failed · 36.3k tokens
 -> Next: docket status
 !   Only console is on, and console sends nothing.
   A parked task waits unseen until you run docket inbox.
@@ -177,7 +177,7 @@ ok 1 done · 0 failed · 36.3k tokens (~$0.00 est.)
     docket setup notify enable ntfy --set topic=<topic>  # your phone
 ```
 
-The token count is measured; the dollar figure is a labelled estimate, never a bill. The warning
+The token count is measured, and docket shows no dollar figure. The warning
 is step 7's subject: a small local model may also park a question before delegating (the Lead
 asks, the task waits as `waiting_input`); `docket inbox` shows it and `docket task answer <id>
 --option <id>` resumes the run.
@@ -210,7 +210,7 @@ git worktree list                         # the task's worktree, on its own bran
 Every run leaves a record you can read without trusting the model's own summary:
 
 ```bash
-docket task list                          # the queue: state, cost, worktree per task
+docket task list                          # the queue: state, worktree per task
 docket task show <id>                     # one task's whole story: hops, evidence, runs, worktree
 docket task trace <id> --tail             # that task's session, step by step (Ctrl-C stops watching)
 docket log                                # every gate decision and operator action

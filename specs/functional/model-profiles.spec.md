@@ -1,9 +1,9 @@
 # Model Policy Specification
 
-**Version**: 6.8.0
+**Version**: 7.0.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -30,10 +30,10 @@ This specification covers:
 - The model profile: how a catalog row declares sampling, the tool surface, tool descriptions,
   tool choice and window-derived budgets, and the two built-in profiles
 - Rank-anchor names versus the model and role values a command accepts
-- Cost labels derived from the catalog, including local-provider and marketplace-provider
-  (OpenRouter/Vercel AI Gateway) pricing honesty
+- That the catalog holds no rate: a provider document and a model row carry none, and no
+  command shows one (ADR 0038 decision 5)
 
-This specification does NOT cover cost accumulation or budget caps (see cost-tracking.spec.md),
+This specification does NOT cover token usage or budget caps (see cost-tracking.spec.md),
 nor the declarative role-archetype registry itself (`name`/`scope`/`gateContract`/…) — see
 role-archetypes.spec.md. This spec covers only the one integration point between the two: how a
 role with no named row in this policy's table resolves via its archetype's `modelClass` instead
@@ -128,20 +128,22 @@ directly — see "Provider catalog" below.
 ### Changing the policy (docket setup model)
 
 1. `docket setup model` (also `docket setup model list`, with `--json`) **MUST** list ROLE,
-   MODEL, PRICE, SOURCE (`builtin`/`user`), and WHY for all nine roles, in the order `lead`,
+   MODEL, SOURCE (`builtin`/`user`), and WHY for all nine roles, in the order `lead`,
    `implementer`, `reviewer`, `researcher`, `analyst`, `writer`, `operator`,
    `monitor`, `actor`, plus the default model and the rank anchors (labeled "rank anchors", printed
    premium → standard → economy; see "Rank anchors and tier names"). SOURCE is `user` when the
    registry's `roles` map holds the role's current model, else `builtin`. `--json` emits
-   `{"roles": [{role, model, price, source, why}], "default": <model>}`.
+   `{"roles": [{role, model, source, why}], "default": <model>}`.
 2. `docket setup model set <role|default> <provider/model>` **MUST** validate the model, persist
    the override to the registry, and apply it live. A key that is neither one of the nine roles nor
    `default` **MUST** fail naming the valid keys; a model that is not a well-formed
-   `provider/model` id **MUST** fail naming the full-id form. Both exit 1 and write nothing.
+   `provider/model` id **MUST** fail naming the full-id form. Both exit 1 and write nothing. A
+   well-formed model the catalog does not list is accepted with no warning: docket has no rate
+   table to be missing from.
 3. `docket setup model preset <name>` **MUST** map the preset's cheap/strong classes onto all
    nine roles (economy rank to the four cheap roles, standard rank to the five strong roles) and
    persist them, plus the rank anchors and `default` (set to the standard rank). With no name it
-   lists the presets (PRESET, COST, KEY NEEDED, NOTE); an unknown name exits 1 listing the valid
+   lists the presets (PRESET, KEY NEEDED, NOTE); an unknown name exits 1 listing the valid
    ones.
 4. After a change to a role row, a preset, or a reset, every agent (registered or not — every
    workspace carrying a `.docket-meta.json`) **MUST** be re-resolved to its role's new model in
@@ -182,8 +184,8 @@ directly — see "Provider catalog" below.
    **MUST NOT** require a separate `docket setup provider add` first — the document that declares
    it is its own registration.
 2. The `local` preset **MUST** require no API key (a local OpenAI-compatible endpoint —
-   llama.cpp/LM Studio/vLLM/Ollama — registered separately via `docket setup provider add`) and
-   **MUST** price its models at `$0 (local)`. When a global provider document named `local` is
+   llama.cpp/LM Studio/vLLM/Ollama — registered separately via `docket setup provider add`).
+   When a global provider document named `local` is
    registered with a model row, the preset **MUST** use `local/<its first model id>` for all three
    ranks instead of the preset's own model.
 3. Applying a preset **MUST** persist the preset's own economy/standard/premium values as the
@@ -191,12 +193,11 @@ directly — see "Provider catalog" below.
    the anchor value `docket setup model` displays never lags behind the fleet's actual preset after
    a non-Anthropic preset is applied.
 4. `openrouter-free` **MUST** route every rank through Docket model id
-   `openrouter/openrouter/free`, which transports `openrouter/free` to OpenRouter. It **MUST**
-   report zero per-token price, and its note **MUST** identify the router as experimental:
+   `openrouter/openrouter/free`, which transports `openrouter/free` to OpenRouter. Its note
+   **MUST** identify the router as experimental:
    the selected model and availability can change between calls.
 5. `ai-gateway` **MUST** use Docket model ids with the `ai-gateway/` prefix and retain the
-   gateway's nested `creator/model` id on the wire. Marketplace prices **MUST NOT** be copied
-   from a dated provider snapshot; they report `n/a (bring your own)`.
+   gateway's nested `creator/model` id on the wire.
 
 ### Hosted gateway resolution
 
@@ -226,7 +227,7 @@ directly — see "Provider catalog" below.
    the endpoint it replaces. Otherwise, an exact registered model row **MUST** retain those limits.
 5. Default tests **MUST** cover both hosted gateways together from public configuration semantics
    without network or real credentials. A live gateway canary is opt-in and **MUST** have an
-   explicit cost/request budget.
+   explicit request budget.
 6. A gateway response with `finish_reason: error` or an error object inside its first choice
    **MUST** produce a non-OK response. A numeric embedded status **MUST** use the same retry
    classification as that HTTP status; it **MUST NOT** become an empty successful answer. A
@@ -281,18 +282,17 @@ directly — see "Provider catalog" below.
    bearer|header|none` plus `credentials`, a list of names — never values, and `header`, the
    request header name a `type: header` credential rides on — required exactly when `type` is
    `header`), `headers` (a map of additional static header names to values sent verbatim on
-   every request), `local`, `marketplace`, `credentialPrefix` (a credential-format hint `setup provider add`
-   warns against, optional), `pricesAsOf` (`YYYY-MM-DD`, required when any model row carries a `price`),
-   `models[]` (`id`, optional declared `contextWindow`/`maxTokens`, optional `price: {input, output, cacheRead,
-   cacheWrite}` USD per million tokens; no built-in document declares a limit), `presets[]` (`name`, `ranks: {economy, standard,
+   every request), `local`, `credentialPrefix` (a credential-format hint `setup provider add`
+   warns against, optional),
+   `models[]` (`id`, optional declared `contextWindow`/`maxTokens`; no built-in document declares a limit; a document
+   carries no rate), `presets[]` (`name`, `ranks: {economy, standard,
    premium}` as bare model ids, `note`), and `note`. A document with `local: true` and no `auth`
    takes `auth.type: none`. `load_provider_document` **MUST** raise naming the file and field on
    an unreadable file, bad YAML, a missing `kind`/`name`, an unknown `dialect`/`auth.type`, a
    credential count that does not match the `auth.type` (`header` requires at least one
    credential name, the same rule as `bearer`; `none` accepts none), a `headers` key that names
    `Authorization`, `Content-Type` or `Accept` (case-insensitive — docket sends these itself and
-   refuses a document that tries to override them), a `pricesAsOf` missing while a row carries a
-   `price`, or a malformed `pricesAsOf`/negative price.
+   refuses a document that tries to override them).
 2. The catalog **MUST** merge two scopes, nearest-wins by name: **built-in** (the documents
    shipped in the wheel — `anthropic`, `openai`, `google`, `openrouter`, `ai-gateway`, `groq`,
    `mistral`, `deepseek`, `xai`, `cerebras`, `together`, `local`, `ollama`, `lmstudio`) and
@@ -300,9 +300,9 @@ directly — see "Provider catalog" below.
    own registrations and overrides via `docket setup provider add`). `load_catalog()` **MUST**
    return the merged result; `Catalog.get(name)` and `Catalog.source_of(name)` (`"built-in"` /
    `"global"` / `""`) **MUST** read it. A document that fails validation is skipped when the
-   catalog loads. A global write that leaves `presets`/`marketplace`/`credentialPrefix`/
-   `pricesAsOf` unset **MUST** inherit each from a built-in of the same name (`save_provider`), so
-   registering a local endpoint under a built-in's name does not erase presets or pricing the
+   catalog loads. A global write that leaves `presets`/`credentialPrefix`
+   unset **MUST** inherit each from a built-in of the same name (`save_provider`), so
+   registering a local endpoint under a built-in's name does not erase the presets the
    built-in still means.
 3. `docket setup provider add <name> [<url>]` (options `--credential`, `--model`, `--ctx`,
    `--max-tokens`, `--no-preset`) **MUST** write a `ProviderSpec` to the global scope through
@@ -310,7 +310,7 @@ directly — see "Provider catalog" below.
    a `kind: provider` file (registered as written), a catalog name (with no URL and no `--model`
    the catalog entry is registered as is), or a new name that **MUST** come with a URL
    (otherwise it fails naming the missing URL). A document built from a URL or `--model` over a
-   catalog entry keeps every row the entry has, with its price, and the entry's auth, headers and
+   catalog entry keeps every row the entry has and the entry's auth, headers and
    identity fields; a `--model` the entry does not list adds a row. A new name has one row
    (`--model`, else `local-model`); it gets bearer auth with credential `<NAME>_API_KEY` when
    `--credential` is given, else `none` and `local: true`. Re-running with identical arguments **MUST** write
@@ -382,7 +382,7 @@ directly — see "Provider catalog" below.
    (OpenRouter), first present wins; output cap from `max_tokens` or
    `top_provider.max_completion_tokens`. A value that is absent, null, not an integer or not
    positive (the gateway publishes `0` for a non-language model) is unknown. The shipped
-   documents **MUST NOT** declare a limit; `price`, `pricesAsOf` and `presets` stay.
+   documents **MUST NOT** declare a limit; `presets` stay.
    Observations are recorded by `register_provider` (so `setup provider add` records what its
    registration probe saw) and, once a day per provider whose catalog scope is `global` (never an
    unregistered built-in), by `refresh_observed_models_due`, which `docket start --dispatch`'s
@@ -507,23 +507,6 @@ directly — see "Provider catalog" below.
    refuse the hop with that reason (a `DispatchError`, so the task settles as `dispatch_refused`)
    and **MUST NOT** fall back to another model.
 
-### Pricing
-
-1. Each built-in direct-provider model whose price Docket claims **MUST** have a `price` on its
-   catalog row, in USD per million tokens (`input`/`output`/`cacheRead`/`cacheWrite`, `Price`),
-   read through `price_for` and unpacked in that order by `estimate_cost_usd`. Marketplace
-   gateway models are the explicit exception described in requirement 4.
-2. A model without pricing **MUST** report `n/a` (never $0.00) in cost output.
-3. A model whose provider the catalog marks `local: true` (`is_local_provider`) **MUST** report
-   `$0 (local)` — this is the true cost, not a placeholder for missing data, and **MUST NOT** fall
-   through to the generic `n/a` path.
-4. A model routed through a provider the catalog marks `marketplace: true` (`is_marketplace`;
-   `openrouter` or `ai-gateway` among the built-ins), whose row carries no `price` (the explicit
-   `openrouter/openrouter/free` router priced at `$0.00` is the one exception), **MUST** report a
-   distinct, informative label (`n/a (bring your own)`) rather than the plain `n/a` used for an
-   ordinary uncatalogued model — docket does not invent a number for pricing that changes per
-   model/account.
-
 ## Interface Contracts
 
 ### CLI Command Signatures
@@ -563,30 +546,14 @@ the role); `write_registry` keeps a `role.<name>` update only for such a role. A
 and applies in every pod that defines that role. A pod-scoped archetype with no row resolves
 per requirement 5.
 
-### Built-in Anthropic models and prices (USD per MTok)
+### Built-in Anthropic models
 
 The built-in `anthropic` provider lists the family 5 ids the provider's `GET /v1/models` publishes
 (`claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-fable-5-1`) and its preset
 ranks them: economy `claude-haiku-5-5`, standard `claude-sonnet-5-5`, premium `claude-opus-5-5`.
-Those rows carry no `price`, so they report `n/a`, and no limit: a context window and an output cap
-come from `/models` once observed, or from `docket setup provider add anthropic --model <id>
---max-tokens N`. The family 4 rows keep their dated prices:
-
-| Class | Model | Input | Output |
-| ----- | ----- | ----- | ------ |
-| cheap | claude-haiku-4-5 | 0.80 | 4.00 |
-| strong | claude-sonnet-4-6 | 3.00 | 15.00 |
-| (premium) | claude-opus-4-6 | 15.00 | 75.00 |
-
-Prices are the `price` fields of the built-in provider documents, a manual snapshot dated by each
-document's `pricesAsOf`, used for display and comparative estimates only — recorded spend comes
-from measured token counts in docket's own per-session storage (see cost-tracking.spec.md). There
-is no user pricing overlay. Providers marked `local: true` (the built-ins `local`, `ollama`,
-`lmstudio`) price at `$0 (local)` regardless of whether the specific model id is catalogued, and
-`openrouter/openrouter/free` carries an explicit zero price (the router contract, not a dated
-selection of free models). Paid OpenRouter and AI Gateway preset models are deliberately left
-unpriced — gateways can route and re-price by provider/account — and report
-`n/a (bring your own)` instead.
+The rows carry no limit: a context window and an output cap come from `/models` once observed,
+or from `docket setup provider add anthropic --model <id> --max-tokens N`. No built-in row carries
+a rate, and there is no overlay for one: docket keeps no rate anywhere (ADR 0038 decision 5).
 
 ### Registry file shape (current)
 
@@ -613,13 +580,12 @@ success/failure contract — `0` on success, `1` on any error (invalid model, un
 ```bash
 $ docket setup model
 Role to model policy
-ROLE         MODEL                        PRICE  SOURCE   WHY
-lead         anthropic/claude-haiku-5-5   n/a    builtin  orchestrates the pod; never edits code
-implementer  anthropic/claude-sonnet-5-5  n/a    builtin  writes code in the project workspace
+ROLE         MODEL                        SOURCE   WHY
+lead         anthropic/claude-haiku-5-5   builtin  orchestrates the pod; never edits code
+implementer  anthropic/claude-sonnet-5-5  builtin  writes code in the project workspace
 ...
 default  anthropic/claude-sonnet-5-5
 rank anchors  anthropic/claude-opus-5-5 -> anthropic/claude-sonnet-5-5 -> anthropic/claude-haiku-5-5
-PRICE is an estimate from a snapshot, not recorded spend
 Change: docket setup model set <role|default> <provider/model>
 
 $ docket setup model set implementer openai/gpt-4.1
@@ -639,14 +605,13 @@ $ docket setup model preset local
 ok Preset local applied
   lead analyst writer monitor -> local/qwen3-30b-a3b
   implementer reviewer researcher operator -> local/qwen3-30b-a3b
-  cost -> free per-token
   note -> Local OpenAI-compatible endpoint (llama.cpp/LM Studio/vLLM/Ollama) — no API key, ...
 ok Registered local endpoint selected; no API key needed.
 -> Next: docket setup
 
 $ docket setup model
-ROLE         MODEL                PRICE       SOURCE  WHY
-lead         local/qwen3-30b-a3b  $0 (local)  user    orchestrates the pod; never edits code
+ROLE         MODEL                SOURCE  WHY
+lead         local/qwen3-30b-a3b  user    orchestrates the pod; never edits code
 ...
 default  local/qwen3-30b-a3b
 rank anchors  local/qwen3-30b-a3b -> local/qwen3-30b-a3b -> local/qwen3-30b-a3b
@@ -668,8 +633,7 @@ rank anchors  local/qwen3-30b-a3b -> local/qwen3-30b-a3b -> local/qwen3-30b-a3b
 ### Invariants
 
 - A role **MUST** always resolve to exactly one model id.
-- Pricing **MUST** exist for every built-in model that Docket displays with a numeric price;
-  marketplace routes may use the explicit unpriced label above.
+- No provider document, model row, command output or registry file holds a rate.
 
 ## Implementation
 
@@ -679,8 +643,7 @@ Where the names above live today (the only place paths appear):
   `rank_anchors`, `presets`, `preset_table`, `known_presets`, `load_registry`,
   `find_registry_problems`, `write_registry`, `resolve_role_model`, `resolve_step_model`,
   `validate_model`, `role_why`, `reapply_role_policy`, `RoleRepoint`, `model_class_of`,
-  `floor_refusal`, `is_local_provider`,
-  `is_marketplace`, `price_for`, `prices_as_of`, `pricing_label`
+  `floor_refusal`
 - `src/docket/models/catalog.py`: `ModelProfile`, `Sampling`, `BudgetShares`, `ProfileBudgets`,
   `BUILTIN_PROFILES`, `profile_of`, `ProviderSpec`, `load_provider_document`, `load_catalog`,
   `Catalog`, `rank_anchors_of`, `check_rank_anchors`, `save_provider`, `delete_provider`, `remove_provider`, `export_provider`,
@@ -689,7 +652,6 @@ Where the names above live today (the only place paths appear):
   `model_readiness`
 - `src/docket/teams/roles.py`: `BUILTIN_ARCHETYPES`, `STARTER_ARCHETYPES`, `load_registry`
   (`model_class`)
-- `src/docket/teams/utils.py`: `estimate_cost_usd`, `project_ids`
 - `src/docket/agent/ports.py`: `Endpoint`
 - `src/docket/teams/fleet.py`: `set_model_both`
 - `src/docket/hops/application/report.py`: the `docket pod show <member> --json` report
@@ -709,4 +671,4 @@ Where the names above live today (the only place paths appear):
   `providers_file`, `provider_models_file`
 - `src/docket/kernel/templates.py`: `PROVIDER_TEMPLATES_DIR`
 - `src/docket/models/document_fields.py`: `check_name`, `check_http_url`, `check_credential_name`, `reject_reserved_headers`
-- `src/docket/templates/providers/*.yaml`: the built-in provider documents (prices, presets)
+- `src/docket/templates/providers/*.yaml`: the built-in provider documents (presets)

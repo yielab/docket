@@ -3,9 +3,8 @@
 Covers: the internal rank-anchor seed table (`_RANK_ANCHORS`) is overridable from the user's
 docket-models.json, and a non-Anthropic preset leaves no Claude residue in `docket setup model`'s
 display; the "fallback" label was false (nothing degrades to a cheaper model on failure) and is
-now "rank anchors" with an honest caption; a `local` preset prices as "$0 (local)",
-never a fabricated figure; unpriced models render an informative "n/a", never "$0.00"; and the
-dead-end guidance strings in cli/_provider.py name commands that actually exist.
+now "rank anchors" with an honest caption; a `local` preset is a catalog preset that needs no
+key and shows no dollar figure; and the dead-end guidance strings in cli/_provider.py name commands that actually exist.
 
 Unit tests import `docket.teams.model_selection` directly; CLI-surface tests use CliRunner with
 a `use_home` block on a temp directory."""
@@ -102,54 +101,6 @@ class TestRankAnchorsOverride:
             assert "rankAnchors" not in reg
 
 
-class TestPricingHonesty:
-    @pytest.mark.parametrize(
-        "model",
-        ["local/qwen3-30b-a3b", "local/some-custom-finetune", "ollama/llama3", "lmstudio/x"],
-    )
-    def test_local_providers_price_zero(self, model: str) -> None:
-        assert _mp.pricing_label(model) == "$0 (local)"
-
-    def test_local_provider_never_warns_unpriced(self) -> None:
-        _canonical, warnings = _mp.validate_model("local/some-custom-finetune")
-        assert warnings == []
-
-    def test_openrouter_free_uses_the_capability_aware_free_router(self) -> None:
-        preset = _mp.preset_table()["openrouter-free"]
-        assert {preset[rank] for rank in ("economy", "standard", "premium")} == {
-            "openrouter/openrouter/free"
-        }
-        assert _mp.pricing_label("openrouter/openrouter/free") == "$0.00/$0.00"
-        assert "experimental" in preset["note"].lower()
-
-    def test_unpriced_openrouter_model_reports_bring_your_own(self) -> None:
-        label = _mp.pricing_label("openrouter/some-vendor/some-model")
-        assert label.startswith("n/a")
-        assert label != "n/a"  # the marketplace-specific, more informative variant
-        assert "$0.00" not in label
-
-    def test_unpriced_openrouter_model_warns_distinctly(self) -> None:
-        _canonical, warnings = _mp.validate_model("openrouter/some-vendor/some-model")
-        assert len(warnings) == 1
-        assert "marketplace" in warnings[0].lower()
-
-    def test_generic_unpriced_model_is_plain_na(self) -> None:
-        assert _mp.pricing_label("anthropic/claude-made-up-model") == "n/a"
-
-    def test_generic_unpriced_model_warns_generically(self) -> None:
-        _canonical, warnings = _mp.validate_model("anthropic/claude-made-up-model")
-        assert len(warnings) == 1
-        assert "pricing table" in warnings[0]
-
-    def test_never_returns_fake_zero_for_unpriced_remote_model(self) -> None:
-        # A remote (non-local) unpriced model must never render as $0.00 — the
-        # regression this whole card exists to prevent.
-        for model in ("anthropic/claude-made-up-model", "openrouter/some-vendor/some-model"):
-            label = _mp.pricing_label(model)
-            assert "$0.00" not in label
-            assert "$0" not in label or "(local)" in label
-
-
 class TestLocalPreset:
     def test_local_in_known_presets(self) -> None:
         assert "local" in _mp.known_presets()
@@ -158,10 +109,8 @@ class TestLocalPreset:
     def test_local_preset_needs_no_key(self) -> None:
         assert _mp.preset_table()["local"]["key"] == ""
 
-    def test_local_preset_all_ranks_price_zero(self) -> None:
-        t = _mp.preset_table()["local"]
-        for rank in ("economy", "standard", "premium"):
-            assert _mp.pricing_label(t[rank]) == "$0 (local)"
+    def test_the_preset_table_has_no_cost_label(self) -> None:
+        assert all("cost" not in row for row in _mp.preset_table().values())
 
 
 class TestHostedGatewayPreset:
@@ -172,8 +121,6 @@ class TestHostedGatewayPreset:
         assert preset["economy"] == "ai-gateway/anthropic/claude-haiku-4.5"
         assert preset["standard"] == "ai-gateway/anthropic/claude-sonnet-4.6"
         assert preset["premium"] == "ai-gateway/anthropic/claude-opus-4.6"
-        for rank in ("economy", "standard", "premium"):
-            assert _mp.pricing_label(preset[rank]).startswith("n/a (bring your own)")
 
     def test_paid_openrouter_preset_does_not_pin_retired_model_ids(self) -> None:
         table = _mp.preset_table()
@@ -277,7 +224,7 @@ class TestLocalPresetCli:
         assert note in out
         assert "docket setup provider add" in note
 
-    def test_local_preset_applies_and_prices_zero(self, tmp_path: Path) -> None:
+    def test_local_preset_applies_and_shows_no_dollar(self, tmp_path: Path) -> None:
         home = _setup_agent(tmp_path)
         _register_provider(home, "local", "qwen3-30b-a3b")
         rc, _out, err = _run(["setup", "model", "preset", "local"], home)
@@ -285,6 +232,6 @@ class TestLocalPresetCli:
 
         rc, out, err = _run(["setup", "model"], home)
         assert rc == 0, err
-        assert "$0 (local)" in out
+        assert "local/qwen3-30b-a3b" in out
+        assert "$" not in out
         assert "n/a" not in out
-        assert "$0.00" not in out

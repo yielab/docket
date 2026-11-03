@@ -106,7 +106,7 @@ Compatibility does not mean feature parity. Docket currently:
 - records prompt/completion and cache-read tokens it understands;
 - does not send Responses API fields, gateway routing/provider options, or vendor-specific headers
   beyond a document's own `auth.header` and `headers`;
-- does not discover remote model catalogs or prices;
+- does not discover remote model catalogs;
 - performs its own retry policy outside any gateway-internal retry/failover: a `Retry-After` the
   endpoint names can push a retry's wait past the linear backoff, but the wait is always capped —
   `min(max(2s × attempt, Retry-After), DISPATCH_RETRY_MAX_WAIT_S)`, `DISPATCH_RETRY_MAX_WAIT_S`

@@ -21,7 +21,7 @@ _SRC_ROOT = Path(docket.__file__).resolve().parent
 _HOME_FILE = _SRC_ROOT / "kernel" / "home.py"
 
 # The env var names Home.from_environ is the single reader of, each a field of Home
-# (METRICS_WINDOW, RUNAWAY_TURNS_THRESHOLD, RUNAWAY_COST_THRESHOLD, DOCKET_KEY_MAX_AGE_DAYS,
+# (METRICS_WINDOW, RUNAWAY_TURNS_THRESHOLD, DOCKET_KEY_MAX_AGE_DAYS,
 # DOCKET_KEYRING_SERVICE, DOCKET_SANDBOX_IMAGE, DOCKET_TOOL_MAX_OUTPUT_CHARS). DOCKET_NO_TRACE,
 # DOCKET_NO_EXPORT and DOCKET_SECRETS_BACKEND are read live (a test toggles them with
 # monkeypatch.setenv) by one function each in edges/adapters/system.py, not by Home.
@@ -29,7 +29,6 @@ _OWNED_ENV_VARS: frozenset[str] = frozenset(
     {
         "METRICS_WINDOW",
         "RUNAWAY_TURNS_THRESHOLD",
-        "RUNAWAY_COST_THRESHOLD",
         "DOCKET_KEY_MAX_AGE_DAYS",
         "DOCKET_KEYRING_SERVICE",
         "DOCKET_SANDBOX_IMAGE",

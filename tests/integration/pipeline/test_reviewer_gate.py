@@ -129,7 +129,7 @@ class TestReviewerGateBasic:
         ) -> _rd.TurnResult:
             role = _role_of(member_id)
             output = reviewer_output if role == "reviewer" else "ok"
-            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output=output, raw={})
 
         return _run
 
@@ -192,7 +192,7 @@ class TestReviewerGateBasic:
         ) -> _rd.TurnResult:
             calls.append(_role_of(member_id))
             output = "no marker here" if _role_of(member_id) == "reviewer" else "ok"
-            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output=output, raw={})
 
         task = TaskRecord(id="t3", description="work")
         _executor.dispatch_task("myapp", task, runner=_run)
@@ -227,7 +227,7 @@ class TestReviewerGateBasic:
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
-            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output="ok", raw={})
 
         task = TaskRecord(id="t6", description="work")
         res = _executor.dispatch_task("leanapp", task, runner=_run)
@@ -260,11 +260,11 @@ class _ReaskRunner:
         queue = self.replies.get(role)
         if queue:
             return queue.pop(0)
-        return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+        return _rd.TurnResult(ok=True, output="ok", raw={})
 
 
 def _ok(output: str) -> _rd.TurnResult:
-    return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
+    return _rd.TurnResult(ok=True, output=output, raw={})
 
 
 class TestHandoffToolOffer:
@@ -329,9 +329,7 @@ class TestVerdictReask:
         self, tmp_path: Path
     ) -> None:
         _seed_full_pod()
-        answer = _rd.TurnResult(
-            ok=True, output="", cost_usd=0.0, raw={}, closing_args={"verdict": "approve"}
-        )
+        answer = _rd.TurnResult(ok=True, output="", raw={}, closing_args={"verdict": "approve"})
         runner = _ReaskRunner({"reviewer": [_ok("Looks right to me."), answer]})
         res = _executor.dispatch_task(
             "myapp", TaskRecord(id="k0", description="work"), runner=runner
@@ -390,7 +388,7 @@ class TestVerdictReask:
     def test_a_failed_re_ask_request_leaves_the_unparseable_outcome(self, tmp_path: Path) -> None:
         _seed_full_pod()
         broken = _rd.TurnResult(
-            ok=False, output="", cost_usd=0.0, raw={}, error="boom", failure_kind="invalid_output"
+            ok=False, output="", raw={}, error="boom", failure_kind="invalid_output"
         )
         runner = _ReaskRunner({"reviewer": [_ok("no marker here"), broken]})
         res = _executor.dispatch_task(
@@ -433,9 +431,9 @@ class _ReworkRunner:
         if role == "reviewer":
             self._reviewer_calls += 1
             if self._reviewer_calls <= self.request_changes_count:
-                return _rd.TurnResult(ok=True, output=self.review_text, cost_usd=0.01, raw={})
-            return _rd.TurnResult(ok=True, output="APPROVE - fixed", cost_usd=0.01, raw={})
-        return _rd.TurnResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
+                return _rd.TurnResult(ok=True, output=self.review_text, raw={})
+            return _rd.TurnResult(ok=True, output="APPROVE - fixed", raw={})
+        return _rd.TurnResult(ok=True, output=f"done by {member_id}", raw={})
 
 
 class TestReviewerReworkLoop:
@@ -594,12 +592,10 @@ class _CrashOnSecondImplementerCallRunner:
             self._impl_calls += 1
             if self._impl_calls == 2:
                 raise RuntimeError("simulated crash mid-rework")
-            return _rd.TurnResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
+            return _rd.TurnResult(ok=True, output=f"done by {member_id}", raw={})
         if role == "reviewer":
-            return _rd.TurnResult(
-                ok=True, output="REQUEST-CHANGES\nfix the widget", cost_usd=0.01, raw={}
-            )
-        return _rd.TurnResult(ok=True, output=f"done by {member_id}", cost_usd=0.01, raw={})
+            return _rd.TurnResult(ok=True, output="REQUEST-CHANGES\nfix the widget", raw={})
+        return _rd.TurnResult(ok=True, output=f"done by {member_id}", raw={})
 
 
 class TestReviewerReworkResume:

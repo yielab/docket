@@ -328,10 +328,10 @@ class _IntakeRunner:
         self.calls.append((role, message))
         if role == "lead":
             reply = self._lead_replies.pop(0) if self._lead_replies else "READY"
-            return _rd.TurnResult(True, reply, 0.0, {})
+            return _rd.TurnResult(True, reply, {})
         if role == "reviewer":
-            return _rd.TurnResult(True, self._reviewer_reply, 0.0, {})
-        return _rd.TurnResult(True, "done", 0.0, {})
+            return _rd.TurnResult(True, self._reviewer_reply, {})
+        return _rd.TurnResult(True, "done", {})
 
 
 class TestBriefAnswerReachesTheLeadsNextMessage:

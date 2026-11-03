@@ -320,6 +320,21 @@ class TestRun:
             assert "1 done" in result.output and "0 failed" in result.output
             assert "Next: docket status" in result.output
 
+    def test_the_summary_line_prints_tokens_and_no_dollar(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _seed_pod(tmp_path):
+            _endpoint(monkeypatch, ok=True)
+            put_task("demo", task(description="a task"))
+            monkeypatch.setattr(_sweep, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
+
+            result = runner.invoke(_app, ["run", "--pod", "demo"])
+
+            assert result.exit_code == 0, result.output
+            line = next(ln for ln in result.output.splitlines() if "1 done" in ln)
+            assert "tokens" in line
+            assert "$" not in line and "est." not in line
+
     def test_the_cap_header_shows_the_cap_and_the_counted_tokens(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -412,7 +427,7 @@ class TestRun:
 
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
-            monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True, cost=0.0))
+            monkeypatch.setattr(_dr, "default_driver", lambda: FakeDriver(ok=True))
             put_task("demo", task(description="a task"))
 
             result = runner.invoke(_app, ["run", "--pod", "demo"])

@@ -18,8 +18,8 @@ from typing import Any
 from docket.hops.application import report as _pod_report
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands.setup_check_budget import (
-    _batch_cost,
     _batch_tokens,
+    _batch_turns,
     _check_budget,
     _check_dispatch_ledger,
     _check_runaway,
@@ -243,16 +243,15 @@ def _check_json_budget_runaway(
     """Per-agent budget cap + runaway session usage, JSON shape of `_check_budget` and
     `_check_runaway`."""
     issues = 0
-    cost = _batch_cost(ids)
+    turns_by_agent = _batch_turns(ids)
     tokens = _batch_tokens(ids)
     budget_results: list[dict[str, Any]] = []
     runaway_results: list[dict[str, Any]] = []
     for aid in ids:
-        _budget_s, cost_f, turns = cost[aid]
+        turns = turns_by_agent[aid]
         budget_s, used = tokens[aid]
         row: dict[str, Any] = {
             "id": aid,
-            "costUsd": round(cost_f, 6),
             "tokens": used,
             "budgetTokens": int(budget_s) if budget_s else None,
         }
@@ -263,15 +262,10 @@ def _check_json_budget_runaway(
             budget_results.append({**row, "pct": pct, "ok": pct < 100})
         else:
             budget_results.append({**row, "ok": True})
-        runaway = (
-            turns > current_home().runaway_turns_threshold
-            or cost_f >= current_home().runaway_cost_threshold
-        )
+        runaway = turns > current_home().runaway_turns_threshold
         if runaway:
             issues += 1
-        runaway_results.append(
-            {"id": aid, "turns": turns, "costUsd": round(cost_f, 6), "ok": not runaway}
-        )
+        runaway_results.append({"id": aid, "turns": turns, "ok": not runaway})
     return issues, budget_results, runaway_results
 
 
@@ -470,7 +464,7 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     ui.console.export_text(clear=True)
 
     ids = project_ids()
-    cost = _batch_cost(ids)
+    turns_by_agent = _batch_turns(ids)
 
     _check_dependencies()
     _check_project_agents(ids)
@@ -478,7 +472,7 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     _check_schedule_config()
     _check_dispatch_ledger(do_fix)
     _check_budget(ids, _batch_tokens(ids))
-    _check_runaway(ids, cost)
+    _check_runaway(ids, turns_by_agent)
     _check_key_hygiene()
     _check_provider_coverage(ids)
     _check_provider_catalog()

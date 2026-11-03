@@ -185,7 +185,7 @@ class _BigOutputRunner:
         timeout: int,
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
-        return _rd.TurnResult(True, "*" * self.size, 0.0, {"output": "x"})
+        return _rd.TurnResult(True, "*" * self.size, {"output": "x"})
 
 
 class TestContextComposedTrace:
@@ -230,7 +230,7 @@ class TestContextComposedTrace:
                     timeout: int,
                     env: dict[str, str] | None = None,
                 ) -> _rd.TurnResult:
-                    return _rd.TurnResult(True, "tiny output", 0.0, {})
+                    return _rd.TurnResult(True, "tiny output", {})
 
             _sweep.dispatch_pod("demo", runner=_SmallRunner())
             trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))

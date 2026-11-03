@@ -1,10 +1,10 @@
 # Audit Log Specification
 
-**Version**: 3.3.2
+**Version**: 3.4.0
 **Status**: Implemented. Recording, the hash chain, rotation continuation, the head sidecar and
 `docket log` / `docket log verify` are live; the log is `$DOCKET_HOME/audit.log`. Requirement 1
 lists every action the code writes; Requirement 2 says what the log cannot see.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -26,7 +26,7 @@ This specification covers:
 - Why there is no environment kill switch
 
 This specification does NOT cover audit events emitted by programs outside Docket, tool-approval
-policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.md).
+policy (see security-gates.spec.md), or token accounting (see cost-tracking.spec.md).
 
 ## Requirements
 
@@ -97,7 +97,7 @@ policy (see security-gates.spec.md), or cost accounting (see cost-tracking.spec.
      cancellation as `was=`, and the process groups killed as `killed=`; written only when a run
      was actually cancelled).
    - **MCP server.** `mcp.<tool>` for every `docket start --mcp` tool call (`status`, `pods`,
-     `queue`, `delegate`, `dispatch`, `runs`, `inbox`, `escalations`, `cost`, `resolve`,
+     `queue`, `delegate`, `dispatch`, `runs`, `inbox`, `escalations`, `usage`, `resolve`,
      `task_pregrant`), written unconditionally
      before the operation runs, including the read-only tools. A mutating tool additionally
      triggers whatever domain entry the called function writes (a `resolve` call that grants an

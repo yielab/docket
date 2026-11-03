@@ -57,17 +57,12 @@ def _worktree(project: str, record: TaskRecord) -> dict[str, str] | None:
     }
 
 
-def _cost_cell(record: TaskRecord) -> str:
-    return f"${record.cost_usd:.4f}" if record.cost_usd else "-"
-
-
 def _list_item(project: str, record: TaskRecord) -> dict[str, Any]:
     wt = _worktree(project, record)
     return {
         "id": record.id,
         "priority": record.priority,
         "status": str(record.status),
-        "costUsd": record.cost_usd or None,
         "description": record.description,
         "worktree": wt["path"] if wt else None,
     }
@@ -217,7 +212,6 @@ def _render_show(
     _say(f"  id:       {found.task_id}")
     _say(f"  status:   {record.status}")
     _say(f"  priority: {record.priority}")
-    _say(f"  cost:     {_cost_cell(record)}")
     _say(f"  task:     {record.description}")
     if ev.hops:
         ui.section("Hops")
@@ -290,9 +284,6 @@ def _event_line(r: dict[str, Any]) -> str:
             if payload.get(k) is not None:
                 parts.append(f"{k}={payload[k]}")
     extras = []
-    if r.get("cost_usd") is not None:
-        with contextlib.suppress(TypeError, ValueError):
-            extras.append(f"${float(r['cost_usd']):.4f}")
     if r.get("duration_ms") is not None:
         extras.append(f"{r['duration_ms']}ms")
     who = f"  ({role})" if role and role != "unknown" else ""

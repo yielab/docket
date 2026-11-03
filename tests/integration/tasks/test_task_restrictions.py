@@ -248,7 +248,7 @@ def test_each_hop_runs_with_what_the_cap_has_left(tmp_path: Path, stub: Any) -> 
         from docket.agent.ports import DOCKET_TURN_TOKEN_BUDGET, TurnResult
 
         seen.append((args[4] or {}).get(DOCKET_TURN_TOKEN_BUDGET))
-        return TurnResult(True, "done", 0.0, {})
+        return TurnResult(True, "done", {})
 
     with _seed_pod(tmp_path, stub([say("x")]).base_url):
         spent_hop = HopResult(

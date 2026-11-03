@@ -13,10 +13,10 @@ nothing else of the engine's inside:
 - ``RoleComposer`` and ``ToolGate``: what the engine asks of the teams (roles, the system prompt)
   and of governance (policy, approvals, audit). Both are bound once per entry point.
 
-Execution-related state (session records, turn results, cost/usage) tends to leak its
+Execution-related state (session records, turn results, token usage) tends to leak its
 on-disk/wire shape into every caller that reads it. ``RuntimeDriver`` is the fix: a single typed
 ``Protocol`` that application code and ``interfaces/cli`` program against, so no module outside
-``models/adapters/`` needs to know what a session record, a driver invocation, or a cost figure
+``models/adapters/`` needs to know what a session record, a driver invocation, or a usage figure
 looks like on disk.
 
 ROADMAP §4.5 bans an ``AbstractBackend``; this module revises that ban, not repeals
@@ -26,11 +26,11 @@ generality -- a second real driver still needs a §4.5 trigger (upstream stall/b
 paying user.
 
 The required members of ``RuntimeDriver`` mirror an agent's whole lifecycle: ``run_turn`` (one
-costed agent turn, the hot path -- ``hops/application/runner.py``'s pipeline and docket's own
+real agent turn, the hot path -- ``hops/application/runner.py``'s pipeline and docket's own
 self-originated LLM calls go through this); ``list_sessions``/``usage`` (durable-session
-enumeration and token/cost aggregation, keeping on-disk format knowledge out of application
-code); ``capabilities`` (what this driver instance can actually promise, e.g. whether it reports
-real USD cost, so callers never hardcode an assumption about the shipped driver's quirks).
+enumeration and token aggregation, keeping on-disk format knowledge out of application
+code); ``capabilities`` (what this driver instance can actually promise, so callers never
+hardcode an assumption about the shipped driver's quirks).
 """
 
 from __future__ import annotations
@@ -187,12 +187,11 @@ DOCKET_HOP_STEP = "DOCKET_HOP_STEP"
 class TurnResult:
     """Outcome of one agent turn, however the driver executed it. Field order is
     load-bearing: dozens of existing tests construct this positionally
-    (``TurnResult(False, "", 0.0, {}, "boom")``) — do not reorder or insert a field
+    (``TurnResult(False, "", {}, "boom")``) — do not reorder or insert a field
     before ``failure_kind`` without a matching sweep of those call sites."""
 
     ok: bool
     output: str
-    cost_usd: float  # 0.0 when the driver doesn't report a USD cost
     raw: dict[str, Any]  # full parsed backend response (empty when unparseable)
     error: str = ""
     failure_kind: FailureKind | None = None
@@ -240,25 +239,23 @@ class SessionSummary:
 
 @dataclass
 class UsageTotals:
-    """Aggregated token/cost totals for one agent across all its sessions."""
+    """Aggregated token totals for one agent across all its sessions."""
 
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read: int = 0
     cache_write: int = 0
-    cost_usd: float = 0.0
     turns: int = 0
 
 
 @dataclass
 class UsageDay:
-    """Token/cost totals for a single calendar day."""
+    """Token totals for a single calendar day."""
 
     date: str
     turns: int
     input_tokens: int
     output_tokens: int
-    cost_usd: float
 
 
 @dataclass
@@ -275,13 +272,9 @@ class UsageReport:
 @dataclass(frozen=True)
 class DriverCapabilities:
     """What one driver instance can actually promise. Exists so a caller never has to
-    hardcode an assumption about the shipped driver's quirks — ``DocketDriver``
-    reports only measured token counts, never a USD cost field, so
-    ``reports_cost_usd`` is False even though ``run_turn`` always returns a (zero)
-    ``cost_usd``."""
+    hardcode an assumption about the shipped driver's quirks."""
 
     driver_name: str
-    reports_cost_usd: bool
     supports_sessions: bool
 
 
@@ -310,7 +303,7 @@ class RuntimeDriver(Protocol):
         trace_task_id: str | None = None,
         model: str | None = None,
     ) -> TurnResult:
-        """Run one real, costed agent turn. Never raises for ordinary failure modes.
+        """Run one real agent turn. Never raises for ordinary failure modes.
         ``on_spawn`` fires with the process pid immediately after it starts, before
         this call blocks on its result -- a driver with no real process (or a test
         double) may ignore it, so this is purely additive. ``trace_project``/
@@ -328,7 +321,7 @@ class RuntimeDriver(Protocol):
         ...
 
     def usage(self, agent_id: str) -> UsageReport:
-        """Aggregate token/cost usage for *agent_id* across all its sessions."""
+        """Aggregate token usage for *agent_id* across all its sessions."""
         ...
 
     def capabilities(self) -> DriverCapabilities:

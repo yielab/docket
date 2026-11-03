@@ -1,6 +1,6 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.11.0
+**Version**: 5.12.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
 **Last Updated**: 2026-11-03
@@ -139,7 +139,7 @@ Invoking `docket` with no command **MUST** print only a compact guide of three p
 order: the tagline (`ui.TAGLINE`), the five daily commands with one-line meanings (`docket init`,
 `docket task add "..."`, `docket run`, `docket status`, `docket inbox`), and the line
 `Not set up yet? docket setup`. It is rendered by `ui.guide` and **MUST NOT** read or render the
-fleet, project agents, costs, bindings, or health checks.
+fleet, project agents, bindings, or health checks.
 
 #### docket init
 **Purpose**: Provision a project pod from a blueprint (Lead + Implementer against a codebase by
@@ -281,7 +281,7 @@ provisioning belongs to `init`, including multi-project automation.
   `status` reads the repository and the store, and writes nothing.
 - `--all` reports the same summary for every registered pod, once per project rather than once
   per agent, with failed counts; `--all --json` also carries the fleet inventory
-  (`timestamp`, `channels`, `agents`, `totalCostUsd`).
+  (`timestamp`, `channels`, `agents`).
 - `--history [--days N]` shows tokens per day (empty against the production driver; see
   cost-tracking.spec.md "Known gap").
 - No current-directory match **MUST** fail with the actionable Pod targeting message (`Run
@@ -335,7 +335,7 @@ candidate with its pod. Without `--pod`/`DOCKET_POD` a ref is searched in every 
   `--gate` takes the command string alone and exits 1 when empty. A second `add` whose
   `--idempotency-key` is already in the queue enqueues nothing and prints the existing id with
   `ok already queued`
-- `list [--json] [--pod <p>]`: The pod's queue, every status: short id, priority, status, cost,
+- `list [--json] [--pod <p>]`: The pod's queue, every status: short id, priority, status,
   the worktree path when one exists, description. `--json` prints `{"pod", "tasks": [...]}`
   (`cli-json-shapes.spec.md`)
 - `show <ref> [--json] [--pod <p>]`: Status, hop evidence (evidence-v1), the
@@ -696,7 +696,7 @@ model's declared limit, an absent one is what the registration probe observes, e
 naming its source: declared, observed on a date, or unknown), `remove <name> [--yes]`
 (confirms on a terminal; off one it exits 1 naming `--yes`), `export <name> [<file>]`,
 `rotate <name> [--credential KEY]`.
-**`setup model`** — bare or `list [--json]` shows the role→model table (role, model, price,
+**`setup model`** — bare or `list [--json]` shows the role→model table (role, model,
 source, why); `set <role|default> <provider/model>`; `preset [name]` lists or applies a provider
 preset to every role; `reset [--yes]` restores the built-in policy.
 **`setup sandbox`** — bare or `status [--json]` is a read: the gate is always active, plus the
@@ -957,10 +957,9 @@ When `--json` is specified, commands emit bare JSON objects or arrays — **no e
 There is no `{success, data, error, version}` outer object. Each command's actual output shape
 is documented in [specs/data/cli-json-shapes.spec.md](../data/cli-json-shapes.spec.md).
 
-Key naming: the keys docket builds for CLI output are camelCase (`costUsd`, `totalUsd`,
-`budgetTokens`, `sessionKey`), with one exception, `mcp_servers` in `pod recipes --json`. Records
+Key naming: the keys docket builds for CLI output are camelCase (`budgetTokens`, `sessionKey`), with one exception, `mcp_servers` in `pod recipes --json`. Records
 passed through as stored keep their stored keys: trace events in `task trace --json` (`event_type`,
-`agent_role`, `cost_usd`) and the raw JSONL of `log --json`.
+`agent_role`, `duration_ms`) and the raw JSONL of `log --json`.
 
 ### Table Output Format
 
@@ -1025,7 +1024,7 @@ the contract-level summary follows.
 ### Model Validation
 - Must be well-formed `provider/model-id` (e.g. `anthropic/claude-sonnet-4-6`)
 - docket does not itself validate that the named model exists at the provider; it accepts any
-  well-formed string and warns if pricing is unknown (an unresolvable model surfaces as a
+  well-formed string and says nothing about what it costs, which docket does not keep (an unresolvable model surfaces as a
   driver-level error the first time a turn actually runs, not at validation time)
 - A bare word such as a tier name (`economy`, `standard`, `premium`) is malformed and exits 1
   like any other (see input-validation.spec.md)

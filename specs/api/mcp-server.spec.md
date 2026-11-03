@@ -1,6 +1,6 @@
 # MCP Server Contract Specification
 
-**Version**: 2.2.0
+**Version**: 3.0.0
 **Status**: Implemented
 **Last Updated**: 2026-11-03
 
@@ -8,7 +8,7 @@
 
 This specification defines `docket start --mcp` — an MCP (Model Context Protocol) stdio server
 that exposes docket's control plane (pods, task queue, dispatch, the run registry, the
-escalations that wait on a person, and recorded cost) as MCP tools, so any MCP client (Claude Code, Codex, or any other
+escalations that wait on a person, and measured token usage) as MCP tools, so any MCP client (Claude Code, Codex, or any other
 compliant client) can drive docket *through* the same governance spine a CLI invocation goes
 through, never around it.
 
@@ -46,7 +46,7 @@ Every tool call MUST go through the same paths a CLI invocation (or, where one e
 `docket start` HTTP call) would:
 
 1. **Audited.** Every tool call — including the seven read-only ones (`status`, `pods`, `queue`,
-   `runs`, `inbox`, `escalations`, `cost`), which have no other audited
+   `runs`, `inbox`, `escalations`, `usage`), which have no other audited
    surface anywhere in this project — writes an audit-log entry (action
    `mcp.<tool>`) that participates in the same `seq`/`prev_hash` tamper-evidence chain as every
    other audit entry (see `audit.spec.md`). This entry is written unconditionally, before the
@@ -70,7 +70,7 @@ docket start --mcp [--read-only]
 ```
 
 `--read-only` registers only the seven read tools (`status`, `pods`, `queue`, `runs`, `inbox`,
-`escalations`, `cost`): `delegate`, `dispatch`, `retry`, `resolve` and `task_pregrant` are then
+`escalations`, `usage`): `delegate`, `dispatch`, `retry`, `resolve` and `task_pregrant` are then
 unknown tools, and the `instructions` string and the stderr startup list name only the registered
 set. `--read-only` without `--mcp` prints a usage error (to stderr) and exits `2`. The restriction
 is the registered set, not a caller check inside any tool: `resolve` has none.
@@ -133,7 +133,7 @@ the same convention; none is a generic envelope.
 ### `status`
 
 **Purpose**: Fleet-wide status snapshot — enabled channels, every agent's
-model/registration/cost, and total recorded spend.
+model/registration.
 **Arguments**: none.
 **Output**: identical shape to `docket start`'s `GET /status.json` (see `serve-read-api.spec.md`),
 including its `apiVersion`.
@@ -290,20 +290,16 @@ identical to `GET /escalations`.
 **Failure modes**: none beyond the SDK's own argument-shape validation. Audited as
 `mcp.escalations`.
 
-### `cost`
+### `usage`
 
-**Purpose**: **Recorded** USD spend — one agent or the whole fleet.
+**Purpose**: **Measured** token usage — one agent or the whole fleet.
 **Arguments**: `agent_id` (string, optional) — one agent's totals; omitted for the whole fleet.
-**Output**: `{"agents": [...], "totalUsd": ...}` when `agent_id` is omitted, where each agent row is
-`{"id", "model", "input", "output", "costUsd", "pricingKnown", "turns", "budgetTokens"}`; a single
-agent's row when given. Rows cover project agents (pod members) only.
+**Output**: `{"agents": [...]}` when `agent_id` is omitted, where each agent row is
+`{"id", "model", "input", "output", "turns", "budgetTokens"}`; a single agent's row when given.
+Rows cover project agents (pod members) only. The tool returns tokens and never a dollar figure,
+a rate or an estimate: docket keeps none (`cost-tracking.spec.md`).
 **Failure modes**: raises ("Project '<id>' not found.") if `agent_id` is given but is not a known
 project agent.
-**Cost-reporting discipline**: this figure is recorded spend from session data, which is always
-`0.0` today because `DocketDriver` records measured tokens but no dollar figure; the
-token-price estimate `docket status` shows is not returned here. It is never a
-projected/estimated figure, and never presented as a dollar *savings* claim (a standing
-product discipline across every docket status surface — see `cost-tracking.spec.md`).
 
 ## Arguments
 
@@ -379,8 +375,7 @@ concern, not docket's — see Scope above).
   "apiVersion": "6",
   "timestamp": "2026-07-30T12:00:00Z",
   "channels": ["telegram"],
-  "agents": [ /* ... */ ],
-  "totalCostUsd": 0.0
+  "agents": [ /* ... */ ]
 }
 ```
 

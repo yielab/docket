@@ -97,7 +97,7 @@ class _Runner:
             (root / self.filename).write_text("work\n")
             _git(root, "add", ".")
             _git(root, "commit", "-m", f"add {self.filename}")
-        return TurnResult(True, "done", 0.0, {})
+        return TurnResult(True, "done", {})
 
 
 class _UncommittedRunner:
@@ -120,7 +120,7 @@ class _UncommittedRunner:
             )
             for name, body in self.files.items():
                 (root / name).write_text(body)
-        return TurnResult(True, "done", 0.0, {})
+        return TurnResult(True, "done", {})
 
 
 def _implementer_hop(task: TaskRecord) -> HopResult:
@@ -134,7 +134,7 @@ def _plain_runner(
     timeout: int,
     env: dict[str, str] | None = None,
 ) -> TurnResult:
-    return TurnResult(True, "done", 0.0, {})
+    return TurnResult(True, "done", {})
 
 
 def _worktree_paths(repo: Path) -> list[str]:
@@ -250,7 +250,7 @@ def test_worktree_add_failure_runs_in_place_with_a_recorded_reason(
             env: dict[str, str] | None = None,
         ) -> TurnResult:
             seen.append((agent_id, env))
-            return TurnResult(True, "done", 0.0, {})
+            return TurnResult(True, "done", {})
 
         _queue.enqueue_task_once("demo", "work", channel="cli")
         (res,) = _sweep.dispatch_pod("demo", runner=runner, max_tasks=1)
@@ -401,7 +401,7 @@ class _LeadWritesRunner:
             root = Path(TaskRepository.for_pod("demo").list()[0].worktree.dir)
             (root / "research").mkdir(exist_ok=True)
             (root / "research" / "notes.md").write_text("findings\n")
-        return TurnResult(True, "done", 0.0, {})
+        return TurnResult(True, "done", {})
 
 
 def test_work_a_non_implementer_hop_leaves_is_committed_on_the_task_branch(tmp_path: Path) -> None:

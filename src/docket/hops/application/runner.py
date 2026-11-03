@@ -84,7 +84,6 @@ def _reask_unmarked_verdict(
     return dataclasses.replace(
         first,
         output=f"{first.output}\n{second.output}".strip(),
-        cost_usd=first.cost_usd + second.cost_usd,
         usage=_sum_usage(first.usage, second.usage),
         raw=second.raw,
         closing_args=second.closing_args or first.closing_args,

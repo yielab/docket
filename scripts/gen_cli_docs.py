@@ -433,11 +433,6 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`200`",
     ),
     (
-        ("RUNAWAY_COST_THRESHOLD",),
-        "Past this estimated USD, `docket setup` flags a session as runaway",
-        "`20`",
-    ),
-    (
         ("DOCKET_KEY_MAX_AGE_DAYS",),
         "`docket setup --fix`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry",
         "`90`",

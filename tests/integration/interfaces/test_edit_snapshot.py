@@ -88,7 +88,7 @@ class TestCmdSnapshot:
         rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
         assert rc == 0
         data = json.loads(out)
-        for key in ("timestamp", "channels", "agents", "totalCostUsd"):
+        for key in ("timestamp", "channels", "agents"):
             assert key in data, f"Missing key: {key}"
 
     def test_includes_project_agent(self, tmp_path: Path) -> None:
@@ -113,7 +113,6 @@ class TestCmdSnapshot:
             "registered",
             "bindings",
             "lastActivity",
-            "costUsd",
         ):
             assert key in agent, f"Agent missing key: {key}"
         assert agent["kind"] == "project"
@@ -155,13 +154,6 @@ class TestCmdSnapshot:
         ids = [a["id"] for a in data["agents"]]
         assert "knowledge" not in ids
 
-    def test_total_cost_usd_is_float(self, tmp_path: Path) -> None:
-        oc_dir = _setup_agent(tmp_path)
-        rc, out, _ = _run(["status", "--all", "--json"], oc_dir)
-        assert rc == 0
-        data = json.loads(out)
-        assert isinstance(data["totalCostUsd"], float)
-
     def test_timestamp_format(self, tmp_path: Path) -> None:
         import re
 
@@ -179,7 +171,6 @@ class TestCmdSnapshot:
         assert rc == 0
         data = json.loads(out)
         assert data["agents"] == []
-        assert data["totalCostUsd"] == 0.0
 
 
 # ---------------------------------------------------------------------------

@@ -59,7 +59,7 @@ class _RecordingRunner:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
         output = self.outputs.get(role, f"done by {agent_id}")
-        return _rd.TurnResult(self.ok, output, 0.01, {"output": output})
+        return _rd.TurnResult(self.ok, output, {"output": output})
 
 
 # ── install_policies() — the shared producer behind `init` and install Step 9 ────

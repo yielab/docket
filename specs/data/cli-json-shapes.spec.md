@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.8.0
+**Version**: 5.0.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-11-03
 
@@ -34,7 +34,7 @@ Output is JSON on stdout.
 
 - **Bare values.** A command returns its object or array directly (for example
   `{"agents": [...]}`), never wrapped in a status envelope.
-- **camelCase keys.** The keys docket builds are camelCase (`costUsd`, not `cost_usd`); see
+- **camelCase keys.** The keys docket builds are camelCase (`budgetTokens`, not `budget_tokens`); see
   Validation for the documents that keep their own key style.
 - **Errors.** A failure prints a message to stderr, leaves stdout empty and exits non-zero, except
   where a section below shows a JSON answer with a non-zero exit.
@@ -74,8 +74,8 @@ JSON.
     "fleet":       "{ ok: true, path, agents, bindings } | { ok: false, path, error }",
     "agents":      "array of { id, ok, tg (the bound Telegram peer or \"\"), issues: array of strings }",
     "dispatchLedger": "array of { project, ok, missingFromLedger, staleInLedger } (task ids)",
-    "budget":      "array of { id, costUsd, tokens, budgetTokens: number | null, pct (only with a budget), ok }",
-    "runaway":     "array of { id, turns, costUsd, ok }",
+    "budget":      "array of { id, tokens, budgetTokens: number | null, pct (only with a budget), ok }",
+    "runaway":     "array of { id, turns, ok }",
     "keyHygiene":  {
       "keys": "array of { name, state, detail }",
       "missingForAgents": "array of { agent, model, needsKey }"
@@ -140,7 +140,7 @@ project agent; and the problem count of each of `modelRegistry`, `schedules`,
     "blocked": "number", "failed": "number", "done": "number", "cancelled": "number (one count per task status, each task counted once)",
     "approvedReady": "number (pending tasks whose approval was granted)"
   },
-  "usage":       "{ input, output (measured tokens), estimateUsd (a labelled estimate) }",
+  "usage":       "{ input, output } (measured tokens; the payload names no cost or dollar)",
   "outcomes":    "{ success, failure, aborted, meanMs | null, p95Ms | null }",
   "lastRun":     "{ id, state, finishedAt } | null",
   "running":     "boolean (docket start is running)",
@@ -155,8 +155,7 @@ project agent; and the problem count of each of `modelRegistry`, `schedules`,
 {
   "timestamp":    "string (ISO-8601 UTC, e.g. 2026-07-30T12:00:00Z)",
   "channels":     "array of strings (channels present in Docket fleet bindings)",
-  "agents":       "array of agent objects (below)",
-  "totalCostUsd": "number"
+  "agents":       "array of agent objects (below)"
 }
 ```
 
@@ -170,13 +169,12 @@ Each agent object (every pod member is one):
   "model":        "string",
   "registered":   "boolean",
   "bindings":     "array of {channel, peerId}",
-  "lastActivity": "string (YYYY-MM-DD) | \"never\"",
-  "costUsd":      "number"
+  "lastActivity": "string (YYYY-MM-DD) | \"never\""
 }
 ```
 
 `status --history --json` (also with `--all`, and with `--days N` to keep the last N days) emits
-`{"history": [{date, turns, input, output, costUsd}, ...]}`. The list is empty against the
+`{"history": [{date, turns, input, output}, ...]}`. The list is empty against the
 production driver, which keeps one running total per session rather than per-day usage
 (cost-tracking.spec.md, "Known gap").
 
@@ -224,7 +222,6 @@ other refusal, and a successful `init`, prints text.
       "id":          "string (task id)",
       "priority":    "high | normal | low",
       "status":      "string (pending | running | waiting_input | waiting_approval | blocked | failed | done | cancelled)",
-      "costUsd":     "number | null (null when nothing is recorded)",
       "description": "string",
       "worktree":    "string (absolute path) | null"
     }
@@ -520,7 +517,7 @@ Bare `setup model` and `setup model list` print the same object:
 
 ```json
 {
-  "roles": "array of { role, model (provider/model-id), price (a snapshot estimate such as \"$0.80/$4.00\"), source: builtin | user, why }",
+  "roles": "array of { role, model (provider/model-id), source: builtin | user, why }",
   "default": "string (provider/model-id)"
 }
 ```
@@ -579,14 +576,12 @@ write), tools}`. Every `env` value is masked as `"****"`; `[]` when none is conf
 
 The keys docket builds are **camelCase**:
 
-- `costUsd` (not `cost_usd`)
-- `totalCostUsd` (not `total_cost_usd`)
 - `budgetTokens` (not `budget_tokens`)
 - `lastActivity` (not `last_activity`)
 - `waitingApproval` (not `waiting_approval`)
 
 Three places keep other key styles: the trace records of `task trace` (`event_type`, `agent_role`,
-`cost_usd`, ... , owned by `trace-store.spec.md`), a policy document printed by
+`duration_ms`, ... , owned by `trace-store.spec.md`), a policy document printed by
 `pod policies <id>` (`applies_to`, ...), and the `mcp_servers` key of `pod recipes --json`, which is
 snake_case.
 
@@ -602,7 +597,6 @@ snake_case.
       "id": "task-061c8711-a1c5-40e6-8562-5a5c0ef276cf",
       "priority": "normal",
       "status": "pending",
-      "costUsd": null,
       "description": "do a thing",
       "worktree": null
     }

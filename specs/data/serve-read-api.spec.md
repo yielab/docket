@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 5.10.0
+**Version**: 6.0.0
 **Status**: Stable
 **Last Updated**: 2026-11-03
 
@@ -100,11 +100,9 @@ added in minor versions.
       "registered":   true,
       "bindings":     [{"channel": "telegram"}],
       "lastActivity": "2026-06-25",
-      "costUsd":      0.0,
       "budgetTokens": 500000
     }
-  ],
-  "totalCostUsd": 0.0
+  ]
 }
 ```
 
@@ -119,8 +117,8 @@ added in minor versions.
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
 | `agents[*].budgetTokens` | integer \| null | The pod's token cap, `null` when no budget cap is set for the agent. |
 | `agents[*].lastActivity` | date string \| `"never"` | Date (`YYYY-MM-DD`) of the agent's most recently updated session, or `"never"`. |
-| `agents[*].costUsd` | float | The runtime driver's reported dollar cost for the agent. The shipped driver measures tokens and records no dollar spend, so this is `0.0`. |
-| `totalCostUsd` | float | Sum of `agents[*].costUsd`. |
+
+The payload names no cost, rate or dollar: docket records tokens only (`cost-tracking.spec.md`).
 
 ### GET /metrics
 
@@ -131,9 +129,7 @@ Prometheus text format (content-type `text/plain; version=0.0.4`).
 | Metric | Type | Description |
 |---|---|---|
 | `docket_agents_total` | gauge | Number of project agents. |
-| `docket_agent_cost_usd{agent,model}` | gauge | Per-agent dollar cost as the runtime driver reports it (`0` with the shipped driver; see `costUsd` above). |
-| `docket_agent_turns_total{agent}` | gauge | Total turns per agent. Its samples follow all of `docket_agent_cost_usd`'s, under their own `# HELP`/`# TYPE`. |
-| `docket_cost_usd_total` | gauge | Sum of `docket_agent_cost_usd`. |
+| `docket_agent_turns_total{agent}` | gauge | Total turns per agent. |
 | `docket_approvals_pending_total` | gauge | Pending approvals awaiting a human decision. |
 | `docket_inbox_items{section}` | gauge | Items in the derived operator inbox (`GET /inbox`), by section (`needsYou`\|`failed`\|`doneSince`\|`running`). Computed fresh on every scrape with no `since`, so `doneSince` here is every terminal task, not scoped to any consumer's cursor. |
 | `docket_tool_calls_total{decision}` | counter | Tool calls dispatched through the gated tool registry (`dispatch_tool`), by gate decision (`allow`\|`ask`\|`deny`), from `tool_result` trace events. Sum gives tool-call rate; the `deny` bucket over the sum gives denial rate. |
@@ -711,7 +707,7 @@ curl -s http://127.0.0.1:7331/status.json | jq .
 ```bash
 curl -s http://127.0.0.1:7331/metrics
 # docket_agents_total 3
-# docket_cost_usd_total 0
+# docket_agent_turns_total{agent="myapp-lead"} 12
 ```
 
 ### Health check

@@ -58,7 +58,7 @@ def _audit(tool: str, detail: str = "") -> None:
 
 def tool_status() -> dict[str, Any]:
     """Fleet-wide status snapshot: channels, every agent's
-    model/registration/cost, and total recorded spend. Identical shape to
+    model/registration. Identical shape to
     `docket start`'s `GET /status.json` (see serve-read-api.spec.md)."""
     _audit("status")
 
@@ -200,12 +200,11 @@ def tool_escalations(since: int | None = None) -> dict[str, Any]:
     return page.model_dump(by_alias=True, mode="json")
 
 
-def tool_cost(agent_id: str | None = None) -> dict[str, Any]:
-    """**Recorded** USD spend — one agent or the whole fleet; never a claimed dollar
-    *savings* (cost-tracking.spec.md). Always ``0.0`` (``DocketDriver`` reports no real
-    figure); the estimate from the provider catalog's prices that `docket status` shows is not returned here."""
-    _audit("cost", f"agent={agent_id or ''}")
-    snapshot = _status.cost_snapshot()
+def tool_usage(agent_id: str | None = None) -> dict[str, Any]:
+    """**Measured** token usage — one agent or the whole fleet; docket returns no dollar figure
+    (cost-tracking.spec.md)."""
+    _audit("usage", f"agent={agent_id or ''}")
+    snapshot = _status.usage_snapshot()
     if not agent_id:
         return snapshot
     agents: list[dict[str, Any]] = snapshot["agents"]
@@ -224,7 +223,7 @@ _TOOLS: dict[str, tuple[Callable[..., Any], bool]] = {
     "runs": (tool_runs, True),
     "inbox": (tool_inbox, True),
     "escalations": (tool_escalations, True),
-    "cost": (tool_cost, True),
+    "usage": (tool_usage, True),
     "delegate": (tool_delegate, False),
     "dispatch": (tool_dispatch, False),
     "retry": (tool_retry, False),
@@ -260,12 +259,12 @@ def _build_server(read_only: bool = False) -> Any:
 
     if read_only:
         instructions = (
-            "docket's control plane, read-only: pods, runs, escalations, the inbox, and cost. "
+            "docket's control plane, read-only: pods, runs, escalations, the inbox, and token usage. "
             "Every call is audit-logged. This server cannot delegate, dispatch, retry or resolve."
         )
     else:
         instructions = (
-            "docket's control plane: pods, dispatch, runs, escalations, the inbox, and cost. "
+            "docket's control plane: pods, dispatch, runs, escalations, the inbox, and token usage. "
             "Every call is audit-logged; dispatch/delegate/retry/resolve go through the "
             "exact same gates as the docket CLI -- nothing here bypasses an approval "
             "or budget check."

@@ -87,7 +87,7 @@ class _FilesRunner:
             if self.commit:
                 _git(root, "add", ".")
                 _git(root, "commit", "-m", "implementer work")
-        return TurnResult(True, "done", 0.0, {})
+        return TurnResult(True, "done", {})
 
 
 @contextmanager

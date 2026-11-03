@@ -101,7 +101,7 @@ class TestFailureKindClassification:
     def test_positional_construction_still_works_without_failure_kind(self) -> None:
         """Backward compat: every existing call site constructs positionally with
         4-5 args and never mentions failure_kind — it must still default sanely."""
-        res = _rd.TurnResult(False, "", 0.0, {}, "boom")
+        res = _rd.TurnResult(False, "", {}, "boom")
         assert res.failure_kind is None
 
 
@@ -140,7 +140,7 @@ class _TimeoutSpy:
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
         self.values.append(timeout)
-        return _rd.TurnResult(True, "done", 0.0, {})
+        return _rd.TurnResult(True, "done", {})
 
 
 class _ScriptedRunner:
@@ -163,7 +163,7 @@ class _ScriptedRunner:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append((role, timeout))
         self.session_keys.append((role, session_key))
-        seq = self.script.get(role, [_rd.TurnResult(True, "done", 0.0, {})])
+        seq = self.script.get(role, [_rd.TurnResult(True, "done", {})])
         idx = min(len([c for c in self.calls if c[0] == role]) - 1, len(seq) - 1)
         return seq[idx]
 
@@ -175,9 +175,9 @@ class TestHopRetryLoop:
         runner = _ScriptedRunner(
             {
                 "implementer": [
-                    _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout"),
-                    _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout"),
-                    _rd.TurnResult(True, "done", 0.0, {}),
+                    _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout"),
+                    _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout"),
+                    _rd.TurnResult(True, "done", {}),
                 ]
             }
         )
@@ -210,8 +210,8 @@ class TestHopRetryLoop:
         ) -> _rd.TurnResult:
             role = agent_id.rsplit("-", 1)[-1]
             if role != "implementer":
-                return _rd.TurnResult(True, "done", 0.0, {})
-            return _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout")
+                return _rd.TurnResult(True, "done", {})
+            return _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout")
 
         task = TaskRecord(id="t2", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_always_timeout, sleep=_no_sleep)
@@ -236,11 +236,10 @@ class TestHopRetryLoop:
         ) -> _rd.TurnResult:
             calls.append(agent_id)
             if not agent_id.endswith("implementer"):
-                return _rd.TurnResult(True, "done", 0.0, {})
+                return _rd.TurnResult(True, "done", {})
             return _rd.TurnResult(
                 False,
                 "",
-                0.0,
                 {},
                 "exceeded wall_clock_timeout_s=300",
                 failure_kind="budget_exhausted",
@@ -280,8 +279,8 @@ class TestHopRetryLoop:
             calls.append(agent_id)
             role = agent_id.rsplit("-", 1)[-1]
             if role != "implementer":
-                return _rd.TurnResult(True, "done", 0.0, {})
-            return _rd.TurnResult(False, "", 0.0, {}, "exit 1", failure_kind="nonzero_exit")
+                return _rd.TurnResult(True, "done", {})
+            return _rd.TurnResult(False, "", {}, "exit 1", failure_kind="nonzero_exit")
 
         task = TaskRecord(id="t3", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
@@ -308,7 +307,7 @@ class TestHopRetryLoop:
             calls.append(agent_id)
             role = agent_id.rsplit("-", 1)[-1]
             output = "garbage, no verdict" if role == "reviewer" else "done"
-            return _rd.TurnResult(True, output, 0.0, {})
+            return _rd.TurnResult(True, output, {})
 
         task = TaskRecord(id="t4", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
@@ -324,8 +323,8 @@ class TestHopRetryLoop:
         runner = _ScriptedRunner(
             {
                 "implementer": [
-                    _rd.TurnResult(False, "", 0.0, {}, "boom", failure_kind="daemon_error"),
-                    _rd.TurnResult(True, "done", 0.0, {}),
+                    _rd.TurnResult(False, "", {}, "boom", failure_kind="daemon_error"),
+                    _rd.TurnResult(True, "done", {}),
                 ]
             }
         )
@@ -344,9 +343,9 @@ class TestHopRetryLoop:
         runner = _ScriptedRunner(
             {
                 "implementer": [
-                    _rd.TurnResult(False, "", 0.0, {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(False, "", 0.0, {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(True, "done", 0.0, {}),
+                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
+                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
+                    _rd.TurnResult(True, "done", {}),
                 ]
             }
         )
@@ -367,9 +366,9 @@ class TestHopRetryLoop:
         runner = _ScriptedRunner(
             {
                 "implementer": [
-                    _rd.TurnResult(False, "", 0.0, {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(False, "", 0.0, {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(True, "done", 0.0, {}),
+                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
+                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
+                    _rd.TurnResult(True, "done", {}),
                 ]
             }
         )
@@ -390,9 +389,9 @@ class TestHopRetryLoop:
             {
                 "implementer": [
                     _rd.TurnResult(
-                        False, "", 0.0, {}, "boom", failure_kind="daemon_error", retry_after_s=7.0
+                        False, "", {}, "boom", failure_kind="daemon_error", retry_after_s=7.0
                     ),
-                    _rd.TurnResult(True, "done", 0.0, {}),
+                    _rd.TurnResult(True, "done", {}),
                 ]
             }
         )
@@ -420,13 +419,12 @@ class TestHopRetryLoop:
                         _rd.TurnResult(
                             False,
                             "",
-                            0.0,
                             {},
                             "boom",
                             failure_kind="daemon_error",
                             retry_after_s=3600.0,
                         ),
-                        _rd.TurnResult(True, "done", 0.0, {}),
+                        _rd.TurnResult(True, "done", {}),
                     ]
                 }
             )
@@ -460,15 +458,15 @@ class _PersistingRunner:
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
         if not agent_id.endswith("implementer"):
-            return _rd.TurnResult(True, "done", 0.0, {})
+            return _rd.TurnResult(True, "done", {})
         self.messages.append(message)
         if len(self.messages) == 1:
             _session.append_messages(
                 session_key,
                 [_rd.user(message), _rd.assistant("started")][: self.rounds],
             )
-            return _rd.TurnResult(False, "", 0.0, {}, "dropped", failure_kind=self.kind)
-        return _rd.TurnResult(True, "done", 0.0, {})
+            return _rd.TurnResult(False, "", {}, "dropped", failure_kind=self.kind)
+        return _rd.TurnResult(True, "done", {})
 
 
 class TestAnInPlaceRetryContinuesPersistedRounds:
@@ -584,7 +582,7 @@ class TestTimeoutResolution:
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
             seen_turn_timeouts.append(timeout)
-            return _rd.TurnResult(True, "done", 0.0, {})
+            return _rd.TurnResult(True, "done", {})
 
         seen_verify_timeouts: list[int] = []
         real_run_command = _jail.run_command
@@ -633,18 +631,18 @@ class TestRetryDoesNotTripStaleClaimSweep:
             ) -> _rd.TurnResult:
                 role = agent_id.rsplit("-", 1)[-1]
                 if role != "implementer":
-                    return _rd.TurnResult(True, "done", 0.0, {})
+                    return _rd.TurnResult(True, "done", {})
                 calls["implementer"] += 1
                 if calls["implementer"] == 1:
                     # This attempt alone outlasts the sweep's floor -- an un-refreshed
                     # claimedAt would read as stale from this point on.
                     clock.offset_s += 4 * 3600
-                    return _rd.TurnResult(False, "", 0.0, {}, "slow", failure_kind="timeout")
+                    return _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout")
                 # Second attempt: simulate a concurrent dispatcher's sweep landing
                 # here, immediately after on_retry refreshed claimedAt for the
                 # failed first attempt and right before this (successful) retry.
                 _lifecycle.sweep_stale_claims("demo")
-                return _rd.TurnResult(True, "done", 0.0, {})
+                return _rd.TurnResult(True, "done", {})
 
             results = _sweep.dispatch_pod("demo", runner=_flaky_then_ok, sleep=_no_sleep)
             assert len(results) == 1
@@ -756,7 +754,7 @@ class TestExistingStateMachineBehaviourUnaffected:
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
-            return _rd.TurnResult(True, "done", 0.0, {})
+            return _rd.TurnResult(True, "done", {})
 
         res = _sweep.dispatch_pod("demo", runner=_runner)[0]
         assert res.status == "blocked"

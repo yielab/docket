@@ -42,8 +42,8 @@ Example: docket init --recipe secure-build
 
 Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all.
 
-Tokens are measured; the dollar figure is a labelled estimate, never billed spend.
---all --json also carries the fleet inventory (agents, channels, total cost).
+Tokens are measured; docket reports no dollar figure.
+--all --json also carries the fleet inventory (agents, channels).
 
 Example: docket status --all
 
@@ -82,7 +82,7 @@ Example: docket task add "fix the login redirect"
 
 **Usage:** `docket task list`
 
-The pod's task queue with status, cost and the worktree path when one exists.
+The pod's task queue with status and the worktree path when one exists.
 
 Example: docket task list --json
 
@@ -545,7 +545,7 @@ Example: docket setup model
 
 **Usage:** `docket setup model list`
 
-Show the role to model policy with pricing and source.
+Show the role to model policy with its source.
 
 Example: docket setup model list --json
 
@@ -1045,7 +1045,6 @@ No command emits any other exit code today.
 | `CLAIM_STALE_TIMEOUT` | A pod task claimed longer than this without finishing is presumed crashed and failed by the dispatch sweep | `1800` |
 | `METRICS_WINDOW` | Rolling terminal-session count for `docket status` | `50` |
 | `RUNAWAY_TURNS_THRESHOLD` | Past this many turns, `docket setup` flags a session as runaway | `200` |
-| `RUNAWAY_COST_THRESHOLD` | Past this estimated USD, `docket setup` flags a session as runaway | `20` |
 | `DOCKET_KEY_MAX_AGE_DAYS` | `docket setup --fix`'s key-hygiene report flags a stored secret STALE past this age — a rotation nudge, never an expiry | `90` |
 | `TRACE_RETENTION_DAYS` | How long a terminated trace file survives before `docket task prune --traces` deletes it | `30` |
 | `EXPORT_QUEUE_MAX` | Bound on the in-memory span queue the background exporter sender drains | `1000` |

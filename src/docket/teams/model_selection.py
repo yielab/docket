@@ -61,58 +61,10 @@ def presets() -> list[tuple[str, _provider.Preset]]:
     return [(name, preset) for name, spec in catalog.entries.items() for preset in spec.presets]
 
 
-def is_local_provider(prefix: str) -> bool:
-    """True for a provider prefix the catalog marks ``local: true`` -- a genuinely zero
-    per-token cost (llama.cpp/LM Studio/vLLM/Ollama), never a fabricated non-zero figure."""
-    spec = _provider.load_catalog().get(prefix)
-    return bool(spec and spec.local)
-
-
-def is_marketplace(prefix: str) -> bool:
-    """True for a prefix the catalog marks ``marketplace: true``: its per-model pricing
-    changes too often for a snapshot, so it reports "n/a (bring your own)" rather than a
-    stale or invented number."""
-    spec = _provider.load_catalog().get(prefix)
-    return bool(spec and spec.marketplace)
-
-
-def price_for(model: str) -> tuple[float, float, float, float] | None:
-    """``(input, output, cacheRead, cacheWrite)`` USD-per-MTok for *model*, read from the
-    catalog's own model row, or ``None`` when there is no priced row -- callers must not treat
-    that as "$0" (see ``pricing_label``)."""
-    provider, _, model_id = model.partition("/")
-    spec = _provider.load_catalog().get(provider)
-    if spec is None:
-        return None
-    row = next((r for r in spec.models if r.id == model_id), None)
-    if row is None or row.price is None:
-        return None
-    return (row.price.input, row.price.output, row.price.cache_read, row.price.cache_write)
-
-
-def prices_as_of(model: str) -> str:
-    """The snapshot date of *model*'s provider, or ``""`` when the provider is unknown or
-    carries no ``pricesAsOf`` (never priced, or entirely unpriced)."""
-    provider, _, _model_id = model.partition("/")
-    spec = _provider.load_catalog().get(provider)
-    return spec.prices_as_of if spec else ""
-
-
-def _preset_cost_label(provider_name: str, preset: _provider.Preset) -> str:
-    """ "free"/"paid" for the presets listing -- free when the provider is a local endpoint or
-    the preset's own standard rank prices at $0 (a stable free router); every other preset is a
-    real paid route even where docket does not track its exact per-model price."""
-    if is_local_provider(provider_name):
-        return "free"
-    standard_id = preset.ranks.get("standard", "")
-    price = price_for(f"{provider_name}/{standard_id}") if standard_id else None
-    return "free" if price == (0.0, 0.0, 0.0, 0.0) else "paid"
-
-
 def preset_table() -> dict[str, dict[str, str]]:
     """Same shape as the old hand-kept preset table: preset name -> economy/standard/premium
     (full ``provider/model`` ids), ``key`` (the provider's first credential name, or ``""``),
-    ``cost`` and ``note`` -- derived from the catalog instead of duplicated here."""
+    and ``note`` -- derived from the catalog instead of duplicated here."""
     catalog = _provider.load_catalog()
     table: dict[str, dict[str, str]] = {}
     for provider_name, preset in presets():
@@ -125,7 +77,6 @@ def preset_table() -> dict[str, dict[str, str]]:
             "standard": f"{provider_name}/{preset.ranks.get('standard', '')}",
             "premium": f"{provider_name}/{preset.ranks.get('premium', '')}",
             "key": key,
-            "cost": _preset_cost_label(provider_name, preset),
             "note": preset.note,
         }
     return table
@@ -334,29 +285,11 @@ def agent_role(agent_id: str) -> str:
     return _fleet.meta_get(agent_id, "role", "") or REPO_AGENT_ROLE
 
 
-def validate_model(model: str) -> tuple[str, list[str]]:
-    """Validate and canonicalise a model name. Returns (canonical_model,
-    warnings); raises ValueError on hard failure."""
-    warnings: list[str] = []
-
-    # 1. Well-formed provider/model — accepted; warn if unpriced (never for a
-    #    local endpoint, which is honestly priced at $0, not "unknown").
+def validate_model(model: str) -> str:
+    """Validate and canonicalise a model name; raises ValueError on hard failure."""
+    # 1. Well-formed provider/model: accepted whatever the catalog lists.
     if _MODEL_ID_RE.match(model):
-        provider = model.split("/", 1)[0]
-        if is_local_provider(provider):
-            pass
-        elif price_for(model) is None:
-            if is_marketplace(provider):
-                warnings.append(
-                    f"Model '{model}' routes through a marketplace provider whose per-model "
-                    "pricing changes often — docket does not track it; cost will show as "
-                    "'n/a (bring your own)'."
-                )
-            else:
-                warnings.append(
-                    f"Model '{model}' is not in docket's pricing table — cost will show as n/a."
-                )
-        return model, warnings
+        return model
 
     # 2. Malformed.
     role_models, _, _ = load_registry()
@@ -369,21 +302,6 @@ def validate_model(model: str) -> tuple[str, list[str]]:
         f"Current role policy:\n{lines}\n"
         "Change a role's model: docket setup model set <role> <provider/model>"
     )
-
-
-def pricing_label(model: str) -> str:
-    """Return '$inp/$out' (per-M-token), '$0 (local)', or 'n/a' for a model.
-    Never fabricates "$0.00" for unpriced data -- that returns 'n/a' (or a
-    marketplace variant); local providers are the one true-$0 case."""
-    provider = model.split("/", 1)[0] if "/" in model else model
-    if is_local_provider(provider):
-        return "$0 (local)"
-    p = price_for(model)
-    if p is not None:
-        return f"${p[0]:.2f}/${p[1]:.2f}"
-    if is_marketplace(provider):
-        return "n/a (bring your own)"
-    return "n/a"
 
 
 def policy_agent_ids() -> list[str]:

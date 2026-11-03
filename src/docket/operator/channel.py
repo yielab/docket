@@ -1,6 +1,6 @@
 """Channel catalog: the notification/conversation/decision destinations docket knows, as
 `kind: channel` documents (ADR 0016 §7) -- a deliberate copy of `observability/exporter.py`'s shape
-with the model/price/preset fields dropped and destination-shaped ones added: `capabilities`
+with the model/preset fields dropped and destination-shaped ones added: `capabilities`
 (bounded by each dialect's declared maximum), `on` (which event types reach it), `content`
 (how much a delivery carries -- `minimal < actions < conversation`, never the export-only
 `full`), `actors` (who may converse or decide through it), and `secret` (a credential name,

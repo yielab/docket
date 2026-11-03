@@ -338,7 +338,6 @@ class Tracer(Protocol):
         agent_role: str,
         event_type: str,
         payload: str,
-        cost_usd: float | str | None = None,
         duration_ms: int | str | None = None,
         *,
         task_id: str = "",

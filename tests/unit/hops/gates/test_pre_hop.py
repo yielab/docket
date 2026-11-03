@@ -91,7 +91,7 @@ class TestExecuteUnitDirectly:
             env: dict[str, str] | None,
         ) -> _rd.TurnResult:
             assert member_id == "myapp-implementer"
-            return _rd.TurnResult(True, "did the thing", 0.0, {})
+            return _rd.TurnResult(True, "did the thing", {})
 
         ctx = _unit_context(run=_fake_run, on_hop=persisted.append)
         node = _planned_unit("myapp-implementer", gate=_gates.MechanicalGate(command=None))
@@ -195,7 +195,6 @@ class TestTaskRestrictionHelpers:
         result = _rd.TurnResult(
             True,
             "ok",
-            0.0,
             {},
             usage=TokenUsage(
                 input_tokens=900, output_tokens=40, cached_tokens=700, cache_write_tokens=50

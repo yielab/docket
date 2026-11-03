@@ -146,13 +146,14 @@ class TestTraceRecord:
         assert "[REDACTED]" in rec["payload"]["text"]
         assert "sk-ant-abcdefghijklmnopqrstuvwxyz0123" not in rec["payload"]["text"]
 
-    def test_record_cost_and_duration(self, oc_dir: Path) -> None:
-        trace_core.trace_event(
-            "p", "s", "r", "cost_charged", "{}", cost_usd="0.5", duration_ms="120"
-        )
+    def test_record_duration_and_no_cost(self, oc_dir: Path) -> None:
+        trace_core.trace_event("p", "s", "r", "tool_call", "{}", duration_ms="120")
         rec = trace_core.read_trace(Home(oc_dir).traces_dir / "p" / "s.jsonl")[0]
-        assert rec["cost_usd"] == 0.5
         assert rec["duration_ms"] == 120
+        assert not [key for key in rec if "cost" in key]
+
+    def test_the_retired_cost_event_is_rejected(self, oc_dir: Path) -> None:
+        assert trace_core.trace_event("p", "s", "r", "cost_charged", "{}") == "rejected"
 
     def test_no_trace_env_disables(self, oc_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A suppressed write is now distinguishable from a real one."""

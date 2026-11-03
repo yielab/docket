@@ -1,12 +1,12 @@
-"""Budget honesty — auto-pause, the paused-flag type bug, labelled estimates.
+"""Budget honesty — auto-pause, the paused-flag type bug, tokens and no dollar figure.
 
 Covers: ``AgentMeta.coerce_paused`` (typed accessor fixing the string/bool
 display bug: a writer stores a real ``bool`` while old code compared it to the string
 ``"true"``, which ``True`` never equals); the pause writer (per-hop budget gate marks the pod's
-Lead ``paused=True, pausedReason="budget"`` at the cap, counted in tokens, so it trips on a model
-with no catalog price); claim-time refusal (``claim_next_task`` refuses every claim for a paused
-pod outright -- a ``paused_refused`` trace event, no wasted turn -- until resumed); and the
-labelled dollar estimate that status still shows, never contaminating recorded spend.
+Lead ``paused=True, pausedReason="budget"`` at the cap, counted in tokens, so it trips on any
+model); claim-time refusal (``claim_next_task`` refuses every claim for a paused
+pod outright -- a ``paused_refused`` trace event, no wasted turn -- until resumed); and that
+status shows the measured tokens and no dollar figure.
 """
 
 from __future__ import annotations
@@ -30,10 +30,8 @@ from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
-from docket.teams import model_selection as _mp
 from docket.teams import pod as _podcore
 from docket.teams import settings as _settings
-from docket.teams import utils as _utils
 from docket.teams.models import AgentMeta
 
 SUBJECT = "docket.hops.application.sweep"
@@ -58,10 +56,9 @@ def _seed_pod(
 class _RecordingRunner:
     """Stub matching agent_run's signature; records calls, returns canned results."""
 
-    def __init__(self, *, ok: bool = True, cost: float = 0.0):
+    def __init__(self, *, ok: bool = True):
         self.calls: list[tuple[str, str, str, int, dict[str, str] | None]] = []
         self.ok = ok
-        self.cost = cost
 
     def __call__(
         self,
@@ -72,15 +69,14 @@ class _RecordingRunner:
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
         self.calls.append((agent_id, session_key, message, timeout, env))
-        return _rd.TurnResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
+        return _rd.TurnResult(self.ok, f"done by {agent_id}", {"output": "x"})
 
 
 def _write_session(
     oc_dir: Path, agent_id: str, *, input_tokens: int, output_tokens: int, cached_tokens: int = 0
 ) -> None:
-    """Seeds a docket-native session with real token counts and no cost -- ``DocketDriver``
-    never reports a USD cost (see ``agent/ports.py``'s ``TurnResult.cost_usd``), so
-    this is the normal shape; ``oc_dir`` is unused but kept so call sites stay untouched."""
+    """Seeds a docket-native session with real token counts; ``oc_dir`` is unused but kept so
+    call sites stay untouched."""
     from urllib.parse import quote
 
     session_key = f"agent:{agent_id}:default"
@@ -178,9 +174,9 @@ class TestAutoPauseDispatch:
 
 
 class TestPodTokenBudget:
-    """A pod's ``budgetTokens`` gates on counted tokens, whatever the model's catalog price."""
+    """A pod's ``budgetTokens`` gates on counted tokens, whatever the model."""
 
-    def test_counted_tokens_over_the_cap_block_the_next_task_on_an_unpriced_model(
+    def test_counted_tokens_over_the_cap_block_the_next_task_on_any_model(
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path) as oc_dir:
@@ -225,98 +221,30 @@ class TestPodTokenBudget:
             assert results[0].status == "done"
 
 
-# ── estimate fallback for gating ───────────────────────────────────────────────────
+# ── status shows the measured tokens and no dollar figure ──────────────────────────
 
 
-class TestEstimateFallback:
-    def test_estimate_cost_usd_known_model(self) -> None:
-        totals = _rd.UsageTotals(input_tokens=1_000_000, output_tokens=1_000_000)
-        est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
-        price = _mp.price_for("anthropic/claude-haiku-4-5")
-        assert price is not None
-        in_rate, out_rate, _cr, _cw = price
-        assert est == pytest.approx(in_rate + out_rate)
-
-    def test_estimate_cost_usd_does_not_charge_cache_reads_twice(self) -> None:
-        totals = _rd.UsageTotals(input_tokens=1_000_000, cache_read=900_000)
-        price = _mp.price_for("anthropic/claude-haiku-4-5")
-        assert price is not None
-        in_rate, _out, cache_read_rate, _cw = price
-        est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
-        assert est == pytest.approx(0.1 * in_rate + 0.9 * cache_read_rate)
-
-    def test_estimate_cost_usd_does_not_charge_cache_writes_twice(self) -> None:
-        """Cache writes are part of input and are priced once, at the cache-write rate."""
-        totals = _rd.UsageTotals(input_tokens=1_000_000, cache_read=500_000, cache_write=300_000)
-        price = _mp.price_for("anthropic/claude-haiku-4-5")
-        assert price is not None
-        in_rate, _out, cache_read_rate, cache_write_rate = price
-        est = _utils.estimate_cost_usd("anthropic/claude-haiku-4-5", totals)
-        assert est == pytest.approx(0.2 * in_rate + 0.5 * cache_read_rate + 0.3 * cache_write_rate)
-
-    def test_estimate_cost_usd_unknown_model_returns_none(self) -> None:
-        totals = _rd.UsageTotals(input_tokens=1000, output_tokens=1000)
-        assert _utils.estimate_cost_usd("some-vendor/unknown-model", totals) is None
-
-    def test_pod_gating_cost_prefers_recorded_when_nonzero(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        with _seed_pod(tmp_path):
-            monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 3.5)
-            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 3.5)
-            spent, estimated = _pre_hop.pod_gating_cost("demo")
-            assert spent == 3.5
-            assert estimated is False
-
-    def test_pod_gating_cost_falls_back_to_estimate_when_recorded_is_zero(
-        self, tmp_path: Path
-    ) -> None:
-        with _seed_pod(tmp_path) as oc_dir:
-            lead_id = _podcore.member_id("demo", "lead")
-            _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
-            _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-
-            spent, estimated = _pre_hop.pod_gating_cost("demo")
-            assert estimated is True
-            assert spent == pytest.approx(4.8)  # 1M*$0.80/M + 1M*$4.00/M
-
-
-# ── recorded spend is never contaminated by an estimate ───────────────────────────
-
-
-class TestRecordedSpendNeverContaminated:
-    def test_aggregate_cost_stays_zero_when_nothing_was_recorded(self, tmp_path: Path) -> None:
+class TestStatusShowsTokensOnly:
+    def test_the_human_status_shows_the_tokens_and_no_dollar(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             lead_id = _podcore.member_id("demo", "lead")
             _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
-            # aggregate_cost (what `docket status` reports) must stay exactly the
-            # driver's own recorded figure — 0.0 here — never the estimate, even
-            # though plenty of tokens (and a known price) exist to estimate from.
-            assert _usage.aggregate_cost(lead_id).cost_usd == 0.0
 
-    def test_status_labels_the_dollar_figure_an_estimate(self, tmp_path: Path) -> None:
-        with _seed_pod(tmp_path) as oc_dir:
-            lead_id = _podcore.member_id("demo", "lead")
-            _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
-            _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
+            result = CliRunner().invoke(_app, ["status", "--pod", "demo"])
 
-            runner = CliRunner()
-            result = runner.invoke(_app, ["status", "--pod", "demo"])
             assert result.exit_code == 0, result.output
-            # The estimate ($4.80 for these tokens/model) appears only labelled as one.
-            assert "~$4.80 est." in result.output
-            assert "recorded" not in result.output
+            row = next(ln for ln in result.output.splitlines() if ln.lstrip().startswith("Tokens"))
+            assert "1.0M in / 1.0M out" in row
+            assert "$" not in row and "est." not in row
 
-    def test_status_all_json_inventory_cost_field_stays_zero(self, tmp_path: Path) -> None:
+    def test_status_all_json_names_no_cost_key_on_any_agent(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
             lead_id = _podcore.member_id("demo", "lead")
-            _fleet.meta_set(lead_id, "model", "anthropic/claude-haiku-4-5")
             _write_session(oc_dir, lead_id, input_tokens=1_000_000, output_tokens=1_000_000)
 
-            runner = CliRunner()
-            result = runner.invoke(_app, ["status", "--all", "--json"])
+            result = CliRunner().invoke(_app, ["status", "--all", "--json"])
+
             assert result.exit_code == 0, result.output
             data = json.loads(result.stdout)
             agent_row = next(a for a in data["agents"] if a["id"] == lead_id)
-            assert agent_row["costUsd"] == 0.0
-            assert data["totalCostUsd"] == 0.0
+            assert not [k for k in {*data, *agent_row} if "cost" in k.lower() or "usd" in k.lower()]

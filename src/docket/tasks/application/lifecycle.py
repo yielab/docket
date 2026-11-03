@@ -50,7 +50,6 @@ def _apply_result(record: TaskRecord, res: TaskResult) -> None:
         pending_index=res.pending_approval_index,
     )
     record.hops = list(res.hops)
-    record.cost_usd = res.cost_usd
     record.check_changed = list(res.check_changed)
 
 
@@ -69,7 +68,7 @@ def _task_usage(res: TaskResult) -> TaskUsage:
 
 
 def finalize_task(project: str, task_id: str, res: TaskResult) -> None:
-    """Persist a task's terminal outcome (status/reason/hops/cost), clear its claim, and
+    """Persist a task's terminal outcome (status/reason/hops), clear its claim, and
     re-sync HEARTBEAT.md. The only trigger that ever *removes* a ledger entry --
     ``claim_next_task``/``persist_hop``/``touch_claim`` only add or keep one current."""
     usage = _task_usage(res)

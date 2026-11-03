@@ -12,7 +12,7 @@ from docket.governance import policy as _policy
 from docket.governance import quota as _quota
 from docket.governance import review as _reviewed
 from docket.hops.application import report as _pod_report
-from docket.hops.application.usage import aggregate_cost, cost_history, gating_cost, last_activity
+from docket.hops.application.usage import aggregate_usage, last_activity, usage_history
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import service as _service
@@ -78,14 +78,11 @@ def _isolation_phrase() -> str:
 
 def _usage(member_ids: list[str]) -> dict[str, Any]:
     tokens_in = tokens_out = 0
-    estimate = 0.0
     for mid in member_ids:
-        totals = aggregate_cost(mid)
+        totals = aggregate_usage(mid)
         tokens_in += totals.input_tokens
         tokens_out += totals.output_tokens
-        amount, _estimated = gating_cost(mid)
-        estimate += amount
-    return {"input": tokens_in, "output": tokens_out, "estimateUsd": round(estimate, 6)}
+    return {"input": tokens_in, "output": tokens_out}
 
 
 def _last_run(project: str) -> dict[str, Any] | None:
@@ -199,11 +196,8 @@ def _inventory() -> dict[str, Any]:
     fleet_state = _fleet.load_fleet()
     registered = {a.id for a in _fleet.list_agents(fleet_state)}
     agents: list[dict[str, Any]] = []
-    total = 0.0
     for pid in project_ids():
         raw = read_json(current_home().meta_path(pid))
-        cost = aggregate_cost(pid).cost_usd
-        total += cost
         agents.append(
             {
                 "id": pid,
@@ -217,39 +211,33 @@ def _inventory() -> dict[str, Any]:
                     if b.agent_id == pid
                 ],
                 "lastActivity": _last_activity_or_never(pid),
-                "costUsd": round(cost, 6),
             }
         )
     return {
         "timestamp": _clock.stamp(),
         "channels": _fleet.channel_names(fleet_state),
         "agents": agents,
-        "totalCostUsd": round(total, 6),
     }
 
 
-def cost_snapshot() -> dict[str, Any]:
-    """Per-agent recorded cost and the fleet total, as a bare dict."""
+def usage_snapshot() -> dict[str, Any]:
+    """Per-agent measured token usage, as a bare dict."""
     rows = []
-    total = 0.0
     for pid in project_ids():
         raw = read_json(current_home().meta_path(pid))
-        totals = aggregate_cost(pid)
+        totals = aggregate_usage(pid)
         budget = raw.get("budgetTokens")
-        total += totals.cost_usd
         rows.append(
             {
                 "id": pid,
                 "model": str(raw.get("model", current_home().default_model)),
                 "input": totals.input_tokens,
                 "output": totals.output_tokens,
-                "costUsd": round(totals.cost_usd, 6),
-                "pricingKnown": True,
                 "turns": totals.turns,
                 "budgetTokens": int(budget) if budget else None,
             }
         )
-    return {"agents": rows, "totalUsd": round(total, 6)}
+    return {"agents": rows}
 
 
 def _seconds(ms: int | None) -> str:
@@ -301,8 +289,7 @@ def _render_current(summary: dict[str, Any]) -> None:
     roles = ", ".join(member["role"] for member in summary["members"])
     run = summary["lastRun"]
     tokens = (
-        f"{si_format(usage['input'])} in / {si_format(usage['output'])} out "
-        f"(~${usage['estimateUsd']:.2f} est.)"
+        f"{si_format(usage['input'])} in / {si_format(usage['output'])} out"
         if usage["input"] or usage["output"]
         else "none yet"
     )
@@ -379,7 +366,7 @@ def _history(pods: list[str], days: int, json_out: bool) -> None:
     registered = [a.id for a in _fleet.list_agents()]
     for pod_id in pods:
         for member_id, _role, _idx in _pod.members_of(registered, pod_id):
-            for rec in cost_history(member_id):
+            for rec in usage_history(member_id):
                 old = merged.get(rec.date)
                 merged[rec.date] = (
                     rec
@@ -389,7 +376,6 @@ def _history(pods: list[str], days: int, json_out: bool) -> None:
                         turns=old.turns + rec.turns,
                         input_tokens=old.input_tokens + rec.input_tokens,
                         output_tokens=old.output_tokens + rec.output_tokens,
-                        cost_usd=round(old.cost_usd + rec.cost_usd, 6),
                     )
                 )
     ordered = sorted(merged.values(), key=lambda r: r.date)
@@ -404,7 +390,6 @@ def _history(pods: list[str], days: int, json_out: bool) -> None:
                         "turns": r.turns,
                         "input": r.input_tokens,
                         "output": r.output_tokens,
-                        "costUsd": r.cost_usd,
                     }
                     for r in ordered
                 ]
@@ -432,8 +417,8 @@ def cmd_status(
 ) -> None:
     """Show where a pod stands: tasks, tokens, outcomes and the last run; every pod with --all.
 
-    Tokens are measured; the dollar figure is a labelled estimate, never billed spend.
-    --all --json also carries the fleet inventory (agents, channels, total cost).
+    Tokens are measured; docket reports no dollar figure.
+    --all --json also carries the fleet inventory (agents, channels).
 
     Example: docket status --all
     """

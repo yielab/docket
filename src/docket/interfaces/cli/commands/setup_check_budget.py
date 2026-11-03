@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from docket.hops.application.usage import aggregate_cost
+from docket.hops.application.usage import aggregate_usage
 from docket.interfaces.cli.render import ui
 from docket.kernel.home import current_home
 from docket.platform import read_json
@@ -11,21 +11,14 @@ from docket.teams import agent_memory as _mem
 from docket.teams import pod as _pod
 
 
-def _batch_cost(agent_ids: list[str]) -> dict[str, tuple[str, float, int]]:
-    """Return {agent_id: (budgetTokens_str, cost_float, turns_int)} for all agents, using
-    recorded spend only (the runaway check's figures)."""
-    out: dict[str, tuple[str, float, int]] = {}
-    for aid in agent_ids:
-        raw = read_json(current_home().meta_path(aid))
-        budget = str(raw.get("budgetTokens", "") or "")
-        totals = aggregate_cost(aid)
-        out[aid] = (budget, totals.cost_usd, totals.turns)
-    return out
+def _batch_turns(agent_ids: list[str]) -> dict[str, int]:
+    """Return {agent_id: turns} for all agents (the runaway check's figure)."""
+    return {aid: aggregate_usage(aid).turns for aid in agent_ids}
 
 
 def counted_tokens(agent_id: str) -> int:
     """*agent_id*'s counted tokens: input minus cache reads, plus output, the budget's measure."""
-    totals = aggregate_cost(agent_id)
+    totals = aggregate_usage(agent_id)
     return max(0, totals.input_tokens - totals.cache_read) + totals.output_tokens
 
 
@@ -64,23 +57,19 @@ def _check_budget(ids: list[str], tokens: dict[str, tuple[str, int]]) -> int:
     return issues
 
 
-def _check_runaway(ids: list[str], cost: dict[str, tuple[str, float, int]]) -> int:
-    """Per-agent runaway session detection (high turns or high cost)."""
+def _check_runaway(ids: list[str], turns_by_agent: dict[str, int]) -> int:
+    """Per-agent runaway session detection (a high turn count)."""
     if not ids:
         return 0
     ui.section("Runaway session check:")
     issues = 0
     for aid in ids:
-        _budget, cost_f, turns = cost.get(aid, ("", 0.0, 0))
-        runaway = (
-            turns > current_home().runaway_turns_threshold
-            or cost_f >= current_home().runaway_cost_threshold
-        )
-        if runaway:
-            ui.console.print(f"[red]✗[/red]   {aid}: runaway — {turns} turns, ${cost_f:.6f}")
+        turns = turns_by_agent.get(aid, 0)
+        if turns > current_home().runaway_turns_threshold:
+            ui.console.print(f"[red]✗[/red]   {aid}: runaway — {turns} turns")
             issues += 1
         else:
-            ui.success(f"  {aid}: ok ({turns} turns, ${cost_f:.6f})")
+            ui.success(f"  {aid}: ok ({turns} turns)")
     return issues
 
 

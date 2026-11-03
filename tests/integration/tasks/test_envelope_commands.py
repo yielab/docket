@@ -47,7 +47,7 @@ def outside() -> Iterator[Path]:
 def _runner(
     agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None = None
 ) -> _rd.TurnResult:
-    return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+    return _rd.TurnResult(ok=True, output="ok", raw={})
 
 
 def _worktree(tmp_path: Path) -> Path:

@@ -1298,7 +1298,7 @@ keeps the bad copy as `.corrupt`. Your editor does not take that lock, so **hand
 (`anthropic`, `openai`, `google`, `openrouter`, `ai-gateway`, `groq`, `mistral`, `deepseek`,
 `xai`, `cerebras`, `together`, `ollama`, `lmstudio`, `local`), not under `~/.docket/`. The
 catalog merges them with `docket-providers.json`, nearest-wins by name — a global write under a
-built-in's name overrides that document but inherits its presets and pricing unless set
+built-in's name overrides that document but inherits its presets unless set
 explicitly.
 
 **Built-in exporter documents** follow the same pattern at `templates/exporters/NN-<name>.yaml`

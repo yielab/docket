@@ -9,7 +9,6 @@
       "startedAt": null,
       "completedAt": null,
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": null,
       "pendingApprovalIndex": null,
       "hops": []
@@ -29,7 +28,6 @@
           "member": "demo-implementer",
           "ok": true,
           "output": "File written and verified.\n\n## Memory\n- generated README.md: updated from \"hello\" to \"demo implementer \u2014 file written successfully\"",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "implementer",
@@ -73,7 +71,6 @@
         }
       ],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:51:02.927818+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -115,7 +112,6 @@
           "member": "demo-lead",
           "ok": true,
           "output": "I need to clarify the task. The message you provided contains only the word \"plain\" with a working directory of `/src/demo`, but this appears to be incomplete or unclear.\n\n**I need to ask: What is the actual task I should decompose for the Implementer?**\n\nCould you provide:\n1. **The complete task description** (what needs to be built, fixed, or changed?)\n2. **Any context or acceptance criteria** (what should the result look like?)\n3. **Any constraints** (timeline, dependencies, etc.)\n\nOnce I have this information, I'll create a concrete, actionable plan for the Implementer with clear steps and dependencies.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "lead",
@@ -153,7 +149,6 @@
           "member": "demo-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_01V9wNLuWdP32N9QLPSCdqsN' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-3eb3a185ba67'",
           "attempts": 1,
           "stepId": "implementer",
@@ -188,7 +183,6 @@
         }
       ],
       "reason": "implementer hop parked a consultation (question=q-3eb3a185ba67)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:54:34.506973+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -236,7 +230,6 @@
           "member": "demo-lead",
           "ok": true,
           "output": "I apologize for the technical difficulty. Let me state clearly:\n\n---\n\n## **NEEDS CLARIFICATION**\n\nI cannot decompose this task into a concrete plan. The instruction provided is just the word **\"plain\"** with no task description, requirements, or context.\n\n**To proceed, I need:**\n\n1. **What is the actual task?** (e.g., create a feature, fix a bug, refactor code, etc.)\n2. **What are the success criteria?** (e.g., acceptance tests, expected output, etc.)\n3. **What context should I know?** (e.g., existing state, constraints, dependencies)\n\n**Assumptions I cannot make:**\n- That \"plain\" is a project/feature name\n- That I should explore the repo blindly for intent\n- What the Implementer should actually build\n\nPlease provide the full task description so I can create a proper work decomposition plan.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "lead",
@@ -274,7 +267,6 @@
           "member": "demo-implementer",
           "ok": true,
           "output": "The working directory `/src/demo` does not exist, and the task instruction is just the single word **\"plain\"** \u2014 which provides no actionable information.\n\nI'm unable to implement anything here because:\n\n1. **The working directory `/src/demo` does not exist** \u2014 there is no codebase to read, modify, or create files in.\n2. **The task description \"plain\" is not a meaningful instruction** \u2014 it does not specify what to build, fix, refactor, or change.\n\nThe Lead's assessment is correct: this task cannot be executed as stated.\n\n**To unblock this, please provide:**\n- A clear task description (what should be implemented?)\n- A valid working directory (or confirmation that it should be created from scratch)\n- Any relevant requirements, acceptance criteria, or context",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "implementer",
@@ -313,7 +305,6 @@
         }
       ],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:56:09.076616+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -360,7 +351,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_013MegANg7FtCWofjptZnPNh' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-a5f08f41308a'",
           "attempts": 1,
           "stepId": "lead",
@@ -395,7 +385,6 @@
         }
       ],
       "reason": "lead hop parked a consultation (question=q-a5f08f41308a)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:01:27.046377+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -433,7 +422,6 @@
       "channel": "cli",
       "hops": [],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": null,
       "pendingApprovalIndex": null
     },
@@ -448,7 +436,6 @@
       "channel": "cli",
       "hops": [],
       "reason": "cancelled by operator",
-      "costUsd": 0.0,
       "claimedAt": null,
       "pendingApprovalIndex": null
     },
@@ -466,7 +453,6 @@
           "member": "demo-lead",
           "ok": true,
           "output": "This confirms the issue: **the working directory `/src/demo` does not exist**. This is what \"broke\" likely means.\n\n---\n\n## Plan for Implementer\n\n**Problem:** The working directory `/src/demo` is missing or inaccessible.\n\n**Concrete Actions:**\n\n1. **Verify repository state**\n   - Check if the repository exists and is properly initialized\n   - Confirm the directory structure at `/src/demo`\n   - Look for any git status issues (detached HEAD, untracked changes, etc.)\n\n2. **Restore or initialize the workspace**\n   - If this is a cloned repo, ensure all files are present\n   - If initialization is needed, run any setup scripts (e.g., `npm install`, `pip install`, etc.)\n   - Check for any build artifacts or generated files that may be missing\n\n3. **Identify root cause**\n   - Review recent git history or logs for what changed\n   - Check for file deletions, branch changes, or corrupted state\n   - Verify configuration files exist (package.json, requirements.txt, pyproject.toml, etc.)\n\n4. **Report findings**\n   - Provide details on what was broken and how it was fixed\n   - Confirm the directory is now accessible and in a working state\n\n---\n\n**NEEDS-INPUT:** \n\nCan you clarify what caused the issue? For example:\n- Was a file or directory accidentally deleted?\n- Did a recent git operation cause this?\n- Is there a build step that failed?\n- Should we restore from a specific branch or commit?",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "lead",
@@ -504,7 +490,6 @@
           "member": "demo-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_01RATmpppJkshKb7H7LmuyjZ' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-a24f7bb2a7fa'",
           "attempts": 1,
           "stepId": "implementer",
@@ -538,7 +523,6 @@
           "provider": "anthropic"
         }
       ],
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:58:48.820337+00:00",
       "pendingApprovalIndex": null,
       "completedAt": null,
@@ -584,7 +568,6 @@
       "channel": "cli",
       "hops": [],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": null,
       "pendingApprovalIndex": null
     },
@@ -603,7 +586,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -632,7 +614,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:56:40.046555+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -673,7 +654,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -702,7 +682,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:04.139801+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -743,7 +722,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -772,7 +750,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:07.605619+00:00",
       "idempotencyKey": "k-1",
       "pendingApprovalIndex": null,
@@ -814,7 +791,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -843,7 +819,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:08.956429+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -880,7 +855,6 @@
       "channel": "http",
       "hops": [],
       "reason": "baseRef 'docket/demo/task-91aa' was not used: codebase '/src/demo' is not a git repo",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:08.958697+00:00",
       "externalRef": "TACK-412/attempt-2",
       "idempotencyKey": "TACK-412:2",
@@ -920,7 +894,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -949,7 +922,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:09.948409+00:00",
       "externalRef": "A",
       "pendingApprovalIndex": null,
@@ -991,7 +963,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -1020,7 +991,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:11.657817+00:00",
       "externalRef": "B",
       "pendingApprovalIndex": null,
@@ -1062,7 +1032,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -1091,7 +1060,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:12.540819+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -1132,7 +1100,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -1161,7 +1128,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:13.428351+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -1202,7 +1168,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
           "attempts": 1,
           "stepId": "lead",
@@ -1231,7 +1196,6 @@
         }
       ],
       "reason": "lead hop failed: HTTP 401 from https://api.anthropic.com/v1/chat/completions: {\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:14.204470+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -1272,7 +1236,6 @@
           "member": "",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "lead",
@@ -1299,7 +1262,6 @@
         }
       ],
       "reason": "task token budget reached (maxTokens=1000) before implementer",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:57:14.207812+00:00",
       "maxTokens": 1000,
       "pendingApprovalIndex": null,
@@ -1342,7 +1304,6 @@
           "member": "demo-lead",
           "ok": true,
           "output": "The working directory doesn't exist yet, or the task input is incomplete. \n\n**I need clarification:**\n\nCould you provide the actual task description? Right now I have:\n- Working directory: `/src/demo` (which doesn't exist or is empty)\n- Task message: `\"x\"` (which is not actionable)\n\nPlease give me:\n1. **What is the actual work to be done?** (feature, bug fix, refactor, etc.)\n2. **What context should I use?** (repo map, previous output, requirements, etc.)\n3. **Any constraints or acceptance criteria?**\n\nOnce I have that, I'll decompose it into a concrete plan for the Implementer.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "lead",
@@ -1380,7 +1341,6 @@
           "member": "demo-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_01KtcGZjwX3vBJgz2Q9YcUrj' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-d53478c5ea97'",
           "attempts": 1,
           "stepId": "implementer",
@@ -1415,7 +1375,6 @@
         }
       ],
       "reason": "implementer hop parked a consultation (question=q-d53478c5ea97)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T11:59:18.434656+00:00",
       "idempotencyKey": "K:1",
       "pendingApprovalIndex": null,
@@ -1464,7 +1423,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_012T1SG9x4QWRArpTPafiew8' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-8f7013599044'",
           "attempts": 1,
           "stepId": "lead",
@@ -1499,7 +1457,6 @@
         }
       ],
       "reason": "lead hop parked a consultation (question=q-8f7013599044)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:11:35.908784+00:00",
       "brief": {
         "objective": "fix the flaky test",
@@ -1552,7 +1509,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_016FaT5VDUGY4LdhYZC4NXiQ' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-523144e191ef'",
           "attempts": 1,
           "stepId": "lead",
@@ -1587,7 +1543,6 @@
         }
       ],
       "reason": "lead hop parked a consultation (question=q-523144e191ef)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:02:18.478952+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -1629,7 +1584,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_01HB8TLT9QkhRWqTjGmQvUTJ' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-21af02c3e1ba'",
           "attempts": 1,
           "stepId": "lead",
@@ -1664,7 +1618,6 @@
         }
       ],
       "reason": "lead hop parked a consultation (question=q-21af02c3e1ba)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:13:28.087470+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -1706,7 +1659,6 @@
           "member": "demo-lead",
           "ok": true,
           "output": "I apologize for the technical difficulty. Let me state clearly:\n\n---\n\n## Unable to Decompose Task\n\n**The task instruction \"a\" is insufficient.** I cannot create a concrete plan for the Implementer without understanding what work needs to be done.\n\n### What I need from you:\n1. **Full task description** \u2014 What is the actual requirement? (feature, bug fix, refactor, etc.)\n2. **Success criteria** \u2014 How will I know the task is complete?\n3. **Context** \u2014 Is there a ticket, issue, or documentation reference?\n\nOnce you provide these details, I will immediately decompose the work into:\n- **For Implementer**: Concrete code changes, files to modify/create, and implementation approach\n- **For Reviewer**: Code review criteria and checklist  \n- **For Tester**: Test scenarios and acceptance criteria\n\nPlease reply with the full task description.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "lead",
@@ -1744,7 +1696,6 @@
           "member": "demo-implementer",
           "ok": true,
           "output": "The working directory `/src/demo` doesn't exist, and the task instruction **\"a\"** provides no actionable information. The Lead has already noted this issue clearly.\n\n**I cannot implement anything** because:\n\n1. **No working directory** \u2014 `/src/demo` does not exist, so there is no codebase to work with.\n2. **No task description** \u2014 The single character `\"a\"` does not describe a feature, bug fix, refactor, or any other concrete change.\n3. **No success criteria** \u2014 There is no way to verify that any work is \"done.\"\n\n**To proceed, please provide:**\n- A clear description of what needs to be built or changed\n- The correct working directory or repository location\n- Any relevant context (ticket number, acceptance criteria, related files)\n\nOnce those details are provided, I can implement the change immediately.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "implementer",
@@ -1783,7 +1734,6 @@
         }
       ],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:05:56.410463+00:00",
       "externalRef": "A",
       "pendingApprovalIndex": null,
@@ -1831,7 +1781,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_01FrGjdMT2XstdbeKnegWsEU' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-011e8ec0eded'",
           "attempts": 1,
           "stepId": "lead",
@@ -1866,7 +1815,6 @@
         }
       ],
       "reason": "lead hop parked a consultation (question=q-011e8ec0eded)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:06:50.361176+00:00",
       "externalRef": "B",
       "pendingApprovalIndex": null,
@@ -1909,7 +1857,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_01KeickVM7hPWgYt5ygKWNL3' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-3089162bfa16'",
           "attempts": 1,
           "stepId": "lead",
@@ -1944,7 +1891,6 @@
         }
       ],
       "reason": "lead hop parked a consultation (question=q-3089162bfa16)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:07:49.627785+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -1986,7 +1932,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='consult' call_id='toolu_01UqhFmh3SjSvcYUXFqnTeNx' policy_id='consult' reason='consultation parked for an operator answer' approval_token='consult:q-a8c8cd8e2aec'",
           "attempts": 1,
           "stepId": "lead",
@@ -2021,7 +1966,6 @@
         }
       ],
       "reason": "lead hop parked a consultation (question=q-a8c8cd8e2aec)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:08:38.547813+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -2063,7 +2007,6 @@
           "member": "demo-lead",
           "ok": true,
           "output": "**I need clarification on the task.** The message \"x\" is too vague for me to decompose work.\n\nPlease provide:\n\n1. **What is the specific task or feature?** (e.g., \"Fix bug in X\", \"Implement feature Y\", \"Refactor module Z\")\n2. **What are the acceptance criteria?** (What should the result look like?)\n3. **Are there any constraints or dependencies?** (e.g., specific files, libraries, or prior work)\n\nOnce you clarify the task, I'll create a concrete plan with specific assignments for the Implementer, Reviewer, and Tester.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "lead",
@@ -2101,7 +2044,6 @@
           "member": "demo-implementer",
           "ok": true,
           "output": "The task message \"x\" is too vague for me to implement anything meaningful. The Lead already flagged this \u2014 there's no specific change, feature, or fix described.\n\nCould you please clarify:\n\n1. **What needs to be implemented?** (e.g., \"add a login endpoint\", \"fix the null pointer bug in auth.py\", \"create a README\")\n2. **Where should the change go?** (specific file, module, or component)\n3. **What is the expected outcome?** (acceptance criteria)\n\nOnce I have a concrete description, I'll get started right away.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "implementer",
@@ -2140,7 +2082,6 @@
         }
       ],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:09:19.913251+00:00",
       "pendingApprovalIndex": null,
       "worktree": {
@@ -2187,7 +2128,6 @@
           "member": "demo-lead",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "token budget: cannot start terminal finalization completion within token_budget=1000 (used 0, estimated input 725 + output reserve 4096, remaining 1000); no backend call made",
           "attempts": 1,
           "stepId": "lead",
@@ -2217,7 +2157,6 @@
         }
       ],
       "reason": "lead hop failed: token budget: cannot start terminal finalization completion within token_budget=1000 (used 0, estimated input 725 + output reserve 4096, remaining 1000); no backend call made",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T12:09:20.388801+00:00",
       "maxTokens": 1000,
       "pendingApprovalIndex": null,
@@ -2259,7 +2198,6 @@
           "member": "app-dev-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='bash' call_id='toolu_01DnJkPimWr1M4uzno6VcxBj' policy_id='' reason='parked for approval (token=apr-e540193d-fa96-41c4-91d5-f250b0165553)' approval_token='apr-e540193d-fa96-41c4-91d5-f250b0165553'",
           "attempts": 1,
           "stepId": "build",
@@ -2299,7 +2237,6 @@
           "member": "app-dev-implementer",
           "ok": true,
           "output": "I added `src/lib/story/hash.test.ts` (3 tests) and `src/lib/story/slug.test.ts` (12 tests). Nothing else changed: `git status` shows only those two new files.\n\n- **eslint:** run on the two new files only, not the whole project. It printed no errors, but the `ESLINT=0` in my output is the exit status of `tail`, so it doesn't prove that. The empty output is my only evidence.\n- **`tsc --noEmit`:** it printed no errors.\n- **`vitest run`:** the full suite passed, 147 files and 2221 tests.\n\nThe tests cover every case the task listed. The two I wrote more loosely:\n- The emoji-only test checks that the slug matches `t-<hex>` and is stable across calls. It doesn't assert a specific hex value.\n- The 60-character cap is tested with a cut that lands on the dash between two words, and the result has no trailing dash.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "build",
@@ -2358,7 +2295,6 @@
           "member": "app-dev-reviewer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "token budget: cannot start terminal finalization completion within token_budget=127735 (used 0, estimated input 2861 + output reserve 128000, remaining 127735); no backend call made",
           "attempts": 1,
           "stepId": "review-code",
@@ -2393,7 +2329,6 @@
           "member": "app-dev-reviewer",
           "ok": true,
           "output": "All checks passed:\n\n- **`tsc --noEmit`**: no errors\n- **`eslint`** on the two new test files: no errors\n- **`vitest run`**: 147 test files, **2221 tests passed** (including the 3 new hash tests and 12 new slug tests)\n\nThe new test files `src/lib/story/hash.test.ts` (3 tests) and `src/lib/story/slug.test.ts` (12 tests) cover all specified cases:\n- `hash()`: deterministic, unsigned 32-bit range, differs for \"a\" vs \"b\"\n- `topicSlug()`: lowercase, accent stripping (Latin), non-Latin preservation, dash collapsing, 60-char cap without trailing dash, emoji fallback to `t-<hex>`\n- `slugFor()` / `idFromSlug()`: round-trip for UUID and hand-written id, bare id when no separator, null for empty and colon-containing strings\n- `storyPath()`: returns `/s/` + slug\n\nPASS",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "review-risk",
@@ -2429,7 +2364,6 @@
           "provider": "local"
         }
       ],
-      "costUsd": 0.0,
       "claimedAt": "2026-10-20T21:27:14.305162+00:00",
       "externalRef": "p45-5-real-run-2026-10-20",
       "maxTokens": 250000,
@@ -2493,7 +2427,6 @@
           "member": "app-dev-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='bash' call_id='toolu_01FnQAiCoMoYQrtsaJHKNR5r' policy_id='' reason='parked for approval (token=apr-819150ac-a07a-464f-99bb-2fbc265e9867)' approval_token='apr-819150ac-a07a-464f-99bb-2fbc265e9867'",
           "attempts": 1,
           "stepId": "build",
@@ -2533,7 +2466,6 @@
           "member": "app-dev-implementer",
           "ok": true,
           "output": "I added `src/lib/story/hash.test.ts` and `src/lib/story/slug.test.ts`, covering every case you listed. They are the only files touched, and `git status` shows just those two.\n\n- **Checks:** eslint and `tsc --noEmit` printed nothing, so there were no errors. `vitest run` passes all 147 test files (2221 tests), including the 15 new ones.\n- **Beyond the brief:** I also asserted that the emoji fallback is stable for the same input and differs between two different emoji. I added a case where a dash lands on the 60-character boundary and has to be trimmed.\n- **Command refusal:** my first shell command, a `cat`/`grep` to check conventions, was parked for approval. I used `glob` and `read` to copy the style of `title.test.ts` instead.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "build",
@@ -2592,7 +2524,6 @@
           "member": "app-dev-reviewer",
           "ok": true,
           "output": "I checked both new test files against `slug.ts`, and the expected values match what the code actually does.\n\nAPPROVE\n\n- **Coverage:** every case in the brief has a test. That covers `hash()` (same result each time, unsigned 32-bit range, \"a\" \u2260 \"b\") and every `topicSlug()` case: lowercasing, accent stripping, Japanese and Arabic letters kept, dash collapsing and trimming, the 60-character cap, and the `t-<hex>` emoji fallback. `slugFor`/`idFromSlug` round-trip both a `randomUUID()` id and a `ref-es-mx-...` id. `idFromSlug` returns the bare id when there's no `--`, and `null` for `\"\"` and for `pool:es-AR:dinosaurios`. `storyPath` is checked to equal `/s/` plus `slugFor()`.\n- **Values checked by hand:**\n  - `\"\u0642\u0635\u0629 \u0627\u0644\u062f\u064a\u0646\u0627\u0635\u0648\u0631\"` \u2192 `\"\u0642\u0635\u0629-\u0627\u0644\u062f\u064a\u0646\u0627\u0635\u0648\u0631\"`: accent stripping only touches the Latin accent range (U+0300\u2013U+036F), so the Arabic characters survive.\n  - The 60-character test feeds 59 a's, a space, then b's. The cut lands on the dash and trims it, giving exactly 59 a's.\n  - `\"  --Hello,   World!!  \"` \u2192 `\"hello-world\"`.\n  - The ref id `ref-es-mx-la-sombra-del-faro` contains no `--`, so the round trip can't break.\n- **Extra assertions:** \"`\ud83c\udf0b` \u2260 `\ud83e\udd95\ud83e\udd96`\" relies on two hashes not colliding. The hash is deterministic, so if it passes once it passes every time, and the implementer reports it passing.\n- **Scope:** only the two new test files were added. The imports match the existing tests in that folder, and double quotes are already used in `title.test.ts`. The implementer reports eslint, `tsc --noEmit` and `vitest run` all clean; I can't run commands, so I haven't confirmed that myself.\n\n## Memory\n- convention: src/lib/story/*.test.ts -- tests sit next to the source file and import `{ describe, it, expect } from 'vitest'`; both single- and double-quote styles are present.\n- pitfall: src/lib/story/slug.ts -- `idFromSlug` checks the id against `/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/`, so any value containing `:` returns null.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "review-code",
@@ -2632,7 +2563,6 @@
           "member": "app-dev-reviewer",
           "ok": true,
           "output": "**Verification of requirements:**\n\n1. **Two new test files created:** \u2705 `hash.test.ts` and `slug.test.ts`\n2. **No other files modified:** \u2705 Only those two files\n3. **hash() tests:**\n   - Deterministic \u2705 (lines 5-8)\n   - Unsigned 32-bit integer \u2705 (lines 10-17)\n   - Differs for \"a\" vs \"b\" \u2705 (lines 19-21)\n4. **topicSlug() tests:**\n   - Lowercases \u2705 (line 7)\n   - Strips Latin accents \u2705 (line 11)\n   - Keeps non-Latin letters (Japanese/Arabic) \u2705 (lines 15-16)\n   - Collapses punctuation/spaces into single dashes, none at ends \u2705 (lines 19-21)\n   - Caps at 60 chars without trailing dash \u2705 (lines 24-33)\n   - Falls back to \"t-<hex>\" for emoji-only \u2705 (lines 35-40)\n5. **slugFor() / idFromSlug() round-trip:**\n   - randomUUID-shaped id \u2705 (lines 44-49)\n   - Hand-written ref id \u2705 (lines 51-56)\n   - Returns bare id when no \"--\" separator \u2705 (lines 58-62)\n   - Returns null for empty string \u2705 (lines 64-66)\n   - Returns null for colon-containing value \u2705 (lines 68-70)\n6. **storyPath()** returns \"/s/\" + slug \u2705 (lines 73-78)\n7. **Checks passed:** eslint \u2705, tsc --noEmit \u2705, vitest run \u2705 (all 2221 tests pass including the 15 new ones)\n\nPASS",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "review-risk",
@@ -2669,7 +2599,6 @@
         }
       ],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-20T21:47:17.902988+00:00",
       "externalRef": "p45-5-real-run-2-2026-10-20",
       "maxTokens": 250000,
@@ -2731,7 +2660,6 @@
           "member": "app-dev-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='bash' call_id='toolu_01QJwT9xtaMq3y9MLVFoSQx1' policy_id='' reason='parked for approval (token=apr-f3c6241e-5e37-4db8-b995-3e7281820ac5)' approval_token='apr-f3c6241e-5e37-4db8-b995-3e7281820ac5'",
           "attempts": 1,
           "stepId": "build",
@@ -2767,7 +2695,6 @@
         }
       ],
       "reason": "implementer hop parked for approval (token=apr-f3c6241e-5e37-4db8-b995-3e7281820ac5)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T21:51:53.348131+00:00",
       "externalRef": "p46-after-real-run-2026-10-23",
       "maxTokens": 250000,
@@ -2817,7 +2744,6 @@
           "member": "app-dev-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='bash' call_id='toolu_01ExrHvTyxxfP1uDyyV7xC34' policy_id='' reason='parked for approval (token=apr-b7ce9cfd-fb7c-492f-8466-0c0fb6585e25)' approval_token='apr-b7ce9cfd-fb7c-492f-8466-0c0fb6585e25'",
           "attempts": 1,
           "stepId": "build",
@@ -2853,7 +2779,6 @@
         }
       ],
       "reason": "implementer hop parked for approval (token=apr-b7ce9cfd-fb7c-492f-8466-0c0fb6585e25)",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T21:51:57.410784+00:00",
       "externalRef": "p46-after-real-run-2026-10-23",
       "maxTokens": 250000,
@@ -2903,7 +2828,6 @@
           "member": "app-dev-implementer",
           "ok": false,
           "output": "",
-          "costUsd": 0.0,
           "error": "approval_parked: tool='bash' call_id='toolu_01YAikHkTXX5YxpX2s8T557y' policy_id='' reason='parked for approval (token=apr-c73cc4da-7dcf-4559-b804-247930db7995)' approval_token='apr-c73cc4da-7dcf-4559-b804-247930db7995'",
           "attempts": 1,
           "stepId": "build",
@@ -2942,7 +2866,6 @@
           "member": "app-dev-implementer",
           "ok": true,
           "output": "I added `src/lib/story/hash.test.ts` (3 tests) and `src/lib/story/slug.test.ts` (12 tests). I changed no other files.\n\nThe checks all came out clean:\n- **`eslint`:** I ran it on the two new files only, not the whole project, and it reported nothing.\n- **`tsc --noEmit`:** no errors.\n- **`vitest run`:** all 147 files and 2221 tests pass, including the 15 new ones.\n\nThe tests cover each case in your list. A few choices of mine:\n- **Unsigned 32-bit check:** it runs over several inputs, including an empty string, a long string, Japanese and an emoji.\n- **60-character cap:** I tested two cases, 100 `a`s and a string where the cut lands right after a dash.\n- **Emoji fallback:** the expected value is built as `t-${hash(\"\ud83e\udd96\").toString(16)}`, and I also check that two different emoji give different slugs.\n- **Round-trip ids:** I used `\"ref-es-mx-dinosaurios-1\"` as the hand-written reference id, since you only gave the `ref-es-mx-...` prefix.\n\nAn earlier `bash` call was parked for approval, so I carried on with other tools, and later `bash` calls ran in the landlock sandbox.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "build",
@@ -2999,7 +2922,6 @@
           "member": "app-dev-reviewer",
           "ok": true,
           "output": "The tests are correct and cover every case in the brief. I checked each expected value against `src/lib/story/slug.ts` and `src/lib/story/hash.ts`, and the diff touches only the two new test files.\n\n**What I checked:**\n- **`hash` (unsigned 32-bit):** the function ends with `h >>> 0`, so checking the result is an integer from 0 to `0xffffffff` is the right test. The determinism test and the \"a\" vs \"b\" test are fine.\n- **60-character cap:** for `\"a\"\u00d759 + \" bbb\"`, `topicSlug` first produces `aaa\u2026a-bbb`. Cutting at 60 leaves 59 `a`s plus a dash, and `.replace(/-+$/g, '')` removes the dash. So the expected 59 `a`s and the no-trailing-dash check are correct.\n- **Punctuation:** `\"a...b___c\"` becomes `a-b-c`, because underscores aren't letters or digits.\n- **Accents and other scripts:** accent stripping only touches the Latin accent range (U+0300\u2013U+036F), so the Japanese and Arabic examples keep their characters. \"Canci\u00f3n\" becomes `cancion`.\n- **Emoji fallback:** the expected `t-${hash(\"\ud83e\udd96\").toString(16)}` is correct, because none of the normalisation steps change `\ud83e\udd96` before it is hashed.\n- **`slugFor` / `idFromSlug`:** both round-trips are correct (the separator is `--`, and both ids match the allowed id pattern). A bare id comes back unchanged. An empty string returns null through the `if (!slug)` guard. `\"pool:es-AR:dinosaurios\"` returns null because the id pattern doesn't allow `:`.\n- **`storyPath`:** the test checks it against `/s/${slugFor(record)}` directly.\n\n**Small points that don't block this:**\n- The tests use double quotes and relative imports (`./hash`), while `slug.ts` uses single quotes and `@/lib/...` imports. ESLint didn't flag it, but matching the house style would be tidier.\n- ESLint was run on the two new files only, not the whole project. Since nothing else changed, that's enough.\n\nAPPROVE\n\n## Memory\n- convention: src/lib/story/slug.ts -- `idFromSlug` checks ids against `/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/`, so any value with `:` returns null. The separator between id and topic is `--`.\n- convention: src/lib/story/slug.ts -- source uses single quotes and `@/lib/...` import aliases.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "review-code",
@@ -3038,7 +2960,6 @@
           "member": "app-dev-reviewer",
           "ok": true,
           "output": "PASS\nThe implementer created `src/lib/story/hash.test.ts` and `src/lib/story/slug.test.ts` covering all requested cases:\n- **`hash()`**: deterministic, unsigned 32-bit integer range, different outputs for \"a\" vs \"b\".\n- **`topicSlug()`**: lowercases, strips accents, keeps non-Latin, collapses separators, caps at 60 chars (no trailing dash), emoji fallback to `t-<hex>`.\n- **`idFromSlug()`**: round-trips randomUUID and ref ids, returns bare id without `--`, null for empty and colon-containing strings.\n- **`storyPath()`**: returns `/s/` + slug.\n\nI verified the checks passed as reported:\n1. `tsc --noEmit` - no errors.\n2. `vitest run src/lib/story/hash.test.ts src/lib/story/slug.test.ts` - all 15 new tests pass.\n3. `eslint src/lib/story/hash.test.ts src/lib/story/slug.test.ts` - no lint issues.\n\nThe implementation files were not modified. All constraints satisfied.",
-          "costUsd": 0.0,
           "error": "",
           "attempts": 1,
           "stepId": "review-risk",
@@ -3074,7 +2995,6 @@
         }
       ],
       "reason": "",
-      "costUsd": 0.0,
       "claimedAt": "2026-10-23T21:55:56.575922+00:00",
       "externalRef": "p46-after-real-run-2026-10-23",
       "maxTokens": 250000,

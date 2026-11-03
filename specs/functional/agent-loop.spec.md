@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.17.0
+**Version**: 4.0.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -54,8 +54,7 @@ This specification does NOT cover:
 - Durable session storage and compaction planning internals (`session-history.spec.md`); this spec
   owns only their live-loop integration
 - The docket-native fleet registry; see `agent-lifecycle.spec.md`
-- Turning measured token usage into a dollar figure — `cost_usd` is `0.0` on every result this
-  driver produces; see `cost-tracking.spec.md`
+- Turning measured token usage into a dollar figure — docket does none; see `cost-tracking.spec.md`
 - The trace store's record shape, redaction, subscriber seam, retention window, and event-type
   vocabulary (`trace-store.spec.md`); this spec requires only that the loop emits certain events
   at certain points (requirements 16, 17, 30, 37, 49, 54, 71)
@@ -143,12 +142,12 @@ This specification does NOT cover:
     exception is `DispatchError` for a deterministic caller misconfiguration: a refused isolation
     or network posture, a pod `mcpServers` setting naming a server absent from the catalog, or
     refused task restrictions.
-19. `run_turn`'s `cost_usd` **MUST** always be `0.0`. Real token counts are recorded (folded into
-    the session's measured usage), but this driver **MUST NOT** convert them into a dollar figure.
+19. `TurnResult` carries no cost field. Real token counts are recorded (folded into
+    the session's measured usage), and this driver **MUST NOT** convert them into a dollar figure.
 20. `run_turn`'s tool-containment root **MUST** be resolved with the precedence: an explicit task
     worktree directory, then the agent's codebase, then its work directory, then its bare docket
     workspace directory.
-23. `capabilities().reports_cost_usd` **MUST** be `False`.
+23. `capabilities()` carries `driver_name` and `supports_sessions` and nothing about cost.
 24. `capabilities().supports_sessions` **MUST** be `True`, and `list_sessions`/`usage`
     **MUST** read docket's own durable session storage, never a daemon session log.
 25. `list_sessions` **MUST** scope its results to sessions whose key belongs to the requested agent
@@ -596,7 +595,7 @@ This specification does NOT cover:
     ordinary task request or `purpose: "compaction"` for the summarizer's call. It carries
     `cacheWriteTokens` only when that count is positive, `cacheMiss` only when the response named
     one and `cacheMissedTokens` only when positive, and `request` (per-part `bytes` and
-    `estTokens`) only when the adapter reported request bytes. It **MUST NOT** carry a `cost_usd`
+    `estTokens`) only when the adapter reported request bytes. It **MUST NOT** carry a cost
     value. Both call sites **MUST** also pass the exact `messages` sent for that call, so the payload
     **MAY** additionally carry `inputMessages`, `outputMessages`, `systemInstructions` and
     `systemInstructionsSha256` per `trace-store.spec.md`'s "Captured content" section — present only
@@ -1001,7 +1000,7 @@ only fills a gap: it never overrides a step, role or pod declaration.
 
 - `AgentLoopResult.ok is True` **MUST** imply `stop_reason == "final_message"` and
   `failure_kind is None`.
-- `TurnResult.cost_usd` from `DocketDriver.run_turn` **MUST** always equal `0.0`.
+- `TurnResult` from `DocketDriver.run_turn` **MUST** carry no cost field.
 
 ## Examples
 
@@ -1083,8 +1082,8 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 
 - Nothing outside the chokepoint's own internals **MUST** ever call a `Tool.handler` directly; the
   turn loop in particular never does.
-- `DocketDriver.run_turn`'s `cost_usd` **MUST** be `0.0` on every call, regardless of how much token
-  usage the turn recorded.
+- `DocketDriver.run_turn` **MUST** report no dollar figure, however much token usage the turn
+  recorded.
 - Two agents **MUST NOT** be able to see each other's sessions through
   `DocketDriver.list_sessions`.
 - A role's denied tool names **MUST NOT** be reachable through `dispatch_tool` for that role's turn

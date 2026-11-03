@@ -77,7 +77,7 @@ class TestSingleCodePathOnRealSdk:
 
         server = _mcp._build_server(read_only=True)
         names = {t.name for t in asyncio.run(server.list_tools())}
-        assert names == {"status", "pods", "queue", "runs", "inbox", "escalations", "cost"}
+        assert names == {"status", "pods", "queue", "runs", "inbox", "escalations", "usage"}
 
     def test_resolve_is_an_unknown_tool_on_a_read_only_server(self) -> None:
         pytest.importorskip("mcp")

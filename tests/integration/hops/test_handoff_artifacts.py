@@ -302,7 +302,7 @@ class TestDispatchBuildsTypedArtifacts:
                         "implementer": "did it",
                         "reviewer": "APPROVE - looks solid",
                     }[role]
-                    return TurnResult(True, text, 0.01, {})
+                    return TurnResult(True, text, {})
 
             task = TaskRecord(id="t2", description="work")
             res = _executor.dispatch_task("demo", task, runner=_Runner())
@@ -342,7 +342,7 @@ class TestDispatchBuildsTypedArtifacts:
                         "implementer": "did it",
                         "reviewer": "APPROVE - looks solid",
                     }[role]
-                    return TurnResult(True, text, 0.01, {})
+                    return TurnResult(True, text, {})
 
             task = TaskRecord(id="t3", description="work")
             res = _executor.dispatch_task("demo", task, runner=_Runner(), spec=_REVIEW_THEN_FINISH)
@@ -385,7 +385,7 @@ class TestDispatchBuildsTypedArtifacts:
                         "implementer": "did it",
                         "reviewer": "APPROVE " + ("x" * 200),
                     }[role]
-                    return TurnResult(True, text, 0.01, {})
+                    return TurnResult(True, text, {})
 
             task = TaskRecord(id="t4", description="work")
             res = _executor.dispatch_task("demo", task, runner=_Runner(), spec=_REVIEW_THEN_FINISH)
@@ -428,28 +428,24 @@ class TestDispatchBuildsTypedArtifacts:
                     text = {"lead": "plan", "implementer": "did it", "reviewer": "APPROVE - solid"}[
                         role
                     ]
-                    return TurnResult(True, text, 0.01, {})
+                    return TurnResult(True, text, {})
 
             # Simulate a crash right before the step after the Reviewer: hand-build the
             # resume_from list of the three completed hops the way a real
             # crash-and-restart would load it (through the persisted-record round trip).
             prior_hops = [
-                _task.HopResult(
-                    role="lead", member_id="demo-lead", ok=True, output="plan", cost_usd=0.0
-                ),
+                _task.HopResult(role="lead", member_id="demo-lead", ok=True, output="plan"),
                 _task.HopResult(
                     role="implementer",
                     member_id="demo-implementer",
                     ok=True,
                     output="did it",
-                    cost_usd=0.0,
                 ),
                 _task.HopResult(
                     role="reviewer",
                     member_id="demo-reviewer",
                     ok=True,
                     output="APPROVE - solid",
-                    cost_usd=0.0,
                     artifact=_handoff.HandoffArtifact(summary="APPROVE - solid", verdict="approve"),
                 ),
             ]
@@ -482,7 +478,7 @@ class TestDispatchBuildsTypedArtifacts:
                 ) -> Any:
                     role = agent_id.rsplit("-", 1)[-1]
                     calls.append((role, message))
-                    return TurnResult(True, "finished", 0.01, {})
+                    return TurnResult(True, "finished", {})
 
             res = _executor.dispatch_task(
                 "demo",
@@ -519,7 +515,7 @@ def _reviewer_runner(reviewer: Any) -> Any:
         role = agent_id.rsplit("-", 1)[-1]
         if role == "reviewer":
             return reviewer
-        return TurnResult(True, texts[role], 0.01, {})
+        return TurnResult(True, texts[role], {})
 
     return _run
 
@@ -533,7 +529,6 @@ class TestHandoffCallBuildsTheRecord:
         reviewer = TurnResult(
             True,
             "Looks fine.\nAPPROVE",
-            0.01,
             {},
             closing_args={
                 "summary": "Reviewed the diff.",
@@ -558,9 +553,7 @@ class TestHandoffCallBuildsTheRecord:
     def test_the_call_wins_over_a_contradicting_marker_line(self, tmp_path: Path) -> None:
         from docket.agent.ports import TurnResult
 
-        reviewer = TurnResult(
-            True, "APPROVE", 0.01, {}, closing_args={"verdict": "request-changes"}
-        )
+        reviewer = TurnResult(True, "APPROVE", {}, closing_args={"verdict": "request-changes"})
         with _seed_pod(tmp_path, full=True):
             res = _executor.dispatch_task(
                 "demo", TaskRecord(id="h2", description="work"), runner=_reviewer_runner(reviewer)
@@ -574,7 +567,7 @@ class TestHandoffCallBuildsTheRecord:
     ) -> None:
         from docket.agent.ports import TurnResult
 
-        reviewer = TurnResult(True, "Fine.\nAPPROVE", 0.01, {})
+        reviewer = TurnResult(True, "Fine.\nAPPROVE", {})
         with _seed_pod(tmp_path, full=True):
             res = _executor.dispatch_task(
                 "demo", TaskRecord(id="h3", description="work"), runner=_reviewer_runner(reviewer)
@@ -590,7 +583,7 @@ class TestHandoffCallBuildsTheRecord:
         from docket.agent.ports import TurnResult
 
         reviewer = TurnResult(
-            True, "APPROVE", 0.01, {}, closing_args={"verdict": "approve", "assumptions": ["A1"]}
+            True, "APPROVE", {}, closing_args={"verdict": "approve", "assumptions": ["A1"]}
         )
         seen: list[str] = []
         base = _reviewer_runner(reviewer)

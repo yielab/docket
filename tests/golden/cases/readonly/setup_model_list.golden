@@ -1,21 +1,17 @@
 EXIT:0
 
 Role to model policy
-ROLE         MODEL                        PRICE  SOURCE   WHY
-lead         anthropic/claude-haiku-5-5   n/a    builtin  orchestrates the pod; never edits code
-implementer  anthropic/claude-sonnet-5-5  n/a    builtin  writes code in the project workspace
-reviewer     anthropic/claude-sonnet-5-5  n/a    builtin  read-only veto on the work of the step
-                                                          before
-researcher   anthropic/claude-sonnet-5-5  n/a    builtin  gathers and synthesizes source material
-analyst      anthropic/claude-haiku-5-5   n/a    builtin  analyzes data/evidence and draws
-                                                          conclusions
-writer       anthropic/claude-haiku-5-5   n/a    builtin  drafts the pod's content deliverable
-operator     anthropic/claude-sonnet-5-5  n/a    builtin  executes real operational actions
-monitor      anthropic/claude-haiku-5-5   n/a    builtin  observes signals and reports status; no
-                                                          unilateral action
-actor        anthropic/claude-sonnet-5-5  n/a    builtin  sends what the step before approved,
-                                                          nothing else
+ROLE         MODEL                        SOURCE   WHY
+lead         anthropic/claude-haiku-5-5   builtin  orchestrates the pod; never edits code
+implementer  anthropic/claude-sonnet-5-5  builtin  writes code in the project workspace
+reviewer     anthropic/claude-sonnet-5-5  builtin  read-only veto on the work of the step before
+researcher   anthropic/claude-sonnet-5-5  builtin  gathers and synthesizes source material
+analyst      anthropic/claude-haiku-5-5   builtin  analyzes data/evidence and draws conclusions
+writer       anthropic/claude-haiku-5-5   builtin  drafts the pod's content deliverable
+operator     anthropic/claude-sonnet-5-5  builtin  executes real operational actions
+monitor      anthropic/claude-haiku-5-5   builtin  observes signals and reports status; no
+                                                   unilateral action
+actor        anthropic/claude-sonnet-5-5  builtin  sends what the step before approved, nothing else
 default  anthropic/claude-sonnet-4-6
 rank anchors  anthropic/claude-opus-5-5 -> anthropic/claude-sonnet-5-5 -> anthropic/claude-haiku-5-5
-PRICE is an estimate from a snapshot, not recorded spend
 Change: docket setup model set <role|default> <provider/model>

@@ -148,7 +148,7 @@ class TestDispatchVerifyGate:
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
-            return _rd.TurnResult(ok=ok, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=ok, output=output, raw={})
 
         return _run
 
@@ -250,7 +250,7 @@ class TestDispatchVerifyGate:
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
             ran.append(_fleet.meta_get(member_id, "role", "") or member_id)
-            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output="ok", raw={})
 
         task = TaskRecord(id="t7", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_runner)
@@ -280,7 +280,7 @@ class TestDispatchVerifyGate:
             # pod-completing run needs a real APPROVE verdict, not just an
             # ok=True subprocess call.
             output = "APPROVE - looks good" if role == "reviewer" else "ok"
-            return _rd.TurnResult(ok=True, output=output, cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output=output, raw={})
 
         task = TaskRecord(id="t8", description="work")
         res = _executor.dispatch_task("myapp", task, runner=_runner)
@@ -327,7 +327,7 @@ class TestStepOwnedGate:
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
             messages[member_id] = message
-            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output="ok", raw={})
 
         res = _executor.dispatch_task(
             "myapp",
@@ -353,7 +353,7 @@ class TestStepOwnedGate:
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
             seen.append(message)
-            return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+            return _rd.TurnResult(ok=True, output="ok", raw={})
 
         plain = _spec("name: plain\nsteps:\n  - operate: operator\n")
         _executor.dispatch_task(

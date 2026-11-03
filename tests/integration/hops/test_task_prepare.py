@@ -102,7 +102,7 @@ class _Runner:
             root = Path((env or {})[PIPELINE_WORKTREE_ENV])
             tool = root / "node_modules" / ".bin" / "vitest"
             self.seen.append({"root": root, "tool": tool.exists()})
-        return TurnResult(True, "done", 0.0, {})
+        return TurnResult(True, "done", {})
 
 
 def _npm_calls(log: Path) -> list[str]:

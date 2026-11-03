@@ -307,12 +307,12 @@ The store reads no environment variable. Where the file lives is the caller's de
 ```python
 store = records.open("shop")  # the SQLite adapter, bound by bootstrap
 listings = RecordSet(name="listings", key="url", columns=[
-    RecordColumn(name="url", type="string"), RecordColumn(name="price", type="integer")])
+    RecordColumn(name="url", type="string"), RecordColumn(name="rent", type="integer")])
 store.declare(listings)
-store.add("listings", {"url": "https://a.test/1", "price": 90}, RecordOrigin("t-1", "s-1", "scan"))
-# AddOutcome(row={..., "_id": 1, "price": 90}, created=True); the same call again: created=False
-store.read("SELECT url, price FROM listings ORDER BY price", ReadLimits(200, 2500, 5.0))
-# Rows(columns=("url", "price"), rows=[("https://a.test/1", 90)], cut=0)
+store.add("listings", {"url": "https://a.test/1", "rent": 90}, RecordOrigin("t-1", "s-1", "scan"))
+# AddOutcome(row={..., "_id": 1, "rent": 90}, created=True); the same call again: created=False
+store.read("SELECT url, rent FROM listings ORDER BY rent", ReadLimits(200, 2500, 5.0))
+# Rows(columns=("url", "rent"), rows=[("https://a.test/1", 90)], cut=0)
 store.read("DELETE FROM listings", ReadLimits(200, 2500, 5.0))  # RecordsError, nothing deleted
 ```
 

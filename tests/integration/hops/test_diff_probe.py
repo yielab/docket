@@ -217,7 +217,7 @@ class _ImplementerWritesFile:
             self.roots.append(root)
             (Path(root) / "feature.py").write_text("print('new feature')\n")
         text = {"lead": "plan", "implementer": "did it"}[role]
-        return TurnResult(True, text, 0.01, {})
+        return TurnResult(True, text, {})
 
 
 class _PlainRunner:
@@ -237,7 +237,7 @@ class _PlainRunner:
 
         role = agent_id.rsplit("-", 1)[-1]
         text = {"lead": "plan", "implementer": "did it"}[role]
-        return TurnResult(True, text, 0.01, {})
+        return TurnResult(True, text, {})
 
 
 # ── TestDispatchPopulatesRealDiff: end to end against a real repo ──────────

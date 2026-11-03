@@ -18,8 +18,8 @@ OpenAI-compatible chat-completions endpoint, hosted or local.
 > [!WARNING]
 > **docket is early-stage / beta software.** What these guides describe is implemented and
 > automated-test-backed, but not QA-hardened in production. Expect rough edges and breaking
-> changes between versions, and **verify anything important against your own install**. Every
-> cost or dollar figure is an accounting estimate, never your provider's bill; see
+> changes between versions, and **verify anything important against your own install**. Token
+> counts are docket's own measurement and docket shows no dollar figure; see
 > [Known limits](#known-limits) below.
 
 ## Start here
@@ -82,7 +82,7 @@ docket task list                              # one row per dispatch
 docket task trace <task-id> --tail             # one task's session, step by step
 docket log && docket log verify           # gate decisions, and the chain verifies
 docket pod show myapp-implementer       # effective configuration with provenance
-docket status                        # measured tokens; no dollar figure it did not record
+docket status                        # measured tokens; docket shows no dollar figure
 docket setup export list                         # trace destinations (OpenTelemetry, Langfuse): on/off, SHARES
 docket setup export preview langfuse             # what one would receive, before anything is sent
 
@@ -186,10 +186,10 @@ Read these before trusting docket with anything consequential.
 - **Telegram is not a chat.** Five verbs, no free-text conversation, and a notification never
   carries a control that decides.
 
-**Costs and counters**
+**Usage and counters**
 
-- **Tokens are measured; dollars are not.** `docket status` reports measured tokens and never a
-  dollar figure it did not record. The pod's budget gate (`budgetTokens`) counts measured tokens, so it needs no price.
+- **Tokens are measured; dollars are not.** `docket status` reports measured tokens and no
+  dollar figure at all. The pod's budget gate (`budgetTokens`) counts measured tokens.
 - **Metrics counters are not monotonic.** They count what current storage holds, so audit rotation
   and trace retention can drop them. Do not alert on `rate()` over them.
 - **Cancellation is cooperative.** `cancel requested` is durable immediately and a running `bash`

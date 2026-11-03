@@ -40,9 +40,9 @@ class TestProtocolConformance:
 
 class TestFakeDriver:
     def test_callable_matches_runner_signature(self) -> None:
-        fake = FakeDriver(cost=0.03)
+        fake = FakeDriver()
         result = fake("demo-implementer", "agent:demo:t1", "do it", 30)
-        assert result == _rd.TurnResult(True, "done by demo-implementer", 0.03, {"output": "x"})
+        assert result == _rd.TurnResult(True, "done by demo-implementer", {"output": "x"})
         assert fake.calls == [("demo-implementer", "agent:demo:t1", "do it", 30, None)]
 
     def test_fail_role_matches_by_agent_id_suffix(self) -> None:
@@ -50,7 +50,7 @@ class TestFakeDriver:
         ok_result = fake.run_turn("demo-implementer", "s", "m", 30)
         assert ok_result.ok is True
         fail_result = fake.run_turn("demo-reviewer", "s", "m", 30)
-        assert fail_result == _rd.TurnResult(False, "", 0.0, {}, "reviewer down", failure_kind=None)
+        assert fail_result == _rd.TurnResult(False, "", {}, "reviewer down", failure_kind=None)
 
     def test_list_sessions_and_usage_default_empty(self) -> None:
         fake = FakeDriver()
@@ -66,6 +66,5 @@ class TestFakeDriver:
         assert fake.usage("demo-lead").totals.turns == 3
 
     def test_capabilities(self) -> None:
-        fake = FakeDriver(cost=0.0)
-        assert fake.capabilities().reports_cost_usd is False
-        assert FakeDriver(cost=0.01).capabilities().reports_cost_usd is True
+        caps = FakeDriver().capabilities()
+        assert (caps.driver_name, caps.supports_sessions) == ("fake", True)

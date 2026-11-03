@@ -58,7 +58,6 @@ EVENT_TYPES: frozenset[str] = frozenset(
         "guardrail_block",
         "approval_granted",
         "approval_denied",
-        "cost_charged",
         "budget_warning",
         "budget_exceeded",
         "verification_failed",
@@ -183,7 +182,6 @@ def trace_event(
     agent_role: str,
     event_type: str,
     payload: str,
-    cost_usd: float | str | None = None,
     duration_ms: int | str | None = None,
     *,
     task_id: str = "",
@@ -214,9 +212,6 @@ def trace_event(
     if task_id:
         record["task_id"] = task_id
     record["payload"] = payload_obj
-    if cost_usd not in (None, ""):
-        with contextlib.suppress(TypeError, ValueError):
-            record["cost_usd"] = float(cost_usd)  # type: ignore[arg-type]
     if duration_ms not in (None, ""):
         with contextlib.suppress(TypeError, ValueError):
             record["duration_ms"] = int(duration_ms)  # type: ignore[arg-type]

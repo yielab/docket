@@ -97,7 +97,7 @@ def _wait_for_terminal_run(run_id: str, timeout: float = 3.0) -> dict[str, Any]:
     raise AssertionError(f"run {run_id!r} never reached a terminal state")
 
 
-# ── status / pods / cost (read-only) ────────────────────────────────────────
+# ── status / pods / usage (read-only) ────────────────────────────────────────
 
 
 class TestToolStatus:
@@ -106,7 +106,7 @@ class TestToolStatus:
             result = _mcp.tool_status()
             assert result["apiVersion"] == "6"
             assert isinstance(result["agents"], list)
-            assert "totalCostUsd" in result
+            assert "totalCostUsd" not in result
 
     def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
@@ -137,11 +137,11 @@ class TestToolPods:
             assert len(_audit_actions("mcp.pods")) == 1
 
 
-class TestToolCost:
+class TestToolUsage:
     def test_all_agents_shape(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            result = _mcp.tool_cost()
-            assert "agents" in result and "totalUsd" in result
+            result = _mcp.tool_usage()
+            assert "agents" in result and "totalUsd" not in result
             ids = {a["id"] for a in result["agents"]}
             assert {"demo-lead", "demo-implementer"} <= ids
 
@@ -151,17 +151,15 @@ class TestToolCost:
         from docket.interfaces.cli.commands import status as _status
 
         with _seed_pod(tmp_path):
-            row = {"id": "demo-lead", "costUsd": 0.0}
-            monkeypatch.setattr(
-                _status, "cost_snapshot", lambda: {"agents": [row], "totalUsd": 0.0}
-            )
+            row = {"id": "demo-lead", "input": 0, "output": 0, "turns": 0}
+            monkeypatch.setattr(_status, "usage_snapshot", lambda: {"agents": [row]})
 
-            assert _mcp.tool_cost() == {"agents": [row], "totalUsd": 0.0}
-            assert _mcp.tool_cost("demo-lead") == row
+            assert _mcp.tool_usage() == {"agents": [row]}
+            assert _mcp.tool_usage("demo-lead") == row
 
     def test_single_agent_lookup(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            result = _mcp.tool_cost("demo-lead")
+            result = _mcp.tool_usage("demo-lead")
             assert result["id"] == "demo-lead"
 
     def test_unknown_agent_raises(self, tmp_path: Path) -> None:
@@ -169,12 +167,12 @@ class TestToolCost:
             _seed_pod(tmp_path),
             pytest.raises(_mcp.McpToolError, match="not found"),
         ):
-            _mcp.tool_cost("no-such-agent")
+            _mcp.tool_usage("no-such-agent")
 
     def test_call_is_audited(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _mcp.tool_cost()
-            assert len(_audit_actions("mcp.cost")) == 1
+            _mcp.tool_usage()
+            assert len(_audit_actions("mcp.usage")) == 1
 
 
 # ── queue / delegate (pod task queue) ────────────────────────────────────────
@@ -508,7 +506,7 @@ class TestEveryToolCallIsAudited:
             _mcp.tool_inbox()
             _mcp.tool_escalations()
             _mcp.tool_resolve(approval_escalation("gate").id, "approve_once")
-            _mcp.tool_cost()
+            _mcp.tool_usage()
             _wait_for_terminal_run(dispatch_result["run"])
 
             entries = [e for e in _audit.read_audit() if e["action"].startswith("mcp.")]

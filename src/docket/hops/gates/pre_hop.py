@@ -8,8 +8,7 @@ from docket.governance import approval as _ap
 from docket.governance import audit as _audit
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
-from docket.hops.application import usage as _usage
-from docket.hops.application.usage import pod_counted_tokens, pod_recorded_cost
+from docket.hops.application.usage import pod_counted_tokens
 from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates import profile as _profile
 from docket.kernel import brief as _brief
@@ -35,28 +34,6 @@ from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams.pod import pod_full_roster
 from docket.teams.settings import load_pod_settings
-
-
-def pod_gating_cost(project: str) -> tuple[float, bool]:
-    """The pod's dollar figure for the ``docket run`` summary: recorded, or a token x pricing-table
-    estimate (the driver always reports ``cost_usd = 0.0``). Returns ``(amount, estimated)`` --
-    never present the estimate as, or mix it into, recorded spend. The budget gate does not read
-    it; it counts tokens (``pod_counted_tokens``)."""
-    recorded = pod_recorded_cost(project)
-    if recorded > 0.0:
-        return recorded, False
-
-    all_ids = [a.id for a in _fleet.list_agents()]
-    total_est = 0.0
-    any_estimate = False
-    for mid, _role, _idx in _pod.members_of(all_ids, project):
-        # recorded == 0.0 above, so every member's own recorded spend is 0.0 too --
-        # this always resolves through teams/utils.py::gating_cost's estimate branch.
-        est, estimated = _usage.gating_cost(mid)
-        if estimated:
-            total_est += est
-            any_estimate = True
-    return round(total_est, 6), any_estimate
 
 
 def _pause_lead_for_budget(project: str) -> None:

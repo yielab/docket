@@ -96,7 +96,7 @@ class TestCustomRoleGeneratedHopInstruction:
             ) -> _rd.TurnResult:
                 if agent_id.endswith("security-reviewer"):
                     seen["review"] = message
-                    return _rd.TurnResult(True, "APPROVE - clean", 0.0, {"output": "x"})
+                    return _rd.TurnResult(True, "APPROVE - clean", {"output": "x"})
                 return driver(agent_id, session_key, message, timeout, env)
 
             results = _sweep.dispatch_pod("proj", runner=_runner, spec=_review_pipeline())
@@ -123,7 +123,7 @@ class TestStepInstructionsOverrideAndInterpolation:
             ) -> _rd.TurnResult:
                 if agent_id.endswith("security-reviewer"):
                     seen["review"] = message
-                    return _rd.TurnResult(True, "APPROVE - clean", 0.0, {"output": "x"})
+                    return _rd.TurnResult(True, "APPROVE - clean", {"output": "x"})
                 return driver(agent_id, session_key, message, timeout, env)
 
             spec = _review_pipeline(instructions="Focus on ${area}")
@@ -149,7 +149,7 @@ class TestUnresolvedVariableRefusesBeforeAnyHop:
                 env: dict[str, str] | None = None,
             ) -> _rd.TurnResult:
                 calls.append(agent_id)
-                return _rd.TurnResult(True, "APPROVE", 0.0, {"output": "x"})
+                return _rd.TurnResult(True, "APPROVE", {"output": "x"})
 
             spec = _review_pipeline(instructions="Focus on ${area}")
             with pytest.raises(_task.DispatchError, match="area"):

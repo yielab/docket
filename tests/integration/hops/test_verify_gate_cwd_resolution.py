@@ -82,7 +82,7 @@ def _fake_runner() -> _record.Runner:
         timeout: int,
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
-        return _rd.TurnResult(ok=True, output="ok", cost_usd=0.0, raw={})
+        return _rd.TurnResult(ok=True, output="ok", raw={})
 
     return _run
 

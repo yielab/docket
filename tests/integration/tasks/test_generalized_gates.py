@@ -58,7 +58,7 @@ class _RoleRunner:
         tail = agent_id.rsplit("-", 1)[-1]
         role = agent_id.rsplit("-", 2)[-2] if tail.isdigit() else tail
         output = self.outputs.get(role, f"done by {agent_id}")
-        return _rd.TurnResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, {"output": output})
 
 
 # ── mechanical gate, generalized beyond "implementer" ────────────────────────

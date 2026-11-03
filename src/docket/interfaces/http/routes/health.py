@@ -52,7 +52,6 @@ def _last_activity_or_never(agent_id: str) -> str:
 def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str, Any]:
     meta_path = current_home().meta_path(agent_id)
     meta: dict[str, Any] = read_json(meta_path) if meta_path.exists() else {}
-    cost = round(usage.aggregate_cost(agent_id).cost_usd, 6)
     budget_raw = meta.get("budgetTokens")
     budget: int | None = int(budget_raw) if budget_raw else None
     return {
@@ -64,7 +63,6 @@ def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str
         "registered": agent_id in registered,
         "bindings": [{"channel": b["channel"]} for b in fleet.agent_bindings(agent_id)],
         "lastActivity": _last_activity_or_never(agent_id),
-        "costUsd": cost,
         "budgetTokens": budget,
     }
 
@@ -77,11 +75,9 @@ def build_status() -> dict[str, Any]:
     registered = {a.id for a in fleet.list_agents()}
 
     agents: list[dict[str, Any]] = []
-    total_cost = 0.0
 
     for pid in fleet.project_ids():
         rec = _agent_record(pid, kind="project", registered=registered)
-        total_cost += float(rec["costUsd"])
         agents.append(rec)
 
     return {
@@ -90,7 +86,6 @@ def build_status() -> dict[str, Any]:
         "timestamp": _clock.stamp(),
         "channels": channels,
         "agents": agents,
-        "totalCostUsd": round(total_cost, 6),
     }
 
 

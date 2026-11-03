@@ -225,7 +225,6 @@ def apply_preset(preset: str, *, quiet: bool = False, provider: str = "") -> Non
     ui.success(f"Preset {preset} applied")
     _say(f"  {' '.join(cheap)} -> {econ}")
     _say(f"  {' '.join(strong)} -> {std}")
-    _say("  cost -> " + ("free per-token" if t["cost"] == "free" else "paid"))
     if t["note"]:
         _say(f"  note -> {t['note']}")
     state = _provider_lifecycle.model_readiness(std)

@@ -166,7 +166,7 @@ class TestEffectivePipelineBlueprint:
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
-            return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
+            return _rd.TurnResult(True, f"done by {member_id}", {})
 
         _queue.enqueue_task_once("myapp", "roll it out", channel="cli")
         results = _sweep.dispatch_pod("myapp", runner=_run, spec=None)
@@ -226,7 +226,7 @@ class TestBoundPipeline:
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
-            return _rd.TurnResult(True, f"done by {member_id}", 0.0, {})
+            return _rd.TurnResult(True, f"done by {member_id}", {})
 
         _queue.enqueue_task_once("myapp", "ship it", channel="cli")
         results = _sweep.dispatch_pod("myapp", runner=_run, spec=None)
@@ -438,7 +438,7 @@ class TestTaskPipeline:
         )
         _queue_task("myapp", pipeline="needs")
 
-        _sweep.dispatch_pod("myapp", runner=lambda *a, **k: _rd.TurnResult(True, "x", 0.0, {}))
+        _sweep.dispatch_pod("myapp", runner=lambda *a, **k: _rd.TurnResult(True, "x", {}))
 
         assert TaskRepository.for_pod("myapp").list()[0].failure_kind == "pipeline"
 

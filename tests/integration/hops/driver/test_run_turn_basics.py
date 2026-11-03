@@ -55,7 +55,7 @@ def _consult_park_probe_registry() -> ToolRegistry:
 
 
 class TestRunTurn:
-    def test_happy_path_final_message_costs_nothing(self) -> None:
+    def test_happy_path_final_message(self) -> None:
         _write_meta("solo-agent")
         backend = _ScriptedBackend([_final_response("hello there", TokenUsage(12, 4))])
         driver = DocketDriver(backend_factory=lambda model: backend)
@@ -64,7 +64,6 @@ class TestRunTurn:
 
         assert result.ok is True
         assert result.output == "hello there"
-        assert result.cost_usd == 0.0
         assert result.error == ""
         assert result.failure_kind is None
 
@@ -179,7 +178,6 @@ class TestRunTurn:
 
         assert result.ok is True
         assert result.output == "here it is"
-        assert result.cost_usd == 0.0
         tool_msg = next(m for m in backend.calls[1] if m.role == "tool")
         assert "top secret" in tool_msg.content
 

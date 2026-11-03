@@ -112,10 +112,9 @@ def _seed_full_pod(project: str = "myapp", *, gated: bool = False) -> None:
 class _RecordingRunner:
     """Stub matching agent_run's signature; records calls, returns canned results."""
 
-    def __init__(self, *, ok: bool = True, cost: float = 0.0):
+    def __init__(self, *, ok: bool = True):
         self.calls: list[str] = []
         self.ok = ok
-        self.cost = cost
 
     def __call__(
         self,
@@ -126,7 +125,7 @@ class _RecordingRunner:
         env: dict[str, str] | None = None,
     ) -> _rd.TurnResult:
         self.calls.append(agent_id.rsplit("-", 1)[-1])
-        return _rd.TurnResult(self.ok, f"done by {agent_id}", self.cost, {"output": "x"})
+        return _rd.TurnResult(self.ok, f"done by {agent_id}", {"output": "x"})
 
 
 class _VerdictAwareRunner:
@@ -147,7 +146,7 @@ class _VerdictAwareRunner:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
         output = "APPROVE - looks good" if role == "reviewer" else f"done by {agent_id}"
-        return _rd.TurnResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, {"output": output})
 
 
 class _OneReworkThenGateAgainRunner:
@@ -175,7 +174,7 @@ class _OneReworkThenGateAgainRunner:
             )
         else:
             output = f"done by {agent_id}"
-        return _rd.TurnResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, {"output": output})
 
 
 # ── the pipeline gate source ───────────────────────────────────────────────────

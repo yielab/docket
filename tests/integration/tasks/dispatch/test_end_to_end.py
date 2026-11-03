@@ -57,9 +57,6 @@ class TestEndToEnd:
             _queue.enqueue_task_once("demo", "End to end", channel="cli")
             results = _sweep.dispatch_pod("demo")
             assert results[0].status == "done"
-            # cost_usd stays 0.0 through DocketDriver — CLAUDE.md's standing rule
-            # against turning a measured-token estimate into a billing claim.
-            assert results[0].cost_usd == 0.0
             assert len(backend.calls) == 2  # one turn per pod hop (lead, implementer)
             tasks = TaskRepository.for_pod("demo").list()
             assert tasks[0].status == "done"
@@ -517,7 +514,7 @@ class TestConcurrentDispatch:
                     time.sleep(0.02)
                     with calls_lock:
                         calls.append(session_key)
-                    return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {"output": "x"})
+                    return _rd.TurnResult(True, f"done by {agent_id}", {"output": "x"})
 
             runner = _SlowRunner()
             errors: list[BaseException] = []

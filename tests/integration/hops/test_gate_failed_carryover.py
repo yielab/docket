@@ -88,7 +88,6 @@ def test_gate_failed_section_is_recorded_in_the_composition() -> None:
         member_id="demo-implementer",
         ok=True,
         output="built",
-        cost_usd=0.0,
         step_id="build",
         next_step="build",
         verify={"cmd": "x", "exitCode": 1, "durationS": 0.1, "outputTail": MARKER},
@@ -112,11 +111,7 @@ def test_no_gate_failed_section_without_a_failure(tmp_path: Path) -> None:
 
 
 def test_hop_message_without_gate_failed_hop_is_unchanged() -> None:
-    prior = [
-        _task.HopResult(
-            role="lead", member_id="demo-lead", ok=True, output="Plan: X.", cost_usd=0.0
-        )
-    ]
+    prior = [_task.HopResult(role="lead", member_id="demo-lead", ok=True, output="Plan: X.")]
     message, _ = _compose._hop_message(TaskRecord(description="d"), "implementer", prior)
     assert message == (
         "## Task\nd\n\n## Hop\n--- lead output ---\nPlan: X.\n\n"
@@ -128,14 +123,13 @@ def test_resume_rebuilds_the_carryover_from_the_last_routed_gated_hop(tmp_path: 
     with _seed(tmp_path, "true"):
         steps, _ids, _instr = _executor.resolve_pipeline_steps("demo", _spec(_UNTIL_YAML))
         lead = _task.HopResult(
-            role="lead", member_id="demo-lead", ok=True, output="p", cost_usd=0.0, step_id="plan"
+            role="lead", member_id="demo-lead", ok=True, output="p", step_id="plan"
         )
         gated = _task.HopResult(
             role="implementer",
             member_id="demo-implementer",
             ok=True,
             output="built",
-            cost_usd=0.0,
             step_id="build",
             next_step="build",
             verify={"cmd": "x", "exitCode": 1, "durationS": 0.1, "outputTail": MARKER},
@@ -155,7 +149,6 @@ def test_a_backward_route_out_of_a_passing_gate_carries_no_gate_failure() -> Non
         member_id="demo-implementer",
         ok=True,
         output="built",
-        cost_usd=0.0,
         step_id="build",
         next_step="plan",
         verify=passed,

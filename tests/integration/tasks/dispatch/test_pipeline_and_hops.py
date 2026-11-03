@@ -157,7 +157,7 @@ class TestPipeline:
                 output = "APPROVE" if agent_id.endswith("-reviewer") else "PASS"
                 if agent_id.endswith(("-lead", "-implementer")):
                     output = "done"
-                return _rd.TurnResult(True, output, 0.0, {})
+                return _rd.TurnResult(True, output, {})
 
             task = TaskRecord(
                 id="wt1",
@@ -211,7 +211,7 @@ class TestPipeline:
                 env: dict[str, str] | None = None,
             ) -> _rd.TurnResult:
                 calls.append((agent_id, env))
-                return _rd.TurnResult(True, "done", 0.0, {})
+                return _rd.TurnResult(True, "done", {})
 
             task = TaskRecord(id="am1", description="work")
             result = _executor.dispatch_task("demo", task, runner=runner)
@@ -235,7 +235,7 @@ class TestPipeline:
                 env: dict[str, str] | None = None,
             ) -> _rd.TurnResult:
                 calls.append(env)
-                return _rd.TurnResult(True, "done", 0.0, {})
+                return _rd.TurnResult(True, "done", {})
 
             task = TaskRecord(id="at1", description="work")
             result = _executor.dispatch_task("demo", task, runner=runner, approval_timeout=9)
@@ -264,7 +264,7 @@ class TestPipeline:
                 env: dict[str, str] | None = None,
             ) -> _rd.TurnResult:
                 calls.append((agent_id, env))
-                return _rd.TurnResult(True, "done", 0.0, {})
+                return _rd.TurnResult(True, "done", {})
 
             task = TaskRecord(id="am2", description="work")
             result = _executor.dispatch_task("demo", task, runner=runner)
@@ -290,11 +290,10 @@ class TestPipeline:
     def test_task_persisted_with_status_and_hops(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "Ship it", channel="cli")
-            _sweep.dispatch_pod("demo", runner=FakeDriver(cost=0.05))
+            _sweep.dispatch_pod("demo", runner=FakeDriver())
             tasks = TaskRepository.for_pod("demo").list()
             assert tasks[0].status == "done"
             assert [h.role for h in tasks[0].hops] == ["lead", "implementer"]
-            assert tasks[0].cost_usd == pytest.approx(0.10)
 
     def test_traces_written_per_hop(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path) as oc_dir:
@@ -348,7 +347,6 @@ class TestPipeline:
                 return _rd.TurnResult(
                     False,
                     "",
-                    0.0,
                     {},
                     "run cancellation requested",
                     failure_kind="run_cancelled",

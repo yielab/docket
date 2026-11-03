@@ -1,13 +1,13 @@
 """Provider catalog: the model providers docket knows, as `kind: provider` documents.
 
 A provider is a `ProviderSpec` -- name, dialect, base URL, named credentials (never a value),
-selectable models with optional pricing, and named presets -- loaded the same way a role or
+selectable models, and named presets -- loaded the same way a role or
 policy is (model-profiles.spec.md "Provider catalog"). Two scopes, nearest-wins by name: built-in
 (`kernel.templates.PROVIDER_TEMPLATES_DIR`, the documents under `templates/providers/`) and global
 (`Home.providers_file`, the operator's own). `models/application/endpoint.py`'s `resolve_endpoint` reads
 the merged catalog; this module has no knowledge of terminals. `teams/model_selection.py`'s
-`presets`/`preset_table`/`is_local_provider`/`is_marketplace`/`price_for`/`rank_anchors` are the
-only readers of the catalog's presets and pricing; every other per-provider fact (base URLs,
+`presets`/`preset_table`/`rank_anchors` are the
+only readers of the catalog's presets; every other per-provider fact (base URLs,
 credential names, key-format prefixes) derives from this module too, so no module keeps its
 own copy.
 
@@ -39,7 +39,6 @@ if TYPE_CHECKING:
 from docket.governance import secrets as _secrets
 
 _RANK_RE = re.compile(r"^(economy|standard|premium)$")
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ProviderError(DocumentError):
@@ -71,36 +70,19 @@ class AuthSpec(BaseModel):
         return self
 
 
-class Price(BaseModel):
-    """USD per million tokens. ``cacheRead``/``cacheWrite`` default to 0 for a provider that
-    never discounts a cache hit -- absence is not the same claim as a priced $0.00 hit, but
-    every provider docket ships a price row for today prices every field explicitly."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    input: float = Field(ge=0)
-    output: float = Field(ge=0)
-    cache_read: float = Field(0.0, alias="cacheRead", ge=0)
-    cache_write: float = Field(0.0, alias="cacheWrite", ge=0)
-
-
 class ModelRow(BaseModel):
-    """One selectable model id, its exact limits (either may be unknown), and its optional
-    price -- a model with no ``price`` reports cost as ``n/a`` (or the marketplace/local
-    variant), never a fabricated figure."""
+    """One selectable model id and its exact limits (either may be unknown)."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
     context_window: int | None = Field(None, alias="contextWindow", gt=0)
     max_tokens: int | None = Field(None, alias="maxTokens", gt=0)
-    price: Price | None = None
 
 
 class Preset(BaseModel):
-    """A named rank triple attached to the provider that defines it -- what
-    `teams/model_selection.py`'s old `PRESET_TABLE` held per row, minus the fields (``key``,
-    ``cost``) that are derived from the owning `ProviderSpec` instead of stored twice."""
+    """A named rank triple attached to the provider that defines it; the ``key`` shown beside it
+    derives from the owning `ProviderSpec` instead of being stored twice."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -210,9 +192,7 @@ class ProviderSpec(BaseModel):
     base_url: str = Field(alias="baseUrl")
     auth: AuthSpec
     local: bool = False
-    marketplace: bool = False
     credential_prefix: str = Field("", alias="credentialPrefix")
-    prices_as_of: str = Field("", alias="pricesAsOf")
     models: list[ModelRow] = Field(default_factory=list)
     presets: list[Preset] = Field(default_factory=list)
     headers: dict[str, str] = Field(default_factory=dict)
@@ -248,13 +228,6 @@ class ProviderSpec(BaseModel):
     def _valid_base_url(cls, value: str) -> str:
         return _documents.check_http_url(value)
 
-    @field_validator("prices_as_of")
-    @classmethod
-    def _valid_prices_as_of(cls, value: str) -> str:
-        if value and not _DATE_RE.match(value):
-            raise InvalidInput(f"'{value}' is not a YYYY-MM-DD date")
-        return value
-
     @field_validator("models")
     @classmethod
     def _unique_ids(cls, value: list[ModelRow]) -> list[ModelRow]:
@@ -264,12 +237,6 @@ class ProviderSpec(BaseModel):
                 raise InvalidInput(f"duplicate model id '{row.id}'")
             seen.add(row.id)
         return value
-
-    @model_validator(mode="after")
-    def _prices_as_of_required_with_a_price(self) -> ProviderSpec:
-        if not self.prices_as_of and any(row.price is not None for row in self.models):
-            raise InvalidInput("pricesAsOf is required when any model row carries a price")
-        return self
 
 
 def profile_of(spec: ProviderSpec, model_id: str = "") -> ModelProfile:
@@ -422,13 +389,13 @@ def _merged_catalog(global_entries: dict[str, ProviderSpec]) -> Catalog:
     return Catalog(entries=entries, scopes=scopes)
 
 
-_INHERITABLE_IDENTITY_FIELDS = ("presets", "marketplace", "credential_prefix", "prices_as_of")
+_INHERITABLE_IDENTITY_FIELDS = ("presets", "credential_prefix")
 
 
 def _with_inherited_identity(spec: ProviderSpec) -> ProviderSpec:
     """Fill the identity fields *spec* left unset (``model_fields_set``, so an explicit clear
     still wins) from the built-in of the same name: an endpoint write under a built-in's name
-    must not erase its presets or pricing. Also applied before an on-disk comparison."""
+    must not erase its presets. Also applied before an on-disk comparison."""
     missing = [f for f in _INHERITABLE_IDENTITY_FIELDS if f not in spec.model_fields_set]
     if not missing:
         return spec

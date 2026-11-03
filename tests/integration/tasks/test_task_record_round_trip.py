@@ -69,3 +69,16 @@ def test_a_modify_that_changes_nothing_rewrites_nothing(tmp_path: Path) -> None:
     copy.write_bytes(QUEUE.read_bytes())
     JsonTaskStore(copy).modify(lambda records: False)
     assert copy.read_bytes() == QUEUE.read_bytes()
+
+
+def test_a_stored_cost_key_loads_and_the_next_write_drops_it(tmp_path: Path) -> None:
+    copy = tmp_path / "TASK_LIST.json"
+    copy.write_bytes(QUEUE.read_bytes())
+    assert '"costUsd"' in copy.read_text()
+
+    store = JsonTaskStore(copy)
+    assert store.load()
+    store.modify(lambda records: True)
+
+    assert '"costUsd"' not in copy.read_text()
+    assert [r.id for r in store.load()] == [t["id"] for t in NORMALIZED]

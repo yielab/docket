@@ -1,6 +1,6 @@
 """Exporter catalog: the observability destinations docket knows, as `kind: exporter`
 documents (ADR 0014 §4) -- a deliberate copy of `models/catalog.py`'s shape (name, dialect,
-endpoint, named credentials, never a value) with the model/price/preset fields dropped and
+endpoint, named credentials, never a value) with the model/preset fields dropped and
 destination-shaped ones added: `resource`/`aliases`, `events`, `privacy`/`share` (what a
 document shares beyond structure -- ADR 0015 §1), and `enabled` (a present credential never activates an
 exporter by itself). Two scopes, nearest-wins by name: built-in and global

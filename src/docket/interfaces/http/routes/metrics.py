@@ -19,26 +19,16 @@ from docket.tasks.application.accepted import accepted_counted_tokens
 from docket.teams import fleet
 
 
-def _cost_json() -> dict[str, Any]:
-    """Per-project cost payload: {agents:[{id,model,costUsd,turns}], totalUsd}."""
+def _usage_json() -> dict[str, Any]:
+    """Per-project usage payload: {agents:[{id,model,turns}]}."""
 
     agents: list[dict[str, Any]] = []
-    total = 0.0
     for pid in fleet.project_ids():
         raw = read_json(current_home().meta_path(pid))
         model = str(raw.get("model", current_home().default_model))
-        totals = _usage.aggregate_cost(pid)
-        cost = totals.cost_usd
-        total += cost
-        agents.append(
-            {
-                "id": pid,
-                "model": model,
-                "costUsd": round(cost, 6),
-                "turns": totals.turns,
-            }
-        )
-    return {"agents": agents, "totalUsd": round(total, 6)}
+        totals = _usage.aggregate_usage(pid)
+        agents.append({"id": pid, "model": model, "turns": totals.turns})
+    return {"agents": agents}
 
 
 def _esc(s: Any) -> str:
@@ -276,19 +266,12 @@ def _figure_lines() -> list[str]:
 
 def render_metrics() -> str:
     """Render Prometheus-format metrics (no trailing newline; callers append it)."""
-    d = _cost_json()
+    d = _usage_json()
 
     lines: list[str] = [
         "# HELP docket_agents_total Number of project agents",
         "# TYPE docket_agents_total gauge",
         "docket_agents_total " + str(len(d.get("agents", []))),
-        "# HELP docket_agent_cost_usd Cumulative cost per agent (USD)",
-        "# TYPE docket_agent_cost_usd gauge",
-    ]
-    for a in d.get("agents", []):
-        lab = 'agent="' + _esc(a.get("id", "")) + '",model="' + _esc(a.get("model", "")) + '"'
-        lines.append("docket_agent_cost_usd{" + lab + "} " + str(a.get("costUsd", 0)))
-    lines += [
         "# HELP docket_agent_turns_total Total turns per agent",
         "# TYPE docket_agent_turns_total gauge",
     ]
@@ -302,9 +285,6 @@ def render_metrics() -> str:
 
     pending = len(_approval.list_pending())
     lines += [
-        "# HELP docket_cost_usd_total Total cost across all agents (USD)",
-        "# TYPE docket_cost_usd_total gauge",
-        "docket_cost_usd_total " + str(d.get("totalUsd", 0)),
         "# HELP docket_approvals_pending_total Pending approvals awaiting a human decision",
         "# TYPE docket_approvals_pending_total gauge",
         "docket_approvals_pending_total " + str(pending),

@@ -128,7 +128,7 @@ class _OutputRunner:
         role = agent_id.rsplit("-", 1)[-1]
         self.calls.append(role)
         output = self.outputs.get(role, f"done by {agent_id}")
-        return _rd.TurnResult(True, output, 0.01, {"output": output})
+        return _rd.TurnResult(True, output, {"output": output})
 
 
 class TestDefect39PodPolicyOnEveryScreen:

@@ -72,7 +72,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 {},
                 "compaction summarizer key matched the target session",
                 "invalid_output",
@@ -84,7 +83,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 {},
                 "compaction exhausted the turn wall-clock budget",
                 "timeout",
@@ -97,14 +95,14 @@ class TurnCompaction:
         )
         if fit_error:
             self.compaction_failure_stop_reason = "context_fit"
-            return TurnResult(False, "", 0.0, {}, fit_error, "invalid_output")
+            return TurnResult(False, "", {}, fit_error, "invalid_output")
         budget_error = self.budget.prospective_budget_error(estimated_input, purpose="compaction")
         if budget_error:
             self.compaction_failure_stop_reason = "token_budget"
-            return TurnResult(False, "", 0.0, {}, budget_error, "invalid_output")
+            return TurnResult(False, "", {}, budget_error, "invalid_output")
         if self.state.cancellation_requested():
             self.compaction_failure_stop_reason = "run_cancelled"
-            return TurnResult(False, "", 0.0, {}, "run cancellation requested", "run_cancelled")
+            return TurnResult(False, "", {}, "run cancellation requested", "run_cancelled")
         response = self.state.backend.complete(
             summary_messages,
             tools=(),
@@ -131,7 +129,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 response.raw,
                 "run cancellation requested",
                 "run_cancelled",
@@ -141,7 +138,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 response.raw,
                 response.error,
                 response.failure_kind or "daemon_error",
@@ -151,7 +147,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 response.raw,
                 "compaction summarizer response was truncated; partial summary was not accepted",
                 "invalid_output",
@@ -161,7 +156,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 response.raw,
                 "compaction summarizer requested tools on a tool-free call",
                 "invalid_output",
@@ -171,7 +165,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 response.raw,
                 "compaction summarisation turn returned an empty summary",
                 "invalid_output",
@@ -182,7 +175,6 @@ class TurnCompaction:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 response.raw,
                 (
                     f"{_TOKEN_BUDGET_ERROR_PREFIX} compaction completion exceeded "
@@ -191,7 +183,7 @@ class TurnCompaction:
                 ),
                 "invalid_output",
             )
-        return TurnResult(True, response.message.content, 0.0, response.raw)
+        return TurnResult(True, response.message.content, response.raw)
 
     def run_compaction(
         self,

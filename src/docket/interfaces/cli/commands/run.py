@@ -14,8 +14,7 @@ from docket.governance.audit import audit_log
 from docket.hops.application import report as _report
 from docket.hops.application import steps as _steps
 from docket.hops.application import sweep as _sweep
-from docket.hops.application.usage import aggregate_cost, pod_counted_tokens
-from docket.hops.gates import pre_hop as _pre_hop
+from docket.hops.application.usage import aggregate_usage, pod_counted_tokens
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.setup import readiness
 from docket.interfaces.cli.commands.target import pod_option
@@ -142,16 +141,15 @@ def _plan_roles(plan: _orch.ExecutionPlan) -> str:
     return " → ".join(parts)
 
 
-def _pod_tokens(project: str) -> tuple[int, float]:
-    """The pod's measured tokens so far and its labelled cost estimate."""
+def _pod_tokens(project: str) -> int:
+    """The pod's measured tokens so far."""
 
     ids = [a.id for a in _fleet.list_agents()]
     tokens = 0
     for mid, _role, _idx in _pod_core.members_of(ids, project):
-        totals = aggregate_cost(mid)
+        totals = aggregate_usage(mid)
         tokens += totals.input_tokens + totals.output_tokens
-    cost, _estimated = _pre_hop.pod_gating_cost(project)
-    return tokens, cost
+    return tokens
 
 
 def _tokens_label(n: int) -> str:
@@ -200,7 +198,7 @@ def _render_result(res: Any) -> None:
         ui.fail(escape(f"  [{res.task_id}] {res.status} — {res.reason}"))
 
 
-def _summary(results: list[Any], tokens: int, cost: float) -> None:
+def _summary(results: list[Any], tokens: int) -> None:
     done = sum(1 for r in results if r.status == "done")
     waiting = sum(1 for r in results if r.status in ("waiting_approval", "waiting_input"))
     blocked = sum(1 for r in results if r.status == "blocked")
@@ -210,7 +208,7 @@ def _summary(results: list[Any], tokens: int, cost: float) -> None:
         parts.append(f"{waiting} waiting")
     if blocked:
         parts.append(f"{blocked} blocked")
-    parts.append(f"{_tokens_label(tokens)} tokens (~${cost:.2f} est.)")
+    parts.append(f"{_tokens_label(tokens)} tokens")
     line = " · ".join(parts)
     (ui.fail if failed else ui.success)(line)
     _contract.next_step("docket inbox" if (failed or waiting or blocked) else "docket status")
@@ -263,7 +261,7 @@ def _pod_dispatch(
         ui.dim(f"  Pod budget cap: {cap} tokens ({pod_counted_tokens(project)} counted so far)")
 
     record = _runs.create_run("cli", project)
-    tokens_before, cost_before = _pod_tokens(project)
+    tokens_before = _pod_tokens(project)
 
     def _fn() -> list[Any]:
         default: Literal["wait", "park"] = _report.caller_default()
@@ -292,8 +290,7 @@ def _pod_dispatch(
         raise typer.Exit(1)
     for res in results:
         _render_result(res)
-    tokens_after, cost_after = _pod_tokens(project)
-    _summary(results, max(tokens_after - tokens_before, 0), max(cost_after - cost_before, 0.0))
+    _summary(results, max(_pod_tokens(project) - tokens_before, 0))
     _flush_notify_after_dispatch()
     final = _runs.get_run(record["id"])
     if final is not None and final.get("state") == "failed":

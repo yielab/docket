@@ -58,7 +58,6 @@ class HopResult(BaseModel):
     member_id: str = Field("", alias="member")
     ok: bool = False
     output: str = ""
-    cost_usd: float = Field(0.0, alias="costUsd")
     error: str = ""
     # Total agent-turn attempts made for this hop (1 = succeeded or failed on the first try, no
     # retry). Only retryable failures (see ``_RETRYABLE_FAILURE_KINDS``) ever push this above 1.
@@ -156,10 +155,6 @@ class HopResult(BaseModel):
             self.artifact = _handoff.HandoffArtifact.from_output(self.output)
         return self
 
-    @field_serializer("cost_usd")
-    def _round_cost(self, value: float) -> float:
-        return round(value, 6)
-
     @field_serializer("step_id")
     def _step_id_or_role(self, value: str) -> str:
         return value or self.role
@@ -199,10 +194,6 @@ class TaskResult:
     # Only meaningful when status == "waiting_approval" for a `check_changed` approval: the
     # protected paths the task's diff touched, persisted as the task's `checkChanged`.
     check_changed: list[str] = field(default_factory=list)
-
-    @property
-    def cost_usd(self) -> float:
-        return round(sum(h.cost_usd for h in self.hops), 6)
 
 
 class TaskWait(BaseModel):
@@ -291,7 +282,6 @@ class TaskRecord(BaseModel):
 
     # The execution: what running it produced.
     hops: list[HopResult] = Field(default_factory=list)
-    cost_usd: float = Field(0.0, alias="costUsd")
     worktree: Worktree | None = Field(None, exclude_if=is_none)
     prepared: Prepared | None = Field(None, exclude_if=is_none)
     # Validated where it is used: the domain may not import ``pipeline``.

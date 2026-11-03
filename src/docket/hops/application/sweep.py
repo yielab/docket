@@ -7,8 +7,7 @@ gates) and specs/functional/security-gates.spec.md (``pre_input``/``pre_output``
 Load-bearing points not obvious from either: the concurrency guarantee of a claim is the
 filelock held for the whole claim read-modify-write, never a comparison of any claim value.
 ``pre_input`` fires once at enqueue, not per hop, so incoming text cannot re-trip a ``"*"``-scoped
-policy at every role. The pod budget gate counts tokens (``pod_counted_tokens``); it reads no
-price and no recorded spend.
+policy at every role. The pod budget gate counts tokens (``pod_counted_tokens``) and reads nothing else.
 """
 
 from __future__ import annotations

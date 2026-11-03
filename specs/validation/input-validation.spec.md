@@ -1,9 +1,9 @@
 # Input Validation Specification
 
-**Version**: 2.1.1
+**Version**: 2.2.0
 **Status**: Implemented for project/pod ids, model ids, command verbs and arguments, credential
 values and `AgentMeta`.
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -58,10 +58,8 @@ way.
 **Rules**:
 - **MUST** be a well-formed `provider/model` id matching `^[a-z0-9_-]+/[A-Za-z0-9._:/-]+$`
   (for example `anthropic/claude-sonnet-4-6`). There are no model aliases.
-- A well-formed id docket does not know is **accepted** with a warning. For a local provider there
-  is no warning (a local endpoint is priced at $0). For a marketplace provider the warning says
-  the per-model price is not tracked and cost shows as `n/a (bring your own)`. Otherwise the
-  warning says the model is not in the pricing table and cost shows as `n/a`.
+- A well-formed id docket does not know is **accepted**, with no warning: docket keeps no rate
+  table for it to be missing from.
 - A malformed id **MUST** be rejected with a hard error that names the id, asks for a full
   `provider/model` id and lists the current role policy. `docket setup model set` prints it as one
   error and exits 1.
@@ -151,7 +149,7 @@ a Pydantic model or a domain helper) before acting on it.
 |------------------|-----------|---------|
 | `validate_project_id(project)` | Project/pod id grammar and length | the id, or raises `ProjectIdError` |
 | `slugify(name)` | Not a validator: derives an id from a name | the slug |
-| `validate_model(model)` | `provider/model` grammar | `(model, warnings)`, or raises `ValueError` |
+| `validate_model(model)` | `provider/model` grammar | the model, or raises `ValueError` |
 | `validate_verify_cmd(cmd)` | Verify command: no NUL, no newline, at most 2000 characters | the command, or raises `VerifyCmdError` |
 | verb and argument declarations | Verb in the group's set, required arguments present, typed parameters | the command body runs, or exit 2 |
 | credential prefix check | Value against the catalog's `credentialPrefix` | `(ok, reason)`; the caller warns on a mismatch |
@@ -173,7 +171,7 @@ uv run pytest
 
 - Project id: accepted and rejected ids, `slugify`, a blueprint entry of `init --from` with a
   traversal id (exit 1, nothing provisioned), and `POST /pods` with a traversal name.
-- Model id: the unknown-model, local-provider and marketplace-provider warnings.
+- Model id: an unknown well-formed model is accepted without a warning.
 - `AgentMeta`: camelCase round trip and the field set.
 - Verbs: unknown verb, missing argument and bounded-option usage errors exit 2.
 - Credentials: add, rotate and remove flows and their audit entries.

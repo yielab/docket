@@ -32,7 +32,7 @@ def _envs(*steps: _step.Step) -> dict[str, dict[str, str]]:
         agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None
     ) -> _rd.TurnResult:
         seen[agent_id.rsplit("-", 1)[-1]] = dict(env or {})
-        return _rd.TurnResult(True, "done", 0.0, {})
+        return _rd.TurnResult(True, "done", {})
 
     spec = _pipeline.PipelineSpec(name="solo", steps=list(steps))
     task = TaskRecord(id="task-1", description="x", status=Status.running)

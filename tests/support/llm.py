@@ -88,9 +88,7 @@ def implementer_messages(driver: FakeDriver) -> list[str]:
 
 
 def hop(role: str, output: str, member_id: str = "") -> _task.HopResult:
-    return _task.HopResult(
-        role=role, member_id=member_id or f"demo-{role}", ok=True, output=output, cost_usd=0.0
-    )
+    return _task.HopResult(role=role, member_id=member_id or f"demo-{role}", ok=True, output=output)
 
 
 def summarizing_driver(text: str = "summary of the old turns") -> _sess.SessionSummaryRunner:
@@ -101,7 +99,7 @@ def summarizing_driver(text: str = "summary of the old turns") -> _sess.SessionS
         timeout: int,
         env: dict[str, str] | None = None,
     ) -> TurnResult:
-        return TurnResult(True, text, 0.0, {})
+        return TurnResult(True, text, {})
 
     return _driver
 

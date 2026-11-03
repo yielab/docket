@@ -49,8 +49,20 @@ class TestBuildStatus:
             "timestamp",
             "channels",
             "agents",
-            "totalCostUsd",
         }
+
+    def test_no_key_names_a_dollar(self, fake_home: Path) -> None:
+        def keys(node: Any) -> set[str]:
+            if isinstance(node, dict):
+                return set(node) | {k for v in node.values() for k in keys(v)}
+            if isinstance(node, list):
+                return {k for v in node for k in keys(v)}
+            return set()
+
+        named = {
+            k for k in keys(health.build_status()) if "cost" in k.lower() or "usd" in k.lower()
+        }
+        assert named == set()
 
     def test_api_version_field(self, fake_home: Path) -> None:
         assert health.build_status()["apiVersion"] == health.SERVE_API_VERSION
@@ -86,7 +98,6 @@ class TestBuildStatus:
             "registered",
             "bindings",
             "lastActivity",
-            "costUsd",
             "budgetTokens",
         }
         assert a["id"] == "myshop"

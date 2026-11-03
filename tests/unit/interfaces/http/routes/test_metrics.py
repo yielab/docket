@@ -45,15 +45,18 @@ class TestRenderMetrics:
         text = metrics.render_metrics()
         for name in (
             "docket_agents_total",
-            "docket_agent_cost_usd",
             "docket_agent_turns_total",
-            "docket_cost_usd_total",
             "docket_approvals_pending_total",
             "docket_tasks_started_total",
             "docket_escalations_total",
             "docket_escalation_wait_seconds",
         ):
             assert name in text
+
+    def test_no_dollar_sample_or_family(self, fake_home: Path) -> None:
+        text = metrics.render_metrics()
+        assert "cost_usd" not in text
+        assert "USD" not in text
 
     def test_help_and_type_headers(self, fake_home: Path) -> None:
         text = metrics.render_metrics()
@@ -66,9 +69,6 @@ class TestRenderMetrics:
 
     def test_per_agent_labels(self, fake_home: Path) -> None:
         lines = metrics.render_metrics().splitlines()
-        cost_line = next(line for line in lines if line.startswith("docket_agent_cost_usd{"))
-        assert 'agent="myshop"' in cost_line
-        assert 'model="anthropic/claude-sonnet-4-6"' in cost_line
         turns_line = next(line for line in lines if line.startswith("docket_agent_turns_total{"))
         assert 'agent="myshop"' in turns_line
 
@@ -79,12 +79,10 @@ class TestRenderMetrics:
         self, fake_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         agents = [
-            {"id": "alpha", "model": "m1", "costUsd": 0, "turns": 3},
-            {"id": "beta", "model": "m2", "costUsd": 0, "turns": 5},
+            {"id": "alpha", "model": "m1", "turns": 3},
+            {"id": "beta", "model": "m2", "turns": 5},
         ]
-        monkeypatch.setattr(
-            metrics, "_cost_json", lambda: {"agents": agents, "totalUsd": 0, "totalTurns": 8}
-        )
+        monkeypatch.setattr(metrics, "_usage_json", lambda: {"agents": agents})
         text = metrics.render_metrics()
         _assert_text_format_0_0_4(text)
         assert 'docket_agent_turns_total{agent="alpha"} 3' in text

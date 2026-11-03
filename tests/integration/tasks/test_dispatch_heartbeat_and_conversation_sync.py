@@ -71,7 +71,7 @@ class TestHeartbeatLedgerLifecycle:
                 agent_id: str, session_id: str, message: str, timeout: int, env: dict | None = None
             ) -> _rd.TurnResult:
                 seen_mid_flight.append(_mem.read_dispatch_task_ids(ws))
-                return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {})
+                return _rd.TurnResult(True, f"done by {agent_id}", {})
 
             _sweep.dispatch_pod("demo", runner=runner)
 
@@ -114,8 +114,8 @@ class TestHeartbeatLedgerLifecycle:
                 seen.append((ws / _mem.HEARTBEAT_FILE).read_text(encoding="utf-8"))
                 role = agent_id.rsplit("-", 1)[-1]
                 if role == "reviewer":
-                    return _rd.TurnResult(True, "APPROVE looks good", 0.0, {})
-                return _rd.TurnResult(True, f"done by {agent_id}", 0.0, {})
+                    return _rd.TurnResult(True, "APPROVE looks good", {})
+                return _rd.TurnResult(True, f"done by {agent_id}", {})
 
             res = _sweep.dispatch_pod("demo", runner=runner)[0]
             assert res.status == "done"

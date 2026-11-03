@@ -2,7 +2,7 @@
 
 Implements ``agent.ports.RuntimeDriver`` on ``agent/loop.py`` so ``hops/application/runner.py``,
 the pipeline executor, and every Protocol caller work unchanged. ``default_driver()`` is the single
-resolution point production callers -- pod dispatch, distillation, cost aggregation, trace
+resolution point production callers -- pod dispatch, distillation, usage aggregation, trace
 ingestion -- use, running on docket's gated loop.
 
 Every ``run_turn`` runs through ``agent.loop.run_agent_turn``, dispatching every tool call
@@ -201,7 +201,6 @@ class DocketDriver:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 {},
                 f"no .docket-meta.json found for agent {agent_id!r}",
                 failure_kind="invalid_output",
@@ -215,7 +214,6 @@ class DocketDriver:
             return TurnResult(
                 False,
                 "",
-                0.0,
                 {},
                 f"no endpoint configured for model {effective_model!r}",
                 failure_kind="daemon_error",
@@ -355,7 +353,7 @@ class DocketDriver:
 
     def usage(self, agent_id: str) -> UsageReport:
         """Aggregate this agent's *measured*, non-estimated usage (``agent.ports.TokenUsage``) across
-        its sessions. ``cost_usd`` stays ``0.0`` and ``by_day`` is always ``[]`` -- see
+        its sessions. ``by_day`` is always ``[]`` -- see
         specs/functional/cost-tracking.spec.md ("Known gap: --history is always empty")."""
         totals = UsageTotals()
         for summary in self.list_sessions(agent_id):
@@ -370,11 +368,6 @@ class DocketDriver:
     def capabilities(self) -> DriverCapabilities:
         return DriverCapabilities(
             driver_name="docket",
-            # cost_usd is 0.0 everywhere in this driver by design (see
-            # run_turn/usage docstrings and CLAUDE.md's standing rule) --
-            # the provider catalog's prices power comparative estimates only, never a
-            # billing claim.
-            reports_cost_usd=False,
             # list_sessions/usage read real, durable
             # docket-owned session storage (agent/session.py).
             supports_sessions=True,

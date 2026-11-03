@@ -90,7 +90,7 @@ class TestCustomRoleEndingInRegisteredRoleName:
             ) -> _rd.TurnResult:
                 result = driver(agent_id, session_key, message, timeout, env)
                 if agent_id.endswith("security-reviewer"):
-                    return _rd.TurnResult(True, "APPROVE - clean", result.cost_usd, {"output": "x"})
+                    return _rd.TurnResult(True, "APPROVE - clean", {"output": "x"})
                 return result
 
             results = _sweep.dispatch_pod("proj", runner=_runner, spec=_security_review_pipeline())

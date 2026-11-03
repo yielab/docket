@@ -1,10 +1,10 @@
 # Observability Export Specification
 
-**Version**: 3.2.0
+**Version**: 3.3.0
 **Status**: Implemented and live. Trace records project into vendor-neutral spans and are sent,
 off the turn's thread, to every enabled `kind: exporter` destination over the one `otlp-http`
 dialect; what a destination receives beyond structure is set by its own privacy level.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -141,8 +141,7 @@ This specification does NOT cover:
     reduces a payload.
 18. `DEFAULT_EVENTS` **MUST** exclude any record type whose payload is expected to carry
     prompt or message content by construction (`context_composed`, `prompt_composed`,
-    `session_compaction`, `request_fit`), **MUST** exclude `cost_charged` (an estimate is never
-    exported as a measurement), and **MUST** exclude `run_cancellation_observed`/`step_skipped`
+    `session_compaction`, `request_fit`), and **MUST** exclude `run_cancellation_observed`/`step_skipped`
     (no destination has asked for either).
 
 ### Exporter documents

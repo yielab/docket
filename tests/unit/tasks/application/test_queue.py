@@ -438,7 +438,7 @@ class TestBaseRefRefusedAtClaim:
             agent_id: str, session_key: str, message: str, timeout: int, env: dict[str, str] | None
         ) -> _rd.TurnResult:
             calls.append(agent_id)
-            return _rd.TurnResult(True, "done", 0.0, {})
+            return _rd.TurnResult(True, "done", {})
 
         return _run
 

@@ -130,7 +130,7 @@ class _Runner:
         env: dict[str, str] | None = None,
     ) -> TurnResult:
         if agent_id.endswith("-lead"):
-            return TurnResult(True, "plan", 0.0, {})
+            return TurnResult(True, "plan", {})
         root = Path((env or {})[PIPELINE_WORKTREE_ENV])
         if agent_id.endswith("-implementer"):
             (root / "AGENTS.md").write_text(_MARKER_AGENTS)
@@ -148,7 +148,7 @@ class _Runner:
             _git(root, "add", ".")
             _git(root, "commit", "-m", "rewrite instructions")
             (root / ".git").write_text("gitdir: /nonexistent\n")  # the agent owns this file
-            return TurnResult(True, "done", 0.0, {})
+            return TurnResult(True, "done", {})
         task = next(t for t in TaskRepository.for_pod("demo").list() if t.worktree)
         self.messages[agent_id] = message
         result = self.driver.run_turn(

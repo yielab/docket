@@ -1,10 +1,10 @@
 # Trace Store Specification
 
-**Version**: 5.1.0
+**Version**: 6.0.0
 **Status**: Implemented and live. Every component that traces writes through `trace_event` into
 one append-only JSONL file per session; the periodic sweep of `docket start` closes stale traces
 and expires old ones.
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -40,7 +40,7 @@ This specification does NOT cover:
   redact it — the producing component's own spec owns that: `agent-loop.spec.md` owns
   `tool_call`, `tool_result`, `prompt_composed`, `session_compaction`, `request_fit` and the
   meaning of `llm_call`; `pod-dispatch.spec.md` owns the verdict/rework/approval/run-cancellation
-  and hop event family, `cost_charged` and `budget_exceeded`; `security-gates.spec.md` owns
+  and hop event family and `budget_exceeded`; `security-gates.spec.md` owns
   `guardrail_check`/`guardrail_block`; `cost-tracking.spec.md` owns `budget_exceeded`'s counted-token
   payload; `operator-loop.spec.md` owns the `escalation_*` family
 - The read API surface over this store (`docket task trace`, `GET` routes) — see
@@ -67,13 +67,13 @@ This specification does NOT cover:
 4. `trace_event` **MUST** return `"written"` only after a real append to the session's file.
    `"written"`, `"rejected"`, and `"suppressed"` **MUST** remain three distinct, never-conflated
    outcomes, so a caller can tell a real record from a no-op.
-5. `cost_usd` **MUST** be included on a record only when the caller passes a value that parses
-   as `float`; when included, it **MUST** be the field name `cost_usd`. `duration_ms` follows the
-   same optional-inclusion rule, parsed as `int`.
-6. `EVENT_TYPES` **MUST** be exactly these 49 members: `session_start`, `tool_call`,
+5. A record carries no cost or dollar field. `duration_ms` is included only when the caller
+   passes a value that parses as `int`. A stored record from before this contract that still holds
+   a cost key or a cost event is read and shown as it was written.
+6. `EVENT_TYPES` **MUST** be exactly these 48 members: `session_start`, `tool_call`,
    `tool_result`, `context_composed`, `prompt_composed`, `session_compaction`, `request_fit`,
    `guardrail_check`, `guardrail_block`, `approval_granted`,
-   `approval_denied`, `cost_charged`, `budget_warning`, `budget_exceeded`,
+   `approval_denied`, `budget_warning`, `budget_exceeded`,
    `verification_failed`, `reviewer_verdict_unparseable`,
    `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
    `paused_refused`, `approval_required`, `approval_resumed`, `approval_task_denied`, `approval_unused`,
@@ -308,7 +308,7 @@ EVENT_TYPES: frozenset[str]  # the full set enumerated in requirement 6
 
 def trace_event(
     project: str, session_id: str, agent_role: str, event_type: str, payload: str,
-    cost_usd: float | str | None = None, duration_ms: int | str | None = None,
+    duration_ms: int | str | None = None,
     *, task_id: str = "",
 ) -> TraceStatus: ...
 
@@ -386,7 +386,7 @@ with subscribe(received.append):
  "duration_ms": 743}
 ```
 
-No `cost_usd` key appears on this or any `llm_call` record: token counts are measured, but this
+No cost key appears on this or any record: token counts are measured, and this
 store never carries a dollar figure (see `agent-loop.spec.md` requirement 71).
 
 ### A record with `task_id`

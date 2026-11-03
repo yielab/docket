@@ -472,12 +472,10 @@ def refresh_claim_each_round(backend: ChatBackend, project: str, task_id: str) -
 
 def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:
     """The loop outcome as the driver port's ``TurnResult``, field for field plus the loop's own
-    stop reason. ``cost_usd`` stays 0.0: tokens are measured, and turning them into dollars
-    here would silently convert an estimate into a billing claim."""
+    stop reason. Tokens are measured and reported as tokens; no dollar figure is made here."""
     return TurnResult(
         result.ok,
         result.output,
-        0.0,
         result.raw,
         result.error,
         failure_kind=result.failure_kind,

@@ -114,12 +114,12 @@ class TestBuiltinCatalog:
             spec = _provider.load_provider_document(path)
             assert spec.name
 
-    def test_the_anthropic_provider_lists_the_family_5_models_unpriced_and_ranks_them(self) -> None:
+    def test_the_anthropic_provider_lists_the_family_5_models_and_ranks_them(self) -> None:
         spec = _provider.load_catalog().get("anthropic")
         assert spec is not None
         rows = {row.id: row for row in spec.models}
         family = ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1")
-        assert all(name in rows and rows[name].price is None for name in family)
+        assert all(name in rows for name in family)
         preset = next(p for p in spec.presets if p.name == "anthropic")
         assert preset.ranks == {
             "economy": "claude-haiku-5-5",
@@ -215,12 +215,16 @@ class TestShippedTemplatesDeclareNoLimit:
             assert "contextWindow" not in text
             assert "maxTokens" not in text
 
-    def test_prices_and_presets_stay(self) -> None:
+    def test_presets_stay(self) -> None:
         spec = _provider.load_catalog().get("anthropic")
         assert spec is not None
-        assert spec.prices_as_of
-        assert any(row.price is not None for row in spec.models)
         assert spec.presets
+
+    def test_no_built_in_document_carries_a_rate_or_a_snapshot_date(self) -> None:
+        for path in sorted(_templates.PROVIDER_TEMPLATES_DIR.glob("*.yaml")):
+            text = path.read_text(encoding="utf-8")
+            assert "price" not in text.lower()
+            assert "marketplace" not in text
 
 
 class TestObservedLimitsStore:

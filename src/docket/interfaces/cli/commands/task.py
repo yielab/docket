@@ -212,7 +212,7 @@ def cmd_list(
     json_out: bool = typer.Option(False, "--json", help="Emit JSON"),
     pod: str | None = pod_option(),
 ) -> None:
-    """The pod's task queue with status, cost and the worktree path when one exists.
+    """The pod's task queue with status and the worktree path when one exists.
 
     Example: docket task list --json
     """
@@ -229,13 +229,12 @@ def cmd_list(
             short_id(i["id"]),
             i["priority"],
             i["status"],
-            f"${i['costUsd']:.4f}" if i["costUsd"] else "-",
             escape(i["worktree"] or "-"),
             escape(i["description"]),
         ]
         for i in items
     ]
-    ui.table(rows, ["ID", "PRI", "STATUS", "COST", "WORKTREE", "DESCRIPTION"])
+    ui.table(rows, ["ID", "PRI", "STATUS", "WORKTREE", "DESCRIPTION"])
 
 
 def _task_of_escalation(ref: str) -> str:

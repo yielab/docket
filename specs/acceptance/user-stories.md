@@ -1,8 +1,8 @@
 # User Stories and Acceptance Criteria
 
-**Version**: 2.1.1
+**Version**: 2.2.0
 **Status**: Active
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-11-03
 
 ## Overview
 
@@ -16,7 +16,7 @@ So that [benefit]
 
 The CLI has ten top-level commands: `init status inbox task run pod log setup start stop`. Every
 story below is written against them. A story whose behaviour does not exist is not kept here.
-Owning specs (cost-tracking, pod-dispatch, security-gates, telegram-integration, agent-lifecycle)
+Owning specs (token usage in cost-tracking, pod-dispatch, security-gates, telegram-integration, agent-lifecycle)
 hold the full requirements; this document restates the operator-visible part and names the tests
 that answer to it.
 
@@ -27,7 +27,7 @@ Each story has a stable ID used to cross-reference criteria and tests.
 | ID | Story | Epic |
 |----|-------|------|
 | AGT-002 | Reset a Member's Ledger | Pod Members |
-| AGT-003 | Monitor Token Use and Estimated Cost | Pod Members |
+| AGT-003 | Monitor Token Use | Pod Members |
 | POD-001 | Provision a Project Pod | Pod Lifecycle |
 | POD-002 | Run the Pod Dispatch Pipeline | Pod Lifecycle |
 | POD-003 | Grow and Shrink a Pod | Pod Lifecycle |
@@ -76,31 +76,30 @@ The surface is `docket pod reset <member>`.
 - Reset is covered by the integration tests named above
 - `docket pod reset --help` and the generated CLI reference list the verb
 
-### Story: AGT-003 - Monitor Token Use and Estimated Cost
+### Story: AGT-003 - Monitor Token Use
 
 **As a** project manager
-**I want** to see how many tokens a pod used and a labelled cost estimate
-**So that** I can manage AI spend without mistaking an estimate for billing
+**I want** to see how many tokens a pod used
+**So that** I can bound a pod's work by a measured count, with no dollar figure to mistake for billing
 
 **Acceptance Criteria:**
 - [ ] `docket status` shows the pod's measured tokens as `<in> in / <out> out`, or `none yet`,
       beside the pod's done / failed / aborted counts and latency
       (`test_a_scripted_trace_of_one_done_and_two_failed_reads_1_2_0`)
-- [ ] The dollar figure beside the tokens is labelled `est.`: docket records no dollar spend, so
-      the figure is a token-count times catalog-price estimate and is never presented as recorded
-      (`test_status_labels_the_dollar_figure_an_estimate`)
-- [ ] `docket status --all --json` carries each agent's recorded `costUsd` and the fleet
-      `totalCostUsd`, both `0.0` while nothing records a cost
-      (`test_status_all_json_inventory_cost_field_stays_zero`)
+- [ ] No dollar figure appears beside the tokens, and no key of `docket status --json` or
+      `status --all --json` names a cost, a rate or a dollar: docket records no dollar spend and
+      keeps no rate table (`test_the_human_tokens_row_carries_no_dollar_and_no_estimate`,
+      `test_a_pods_json_usage_is_the_two_measured_token_counts`,
+      `test_the_fleet_json_names_no_cost_or_dollar_key`)
 - [ ] `docket status --all` summarises every pod
       (`test_all_shows_failed_counts`)
 - [ ] `docket status --json` is machine-readable (`test_json_carries_tasks_usage_last_run_and_the_start_flag`)
 - [ ] `docket status --history [--days N]` returns an empty history, because sessions store one
       running total and no per-turn timestamp (`test_history_with_no_dated_data_is_an_empty_list`)
 - [ ] A budget cap (`docket pod set budgetTokens <N>`) is checked before each hop against the
-      pod's counted tokens, so it holds for a model with no catalog price too;
+      pod's counted tokens, so it holds for every model;
       `docket setup --fix` warns at 80% or more of the cap and flags 100% or more
-      (`test_counted_tokens_over_the_cap_block_the_next_task_on_an_unpriced_model`,
+      (`test_counted_tokens_over_the_cap_block_the_next_task_on_any_model`,
       `test_budget_warns_at_80_percent_of_budget_tokens`)
 
 **Definition of Done:**
@@ -150,8 +149,7 @@ The surface is `docket pod reset <member>`.
 
 **Acceptance Criteria:**
 - [ ] `docket task add "<task>"` queues a task on the pod (`test_queues_from_the_pod_in_the_environment`)
-- [ ] `docket task list` shows the task as `pending`, with a dash in the COST column because no
-      cost is recorded *(untested)*
+- [ ] `docket task list` shows the task as `pending` *(untested)*
 - [ ] `docket run` runs Lead, Implementer, then the Reviewer when the pod has one, one
       real agent turn per hop (`test_traces_written_per_hop`)
 - [ ] A Reviewer `REQUEST-CHANGES` sends the task back to the Implementer for one rework cycle by
@@ -161,7 +159,7 @@ The surface is `docket pod reset <member>`.
 - [ ] Each hop is budget-gated against the pod's `budgetTokens` and its counted tokens. Over the
       cap the task is set to `blocked` (never rewritten to `pending`) and the pod is paused
       (`test_cap_breach_pauses_lead_and_blocks_task`,
-      `test_counted_tokens_over_the_cap_block_the_next_task_on_an_unpriced_model`)
+      `test_counted_tokens_over_the_cap_block_the_next_task_on_any_model`)
 - [ ] A blocked task re-enters the queue only through `docket run --resume`,
       `docket pod set budgetTokens <N>` or `docket task retry <task-id>`
       (`test_resume_clears_the_budget_pause_and_unblocks_tasks`,
@@ -364,7 +362,7 @@ Exercised by: `test_default_lean_pod_is_lead_plus_implementer`,
 Untested: the member's effective-configuration view through `pod show <member>`, the TTY
 confirmation prompt of `pod reset`, and `status --all` after deletion.
 
-### Scenario: Status Shows Tokens and a Labelled Estimate
+### Scenario: Status Shows Tokens and No Dollar Figure
 
 ```gherkin
 Given a pod "webapp" whose Lead has processed 1000000 input tokens and 1000000 output tokens
@@ -372,15 +370,14 @@ And the Lead runs on anthropic/claude-haiku-4-5
 
 When I run "docket status --pod webapp"
 Then I should see the tokens as "<in> in / <out> out"
-And the dollar figure beside them should be labelled "est."
-And no recorded dollar spend should be shown
+And no dollar figure should be shown
 
 When I run "docket status --all --json"
-Then the Lead's "costUsd" and the fleet "totalCostUsd" should be 0.0
+Then no key of the payload should name a cost, a rate or a dollar
 ```
 
-Exercised by: `test_status_labels_the_dollar_figure_an_estimate`,
-`test_status_all_json_inventory_cost_field_stays_zero`.
+Exercised by: `test_the_human_tokens_row_carries_no_dollar_and_no_estimate`,
+`test_the_fleet_json_names_no_cost_or_dollar_key`.
 
 ### Scenario: A Budget Cap Blocks Dispatch
 
@@ -427,8 +424,6 @@ Docket reports these measurements itself; none is a target. Acceptance of a stor
 on a threshold.
 
 - **Tokens**: measured input and output tokens per pod (`docket status`, `docket status --json`).
-- **Estimated cost**: a labelled token-count times catalog-price estimate; recorded spend is
-  always `0.0`.
 - **Outcomes**: done, failed and aborted task counts and mean and p95 latency per pod
   (`docket status`).
 - **Guardrails**: approval, denial and policy-hit counts on the service's `/metrics` endpoint
@@ -439,7 +434,7 @@ on a threshold.
 
 Where the names above live today. Phase 46 rewrites this section and nothing else.
 
-- `src/docket/interfaces/cli/commands/status.py`: `docket status` (tokens, estimate label, `--history`)
+- `src/docket/interfaces/cli/commands/status.py`: `docket status` (tokens, `--history`)
 - `src/docket/interfaces/cli/commands/pod.py`: `docket pod` verbs (`show`, `add`, `remove`, `reset`, `delete`, `set`, `check`)
 - `src/docket/interfaces/cli/commands/agents.py`: `docket init`
 - `src/docket/interfaces/cli/commands/task.py`, `src/docket/interfaces/cli/commands/run.py`: `docket task`, `docket run`

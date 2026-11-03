@@ -493,7 +493,7 @@ class _Editor:
             root = Path((env or {})[PIPELINE_WORKTREE_ENV])
             for rel, text in self.edits.items():
                 (root / rel).write_text(text)
-        return TurnResult(True, "done", 0.0, {})
+        return TurnResult(True, "done", {})
 
 
 @contextmanager

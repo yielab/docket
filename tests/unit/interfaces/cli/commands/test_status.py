@@ -13,6 +13,8 @@ from tests.support.tasks import pregrant as _pregrant
 from tests.support.tasks import put_task, put_tasks, task
 from typer.testing import CliRunner
 
+from docket.agent.ports import UsageReport, UsageTotals
+from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import status as _status
 from docket.kernel.home import current_home
@@ -78,6 +80,44 @@ class TestTheSandboxOpensTheOutput:
             assert out.lstrip().startswith("Sandbox   off.")
 
 
+def _dollar_keys(node: Any) -> set[str]:
+    """Every key anywhere in *node* that names a cost or a dollar."""
+    if isinstance(node, dict):
+        own = {k for k in node if "cost" in k.lower() or "usd" in k.lower()}
+        return own | {k for v in node.values() for k in _dollar_keys(v)}
+    if isinstance(node, list):
+        return {k for v in node for k in _dollar_keys(v)}
+    return set()
+
+
+class TestNoDollars:
+    def test_a_pods_json_usage_is_the_two_measured_token_counts(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            body = _json("--pod", "demo")
+            assert set(body["usage"]) == {"input", "output"}
+            assert _dollar_keys(body) == set()
+
+    def test_the_fleet_json_names_no_cost_or_dollar_key(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            assert _dollar_keys(_json("--all")) == set()
+
+    def test_the_human_tokens_row_carries_no_dollar_and_no_estimate(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with _seed(tmp_path):
+            monkeypatch.setattr(
+                DocketDriver,
+                "usage",
+                lambda self, agent_id: UsageReport(
+                    totals=UsageTotals(input_tokens=50_000, output_tokens=25_000)
+                ),
+            )
+            out = runner.invoke(_app, ["status", "--pod", "demo"]).output
+            row = next(ln for ln in out.splitlines() if ln.lstrip().startswith("Tokens"))
+            assert "in /" in row and "out" in row
+            assert "$" not in row and "est." not in row
+
+
 class TestCurrentPod:
     def test_a_scripted_trace_of_one_done_and_two_failed_reads_1_2_0(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
@@ -98,7 +138,7 @@ class TestCurrentPod:
             body = _json("--pod", "demo")
 
             assert body["tasks"]["pending"] == 1 and body["tasks"]["failed"] == 1
-            assert set(body["usage"]) == {"input", "output", "estimateUsd"}
+            assert set(body["usage"]) == {"input", "output"}
             assert body["lastRun"] is None
             assert body["running"] is False
 
@@ -226,7 +266,7 @@ class TestAllPods:
         with _seed(tmp_path):
             body = _json("--all")
             assert [p["id"] for p in body["projects"]] == ["demo"]
-            assert {"timestamp", "channels", "agents", "totalCostUsd"} <= set(body)
+            assert {"timestamp", "channels", "agents"} <= set(body)
             assert {a["id"] for a in body["agents"]} == {"demo-lead", "demo-implementer"}
 
 
@@ -236,12 +276,13 @@ class TestHistory:
             assert _json("--pod", "demo", "--history", "--days", "2") == {"history": []}
 
 
-class TestCostSnapshot:
-    def test_lists_every_agent_with_a_total(self, tmp_path: Path) -> None:
+class TestUsageSnapshot:
+    def test_lists_every_agent_with_its_measured_tokens_and_no_dollar(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            snap = _status.cost_snapshot()
+            snap = _status.usage_snapshot()
             assert {a["id"] for a in snap["agents"]} == {"demo-lead", "demo-implementer"}
-            assert snap["totalUsd"] == 0.0
+            assert all({"input", "output", "turns"} <= set(a) for a in snap["agents"])
+            assert _dollar_keys(snap) == set()
 
 
 class TestParkedQuestionAndSandbox:

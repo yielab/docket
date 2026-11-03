@@ -166,12 +166,9 @@ class _ReflexionRunner:
                 return _rd.TurnResult(
                     ok=True,
                     output="REQUEST-CHANGES\nTighten the input validation.",
-                    cost_usd=0.01,
                     raw={},
                 )
-            return _rd.TurnResult(
-                ok=True, output="APPROVE - looks solid now", cost_usd=0.01, raw={}
-            )
+            return _rd.TurnResult(ok=True, output="APPROVE - looks solid now", raw={})
         return FakeDriver()(member_id, session_id, message, timeout, env)
 
 

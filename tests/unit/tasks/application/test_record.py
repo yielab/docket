@@ -113,7 +113,7 @@ class TestBudgetOutcomeRaise:
 
     @staticmethod
     def _outcome(stop: BudgetStop) -> dict[str, Any]:
-        run = TurnResult(False, "", 0.0, {}, budget_stop=stop)
+        run = TurnResult(False, "", {}, budget_stop=stop)
         outcome = _record._budget_outcome(run, tree_changed=False)
         assert outcome is not None
         return outcome.model_dump(by_alias=True)

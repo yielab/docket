@@ -85,10 +85,9 @@ class Home:
     claim_stale_timeout: int = 1800
     # How many recent finished sessions `docket status` counts.
     metrics_window: int = 50
-    # `docket setup --fix` flags a session past either threshold (turns, estimated cost)
-    # as stuck. Generous on purpose: past them a human should look.
+    # `docket setup --fix` flags a session past this many turns as stuck. Generous on
+    # purpose: past it a human should look.
     runaway_turns_threshold: int = 200
-    runaway_cost_threshold: float = 20.0
     # `docket setup --fix` flags a stored secret older than this: a rotation nudge, never
     # an expiry.
     key_max_age_days: int = 90
@@ -227,7 +226,6 @@ class Home:
             claim_stale_timeout=_int(env, "CLAIM_STALE_TIMEOUT", 1800),
             metrics_window=_int(env, "METRICS_WINDOW", 50),
             runaway_turns_threshold=_int(env, "RUNAWAY_TURNS_THRESHOLD", 200),
-            runaway_cost_threshold=_float(env, "RUNAWAY_COST_THRESHOLD", 20),
             key_max_age_days=_int(env, "DOCKET_KEY_MAX_AGE_DAYS", 90),
             trace_retention_days=_int(env, "TRACE_RETENTION_DAYS", 30),
             context_token_budget_override=_optional_int(env, "CONTEXT_TOKEN_BUDGET"),

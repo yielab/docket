@@ -269,7 +269,7 @@ def model_callback(
 
 @model_app.command("list")
 def model_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON")) -> None:
-    """Show the role to model policy with pricing and source.
+    """Show the role to model policy with its source.
 
     Example: docket setup model list --json"""
     role_models, tiers, default_model = _mp.load_registry()
@@ -282,7 +282,6 @@ def model_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON"))
             {
                 "role": role,
                 "model": m,
-                "price": _mp.pricing_label(m),
                 "source": source,
                 "why": _mp.role_why(role),
             }
@@ -292,16 +291,13 @@ def model_list(json_out: bool = typer.Option(False, "--json", help="Emit JSON"))
         return
     ui.header("Role to model policy")
     ui.table(
-        [[r["role"], r["model"], r["price"], r["source"], r["why"]] for r in rows],
-        ["ROLE", "MODEL", "PRICE", "SOURCE", "WHY"],
+        [[r["role"], r["model"], r["source"], r["why"]] for r in rows],
+        ["ROLE", "MODEL", "SOURCE", "WHY"],
     )
     _say(f"default  {default_model}")
     _say(
         f"rank anchors  {tiers.get('premium', '')} -> {tiers.get('standard', '')} -> {tiers.get('economy', '')}"
     )
-    shown = {d for r in rows if (d := _mp.prices_as_of(str(r["model"])))}
-    if shown:
-        ui.dim("PRICE is an estimate from a snapshot, not recorded spend")
     ui.dim("Change: docket setup model set <role|default> <provider/model>")
 
 
@@ -314,12 +310,10 @@ def model_set(
 
     Example: docket setup model set implementer anthropic/claude-sonnet-4-5"""
     try:
-        validated, warnings = _mp.validate_model(model)
+        validated = _mp.validate_model(model)
     except ValueError as exc:
         ui.error(str(exc), "Use provider/model")
         raise typer.Exit(1) from None
-    for w in warnings:
-        ui.warn(w)
     role_models, _tiers, default_model = _mp.load_registry()
     if key == "default":
         before, updates = default_model, {"default": validated}
@@ -344,7 +338,7 @@ def _preset_rows() -> list[list[str]]:
     rows = []
     for p in _mp.known_presets():
         t = table[p]
-        rows.append([p, t["cost"], t["key"] or "-", t["note"]])
+        rows.append([p, t["key"] or "-", t["note"]])
     return rows
 
 
@@ -357,7 +351,7 @@ def model_preset(
     Example: docket setup model preset local"""
     if name is None:
         ui.header("Provider presets")
-        ui.table(_preset_rows(), ["PRESET", "COST", "KEY NEEDED", "NOTE"])
+        ui.table(_preset_rows(), ["PRESET", "KEY NEEDED", "NOTE"])
         return
     if name not in _mp.preset_table():
         ui.error(f"Unknown preset {name}", "Valid: " + " ".join(_mp.known_presets()))

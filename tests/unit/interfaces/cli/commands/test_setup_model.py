@@ -42,6 +42,37 @@ class TestFileBackendUnaffected:
             assert on_disk["ANTHROPIC_API_KEY"] == "fake-ant-realvalue0000000"
 
 
+class TestNoPrices:
+    def test_the_role_table_has_no_price_column_and_json_no_price_key(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            table = _runner.invoke(app, ["setup", "model", "list"])
+            as_json = _runner.invoke(app, ["setup", "model", "list", "--json"])
+
+            assert table.exit_code == 0 and as_json.exit_code == 0
+            assert "PRICE" not in table.output and "estimate from a snapshot" not in table.output
+            assert all("price" not in row for row in json.loads(as_json.stdout)["roles"])
+
+    def test_the_preset_table_has_no_cost_column(self, tmp_path: Path) -> None:
+        with _home(tmp_path):
+            out = _runner.invoke(app, ["setup", "model", "preset"]).output
+            header = next(ln for ln in out.splitlines() if "PRESET" in ln)
+            assert "COST" not in header and "KEY NEEDED" in header
+
+    @pytest.mark.parametrize(
+        "model", ["anthropic/claude-made-up-model", "openrouter/some-vendor/some-model"]
+    )
+    def test_pinning_a_model_the_catalog_does_not_list_does_not_warn_about_a_price(
+        self, tmp_path: Path, model: str
+    ) -> None:
+        with _home(tmp_path):
+            result = _runner.invoke(app, ["setup", "model", "set", "implementer", model])
+
+            assert result.exit_code == 0, result.output
+            assert f"implementer -> {model}" in result.output
+            low = result.output.lower()
+            assert "pricing" not in low and "n/a" not in low and "price" not in low
+
+
 # -- provider add ----------------------------------------------------------------------------
 
 
@@ -533,10 +564,10 @@ class TestProviderAddLimitsKeepInheritedRows:
                 500,
             )
             for original in before:
-                assert by_id[original.id].price == original.price
+                assert by_id[original.id].id == original.id
             assert after.headers == {"anthropic-version": "2023-06-01"}
 
-    def test_a_url_over_a_built_in_keeps_every_row_and_its_price(
+    def test_a_url_over_a_built_in_keeps_every_row(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _home(tmp_path):
