@@ -16,7 +16,7 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) is reopened** (decision 5 amended 2026-11-03), eight cards
+> **Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) is reopened** (decision 5 amended 2026-11-03), nine cards
 > below, five done: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
 > not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
 > **Phase 57** (D-79, [ADR 0037](docs/adr/0037-what-docket-gives-a-manager-in-the-plan-of-record.md)) closed 2026-11-01. Before it, Phase 56 (D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16) closed
@@ -109,7 +109,8 @@ from `main`.
     price, so the pod's cap there never trips (`pod show` warns "unpriced").
   ADR 0038 decision 5 now separates a budget (tokens: the task's `maxTokens`, the pod's
   `budgetTokens`), a clock (seconds: step, pod, machine) and guards (rounds, tool calls: machine
-  constants). Cards P59-6..P59-8 carry it out.
+  constants). The maintainer then asked for no dollars at all: no price, no cost, no estimate.
+  Cards P59-6..P59-9 carry it out.
 - *A token-budget landing passes as success.* Requirements 51-53 of `agent-loop.spec.md` return the
   finalization answer as `ok=True, final_message`, so an unfinished hop reaches its gate.
 
@@ -136,7 +137,8 @@ Each waits under "Phase 59" in the follow-ups.
 | 4 | P59-3 | the loop's finalization, `record.py` and `agent-loop.spec.md` again, after P59-2's `budget_exhausted` |
 | 5 | P59-6 | the step, plan, short-form and archetype schemas, `budget.py`, `driver_support.py`, `compose.py`, `ports.py`, `kernel/home.py`, `agent-loop.spec.md`: the files P59-4 grew |
 | 6 | P59-7 | `teams/` settings and provisioning, the pre-hop gate, the CLI and HTTP pod surfaces, `cost-tracking.spec.md`: no file of P59-6 except `pod-dispatch.spec.md` |
-| 7 | P59-8 | `interfaces/cli/commands/pod_config.py` (`cmd_plan`) after P59-6 and P59-7 settle what it prints |
+| 7 | P59-8 | dollars everywhere: the provider catalog, `model_selection.py`, the turn port, the hop and task records, `usage.py`, `status`, `run`, `task list`, `/metrics`, `/status.json`: after P59-7 (`pre_hop.py`, `usage.py`, `status.py`, `health.py`, `setup_check*.py`) |
+| 8 | P59-9 | `interfaces/cli/commands/pod_config.py` (`cmd_plan`) after P59-6..P59-8 settle what it prints |
 
 **Phase close (integrator).** Real runs, against `claude-haiku-5-5`. The first three passed on
 2026-11-03 before the amendment; the last three run after P59-8:
@@ -149,7 +151,8 @@ Each waits under "Phase 59" in the follow-ups.
   budget`, `source: task`;
 - the 42-round task again with only a step `timeout` declared: it finishes, no guard near;
 - a pod with a small `budgetTokens`: the next task is blocked `pod_budget`, the pod paused, and
-  `run --resume` after raising it continues.
+  `run --resume` after raising it continues; `docket status`, `docket run` and `/metrics` show
+  tokens and no dollar figure.
 
 Record rounds per hop before and after P59-5, on the same task.
 
@@ -537,8 +540,7 @@ Record rounds per hop before and after P59-5, on the same task.
     uses) with `budgetTokens`, over the same members and the same window the estimate used;
     `decide_pod_budget` (`hops/domain/gate_decisions.py` ~294-303) takes integers and no
     `estimated` flag. `pod_budget`, the pause, `pausedReason` and `run --resume` are unchanged.
-  - The pricing estimate stays where it informs (`docket status`), labelled, and gates nothing. The
-    "unpriced" warning on the budget goes.
+  - The "unpriced" warning on the budget goes. The rest of the dollar surface is P59-8's.
   - The blueprints set no pod budget (the build, respond and operate defaults of 20, 30 and 15 USD
     go): a pod cap is opt-in, and a task's `maxTokens` and the per-turn default already bound spend.
   - The `frugal` recipe (`templates/recipes/frugal/pod.yaml` ~8, `README.md`) declares a token cap;
@@ -568,9 +570,66 @@ Record rounds per hop before and after P59-5, on the same task.
 - **Gate:** the files above under `timeout 120`; `tests/architecture`; `tests/e2e -n auto` (the HTTP
   pod shape changes); `gen_cli_docs.py --check`, `gen_config_schemas.py --check`, `validate-specs.sh`.
 
-### P59-8 — `pod plan` shows each step's clock and the budget, with their sources
+### P59-8 — docket keeps no dollars: no price, no cost, no estimate
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-6, P59-7
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec (deletion) · **After:** P59-7
+
+- **Trigger:** the maintainer's request (2026-11-03): "eliminate the dollar handling and the
+  estimates." docket measures tokens and records no dollars (`DocketDriver` reports `cost_usd = 0.0`,
+  `cost-tracking.spec.md` requirement 3), so every dollar it shows is a catalog price times tokens:
+  a second number beside the measured one, stale by `pricesAsOf`, absent for unpriced models.
+  Tack already removed `cost_usd` budgets on its side and never reads docket's `cost_usd`.
+- **Goal:** usage is reported in tokens only, everywhere. Delete:
+  - prices in the provider catalog (`templates/providers/0*.yaml` `price`, `pricesAsOf`;
+    `models/catalog.py`), `teams/model_selection.py` `price_for`, `prices_as_of`, the
+    `free`/`paid` preset label and the "unpriced" warning on `setup model set`; the pricing column
+    of `setup model list` (`setup_model.py`);
+  - `cost_usd` on the turn port and its capability (`agent/ports.py`, `kernel/ports.py`,
+    `hops/application/driver.py`, `driver_support.py`, `runner.py`, `report.py`, `steps.py`,
+    `sweep.py`), on the hop and the task (`tasks/domain/task.py` ~61, ~159, ~204-205, ~294;
+    `record.py`, `lifecycle.py`), and in `hops/application/usage.py` (`gating_cost`,
+    `aggregate_cost`) and `teams/utils.py`;
+  - the estimate in `docket status` (`usage.estimateUsd`, `costUsd`, `totalCostUsd`), in the
+    `docket run` summary (`~$0.00 est.`), the `COST` column of `task list` (`task.py`,
+    `task_render.py`), `agents.py`, `mcp.py`, `setup_check*.py`, `operator/channel.py`;
+  - in HTTP: `/metrics` `docket_agent_cost_usd`, `docket_cost_usd_total` and the cost JSON
+    (`routes/metrics.py` ~22-41, ~279-305), and any cost field of `/status.json` and `/health`;
+  - in observability: any cost docket computes and sends (`observability/exporter.py`, `trace.py`,
+    `adapters/local_tracer.py`); a backend that prices tokens itself still can.
+  - Records written before keep loading: `HopResult` and `TaskRecord` read with `extra="ignore"`,
+    so a stored `costUsd` is dropped on the next write, with no reader of its own.
+- **Non-goals:** token counts, `maxTokens`, `budgetTokens`, the `budget` record and the token
+  metrics stay; no new metric.
+- **Find the whole surface first:** `rg -n -i "cost_usd|costUsd|estimateUsd|totalCostUsd|
+  totalUsd|price|pricing|pricesAsOf|unpriced|est\.\)" src scripts docs specs examples`; an
+  unexpected consumer is parked with its locator, not deleted blind.
+- **Specs:** `cost-tracking.spec.md` (becomes token usage only; rename it only if the index row
+  can follow), `model-profiles.spec.md` (the price table), `serve-read-api.spec.md` (`costUsd`,
+  `totalCostUsd`, the two gauges, the example ~714), `operator-api.spec.md`,
+  `cli-json-shapes.spec.md`, `cli-interface.spec.md`, `mcp-server.spec.md`, `trace-store.spec.md`,
+  `agent-lifecycle.spec.md`, `agent-loop.spec.md`, `docket-meta.spec.md`,
+  `input-validation.spec.md`, `specs/acceptance/user-stories.md`. Docs and `README.md` sentences
+  that name a dollar figure are rewritten in the same commit (D-37).
+- **Deliberate fixture and golden changes:** `tests/fixtures/task-records/
+  task_list_2026-10-24.normalized.json` loses its `costUsd` keys (the raw fixture keeps them and
+  must still load); a CLI golden that captures a cost column or `est.` changes. Each is named in the
+  commit body with the reason; nothing else in a golden may move.
+- **Acceptance (RED first):**
+  - `docket status --json` carries `usage.input` and `usage.output` and no key containing `usd` or
+    `cost`; `docket run`'s summary line prints tokens and no `$`.
+  - `GET /metrics` has no `cost_usd` sample; `/status.json` has no `costUsd`/`totalCostUsd`.
+  - The raw `task_list_2026-10-24.json` fixture (with `costUsd`) loads, and its next write has no
+    `costUsd`.
+  - `docket setup model list` has no price column; `setup model set` on a model the catalog does
+    not list does not warn about a price.
+  - The `rg` above names nothing outside `docs/adr/` and `docs/cycles-ended/`.
+- **Gate:** the touched unit and integration files under `timeout 120`; `tests/architecture`;
+  `tests/e2e -n auto` (the HTTP and CLI shapes change); `bash tests/golden/run.sh verify-all`;
+  `gen_cli_docs.py --check`; `gen_config_schemas.py --check`; `validate-specs.sh`.
+
+### P59-9 — `pod plan` shows each step's clock and the budget, with their sources
+
+**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-6, P59-7, P59-8
 
 - **Trigger:** no command shows a resolved limit before a run; the operator learns it only from a
   stop message. `docs/CONFIGURATION.md` ~357 says `docket pod plan` confirms the limits, and it

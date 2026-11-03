@@ -5,7 +5,8 @@ The maintainer accepted the decisions, including 5 and 6, and the names they int
 (`budget_exhausted`, `failureKind: budget`, the hop's `budget`, `source`, `retryContinues`) on
 2026-11-03. **Amended 2026-11-03**, before Phase 59 was pushed: decision 5 is rewritten (a budget,
 a clock and guards). Rounds and tool calls are guards owned by the machine, not budgets declared on
-a step or a role; tokens are the budget, and a pod's `budgetTokens` replaces `budgetUsd`. The step
+a step or a role; tokens are the budget, a pod's `budgetTokens` replaces `budgetUsd`, and docket
+keeps no dollars at all. The step
 and role `maxIterations`/`maxToolCalls` that P59-4 shipped are deleted.
 
 **Question:** A real Implementer hop stopped at `max_iterations=20` with its change written but not
@@ -106,8 +107,11 @@ models are all handled by one structure?
      counted tokens across tasks; reaching it blocks the task with `pod_budget` and pauses the pod,
      as `budgetUsd` did. `budgetUsd` is deleted: docket records no dollars, so it gated an estimate
      from a price table, and a model with no catalog price was never gated at all. Tokens are
-     never a step key, because the same pipeline runs tasks of different worth. A dollar figure
-     stays an estimate in `docket status`, and nothing gates on it.
+     never a step key, because the same pipeline runs tasks of different worth. **docket keeps no
+     dollars** (the maintainer, 2026-11-03): no price in the provider catalog, no cost on a turn,
+     a hop or a task, no estimate in `status`, `run`, `task list`, `/metrics` or an export. A
+     dollar figure was a catalog price times measured tokens, a second number that went stale and
+     did not exist for an unpriced model; whoever pays converts tokens at their own rate.
    - **The clock is seconds per hop, owned by the work.** The step's `timeout`, then the pod's
      `turnTimeoutS` (a repository's slow part, its test suite, belongs to the repository), then
      the machine's `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, read by `resolve_timeout` in place of the
