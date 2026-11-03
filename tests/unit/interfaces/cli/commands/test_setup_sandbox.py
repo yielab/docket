@@ -211,9 +211,12 @@ def test_a_fresh_home_does_not_claim_the_network_is_cut(tmp_path: Path) -> None:
         assert body["networkEnforced"] is False
 
 
-def test_isolation_on_keeps_the_network_line_and_marks_it_enforced(tmp_path: Path) -> None:
+def test_isolation_on_keeps_the_network_line_and_marks_it_enforced(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
     from docket.teams import fleet as _fleet
 
+    bind_launcher(landlock=True)
     with _fresh_home(tmp_path):
         _fleet.set_sandbox_isolation()
 

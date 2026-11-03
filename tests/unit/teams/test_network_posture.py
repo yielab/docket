@@ -43,7 +43,10 @@ def test_a_pod_grant_is_worded_as_one() -> None:
     assert posture.short == "open (pod grant)"
 
 
-def test_global_posture_reads_the_fleet_record(tmp_path: Path) -> None:
+def test_global_posture_reads_the_fleet_record(
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
+) -> None:
+    bind_launcher(landlock=True)
     home = tmp_path / ".docket"
     home.mkdir()
     with use_home(Home(home)):
