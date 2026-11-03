@@ -658,6 +658,12 @@ P61-2 (the facts it states)
   while `/escalations` lists all (live: `docket inbox` printed one question for a two-part consult); if the parked
   token's question is lost, parts 1..n-1 stay orphaned on a failed task. Trigger: a two-part consult that expires,
   or a person who cannot find the first question in the inbox.
+- *A refused `fetch` URL still sits in the trace.* P61-7 refuses the call and keeps the key out of the result and the
+  audit row, but the trace's `tool_call` event records the model's arguments as written (seen in a live trace), and
+  `governance/gate.py` `render_tool_call` renders `fetch url=...` for `pre_tool_call` policies. Trigger: the first
+  export at a privacy level that sends tool arguments (`full`) of a run that had a refusal; then redact call
+  arguments with the same `secrets.redact` before the trace writes them. Also unmatched: a double-encoded key, a
+  stored secret of 8 characters or fewer, and the keyring backend (the spec lists them under `unlisted-secret-shape`).
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
