@@ -12,7 +12,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 <!-- archive-index:begin -->
 | File | Holds |
 |---|---|
-| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (85 archived) |
+| [todo-waves.md](todo-waves.md) | Closed board sections: waves, phase boards and registers (86 archived) |
 | [roadmap-phases.md](roadmap-phases.md) | Completed-initiative and phase records (26 archived) |
 | [roadmap-changelog.md](roadmap-changelog.md) | The roadmap decision changelog (new entries go under its live heading) (1 archived) |
 | [roadmap-decisions.md](roadmap-decisions.md) | archived sections (1 archived) |
@@ -22,6 +22,7 @@ uv run python scripts/maint/split_board.py check docs/cycles-ended/manifest.json
 
 | Date | Section | File | Bytes |
 |---|---|---|---|
+| 2026-11-03 | ▶ Phase 59: a step's budget is a checkpoint, not a cliff (D-81) · CLOSED 2026-11-03 (decision 5 amended before the push: a budget, a clock and guards, no dollars) | `todo-waves.md` | 42,181 |
 | 2026-11-02 | ▶ Phase 58: what a plan of record needs to follow a team it does not run (D-80) · CLOSED 2026-11-02 | `todo-waves.md` | 13,367 |
 | 2026-11-01 | ▶ PHASE 57 — what docket gives a manager in the plan of record (D-79, ADR 0037) · CLOSED 2026-11-01 | `todo-waves.md` | 20,798 |
 | 2026-10-30 | ▶ PHASE 55 — a pod works outward, on its own schedule (D-77, ADR 0036) · CLOSED 2026-10-30 | `todo-waves.md` | 49,236 |

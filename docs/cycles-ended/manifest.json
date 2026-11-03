@@ -902,5 +902,13 @@
     "heading": "▶ Phase 58: what a plan of record needs to follow a team it does not run (D-80) · CLOSED 2026-11-02",
     "bytes": 13367,
     "sha256": "a4c479d8845aab21d29afa71eaea85e4ab0fd3c5b2147ed597cd66de1d9795b9"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ Phase 59: a step's budget is a checkpoint, not a cliff (D-81) · CLOSED 2026-11-03 (decision 5 amended before the push: a budget, a clock and guards, no dollars)",
+    "bytes": 42181,
+    "sha256": "55d0daa610b773a45f4a77f0af8c5e9948af4f67864a8f751721d891d0747851"
   }
 ]
