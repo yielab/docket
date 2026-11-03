@@ -200,8 +200,8 @@ What docket does not do, so you know what to arrange yourself:
   only chats cannot do the work. Small local models call tools less reliably.
 - **It runs on one machine for one operator.** There are no tenants and no hosted service; a
   routine fires only while `docket start --dispatch` runs here.
-- **Costs are estimates.** Token counts are measured; docket records no dollar spend, and its
-  budget limit works on a labelled estimate.
+- **Tokens are measured; dollars are not shown.** docket reports measured token counts and no
+  dollar figure, and a pod's budget limit counts tokens.
 
 The reasoning behind each limit, and the ones that matter less, are in
 [Known limits](docs/README.md#known-limits). Read [SECURITY.md](SECURITY.md) before exposing a

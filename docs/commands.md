@@ -109,7 +109,7 @@ Example: docket task diff task-04ff
 
 **Usage:** `docket task trace`
 
-The task's trace: every tool call, model call, cost and approval, in order.
+The task's trace: every tool call, model call, token usage and approval, in order.
 
 Example: docket task trace task-04ff --tail
 

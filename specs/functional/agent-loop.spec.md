@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.0.0
+**Version**: 4.0.1
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -1015,7 +1015,7 @@ result = run_agent_turn(backend, builtin_registry(), ctx, "agent:demo:default", 
 ### A confused model that never stops requesting tools
 
 Given a backend that always replies with another tool call, `run_agent_turn` with
-`LoopConfig(max_iterations=60)` (the default) makes at most 60 model calls and one tool-free landing request, then returns
+`LoopConfig(max_iterations=200)` (the default) makes at most 200 model calls and one tool-free landing request, then returns
 `AgentLoopResult(ok=False, stop_reason="max_iterations", failure_kind="budget_exhausted")` — never an
 unbounded loop.
 

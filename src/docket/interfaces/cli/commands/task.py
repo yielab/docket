@@ -310,7 +310,7 @@ def cmd_trace(
     json_out: bool = typer.Option(False, "--json", help="Emit the events as JSON"),
     pod: str | None = pod_option(),
 ) -> None:
-    """The task's trace: every tool call, model call, cost and approval, in order.
+    """The task's trace: every tool call, model call, token usage and approval, in order.
 
     Example: docket task trace task-04ff --tail
     """

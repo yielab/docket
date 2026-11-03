@@ -135,12 +135,12 @@ docket init my-market-scan --blueprint respond
 
 Four blueprints exist, one per pipeline shape behind every department:
 
-| Blueprint | Workspace kind | Roster | Default budget | Pipeline |
-|---|---|---|---|---|
-| `build` *(default)* | codebase | lead, implementer, reviewer | (none) | lead -> implementer (mechanical) -> reviewer (verdict, rework -> implementer) |
-| `respond` | workdir | lead, researcher, writer, reviewer, actor | $20 | intake -> research -> draft -> review (verdict, rework -> draft) -> act |
-| `operate` | workdir | lead, monitor, operator, reviewer | $30 | watch -> propose (approval) -> act (mechanical) -> review (verdict) |
-| `routine` | workdir | lead, analyst, writer, reviewer | $15 | compile -> draft -> review (verdict, rework -> draft) |
+| Blueprint | Workspace kind | Roster | Pipeline |
+|---|---|---|---|
+| `build` *(default)* | codebase | lead, implementer, reviewer | lead -> implementer (mechanical) -> reviewer (verdict, rework -> implementer) |
+| `respond` | workdir | lead, researcher, writer, reviewer, actor | intake -> research -> draft -> review (verdict, rework -> draft) -> act |
+| `operate` | workdir | lead, monitor, operator, reviewer | watch -> propose (approval) -> act (mechanical) -> review (verdict) |
+| `routine` | workdir | lead, analyst, writer, reviewer | compile -> draft -> review (verdict, rework -> draft) |
 
 Omitting `--blueprint` (or passing `--blueprint build` explicitly) is exactly a plain
 `docket init` — the lean Lead + Implementer pod, same files, no behavior change; the `build` roster

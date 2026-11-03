@@ -40,7 +40,7 @@ the handlers it calls into (`agent/tools/builtins/toolbox.py`'s `bash`/`write`/`
 has added). docket:
 
 - writes its own config (`.docket-meta.json` per workspace, `~/.docket/fleet.json`, and the
-  rest of `~/.docket/` — see `src/docket/config.py`) and reads cost and health data;
+  rest of `~/.docket/` — see `src/docket/config.py`) and reads usage and health data;
 - runs as your user; it does **not** require or request root for normal operation;
 - enforces `700` on workspace dirs and `600` on files, and keeps secrets out of `argv`
   (values flow via stdin/env/inside-Python, never as process arguments — no `/proc` leakage).
@@ -99,7 +99,7 @@ flag. See [`specs/functional/security-gates.spec.md`](specs/functional/security-
 ## `docket start --mcp`: the control plane over MCP
 
 `docket start --mcp` exposes docket's control plane — pods, task queue,
-dispatch, the run registry, HITL approvals, and recorded cost — as MCP (Model Context Protocol)
+dispatch, the run registry, HITL approvals, and recorded usage — as MCP (Model Context Protocol)
 tools over stdio, so a client like Claude Code or Codex can drive docket the same way a human
 would from a shell. It changes docket's *surface*, not its *model*: every tool call goes through
 the exact same audit log, approval gate, and dispatch pipeline a CLI invocation does — there is no
