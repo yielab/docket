@@ -47,6 +47,28 @@
       "title": "Option",
       "type": "object"
     },
+    "QuestionPart": {
+      "additionalProperties": false,
+      "description": "The place of a question among those one ``consult`` call asked: 1-based, ``index <= count``.",
+      "properties": {
+        "index": {
+          "minimum": 1,
+          "title": "Index",
+          "type": "integer"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "index",
+        "count"
+      ],
+      "title": "QuestionPart",
+      "type": "object"
+    },
     "Recommendation": {
       "additionalProperties": false,
       "description": "The option the asker recommends, with its reasons and evidence.",
@@ -142,6 +164,17 @@
       ],
       "default": null,
       "title": "Expiresat"
+    },
+    "part": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/QuestionPart"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "kind": {
       "enum": [

@@ -59,7 +59,9 @@ def recorded(name: str, actual: Any) -> Any:
 
 def parked_world(root: Path, make_model: Callable[..., FakeModel]) -> tuple[World, str]:
     """A world whose one task is parked on a consult; its task id."""
-    model = make_model(script={"implementer": [call("consult", "k1", **CONSULT), say("done")]})
+    model = make_model(
+        script={"implementer": [call("consult", "k1", questions=[CONSULT]), say("done")]}
+    )
     w = World(root / "world", model)
     w.make_pod(PIPELINE)
     task_id = w.add_task("Add a cache to the service")
@@ -291,7 +293,7 @@ def test_a_message_that_cannot_make_or_answer_a_task_is_refused_and_creates_noth
 def test_a_push_reaches_a_local_listener_when_the_task_parks_and_when_it_completes(
     tmp_path: Path, fake_model: Any
 ) -> None:
-    replies = [call("consult", "k1", **CONSULT), say("done"), say("done too")]
+    replies = [call("consult", "k1", questions=[CONSULT]), say("done"), say("done too")]
     w = World(tmp_path / "world", fake_model(script={"implementer": replies}))
     w.make_pod(PIPELINE)
     w.docket("pod", "set", "pipeline", str(w.pipeline))

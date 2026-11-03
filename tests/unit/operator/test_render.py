@@ -118,6 +118,16 @@ class TestConsult:
         assert rendered.title == "consultation"
         assert rendered.expires_at == "2026-10-25T01:00:00+00:00"
 
+    def test_a_question_of_several_says_which_one_it_is(self) -> None:
+        rendered = _render.render_escalation(_view(part={"index": 2, "count": 3}), "minimal")
+
+        assert rendered.title == "consultation 2/3"
+
+    def test_a_lone_question_has_no_number_in_its_title(self) -> None:
+        rendered = _render.render_escalation(_view(part={"index": 1, "count": 1}), "minimal")
+
+        assert rendered.title == "consultation"
+
 
 class TestApproval:
     def test_actions_adds_the_prompt_minimal_does_not(self) -> None:

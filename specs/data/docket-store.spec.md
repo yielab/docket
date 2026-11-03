@@ -1,8 +1,8 @@
 # Docket JSON Store Specification
 
-**Version**: 3.4.0
+**Version**: 3.5.0
 **Status**: Implemented
-**Last updated**: 2026-11-02
+**Last updated**: 2026-11-03
 
 ## Purpose
 
@@ -119,6 +119,10 @@ directory's lock when it settles, so the scan the inbox repeats reads only the l
    age, because the task's claim has not applied it yet. A pending record is never touched, and the
    counter file is never deleted, so a `seq` is never handed out twice. The `serve` sweep that
    expires traces MUST call it, and so MUST `docket task prune --traces`.
+8. A `consult` record carries `part: {index, count}` (1-based, `1 <= index <= count`): the question's
+   place among the questions one `consult` call asked. A record of any other kind has no `part`
+   key, and a record written before the field existed reads as one that has none. `part` is
+   written once, with the record, and is never changed.
 
 ## Typed registries refuse unknown keys
 

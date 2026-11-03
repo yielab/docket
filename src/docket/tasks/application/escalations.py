@@ -30,6 +30,7 @@ from docket.kernel.operator_contract import (
     EscalationPolicy,
     Option,
     Question,
+    QuestionPart,
     QuestionV11,
     Resolution,
     new_escalation_id,
@@ -211,6 +212,14 @@ def _question_expiry(question: Question) -> str | None:
     return (_clock.now() + _dt.timedelta(hours=hours)).isoformat()
 
 
+def _part_of(question: Question, kind: EscalationKind) -> QuestionPart | None:
+    """The ``part`` of the escalation a question opens: its own, else ``{1, 1}`` for a ``consult``
+    (one question), else none."""
+    if question.part is not None:
+        return question.part
+    return QuestionPart(index=1, count=1) if kind == "consult" else None
+
+
 def open_for_question(
     question: Question,
     *,
@@ -239,6 +248,7 @@ def open_for_question(
             prompt=_redact(question.message),
             options=[*(v11.options if v11 else []), _DECLINE],
             recommendation=v11.recommendation if v11 else None,
+            part=_part_of(question, kind),
             requested_schema=dict(question.requested_schema),
             asked_at=_clock.iso(),
             expires_at=expires_at,
@@ -366,6 +376,7 @@ def decided_consult(
         prompt=_redact(question.message),
         options=list(question.options),
         recommendation=question.recommendation,
+        part=_part_of(question, "consult"),
         asked_at=question.created_at,
         on_expiry=_expiry("consult", level),
         policy="recommendation",
@@ -503,28 +514,69 @@ def _apply_approval(
     return note, moved
 
 
+def _other_part_waits(record: TaskRecord, escalation: Escalation) -> bool:
+    """Whether another question of the ``consult`` call *escalation* belongs to is still pending
+    on *record*: the call's parts share a step and a count, and the task waits for all of them."""
+    part = escalation.part
+    if escalation.kind != "consult" or part is None or part.count < 2:
+        return False
+    for other_id in record.escalations:
+        other = read_escalation(other_id) if other_id != escalation.id else None
+        if (
+            other is not None
+            and other.kind == "consult"
+            and other.state == "pending"
+            and other.step == escalation.step
+            and other.part is not None
+            and other.part.count == part.count
+        ):
+            return True
+    return False
+
+
+def _reopen_when_settled(escalation: Escalation) -> None:
+    """Reopen the task of the answered *escalation* ``pending`` once no other part of its call
+    waits. It runs after the answer is stored, so two parts answered at once cannot both hold."""
+
+    def _reopen(record: TaskRecord) -> bool:
+        if (
+            record.status != _state.Status.waiting_input
+            or escalation.id not in record.escalations
+            or _other_part_waits(record, escalation)
+        ):
+            return False
+        _transitions.apply_to_task(record, _state.Status.pending)
+        return True
+
+    TaskRepository.for_pod(escalation.pod).update(escalation.task, _reopen)
+
+
 def _receive_question(
     escalation: Escalation,
     option: str | None,
     content: dict[str, Any] | None,
     by: str,
     channel: str,
-) -> None:
-    """Receive the answer to the question *escalation* parks its task on: screen it, reopen the
-    task ``pending`` (the one status change) and leave the rest to the next claim. A task that no
-    longer waits on this question is ``EscalationNotPending``."""
+) -> bool:
+    """Screen the answer to *escalation* and reopen its task ``pending`` unless another question of
+    its ``consult`` call is pending (``False``: ``_reopen_when_settled`` reopens it later). A task
+    that no longer waits on it is ``EscalationNotPending``."""
     _screen(escalation.pod, (content or {}).values())
     reopened: list[bool] = []
+    held: list[bool] = []
 
     def _reopen(record: TaskRecord) -> bool:
         if record.status != _state.Status.waiting_input or escalation.id not in record.escalations:
+            return False
+        if _other_part_waits(record, escalation):
+            held.append(True)
             return False
         _transitions.apply_to_task(record, _state.Status.pending)
         reopened.append(True)
         return True
 
     updated = TaskRepository.for_pod(escalation.pod).update(escalation.task, _reopen)
-    if not reopened:
+    if not reopened and not held:
         raise EscalationNotPending(
             f"task {escalation.task!r} is not waiting on escalation {escalation.id}"
             if updated is not None
@@ -545,6 +597,7 @@ def _receive_question(
             text="(declined)",
             source="answer",
         )
+    return bool(reopened)
 
 
 def _receive_wait(escalation: Escalation) -> None:
@@ -625,6 +678,7 @@ def resolve(
     token = _approval.approval_of(escalation.id)
     note = ""
     applied = True
+    reopened = True
     if escalation.kind in _APPROVAL_KINDS:
         if not token:
             raise EscalationNotFound(f"escalation {escalation.id} has no approval record")
@@ -652,7 +706,7 @@ def resolve(
     elif escalation.kind == "turn" and option == _CLOSE.id:
         _receive_close(escalation, by, channel)
     else:
-        _receive_question(escalation, option, body, by, channel)
+        reopened = _receive_question(escalation, option, body, by, channel)
         applied = False
     at = _clock.iso()
     resolution = Resolution(
@@ -666,6 +720,8 @@ def resolve(
     settled = resolve_escalation(escalation.id, resolution) or escalation.model_copy(
         update={"state": "resolved", "resolution": resolution}
     )
+    if not reopened:
+        _reopen_when_settled(settled)
     audit_log(
         "escalation.resolve",
         f"escalation={settled.id} kind={settled.kind} pod={settled.pod} task={settled.task} "

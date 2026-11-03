@@ -87,7 +87,7 @@ def park(root: Path, model: FakeModel, pipeline: str) -> tuple[World, str]:
 def parked(tmp_path: Path, fake_model: Any) -> Iterator[tuple[Service, str]]:
     """A service over a task parked on a consult."""
     model: FakeModel = fake_model(
-        script={"implementer": [call("consult", "k1", **QUESTION), say("done")]}
+        script={"implementer": [call("consult", "k1", questions=[QUESTION]), say("done")]}
     )
     w, task_id = park(tmp_path, model, PIPELINE)
     assert w.task(task_id)["task"]["status"] == "waiting_input"
@@ -120,6 +120,27 @@ def test_the_escalations_route_serves_the_recorded_shape(parked: tuple[Service, 
         {view["id"]: "<escalation-id>", task_id: "<task-id>"},
     )
     assert body["next"] == view["seq"]
+
+
+def test_a_call_that_asks_several_questions_is_one_escalation_per_question(
+    tmp_path: Path, fake_model: Any
+) -> None:
+    second = {**QUESTION, "message": "Which queue should the service use?"}
+    model: FakeModel = fake_model(
+        script={"implementer": [call("consult", "k1", questions=[QUESTION, second]), say("done")]}
+    )
+    with serving(tmp_path, model, PIPELINE, "waiting_input") as (service, task_id):
+        status, body = service.get("/escalations")
+
+        assert status == 200
+        views = body["escalations"]
+        assert [v["part"] for v in views] == [{"index": 1, "count": 2}, {"index": 2, "count": 2}]
+        assert {v["task"] for v in views} == {task_id}
+        names = {v["id"]: f"<escalation-id-{n}>" for n, v in enumerate(views, 1)}
+        check("escalation-consult-parts", views, {**names, task_id: "<task-id>"})
+        _, inbox = service.get("/inbox")
+        assert inbox["escalations"] == views
+        assert [t["id"] for t in inbox["needsYou"]] == [task_id]
 
 
 def test_the_inbox_carries_the_same_escalation_and_names_it_on_the_task_that_needs_you(
@@ -235,7 +256,7 @@ def test_a_cursor_sees_a_record_that_expires_after_it_was_read(
     tmp_path: Path, fake_model: Any
 ) -> None:
     model: FakeModel = fake_model(
-        script={"implementer": [call("consult", "k1", **QUESTION), say("done")]}
+        script={"implementer": [call("consult", "k1", questions=[QUESTION]), say("done")]}
     )
     w, _ = park(tmp_path, model, PIPELINE)
     with w.service(dispatch=False) as service:

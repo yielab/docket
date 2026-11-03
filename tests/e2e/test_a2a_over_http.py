@@ -31,7 +31,7 @@ def test_a_task_sent_over_a2a_parks_on_a_consult_is_answered_and_completes(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
     replies = [
-        call("consult", "k1", **CONSULT),
+        call("consult", "k1", questions=[CONSULT]),
         write_file("cache.txt", "memcached\n"),
         say("done"),
     ]

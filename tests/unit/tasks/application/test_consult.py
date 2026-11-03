@@ -53,9 +53,14 @@ def _args(**over: Any) -> dict[str, Any]:
     return base
 
 
-def _call(args: dict[str, Any], ctx: ToolContext, call_id: str = "c1") -> ToolResult:
+def _raw_call(args: dict[str, Any], ctx: ToolContext, call_id: str = "c1") -> ToolResult:
     call = ToolCall(id=call_id, name="consult", arguments=json.dumps(args))
     return dispatch_tool(call, ctx, builtin_registry())
+
+
+def _call(question: dict[str, Any], ctx: ToolContext, call_id: str = "c1") -> ToolResult:
+    """A consult call that asks the one *question*."""
+    return _raw_call({"questions": [question]}, ctx, call_id)
 
 
 def _ctx(**over: Any) -> ToolContext:
@@ -104,8 +109,26 @@ class TestValidation:
         finally:
             off()
         assert not result.ok and "recommendation" in result.as_tool_output()
-        assert result.denial_kind == "invalid_call"
         assert seen == []
+
+    def test_the_question_fields_at_the_top_level_are_refused_by_the_chokepoint(self) -> None:
+        result = _raw_call(_args(), _ctx())
+
+        assert not result.ok and result.denial_kind == "invalid_call"
+        assert "questions" in result.as_tool_output()
+
+    @pytest.mark.parametrize("questions", [[], [_args()] * 6, ["Which store?"], "Which store?"])
+    def test_questions_must_be_one_to_five_objects(self, questions: Any) -> None:
+        result = _raw_call({"questions": questions}, _ctx())
+
+        assert not result.ok and "invalid consultation" in result.as_tool_output()
+
+    def test_a_call_that_asked_several_names_the_invalid_question(self) -> None:
+        result = _raw_call({"questions": [_args(), _args(kind="approval")]}, _ctx())
+
+        assert not result.ok
+        assert "question 2: kind must be" in result.as_tool_output()
+        assert list_escalations() == []
 
     def test_fewer_than_two_options_is_an_error_result(self) -> None:
         result = _call(_args(options=_args()["options"][:1]), _ctx())
@@ -335,3 +358,67 @@ class TestCap:
         ctx = _ctx(max_consultations=0)
         result = _call(_args(), ctx)
         assert not result.ok and "budget exhausted" in result.as_tool_output()
+
+
+def _several(n: int) -> dict[str, Any]:
+    return {"questions": [_args(message=f"Question {i}?") for i in range(1, n + 1)]}
+
+
+class TestSeveralQuestions:
+    def test_each_question_is_decided_by_its_own_recommendation_in_order(self) -> None:
+        ctx = _ctx(consult_park=True, consult_mode="decide", task_id="t-1")
+
+        result = _raw_call(_several(2), ctx)
+
+        assert result.ok
+        assert result.content.splitlines() == [
+            "Question 1 of 2: no operator on duty; your recommendation stands: option sqlite "
+            "(SQLite). Continue.",
+            "Question 2 of 2: no operator on duty; your recommendation stands: option sqlite "
+            "(SQLite). Continue.",
+        ]
+        decided = list_escalations(state="decided")
+        assert [(e.prompt, e.part.index, e.part.count) for e in decided if e.part] == [
+            ("Question 1?", 1, 2),
+            ("Question 2?", 2, 2),
+        ]
+
+    def test_a_lone_question_is_part_one_of_one(self) -> None:
+        _call(_args(), _ctx(consult_park=True, consult_mode="decide", task_id="t-1"))
+
+        (decided,) = list_escalations(state="decided")
+        assert decided.part is not None and (decided.part.index, decided.part.count) == (1, 1)
+
+    def test_every_question_spends_one_consultation(self) -> None:
+        ctx = _ctx(consult_park=True, consult_mode="decide", task_id="t-1")
+
+        assert _raw_call(_several(2), ctx).ok
+
+        assert ctx.consult_count == 2
+
+    def test_a_call_with_more_questions_than_the_budget_leaves_is_refused_whole(self) -> None:
+        ctx = _ctx(consult_park=True, consult_mode="decide", max_consultations=2, task_id="t-1")
+        assert _call(_args(), ctx).ok
+
+        result = _raw_call(_several(2), ctx)
+
+        assert not result.ok and "budget exhausted" in result.as_tool_output()
+        assert ctx.consult_count == 1
+        assert len(list_escalations(state="decided")) == 1
+
+    def test_a_parking_call_opens_all_but_the_last_and_parks_the_last_as_its_part(self) -> None:
+        ctx = _ctx(
+            approval_mode="park", consult_park=True, task_id="t-1", step_id="build", project="p"
+        )
+
+        result = _raw_call(_several(3), ctx)
+
+        assert result.denial_kind == "approval_parked"
+        opened = list_escalations(state="pending")
+        assert [(e.part.index, e.part.count, e.step) for e in opened if e.part] == [
+            (1, 3, "build"),
+            (2, 3, "build"),
+        ]
+        last = parked_question(result.approval_token)
+        assert last is not None and last.part is not None
+        assert (last.part.index, last.part.count) == (3, 3)

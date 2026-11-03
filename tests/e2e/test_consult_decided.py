@@ -54,7 +54,7 @@ def test_a_deciding_pod_applies_the_recommendation_and_finishes_without_a_person
     model = fake_model(
         script={
             "implementer": [
-                call("consult", "k1", **CACHE_QUESTION),
+                call("consult", "k1", questions=[CACHE_QUESTION]),
                 write_file("cache.txt", "redis\n"),
                 say("Wrote the service against Redis."),
             ]
@@ -105,7 +105,7 @@ def test_a_deciding_pod_applies_the_recommendation_and_finishes_without_a_person
 def test_a_parking_pod_still_waits_for_an_answer(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
-    model = fake_model(script={"implementer": [call("consult", "k1", **CACHE_QUESTION)]})
+    model = fake_model(script={"implementer": [call("consult", "k1", questions=[CACHE_QUESTION])]})
     w = world(model)
     w.make_pod(PIPELINE)
     w.docket("pod", "set", "consultMode", "park", "--pod", w.pod)

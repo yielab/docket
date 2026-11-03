@@ -111,15 +111,23 @@ class TestConsultDescriptionTellsTheTruth:
         assert tool is not None
         return tool.description
 
-    def test_schema_requires_the_recommendation_the_handler_requires(self) -> None:
-        specs = {s.name: s for s in builtin_registry().specs()}
+    def test_schema_takes_one_to_five_questions_each_requiring_what_the_handler_requires(
+        self,
+    ) -> None:
+        schema = {s.name: s for s in builtin_registry().specs()}["consult"].parameters
 
-        assert specs["consult"].parameters["required"] == [
-            "kind",
-            "message",
-            "options",
-            "recommendation",
-        ]
+        assert schema["required"] == ["questions"]
+        assert list(schema["properties"]) == ["questions"]
+        questions = schema["properties"]["questions"]
+        assert (questions["minItems"], questions["maxItems"]) == (1, 5)
+        assert questions["items"]["required"] == ["kind", "message", "options", "recommendation"]
+
+    def test_the_description_says_an_option_is_one_action_and_questions_are_separate(self) -> None:
+        text = self._description(remaining=3, parks=True)
+
+        assert "An option is ONE action" in text
+        assert "separate questions" in text
+        assert "up to five" in text
 
     def test_the_default_description_says_asking_ends_the_turn(self) -> None:
         tool = builtin_registry().get("consult")

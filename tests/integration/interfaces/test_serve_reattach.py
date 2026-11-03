@@ -126,7 +126,7 @@ class _Backend:
 
 
 def _consult() -> ChatResponse:
-    call = ToolCall(id="c1", name="consult", arguments=json.dumps(_CONSULT))
+    call = ToolCall(id="c1", name="consult", arguments=json.dumps({"questions": [_CONSULT]}))
     return ChatResponse(
         ok=True,
         message=assistant("", [call]),

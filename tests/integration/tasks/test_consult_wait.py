@@ -86,8 +86,9 @@ class _Backend:
         return self._responses.pop(0)
 
 
-def _consult_call() -> ChatResponse:
-    call = ToolCall(id="c1", name="consult", arguments=json.dumps(_CONSULT))
+def _consult_call(count: int = 1) -> ChatResponse:
+    questions = [{**_CONSULT, "message": f"Question {n}?"} for n in range(1, count + 1)]
+    call = ToolCall(id="c1", name="consult", arguments=json.dumps({"questions": questions}))
     return ChatResponse(
         ok=True,
         message=assistant("", [call]),
@@ -202,6 +203,33 @@ class TestAnsweredInPlace:
         worker.join(30)
 
         assert _task(task_id).status == "done"
+
+
+class TestSeveralQuestions:
+    def test_every_part_is_open_while_the_turn_waits_and_the_answers_return_in_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _Backend([_final("plan"), _consult_call(2), _final("built")])
+        worker, task_id = _begin(tmp_path, monkeypatch, backend)
+        _the_waiting_consult()
+        end = time.monotonic() + 20
+        while len(list_escalations(state="pending")) < 2 and time.monotonic() < end:
+            time.sleep(0.02)
+
+        first, second = sorted(
+            list_escalations(state="pending"), key=lambda e: e.part.index if e.part else 0
+        )
+        assert [(e.part.index, e.part.count) for e in (first, second) if e.part] == [(1, 2), (2, 2)]
+        _esc.resolve(second.id, "sqlite", None, by="alice", channel="cli")
+        assert _task(task_id).status == "running"
+        _esc.resolve(first.id, "redis", None, by="alice", channel="cli")
+        worker.join(30)
+
+        assert _task(task_id).status == "done"
+        (answer,) = _tool_results(backend)
+        lines = answer.splitlines()
+        assert f"{first.id} (question 1 of 2): option redis (Redis)" in lines[0]
+        assert f"{second.id} (question 2 of 2): option sqlite (SQLite)" in lines[1]
 
 
 class TestNobodyAnswers:

@@ -307,7 +307,7 @@ class TestLevel:
         ctx.consult_park, ctx.consult_mode = True, "decide"
 
         result = dispatch_tool(
-            ToolCall(id="k1", name="consult", arguments=json.dumps(_CONSULT)),
+            ToolCall(id="k1", name="consult", arguments=json.dumps({"questions": [_CONSULT]})),
             ctx,
             builtin_registry(),
         )
@@ -351,7 +351,7 @@ class _Backend:
 
 
 def _consult_response() -> ChatResponse:
-    call = ToolCall(id="c1", name="consult", arguments=json.dumps(_CONSULT))
+    call = ToolCall(id="c1", name="consult", arguments=json.dumps({"questions": [_CONSULT]}))
     return ChatResponse(
         ok=True,
         message=assistant("", [call]),

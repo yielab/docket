@@ -170,7 +170,7 @@ def test_an_l4_consult_is_answered_by_the_pod_and_the_task_finishes(
         script={
             "lead": [say("Plan: make app.txt say fixed.")],
             "implementer": [
-                call("consult", "k1", **CACHE_QUESTION),
+                call("consult", "k1", questions=[CACHE_QUESTION]),
                 write_file("app.txt", "fixed\n"),
                 say("app.txt says fixed."),
             ],

@@ -1,9 +1,9 @@
 # Operator Loop Specification
 
-**Version**: 3.5.0
+**Version**: 3.6.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -702,7 +702,9 @@ keeps no copy of it, and every surface prints from it.
    (`deny | block`), `policy` (`person | recommendation | deny | fail | machine`), `level` (`L3 | L4 | L5`,
    the autonomy level of the record's task when the pause was created, item 12; absent for a
    pause that names no queued task), `outward` (`true` for an `approval` of a `send` call,
-   `security-gates.spec.md` In-turn tool-call gate 17; omitted while false), `state`, `resolution`
+   `security-gates.spec.md` In-turn tool-call gate 17; omitted while false), `part`
+   (`{index, count}`, 1-based, on a `consult` only: its place among the questions one call asked,
+   item 18; omitted on every other kind), `state`, `resolution`
    (`{optionId, content, by, channel, at, appliedAt?}` or `null`; `appliedAt` is when the
    continuation was applied, absent while it has not been) and `seq`.
 2. **Kinds, options, expiry.**
@@ -710,7 +712,7 @@ keeps no copy of it, and every surface prints from it.
    | Kind | Created when | Options | `onExpiry` |
    | --- | --- | --- | --- |
    | `approval` | a gated tool call parks or waits for a person | `approve_once`, `approve_task`, `deny` | `deny` |
-   | `consult` | a hop parks on a `consult` question | the question's options, then `decline`; its recommendation | `block` |
+   | `consult` | a hop parks on a `consult` question (one record per question, item 18) | the question's options, then `decline`; its recommendation | `block` |
    | `input` | an `input` step minted a question | `decline`; the question's `requestedSchema` | `block` |
    | `gate` | a pipeline `approval` gate fires before a hop | `approve_once`, `deny` | `deny` |
    | `check_changed` | a finished task's diff edits what checks it | `approve_once`, `deny` | `deny` |
@@ -926,6 +928,26 @@ keeps no copy of it, and every surface prints from it.
     A client **MUST** ignore a kind it does not know (additive in `operator-v2`); one that renders
     a `turn` takes the `message` from the record's `prompt`.
 
+18. **One escalation per question (ADR 0032 decision 6).** One `consult` call asks one to five
+    questions (Consult item 1) and opens one `consult` escalation for each, in question order:
+    the same task, step and role, each with `part: {index, count}` (`index` 1-based, `count` the
+    number of questions in the call; `{1, 1}` for a lone question). `part` is on the stored
+    record, the `EscalationView`, the `Question` an `as_question` builds and the published
+    `operator-v2` `question` and `inbox` schemas (additive; the `consultParts` feature of
+    `serve-read-api.spec.md`). Every other kind has no `part`.
+    - The task stays `waiting_input` while any part of the call is `pending`: `resolve` of a part
+      records the answer and reopens the task `pending` only when no other part of the same
+      `(task, step)` call is still pending. A part answered while others wait is still a `resolved`
+      record (`appliedAt` unset), and a repeat of its answer is the same `escalation_not_pending`
+      as for any record. The last answer to arrive reopens the task, whichever part it is.
+    - The re-run hop ends its message with the answers to every part together, in `part.index`
+      order, one `Operator answered your consultation <esc-id> (question <i> of <n>): option <id>
+      (<label>)` block each (a lone question keeps the earlier text, without the parenthesis).
+      The message carries no answer while a part of the call is still pending. All the parts are
+      stamped `appliedAt` once a hop of the step is persisted (area 10 item 3a).
+    - Each part spends one consultation (`consultations` is incremented per record, Consult
+      item 5).
+
 ### Profile lines (ADR 0025 D2)
 
 1. When a dispatchable pod's effective profile (`security-gates.spec.md` "Profiles") is
@@ -1038,21 +1060,25 @@ are unchanged. The `consult` tool produces `QuestionV11`, and an escalation of k
 The `consult` built-in tool (kind `read`, so it stays available to read-only roles such as the
 Reviewer) lets a model put a clarification or decision to its operator.
 
-1. **Arguments.** `kind` (`clarification` or `decision`), `message`, `options` (at least two,
-   each `id`, `label`, `description`, optional `risks` and `estimatedTokens`) and
-   `recommendation` (`optionId`, `rationale`, optional `evidenceRefs`). The call builds a
-   `QuestionV11` (minted `q-` id, `createdAt`, `taskId` = the dispatch task id, else the session
-   key, `pod` = the turn's project, `step` = the role). The tool's JSON schema lists
-   `recommendation` as required, so the chokepoint refuses a call without one as an `invalid_call`
-   (`missing required argument(s): recommendation`) before the handler runs. Fewer than two
-   options, an unknown kind or a recommendation naming no option is an ordinary error tool
-   result (`invalid consultation: <problem>`). Neither is an exception, and neither opens an escalation.
+1. **Arguments.** `questions`, one to five entries, each `kind` (`clarification` or `decision`),
+   `message`, `options` (at least two, each `id`, `label`, `description`, optional `risks` and
+   `estimatedTokens`) and `recommendation` (`optionId`, `rationale`, optional `evidenceRefs`).
+   There are no question fields at the top level. Each entry builds a `QuestionV11` (minted `q-`
+   id, `createdAt`, `taskId` = the dispatch task id, else the session key, `pod` = the turn's
+   project, `step` = the role) and becomes its own escalation (Escalations item 18). The tool's
+   JSON schema lists `questions` as required, so the chokepoint refuses a call without it as an
+   `invalid_call` (`missing required argument(s): questions`) before the handler runs. An empty
+   `questions`, more than five, an entry that is not an object, fewer than two options, a missing
+   recommendation, an unknown kind or a recommendation naming no option is an ordinary error tool
+   result (`invalid consultation: <problem>`, naming the question by its position). Neither is an
+   exception, neither opens an escalation, and one invalid entry rejects the whole call.
 2. **Budget.** The pod setting `maxConsultationsPerTask` (integer `>= 0`, default 3; 0 disables)
    reaches the turn as `ToolContext.max_consultations`: the driver takes the internal
    `DOCKET_MAX_CONSULTATIONS` key from the hop's environment, else reads the agent's pod setting.
    Counting is per turn; in pod dispatch the count is task-wide (item 5). A call past the cap is
    the error result `consultation budget exhausted; decide yourself` and opens no escalation; an
-   invalid call does not spend budget.
+   invalid call does not spend budget. Each question spends one consultation, so a call whose
+   questions exceed what is left is the same budget error, whole.
 3. **Wait.** Outside pod dispatch nobody can answer a turn that is not a dispatch hop, so the
    call returns `no answer; decide yourself` at once, without an event. In pod dispatch under
    `approvalMode` `wait` (a `docket run` on a TTY, or a pod that set it) the call opens its
@@ -1063,7 +1089,9 @@ Reviewer) lets a model put a clarification or decision to its operator.
    /escalations/<id>`, MCP `resolve`, Telegram) wakes the turn: the tool result is `Operator
    answered your consultation <esc-id>: option <id> (<label>)` (plus any note) or `... declined.
    Decide yourself.`, the task never leaves `running` and nothing is parked. A timeout or a
-   cancellation returns `no answer; decide yourself`. The record's `onExpiry` is `deny`.
+   cancellation returns `no answer; decide yourself`. The record's `onExpiry` is `deny`. A call
+   with several questions opens every escalation (each with its approval record) before it waits,
+   then waits for them in question order, and its result is the answers in question order.
 4. **Refuse.** The call ends the turn with the `approval_unavailable` stop an unanswerable
    approval uses, and opens no escalation. `park` outside pod dispatch is treated as `refuse`;
    under pod dispatch `approvalMode: refuse` also keeps this behaviour.
@@ -1078,7 +1106,9 @@ Reviewer) lets a model put a clarification or decision to its operator.
    past redaction. A `consult:` token whose question cannot be read fails the task with
    `consult_question_missing`; it never waits as an approval. The task becomes `waiting_input` and
    lists the `consult` escalation opened for the consult's `QuestionV11` (`taskId` = the task id,
-   `step` = the hop's step id; the escalation id is the id the operator answers), so the inbox
+   `step` = the hop's step id; the escalation id is the id the operator answers; with several
+   questions, one escalation per question, Escalations item 18, and the task waits until every
+   one is settled), so the inbox
    lists it under `needsYou` and `docket task answer`, HTTP, MCP and Telegram answers reach it
    through `resolve`. The answer is validated by `resolve` (accept needs an option id the
    record offers; a refused answer leaves the task `waiting_input` and the record `pending`) and
@@ -1096,8 +1126,10 @@ Reviewer) lets a model put a clarification or decision to its operator.
    that asking ends the turn (in pod dispatch the task waits for a person and the answer arrives
    in the role's next message; outside it the call returns `no answer; decide yourself` at once),
    that the model should decide and state its assumption instead of asking when the repository
-   lets it recommend one option, that at least two options and a marked recommendation are
-   required, and how many consultations remain on the task. Each hop renders that number from
+   lets it recommend one option, that each question takes at least two options and a marked
+   recommendation, that an option is one action (a choice that bundles several actions is several
+   questions, asked in one call as separate `questions`; docket does not check this), that one call
+   may carry up to five independent questions, and how many consultations remain on the task. Each hop renders that number from
    the hop's own cap (item 5), so it never exceeds what the handler will accept. The sentence
    about the effect is derived from what the handler will do, never fixed: it is the parking
    sentence above when the hop parks, the immediate `no answer; decide yourself` sentence when it
@@ -1112,7 +1144,9 @@ Reviewer) lets a model put a clarification or decision to its operator.
    escalation (`policy` `recommendation`) and writes `escalation_decided` with the
    recommendation's option, audits `consult.decided` (`project`, `task`, `role`, `escalation`,
    `optionId`; never the message or the options), and returns the ordinary tool result `no operator on duty; your recommendation stands:
-   option <id> (<label>). Continue.`, so the turn continues. The call spends budget like any
+   option <id> (<label>). Continue.`, so the turn continues. A call with several questions decides
+   each by its own recommendation (one `decided` escalation, trace event and audit row each, with
+   its `part`) and returns one such line per question, in question order. The call spends budget like any
    consult and the task never becomes `waiting_input`, so the inbox lists nothing for it. The
    recommendation is always present (item 1); a call that fails validation is still the item 1
    error. `decide` changes nothing outside pod dispatch (items 3 and 4); inside it, it applies

@@ -65,9 +65,31 @@ def _undelivered(task: TaskRecord, step_id: str) -> list[Escalation]:
     ]
 
 
+def _answer_line(e: Escalation) -> str:
+    """The text of the operator's answer to the resolved ``consult`` *e*."""
+    resolution = e.resolution
+    assert resolution is not None
+    declined = resolution.option_id == _DECLINE
+    answer = AnswerResultV11(
+        action="decline" if declined else "accept",
+        content=resolution.content,
+        option_id=None if declined else resolution.option_id,
+    )
+    return _consult.answer_text(e.id, e.options, answer, resolution.content, e.part)
+
+
+def _call_still_waits(task: TaskRecord, step_id: str) -> bool:
+    """Whether a question of a ``consult`` call at *step_id* is still pending: its answers are
+    heard together, so none is heard before the last."""
+    return any(
+        e.kind == "consult" and e.state == "pending" and e.step == step_id for e in _listed(task)
+    )
+
+
 def consult_note(task: TaskRecord, step_id: str) -> str:
-    """The operator's answer to *step_id*'s parked consultation, or the reply to its conversation's
-    last turn, as a trailing message block (empty when the step has none waiting to be heard)."""
+    """The operator's answers to *step_id*'s parked consultation (one per question, in question
+    order), or the reply to its conversation's last turn, as a trailing message block (empty when
+    the step has none waiting to be heard, or while a question of the call is still pending)."""
     waiting = _undelivered(task, step_id)
     if not waiting:
         return ""
@@ -77,13 +99,12 @@ def consult_note(task: TaskRecord, step_id: str) -> str:
     if e.kind == "turn":
         text = str((resolution.content or {}).get("text", ""))
         return f"\n\nThe operator replied:\n{text}\n" if resolution.option_id == _REPLY else ""
-    declined = resolution.option_id == _DECLINE
-    answer = AnswerResultV11(
-        action="decline" if declined else "accept",
-        content=resolution.content,
-        option_id=None if declined else resolution.option_id,
+    if _call_still_waits(task, step_id):
+        return ""
+    consults = sorted(
+        (w for w in waiting if w.kind == "consult"), key=lambda w: w.part.index if w.part else 0
     )
-    return f"\n\n{_consult.answer_text(e.id, e.options, answer, resolution.content)}\n"
+    return "\n\n" + "\n".join(_answer_line(w) for w in consults) + "\n"
 
 
 def consult_note_delivered(task: TaskRecord, step_id: str, at: str) -> None:

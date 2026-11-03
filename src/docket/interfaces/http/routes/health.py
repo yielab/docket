@@ -34,6 +34,7 @@ FEATURES: tuple[str, ...] = (
     "podWorkDir",
     "podFetch",
     "capabilityMissing",
+    "consultParts",
 )
 
 

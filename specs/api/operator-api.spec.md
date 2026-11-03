@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.22.0
+**Version**: 7.23.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-03
 
@@ -532,7 +532,13 @@ plus `affordances`, its `state` joined with the pause it names, in `seq` order.
 their state, so a poller never misses a record that settled between two reads. `pod` and `task`
 narrow the list. `next` is the highest `seq` returned, else `since`; pass it back as `since`. A
 `since` that is not a non-negative integer answers `400`. `resolveUrl` names the route that
-resolves the escalation (below). `GET /inbox` carries the pending ones as
+resolves the escalation (below). A `consult` view carries `part: {"index": 1, "count": 3}` (1-based):
+one `consult` call that asks several questions opens one escalation per question, each with the
+same `task`, `step` and `role`, and a client groups them by `(task, step)` and orders them by
+`part.index`. A single question is `{"index": 1, "count": 1}`; a view of any other kind has no
+`part` key. The task stays `waiting_input` until every part is settled; answering the last one
+reopens it. `part` is additive to `operator-v2` and to API 6; a client probes for it with the
+`consultParts` feature. `GET /inbox` carries the pending ones as
 `escalations` (and lists a pause no waiting task carries in `needsYou`) and the pauses the pod settled alone as
 `decided`, newest first and at most twenty, a key that is absent while there are none.
 

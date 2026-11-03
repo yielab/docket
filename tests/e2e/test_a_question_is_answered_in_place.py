@@ -108,7 +108,7 @@ def test_a_question_typed_at_the_terminal_is_answered_in_the_same_turn(
     model = fake_model(
         script={
             "implementer": [
-                call("consult", "k1", **CACHE_QUESTION),
+                call("consult", "k1", questions=[CACHE_QUESTION]),
                 say("Wrote the service against Redis."),
             ]
         }
@@ -156,7 +156,7 @@ def test_declining_at_the_terminal_tells_the_model_to_decide_itself(
     model = fake_model(
         script={
             "implementer": [
-                call("consult", "k1", **CACHE_QUESTION),
+                call("consult", "k1", questions=[CACHE_QUESTION]),
                 say("Decided on Redis myself."),
             ]
         }

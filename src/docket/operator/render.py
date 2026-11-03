@@ -98,8 +98,11 @@ def render_escalation(view: EscalationView, level: str) -> RenderedEscalation:
     recommended = view.recommendation.option_id if view.recommendation else None
     # Docket wrote an approval's labels; a question's come from the model.
     labels = not question or level in _CONVERSATION_LEVELS
+    title = _OUTWARD_TITLE if view.outward and view.kind == "approval" else _TITLES[view.kind]
+    if view.part is not None and view.part.count > 1:
+        title = f"{title} {view.part.index}/{view.part.count}"
     return RenderedEscalation(
-        title=_OUTWARD_TITLE if view.outward and view.kind == "approval" else _TITLES[view.kind],
+        title=title,
         prompt=view.prompt if level in allowed else None,
         options=render_options(options, recommended, labels=labels),
         expires_at=view.expires_at,

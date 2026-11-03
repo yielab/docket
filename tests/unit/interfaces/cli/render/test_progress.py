@@ -586,7 +586,7 @@ class TestConsultPrompt:
                         consult_park=True,
                         task_id=_TASK_ID,
                     )
-                    args = {
+                    question = {
                         "kind": "decision",
                         "message": "Which store should the cache use?",
                         "options": [
@@ -595,6 +595,7 @@ class TestConsultPrompt:
                         ],
                         "recommendation": {"optionId": "sqlite", "rationale": "no new service"},
                     }
+                    args = {"questions": [question]}
                     outcome["content"] = _consult.run(args, ctx).content
                     return []
 

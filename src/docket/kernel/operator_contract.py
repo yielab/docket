@@ -115,6 +115,25 @@ def new_question_id() -> str:
     return _ids.new_short_id("q")
 
 
+class QuestionPart(BaseModel):
+    """The place of a question among those one ``consult`` call asked: 1-based, ``index <= count``."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    index: int = Field(ge=1)
+    count: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _index_within_count(self) -> QuestionPart:
+        if self.index > self.count:
+            raise InvalidInput(f"part index {self.index} is past its count {self.count}")
+        return self
+
+
+def _is_none(value: object) -> bool:
+    return value is None
+
+
 class Question(BaseModel):
     """A question posed to a human, shaped as an MCP elicitation request."""
 
@@ -128,6 +147,8 @@ class Question(BaseModel):
     requested_schema: dict[str, Any] = Field(alias="requestedSchema")
     created_at: str = Field(alias="createdAt")
     expires_at: str | None = Field(None, alias="expiresAt")
+    # Set on a question of a ``consult`` call; absent on any other.
+    part: QuestionPart | None = Field(None, exclude_if=_is_none)
 
     @field_validator("requested_schema")
     @classmethod
@@ -309,6 +330,8 @@ class _EscalationFields(BaseModel):
     # The autonomy level of the record's task when the pause was created; absent for a pause that
     # names no queued task.
     level: EscalationLevel | None = Field(None, exclude_if=lambda value: value is None)
+    # A ``consult`` only: its place among the questions one call asked; absent on every other kind.
+    part: QuestionPart | None = Field(None, exclude_if=_is_none)
     # An approval of a call that acts outside the machine (a ``send`` tool); omitted while false.
     outward: bool = Field(False, exclude_if=lambda value: not value)
     state: EscalationState = "pending"
@@ -338,6 +361,7 @@ class _EscalationFields(BaseModel):
             kind="decision" if self.recommendation is not None else "clarification",
             options=[o for o in self.options if o.id != "decline"],
             recommendation=self.recommendation,
+            part=self.part,
         )
 
 

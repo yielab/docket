@@ -154,7 +154,10 @@ def consult_description(
         f"{effect} "
         "If you can recommend one option from what is in the repository, do not ask: decide, "
         "state the assumption in your reply, and continue. "
-        "Give at least two options and mark the one you recommend. "
+        "Put each independent question in `questions` (up to five in one call): each gets its "
+        "own answer. Give each at least two options and mark the one you recommend. "
+        "An option is ONE action: if a choice would bundle several actions, ask them as "
+        "separate questions. "
         f"{left}"
     )
 
@@ -184,17 +187,35 @@ def describe_consult_for(registry: ToolRegistry, ctx: ToolContext) -> None:
 
 
 def _consult_tool() -> Tool:
-    """The `consult` built-in: ask the operator a clarification or decision question."""
+    """The `consult` built-in: ask the operator one to five clarification or decision questions."""
     option = {
         "type": "object",
         "properties": {
             "id": {"type": "string"},
             "label": {"type": "string"},
-            "description": {"type": "string"},
+            "description": {"type": "string", "description": "The one action this option takes."},
             "risks": {"type": "array", "items": {"type": "string"}},
             "estimatedTokens": {"type": "integer"},
         },
         "required": ["id", "label", "description"],
+    }
+    question = {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": ["clarification", "decision"]},
+            "message": {"type": "string", "description": "The question, plainly."},
+            "options": {"type": "array", "items": option, "minItems": 2},
+            "recommendation": {
+                "type": "object",
+                "properties": {
+                    "optionId": {"type": "string"},
+                    "rationale": {"type": "string"},
+                    "evidenceRefs": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["optionId", "rationale"],
+            },
+        },
+        "required": ["kind", "message", "options", "recommendation"],
     }
     return Tool(
         name=CONSULT_TOOL,
@@ -202,20 +223,14 @@ def _consult_tool() -> Tool:
         parameters={
             "type": "object",
             "properties": {
-                "kind": {"type": "string", "enum": ["clarification", "decision"]},
-                "message": {"type": "string", "description": "The question, plainly."},
-                "options": {"type": "array", "items": option, "minItems": 2},
-                "recommendation": {
-                    "type": "object",
-                    "properties": {
-                        "optionId": {"type": "string"},
-                        "rationale": {"type": "string"},
-                        "evidenceRefs": {"type": "array", "items": {"type": "string"}},
-                    },
-                    "required": ["optionId", "rationale"],
+                "questions": {
+                    "type": "array",
+                    "items": question,
+                    "minItems": 1,
+                    "maxItems": _consult.MAX_QUESTIONS,
                 },
             },
-            "required": ["kind", "message", "options", "recommendation"],
+            "required": ["questions"],
         },
         handler=_consult_handler,
         kind="read",
@@ -406,8 +421,9 @@ def _compact_consult_description(remaining: int, parks: bool, decides: bool, wai
         effect = "The call returns 'no answer; decide yourself' at once and your turn continues"
     left = "no consultations left" if remaining <= 0 else f"{remaining} left"
     return (
-        "Ask a person only when the repository cannot settle the decision, giving two options "
-        f"and marking your recommendation. {effect}; {left}."
+        "Ask a person only when the repository cannot settle the decision: one entry of "
+        "`questions` per independent question (up to five), each with two options, one action "
+        f"each, and your recommendation. {effect}; {left}."
     )
 
 

@@ -227,7 +227,7 @@ def test_a_question_from_the_model_waits_for_an_answer(
     model = fake_model(
         script={
             "implementer": [
-                call("consult", "k1", **CACHE_QUESTION),
+                call("consult", "k1", questions=[CACHE_QUESTION]),
                 say("Wrote the service against Redis."),
             ]
         }
@@ -291,7 +291,7 @@ def test_a_question_from_the_model_waits_for_an_answer(
 def test_a_parked_question_carries_the_deadline_the_pod_sets(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
-    model = fake_model(script={"implementer": [call("consult", "k1", **CACHE_QUESTION)]})
+    model = fake_model(script={"implementer": [call("consult", "k1", questions=[CACHE_QUESTION])]})
     w = world(model)
     w.make_pod(PIPELINE)
     w.docket("pod", "set", "inputExpiryHours", "1", "--pod", w.pod)
@@ -312,7 +312,7 @@ def test_a_parked_question_carries_the_deadline_the_pod_sets(
 def test_an_unanswered_question_expires_to_blocked(
     world: Callable[..., World], fake_model: Callable[..., FakeModel]
 ) -> None:
-    model = fake_model(script={"implementer": [call("consult", "k1", **CACHE_QUESTION)]})
+    model = fake_model(script={"implementer": [call("consult", "k1", questions=[CACHE_QUESTION])]})
     w = world(model)
     w.make_pod(PIPELINE)
     w.docket("pod", "set", "inputExpiryHours", "1", "--pod", w.pod)

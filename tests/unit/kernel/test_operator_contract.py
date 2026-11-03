@@ -426,3 +426,23 @@ class TestEscalationView:
     def test_the_inbox_carries_escalations_empty_by_default(self) -> None:
         assert InboxView().model_dump(by_alias=True)["escalations"] == []
         assert EscalationAffordances(resolveUrl="/x").options == []
+
+
+class TestQuestionPart:
+    def test_a_part_is_one_based_and_within_its_count(self) -> None:
+        view = EscalationView.model_validate(
+            {**TestEscalationView()._fields(), "part": {"index": 2, "count": 3}}
+        )
+
+        assert view.model_dump(by_alias=True, mode="json")["part"] == {"index": 2, "count": 3}
+        assert view.as_question().part == view.part
+
+    @pytest.mark.parametrize("part", [{"index": 0, "count": 1}, {"index": 3, "count": 2}])
+    def test_a_part_outside_its_count_is_refused(self, part: dict[str, int]) -> None:
+        with pytest.raises(ValueError, match=r"part|greater"):
+            EscalationView.model_validate({**TestEscalationView()._fields(), "part": part})
+
+    def test_a_record_without_a_part_has_no_part_key(self) -> None:
+        view = EscalationView.model_validate(TestEscalationView()._fields())
+
+        assert "part" not in view.model_dump(by_alias=True, mode="json")

@@ -87,7 +87,7 @@ class _Backend:
 
 
 def _consult(call_id: str = "c1") -> ChatResponse:
-    call = ToolCall(id=call_id, name="consult", arguments=json.dumps(_CONSULT))
+    call = ToolCall(id=call_id, name="consult", arguments=json.dumps({"questions": [_CONSULT]}))
     return ChatResponse(
         ok=True,
         message=assistant("", [call]),
