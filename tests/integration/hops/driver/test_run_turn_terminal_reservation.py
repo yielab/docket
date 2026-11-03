@@ -224,7 +224,7 @@ class TestRunTurn:
         session_key = "agent:window-budget-agent:default"
         driver = DocketDriver(
             backend_factory=lambda model: backend,
-            registry_factory=lambda: registry,
+            registry_factory=lambda _project: registry,
             mcp_loader=lambda registry, role, project, launch=None: [],
         )
 
@@ -358,7 +358,7 @@ class TestRunTurn:
         session_key = "agent:fit-agent:default"
         driver = DocketDriver(
             backend_factory=lambda model: backend,
-            registry_factory=lambda: registry,
+            registry_factory=lambda _project: registry,
             mcp_loader=lambda registry, role, project, launch=None: [],
         )
 

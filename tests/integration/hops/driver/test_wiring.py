@@ -45,7 +45,7 @@ def _no_recorded_isolation_choice() -> None:
     current_home().fleet_file.unlink(missing_ok=True)
 
 
-def _probe_registry() -> ToolRegistry:
+def _probe_registry(_project: str = "") -> ToolRegistry:
     """A one-tool registry reporting back the exact `ctx.sandbox` value `run_turn` built, so a
     test observes it without hand-constructing a `ToolContext` -- the real construction path
     is the thing under test."""
@@ -66,7 +66,7 @@ def _probe_registry() -> ToolRegistry:
     return registry
 
 
-def _approval_mode_probe_registry() -> ToolRegistry:
+def _approval_mode_probe_registry(_project: str = "") -> ToolRegistry:
     """A one-tool registry reporting back the exact `ctx.approval_mode`
     `run_turn` built -- the DOCKET_APPROVAL_MODE wiring's own oracle, mirroring
     `_probe_registry`'s `ctx.sandbox` pattern above."""
@@ -87,7 +87,7 @@ def _approval_mode_probe_registry() -> ToolRegistry:
     return registry
 
 
-def _allow_commands_probe_registry() -> ToolRegistry:
+def _allow_commands_probe_registry(_project: str = "") -> ToolRegistry:
     """One-tool registry reporting `ctx.allow_commands` -- the pod
     `allowCommands` setting's own oracle, mirroring the approval-mode probe."""
     registry = ToolRegistry()
@@ -126,7 +126,7 @@ def _bash_then_done(command: str) -> _ScriptedBackend:
     )
 
 
-def _approval_wait_probe_registry() -> ToolRegistry:
+def _approval_wait_probe_registry(_project: str = "") -> ToolRegistry:
     """A one-tool registry reporting the approval wait `run_turn` built."""
     registry = ToolRegistry()
 

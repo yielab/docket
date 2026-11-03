@@ -17,11 +17,11 @@ from docket.governance.security import SAFE_BINS
 from docket.hops.application import process_tools
 from docket.kernel import clock as _clock
 from docket.kernel.gate import CONSULT_TOOL, DEFAULT_MAX_CONSULTATIONS
-from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 from docket.kernel.tool_outcome import text_outcome
 from docket.platform import fetch_url
 from docket.tasks.application import consult as _consult
+from docket.teams import pod_settings as _pod_settings
 from docket.teams.workspace import skills as _skills
 
 
@@ -222,12 +222,12 @@ def _consult_tool() -> Tool:
     )
 
 
-def _fetch_tool(fetch_url: Any) -> Tool:
-    """The `fetch` built-in over *fetch_url*, the edges adapter the registry hands in."""
+def _fetch_tool(fetch_url: Any, allowed: tuple[str, ...]) -> Tool:
+    """The `fetch` built-in over *fetch_url*, reaching the hosts in *allowed* only."""
 
     def _fetch_handler(args: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
         url = str_arg(args, "url")
-        outcome: ToolOutcome = fetch_url(url, _int_arg(args, "timeout"))
+        outcome: ToolOutcome = fetch_url(url, allowed, _int_arg(args, "timeout"))
         host = (urllib.parse.urlsplit(url).hostname or "").lower()
         return screen_tool_result(
             ctx.role,
@@ -242,8 +242,8 @@ def _fetch_tool(fetch_url: Any) -> Tool:
     return Tool(
         name="fetch",
         description=(
-            "Fetch a URL over HTTP(S). Only domains on the fetch allowlist "
-            "(FETCH_ALLOWED_DOMAINS) may be reached; the response is size-capped, time-limited "
+            "Fetch a URL over HTTP(S). Only the hosts this pod allows "
+            "(FETCH_ALLOWED_DOMAINS and the pod's fetchDomains) may be reached; the response is size-capped, time-limited "
             "and truncated like any tool result when long. Network egress is otherwise open for "
             "this fleet (see "
             "security-gates.spec.md) -- this tool exists so reaching the network never "
@@ -484,15 +484,17 @@ def _bash_tool() -> Tool:
     )
 
 
-def _offered_fetch() -> list[Tool]:
-    """Offer `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty (agent-loop requirement 83)."""
+def _offered_fetch(project: str) -> list[Tool]:
+    """Offer `fetch` only while the member's set is non-empty: the machine's
+    `FETCH_ALLOWED_DOMAINS` plus the pod's `fetchDomains` (agent-loop requirement 83)."""
 
-    return [_fetch_tool(fetch_url)] if current_home().fetch_allowed_domains else []
+    allowed = _pod_settings.effective_fetch_domains(project or None)
+    return [_fetch_tool(fetch_url, allowed)] if allowed else []
 
 
-def builtin_registry() -> ToolRegistry:
+def builtin_registry(project: str = "") -> ToolRegistry:
     """The default tool set: read, write, edit, glob, grep, bash, process_output, process_stop, skill, consult, and fetch (only
-    with an allowlist). Handlers are imported here, not at module scope, so this module stays
+    with an allowed host, the machine's or *project*'s). Handlers are imported here, not at module scope, so this module stays
     importable without the filesystem/subprocess layer. Core reaches out to edges for I/O here.
     """
 
@@ -620,7 +622,7 @@ def builtin_registry() -> ToolRegistry:
         _consult_tool(),
         process_tools.process_output_tool(),
         process_tools.process_stop_tool(),
-        *_offered_fetch(),
+        *_offered_fetch(project),
     )
 
     return registry

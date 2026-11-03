@@ -35,17 +35,67 @@ class TestDomainAllowlist:
             raise AssertionError("must not open a connection for a disallowed domain")
 
         monkeypatch.setattr(_fetch.urllib.request, "build_opener", _must_not_be_called)
-        out = _fetch.fetch_url("http://example.test/ok")
+        out = _fetch.fetch_url("http://example.test/ok", ())
         assert not out.ok
         assert "not on the fetch domain allowlist" in out.error
 
     def test_only_http_and_https_schemes_are_fetchable(self) -> None:
-        out = _fetch.fetch_url("ftp://example.test/file")
+        out = _fetch.fetch_url("ftp://example.test/file", ())
         assert not out.ok
         assert "unsupported scheme" in out.error
 
+    @pytest.mark.parametrize(
+        ("host", "allowed", "reached"),
+        [
+            ("a.example.org", ("*.example.org",), True),
+            ("b.a.example.org", ("*.example.org",), True),
+            ("example.org", ("*.example.org",), False),
+            ("badexample.org", ("*.example.org",), False),
+            ("example.org.evil.test", ("*.example.org",), False),
+            ("docs.python.org", ("docs.python.org",), True),
+            ("x.docs.python.org", ("docs.python.org",), False),
+            ("EXAMPLE.org", ("example.org",), True),
+            ("anywhere.test", ("*",), True),
+            ("anywhere.test", (), False),
+        ],
+    )
+    def test_the_wildcard_matches_subdomains_and_never_the_apex(
+        self, monkeypatch: pytest.MonkeyPatch, host: str, allowed: tuple[str, ...], reached: bool
+    ) -> None:
+        opened: list[object] = []
+
+        def _opener(*_handlers: object) -> _FakeOpener:
+            opened.append(_handlers)
+            return _FakeOpener(_FakeResponse(b"ok", "text/plain"))
+
+        monkeypatch.setattr(_fetch.urllib.request, "build_opener", _opener)
+        out = _fetch.fetch_url(f"http://{host}/page", allowed)
+        assert out.ok is reached
+        assert bool(opened) is reached
+        if not reached:
+            assert out.refusal == "fetch_not_allowed"
+
+    def test_a_redirect_is_held_to_the_same_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        handlers: list[object] = []
+
+        def _opener(*given: object) -> _FakeOpener:
+            handlers.extend(given)
+            return _FakeOpener(_FakeResponse(b"ok", "text/plain"))
+
+        monkeypatch.setattr(_fetch.urllib.request, "build_opener", _opener)
+        _fetch.fetch_url("http://a.example.org/", ("*.example.org",))
+        (guard,) = handlers
+        request = _fetch.urllib.request.Request("http://a.example.org/")
+        followed = guard.redirect_request(  # type: ignore[attr-defined]
+            request, None, 302, "Found", {}, "http://b.a.example.org/next"
+        )
+        assert followed is not None
+        for off in ("http://example.org/next", "http://other.test/next"):
+            with pytest.raises(_fetch.urllib.error.HTTPError, match="not on the fetch domain"):
+                guard.redirect_request(request, None, 302, "Found", {}, off)  # type: ignore[attr-defined]
+
     def test_unparseable_host_is_refused(self) -> None:
-        out = _fetch.fetch_url("http:///no-host")
+        out = _fetch.fetch_url("http:///no-host", ())
         assert not out.ok
         assert "could not parse a host" in out.error
 
@@ -93,7 +143,7 @@ def _fetch_with(
         **home_changes,
     )
     with use_home(home):
-        out = _fetch.fetch_url("http://pages.example.test/page")
+        out = _fetch.fetch_url("http://pages.example.test/page", ("pages.example.test",))
     assert out.ok, out.error
     return out.content
 

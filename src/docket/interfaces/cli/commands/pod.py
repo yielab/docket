@@ -27,7 +27,12 @@ from docket.interfaces.cli.commands.pod_members import (
 )
 from docket.interfaces.cli.commands.pod_records import cmd_records
 from docket.interfaces.cli.commands.pod_routines import routine_app
-from docket.interfaces.cli.commands.pod_settings import set_network, set_setting, unset_setting
+from docket.interfaces.cli.commands.pod_settings import (
+    set_fetch_domains,
+    set_network,
+    set_setting,
+    unset_setting,
+)
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel.errors import DispatchError
@@ -332,7 +337,10 @@ def cmd_set(
     widen: bool = typer.Option(
         False,
         "--widen",
-        help="With network open: let this pod reach the network on a machine at none (asks first)",
+        help=(
+            "With network open: let this pod reach the network on a machine at none; "
+            "with fetchDomains '*': let its fetch read any host (asks first)"
+        ),
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the --widen confirmation"),
     pod_name: str | None = pod_option(),
@@ -343,8 +351,13 @@ def cmd_set(
     project = _contract.require_pod(pod_name)
     if key == "network":
         set_network(project, value, widen=widen, yes=yes)
+    elif key == "fetchDomains":
+        set_fetch_domains(project, value, widen=widen, yes=yes)
     elif widen:
-        ui.error("--widen applies only to network", "Example: docket pod set network open --widen")
+        ui.error(
+            "--widen applies only to network and fetchDomains",
+            "Example: docket pod set network open --widen",
+        )
         raise typer.Exit(1)
     else:
         set_setting(project, key, value, member=member)

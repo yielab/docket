@@ -196,7 +196,7 @@ class Home:
     # Per-role retry budgets set in the environment (DISPATCH_RETRIES_<ROLE>); a role not
     # listed uses dispatch_retries_default. A tuple, not a dict, so Home stays hashable.
     dispatch_retries_by_role: tuple[tuple[str, int], ...] = ()
-    # Exact hostnames `fetch` may reach (comma-separated in the environment, lowercased).
+    # Hostnames (or `*.domain`) `fetch` may reach (comma-separated in the environment, lowercased).
     # Empty by default: an operator opts a domain in, so `fetch` is never a second
     # unattended way out to the network.
     fetch_allowed_domains: tuple[str, ...] = ()

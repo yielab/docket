@@ -278,8 +278,8 @@ class TestTheJail:
             seen.append(ctx)
             return ToolOutcome(True, content="ok")
 
-        def registry() -> ToolRegistry:
-            base = builtin_registry()
+        def registry(project: str) -> ToolRegistry:
+            base = builtin_registry(project)
             base.register(Tool(name="probe", description="p", parameters={}, handler=probe))
             return base
 

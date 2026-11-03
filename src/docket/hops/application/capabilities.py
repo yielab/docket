@@ -14,6 +14,7 @@ from docket.agent.tools import records_tools as _records_tools
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.ports import records as _pod_records
 from docket.kernel.records import RECORDS_QUERY_TOOL, records_tool_name
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import records as _records
 from docket.teams import role_composer as _role_composer
 
@@ -23,11 +24,16 @@ NOT_COMPUTED = ["mcp", "service"]
 def member_capabilities(project: str, role: str) -> dict[str, Any]:
     """The tool ``kinds``, the tool names and the record sets *role* can write and query in
     *project*, after the role's and the pod's denials."""
-    registry = builtin_registry()
+    registry = builtin_registry(project)
     sets, _problems = _records.pod_record_sets(project)
     _records_tools.load_records_tools(registry, store=_pod_records.open(project), sets=sets)
     held = _role_composer.registry_for_role(registry, role, project)
     names = set(held.names())
+    reach = (
+        {"fetchDomains": list(_pod_settings.effective_fetch_domains(project))}
+        if "fetch" in names
+        else {}
+    )
     return {
         "kinds": sorted({tool.kind for n in names if (tool := held.get(n)) is not None}),
         "tools": sorted(names),
@@ -35,5 +41,6 @@ def member_capabilities(project: str, role: str) -> dict[str, Any]:
             "write": [s.name for s in sets if records_tool_name(s.name, "add") in names],
             "query": RECORDS_QUERY_TOOL in names,
         },
+        **reach,
         "notComputed": list(NOT_COMPUTED),
     }

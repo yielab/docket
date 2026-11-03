@@ -34,6 +34,7 @@ from __future__ import annotations
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from html.parser import HTMLParser
 
 from docket.kernel import clock as _clock
@@ -179,8 +180,22 @@ def _html_to_text(html: str) -> str:
     return extractor.text()
 
 
+def host_allowed(host: str, allowed: Iterable[str]) -> bool:
+    """Whether *host* is in *allowed*: an exact hostname, ``*.example.org`` (every subdomain at any
+    depth, never the apex), or ``*`` (any host). The one matcher the call and the redirect guard
+    share."""
+    host = host.lower()
+    for entry in allowed:
+        entry = entry.lower()
+        if entry == "*" or entry == host:
+            return True
+        if entry.startswith("*.") and host.endswith(entry[1:]) and len(host) > len(entry) - 1:
+            return True
+    return False
+
+
 class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Refuse to follow a redirect off the allowlist.
+    """Refuse to follow a redirect off the allowed set.
 
     Without this, an allowlisted host could redirect anywhere and the
     allowlist would be decorative — `urllib` follows redirects transparently
@@ -191,7 +206,7 @@ class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
     already handles, rather than needing a parallel error case.
     """
 
-    def __init__(self, allowed: frozenset[str]) -> None:
+    def __init__(self, allowed: tuple[str, ...]) -> None:
         self._allowed = allowed
 
     def redirect_request(
@@ -204,7 +219,7 @@ class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
         newurl: str,
     ) -> urllib.request.Request | None:
         new_host = (urllib.parse.urlsplit(newurl).hostname or "").lower()
-        if new_host not in self._allowed:
+        if not host_allowed(new_host, self._allowed):
             raise urllib.error.HTTPError(
                 newurl,
                 code,
@@ -213,10 +228,6 @@ class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
                 None,
             )
         return super().redirect_request(req, fp, code, msg, headers, newurl)  # type: ignore[arg-type]
-
-
-def allowed_domains() -> frozenset[str]:
-    return frozenset(current_home().fetch_allowed_domains)
 
 
 def _effective_timeout(timeout: int) -> float:
@@ -240,10 +251,10 @@ def _read_until_deadline(resp: object, cap: int, deadline: float) -> bytes | Non
     return bytes(buf)
 
 
-def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
-    """Fetch *url* over HTTP(S), refusing anything off the domain allowlist.
+def fetch_url(url: str, allowed: Iterable[str], timeout: int = 0) -> ToolOutcome:
+    """Fetch *url* over HTTP(S), refusing anything outside *allowed* (``host_allowed`` entries).
 
-    Refuses before ever opening a socket when the host is not allowlisted —
+    Refuses before ever opening a socket when the host is not allowed —
     same "fail before any side effect" shape `dispatch_tool` already uses for
     a half-specified call. A non-positive *timeout* falls back to
     `Home.fetch_timeout_s`, matching `run_bash`'s own
@@ -258,14 +269,14 @@ def fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
     if not host:
         return ToolOutcome(False, error=f"could not parse a host out of {url!r}")
 
-    allowed = allowed_domains()
-    if host not in allowed:
+    allowed = tuple(allowed)
+    if not host_allowed(host, allowed):
         shown = ", ".join(sorted(allowed)) or "none configured"
         return ToolOutcome(
             False,
             error=(
-                f"{host!r} is not on the fetch domain allowlist ({shown}); "
-                "add it to FETCH_ALLOWED_DOMAINS to permit it"
+                f"{host!r} is not on the fetch domain allowlist ({shown}); add it to "
+                "FETCH_ALLOWED_DOMAINS, or to the pod's fetchDomains, to permit it"
             ),
             refusal="fetch_not_allowed",
         )

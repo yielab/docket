@@ -18,6 +18,7 @@ from docket.agent.ports import ToolCall
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
+from docket.kernel.tool_outcome import ToolOutcome
 from docket.platform import fetch as _fetch
 
 SUBJECT = "docket.platform.fetch"
@@ -27,15 +28,20 @@ fetch_server = _support_fetch.fetch_server
 _allow = _support_fetch.allow
 
 
+def _fetch_url(url: str, timeout: int = 0) -> ToolOutcome:
+    """`fetch_url` over the machine list the test's home carries."""
+    return _fetch.fetch_url(url, current_home().fetch_allowed_domains, timeout)
+
+
 class TestDomainAllowlist:
     def test_denied_when_no_domain_is_configured(self, fetch_server: str) -> None:
-        out = _fetch.fetch_url(f"{fetch_server}/ok")
+        out = _fetch_url(f"{fetch_server}/ok")
         assert not out.ok
         assert "not on the fetch domain allowlist" in out.error
 
     def test_allowed_domain_succeeds(self, fetch_server: str) -> None:
         with _allow(fetch_server):
-            out = _fetch.fetch_url(f"{fetch_server}/ok")
+            out = _fetch_url(f"{fetch_server}/ok")
             assert out.ok
             assert "hello world" in out.content
 
@@ -46,7 +52,7 @@ class TestResponseSizeCap:
             _allow(fetch_server),
             use_home(dataclasses.replace(current_home(), fetch_max_response_bytes=100)),
         ):
-            out = _fetch.fetch_url(f"{fetch_server}/big")
+            out = _fetch_url(f"{fetch_server}/big")
             assert out.ok
             assert "[truncated: response exceeded 100 bytes]" in out.content
             # exactly 100 filler bytes were kept, not the full 5000
@@ -54,7 +60,7 @@ class TestResponseSizeCap:
 
     def test_response_under_the_cap_is_not_annotated(self, fetch_server: str) -> None:
         with _allow(fetch_server):
-            out = _fetch.fetch_url(f"{fetch_server}/ok")
+            out = _fetch_url(f"{fetch_server}/ok")
             assert out.ok
             assert "[truncated" not in out.content
 
@@ -65,7 +71,7 @@ class TestResponseSizeCap:
             _allow(fetch_server),
             use_home(dataclasses.replace(current_home(), tool_max_output_chars=100)),
         ):
-            out = _fetch.fetch_url(f"{fetch_server}/big")
+            out = _fetch_url(f"{fetch_server}/big")
             assert out.ok and "more characters]" in out.content
             assert len(out.content) <= 100 + 60
 
@@ -74,7 +80,7 @@ class TestTimeout:
     def test_a_dripping_response_fails_at_the_deadline(self, fetch_server: str) -> None:
         with _allow(fetch_server):
             started = time.monotonic()
-            out = _fetch.fetch_url(f"{fetch_server}/drip", timeout=1)
+            out = _fetch_url(f"{fetch_server}/drip", timeout=1)
             elapsed = time.monotonic() - started
             assert not out.ok
             assert "timed out after 1s" in out.error
@@ -102,13 +108,13 @@ class TestTimeout:
                 return opener
 
             monkeypatch.setattr(_fetch.urllib.request, "build_opener", _record)
-            out = _fetch.fetch_url(f"{fetch_server}/ok", timeout=99999999)
+            out = _fetch_url(f"{fetch_server}/ok", timeout=99999999)
             assert out.ok
             assert seen == [4.0]  # FETCH_TIMEOUT_S times the clamp multiple
 
     def test_a_slow_response_times_out(self, fetch_server: str) -> None:
         with _allow(fetch_server):
-            out = _fetch.fetch_url(f"{fetch_server}/slow", timeout=1)
+            out = _fetch_url(f"{fetch_server}/slow", timeout=1)
             assert not out.ok
             assert "timed out after 1s" in out.error
 
@@ -117,7 +123,7 @@ class TestTimeout:
             _allow(fetch_server),
             use_home(dataclasses.replace(current_home(), fetch_timeout_s=1.0)),
         ):
-            out = _fetch.fetch_url(f"{fetch_server}/slow", timeout=0)
+            out = _fetch_url(f"{fetch_server}/slow", timeout=0)
             assert not out.ok
             assert "timed out after 1" in out.error
 
@@ -125,13 +131,13 @@ class TestTimeout:
 class TestRedirects:
     def test_redirect_to_an_allowed_host_is_followed(self, fetch_server: str) -> None:
         with _allow(fetch_server):
-            out = _fetch.fetch_url(f"{fetch_server}/redirect-allowed")
+            out = _fetch_url(f"{fetch_server}/redirect-allowed")
             assert out.ok
             assert "hello world" in out.content
 
     def test_redirect_off_the_allowlist_is_refused(self, fetch_server: str) -> None:
         with _allow(fetch_server):
-            out = _fetch.fetch_url(f"{fetch_server}/redirect-blocked")
+            out = _fetch_url(f"{fetch_server}/redirect-blocked")
             assert not out.ok
             assert "not on the fetch domain allowlist" in out.error
 
@@ -139,7 +145,7 @@ class TestRedirects:
 class TestHTTPErrors:
     def test_404_is_reported_with_the_status_code(self, fetch_server: str) -> None:
         with _allow(fetch_server):
-            out = _fetch.fetch_url(f"{fetch_server}/missing")
+            out = _fetch_url(f"{fetch_server}/missing")
             assert not out.ok
             assert "HTTP 404" in out.error
 
@@ -208,8 +214,8 @@ class TestFetchResultScreening:
 
             original_fetch = _builtin_tools_module.fetch_url
 
-            def _fetch_injected(url: str, timeout: int = 0) -> object:
-                result = original_fetch(url, timeout)
+            def _fetch_injected(url: str, allowed: tuple[str, ...], timeout: int = 0) -> object:
+                result = original_fetch(url, allowed, timeout)
                 # Replace the successful response with one containing injection
                 if result.ok:
                     result.content = f"hello world. {self._INJECTION}"
@@ -237,8 +243,8 @@ class TestFetchResultScreening:
 
             original_fetch = _builtin_tools_module.fetch_url
 
-            def _fetch_injected(url: str, timeout: int = 0) -> object:
-                result = original_fetch(url, timeout)
+            def _fetch_injected(url: str, allowed: tuple[str, ...], timeout: int = 0) -> object:
+                result = original_fetch(url, allowed, timeout)
                 if result.ok:
                     result.content = f"hello world. {self._INJECTION}"
                 return result
@@ -267,8 +273,8 @@ class TestFetchResultScreening:
             original_fetch = _builtin_tools_module.fetch_url
             secret = "sk-" + "a1b2c3d4e5" * 4
 
-            def _fetch_injected(url: str, timeout: int = 0) -> object:
-                result = original_fetch(url, timeout)
+            def _fetch_injected(url: str, allowed: tuple[str, ...], timeout: int = 0) -> object:
+                result = original_fetch(url, allowed, timeout)
                 if result.ok:
                     result.content = f"{self._INJECTION} key {secret}"
                 return result
@@ -307,7 +313,7 @@ class TestFetchResultScreening:
             from docket.hops.application import builtin_tools as _builtin_tools_module
             from docket.platform import fetch as _fetch_module
 
-            def _fetch_error(url: str, timeout: int = 0) -> object:
+            def _fetch_error(url: str, allowed: tuple[str, ...], timeout: int = 0) -> object:
                 return _fetch_module.ToolOutcome(False, error=f"error: {self._INJECTION}")
 
             monkeypatch.setattr(_builtin_tools_module, "fetch_url", _fetch_error)

@@ -117,6 +117,8 @@ class AgentMeta(BaseModel):
     config_digest: Any = Field(None, alias="configDigest")
     exporters: Any = None
     network_grant: Any = Field(None, alias="networkGrant")
+    fetch_domains: Any = Field(None, alias="fetchDomains")
+    fetch_grant: Any = Field(None, alias="fetchGrant")
 
     @staticmethod
     def coerce_paused(value: object) -> bool:

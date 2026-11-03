@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.1.0
+**Version**: 4.2.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -732,10 +732,14 @@ This specification does NOT cover:
     line-number prefix`. It **MUST NOT** apply any change.
 95. The trace record of a `tool_result` whose text carries the artifact line of requirement 91
     **MUST** record the path as `artifact` in its payload.
-83. `builtin_registry()` **MUST** register `fetch` only while `FETCH_ALLOWED_DOMAINS` is non-empty,
-    read when the registry is built. With an empty allowlist `fetch` **MUST NOT** appear in
-    `specs()`, so the model is not offered it, and a call naming it is refused as an unknown tool
-    like any other unregistered name.
+83. `builtin_registry(project)` **MUST** register `fetch` only while the member's allowed set is
+    non-empty, read when the registry is built: the machine's `FETCH_ALLOWED_DOMAINS` plus the
+    `fetchDomains` of the pod *project* names (`security-gates.spec.md` "Network egress and the
+    `fetch` tool", requirement 2). The registered tool's handler reaches that set only and passes it
+    to `fetch_url`. With an empty set `fetch` **MUST NOT** appear in `specs()`, so the model is not
+    offered it, and a call naming it is refused as an unknown tool like any other unregistered
+    name. `DocketDriver.registry_factory` takes the hop's project (`Callable[[str],
+    ToolRegistry]`, default `builtin_registry`).
 
 ### Request projection
 
@@ -998,7 +1002,7 @@ own id, empty when the wire has none.
 ```python
 class DocketDriver:                            # implements RuntimeDriver
     backend_factory: Callable[[str], ChatBackend | None]   # default: client_for
-    registry_factory: Callable[[], ToolRegistry]            # default: builtin_registry
+    registry_factory: Callable[[str], ToolRegistry]         # (project); default: builtin_registry
     mcp_loader: Callable[..., list[Any]]
     # called as mcp_loader(registry, role, project, launch=...); the default folds the
     # configured MCP servers (narrowed to the pod's mcpServers) in through load_mcp_tools,

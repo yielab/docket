@@ -1070,7 +1070,7 @@ No command emits any other exit code today.
 | `AGENT_LOOP_REQUEST_TIMEOUT_S` | Per-HTTP-call timeout passed to the chat backend | `120` |
 | `MCP_CLIENT_TIMEOUT_S` | Default per-call bound for an MCP server with no timeout of its own | `10` |
 | `MCP_CLIENT_MAX_TIMEOUT_S` | Hard ceiling every server-specified MCP timeout is clamped to | `60` |
-| `FETCH_ALLOWED_DOMAINS` | Comma-separated exact hostnames the `fetch` tool may reach | empty (nothing allowed until opted in) |
+| `FETCH_ALLOWED_DOMAINS` | Comma-separated hostnames (or `*.domain` for its subdomains) every pod's `fetch` tool may reach, beside a pod's own `fetchDomains` | empty (nothing allowed until opted in) |
 | `FETCH_MAX_RESPONSE_BYTES` | Response-body cap for the `fetch` tool before truncation | `200000` |
 | `FETCH_TIMEOUT_S` | Default per-call wall-clock bound for the `fetch` tool | `15` |
 | `TELEGRAM_POLL_TIMEOUT_S` | The Telegram-side long-poll wait passed to `getUpdates` | `25` |

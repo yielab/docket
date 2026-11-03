@@ -196,6 +196,12 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
             f"Run: docket pod set network open --widen --pod {project}",
         )
         raise typer.Exit(1)
+    if key == _pod_settings.FETCH_GRANT_KEY:
+        ui.error(
+            f"{key} is recorded only by the operator's yes",
+            f"Run: docket pod set fetchDomains '*' --widen --pod {project}",
+        )
+        raise typer.Exit(1)
     if key in _pod_settings.PodSettings.RECORDED_KEYS:
         ui.error(f"{key} is written by update, not by set")
         raise typer.Exit(1)
@@ -266,6 +272,38 @@ def set_network(project: str, value: str, *, widen: bool, yes: bool) -> None:
     ui.success(f"Pod '{project}' may reach the network (the machine stays at none)")
 
 
+def _narrow_fetch(project: str) -> None:
+    """Drop the pod's any-host `fetch` grant, if it holds one (the revoke audits it)."""
+    if _pod_settings.revoke_fetch_grant(project):
+        ui.dim(f"Pod '{project}' no longer holds an any-host `fetch` grant")
+
+
+def set_fetch_domains(project: str, value: str, *, widen: bool, yes: bool) -> None:
+    """``pod set fetchDomains``: ``--widen`` with ``*`` records the operator's yes (a grant) for
+    any host; a list of hosts replaces the pod's, dropping a grant the pod held."""
+    if not widen:
+        set_setting(project, "fetchDomains", value)
+        _narrow_fetch(project)
+        return
+    if value.strip() != _pod_settings.FETCH_ANY:
+        ui.error(
+            "--widen goes with the any-host entry '*'",
+            "Example: docket pod set fetchDomains '*' --widen",
+        )
+        raise typer.Exit(1)
+    _lead_for_settings(project)
+    ui.warn(f"This opens pod '{project}' to every host: {_pod_settings.FETCH_GRANT_REACH}.")
+    if not _contract.confirm(f"Let the `fetch` of pod {project} read any host", yes=yes):
+        ui.warn("Aborted.")
+        raise typer.Exit(1)
+    try:
+        _pod_settings.grant_fetch_any(project, by="cli")
+    except _pod_settings.PodSettingsError as ex:
+        ui.error(str(ex))
+        raise typer.Exit(1) from ex
+    ui.success(f"The `fetch` of pod '{project}' may read any host")
+
+
 def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
     """Clear one pod setting back to its default, or with ``member`` a verify command."""
     if key == "verify" or member is not None:
@@ -286,6 +324,8 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
         raise typer.Exit(1)
     if key == "network":
         _narrow(project, "unset")
+    if key == "fetchDomains":
+        _narrow_fetch(project)
     # None reads back exactly like an absent key: the writer's only way to clear one.
     _fleet.meta_set(lead_id, key, None)
     if key == "pipeline":

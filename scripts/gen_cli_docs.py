@@ -558,7 +558,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("FETCH_ALLOWED_DOMAINS",),
-        "Comma-separated exact hostnames the `fetch` tool may reach",
+        "Comma-separated hostnames (or `*.domain` for its subdomains) every pod's `fetch` tool may reach, beside a pod's own `fetchDomains`",
         "empty (nothing allowed until opted in)",
     ),
     (

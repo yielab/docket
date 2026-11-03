@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.20.0
+**Version**: 7.21.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-03
 
@@ -390,6 +390,12 @@ inferring a cut network from `mode`. A client probes for it with the `networkEnf
 A `workdir` pod's row and its `GET /pods/<p>` object also carry `workDir`, the absolute path of the
 folder its tasks run in (its Lead's `workDir`); a `codebase` pod carries no `workDir` key, and the
 key is never `null`. A client probes for it with the `podWorkDir` feature.
+The `GET /pods/<p>` object also carries `fetchDomains`, the list of hosts the pod itself declares for
+its members' `fetch` (`host`, `*.host` for every subdomain and never the apex, or `*`, which matches any host name,
+once the operator recorded the grant, `security-gates.spec.md` "Network egress and the `fetch`
+tool"); `[]` when it declares none. It does not repeat the machine's `FETCH_ALLOWED_DOMAINS`, which
+is every pod's. A client probes for it with the `podFetch` feature. `POST /pods/<p>/apply` and `docket
+pod update` refuse a `*` entry; only `docket pod set fetchDomains '*' --widen` writes it.
 
 Every row of `GET /pods` and the `GET /pods/<p>` object also carry `paused` (boolean, always
 present). A pod is paused while its Lead's meta holds `paused: true`, which a spent budget sets
@@ -429,6 +435,11 @@ pod's record tools):
  "records": {"write": ["tack_proposals"], "query": true},
  "notComputed": ["mcp", "service"]}
 ```
+
+When the member holds `fetch`, the object also carries `fetchDomains`, the hosts that `fetch`
+reaches: the machine's `FETCH_ALLOWED_DOMAINS` plus the pod's own list (same entry forms as above);
+a member whose role denies `fetch`, or a pod with no host at all, holds no `fetch` and carries no
+`fetchDomains` key. `tools` lists `fetch` only in the first case.
 
 `kinds` is the distinct tool kinds (`read`, `write`, `exec`, `send`, `record`) of `tools`, the tool names the
 role holds; `records.write` names the sets it can add to and `records.query` says whether it holds

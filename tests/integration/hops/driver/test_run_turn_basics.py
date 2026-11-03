@@ -35,7 +35,7 @@ from docket.teams import fleet as _fleet
 SUBJECT = "docket.hops.application.driver"
 
 
-def _consult_park_probe_registry() -> ToolRegistry:
+def _consult_park_probe_registry(_project: str = "") -> ToolRegistry:
     """A one-tool registry reporting the `consult_park` and `task_id` `run_turn` built."""
     registry = ToolRegistry()
 
@@ -235,7 +235,7 @@ class TestRunTurn:
             backend = _ScriptedBackend(responses)
             driver = DocketDriver(
                 backend_factory=lambda model: backend,
-                registry_factory=lambda: registry,
+                registry_factory=lambda _project: registry,
             )
             session_key = "agent:denial-agent:default"
 

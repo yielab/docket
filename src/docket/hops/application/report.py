@@ -322,7 +322,7 @@ def member_report(agent_id: str) -> dict[str, Any]:
     role_registry_scope = _archetypes.load_registry(project)
     role_scope = _scope_label(role_registry_scope.source_of(role))
 
-    base_registry = _builtin_tools.builtin_registry()
+    base_registry = _builtin_tools.builtin_registry(project)
     role_registry = (
         _role_composer.registry_for_role(base_registry, role, project) if role else base_registry
     )
@@ -427,6 +427,7 @@ def pod_report(project: str) -> dict[str, Any]:
         },
         "pipeline": _pipeline_report(project),
         "network": _network_report(project),
+        "fetchDomains": list(settings.fetch_domains),
         **_work_dir_fields(project),
         **record,
     }

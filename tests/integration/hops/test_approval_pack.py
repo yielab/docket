@@ -118,7 +118,7 @@ def _park(text: str) -> dict[str, Any]:
     """Run one parked turn whose message says *text*; return the approval record, which holds the pack."""
     backend = _Backend([_call_turn(text, "c1"), _done()])
     driver = DocketDriver(
-        backend_factory=lambda model: backend, registry_factory=lambda: _registry([])
+        backend_factory=lambda model: backend, registry_factory=lambda _project: _registry([])
     )
     driver.run_turn(
         AGENT, f"agent:{AGENT}:default", "go", 30, {DOCKET_APPROVAL_MODE: "park"}, trace_project="p"
@@ -165,7 +165,7 @@ class TestApproveTask:
         ran: list[str] = []
         backend = _Backend([_call_turn("t", "c1"), _call_turn("t", "c2"), _done()])
         driver = DocketDriver(
-            backend_factory=lambda model: backend, registry_factory=lambda: _registry(ran)
+            backend_factory=lambda model: backend, registry_factory=lambda _project: _registry(ran)
         )
         result = driver.run_turn(AGENT, f"agent:{AGENT}:default", "go", 30, trace_project="p")
 
@@ -181,7 +181,7 @@ class TestApproveTask:
         _answer_with(monkeypatch, None)
         backend = _Backend([_call_turn("t", "c1"), _call_turn("t", "c2"), _done()])
         driver = DocketDriver(
-            backend_factory=lambda model: backend, registry_factory=lambda: _registry([])
+            backend_factory=lambda model: backend, registry_factory=lambda _project: _registry([])
         )
         driver.run_turn(AGENT, f"agent:{AGENT}:default", "go", 30, trace_project="p")
         assert len(list(current_home().approvals_dir.glob("*.json"))) == 2

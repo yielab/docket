@@ -1,13 +1,13 @@
 # MCP Client Specification
 
-**Version**: 3.1.0
+**Version**: 3.2.0
 **Status**: Implemented and on the live turn path: configured servers' tools load into the turn's
 registry before per-role narrowing, so a role that denies a capability loses them like a built-in.
 Stdio transport only; each turn re-spawns every configured server (no listing cache). A server
 declared `lifetime: hop` keeps one session open for the hop's calls (Requirements 41-46); every
 other server is one subprocess per exchange. An `env` value may be `secret:<name>`, resolved from
 docket's secret store when a turn loads its servers (Requirements 47-50).
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -186,7 +186,7 @@ This specification does NOT cover:
     pod's server selection (Requirement 34), so a test can substitute a fake `list_tools`/`call_tool`
     pair (Requirement 4's port) without spawning a subprocess or requiring the `mcp` SDK.
 26. `DocketDriver.run_turn` **MUST** call `mcp_loader(registry, meta.role, ctx.project, launch=...)`
-    against the registry returned by `registry_factory()` (typically `builtin_registry()`)
+    against the registry returned by `registry_factory(ctx.project)` (typically `builtin_registry(project)`)
     **before** that registry is handed to `run_agent_turn`, i.e. before `registry_for_role`'s
     once-per-turn narrowing runs (`agent-loop.spec.md`). This ordering **MUST NOT** be reversed:
     narrowing after loading is what lets `role-archetypes.spec.md` requirement 6 (kind-based
@@ -456,12 +456,12 @@ keep this seam: the session is looked up from the context at call time, never ca
 @dataclass
 class DocketDriver:
     backend_factory: Callable[[str], ChatBackend | None] = client_for
-    registry_factory: Callable[[], ToolRegistry] = builtin_registry
+    registry_factory: Callable[[str], ToolRegistry] = builtin_registry   # (project)
     mcp_loader: Callable[..., list[Any]]   # (registry, role, project, *, launch=None); default applies Requirement 34
 
     def run_turn(self, agent_id: str, session_key: str, message: str, ...) -> TurnResult:
         ...
-        registry = self.registry_factory()
+        registry = self.registry_factory(ctx.project)
         self.mcp_loader(registry, meta.role, ctx.project, launch=launch)   # folds MCP tools in, before role narrowing
         ...
         result = run_agent_turn(backend, registry, ctx, session_key, message, config=loop_config)

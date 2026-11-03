@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.7.0
+**Version**: 3.8.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1120,12 +1120,33 @@ material, may be read as saying otherwise.
    make network calls. They stay on the allowlist because agents need them constantly for
    ordinary work (the trade-off "High-risk action classes" makes for `git` and `npm`).
 2. **`fetch`: an inspectable path, not a closed gate.** `fetch` (`fetch_url`) is a built-in,
-   gated tool of kind `read`, offered to the model only while `FETCH_ALLOWED_DOMAINS` is non-empty
+   gated tool of kind `read`, offered to a pod member only while its allowed set is non-empty
    (agent-loop.spec.md requirement 83). It enforces, inside the handler itself (mechanism, as
    `resolve_within` is for file paths):
-   - **A domain allowlist** (`FETCH_ALLOWED_DOMAINS`, exact hostnames, comma-separated, **empty
-     by default**). A host not on the list **MUST** be refused before any socket opens; `fetch`
-     does not reach everywhere because egress is otherwise open, an operator opts a domain in.
+   - **A domain allowlist**, the member's allowed set: the machine's `FETCH_ALLOWED_DOMAINS`
+     (comma-separated, **empty by default**) plus its pod's `fetchDomains` (below). An entry is an
+     exact hostname, or `*.example.org`, which matches every subdomain of `example.org` at any
+     depth (`a.example.org`, `b.a.example.org`) and neither the apex (`example.org`) nor a host that
+     merely ends in the same letters (`badexample.org`). A wildcard needs a registered domain
+     under it: `*.org` is refused. A bare `*` matches any host name and is a pod's recorded grant only (a
+     bare `*` in `FETCH_ALLOWED_DOMAINS` is ignored). A later card will refuse private, loopback and
+     link-local addresses for hosts a wildcard matches. A host not in the set **MUST** be refused
+     before any socket opens; `fetch` does not reach everywhere because egress is otherwise open, an
+     operator opts a domain in. `fetch_url` takes the set as an argument and reads no pod or
+     environment itself (`platform` imports nothing above it); one matcher serves the call and the
+     redirect guard.
+   - **A pod's hosts.** The pod setting `fetchDomains` (comma-separated entries as above, `docket
+     pod set fetchDomains docs.python.org,*.wikipedia.org`) is that pod's list; it is the pod's
+     own, so one pod's research host is not every pod's. `*` is written only by `docket pod set
+     fetchDomains '*' --widen`: it prints what opens ("this pod's `fetch` can read any host"),
+     asks `[y/N]` through the shared confirm (`--yes` for scripts), and on yes records `fetchGrant:
+     {at, by}` in the Lead's settings and audits `pod.fetch_widen`. An answer other than yes writes
+     and audits nothing. A `*` entry without that grant is unreadable, so `pod set fetchDomains
+     '*'`, `pod update` and `POST /pods/<p>/apply` refuse it; `fetchGrant` is never settable, never
+     applied from a repository (a `fetchGrant` key is skipped and reported) and `pod set
+     fetchDomains` to a list without `*`, or `pod unset fetchDomains`, removes the grant and audits
+     `pod.fetch_narrow` (only when a grant existed). Unreadable pod settings leave a member the
+     machine's list alone.
    - **A response size cap** (`FETCH_MAX_RESPONSE_BYTES`, default 200,000 bytes). A response over
      the cap **MUST** be truncated with the truncation announced in the returned text, the
      announced-truncation contract every other built-in has.
@@ -1136,7 +1157,7 @@ material, may be read as saying otherwise.
      call returns at most one socket timeout past the deadline. The tool's own `timeout` argument
      is clamped to four times `FETCH_TIMEOUT_S` (60 s by default); a larger value is silently
      bounded, and a non-positive value falls back to `FETCH_TIMEOUT_S`.
-   - **A redirect guard.** A redirect off the domain allowlist **MUST** be refused, not followed,
+   - **A redirect guard.** A redirect off the member's allowed set **MUST** be refused, not followed,
      or the allowlist would be decorative. `urllib`'s redirect-following is intercepted at its
      extension point (`HTTPRedirectHandler.redirect_request`) before a connection to the new host
      opens.
@@ -1161,7 +1182,7 @@ material, may be read as saying otherwise.
    network does not have to mean reaching for one of them. Cutting a jailed command's network is
    requirement 7.
 5. **Scope.** This section governs `fetch_url` and the `fetch` tool registration. A default
-   install reaches no domain through `fetch`, and nothing here changes what `bash`, `python3`,
+   install, with no pod list, reaches no domain through `fetch`, and nothing here changes what `bash`, `python3`,
    `node` or `git` may do; those stay as requirement 1 describes.
 6. **`fetch` results pass `pre_input` like MCP results (ADR 0020).** The text of a successful
    `fetch` response and the error text of a failed one **MUST** be evaluated through
@@ -1680,33 +1701,33 @@ $ docker ps -a --filter name=docket-sbx- --format '{{.Names}}'
 A host not on the allowlist is refused before any connection opens:
 
 ```text
->>> fetch_url("https://example.com/status")
+>>> fetch_url("https://example.com/status", ())
 ToolOutcome(ok=False, content='',
             error="'example.com' is not on the fetch domain allowlist (none configured); "
-                  "add it to FETCH_ALLOWED_DOMAINS to permit it")
+                  "add it to FETCH_ALLOWED_DOMAINS, or to the pod's fetchDomains, to permit it")
 ```
 
-Once a domain is configured, the call succeeds, is size-capped, and a redirect off the allowlist is
-refused rather than followed:
+Once a domain is in the member's set, the call succeeds, is size-capped, and a redirect off the
+set is refused rather than followed:
 
 ```text
-# FETCH_ALLOWED_DOMAINS=api.example.com
->>> fetch_url("https://api.example.com/status")
+# allowed = ("api.example.com",): the member's FETCH_ALLOWED_DOMAINS plus its pod's fetchDomains
+>>> fetch_url("https://api.example.com/status", allowed)
 ToolOutcome(ok=True, content='HTTP 200 application/json\n\n{"status": "ok"}', error='')
 
->>> fetch_url("https://api.example.com/guide")   # an HTML page, 4.5 KB of markup
+>>> fetch_url("https://api.example.com/guide", allowed)   # an HTML page, 4.5 KB of markup
 ToolOutcome(ok=True,
             content='HTTP 200 text/html; 211 chars of text\n\n# Widget Guide\n\nInstall the widget '
                     'with the install guide (https://api.example.com/install), then ...',
             error='')
 
->>> fetch_url("https://api.example.com/huge-report")   # FETCH_MAX_RESPONSE_BYTES=200000
+>>> fetch_url("https://api.example.com/huge-report", allowed)   # FETCH_MAX_RESPONSE_BYTES=200000
 ToolOutcome(ok=True,
             content='HTTP 200 text/csv\n\n<first 200000 bytes>\n\n'
                     '[truncated: response exceeded 200000 bytes]',
             error='')
 
->>> fetch_url("https://api.example.com/redirects-offsite")   # 302 -> http://attacker.example/x
+>>> fetch_url("https://api.example.com/redirects-offsite", allowed)   # 302 -> http://attacker.example/x
 ToolOutcome(ok=False, content='',
             error="HTTP 302 from https://api.example.com/redirects-offsite: redirected to "
                   "'attacker.example', which is not on the fetch domain allowlist")
@@ -1743,9 +1764,9 @@ $ git clone https://anywhere.example/repo.git
 - Every non-`allow` decision `dispatch_tool` makes (`deny`, `ask`, and a `warn` or `redact` hit
   that still allows the call) **MUST** appear in the audit log, with the gated call's rendered
   arguments passed through `redact` first.
-- A default install (`FETCH_ALLOWED_DOMAINS` unset) **MUST** leave `fetch` unable to reach any host
-  and **MUST NOT** offer it to the model at all: the registry leaves `fetch` out while the
-  allowlist is empty (agent-loop.spec.md requirement 83).
+- A default install (`FETCH_ALLOWED_DOMAINS` unset and no pod `fetchDomains`) **MUST** leave `fetch`
+  unable to reach any host and **MUST NOT** offer it to the model at all: the registry leaves
+  `fetch` out while the member's allowed set is empty (agent-loop.spec.md requirement 83).
 - The escape matrix **MUST** pass on every backend the host has (landlock, docker when its daemon
   answers, seatbelt on macOS; a missing backend skips with a reason), on Linux and macOS in CI. It
   builds every jailed command through `jail_launch`, keeps every protected path outside every temp
@@ -1810,10 +1831,13 @@ $ git clone https://anywhere.example/repo.git
   check); both are skipped, with a reason, on a host lacking the backend, never silently passing.
 - A real exec jail's environment **MUST NOT** include the host environment (Exec sandbox 6).
   `sandbox="off"` **MUST** receive the host environment minus docket's credentials.
-- `fetch` **MUST NOT** open a connection to a host absent from `FETCH_ALLOWED_DOMAINS`: the refusal
+- `fetch` **MUST NOT** open a connection to a host absent from the member's allowed set: the refusal
   happens before an opener is built, not merely before the content is returned.
-- A redirect `fetch` follows **MUST NOT** land on a host absent from the allowlist: the allowlist
+- A redirect `fetch` follows **MUST NOT** land on a host absent from the allowed set: the set
   governs the whole redirect chain, proven against a real HTTP 302 response.
+- A `*.example.org` entry **MUST** allow `a.example.org` and `b.a.example.org` and **MUST NOT** allow
+  `example.org` or `badexample.org`; a bare `*` **MUST** be unreadable settings unless the pod holds
+  its recorded `fetchGrant`.
 - `fetch`'s response cap **MUST** be enforced with an announced truncation: a truncated result
   **MUST NOT** be indistinguishable from a response that was genuinely that short.
 - `fetch` **MUST** be gated through `dispatch_tool` like every other built-in: a `pre_tool_call`
@@ -1880,7 +1904,7 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/agent/tools/builtins/toolbox.py`: `run_bash`, `resolve_within`, `PathEscapeError`,
   `ToolOutcome`, `glob_files`, `grep_files`
 - `src/docket/agent/tools/mcp_client.py`: the jailed stdio MCP launch
-- `src/docket/platform/fetch.py`: `fetch_url`, the domain-locked redirect handler
+- `src/docket/platform/fetch.py`: `fetch_url`, `host_allowed`, the domain-locked redirect handler
 - `src/docket/teams/fleet.py`: `FleetSecurity`, `get_isolation_enabled`, `get_isolation_state`,
   `get_network_mode`, `get_sandbox_backend`, `add_read_only`, `remove_read_only`, `get_profile`,
   `set_profile`

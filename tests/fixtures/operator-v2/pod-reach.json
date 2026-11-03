@@ -270,6 +270,10 @@
       "protects": {
         "value": "",
         "source": "default"
+      },
+      "fetchDomains": {
+        "value": "",
+        "source": "default"
       }
     },
     "approvalMode": {
@@ -334,6 +338,7 @@
       "scope": "default",
       "enforced": true
     },
+    "fetchDomains": [],
     "workDir": "<home>/state/workspaces/pods/research/workdir",
     "configSource": "",
     "configDigest": "",

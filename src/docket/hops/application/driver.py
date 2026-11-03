@@ -128,7 +128,7 @@ class DocketDriver:
     a bare ``DocketDriver()`` is what every non-test caller constructs."""
 
     backend_factory: Callable[[str], ChatBackend | None] = _llm.client_for
-    registry_factory: Callable[[], ToolRegistry] = builtin_registry
+    registry_factory: Callable[[str], ToolRegistry] = builtin_registry
     mcp_loader: Callable[..., list[Any]] = _load_mcp_tools
 
     def run_turn(
@@ -292,7 +292,7 @@ class DocketDriver:
         # MCP, service and record tools are folded in before the turn loop narrows by role, so a
         # write-denying role cannot keep a write-capable one (teams/roles.py registry_for_role);
         # ``ctx.project`` is the pod whose `mcpServers` selection and services apply.
-        registry = self.registry_factory()
+        registry = self.registry_factory(ctx.project)
         describe_tools(registry, ctx, profile.descriptions)
         register_closing_tool(registry, verdict_gate, offer)
         self.mcp_loader(registry, meta.role, ctx.project, launch=_stdio_launch(ctx))

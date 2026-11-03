@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import dataclasses
+import json
 from pathlib import Path
 
 import pytest
 
+from docket.governance.audit import read_audit
 from docket.kernel import mcp as _mcp
-from docket.kernel.home import current_home
+from docket.kernel.home import current_home, use_home
 from docket.platform import store as _store
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
@@ -551,3 +554,96 @@ class TestWorkspaceKind:
         ):
             pod_settings.PodSettings.coerce("prepare", "npm ci", project="ops")
         assert pod_settings.PodSettings.coerce("prepare", "none", project="ops") == "none"
+
+
+class TestFetchDomains:
+    """A pod declares the hosts its `fetch` reads; `*` is a recorded grant only."""
+
+    def test_set_and_clear_round_trip_through_the_stored_form(self) -> None:
+        _write_lead_meta("shop")
+        assert pod_settings.PodSettings.load_for("shop").fetch_domains == ()
+        stored = pod_settings.PodSettings.coerce(
+            "fetchDomains", " Docs.Python.org, *.wikipedia.org ,docs.python.org"
+        )
+        assert stored == "docs.python.org,*.wikipedia.org"
+        _write_lead_meta("shop", {"fetchDomains": stored})
+        assert pod_settings.PodSettings.load_for("shop").fetch_domains == (
+            "docs.python.org",
+            "*.wikipedia.org",
+        )
+        _write_lead_meta("shop", {"fetchDomains": None})
+        assert pod_settings.PodSettings.load_for("shop").fetch_domains == ()
+
+    @pytest.mark.parametrize(
+        "bad", ["https://docs.python.org", "docs python.org", "*.org", "*.", "a.*.org", "ex*.org"]
+    )
+    def test_an_entry_that_is_not_a_host_or_a_registered_wildcard_is_refused(
+        self, bad: str
+    ) -> None:
+        with pytest.raises(pod_settings.PodSettingsError, match="fetchDomains"):
+            pod_settings.PodSettings.coerce("fetchDomains", bad)
+
+    def test_a_bare_star_is_refused_without_the_grant(self) -> None:
+        with pytest.raises(pod_settings.PodSettingsError, match="--widen"):
+            pod_settings.PodSettings.coerce("fetchDomains", "*")
+        with pytest.raises(pod_settings.PodSettingsError, match="--widen"):
+            pod_settings.PodSettings.coerce("fetchDomains", "docs.python.org,*")
+
+    def test_a_stored_star_without_a_grant_is_unreadable_settings(self) -> None:
+        _write_lead_meta("shop", {"fetchDomains": "*"})
+        with pytest.raises(pod_settings.PodSettingsError, match="fetchDomains"):
+            pod_settings.PodSettings.load_for("shop")
+        assert pod_settings.effective_fetch_domains("shop") == ()
+
+    def test_the_grant_records_its_date_and_operator_and_is_audited(self) -> None:
+        _write_lead_meta("shop")
+        pod_settings.grant_fetch_any("shop", by="cli")
+        settings = pod_settings.PodSettings.load_for("shop")
+        assert settings.fetch_domains == ("*",)
+        grant = json.loads(settings.fetch_grant)
+        assert grant["by"] == "cli" and grant["at"]
+        (entry,) = [e for e in read_audit() if e["action"] == "pod.fetch_widen"]
+        assert "pod=shop" in str(entry["detail"])
+        assert pod_settings.effective_fetch_domains("shop") == ("*",)
+
+    def test_the_grant_is_recorded_not_settable(self) -> None:
+        assert "fetchGrant" in pod_settings.PodSettings.RECORDED_KEYS
+        assert "fetchGrant" not in pod_settings.PodSettings.KEYS
+        with pytest.raises(pod_settings.PodSettingsError, match="unknown pod setting"):
+            pod_settings.PodSettings.coerce("fetchGrant", "x")
+
+    def test_narrowing_drops_the_grant_and_audits_once(self) -> None:
+        _write_lead_meta("shop")
+        assert pod_settings.revoke_fetch_grant("shop") is False
+        pod_settings.grant_fetch_any("shop", by="cli")
+        assert pod_settings.revoke_fetch_grant("shop") is True
+        assert pod_settings.revoke_fetch_grant("shop") is False
+        assert pod_settings.PodSettings.load_for("shop").fetch_domains == ()
+        assert [e["action"] for e in read_audit() if e["action"].startswith("pod.fetch_")] == [
+            "pod.fetch_widen",
+            "pod.fetch_narrow",
+        ]
+
+    def test_the_member_set_is_the_machine_list_plus_the_pods_own(self) -> None:
+        _write_lead_meta("shop", {"fetchDomains": "docs.python.org"})
+        _write_lead_meta("other")
+        machine = dataclasses.replace(
+            current_home(), fetch_allowed_domains=("api.example.test", "*", "*.cdn.test")
+        )
+        with use_home(machine):
+            assert pod_settings.effective_fetch_domains("shop") == (
+                "api.example.test",
+                "*.cdn.test",
+                "docs.python.org",
+            )
+            assert pod_settings.effective_fetch_domains("other") == (
+                "api.example.test",
+                "*.cdn.test",
+            )
+            assert pod_settings.effective_fetch_domains(None) == ("api.example.test", "*.cdn.test")
+
+    def test_unreadable_pod_settings_leave_the_machine_list_alone(self) -> None:
+        _write_lead_meta("shop", {"fetchDomains": "docs.python.org", "turnTimeoutS": "x"})
+        machine = dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        with use_home(machine):
+            assert pod_settings.effective_fetch_domains("shop") == ("api.example.test",)

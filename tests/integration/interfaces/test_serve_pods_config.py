@@ -258,3 +258,47 @@ def test_network_is_not_enforced_without_a_backend(server: str) -> None:
     assert _pod_report.member_report("research-lead")["network"]["enforced"] is False
     rows = {row["name"]: row for row in _get(f"{server}/pods")[1]["pods"]}
     assert rows["research"]["network"]["enforced"] is False
+
+
+def _fetching_pod(url: str) -> None:
+    """A ``respond`` pod whose Lead declares one host for `fetch`."""
+    _folder_pod(url)
+    _fleet.meta_set("research-lead", "fetchDomains", "docs.python.org")
+
+
+def test_a_pod_that_declares_a_host_offers_fetch_to_the_members_that_may_hold_it(
+    server: str,
+) -> None:
+    _fetching_pod(server)
+    status, detail = _get(f"{server}/pods/research")
+    assert status == 200
+    assert detail["fetchDomains"] == ["docs.python.org"]
+    held = [m for m in detail["members"] if "fetch" in m["capabilities"]["tools"]]
+    assert held
+    for member in held:
+        assert member["capabilities"]["fetchDomains"] == ["docs.python.org"]
+    for member in detail["members"]:
+        if member not in held:
+            assert "fetchDomains" not in member["capabilities"]
+    assert _pod_report.pod_report("research")["fetchDomains"] == ["docs.python.org"]
+    assert "podFetch" in _get(f"{server}/status.json")[1]["features"]
+
+
+def test_a_pod_without_hosts_declares_none_and_holds_no_fetch(server: str) -> None:
+    _folder_pod(server)
+    detail = _get(f"{server}/pods/research")[1]
+    assert detail["fetchDomains"] == []
+    assert all("fetch" not in m["capabilities"]["tools"] for m in detail["members"])
+    assert all("fetchDomains" not in m["capabilities"] for m in detail["members"])
+
+
+def test_the_pod_fetch_answer_is_the_recorded_fixture(server: str, tmp_path: Path) -> None:
+    _fetching_pod(server)
+    actual = _with_home_placeholder(
+        {"detail": _get(f"{server}/pods/research")[1]}, tmp_path / ".docket"
+    )
+    if record := os.environ.get("OPERATOR_RECORD_DIR"):
+        Path(record, "pod-fetch.json").write_text(json.dumps(actual, indent=2) + "\n", "utf-8")
+        return
+    recorded = json.loads((_FIXTURES / "pod-fetch.json").read_text(encoding="utf-8"))
+    assert actual == recorded

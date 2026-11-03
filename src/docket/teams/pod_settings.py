@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from pydantic import ValidationError as _PydanticValidationError
 
 from docket.governance import security as _security
+from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel import protected_paths as _protected
 from docket.kernel import text as _text
@@ -55,6 +56,17 @@ NETWORK_GRANT_SKIPPED = (
 )
 
 
+# A pod's `fetch` reads the hosts it declares (`fetchDomains`); the any-host entry `*` is readable
+# only beside the operator's recorded yes, `fetchGrant`, which `grant_fetch_any` writes.
+FETCH_ANY = "*"
+FETCH_GRANT_KEY = "fetchGrant"
+FETCH_GRANT_REACH = "this pod's `fetch` can read any host"
+FETCH_DOMAINS_WIDEN_FIRST = (
+    "only `docket pod set fetchDomains '*' --widen` writes the any-host entry `*`"
+)
+_FETCH_HOST = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$")
+
+
 # The dollar cap this key was: refused wherever it still arrives, naming its replacement.
 BUDGET_USD_KEY = "budgetUsd"
 BUDGET_USD_REFUSAL = (
@@ -62,6 +74,25 @@ BUDGET_USD_REFUSAL = (
     "(docket pod set budgetTokens <n>)"
 )
 
+
+def _parse_grant(value: Any) -> str:
+    """A recorded yes in its stored form, the JSON text of ``{"at", "by"}``; anything else is
+    unreadable settings."""
+    if value in (None, ""):
+        return ""
+    try:
+        doc = json.loads(value) if isinstance(value, str) else value
+    except ValueError:
+        doc = None
+    if not isinstance(doc, dict) or not all(
+        isinstance(doc.get(k), str) and doc[k].strip() for k in ("at", "by")
+    ):
+        raise InvalidInput("must be an object with a date 'at' and an operator 'by'")
+    return json.dumps({"at": doc["at"], "by": doc["by"]}, sort_keys=True)
+
+
+# The recorded yeses, stored as objects: read from the Lead's file, not through ``meta_get``.
+_GRANT_KEYS = (NETWORK_GRANT_KEY, FETCH_GRANT_KEY)
 
 # alias -> attribute, so the CLI and dispatch never hardcode a second copy of
 # this mapping next to PodSettings.KEYS.
@@ -87,6 +118,7 @@ _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "readOnly": "read_only",
     "prepare": "prepare",
     "protects": "protects",
+    "fetchDomains": "fetch_domains",
 }
 
 # allowCommands validation: no path segment, no shell metacharacter -- this is
@@ -241,6 +273,16 @@ class PodSettings(BaseModel):
     # ``grant_network`` (`docket pod set network open --widen`), never by `apply`/`pod set`.
     network_grant: str = Field("", alias="networkGrant")
 
+    # The operator's recorded yes that lets ``fetchDomains`` hold ``*`` (any host): the stored form is
+    # the JSON text of ``{"at", "by"}``. Written only by ``grant_fetch_any`` (`docket pod set
+    # fetchDomains '*' --widen`), never by `apply`/`pod set`. Declared before ``fetch_domains``,
+    # whose validator reads it.
+    fetch_grant: str = Field("", alias="fetchGrant")
+
+    # Hosts this pod's `fetch` reads, beside the machine's FETCH_ALLOWED_DOMAINS: ``host``,
+    # ``*.example.org`` (every subdomain, never the apex) or ``*`` (any host, only with the grant).
+    fetch_domains: tuple[str, ...] = Field((), alias="fetchDomains")
+
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
     KEYS: ClassVar[tuple[str, ...]] = (
@@ -265,6 +307,7 @@ class PodSettings(BaseModel):
         "readOnly",
         "prepare",
         "protects",
+        "fetchDomains",
     )
 
     # Recorded by `apply`, not operator-settable -- deliberately outside `KEYS` so every
@@ -276,6 +319,7 @@ class PodSettings(BaseModel):
         "configDigest",
         "exporters",
         NETWORK_GRANT_KEY,
+        FETCH_GRANT_KEY,
     )
 
     @field_validator("allow_commands", mode="before")
@@ -417,17 +461,38 @@ class PodSettings(BaseModel):
     @classmethod
     def _parse_network_grant(cls, value: Any) -> str:
         """The stored JSON text of ``{"at", "by"}``; anything else is unreadable settings."""
+        return _parse_grant(value)
+
+    @field_validator("fetch_grant", mode="before")
+    @classmethod
+    def _parse_fetch_grant(cls, value: Any) -> str:
+        """The stored JSON text of ``{"at", "by"}``; anything else is unreadable settings."""
+        return _parse_grant(value)
+
+    @field_validator("fetch_domains", mode="before")
+    @classmethod
+    def _parse_fetch_domains(cls, value: Any, info: ValidationInfo) -> tuple[str, ...]:
+        """Comma-separated ``host`` or ``*.registered.domain`` entries, lowercased and deduplicated;
+        ``*`` only while the pod holds its ``fetchGrant``."""
         if value in (None, ""):
-            return ""
-        try:
-            doc = json.loads(value) if isinstance(value, str) else value
-        except ValueError:
-            doc = None
-        if not isinstance(doc, dict) or not all(
-            isinstance(doc.get(k), str) and doc[k].strip() for k in ("at", "by")
-        ):
-            raise InvalidInput("must be an object with a date 'at' and an operator 'by'")
-        return json.dumps({"at": doc["at"], "by": doc["by"]}, sort_keys=True)
+            return ()
+        tokens = list(value) if isinstance(value, (list, tuple)) else str(value).split(",")
+        kept: dict[str, None] = {}
+        for raw in tokens:
+            name = str(raw).strip().lower()
+            if not name:
+                continue
+            if name == FETCH_ANY:
+                if not info.data.get("fetch_grant"):
+                    raise InvalidInput(FETCH_DOMAINS_WIDEN_FIRST)
+            elif not _FETCH_HOST.match(name.removeprefix("*.")) or (
+                name.startswith("*.") and "." not in name[2:]
+            ):
+                raise InvalidInput(
+                    f"{name!r} is not a hostname or a '*.' wildcard over a registered domain"
+                )
+            kept.setdefault(name, None)
+        return tuple(kept.keys())
 
     @field_validator("read_only", mode="before")
     @classmethod
@@ -522,10 +587,11 @@ class PodSettings(BaseModel):
         present = {
             k: v
             for k in (*cls.KEYS, *cls.RECORDED_KEYS)
-            if k != NETWORK_GRANT_KEY and (v := _fleet.meta_get(lead_id, k, ""))
+            if k not in _GRANT_KEYS and (v := _fleet.meta_get(lead_id, k, ""))
         }
-        if (grant := _lead_meta(lead_id).get(NETWORK_GRANT_KEY)) not in (None, ""):
-            present[NETWORK_GRANT_KEY] = json.dumps(grant)
+        for grant_key in _GRANT_KEYS:
+            if (grant := _lead_meta(lead_id).get(grant_key)) not in (None, ""):
+                present[grant_key] = json.dumps(grant)
         return cls._validated(present, project=project)
 
     @classmethod
@@ -644,6 +710,49 @@ def network_grant_pods(projects: list[str]) -> list[str]:
     """The pods of *projects* that run with a grant right now (the machine at ``none`` and the
     grant honoured), in the order given."""
     return [p for p in projects if effective_network(p) == ("open", POD_GRANT_SCOPE)]
+
+
+def effective_fetch_domains(project: str | None) -> tuple[str, ...]:
+    """The hosts a member of *project* may `fetch`: the machine's ``FETCH_ALLOWED_DOMAINS`` (a bare
+    ``*`` there is ignored) plus the pod's ``fetchDomains``. Unreadable pod settings leave the
+    machine's list alone."""
+    machine = tuple(d for d in current_home().fetch_allowed_domains if d != FETCH_ANY)
+    if project is None:
+        return machine
+    try:
+        declared = PodSettings.load_for(project).fetch_domains
+    except PodSettingsError:
+        return machine
+    return tuple(dict.fromkeys((*machine, *declared)))
+
+
+def grant_fetch_any(project: str, *, by: str) -> None:
+    """Record the operator's yes: *project*'s `fetch` may read any host (``fetchDomains`` becomes
+    ``*``, with the date in ``fetchGrant``), and audit it. Called only by `docket pod set
+    fetchDomains '*' --widen`."""
+    lead_id = member_id(project, "lead")
+    raw = _lead_meta(lead_id)
+    if not raw:
+        raise PodSettingsError(f"pod {project!r} has no settings to widen")
+    raw[FETCH_GRANT_KEY] = {"at": _clock.stamp(), "by": by}
+    raw["fetchDomains"] = FETCH_ANY
+    write_json(current_home().meta_path(lead_id), raw)
+    audit_log("pod.fetch_widen", f"pod={project} reach=any host")
+
+
+def revoke_fetch_grant(project: str) -> bool:
+    """Remove *project*'s any-host grant and its ``*`` entry, auditing it; True when there was
+    one."""
+    lead_id = member_id(project, "lead")
+    raw = _lead_meta(lead_id)
+    if raw.get(FETCH_GRANT_KEY) in (None, ""):
+        return False
+    del raw[FETCH_GRANT_KEY]
+    kept = [d for d in str(raw.get("fetchDomains") or "").split(",") if d and d != FETCH_ANY]
+    raw["fetchDomains"] = ",".join(kept) or None
+    write_json(current_home().meta_path(lead_id), raw)
+    audit_log("pod.fetch_narrow", f"pod={project}")
+    return True
 
 
 def effective_read_only(project: str | None) -> tuple[Path, ...]:

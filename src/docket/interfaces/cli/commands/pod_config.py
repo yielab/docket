@@ -427,7 +427,7 @@ def _check_verdict(
     hook: str, role: str, text: str, tool: str, call_args: dict[str, str], project: str
 ) -> tuple[str, str, str, str]:
     """``(action, reason, policy_id, policy_action)`` the live gate would reach."""
-    registry = _builtin_tools.builtin_registry()
+    registry = _builtin_tools.builtin_registry(project)
     builtin = {n: t for n in registry.names() if (t := registry.get(n)) is not None}
     if hook != "pre_tool_call":
         return _policy.policy_test(hook, role, text, project=project), "", "", ""

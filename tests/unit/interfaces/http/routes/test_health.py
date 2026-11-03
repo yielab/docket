@@ -82,6 +82,7 @@ class TestBuildStatus:
             "budgetOutcome",
             "networkEnforced",
             "podWorkDir",
+            "podFetch",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

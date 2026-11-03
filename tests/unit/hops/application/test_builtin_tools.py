@@ -9,8 +9,11 @@ containment holds at the handler as well as at the chokepoint.
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from tests.support import home as _support_home
@@ -19,6 +22,7 @@ from tests.support import pods as _support_pods
 from tests.support.cli import call as _call
 from tests.support.prose import sentence_count
 
+from docket.agent.ports import ToolCall
 from docket.agent.tools.builtins import toolbox
 from docket.agent.tools.registry import (
     ToolContext,
@@ -29,6 +33,10 @@ from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.clock import use_clock
 from docket.kernel.home import current_home, use_home
 from docket.kernel.tool_outcome import ToolOutcome
+from docket.platform import fetch as _fetch
+from docket.platform import store as _store
+from docket.teams import pod as _pod
+from docket.teams.role_composer import registry_for_role
 
 _isolate_gates = _support_home.isolate_gates
 workspace = _support_pods.workspace_with_files
@@ -428,3 +436,70 @@ class TestCompactDescriptions:
 
         tool = registry.get("bash")
         assert tool is not None and tool.description == "mine"
+
+
+class TestPodFetch:
+    """A pod's `fetchDomains` offers `fetch` to its members, reaching those hosts only."""
+
+    @staticmethod
+    def _pod(name: str, **meta: object) -> None:
+        path = current_home().meta_path(_pod.member_id(name, "lead"))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _store.write_json(path, {"kind": "project", "scope": "project", **meta})
+
+    def test_an_empty_machine_list_and_a_pod_list_offer_fetch_to_that_pod(self) -> None:
+        self._pod("docs", fetchDomains="docs.python.org")
+        self._pod("bare")
+        assert current_home().fetch_allowed_domains == ()
+        assert "fetch" in builtin_registry("docs").names()
+        assert "fetch" not in builtin_registry("bare").names()
+        assert "fetch" not in builtin_registry().names()
+
+    def test_the_pods_fetch_reaches_its_hosts_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._pod("docs", fetchDomains="docs.python.org,*.wikipedia.org")
+        opened: list[str] = []
+
+        class _Response:
+            status = 200
+            headers: ClassVar[dict[str, str]] = {"Content-Type": "text/plain"}
+
+            def __enter__(self) -> _Response:
+                return self
+
+            def __exit__(self, *_exc: object) -> None:
+                return None
+
+            def read1(self, n: int) -> bytes:
+                return b""
+
+        class _Opener:
+            def open(self, request: object, timeout: float = 0) -> _Response:
+                opened.append(request.full_url)  # type: ignore[attr-defined]
+                return _Response()
+
+        monkeypatch.setattr(_fetch.urllib.request, "build_opener", lambda *_h: _Opener())
+        registry = builtin_registry("docs")
+        context = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer", project="docs")
+
+        def _fetch_of(url: str) -> object:
+            call = ToolCall(id="c", name="fetch", arguments=json.dumps({"url": url}))
+            return dispatch_tool(call, context, registry)
+
+        assert _fetch_of("http://docs.python.org/3/").ok  # type: ignore[attr-defined]
+        assert _fetch_of("http://es.wikipedia.org/wiki/Docket").ok  # type: ignore[attr-defined]
+        refused = _fetch_of("http://example.org/")
+        assert not refused.ok  # type: ignore[attr-defined]
+        assert opened == ["http://docs.python.org/3/", "http://es.wikipedia.org/wiki/Docket"]
+
+    def test_the_machine_list_and_the_pod_list_add_up(self) -> None:
+        self._pod("docs", fetchDomains="docs.python.org")
+        with use_home(
+            dataclasses.replace(current_home(), fetch_allowed_domains=("api.example.test",))
+        ):
+            assert "fetch" in builtin_registry("").names()
+            assert "fetch" in builtin_registry("docs").names()
+
+    def test_a_pod_that_denies_fetch_holds_none_whatever_it_declares(self) -> None:
+        self._pod("docs", fetchDomains="docs.python.org", deniedTools="fetch")
+        narrowed = registry_for_role(builtin_registry("docs"), "implementer", project="docs")
+        assert "fetch" not in narrowed.names()
