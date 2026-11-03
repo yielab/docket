@@ -39,7 +39,6 @@ from docket.platform import read_json, read_modify_write
 __all__ = [
     "HISTORY_FULL_RESULTS_CHARS",
     "HISTORY_KEEP_FULL_RESULTS",
-    "HISTORY_LOW_WATER_CHARS",
     "HISTORY_SMALL_RESULT_CHARS",
     "MeasuredUsage",
     "SessionRecord",
@@ -51,6 +50,7 @@ __all__ = [
     "find_orphaned_tool_messages",
     "find_unanswered_tool_calls",
     "group_atomic_units",
+    "history_results_budget",
     "load_messages",
     "load_session",
     "plan_compaction",
@@ -65,12 +65,11 @@ SessionSummaryRunner = Callable[[str, str, str, int, dict[str, str] | None], Tur
 
 #: Tool results newer than this many stay whole in a built request.
 HISTORY_KEEP_FULL_RESULTS = 2
-#: Older results also stay whole while all whole results fit in this many characters.
+#: Older results also stay whole while all whole results fit in this many characters, at the
+#: least (``history_results_budget`` widens it with the turn's history budget).
 HISTORY_FULL_RESULTS_CHARS = 6_000
 #: A result shorter than this is never condensed while a longer one is whole.
 HISTORY_SMALL_RESULT_CHARS = 1_500
-#: Once whole results exceed the budget, condensing leaves at most this many characters whole.
-HISTORY_LOW_WATER_CHARS = 3_000
 
 _SESSION_FILENAME = "session.json"
 
@@ -327,7 +326,7 @@ def _condense_call(call: ToolCall) -> ToolCall:
 def _batch_cut(sizes: Sequence[int], keep: int, budget: int) -> int:
     """How many of the oldest results are condensed: it moves only when the whole ones outgrow
     *budget*, and then down to the low-water mark. A function of *sizes* alone."""
-    low = min(HISTORY_LOW_WATER_CHARS, budget // 2)
+    low = budget // 2
     cut = 0
     for end in range(1, len(sizes) + 1):
         if sum(sizes[cut:end]) <= budget:
@@ -351,6 +350,15 @@ def _small_results_kept(results: Sequence[ChatMessage], cut: int) -> set[str]:
         for m in results[:cut]
         if len(m.content) < HISTORY_SMALL_RESULT_CHARS and len(m.content) < largest_whole
     }
+
+
+def history_results_budget(history_tokens: int) -> int:
+    """The characters of whole results a history of *history_tokens* keeps: 3/16 of what it
+    holds (6,000 of the 32,000 characters of 8,000 tokens), never under the default."""
+    return max(
+        HISTORY_FULL_RESULTS_CHARS,
+        history_tokens * current_home().context_bytes_per_token * 3 // 16,
+    )
 
 
 def condense_history(

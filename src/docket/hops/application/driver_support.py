@@ -9,6 +9,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, Literal
 
+from docket.agent import context as _context
 from docket.agent import loop as _loop
 from docket.agent.ports import (
     DOCKET_HOP_REQUEST_RETRIES,
@@ -382,6 +383,9 @@ def _loop_config(
         tool_surface=profile.tool_surface,
         tool_allow=tool_allow,
         profile=profile.name,
+        history_budget_tokens=profile.history_budget_tokens(
+            _context.budget_for_role(ctx.role, project=ctx.project)
+        ),
     )
 
 

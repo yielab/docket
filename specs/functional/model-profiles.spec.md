@@ -1,6 +1,6 @@
 # Model Policy Specification
 
-**Version**: 7.0.0
+**Version**: 7.1.0
 **Status**: Complete. A pipeline step's `model:` sits above the role policy for one hop and is
 never persisted (see "Where a member's model comes from" requirement 3).
 **Last Updated**: 2026-11-03
@@ -432,16 +432,22 @@ directly — see "Provider catalog" below.
 1. A provider document **MAY** declare `profile` (`hosted` or `local`, a closed set) and, as
    overrides of the named profile, `sampling` (`temperature` in [0, 2], `topP` in (0, 1]),
    `toolSurface` (`full` or `minimal`), `descriptions` (`full` or `compact`), `toolChoice` (`auto`
-   or `forced-on-close`) and `budgets` (`readWindow`, `toolOutput`: each a share of the context
-   window in (0, 1]). A document without `profile` **MUST** resolve to `local` when it declares
+   or `forced-on-close`) and `budgets` (`readWindow`, `toolOutput`, `history`: each a share of the
+   context window in (0, 1]). A document without `profile` **MUST** resolve to `local` when it declares
    `local: true` and to `hosted` otherwise. `load_provider_document` **MUST** raise naming the
    file and field on an unknown profile name or an out-of-range value. The profile comes from the
    catalog row alone, never from the model id or the provider's name.
 2. The built-in profiles **MUST** be exactly these. `hosted`: `toolSurface: full`,
-   `descriptions: full`, `toolChoice: auto`, no sampling, no budgets. `local`: `toolSurface:
-   minimal`, `descriptions: compact`, `toolChoice: forced-on-close`, `budgets: {readWindow: 0.05,
-   toolOutput: 0.02}`, no sampling. No built-in declares `sampling`: a temperature or `topP`
-   exists only where a document declares it.
+   `descriptions: full`, `toolChoice: auto`, `budgets: {history: 0.025}`, no sampling. `local`:
+   `toolSurface: minimal`, `descriptions: compact`, `toolChoice: forced-on-close`, `budgets:
+   {readWindow: 0.05, toolOutput: 0.02}` (no `history`), no sampling. No built-in declares
+   `sampling`: a temperature or `topP` exists only where a document declares it. The history
+   budget of a turn, in tokens, **MUST** be the role's context budget when the profile declares no
+   `history` share or the model's context window is unknown, and otherwise `max(role context
+   budget, floor(window x history))`: `hosted` on a 1,000,000-token window and an 8,000-token role
+   gives 25,000, on a 200,000-token window 8,000; `local` gives 8,000 on any window. The driver
+   **MUST** write it to `LoopConfig.history_budget_tokens`, where turn-start compaction and the
+   request projection (`session-history.spec.md` requirements 29-31) read it.
 3. `resolve_profile(model)` **MUST** return the profile of the catalog row the model names, found
    the way `resolve_endpoint` finds its row; a provider absent from the catalog, and any model
    while `DOCKET_LLM_BASE_URL` overrides the endpoint, resolve to `hosted`. A `hosted` row **MUST**

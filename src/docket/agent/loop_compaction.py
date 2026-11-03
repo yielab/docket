@@ -23,7 +23,13 @@ from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_compaction, _trace_llm_call
 from docket.agent.loop_types import AgentLoopResult, StopReason
 from docket.agent.ports import ChatMessage, FailureKind, TurnResult, system, user
-from docket.agent.session import append_messages, condense_history, load_messages
+from docket.agent.session import (
+    HISTORY_FULL_RESULTS_CHARS,
+    append_messages,
+    condense_history,
+    history_results_budget,
+    load_messages,
+)
 from docket.agent.session_compaction import CompactionResult, compact_session
 
 
@@ -261,9 +267,11 @@ class TurnCompaction:
         self.task_message_index = len(appended.messages) - 1
 
     def messages_for_durable(self, durable: list[ChatMessage]) -> list[ChatMessage]:
+        tokens = self.state.cfg.history_budget_tokens
+        kept = HISTORY_FULL_RESULTS_CHARS if tokens is None else history_results_budget(tokens)
         return [
             *([system(self.state.system_prompt)] if self.state.system_prompt else []),
-            *condense_history(durable),
+            *condense_history(durable, budget=kept),
         ]
 
     def context_fit_convergence_error(self, reason: str, estimated_input: int) -> str:

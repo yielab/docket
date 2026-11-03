@@ -115,13 +115,14 @@ class Sampling(BaseModel):
 
 
 class BudgetShares(BaseModel):
-    """The read window and the tool-output cap as shares of the context window, each in (0, 1]
-    or ``None`` for no share."""
+    """The read window, the tool-output cap and the kept history as shares of the context window,
+    each in (0, 1] or ``None`` for no share."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     read_window: float | None = Field(None, alias="readWindow", gt=0, le=1)
     tool_output: float | None = Field(None, alias="toolOutput", gt=0, le=1)
+    history: float | None = Field(None, gt=0, le=1)
 
 
 ProfileName = Literal["hosted", "local"]
@@ -132,11 +133,13 @@ ToolChoiceMode = Literal["auto", "forced-on-close"]
 
 @dataclass(frozen=True)
 class ProfileBudgets:
-    """The read window and the tool-output cap, in characters, that a profile's shares make for
-    one model's context window; ``None`` where no share is declared or the window is unknown."""
+    """The read window and the tool-output cap, in characters, and the kept history, in tokens,
+    that a profile's shares make for one model's context window; ``None`` where no share is
+    declared or the window is unknown."""
 
     read_window_chars: int | None = None
     tool_output_chars: int | None = None
+    history_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -153,9 +156,17 @@ class ModelProfile:
     shares: BudgetShares
     budgets: ProfileBudgets = ProfileBudgets()
 
+    def history_budget_tokens(self, role_budget: int) -> int:
+        """The turn's kept-history budget in tokens: *role_budget*, widened to the profile's
+        window share where it declares one (model-profiles.spec.md "Model profiles" 2)."""
+        share = self.budgets.history_tokens
+        return role_budget if share is None else max(role_budget, share)
+
 
 BUILTIN_PROFILES: dict[str, ModelProfile] = {
-    "hosted": ModelProfile("hosted", Sampling(), "full", "full", "auto", BudgetShares()),
+    "hosted": ModelProfile(
+        "hosted", Sampling(), "full", "full", "auto", BudgetShares(history=0.025)
+    ),
     "local": ModelProfile(
         "local",
         Sampling(),
@@ -168,8 +179,9 @@ BUILTIN_PROFILES: dict[str, ModelProfile] = {
 
 
 def _budgets_of(shares: BudgetShares, context_window_tokens: int | None) -> ProfileBudgets:
-    """``floor(window * share * bytes-per-token)`` for each declared share; nothing for an
-    unknown window (never a guessed one)."""
+    """``floor(window * share * bytes-per-token)`` characters for each declared share, and
+    ``floor(window * share)`` tokens for the history; nothing for an unknown window (never a
+    guessed one)."""
     if context_window_tokens is None:
         return ProfileBudgets()
     chars = current_home().context_bytes_per_token * context_window_tokens
@@ -177,7 +189,8 @@ def _budgets_of(shares: BudgetShares, context_window_tokens: int | None) -> Prof
     def _chars(share: float | None) -> int | None:
         return None if share is None else int(chars * share)
 
-    return ProfileBudgets(_chars(shares.read_window), _chars(shares.tool_output))
+    history = None if shares.history is None else int(context_window_tokens * shares.history)
+    return ProfileBudgets(_chars(shares.read_window), _chars(shares.tool_output), history)
 
 
 class ProviderSpec(BaseModel):

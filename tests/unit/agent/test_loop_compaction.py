@@ -11,7 +11,15 @@ from docket.agent.loop_budget import TurnBudget
 from docket.agent.loop_compaction import TurnCompaction
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_types import LoopConfig
-from docket.agent.ports import ChatMessage, ChatResponse, ToolCall, assistant, system, user
+from docket.agent.ports import (
+    ChatMessage,
+    ChatResponse,
+    ToolCall,
+    assistant,
+    system,
+    tool_result,
+    user,
+)
 from docket.agent.session import append_messages, load_messages
 
 SUBJECT = "docket.agent.loop_compaction"
@@ -195,3 +203,61 @@ class TestASummaryRequestIsRetried:
         assert result.failure_kind == "timeout" and len(backend.calls) == 1
         assert backend.calls[0]["timeout"] == 20
         assert compaction.compaction_failure_stop_reason == "timeout"
+
+
+class TestTurnStartCompactionUsesTheHistoryBudget:
+    """A session of 21,000 tokens fits a 25,000-token history budget and not the role's 8,000."""
+
+    @staticmethod
+    def _session(state: TurnState) -> None:
+        for n in range(6):
+            append_messages(state.session_key, [user(f"ask {n} " + "x" * 14_000), assistant("ok")])
+
+    def test_a_wide_history_budget_leaves_the_session_alone(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(LoopConfig(history_budget_tokens=25_000))
+        self._session(state)
+        before = load_messages(state.session_key)
+
+        assert _compaction(state).apply_initial_history_compaction() is None
+        assert load_messages(state.session_key) == before
+
+    def test_the_role_budget_compacts_it(self, make_turn_state: MakeState) -> None:
+        backend = _OneReply(ChatResponse(ok=True, message=assistant("the summary")))
+        state = make_turn_state(LoopConfig(history_budget_tokens=8_000), backend=backend)
+        self._session(state)
+        before = load_messages(state.session_key)
+
+        assert _compaction(state).apply_initial_history_compaction() is None
+        assert len(backend.calls) >= 1
+        assert len(load_messages(state.session_key)) < len(before)
+
+
+class TestTheRequestProjectionUsesTheHistoryBudget:
+    """The kept tool results widen with the turn's history budget and stay at 6,000 at 8,000."""
+
+    @staticmethod
+    def _results(count: int) -> list[ChatMessage]:
+        out: list[ChatMessage] = [user("the task")]
+        for n in range(count):
+            call = ToolCall(id=f"c{n}", name="read", arguments=f'{{"path":"f{n}"}}')
+            out += [assistant("", tool_calls=[call]), tool_result(call, "x" * 2_000)]
+        return out
+
+    def test_a_wide_history_budget_keeps_older_results_whole(
+        self, make_turn_state: MakeState
+    ) -> None:
+        durable = self._results(6)
+        wide = _compaction(make_turn_state(LoopConfig(history_budget_tokens=25_000)))
+
+        assert wide.messages_for_durable(durable) == durable
+
+    def test_the_role_budget_condenses_them(self, make_turn_state: MakeState) -> None:
+        durable = self._results(6)
+        narrow = _compaction(make_turn_state(LoopConfig(history_budget_tokens=8_000)))
+        unset = _compaction(make_turn_state(LoopConfig()))
+
+        for compaction in (narrow, unset):
+            kept = [m for m in compaction.messages_for_durable(durable) if m.role == "tool"]
+            assert sum(m.content[0] != "[" for m in kept) < 6

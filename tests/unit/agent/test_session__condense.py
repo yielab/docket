@@ -281,3 +281,48 @@ class TestCondenseHistorySmallResults:
         assert next(m for m in out if m.role == "tool").content.endswith(
             "\n[full output: /pod/cache/artifacts/abc.txt]"
         )
+
+
+class TestHistoryResultsBudget:
+    """A turn's history budget in tokens sets how many result characters stay whole."""
+
+    def test_eight_thousand_tokens_is_the_default_budget(self) -> None:
+        assert _sess.history_results_budget(8_000) == _sess.HISTORY_FULL_RESULTS_CHARS == 6_000
+
+    def test_a_smaller_history_never_goes_below_the_default(self) -> None:
+        assert _sess.history_results_budget(1_000) == 6_000
+
+    def test_twenty_five_thousand_tokens_keeps_18750_characters(self) -> None:
+        assert _sess.history_results_budget(25_000) == 18_750
+
+    def test_the_low_water_is_half_the_budget(self) -> None:
+        """Ten 2,000-character results cross 18,750 once; the cut leaves 9,375 or less whole."""
+        messages = _history_of(10, 2_000)
+        out = _sess.condense_history(messages, keep=2, budget=_sess.history_results_budget(25_000))
+        whole = [len(m.content) for m in out if m.role == "tool" and m.content[0] != "["]
+        assert whole == [2_000] * 4
+
+    def test_a_larger_budget_moves_the_cut_once_where_the_default_moves_it_often(self) -> None:
+        wide = _cut_moves(12, 1_800, _sess.history_results_budget(25_000))
+        default = _cut_moves(12, 1_800, _sess.history_results_budget(8_000))
+        assert wide == 1
+        assert default > 1
+
+
+def _history_of(count: int, size: int) -> list[ChatMessage]:
+    out: list[ChatMessage] = [user("the task")]
+    for n in range(count):
+        out.extend(_read_exchange(n, "x" * size))
+    return out
+
+
+def _cut_moves(count: int, size: int, budget: int) -> int:
+    """How many times the set of condensed results changes as results arrive one at a time."""
+    previous = 0
+    moves = 0
+    for n in range(1, count + 1):
+        out = _sess.condense_history(_history_of(n, size), keep=2, budget=budget)
+        condensed = sum(1 for m in out if m.role == "tool" and m.content[0] == "[")
+        moves += condensed != previous
+        previous = condensed
+    return moves

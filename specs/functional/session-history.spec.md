@@ -1,6 +1,6 @@
 # Session History Specification
 
-**Version**: 1.10.1
+**Version**: 1.11.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
 **Last Updated**: 2026-11-01
@@ -161,12 +161,15 @@ This specification does NOT cover:
     and nothing is read from or written to disk. It is applied to the request only; the stored
     history keeps every byte, and the agent loop's request builder is its one live caller.
 30. The last `keep` (at least 1) answered `tool` messages stay whole; older ones stay whole too,
-    newest first, while the characters of all whole results fit in `budget` (6,000, one default
-    `read` window). The cut is a function of the messages alone and moves in batches: walking the
-    results oldest to newest, once the characters of all whole results exceed `budget`, the cut
-    moves so the whole results fit in the low-water mark (`HISTORY_LOW_WATER_CHARS`, 3,000, at
-    most half of `budget`; the last `keep` stay whole regardless) and does not move again until
-    the whole results exceed `budget` once more. Every result older than the cut **MUST** have its
+    newest first, while the characters of all whole results fit in `budget` (6,000 by default, one
+    `read` window; the live request passes `history_results_budget(history_tokens)`, which is
+    `max(6000, history_tokens x bytes-per-token x 3 // 16)`, so a turn whose history budget is
+    8,000 tokens keeps 6,000 and one of 25,000 keeps 18,750). The cut is a function of the
+    messages alone and moves in batches: walking the results oldest to newest, once the characters
+    of all whole results exceed `budget`, the cut moves so the whole results fit in the low-water
+    mark (half of `budget`; the last `keep` stay whole regardless) and does not move again until
+    the whole results exceed `budget` once more. A turn whose history budget is unset
+    (`LoopConfig.history_budget_tokens` is `None`) projects with the default `budget`. Every result older than the cut **MUST** have its
     `content` replaced by `[<tool> <target>: N lines, M characters, already seen and omitted; call
     <tool> again only for exact text you still need]`, built from the matching call, unless the
     notice is not shorter than the content. `<target>` is the call's first non-empty argument among
@@ -208,8 +211,8 @@ def group_atomic_units(messages: Sequence[ChatMessage]) -> list[list[ChatMessage
 # request projection (pure; requirements 29-32)
 HISTORY_KEEP_FULL_RESULTS = 2
 HISTORY_FULL_RESULTS_CHARS = 6_000
-HISTORY_LOW_WATER_CHARS = 3_000
 HISTORY_SMALL_RESULT_CHARS = 1_500
+def history_results_budget(history_tokens: int) -> int: ...
 def condense_history(
     messages: Sequence[ChatMessage], keep: int = HISTORY_KEEP_FULL_RESULTS,
     budget: int = HISTORY_FULL_RESULTS_CHARS,
@@ -385,8 +388,8 @@ result = sess.compact_session(
 - `src/docket/agent/session.py`: `load_session`, `load_messages`, `append_messages`,
   `group_atomic_units`, `find_orphaned_tool_messages`, `find_unanswered_tool_calls`,
   `plan_compaction`, `compact_session`, `condense_history`, `SessionSummaryRunner`,
-  `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_LOW_WATER_CHARS`,
-  `HISTORY_SMALL_RESULT_CHARS`
+  `HISTORY_KEEP_FULL_RESULTS`, `HISTORY_FULL_RESULTS_CHARS`, `HISTORY_SMALL_RESULT_CHARS`,
+  `history_results_budget`
 - `src/docket/agent/context.py`: `estimate_tokens`, `budget_for_role`
 - `src/docket/agent/loop_compaction.py`: the live caller (`run_compaction`,
   `summarize_without_reentry`, the request builder that applies `condense_history`)
