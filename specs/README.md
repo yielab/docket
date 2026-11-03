@@ -107,7 +107,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Pod Blueprints | 4.3.0 | Implemented |
 | Pod Dispatch | 12.4.0 | Implemented |
 | Role Archetypes | 5.8.0 | Implemented |
-| Security Gates | 3.11.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.12.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.4.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
 | Session History | 1.11.0 | Implemented and live |
