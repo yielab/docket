@@ -171,7 +171,11 @@ class TestPipeline:
             by_agent = {agent_id: (message, env) for agent_id, message, env in calls}
             lead_message, lead_env = by_agent["demo-lead"]
             assert "checkout" not in lead_message
-            assert lead_env == {_rd.DOCKET_HANDOFF: "1", _rd.DOCKET_HOP_STEP: "lead"}
+            assert lead_env == {
+                _rd.DOCKET_HANDOFF: "1",
+                _rd.DOCKET_HOP_STEP: "lead",
+                _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
+            }
             impl_message, impl_env = by_agent["demo-implementer"]
             assert "Working directory: the repository root" in impl_message
             assert str(worktree) not in impl_message
@@ -191,6 +195,7 @@ class TestPipeline:
                     _rd.DOCKET_VERDICT_VALUES,
                     _rd.DOCKET_HANDOFF,
                     _rd.DOCKET_HOP_STEP,
+                    _rd.DOCKET_HOP_TIMEOUT_SOURCE,
                 }
 
     def test_default_approval_mode_leaves_every_hop_env_unchanged(self, tmp_path: Path) -> None:
@@ -275,6 +280,7 @@ class TestPipeline:
                         _rd.DOCKET_APPROVAL_MODE: "refuse",
                         _rd.DOCKET_HANDOFF: "1",
                         _rd.DOCKET_HOP_STEP: "lead",
+                        _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
                     }
                 else:
                     # The Implementer's port-range env (real DOCKET_PORT_*/
@@ -491,7 +497,11 @@ class TestHopEnvInjection:
             runner = FakeDriver()
             _sweep.dispatch_pod("demo", runner=runner)
             by_role = {c[0].rsplit("-", 1)[-1]: c[4] for c in runner.calls}
-            assert by_role["lead"] == {_rd.DOCKET_HANDOFF: "1", _rd.DOCKET_HOP_STEP: "lead"}
+            assert by_role["lead"] == {
+                _rd.DOCKET_HANDOFF: "1",
+                _rd.DOCKET_HOP_STEP: "lead",
+                _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
+            }
             impl_env = by_role["implementer"]
             assert impl_env is not None
             assert impl_env["DOCKET_PORT_BASE"] == str(_res.PORT_BASE)
@@ -515,4 +525,5 @@ class TestHopEnvInjection:
             assert by_role["implementer"] == {
                 _rd.DOCKET_HANDOFF: "1",
                 _rd.DOCKET_HOP_STEP: "implementer",
+                _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
             }
