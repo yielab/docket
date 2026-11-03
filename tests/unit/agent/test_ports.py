@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import dataclasses
 
+import pytest
+
 from docket.agent import ports as _ports
 from docket.kernel.home import current_home, use_home
 
@@ -40,3 +42,24 @@ class TestEstimateTokens:
         # 1-character length Python's `len()` would report.
         text = "é" * 8  # 16 bytes
         assert _ports.estimate_tokens(text) == 16 // current_home().context_bytes_per_token
+
+
+class TestRaiseKey:
+    """The one value the stop message's ``raise`` tail and the hop's ``raise`` field both read."""
+
+    @pytest.mark.parametrize(
+        ("bound", "source", "expected"),
+        [
+            ("rounds", "default", "AGENT_LOOP_MAX_ITERATIONS"),
+            ("toolCalls", "default", "AGENT_LOOP_MAX_TOOL_CALLS"),
+            ("time", "step", "timeout"),
+            ("time", "pod", "turnTimeoutS"),
+            ("time", "default", "AGENT_LOOP_WALL_CLOCK_TIMEOUT_S"),
+            ("tokens", "task", "maxTokens"),
+            ("tokens", "pod_budget", "budgetTokens"),
+            ("tokens", "default", "AGENT_LOOP_TOKEN_BUDGET"),
+        ],
+    )
+    def test_each_owner_names_its_own_key(self, bound: str, source: str, expected: str) -> None:
+        assert _ports.raise_key(bound, source) == expected  # type: ignore[arg-type]
+        assert _ports.BudgetStop(bound, 1, 1, source).raise_key == expected  # type: ignore[arg-type]

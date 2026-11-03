@@ -52,7 +52,9 @@ def test_a_hop_out_of_rounds_is_a_budget_outcome_and_its_file_is_in_the_diff(
         "limit": 3,
         "used": 3,
         "source": "default",
+        "raise": "AGENT_LOOP_MAX_ITERATIONS",
         "treeChanged": True,
     }
+    assert hop["error"].endswith("(source: default; raise AGENT_LOOP_MAX_ITERATIONS)")
     assert hop["artifact"]["files_changed"] == ["app.txt"]
     assert "+fixed" in w.docket("task", "diff", task_id).out

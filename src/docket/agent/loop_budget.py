@@ -174,13 +174,13 @@ class TurnBudget:
             self.state.land(
                 "max_iterations",
                 f"exceeded max_iterations={cfg.max_iterations}"
-                + limit_origin("max_iterations", cfg.max_iterations_source),
+                + limit_origin("rounds", cfg.max_iterations_source),
             )
         elif self.state.clock() - self.state.started > cfg.wall_clock_timeout_s:
             self.state.land(
                 "timeout",
                 f"exceeded wall_clock_timeout_s={cfg.wall_clock_timeout_s}"
-                + limit_origin("wall_clock", cfg.wall_clock_source),
+                + limit_origin("time", cfg.wall_clock_source),
             )
         elif self.state.total_usage.counted_tokens > cfg.token_budget:
             return self.state.done(
@@ -195,7 +195,7 @@ class TurnBudget:
             self.state.land(
                 "max_tool_calls",
                 f"exceeded max_tool_calls={cfg.max_tool_calls}"
-                + limit_origin("max_tool_calls", cfg.max_tool_calls_source),
+                + limit_origin("toolCalls", cfg.max_tool_calls_source),
             )
         return None
 

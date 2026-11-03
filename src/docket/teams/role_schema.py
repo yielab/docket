@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from docket.kernel.errors import InvalidInput
+from docket.pipeline.domain.step import REFUSED_HOP_LIMITS, hop_limit_refusal
 from docket.teams import prompts as _prompts
 
 SCOPES: frozenset[str] = frozenset({"pod"})
@@ -83,12 +84,9 @@ class RoleArchetype:
     # Prompts (`<layer>/<name>`) whose tests a model must not fail to run this role
     # (model-profiles.spec.md, "Prompt variants and the floor"). Empty means no floor.
     floor: tuple[str, ...] = ()
-    # An allow-list of tool names this role is offered, and a bound on its tool calls per hop
-    # (role-archetypes.spec.md, "Tools and calls per hop"); `None` declares nothing. A step's own
-    # `tools`/`maxToolCalls`/`maxIterations` override them for one hop.
+    # An allow-list of tool names this role is offered (role-archetypes.spec.md, "Tools and calls
+    # per hop"); `None` declares nothing. A step's own `tools` overrides it for one hop.
     tools: tuple[str, ...] | None = None
-    max_tool_calls: int | None = None
-    max_iterations: int | None = None
 
     def __post_init__(self) -> None:
         if not self.name or not _NAME_RE.match(self.name):
@@ -119,22 +117,6 @@ class RoleArchetype:
             raise ArchetypeError(f"archetype {self.name!r}: tokenBudget must be a positive integer")
         if self.tools is not None and not self.tools:
             raise ArchetypeError(f"archetype {self.name!r}: tools must name at least one tool")
-        if self.max_tool_calls is not None and (
-            not isinstance(self.max_tool_calls, int)
-            or isinstance(self.max_tool_calls, bool)
-            or self.max_tool_calls <= 0
-        ):
-            raise ArchetypeError(
-                f"archetype {self.name!r}: maxToolCalls must be a positive integer"
-            )
-        if self.max_iterations is not None and (
-            not isinstance(self.max_iterations, int)
-            or isinstance(self.max_iterations, bool)
-            or self.max_iterations <= 0
-        ):
-            raise ArchetypeError(
-                f"archetype {self.name!r}: maxIterations must be a positive integer"
-            )
         for ref in self.floor:
             if not _FLOOR_RE.match(ref):
                 raise ArchetypeError(
@@ -165,11 +147,14 @@ class RoleArchetype:
             doc["floor"] = list(self.floor)
         if self.tools is not None:
             doc["tools"] = list(self.tools)
-        if self.max_tool_calls is not None:
-            doc["maxToolCalls"] = self.max_tool_calls
-        if self.max_iterations is not None:
-            doc["maxIterations"] = self.max_iterations
         return doc
+
+
+def refuse_hop_limits(name: str, doc: dict[str, Any]) -> None:
+    """Refuse a role document that declares rounds or tool calls (role-archetypes.spec.md)."""
+    for key in REFUSED_HOP_LIMITS:
+        if key in doc:
+            raise ArchetypeError(hop_limit_refusal(f"archetype {name!r}", key))
 
 
 def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
@@ -184,6 +169,7 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
 
     if "policyRole" in doc:
         raise ArchetypeError(f"archetype {name!r}: unknown key 'policyRole'")
+    refuse_hop_limits(name, doc)
 
     doc_name = doc.get("name", name)
     if doc_name != name:
@@ -230,8 +216,6 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         hop_instruction=str(doc.get("hopInstruction", "")),
         floor=tuple(str(ref) for ref in doc.get("floor", [])),
         tools=None if tools_doc is None else tuple(str(t) for t in tools_doc),
-        max_tool_calls=doc.get("maxToolCalls"),
-        max_iterations=doc.get("maxIterations"),
     )
 
 

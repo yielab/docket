@@ -132,8 +132,8 @@ class Home:
     # model, not a throughput knob: model round-trips, then tool calls however they are
     # batched, then denials in a row (one lets the model correct course), then rounds that
     # only repeat earlier call/result pairs (0 disables).
-    agent_loop_max_iterations: int = 60
-    agent_loop_max_tool_calls: int = 40
+    agent_loop_max_iterations: int = 200
+    agent_loop_max_tool_calls: int = 400
     agent_loop_max_consecutive_tool_denials: int = 3
     agent_loop_no_progress_rounds: int = 3
     # Cap on one tool result before it is truncated, visibly. The result goes back into
@@ -238,8 +238,8 @@ class Home:
             dispatch_sweep_workers=_int(env, "DISPATCH_SWEEP_WORKERS", 4),
             template_version=_int(env, "TEMPLATE_VERSION", 5),
             sessions_dir_override=_optional_path(env, "SESSIONS_DIR"),
-            agent_loop_max_iterations=_int(env, "AGENT_LOOP_MAX_ITERATIONS", 60),
-            agent_loop_max_tool_calls=_int(env, "AGENT_LOOP_MAX_TOOL_CALLS", 40),
+            agent_loop_max_iterations=_int(env, "AGENT_LOOP_MAX_ITERATIONS", 200),
+            agent_loop_max_tool_calls=_int(env, "AGENT_LOOP_MAX_TOOL_CALLS", 400),
             agent_loop_max_consecutive_tool_denials=_int(
                 env, "AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS", 3
             ),

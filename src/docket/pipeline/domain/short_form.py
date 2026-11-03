@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from docket.pipeline.domain.step import REFUSED_HOP_LIMITS, hop_limit_refusal
+
 # ── Short form ─────────────────────────────────────────────────────────────────
 #
 # The one authored form of a step: `<id>: <role-or-agent>` plus optional `verify`/`verdict`/
@@ -27,8 +29,6 @@ _STEP_SUGAR_KEYS = frozenset(
         "archetype",
         "when",
         "tools",
-        "maxToolCalls",
-        "maxIterations",
     }
 )
 _NO_ON = object()
@@ -228,7 +228,16 @@ def _canonical_step_message(step_id: Any) -> str:
 def _normalize_short_step(
     entry: dict[Any, Any], seen_ids: list[str], roles: frozenset[str]
 ) -> dict[str, Any]:
-    id_keys = [k for k in entry if k not in _STEP_SUGAR_KEYS and k is not True]
+    id_keys = [
+        k
+        for k in entry
+        if k not in _STEP_SUGAR_KEYS and k not in REFUSED_HOP_LIMITS and k is not True
+    ]
+    for key in REFUSED_HOP_LIMITS:
+        if key in entry:
+            raise _ShortFormError(
+                hop_limit_refusal(f"step {id_keys[0]!r}" if len(id_keys) == 1 else "a step", key)
+            )
     if len(id_keys) != 1:
         raise _ShortFormError(
             f"a step needs exactly one key that is not a sugar key, the step id "
@@ -255,8 +264,6 @@ def _normalize_short_step(
         "archetype",
         "when",
         "tools",
-        "maxToolCalls",
-        "maxIterations",
     ):
         if key in entry:
             step[key] = entry[key]

@@ -1,6 +1,6 @@
 # Role Archetypes Specification
 
-**Version**: 5.7.0
+**Version**: 5.8.0
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
 **Last Updated**: 2026-11-03
@@ -67,12 +67,14 @@ This specification does NOT cover:
    "Hop instructions") **MAY** be present; empty or absent is valid for all three. `tokenBudget`
    **MAY** be absent from a wire document and defaults to `6000`, never a parse error.
    `deniedTools` absent or empty defaults to `()`: no narrower than the registry the caller hands
-   in. `tools` (a non-empty list of tool names), `maxToolCalls` and `maxIterations` (each a positive
-   integer) **MAY** be present and default to unset; see "Tools and calls per hop". `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
+   in. `tools` (a non-empty list of tool names) **MAY** be present and defaults to unset; see "Tools and
+   calls per hop". `maxToolCalls` and `maxIterations` are not archetype keys: a wire or short-form
+   document that carries either **MUST** be refused as `ArchetypeError` naming the key and saying
+   that a step declares only its `timeout`. `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
    variants and the floor") **MAY** be present and defaults to `()`; an entry that is not a
    `<layer>/<name>` with `layer` one of `identity`, `task`, `hop` is refused naming the field. `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
-   all". `from_wire` reads only the fields above; it refuses a `kind:` other than `role` and a
-   `policyRole` key, and does not read any other key.
+   all". `from_wire` reads only the fields above; it refuses a `kind:` other than `role`, a
+   `policyRole` key, and `maxToolCalls` or `maxIterations`, and does not read any other key.
 2. `scope` **MUST** be exactly `"pod"`, a closed enum of one value; any other value is refused.
    Every built-in and starter archetype is `"pod"`-scoped. Scope is shown by `docket pod roles`
    and changes no behaviour.
@@ -506,11 +508,10 @@ docket pod validate <file.yaml>
 ### Tools and calls per hop
 
 1. An archetype **MAY** declare `tools` (`RoleArchetype.tools`, `tuple[str, ...] | None`, an
-   allow-list of tool names), `maxToolCalls` (`RoleArchetype.max_tool_calls`, `int | None`) and
-   `maxIterations` (`RoleArchetype.max_iterations`, `int | None`, the model rounds per hop). All
-   default to `None`, "declares nothing". An empty `tools` list and a `maxToolCalls` or
-   `maxIterations` that is not a positive integer **MUST** be refused naming the field
-   (`ArchetypeError`). `to_wire` writes each only when set.
+   allow-list of tool names). It defaults to `None`, "declares nothing". An empty `tools` list
+   **MUST** be refused naming the field (`ArchetypeError`). `to_wire` writes it only when set. An
+   archetype declares no rounds and no tool calls: `maxToolCalls` and `maxIterations` are refused
+   ("Archetype schema" requirement 1).
 2. `registry_for_role(base, role, project="", *, surface="full", allow=None)` is the one place
    that decides what a hop sees, in this order: (a) the model profile's *surface* (`full` keeps
    every tool; `minimal` keeps `bash`, `read`, `glob`, `edit`, `write`, `verify`, any tool that ends the turn, so
@@ -523,12 +524,10 @@ docket pod validate <file.yaml>
    `deniedTools: [bash]` is offered `read` alone. A name in an allow-list that no registry holds is
    a no-op at run time, as in `deniedTools`; `pod validate` is where it is refused (requirement 4
    of "Template rendering").
-3. A step's `maxToolCalls` and `maxIterations` win over the archetype's, which win over the
-   machine default (`AGENT_LOOP_MAX_TOOL_CALLS`, `AGENT_LOOP_MAX_ITERATIONS`). The one pure
-   resolver is `hops/domain/budget.py::resolve_hop_budget`; it also reports which owner
-   (`step | role | pod | default`) each limit came from, and `pod-dispatch.spec.md` ("Timeouts")
-   adds the time chain. `agent-loop.spec.md` ("Tools and calls per hop") says how the cap ends a
-   hop. The built-in archetypes declare neither key.
+3. Rounds and tool calls are guards owned by the machine (`AGENT_LOOP_MAX_ITERATIONS`, 200, and
+   `AGENT_LOOP_MAX_TOOL_CALLS`, 400), declared by no step and no archetype; `agent-loop.spec.md`
+   requirement 104 resolves them and says how a guard ends a hop. The time chain is
+   `pod-dispatch.spec.md` ("Timeout configuration").
 4. The surface is the model profile's (`model-profiles.spec.md`, "Model profiles"); no caller
    **MUST** branch on a role's or a model's name to decide it.
 5. **A `send` tool is opt-in.** An MCP tool of kind `send` (a tool that acts outside the machine,
@@ -592,7 +591,6 @@ deniedTools: []   # optional; e.g. ["write", "edit", "bash"] for a read-only rol
 hopInstruction: ""   # optional; unset + a gated role -> generated from gateContract
 floor: []   # optional; e.g. ["hop/reviewer"]: prompts whose tests a model must not fail
 tools: [read, bash]   # optional allow-list; omitted -> no allow-list
-maxToolCalls: 20   # optional; omitted -> the loop's default
 gateContract:
   kind: none
 soulTemplate: |
@@ -630,8 +628,8 @@ instructions: security-vetter.md     # optional; default "<name>.md" beside this
 whose content up to an optional literal `## AGENTS` heading line becomes `soulTemplate`; the text
 after that heading becomes `agentsTemplate`, or the starter library's AGENTS prose when the
 heading is absent. The same `${variable}` substitution applies to both halves at render time.
-`scope`, `version`, `tokenBudget`, `toolProfile`, `hopInstruction`, `floor`, `tools` and
-`maxToolCalls` may be given; `scope`
+`scope`, `version`, `tokenBudget`, `toolProfile`, `hopInstruction`, `floor` and `tools`
+may be given; `scope`
 defaults to `"pod"`, `version` to `1`, `tokenBudget` to `6000`, the same defaults `from_wire`
 applies to the persisted wire object.
 

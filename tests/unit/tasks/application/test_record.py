@@ -13,6 +13,10 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
+from docket.agent.ports import BudgetStop, TurnResult
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
 from docket.tasks.application import record as _record
@@ -103,3 +107,27 @@ class TestReplayPipelinePosition:
             [_hop("lead"), _hop("implementer", ok=False), _hop("implementer")],
         )
         assert pos.pipeline_index == 2
+
+
+class TestBudgetOutcomeRaise:
+    """A hop's ``budget.raise`` names what raises the limit that stopped it, task tokens included."""
+
+    @staticmethod
+    def _outcome(stop: BudgetStop, max_tokens: int | None) -> dict[str, Any]:
+        ctx: Any = SimpleNamespace(task=SimpleNamespace(max_tokens=max_tokens))
+        run = TurnResult(False, "", 0.0, {}, budget_stop=stop)
+        outcome = _record._budget_outcome(ctx, run, tree_changed=False)
+        assert outcome is not None
+        return outcome.model_dump(by_alias=True)
+
+    def test_a_task_max_tokens_stop_reads_max_tokens(self) -> None:
+        got = self._outcome(BudgetStop("tokens", 500, 501, "default"), max_tokens=500)
+        assert (got["source"], got["raise"]) == ("task", "maxTokens")
+
+    def test_a_machine_token_stop_reads_the_machine_variable(self) -> None:
+        got = self._outcome(BudgetStop("tokens", 100000, 100001, "default"), max_tokens=None)
+        assert (got["source"], got["raise"]) == ("default", "AGENT_LOOP_TOKEN_BUDGET")
+
+    def test_a_step_clock_stop_reads_timeout(self) -> None:
+        got = self._outcome(BudgetStop("time", 30, 31, "step"), max_tokens=None)
+        assert got["raise"] == "timeout"

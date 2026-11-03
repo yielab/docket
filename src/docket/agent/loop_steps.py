@@ -115,7 +115,7 @@ class ToolStep:
                 f"model requested {len(assistant_msg.tool_calls)} tool call(s), which would "
                 f"exceed max_tool_calls={self.state.cfg.max_tool_calls} (already used "
                 f"{self.state.tool_calls_executed}); none of this batch was executed"
-                + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source),
+                + limit_origin("toolCalls", self.state.cfg.max_tool_calls_source),
             )
             return None
 

@@ -262,6 +262,7 @@ class TestHopRetryLoop:
             "limit": 300,
             "used": 301,
             "source": "default",
+            "raise": "AGENT_LOOP_WALL_CLOCK_TIMEOUT_S",
             "treeChanged": False,
         }
 

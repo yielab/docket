@@ -361,7 +361,14 @@ class TestHopResultModel:
         assert "verification_skipped" not in hop.model_dump(by_alias=True)
 
     def test_a_hop_budget_round_trips_and_is_absent_when_unset(self) -> None:
-        budget = {"bound": "rounds", "limit": 3, "used": 3, "source": "step", "treeChanged": True}
+        budget = {
+            "bound": "rounds",
+            "limit": 3,
+            "used": 3,
+            "source": "default",
+            "raise": "AGENT_LOOP_MAX_ITERATIONS",
+            "treeChanged": True,
+        }
         hop = _task.HopResult.model_validate({"role": "implementer", "budget": budget})
         assert hop.model_dump(by_alias=True, mode="json")["budget"] == budget
         assert "budget" not in _task.HopResult(role="lead").model_dump(by_alias=True, mode="json")

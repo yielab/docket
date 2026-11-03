@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.15.0
+**Version**: 3.16.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -820,23 +820,25 @@ This specification does NOT cover:
     the request byte-identical to a profile-less one. A call that names a `rec__*` tool the hop is not offered is refused
     `invalid_call` like any unknown tool, and its reason adds what to declare: the set (`rec__<set>`) or `rec` in the
     `tools` of the step or of the role.
-104. `DocketDriver` **MUST** set `LoopConfig.max_iterations` and `LoopConfig.max_tool_calls` through
-    `hops/domain/budget.py::resolve_hop_budget` (`pod-dispatch.spec.md`, "Timeout configuration"):
-    the hop's step value (`DOCKET_HOP_MAX_ITERATIONS`, `DOCKET_HOP_MAX_TOOL_CALLS`, each a positive
-    integer as text; any other value is ignored), else the role archetype's `maxIterations` or
-    `maxToolCalls`, else the machine default (`AGENT_LOOP_MAX_ITERATIONS`, 60;
-    `AGENT_LOOP_MAX_TOOL_CALLS`, 40). It **MUST** also set `LoopConfig.max_iterations_source`,
-    `max_tool_calls_source` and `wall_clock_source` to the owner of each limit (`step`, `role`,
-    `pod` or `default`; the pod only for time). A `LoopConfig` built by a caller that names no
-    source keeps the empty string.
+104. Rounds and tool calls are guards owned by the machine, not budgets: no step, role or task
+    declares them (`pipeline-format.spec.md` "Steps" requirement 12). `DocketDriver` **MUST** take
+    `LoopConfig.max_iterations` and `LoopConfig.max_tool_calls` from the current `Home`
+    (`AGENT_LOOP_MAX_ITERATIONS`, 200; `AGENT_LOOP_MAX_TOOL_CALLS`, 400), far above every measured
+    hop, so tokens and time stop a costly hop first and a guard stops a loop that ran away. It
+    **MUST** set `max_iterations_source` and `max_tool_calls_source` to `default` and
+    `wall_clock_source` to the owner of the time (`step`, `pod` or `default`; `hops/domain/budget.py`
+    `resolve_seconds`, `pod-dispatch.spec.md` "Timeout configuration"). A `LoopConfig` built by a
+    caller that names no source keeps the empty string. No `DOCKET_HOP_MAX_*` coordinate exists.
 105. A turn whose `max_iterations`, `max_tool_calls` or `wall_clock_timeout_s` is reached **MUST** end
     by requirement 7, 8 or 9 with `ok=False`, no further round and the error
     `exceeded <bound>=<N>`. When the source is known the error continues
-    `(source: <source>; raise <key>)`, naming the key that raises that limit (`maxIterations` or
-    `maxToolCalls` on the step; `timeout` on the step or `turnTimeoutS` on the pod; the
-    `AGENT_LOOP_*` variable when the source is `default`). With `maxToolCalls: 3` and a model that
-    asks for a tool each round, three calls run and the hop ends with one tool-free landing
-    request (requirement 51) in place of a fourth round.
+    `(source: <source>; raise <key>)`, where `<key>` is `BudgetStop.raise_key` of that stop,
+    computed once by `agent/ports.py::raise_key` for the bound and source and used for both the
+    message tail and the typed field (never written twice): `timeout` on the step or `turnTimeoutS`
+    on the pod for time; the `AGENT_LOOP_*` variable when the source is `default`. A guard stop
+    names the environment variable, never a YAML key. With `AGENT_LOOP_MAX_TOOL_CALLS=3` and a
+    model that asks for a tool each round, three calls run and the hop ends with one tool-free
+    landing request (requirement 51) in place of a fourth round.
 106. A repeated identical call is the no_progress stop of requirements 77-79 and nothing else:
     its limit is `LoopConfig.no_progress_rounds`, and no second repeat detector exists.
 107. Running out of budget is its own outcome. Every `ok=False` result whose `stop_reason` is
@@ -844,7 +846,9 @@ This specification does NOT cover:
     **MUST** carry `failure_kind="budget_exhausted"` and a typed `budget_stop`:
     `bound` (`rounds`, `toolCalls`, `time` or `tokens`), `limit`, `used` (rounds and tool calls as
     counted, time in whole seconds, tokens as counted tokens) and `source` (the `LoopConfig`
-    `*_source` of that bound, `default` when it names none). `no_progress`, `tool_denials`,
+    `*_source` of that bound, `default` when it names none) and `raise_key` (requirement 105; for
+    tokens `AGENT_LOOP_TOKEN_BUDGET` when the source is `default`, `maxTokens` for `task` and
+    `budgetTokens` for `pod_budget`). `no_progress`, `tool_denials`,
     `context_fit`, `run_cancelled` and the approval stops keep their kinds and carry no
     `budget_stop`. `DocketDriver` copies `budget_stop` onto the `TurnResult` unchanged. A request or
     transport timeout of the backend is `failure_kind="timeout"` with `stop_reason="backend_error"`
@@ -883,8 +887,8 @@ class LoopConfig:                              # frozen
     max_consecutive_tool_denials: int # default AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS
     no_progress_rounds: int     # default AGENT_LOOP_NO_PROGRESS_ROUNDS; 0 disables
     wall_clock_timeout_s: float # default AGENT_LOOP_WALL_CLOCK_TIMEOUT_S
-    max_iterations_source: str = ""  # step | role | default, set by the driver (104)
-    max_tool_calls_source: str = ""  # step | role | default
+    max_iterations_source: str = ""  # default, set by the driver (104)
+    max_tool_calls_source: str = ""  # default
     wall_clock_source: str = ""      # step | pod | default
     token_budget: int           # default AGENT_LOOP_TOKEN_BUDGET
     request_timeout_s: int      # default AGENT_LOOP_REQUEST_TIMEOUT_S
@@ -904,7 +908,8 @@ class BudgetStop:                # frozen; agent/ports.py (requirement 107)
     bound: Literal["rounds", "toolCalls", "tokens", "time"]
     limit: int
     used: int
-    source: str                  # step | role | pod | default, or task for tokens
+    source: str                  # step | pod | default, or task for tokens
+    # property raise_key: str   # the key or variable that raises the limit (105)
 
 class AgentLoopResult:
     ok: bool
@@ -973,8 +978,8 @@ def default_driver() -> DocketDriver: ...
 ### Tunables
 
 ```text
-AGENT_LOOP_MAX_ITERATIONS                default 60
-AGENT_LOOP_MAX_TOOL_CALLS                default 40
+AGENT_LOOP_MAX_ITERATIONS                default 200 (a guard)
+AGENT_LOOP_MAX_TOOL_CALLS                default 400 (a guard)
 AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS  default 3
 AGENT_LOOP_NO_PROGRESS_ROUNDS            default 3
 AGENT_LOOP_WALL_CLOCK_TIMEOUT_S          default 300

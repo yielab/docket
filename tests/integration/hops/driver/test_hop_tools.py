@@ -14,11 +14,8 @@ from tests.support.fakes import FakeJail
 from tests.support.home import record_isolation_on
 from tests.support.model_server import FakeModel, Request, call, register_lab_provider, say
 from tests.support.pods import write_meta_overrides as _write_meta
-from tests.support.roles import write_role_overlay
 
 from docket.agent.ports import (
-    DOCKET_HOP_MAX_ITERATIONS,
-    DOCKET_HOP_MAX_TOOL_CALLS,
     DOCKET_HOP_TOOLS,
     DOCKET_VERDICT_VALUES,
     DOCKET_VERIFY_PLAN,
@@ -132,145 +129,76 @@ class TestStepAllowList:
         assert _names(server.requests[0]) == {"read", "grep"}
 
 
-class TestMaxIterations:
-    """The rounds bound: the step's, then the role's, then the machine's, each named in the stop."""
+class TestRoundsGuard:
+    """Rounds are the machine's guard: no step or role sets them, and the stop names the variable."""
 
     @staticmethod
-    def _script(workspace: Path) -> list[Any]:
+    def _script(workspace: Path, rounds: int) -> list[Any]:
         (workspace / "f.txt").write_text("x\n")
-        return [call("read", call_id=f"c{i}", path=f"f{i}.txt") for i in range(8)] + [say("done")]
+        return [call("read", call_id=f"c{i}", path=f"f{i}.txt") for i in range(rounds)] + [
+            say("done")
+        ]
 
-    @staticmethod
-    def _role_turn(env: dict[str, str] | None) -> TurnResult:
-        return DocketDriver().run_turn(
-            "hop-pod-agent", "agent:hop-pod-agent:hop-pod", "go", 60, env, trace_project="hop-pod"
-        )
-
-    def test_a_step_value_ends_the_hop_after_that_many_requests(
+    def test_with_nothing_set_a_model_that_asks_for_a_tool_every_round_stops_at_the_guard(
         self, fake_model: Callable[..., FakeModel], workspace: Path
     ) -> None:
-        server = fake_model(sequence=self._script(workspace))
+        guard = current_home().agent_loop_max_iterations
+        server = fake_model(sequence=self._script(workspace, guard + 5))
         register_lab_provider(server)
 
-        result = _run("implementer", workspace, {DOCKET_HOP_MAX_ITERATIONS: "2"})
-
-        assert result.stop_reason == "max_iterations"
-        assert "exceeded max_iterations=2 (source: step;" in result.error
-        assert len(server.requests) == 3  # two rounds and the landing
-
-    def test_a_role_value_applies_when_the_step_sets_none(
-        self, fake_model: Callable[..., FakeModel], workspace: Path
-    ) -> None:
-        server = fake_model(sequence=self._script(workspace))
-        register_lab_provider(server)
-        write_role_overlay("hop-pod", "implementer", [], extra="maxIterations: 4\n")
-        _write_meta("hop-pod-agent", role="implementer", model="lab/m", codebase=str(workspace))
-
-        result = self._role_turn(None)
-
-        assert len(server.requests) == 5
-        assert "exceeded max_iterations=4 (source: role;" in result.error
-
-    def test_the_step_value_wins_over_the_roles(
-        self, fake_model: Callable[..., FakeModel], workspace: Path
-    ) -> None:
-        server = fake_model(sequence=self._script(workspace))
-        register_lab_provider(server)
-        write_role_overlay("hop-pod", "implementer", [], extra="maxIterations: 4\n")
-        _write_meta("hop-pod-agent", role="implementer", model="lab/m", codebase=str(workspace))
-
-        self._role_turn({DOCKET_HOP_MAX_ITERATIONS: "3"})
-
-        assert len(server.requests) == 4
-
-    def test_with_neither_the_stop_names_the_machine_default(
-        self, fake_model: Callable[..., FakeModel], workspace: Path
-    ) -> None:
-        server = fake_model(sequence=self._script(workspace))
-        register_lab_provider(server)
-
-        with use_home(dataclasses.replace(current_home(), agent_loop_max_iterations=3)):
+        # Tokens stop a costly hop first, so the token budget is lifted to isolate the guard.
+        with use_home(dataclasses.replace(current_home(), agent_loop_token_budget=10**9)):
             result = _run("implementer", workspace)
 
-        assert "exceeded max_iterations=3 (source: default;" in result.error
-        assert "AGENT_LOOP_MAX_ITERATIONS" in result.error
-        assert len(server.requests) == 4
+        assert guard == 200
+        assert result.stop_reason == "max_iterations"
+        assert result.failure_kind == "budget_exhausted"
+        assert result.budget_stop is not None
+        assert (result.budget_stop.source, result.budget_stop.raise_key) == (
+            "default",
+            "AGENT_LOOP_MAX_ITERATIONS",
+        )
+        assert (
+            f"exceeded max_iterations={guard} "
+            "(source: default; raise AGENT_LOOP_MAX_ITERATIONS)" in result.error
+        )
 
-    def test_a_value_that_is_not_a_positive_integer_is_ignored(
+    def test_with_the_guard_set_to_two_the_hop_makes_two_requests_and_the_landing(
         self, fake_model: Callable[..., FakeModel], workspace: Path
     ) -> None:
-        server = fake_model(sequence=self._script(workspace))
+        server = fake_model(sequence=self._script(workspace, 8))
         register_lab_provider(server)
 
-        result = _run("implementer", workspace, {DOCKET_HOP_MAX_ITERATIONS: "0"})
+        with use_home(dataclasses.replace(current_home(), agent_loop_max_iterations=2)):
+            result = _run("implementer", workspace)
 
-        assert result.stop_reason != "max_iterations"
-        assert current_home().agent_loop_max_iterations > 8
+        assert "exceeded max_iterations=2 (source: default; raise AGENT_LOOP_MAX_ITERATIONS)" in (
+            result.error
+        )
+        assert len(server.requests) == 3  # two rounds and the landing
 
-    def test_the_machine_default_is_sixty_rounds(self) -> None:
-        assert current_home().agent_loop_max_iterations == 60
 
-
-class TestMaxToolCalls:
+class TestToolCallsGuard:
     @staticmethod
     def _script(workspace: Path) -> list[Any]:
         (workspace / "f.txt").write_text("x\n")
         return [call("read", call_id=f"c{i}", path=f"f{i}.txt") for i in range(4)] + [say("done")]
 
-    def test_a_step_cap_ends_the_hop_after_that_many_calls(
+    def test_the_guard_defaults_to_four_hundred(self) -> None:
+        assert current_home().agent_loop_max_tool_calls == 400
+
+    def test_a_guard_of_three_ends_the_hop_after_three_calls_and_names_the_variable(
         self, fake_model: Callable[..., FakeModel], workspace: Path
     ) -> None:
         server = fake_model(sequence=self._script(workspace))
         register_lab_provider(server)
 
-        result = _run("implementer", workspace, {DOCKET_HOP_MAX_TOOL_CALLS: "3"})
+        with use_home(dataclasses.replace(current_home(), agent_loop_max_tool_calls=3)):
+            result = _run("implementer", workspace)
 
         assert not result.ok
         assert result.stop_reason == "max_tool_calls"
-        assert "exceeded max_tool_calls=3 (source: step;" in result.error
+        assert "exceeded max_tool_calls=3 (source: default; raise AGENT_LOOP_MAX_TOOL_CALLS)" in (
+            result.error
+        )
         assert len(server.requests) == 4  # three rounds and the landing
-
-    def test_a_role_cap_applies_when_the_step_sets_none(
-        self, fake_model: Callable[..., FakeModel], workspace: Path
-    ) -> None:
-        server = fake_model(sequence=self._script(workspace))
-        register_lab_provider(server)
-        write_role_overlay("hop-pod", "implementer", [], extra="maxToolCalls: 2\n")
-        _write_meta("hop-pod-agent", role="implementer", model="lab/m", codebase=str(workspace))
-
-        result = DocketDriver().run_turn(
-            "hop-pod-agent", "agent:hop-pod-agent:hop-pod", "go", 60, None, trace_project="hop-pod"
-        )
-
-        assert result.stop_reason == "max_tool_calls"
-        assert "exceeded max_tool_calls=2 (source: role;" in result.error
-
-    def test_the_step_cap_wins_over_the_roles(
-        self, fake_model: Callable[..., FakeModel], workspace: Path
-    ) -> None:
-        server = fake_model(sequence=self._script(workspace))
-        register_lab_provider(server)
-        write_role_overlay("hop-pod", "implementer", [], extra="maxToolCalls: 2\n")
-        _write_meta("hop-pod-agent", role="implementer", model="lab/m", codebase=str(workspace))
-
-        result = DocketDriver().run_turn(
-            "hop-pod-agent",
-            "agent:hop-pod-agent:hop-pod",
-            "go",
-            60,
-            {DOCKET_HOP_MAX_TOOL_CALLS: "3"},
-            trace_project="hop-pod",
-        )
-
-        assert "exceeded max_tool_calls=3" in result.error
-
-    def test_a_cap_that_is_not_a_positive_integer_is_ignored(
-        self, fake_model: Callable[..., FakeModel], workspace: Path
-    ) -> None:
-        server = fake_model(sequence=self._script(workspace))
-        register_lab_provider(server)
-
-        result = _run("implementer", workspace, {DOCKET_HOP_MAX_TOOL_CALLS: "0"})
-
-        assert result.stop_reason != "max_tool_calls"
-        assert current_home().agent_loop_max_tool_calls > 4

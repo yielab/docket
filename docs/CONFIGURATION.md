@@ -327,18 +327,19 @@ member it gates.
 
 #### Budgets
 
-A hop's size is declared where the work is declared, and the machine only fills a gap. Each
-resolved limit says where it came from (`source`: `step`, `role`, `pod` or `default`), and a stop
-names the key that raises it.
+Three questions have three owners. Each resolved limit says where it came from (`source`: `task`,
+`step`, `pod` or `default`), and a stop names the key that raises it; the hop's `budget` carries the
+same key as a field, `raise`, so a plan of record never parses the message.
 
-| Bound | Step (pipeline YAML) | Role archetype | Pod | Machine default |
-|---|---|---|---|---|
-| Rounds per hop | `maxIterations` | `maxIterations` | none | `AGENT_LOOP_MAX_ITERATIONS`, 60 |
-| Tool calls per hop | `maxToolCalls` | `maxToolCalls` | none | `AGENT_LOOP_MAX_TOOL_CALLS`, 40 |
-| Seconds per hop | `timeout` | none | `turnTimeoutS` | `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, 300 |
-| Tokens | none: the task's `maxTokens` | none | `budgetUsd` (estimated) | `AGENT_LOOP_TOKEN_BUDGET` |
+| Question | Owner | Declared by | Raised by |
+|---|---|---|---|
+| Budget: how much may a task spend | the spender | the task's `maxTokens` (`docket task add --max-tokens`); the pod's `budgetUsd` (estimated) | `maxTokens`, else `AGENT_LOOP_TOKEN_BUDGET`, 100,000 |
+| Clock: how long may a hop take | the work | the step's `timeout`, then the pod's `turnTimeoutS` | `timeout`, `turnTimeoutS`, else `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, 300 |
+| Guards: has a loop run away | the machine | nobody: no step, role or task declares them | `AGENT_LOOP_MAX_ITERATIONS`, 200 rounds; `AGENT_LOOP_MAX_TOOL_CALLS`, 400 calls |
 
-The chain is step, then role, then pod (time only), then machine. A long step says so itself:
+Rounds and tool calls are guards, not budgets: far above any measured hop, so tokens and time stop
+a costly hop first. A pipeline step or a role that still carries `maxIterations` or `maxToolCalls`
+is refused, naming the key. A long step says so with its `timeout`:
 
 ```yaml
 # .docket/teams/<pod>/pod.yaml
@@ -346,10 +347,8 @@ settings: {turnTimeoutS: 600}
 # .docket/teams/<pod>/pipelines/<pipeline>.yaml
 steps:
   - build: implementer
-    maxIterations: 80
     timeout: 1200
   - review: reviewer
-    maxIterations: 20
 ```
 
 `docket pod set <key> <value>` validates before writing and is audited as

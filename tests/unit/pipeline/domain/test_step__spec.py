@@ -136,65 +136,59 @@ class TestStepModel:
         assert spec.steps[1].model == "strong"
 
 
-class TestStepToolsAndCalls:
-    """A unit step's ``tools`` allow-list and ``maxToolCalls`` (pipeline-format.spec.md Steps
-    Req. 11): shape-only validation, short-form passthrough, and where they are refused."""
+class TestStepTools:
+    """A unit step's ``tools`` allow-list (pipeline-format.spec.md Steps Req. 11) and the keys a
+    step no longer declares (Req. 12): shape-only validation and short-form passthrough."""
 
-    def test_both_default_to_none(self) -> None:
-        step = Step(id="s1", role="reviewer")
-        assert step.tools is None and step.max_tool_calls is None
+    def test_tools_defaults_to_none(self) -> None:
+        assert Step(id="s1", role="reviewer").tools is None
 
-    def test_short_form_carries_both_through(self) -> None:
-        doc = {
-            "name": "p",
-            "steps": [{"look": "reviewer", "tools": ["read", "bash"], "maxToolCalls": 3}],
-        }
+    def test_short_form_carries_tools_through(self) -> None:
+        doc = {"name": "p", "steps": [{"look": "reviewer", "tools": ["read", "bash"]}]}
         spec = PipelineSpec.model_validate(normalize_pipeline(doc, ROLE_NAMES))
         assert spec.steps[0].tools == ["read", "bash"]
-        assert spec.steps[0].max_tool_calls == 3
 
     def test_an_empty_allow_list_is_refused(self) -> None:
         with pytest.raises(ValidationError, match="tools"):
             Step(id="s1", role="reviewer", tools=[])
 
-    @pytest.mark.parametrize("calls", [0, -1])
-    def test_a_non_positive_cap_is_refused(self, calls: int) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="s1", role="reviewer", max_tool_calls=calls)
-
-    def test_max_iterations_defaults_to_none_and_a_positive_value_is_kept(self) -> None:
-        assert Step(id="s1", role="implementer").max_iterations is None
-        assert Step(id="s1", role="implementer", maxIterations=5).max_iterations == 5
-
-    def test_short_form_carries_max_iterations_through(self) -> None:
-        doc = {"name": "p", "steps": [{"build": "implementer", "maxIterations": 80}]}
-        spec = PipelineSpec.model_validate(normalize_pipeline(doc, ROLE_NAMES))
-        assert spec.steps[0].max_iterations == 80
-
-    @pytest.mark.parametrize("rounds", [0, -1, "x"])
-    def test_a_max_iterations_that_is_not_a_positive_integer_is_refused(
-        self, rounds: object
+    @pytest.mark.parametrize("key", ["maxIterations", "maxToolCalls"])
+    def test_a_step_declaring_rounds_or_tool_calls_is_refused_naming_the_key(
+        self, key: str
     ) -> None:
-        with pytest.raises(ValidationError, match="maxIterations"):
-            Step(id="s1", role="implementer", maxIterations=rounds)  # type: ignore[arg-type]
+        with pytest.raises(ValidationError) as caught:
+            Step.model_validate({"id": "s1", "role": "implementer", key: 5})
+        assert key in str(caught.value)
+        assert "a step declares only its 'timeout'" in str(caught.value)
 
-    @pytest.mark.parametrize(
-        "field", [{"tools": ["read"]}, {"max_tool_calls": 3}, {"maxIterations": 3}]
-    )
-    def test_a_command_step_and_an_input_step_carry_neither(self, field: dict[str, object]) -> None:
-        with pytest.raises(ValidationError):
-            Step(id="check", run="true", **field)  # type: ignore[arg-type]
-        with pytest.raises(ValidationError):
-            Step(id="ask", input={"from": "operator", "message": "q"}, **field)  # type: ignore[arg-type]
+    @pytest.mark.parametrize("key", ["maxIterations", "maxToolCalls"])
+    def test_the_short_form_refuses_them_the_same_way(self, key: str) -> None:
+        doc = {"name": "p", "steps": [{"build": "implementer", key: 80}]}
+        with pytest.raises(ValueError) as caught:
+            normalize_pipeline(doc, ROLE_NAMES)
+        assert key in str(caught.value)
+        assert "a step declares only its 'timeout'" in str(caught.value)
 
-    @pytest.mark.parametrize(
-        "field", [{"tools": ["read"]}, {"max_tool_calls": 3}, {"maxIterations": 3}]
-    )
-    def test_a_group_carries_neither_but_its_children_may(self, field: dict[str, object]) -> None:
-        child = Step(id="a", role="implementer", **field)  # type: ignore[arg-type]
+    @pytest.mark.parametrize("key", ["maxIterations", "maxToolCalls"])
+    def test_a_child_of_a_group_and_a_command_step_refuse_them_too(self, key: str) -> None:
+        with pytest.raises(ValidationError, match=key):
+            Step.model_validate(
+                {"id": "fanout", "parallel": [{"id": "a", "role": "implementer", key: 3}]}
+            )
+        with pytest.raises(ValidationError, match=key):
+            Step.model_validate({"id": "check", "run": "true", key: 3})
+
+    def test_a_command_step_and_an_input_step_carry_no_tools(self) -> None:
+        with pytest.raises(ValidationError):
+            Step(id="check", run="true", tools=["read"])
+        with pytest.raises(ValidationError):
+            Step(id="ask", input={"from": "operator", "message": "q"}, tools=["read"])
+
+    def test_a_group_carries_no_tools_but_its_children_may(self) -> None:
+        child = Step(id="a", role="implementer", tools=["read"])
         assert Step(id="fanout", parallel=[child]).parallel == [child]
         with pytest.raises(ValidationError):
-            Step(id="fanout", parallel=[Step(id="a", role="implementer")], **field)  # type: ignore[arg-type]
+            Step(id="fanout", parallel=[Step(id="a", role="implementer")], tools=["read"])
 
 
 # ── TestStepInstructions ─────────────────────────────────────────────────────

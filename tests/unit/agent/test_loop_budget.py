@@ -110,13 +110,19 @@ class TestCheckIterationBounds:
     def test_a_known_source_names_the_owner_and_the_key_that_raises_the_limit(
         self, make_turn_state: MakeState
     ) -> None:
-        state = make_turn_state(LoopConfig(max_iterations=1, max_iterations_source="step"))
+        state = make_turn_state(LoopConfig(max_iterations=1, max_iterations_source="default"))
         budget = TurnBudget(state)
         budget.check_iteration_bounds()
         budget.check_iteration_bounds()
-        assert (
-            state.landing_error == "exceeded max_iterations=1 (source: step; raise maxIterations)"
+        assert state.landing_error == (
+            "exceeded max_iterations=1 (source: default; raise AGENT_LOOP_MAX_ITERATIONS)"
         )
+
+    def test_a_wall_clock_from_the_step_names_timeout(self, make_turn_state: MakeState) -> None:
+        cfg = LoopConfig(wall_clock_timeout_s=10, wall_clock_source="step")
+        state = make_turn_state(cfg, clock=lambda: 11.0)
+        TurnBudget(state).check_iteration_bounds()
+        assert "(source: step; raise timeout)" in state.landing_error
 
     def test_a_wall_clock_from_the_pod_names_turn_timeout(self, make_turn_state: MakeState) -> None:
         cfg = LoopConfig(wall_clock_timeout_s=10, wall_clock_source="pod")
@@ -199,17 +205,17 @@ class TestARunOutBoundIsABudgetStop:
         [
             (
                 "rounds",
-                LoopConfig(max_iterations=2, max_iterations_source="step"),
+                LoopConfig(max_iterations=2, max_iterations_source="default"),
                 {},
                 0.0,
-                BudgetStop("rounds", 2, 2, "step"),
+                BudgetStop("rounds", 2, 2, "default"),
             ),
             (
                 "toolCalls",
-                LoopConfig(max_tool_calls=3, max_tool_calls_source="role"),
+                LoopConfig(max_tool_calls=3, max_tool_calls_source="default"),
                 {"tool_calls_executed": 3},
                 0.0,
-                BudgetStop("toolCalls", 3, 3, "role"),
+                BudgetStop("toolCalls", 3, 3, "default"),
             ),
             (
                 "time",

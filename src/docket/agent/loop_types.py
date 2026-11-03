@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from docket.agent.ports import BudgetStop, FailureKind, TokenUsage
+from docket.agent.ports import BudgetBound, BudgetStop, FailureKind, TokenUsage, raise_key
 from docket.kernel.home import current_home
 
 StopReason = Literal[
@@ -30,25 +30,12 @@ StopReason = Literal[
 ]
 
 
-# The key that raises each bound, by the owner that supplied it (a ``default`` is the machine's).
-_RAISE_KEY: dict[str, dict[str, str]] = {
-    "max_iterations": {"": "maxIterations", "default": "AGENT_LOOP_MAX_ITERATIONS"},
-    "max_tool_calls": {"": "maxToolCalls", "default": "AGENT_LOOP_MAX_TOOL_CALLS"},
-    "wall_clock": {
-        "step": "timeout",
-        "pod": "turnTimeoutS",
-        "default": "AGENT_LOOP_WALL_CLOCK_TIMEOUT_S",
-    },
-}
-
-
-def limit_origin(bound: str, source: str) -> str:
+def limit_origin(bound: BudgetBound, source: str) -> str:
     """The tail of a stop message that says who set the bound and what raises it, or ``""`` when
     the caller named no source (a config built outside the hop path)."""
     if not source:
         return ""
-    keys = _RAISE_KEY[bound]
-    return f" (source: {source}; raise {keys.get(source) or keys.get('') or keys['default']})"
+    return f" (source: {source}; raise {raise_key(bound, source)})"
 
 
 @dataclass(frozen=True)
@@ -94,7 +81,7 @@ class LoopConfig:
     tool_surface: Literal["full", "minimal"] = "full"
     tool_allow: tuple[str, ...] | None = None
     profile: str = ""
-    # Who declared each bound (``step``, ``role``, ``pod`` or ``default``), set by the driver from
+    # Who declared each bound (``step``, ``pod`` or ``default``), set by the driver from
     # the hop's budget; empty when the caller built the config itself. A stop names it.
     max_iterations_source: str = ""
     max_tool_calls_source: str = ""

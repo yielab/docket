@@ -44,13 +44,15 @@ class Worktree(_Part):
 
 class BudgetOutcome(_Part):
     """Which bound ended a hop that ran out of budget and whether its work was pinned: the limit
-    and the figure used (counts; seconds for ``time``; counted tokens), who set the limit, and
-    whether the hop left a dirty tree that docket committed on the task branch."""
+    and the figure used (counts; seconds for ``time``; counted tokens), who set the limit, the one
+    key or machine variable that raises it, and whether the hop left a dirty tree that docket
+    committed on the task branch."""
 
     bound: Literal["rounds", "toolCalls", "tokens", "time"]
     limit: int
     used: int
     source: str
+    raise_key: str = Field(alias="raise")
     tree_changed: bool = Field(alias="treeChanged")
 
 

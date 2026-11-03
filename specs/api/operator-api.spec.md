@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.17.0
+**Version**: 7.18.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-03
 
@@ -266,9 +266,13 @@ is present on every task object the `GET /tasks/<pod>` list and `GET /tasks/<pod
 
 A hop that ran out of rounds, tool calls, tokens or wall-clock time (never a request timeout) is
 `ok: false` and carries `budget`: `{"bound": "rounds" | "toolCalls" | "tokens" | "time", "limit",
-"used", "source", "treeChanged"}`. `limit` and `used` are counts, seconds for `time` and counted
-tokens for `tokens`; `source` is who set the limit (`step`, `role`, `pod`, `default`, or `task` for
-tokens under a task `maxTokens`); `treeChanged` is `true` when the hop left a dirty tree that
+"used", "source", "raise", "treeChanged"}`. `limit` and `used` are counts, seconds for `time` and
+counted tokens for `tokens`; `source` is who set the limit (`step`, `pod`, `default`, or `task` for
+tokens under a task `maxTokens`); `raise` is the one key or machine variable that raises that limit
+(`timeout` for source `step`, `turnTimeoutS` for `pod`, `maxTokens` for `task`, and for `default`
+the machine variable: `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, `AGENT_LOOP_TOKEN_BUDGET`,
+`AGENT_LOOP_MAX_ITERATIONS` or `AGENT_LOOP_MAX_TOOL_CALLS`), so a plan of record reads a field and
+never parses the stop message (additive on API 6); `treeChanged` is `true` when the hop left a dirty tree that
 docket committed on the task branch, so the hop's `artifact.files_changed` and the task's diff show
 the work. The key is absent on every other hop and on a hop recorded before the rule. A client
 probes for it with the `budgetOutcome` feature.

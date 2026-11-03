@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.17.0
+**Version**: 11.18.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -611,20 +611,17 @@ wired agent's conversation current with the task it is working.
    (300 seconds unless set) as the machine default, the fallback of last resort. A run `docket start`
    triggers (webhook, due schedule, or the sweep) passes no override, so it resolves to (b) then (c):
    no process-wide environment variable beats a pod's own setting.
-3. A hop's turn time, rounds and tool calls are one budget declared where the work is declared
-   (`hops/domain/budget.py::resolve_hop_budget`), each with the owner that supplied it
-   (`source`: `step | role | pod | default`):
-   - time: the step's `timeout`, then the pod's `turnTimeoutS` (or the invocation's explicit
-     override, which takes the pod's slot), then `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`;
-   - rounds: the step's `maxIterations`, then the role archetype's `maxIterations`, then
-     `AGENT_LOOP_MAX_ITERATIONS` (60);
-   - tool calls: the step's `maxToolCalls`, then the archetype's, then `AGENT_LOOP_MAX_TOOL_CALLS`
-     (40).
-   The runner (time, through `resolve_seconds`) and the driver (rounds and tool calls) both use
-   that module. The sources
-   reach `LoopConfig` and a stop that a limit caused names its source and the key that raises it.
-   Tokens are the task's `maxTokens`, never a step key. `verifyTimeoutS` and `verify:` gates keep
-   their own clock.
+3. A hop's time is declared where the work is declared, with the owner that supplied it
+   (`source`: `step | pod | default`): the step's `timeout`, then the pod's `turnTimeoutS` (or the
+   invocation's explicit override, which takes the pod's slot), then
+   `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`. The runner resolves it through
+   `hops/domain/budget.py::resolve_seconds`. A step declares only its `timeout`: rounds and tool
+   calls are machine guards (`AGENT_LOOP_MAX_ITERATIONS`, 200, and `AGENT_LOOP_MAX_TOOL_CALLS`,
+   400; agent-loop.spec.md requirement 104) that no step, role or task declares, so
+   `maxIterations` and `maxToolCalls` are refused by validation (pipeline-format.spec.md "Steps"
+   requirement 12). The sources reach `LoopConfig` and a stop that a limit caused names its source
+   and the key that raises it. Tokens are the task's `maxTokens`, never a step key.
+   `verifyTimeoutS` and `verify:` gates keep their own clock.
 
 ### Pod dispatch settings (`PodSettings`)
 
@@ -1763,9 +1760,11 @@ parsing for any verdict-gated step (`parse_verdict`).
     is (requirements 2-6 and the pin of "Hop evidence"): a dirty tree is committed on the task
     branch, and the artifact carries `files_changed`, `diff_ref`, `diff` and the `evidence`. The hop
     stays `ok: false`, so no gate reads it as finished, and its record carries `budget`:
-    `{bound, limit, used, source, treeChanged}` (operator-api.spec.md "Task answers"). `source` is the
-    owner of the limit that stopped it (`step`, `role`, `pod`, `default`; `task` for tokens under a
-    task `maxTokens`), as agent-loop.spec.md requirement 104 resolves it. `treeChanged` is `true`
+    `{bound, limit, used, source, raise, treeChanged}` (operator-api.spec.md "Task answers"). `source`
+    is the owner of the limit that stopped it (`step`, `pod`, `default`; `task` for tokens under a
+    task `maxTokens`), as agent-loop.spec.md requirement 104 resolves it, and `raise` is the one key
+    or machine variable that raises that limit, built from the same value as the tail of the stop
+    message (agent-loop.spec.md requirement 105). `treeChanged` is `true`
     when the pin found a dirty tree and so made a new commit. No other failed hop is probed or
     pinned, a non-Implementer hop that ran out of budget included.
     A hop that ran out of budget carries the report it was asked for (agent-loop.spec.md requirement
@@ -2677,7 +2676,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `_run_group_node`, `_step_skipped`, `_route_outcome`
 - `src/docket/hops/application/runner.py`: `step_session_key`; the hop's `_run_hop_turn`,
   and the step loop's `execute_unit`
-- `src/docket/hops/domain/budget.py`: `resolve_hop_budget`, `resolve_seconds`, `Limit`, `HopBudget`
+- `src/docket/hops/domain/budget.py`: `resolve_seconds`, `Limit`
 - `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
   `_gate_failed_section`
 - `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,

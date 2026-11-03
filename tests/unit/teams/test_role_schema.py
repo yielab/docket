@@ -314,22 +314,19 @@ class TestFloor:
             RoleArchetype(**{**arch.__dict__, "floor": (entry,)})
 
 
-class TestToolsAndCalls:
-    def test_both_round_trip_the_wire_and_the_short_form(self, tmp_path: Path) -> None:
+class TestTools:
+    def test_tools_round_trips_the_wire_and_the_short_form(self, tmp_path: Path) -> None:
         arch = _archetype(GateContract(kind="none"))
-        arch = RoleArchetype(**{**arch.__dict__, "tools": ("read", "bash"), "max_tool_calls": 20})
+        arch = RoleArchetype(**{**arch.__dict__, "tools": ("read", "bash")})
 
-        parsed = from_wire("custom-role", arch.to_wire())
-        assert (parsed.tools, parsed.max_tool_calls) == (("read", "bash"), 20)
+        assert from_wire("custom-role", arch.to_wire()).tools == ("read", "bash")
         plain = _archetype(GateContract(kind="none"))
-        assert (plain.tools, plain.max_tool_calls) == (None, None)
-        assert "tools" not in plain.to_wire() and "maxToolCalls" not in plain.to_wire()
+        assert plain.tools is None and "tools" not in plain.to_wire()
         (tmp_path / "r.md").write_text("You are a role.\n")
         short = {"name": "r", "model": "cheap", "instructions": "r.md", "tools": ["read"]}
-        short["maxToolCalls"] = 5
         canonical = normalize_role(short, tmp_path)
-        assert (canonical["tools"], canonical["maxToolCalls"]) == (["read"], 5)
-        assert to_short_role(from_wire("r", canonical))[0]["maxToolCalls"] == 5
+        assert canonical["tools"] == ["read"]
+        assert to_short_role(from_wire("r", canonical))[0]["tools"] == ["read"]
 
     def test_an_empty_allow_list_is_refused(self) -> None:
         arch = _archetype(GateContract(kind="none"))
@@ -337,30 +334,23 @@ class TestToolsAndCalls:
         with pytest.raises(ArchetypeError, match="tools"):
             RoleArchetype(**{**arch.__dict__, "tools": ()})
 
-    @pytest.mark.parametrize("calls", [0, -1, True])
-    def test_a_cap_that_is_not_a_positive_integer_is_refused(self, calls: int) -> None:
-        arch = _archetype(GateContract(kind="none"))
 
-        with pytest.raises(ArchetypeError, match="maxToolCalls"):
-            RoleArchetype(**{**arch.__dict__, "max_tool_calls": calls})
+class TestRoundsAndToolCallsAreNotArchetypeKeys:
+    @pytest.mark.parametrize("key", ["maxIterations", "maxToolCalls"])
+    def test_the_wire_form_refuses_them_naming_the_key(self, key: str) -> None:
+        wire = {**_archetype(GateContract(kind="none")).to_wire(), key: 30}
 
+        with pytest.raises(ArchetypeError) as caught:
+            from_wire("custom-role", wire)
+        assert key in str(caught.value)
+        assert "a step declares only its 'timeout'" in str(caught.value)
 
-class TestMaxIterations:
-    def test_it_round_trips_the_wire_and_the_short_form(self, tmp_path: Path) -> None:
-        arch = _archetype(GateContract(kind="none"))
-        assert arch.max_iterations is None and "maxIterations" not in arch.to_wire()
-        arch = RoleArchetype(**{**arch.__dict__, "max_iterations": 80})
-
-        assert from_wire("custom-role", arch.to_wire()).max_iterations == 80
+    @pytest.mark.parametrize("key", ["maxIterations", "maxToolCalls"])
+    def test_the_short_form_refuses_them_naming_the_key(self, key: str, tmp_path: Path) -> None:
         (tmp_path / "r.md").write_text("You are a role.\n")
-        short = {"name": "r", "model": "cheap", "instructions": "r.md", "maxIterations": 30}
-        canonical = normalize_role(short, tmp_path)
-        assert canonical["maxIterations"] == 30
-        assert to_short_role(from_wire("r", canonical))[0]["maxIterations"] == 30
+        short = {"name": "r", "model": "cheap", "instructions": "r.md", key: 30}
 
-    @pytest.mark.parametrize("rounds", [0, -1, True, "x"])
-    def test_a_value_that_is_not_a_positive_integer_is_refused(self, rounds: object) -> None:
-        arch = _archetype(GateContract(kind="none"))
-
-        with pytest.raises(ArchetypeError, match="maxIterations"):
-            RoleArchetype(**{**arch.__dict__, "max_iterations": rounds})
+        with pytest.raises(ArchetypeError) as caught:
+            normalize_role(short, tmp_path)
+        assert key in str(caught.value)
+        assert "a step declares only its 'timeout'" in str(caught.value)

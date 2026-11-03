@@ -145,17 +145,18 @@ docket pod reset <agent-id>
 ```
 
 #### 5. **A single turn is running away**
-docket's own turn loop bounds every hop: a hard cap on model round-trips, a hard cap on total
-tool calls, a wall-clock timeout, a measured-token budget
-(`AGENT_LOOP_TOKEN_BUDGET`, default 100,000), and a cap on consecutive denied tool calls
-(`AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`, default 3). These are deliberate stop conditions, not
-throughput knobs. The first three are declared where the work is declared: the pipeline step's
-`maxIterations`, `maxToolCalls` and `timeout`, a role's `maxIterations` and `maxToolCalls`, and
-the pod's `turnTimeoutS`. The environment (`AGENT_LOOP_MAX_ITERATIONS`, default 60;
-`AGENT_LOOP_MAX_TOOL_CALLS`, default 40; `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, default 300 s) only
-fills a gap when nothing is declared. A stop names its limit, its source and the key that raises
-it, for example `exceeded max_iterations=60 (source: default; raise AGENT_LOOP_MAX_ITERATIONS)`:
-raise it on the step if one step needs more, rather than assuming something is broken.
+docket's own turn loop bounds every hop: a wall-clock timeout, a measured-token budget
+(`AGENT_LOOP_TOKEN_BUDGET`, default 100,000), a cap on consecutive denied tool calls
+(`AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS`, default 3), and two guards against a loop that ran
+away: model round-trips (`AGENT_LOOP_MAX_ITERATIONS`, default 200) and total tool calls
+(`AGENT_LOOP_MAX_TOOL_CALLS`, default 400). These are deliberate stop conditions, not throughput
+knobs. The clock is declared where the work is declared: the pipeline step's `timeout`, then the
+pod's `turnTimeoutS`, then `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` (default 300 s). Rounds and tool calls
+are the machine's guards, declared by no step or role, so a step that carries `maxIterations` or
+`maxToolCalls` is refused. A stop names its limit, its source and the key that raises it, for
+example `exceeded max_iterations=200 (source: default; raise AGENT_LOOP_MAX_ITERATIONS)`; the
+hop's `budget.raise` holds the same key. A step that needs more time raises its `timeout`; a guard
+stop on real work is rare enough to be worth a look at the transcript before raising it.
 
 ## Model / Endpoint Errors
 

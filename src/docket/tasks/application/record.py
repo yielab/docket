@@ -430,6 +430,7 @@ def _budget_outcome(
         limit=stop.limit,
         used=stop.used,
         source=source,
+        raise_key=_rd.raise_key(stop.bound, source),
         tree_changed=tree_changed,
     )
 

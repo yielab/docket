@@ -1059,8 +1059,8 @@ No command emits any other exit code today.
 | `DISPATCH_RETRY_BACKOFF_S` | Linear backoff base between retries — attempt N waits N times this many seconds | `2` |
 | `DISPATCH_RETRY_MAX_WAIT_S` | Ceiling on a retry's sleep, whichever of the linear backoff or the endpoint's own `Retry-After` asked for longer | `60` |
 | `DISPATCH_SWEEP_WORKERS` | `docket start --dispatch`: how many pods one sweep tick runs at once (`1` is serial) | `4` |
-| `AGENT_LOOP_MAX_ITERATIONS` | Machine default cap on model round-trips within one hop, used when neither the step nor the role declares `maxIterations` | `60` |
-| `AGENT_LOOP_MAX_TOOL_CALLS` | Machine default cap on tool calls within one hop, used when neither the step nor the role declares `maxToolCalls` | `40` |
+| `AGENT_LOOP_MAX_ITERATIONS` | Machine guard on model round-trips within one hop; no step or role declares rounds | `200` |
+| `AGENT_LOOP_MAX_TOOL_CALLS` | Machine guard on tool calls within one hop; no step or role declares tool calls | `400` |
 | `AGENT_LOOP_NO_PROGRESS_ROUNDS` | Stops a turn after this many consecutive tool rounds that only repeat earlier results; `0` disables | `3` |
 | `AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS` | Stops a denial-only loop before it consumes the iteration/tool/token limits | `3` |
 | `DOCKET_TOOL_MAX_OUTPUT_CHARS` | Ceiling on one tool result's text before it is visibly truncated — tune down for a small-context endpoint | `30000` |

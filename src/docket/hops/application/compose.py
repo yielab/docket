@@ -647,7 +647,6 @@ def _compose_hop(
     env = {**(env or {}), _rd.DOCKET_HOP_STEP: node.step_id}
     if node.tools is not None:
         env = {**(env or {}), _rd.DOCKET_HOP_TOOLS: _json.dumps(list(node.tools))}
-    env = {**(env or {}), **_step_budget_env(node)}
     env = _consult_budget_env(ctx, env)
     env = _apply_task_restrictions(ctx, env)
     pregrants_raw = [*pregrants_for(ctx.task_id), *mint_task_grant_pregrants(ctx, role)]
@@ -660,15 +659,6 @@ def _compose_hop(
         env[_rd.DOCKET_PREGRANTS] = _json.dumps(pregrants_raw)
     manifest = _manifest.build_manifest(composition.layers, planned_model)
     return message, env, ComposedHop(manifest, started_at, cycle)
-
-
-def _step_budget_env(node: _orch.PlannedUnit) -> dict[str, str]:
-    """The step's own ``maxToolCalls`` and ``maxIterations`` as hop coordinates, for those it sets."""
-    pairs = (
-        (_rd.DOCKET_HOP_MAX_TOOL_CALLS, node.max_tool_calls),
-        (_rd.DOCKET_HOP_MAX_ITERATIONS, node.max_iterations),
-    )
-    return {key: str(value) for key, value in pairs if value is not None}
 
 
 def _brief_from_step(prior: list[HopResult], step_id: str) -> _brief.TaskBrief | None:

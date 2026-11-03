@@ -11,8 +11,6 @@ from typing import Any, Literal
 
 from docket.agent import loop as _loop
 from docket.agent.ports import (
-    DOCKET_HOP_MAX_ITERATIONS,
-    DOCKET_HOP_MAX_TOOL_CALLS,
     DOCKET_HOP_TIMEOUT_SOURCE,
     DOCKET_HOP_TOOLS,
     DOCKET_TASK_DENIED_TOOLS,
@@ -30,7 +28,6 @@ from docket.agent.tools import service_tools as _service_tools
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.application.base_view import base_commit_view
-from docket.hops.domain.budget import resolve_hop_budget
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
@@ -46,7 +43,6 @@ from docket.teams import mcp_servers as _mcp_servers
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import records as _records
-from docket.teams import roles as _archetypes
 from docket.teams import services as _services
 from docket.teams.models import AgentMeta
 from docket.teams.roles import BUILTIN_TOOL_KINDS
@@ -329,15 +325,6 @@ def _hop_tool_allow(raw: str | None) -> tuple[str, ...] | None:
     return tuple(str(name) for name in names)
 
 
-def _positive_int(raw: str | None) -> int | None:
-    """*raw* as a positive integer, or ``None`` (a step coordinate that is anything else is ignored)."""
-    try:
-        value = int(raw or "")
-    except ValueError:
-        return None
-    return value if value > 0 else None
-
-
 def _loop_config(
     backend: ChatBackend,
     timeout: int,
@@ -349,35 +336,21 @@ def _loop_config(
     """The turn loop's bounds: wall clock, measured-token budget and the endpoint's own windows,
     with the sampling, tool choice and tool surface the model's profile declares, and the step's
     allow-list, popped from *ctx*'s environment (so no tool sees them), where the step sets it.
-    Rounds, tool calls and seconds come from ``resolve_hop_budget``: the step's coordinates, then
-    the role archetype's, then the machine defaults; *timeout* is already resolved by the runner,
-    and its owner arrives as ``DOCKET_HOP_TIMEOUT_SOURCE``. Each owner is kept on the config."""
+    Rounds and tool calls are the machine's guards, read from ``Home`` with source ``default``;
+    *timeout* is already resolved by the runner, and its owner arrives as
+    ``DOCKET_HOP_TIMEOUT_SOURCE``. Each owner is kept on the config."""
     tool_allow = _hop_tool_allow(ctx.env.pop(DOCKET_HOP_TOOLS, None))
-    step_rounds = _positive_int(ctx.env.pop(DOCKET_HOP_MAX_ITERATIONS, None))
-    step_calls = _positive_int(ctx.env.pop(DOCKET_HOP_MAX_TOOL_CALLS, None))
     time_source = ctx.env.pop(DOCKET_HOP_TIMEOUT_SOURCE, "")
-    archetype = _archetypes.load_registry(ctx.project).get(ctx.role)
     home = current_home()
-    budget = resolve_hop_budget(
-        step_rounds=step_rounds,
-        step_tool_calls=step_calls,
-        step_seconds=timeout if time_source == "step" else None,
-        role_rounds=archetype.max_iterations if archetype is not None else None,
-        role_tool_calls=archetype.max_tool_calls if archetype is not None else None,
-        pod_seconds=timeout if time_source == "pod" else None,
-        default_rounds=home.agent_loop_max_iterations,
-        default_tool_calls=home.agent_loop_max_tool_calls,
-        default_seconds=timeout,
-    )
     context_window = getattr(backend, "context_window_tokens", None)
     max_output_tokens = getattr(backend, "max_output_tokens", None)
     return _loop.LoopConfig(
-        max_iterations=budget.rounds.value,
-        max_tool_calls=budget.tool_calls.value,
-        max_iterations_source=budget.rounds.source,
-        max_tool_calls_source=budget.tool_calls.source,
-        wall_clock_timeout_s=float(budget.seconds.value),
-        wall_clock_source=budget.seconds.source,
+        max_iterations=home.agent_loop_max_iterations,
+        max_tool_calls=home.agent_loop_max_tool_calls,
+        max_iterations_source="default",
+        max_tool_calls_source="default",
+        wall_clock_timeout_s=float(timeout),
+        wall_clock_source=time_source or "default",
         token_budget=token_budget,
         context_window_tokens=(
             context_window if isinstance(context_window, int) and context_window > 0 else None

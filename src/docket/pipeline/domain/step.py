@@ -17,6 +17,20 @@ _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 _MODEL_RANKS = frozenset({"cheap", "strong"})
 
 
+# Rounds and tool calls are machine guards, never declared (pipeline-format.spec.md "Steps"
+# requirement 12); a document that still carries either key is refused, never ignored.
+REFUSED_HOP_LIMITS = ("maxToolCalls", "maxIterations")
+
+
+def hop_limit_refusal(subject: str, key: str) -> str:
+    """The refusal for a step or role that declares *key*, one of ``REFUSED_HOP_LIMITS``."""
+    return (
+        f"{subject}: {key!r} is not accepted; rounds and tool calls are machine guards "
+        "(AGENT_LOOP_MAX_ITERATIONS, AGENT_LOOP_MAX_TOOL_CALLS), so a step declares only its "
+        "'timeout'"
+    )
+
+
 _DURATION_RE = re.compile(r"^([1-9][0-9]*)([smhd])$")
 _DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
@@ -134,12 +148,9 @@ class Step(BaseModel):
     # model-profiles.spec.md "Where a member's model comes from". `None` means "defer to the target's
     # own policy/pin resolution", not "no model".
     model: str | None = None
-    # Narrows what this hop is offered to these tool names, and bounds the calls it may make
-    # (pipeline-format.spec.md "Steps" Req. 11); each overrides the archetype's own for this hop.
+    # Narrows what this hop is offered to these tool names (pipeline-format.spec.md "Steps"
+    # Req. 11); it overrides the archetype's own for this hop.
     tools: list[str] | None = None
-    max_tool_calls: int | None = Field(None, alias="maxToolCalls", gt=0)
-    # Bounds the model rounds of one attempt at this step (pipeline-format.spec.md "Steps" Req. 11).
-    max_iterations: int | None = Field(None, alias="maxIterations", gt=0)
     # Skips this step on a closed predicate vocabulary (see `When`) -- applies to any
     # step kind, including a `run` command step. `None` means "always run".
     when: When | None = None
@@ -163,12 +174,22 @@ class Step(BaseModel):
     # target). See specs/functional/pipeline-format.spec.md ("Outcome routing").
     on: dict[str, Any] | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_hop_limits(cls, data: Any) -> Any:
+        """A step declares only its ``timeout``: ``maxToolCalls`` and ``maxIterations`` are refused."""
+        if isinstance(data, dict):
+            for key in REFUSED_HOP_LIMITS:
+                if key in data:
+                    raise InvalidInput(hop_limit_refusal(f"step {data.get('id')!r}", key))
+        return data
+
     def _check_hop_limits(self) -> None:
         """``tools`` names at least one tool, and only a step that runs an agent turn (a unit
-        step or a child of a group) carries ``tools``, ``maxToolCalls`` or ``maxIterations``."""
+        step or a child of a group) carries ``tools``."""
         if self.tools is not None and not [t for t in self.tools if t.strip()]:
             raise InvalidInput(f"step {self.id!r}: 'tools' must name at least one tool")
-        if self.tools is None and self.max_tool_calls is None and self.max_iterations is None:
+        if self.tools is None:
             return
         for kind, present in (
             ("parallel' group", self.parallel is not None),
@@ -177,9 +198,7 @@ class Step(BaseModel):
             ("wait' step", self.wait is not None),
         ):
             if present:
-                raise InvalidInput(
-                    f"step {self.id!r}: a '{kind} carries no 'tools'/'maxToolCalls'/'maxIterations'"
-                )
+                raise InvalidInput(f"step {self.id!r}: a '{kind} carries no 'tools'")
 
     def _check_wait(self) -> Step:
         """A wait step: a duration, an optional probe, ``when`` and a ``timeout`` route only."""

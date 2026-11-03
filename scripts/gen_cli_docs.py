@@ -508,13 +508,13 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("AGENT_LOOP_MAX_ITERATIONS",),
-        "Machine default cap on model round-trips within one hop, used when neither the step nor the role declares `maxIterations`",
-        "`60`",
+        "Machine guard on model round-trips within one hop; no step or role declares rounds",
+        "`200`",
     ),
     (
         ("AGENT_LOOP_MAX_TOOL_CALLS",),
-        "Machine default cap on tool calls within one hop, used when neither the step nor the role declares `maxToolCalls`",
-        "`40`",
+        "Machine guard on tool calls within one hop; no step or role declares tool calls",
+        "`400`",
     ),
     (
         ("AGENT_LOOP_NO_PROGRESS_ROUNDS",),

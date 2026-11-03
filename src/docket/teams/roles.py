@@ -66,6 +66,7 @@ from docket.teams.role_schema import (
     ArchetypeError,
     RoleArchetype,
     from_wire,
+    refuse_hop_limits,
     render,
 )
 
@@ -358,6 +359,7 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
         raise ArchetypeError(f"expected kind: role, got kind: {kind!r}")
 
     name = str(doc.get("name", ""))
+    refuse_hop_limits(name, doc)
     canonical: dict[str, Any] = {"name": name}
 
     if "description" in doc:
@@ -414,8 +416,6 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
         "hopInstruction",
         "floor",
         "tools",
-        "maxToolCalls",
-        "maxIterations",
     ):
         if key in doc:
             canonical[key] = doc.pop(key)
@@ -464,10 +464,6 @@ def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
         doc["floor"] = list(arch.floor)
     if arch.tools is not None:
         doc["tools"] = list(arch.tools)
-    if arch.max_tool_calls is not None:
-        doc["maxToolCalls"] = arch.max_tool_calls
-    if arch.max_iterations is not None:
-        doc["maxIterations"] = arch.max_iterations
 
     soul = arch.soul_template.rstrip("\n") + "\n"
     if arch.agents_template == _STARTER_AGENTS_TEMPLATE:

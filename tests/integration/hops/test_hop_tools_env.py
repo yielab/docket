@@ -1,5 +1,4 @@
-"""A step's ``tools``, ``maxToolCalls`` and ``maxIterations``, and where its time came from, reach
-the turn as the driver's hop coordinates
+"""A step's ``tools``, and where its time came from, reach the turn as the driver's hop coordinates
 (pipeline-format.spec.md "Steps" requirement 11, agent-loop.spec.md requirements 103 and 104).
 """
 
@@ -41,24 +40,20 @@ def _envs(*steps: _step.Step) -> dict[str, dict[str, str]]:
     return seen
 
 
-def test_a_step_with_tools_and_a_cap_hands_both_to_the_turn(pod_home: Path) -> None:
+def test_a_step_with_tools_hands_them_to_the_turn(pod_home: Path) -> None:
     _seed_lean_pod(_PROJECT)
 
-    seen = _envs(_step.Step(id="lead", role="lead", tools=["read", "grep"], max_tool_calls=3))
+    seen = _envs(_step.Step(id="lead", role="lead", tools=["read", "grep"]))
 
-    env = seen["lead"]
-    assert json.loads(env[_rd.DOCKET_HOP_TOOLS]) == ["read", "grep"]
-    assert env[_rd.DOCKET_HOP_MAX_TOOL_CALLS] == "3"
+    assert json.loads(seen["lead"][_rd.DOCKET_HOP_TOOLS]) == ["read", "grep"]
 
 
-def test_a_step_with_rounds_and_a_timeout_hands_the_turn_both(pod_home: Path) -> None:
+def test_a_step_with_a_timeout_names_the_step_as_the_owner(pod_home: Path) -> None:
     _seed_lean_pod(_PROJECT)
 
-    seen = _envs(_step.Step(id="lead", role="lead", maxIterations=80, timeout=1200))
+    seen = _envs(_step.Step(id="lead", role="lead", timeout=1200))
 
-    env = seen["lead"]
-    assert env[_rd.DOCKET_HOP_MAX_ITERATIONS] == "80"
-    assert env[_rd.DOCKET_HOP_TIMEOUT_SOURCE] == "step"
+    assert seen["lead"][_rd.DOCKET_HOP_TIMEOUT_SOURCE] == "step"
 
 
 def test_a_step_with_no_timeout_names_where_the_time_came_from(pod_home: Path) -> None:
@@ -66,17 +61,15 @@ def test_a_step_with_no_timeout_names_where_the_time_came_from(pod_home: Path) -
 
     seen = _envs(_step.Step(id="lead", role="lead"))
 
-    assert _rd.DOCKET_HOP_MAX_ITERATIONS not in seen["lead"]
     assert seen["lead"][_rd.DOCKET_HOP_TIMEOUT_SOURCE] == "default"
 
 
-def test_a_step_with_neither_hands_the_turn_nothing(pod_home: Path) -> None:
+def test_a_step_with_no_tools_hands_the_turn_no_allow_list(pod_home: Path) -> None:
     _seed_lean_pod(_PROJECT)
 
     seen = _envs(_step.Step(id="lead", role="lead"))
 
     assert _rd.DOCKET_HOP_TOOLS not in seen["lead"]
-    assert _rd.DOCKET_HOP_MAX_TOOL_CALLS not in seen["lead"]
 
 
 def test_every_step_hands_the_turn_its_own_id(pod_home: Path) -> None:

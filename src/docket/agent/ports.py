@@ -68,6 +68,31 @@ FailureKind = Literal[
 BudgetBound = Literal["rounds", "toolCalls", "tokens", "time"]
 
 
+# The key or machine variable that raises each bound, by the owner that supplied it. A source not
+# listed (``default``, or one a caller never named) falls to the machine's variable.
+_RAISE_KEYS: dict[BudgetBound, dict[str, str]] = {
+    "rounds": {"default": "AGENT_LOOP_MAX_ITERATIONS"},
+    "toolCalls": {"default": "AGENT_LOOP_MAX_TOOL_CALLS"},
+    "time": {
+        "step": "timeout",
+        "pod": "turnTimeoutS",
+        "default": "AGENT_LOOP_WALL_CLOCK_TIMEOUT_S",
+    },
+    "tokens": {
+        "task": "maxTokens",
+        "pod_budget": "budgetTokens",
+        "default": "AGENT_LOOP_TOKEN_BUDGET",
+    },
+}
+
+
+def raise_key(bound: BudgetBound, source: str) -> str:
+    """The one key or machine variable that raises *bound* when *source* set it. The stop message's
+    ``raise`` tail and the hop's typed ``raise`` field both come from here."""
+    keys = _RAISE_KEYS[bound]
+    return keys.get(source) or keys["default"]
+
+
 @dataclass(frozen=True)
 class BudgetStop:
     """Which bound a ``budget_exhausted`` turn hit: its *limit*, what it had *used* (counts;
@@ -77,6 +102,11 @@ class BudgetStop:
     limit: int
     used: int
     source: str
+
+    @property
+    def raise_key(self) -> str:
+        """What raises this limit, from the same value the stop message names."""
+        return raise_key(self.bound, self.source)
 
 
 # Internal dispatch→driver coordinate for a downstream hop that must inspect
@@ -139,13 +169,9 @@ DOCKET_VERDICT_VALUES = "DOCKET_VERDICT_VALUES"
 # tool for the turn, without a verdict gate's values.
 DOCKET_HANDOFF = "DOCKET_HANDOFF"
 
-# Same route again, set only on a hop whose step declares them: the JSON list of tool names the step
-# allows (``tools``) and the positive integers, as text, that bound its tool calls (``maxToolCalls``)
-# and its model rounds (``maxIterations``). Popped by DocketDriver into ``LoopConfig.tool_allow``,
-# ``LoopConfig.max_tool_calls`` and ``LoopConfig.max_iterations``.
+# Same route again, set only on a hop whose step declares it: the JSON list of tool names the step
+# allows (``tools``). Popped by DocketDriver into ``LoopConfig.tool_allow``.
 DOCKET_HOP_TOOLS = "DOCKET_HOP_TOOLS"
-DOCKET_HOP_MAX_TOOL_CALLS = "DOCKET_HOP_MAX_TOOL_CALLS"
-DOCKET_HOP_MAX_ITERATIONS = "DOCKET_HOP_MAX_ITERATIONS"
 # Which owner the hop's wall-clock figure came from (``step``, ``pod`` or ``default``), set on
 # every pipeline hop; popped into ``LoopConfig.wall_clock_source``.
 DOCKET_HOP_TIMEOUT_SOURCE = "DOCKET_HOP_TIMEOUT_SOURCE"
