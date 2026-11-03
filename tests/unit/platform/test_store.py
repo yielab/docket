@@ -256,3 +256,21 @@ def test_rewriting_a_record_leaves_it_in_one_directory_only() -> None:
 
     store.write_escalation(settled.model_copy(update={"state": "pending"}))
     assert [p.parent for p in folder.rglob(f"{record.id}.json")] == [folder]
+
+
+class TestKeepNoPrevious:
+    def test_a_write_keeping_no_previous_removes_the_backup(self, tmp_path: Path) -> None:
+        target = tmp_path / "secrets.json"
+        store.write_json(target, {"A": "first-value"})
+        store.write_json(target, {"A": "second-value"})
+        store.write_json(target, {}, keep_previous=False)
+        assert not (tmp_path / "secrets.json.bak").exists()
+        assert json.loads(target.read_text()) == {}
+
+    def test_a_malformed_primary_is_not_quarantined(self, tmp_path: Path) -> None:
+        target = tmp_path / "secrets.json"
+        target.write_text('{"A": "first-value"')
+        store.write_json(target, {"B": "two"}, keep_previous=False)
+        assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith("secrets")) == [
+            "secrets.json"
+        ]

@@ -1,8 +1,8 @@
 # API Key Management Specification
 
-**Version**: 2.2.0
+**Version**: 2.3.0
 **Status**: Complete
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-02
 
 ## Purpose
 
@@ -107,7 +107,9 @@ A `secret:<name>` reference resolves only a name something stored, so a name no 
 ### Backends
 
 1. The default backend (`DOCKET_SECRETS_BACKEND` unset, or set to `file`) stores every value in
-   `secrets.json`.
+   `secrets.json`, at mode `0600`, and **MUST NOT** keep a copy of an earlier version beside it
+   (no `secrets.json.bak`, no `secrets.json.corrupt`): after a `remove` or a `rotate`, the old
+   value is on no file under the home.
 2. `DOCKET_SECRETS_BACKEND=keyring` **MUST** store the value itself in the OS keyring
    (`secret-tool store`); `secrets.json` then holds only a name index (an empty placeholder),
    never the secret. Storing **MUST** fail (exit 1, naming `secret-tool` and

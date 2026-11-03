@@ -1,6 +1,6 @@
 # Docket JSON Store Specification
 
-**Version**: 3.3.0
+**Version**: 3.4.0
 **Status**: Implemented
 **Last updated**: 2026-11-02
 
@@ -52,6 +52,12 @@ file `.docket.lock` beside the primary):
 
 `write_json(path, data)` applies the same quarantine to a malformed primary before it replaces the
 primary with the new object. It leaves the backup unchanged and does not restore the backup.
+
+`write_json(path, data, keep_previous=False)` keeps no copy of what it replaces: it rotates no
+backup, quarantines no malformed primary, and removes a backup already beside the primary. A
+document written this way has no recovery input, so a malformed primary raises
+`StoreRecoveryError` on read. The secret store is the one document written this way, so a removed
+or rotated value does not survive on disk.
 
 Backup validation completes before recovery writes begin. If a later filesystem write fails, the
 operation raises that I/O error: the malformed primary and valid backup remain intact, the bounded

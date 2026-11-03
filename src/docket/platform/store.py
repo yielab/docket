@@ -185,13 +185,13 @@ def _write_quarantine(path: Path, malformed_bytes: bytes) -> None:
     _replace_bytes(quarantine, malformed_bytes)
 
 
-def write_json(path: Path, data: dict[str, Any] | BaseModel) -> None:
+def write_json(path: Path, data: dict[str, Any] | BaseModel, *, keep_previous: bool = True) -> None:
     """Atomically write *data* to *path* with 0600 permissions.
 
     Steps:
       1. Validate serializability before touching the file.
       2. Acquire an exclusive filelock (timeout: 10s).
-      3. Copy current file to .bak.
+      3. Copy current file to .bak (``keep_previous=False``: drop it, quarantine nothing).
       4. Write to .tmp sibling, chmod 0600, then os.replace (atomic on POSIX).
     """
     if isinstance(data, BaseModel):
@@ -204,7 +204,11 @@ def write_json(path: Path, data: dict[str, Any] | BaseModel) -> None:
     lock = _acquire(path)
     try:
         with lock:
-            _atomic_write(path, serialised)
+            if keep_previous:
+                _atomic_write(path, serialised)
+            else:
+                _atomic_write(path, serialised, rotate_backup=False)
+                path.with_suffix(path.suffix + ".bak").unlink(missing_ok=True)
     except Timeout:
         raise _lock_timeout_error(path) from None
 

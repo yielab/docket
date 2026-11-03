@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A removed or rotated secret no longer survives in `secrets.json.bak`.** The secret store keeps
+  no copy of an earlier version (no `.bak`, no `.corrupt`), and its next write deletes a backup an
+  older docket left. A malformed `secrets.json` now raises instead of restoring a stale key.
+
 - **The `bash` tool says where a call runs**: each call is a new shell at the workspace root, so a
   `cd` does not carry over and the root never needs finding. A Tack run waited 58 minutes on an
   approval for `cd "$(git rev-parse --show-toplevel)"`, which the classifier asks about because a

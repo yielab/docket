@@ -31,7 +31,7 @@ def load_secrets() -> dict[str, str]:
 
 
 def save_secrets(secrets: dict[str, str]) -> None:
-    write_json(current_home().secrets_file, secrets)
+    write_json(current_home().secrets_file, secrets, keep_previous=False)
 
 
 def load_secrets_meta() -> dict[str, Any]:

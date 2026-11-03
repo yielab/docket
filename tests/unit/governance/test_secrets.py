@@ -49,6 +49,23 @@ class TestStoreSecret:
         assert [e["action"] for e in _audit.read_audit()] == ["keys.add", "keys.rotate"]
 
 
+class TestNoEarlierCopy:
+    def test_a_removed_value_is_on_no_file_in_the_state_folder(self) -> None:
+        _secrets.store_secret("ALPHA_KEY", "alpha-value-1234")
+        _secrets.store_secret("BETA_KEY", "beta-value-5678")
+        secrets = _secrets.load_secrets()
+        del secrets["ALPHA_KEY"]
+        _secrets.save_secrets(secrets)
+        state = current_home().secrets_file.parent
+        assert [p.name for p in state.iterdir() if b"alpha-value-1234" in p.read_bytes()] == []
+
+    def test_a_rotated_value_is_on_no_file_in_the_state_folder(self) -> None:
+        _secrets.store_secret("ALPHA_KEY", "alpha-value-1234")
+        _secrets.store_secret("ALPHA_KEY", "alpha-value-9999")
+        state = current_home().secrets_file.parent
+        assert [p.name for p in state.iterdir() if b"alpha-value-1234" in p.read_bytes()] == []
+
+
 class TestRedactPerformance:
     def test_long_alphanumeric_run_redacts_in_linear_time(self) -> None:
         text = "Z" * 40_000  # no secret shape present anywhere in this run
