@@ -17,7 +17,7 @@
 > finishing a card well matters more than running two at once.
 >
 > **Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) is reopened** (decision 5 amended 2026-11-03), nine cards
-> below, seven done: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
+> below, nine done: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
 > not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
 > **Phase 57** (D-79, [ADR 0037](docs/adr/0037-what-docket-gives-a-manager-in-the-plan-of-record.md)) closed 2026-11-01. Before it, Phase 56 (D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16) closed
 > 2026-10-30: an external service is declared, not programmed; a pod keeps records; one judge; one home layout; the
@@ -583,7 +583,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-8 — docket keeps no dollars: no price, no cost, no estimate
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec (deletion) · **After:** P59-7
+**Status:** DONE 2026-11-03 (fa06ce05) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec (deletion) · **After:** P59-7
 
 - **Trigger:** the maintainer's request (2026-11-03): "eliminate the dollar handling and the
   estimates." docket measures tokens and records no dollars (`DocketDriver` reports `cost_usd = 0.0`,
@@ -640,7 +640,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-9 — `pod plan` shows each step's clock and the budget, with their sources
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-6, P59-7, P59-8
+**Status:** DONE 2026-11-03 (d3009412) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-6, P59-7, P59-8
 
 - **Trigger:** no command shows a resolved limit before a run; the operator learns it only from a
   stop message. `docs/CONFIGURATION.md` ~357 says `docket pod plan` confirms the limits, and it
