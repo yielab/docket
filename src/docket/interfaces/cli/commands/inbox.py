@@ -146,6 +146,19 @@ def _render_memory(item: MemoryItem) -> None:
     _say(f'    refuse:  docket pod memory refuse {item.id} --pod {item.pod} --reason "<why>"')
 
 
+def _render_call(pause: EscalationView, escalations: list[EscalationView]) -> None:
+    """Every pending question of the multi-question ``consult`` call *pause* belongs to, in
+    question order, each with the command that answers that one question by its escalation id."""
+    parts = [e for e in escalations if e.id == pause.id or pause.shares_consult_call(e)]
+    for part in sorted(parts, key=lambda e: e.part.index if e.part else 0):
+        rendered = render_escalation(part, _LEVEL)
+        label = f"{part.part.index}/{part.part.count}" if part.part else ""
+        _say(_block(f"    Q {label}: ", rendered.prompt or ""))
+        if rendered.options:
+            _say(f"    options: {options_line(rendered.options)}")
+        _say(f"    answer: {answer_command(part.id, rendered.options)}")
+
+
 def _render_pause(item: TaskView | EscalationView, escalations: list[EscalationView]) -> None:
     """What the pause an item waits on asks and the commands that answer it."""
     pause = (
@@ -159,6 +172,9 @@ def _render_pause(item: TaskView | EscalationView, escalations: list[EscalationV
     if pause.kind == "wait":
         _say(f"    waiting until {pause.expires_at}")
         _say(f"    resume:  docket task answer {pause.id} --option resume")
+        return
+    if pause.kind == "consult" and pause.part is not None and pause.part.count > 1:
+        _render_call(pause, escalations)
         return
     if pause.kind in ("consult", "input"):
         _say(_block("    Q: ", rendered.prompt or ""))

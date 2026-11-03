@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from docket.governance import approval as _approval
 from docket.interfaces.cli.app import app as _app
 from docket.kernel.home import current_home
-from docket.kernel.operator_contract import Option, QuestionV11, Recommendation
+from docket.kernel.operator_contract import Option, QuestionPart, QuestionV11, Recommendation
 from docket.platform import store as _store
 from docket.tasks.application import escalations as _escalations
 
@@ -29,7 +29,9 @@ runner = CliRunner()
 _SCHEMA = {"type": "object", "properties": {"note": {"type": "string"}}}
 
 
-def _question(task_id: str, qid: str, message: str, *options: Option) -> QuestionV11:
+def _question(
+    task_id: str, qid: str, message: str, *options: Option, part: QuestionPart | None = None
+) -> QuestionV11:
     return QuestionV11(
         id=qid,
         task_id=task_id,
@@ -40,6 +42,7 @@ def _question(task_id: str, qid: str, message: str, *options: Option) -> Questio
         created_at="2026-09-28T00:00:00Z",
         kind="clarification",
         options=list(options),
+        part=part,
     )
 
 
@@ -68,6 +71,62 @@ class TestHumanView:
             assert "Q: Where is README.md?" in out
             assert "opt2 (Search) (recommended)" in out
             assert "docket task answer task-q --option opt2" in out
+
+    def test_a_multi_part_consult_prints_every_pending_question_with_its_own_answer(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed(tmp_path):
+            put_task("demo", task(id="task-p", status="waiting_input"))
+            opened = [
+                _escalations.open_for_question(
+                    _question(
+                        "task-p",
+                        f"q-{n}",
+                        f"Question {n}?",
+                        Option(id="redis", label="Redis", description="Redis."),
+                        Option(id="sqlite", label="SQLite", description="SQLite."),
+                        part=QuestionPart(index=n, count=2),
+                    ),
+                    kind="consult",
+                    role="lead",
+                    caused_by="lead",
+                )
+                for n in (1, 2)
+            ]
+
+            out = _inbox("--peek").output
+
+            first, second = opened[0].id, opened[1].id
+            assert out.index("Q 1/2: Question 1?") < out.index("Q 2/2: Question 2?")
+            assert f"docket task answer {first} --option redis" in out
+            assert f"docket task answer {second} --option redis" in out
+            assert out.index(first) < out.index("Q 2/2")
+            assert out.count("options: redis (Redis), sqlite (SQLite)") == 2
+            assert "docket task answer task-p" not in out
+
+    def test_a_one_part_consult_prints_exactly_as_a_plain_question(self, tmp_path: Path) -> None:
+        with _seed(tmp_path):
+            put_task("demo", task(id="task-s", status="waiting_input"))
+            _escalations.open_for_question(
+                _question(
+                    "task-s",
+                    "q-s",
+                    "Only one?",
+                    Option(id="yes", label="Yes", description="Yes."),
+                    part=QuestionPart(index=1, count=1),
+                ),
+                kind="consult",
+                role="lead",
+                caused_by="lead",
+            )
+
+            out = _inbox("--peek").output
+
+            assert (
+                "    Q: Only one?\n"
+                "    options: yes (Yes)\n"
+                "    answer: docket task answer task-s --option yes\n"
+            ) in out
 
     def test_a_multi_line_question_indents_every_continuation_line(self, tmp_path: Path) -> None:
         with _seed(tmp_path):

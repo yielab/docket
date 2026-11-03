@@ -517,19 +517,9 @@ def _apply_approval(
 def _other_part_waits(record: TaskRecord, escalation: Escalation) -> bool:
     """Whether another question of the ``consult`` call *escalation* belongs to is still pending
     on *record*: the call's parts share a step and a count, and the task waits for all of them."""
-    part = escalation.part
-    if escalation.kind != "consult" or part is None or part.count < 2:
-        return False
     for other_id in record.escalations:
         other = read_escalation(other_id) if other_id != escalation.id else None
-        if (
-            other is not None
-            and other.kind == "consult"
-            and other.state == "pending"
-            and other.step == escalation.step
-            and other.part is not None
-            and other.part.count == part.count
-        ):
+        if other is not None and other.state == "pending" and escalation.shares_consult_call(other):
             return True
     return False
 

@@ -1,6 +1,6 @@
 # Operator Loop Specification
 
-**Version**: 3.6.0
+**Version**: 3.7.0
 **Status**: Implemented. Every requirement area below is on the live path: the inbox, the
 outbound channels, resolve and answers, the interruption forecast, pre-grants and consultations.
 **Last Updated**: 2026-11-03
@@ -193,6 +193,13 @@ caller's current time and cursor as data and performs no writes and no clock rea
    held command or question in full, never truncated; every continuation line of a multi-line
    question, held command or label MUST be indented to the column of its first line's text, so
    no line of an item starts at column 0.
+   A task that waits on one question of a multi-question `consult` call (`part.count` above one,
+   Escalations item 18) MUST print every still-pending question of that call, in `part.index`
+   order, each as `Q <index>/<count>: <question>`, its `options:` line and an `answer:` line whose
+   command names that question's escalation id (`docket task answer <esc-id> --option <id>`), not
+   the task, so no question stays hidden until another is answered. A lone question prints
+   unchanged. `InboxView` and `GET /inbox` are unchanged: the task still names one `escalation`
+   and `escalations` lists every part.
    A `pending` task with an unspent approved call, or an approval at a pipeline position that a
    person granted and no claim has applied yet, MUST appear under `Needs you` as `approved ready`
    (`state: "approved_ready"`) with the `docket run` command.

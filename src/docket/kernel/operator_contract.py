@@ -345,6 +345,20 @@ class _EscalationFields(BaseModel):
             raise InvalidInput(f"escalation id must be esc-<12 hex>: {v!r}")
         return v
 
+    def shares_consult_call(self, other: _EscalationFields) -> bool:
+        """Whether *other* is a question of the same multi-question ``consult`` call as this one:
+        both are ``consult`` parts of one task and step with the same ``count`` above one."""
+        mine, theirs = self.part, other.part
+        return (
+            self.kind == "consult"
+            and other.kind == "consult"
+            and mine is not None
+            and theirs is not None
+            and mine.count > 1
+            and mine.count == theirs.count
+            and (self.pod, self.task, self.step) == (other.pod, other.task, other.step)
+        )
+
     def as_question(self) -> QuestionV11:
         """The question a ``consult`` or ``input`` pause asks, as the elicitation request surfaces
         read it: the escalation id is the question's id, ``decline`` is not one of its options."""
