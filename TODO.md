@@ -16,7 +16,8 @@
 > Parallel lanes are allowed only when they share no file, spec, persisted state or live environment;
 > finishing a card well matters more than running two at once.
 >
-> **No active phase.** Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
+> **Phase 59 (D-81, [ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md)) is active** (accepted 2026-11-03), five cards
+> below: a step's budget is a checkpoint, not a cliff. Phase 58 (D-80) closed 2026-11-02: what a plan of record needs to follow a team it does
 > not run. Its section is archived and what it leaves open is under "Phase 58" in the follow-ups below.
 > **Phase 57** (D-79, [ADR 0037](docs/adr/0037-what-docket-gives-a-manager-in-the-plan-of-record.md)) closed 2026-11-01. Before it, Phase 56 (D-77, [ADR 0036](docs/adr/0036-a-pod-works-outward.md) decisions 13-16) closed
 > 2026-10-30: an external service is declared, not programmed; a pod keeps records; one judge; one home layout; the
@@ -82,6 +83,371 @@ scope in one pass over the same files, parks at least once.
 `main` moves only
 by a fast-forward from `develop` when the maintainer cuts a release. Tags and release jobs originate
 from `main`.
+
+## ▶ Phase 59: a step's budget is a checkpoint, not a cliff (D-81) · ACTIVE 2026-11-03 (ADR and names accepted)
+
+**Trigger.**
+- *The incident.* The maintainer asked for this on 2026-11-02, from a real run. Task `task-0a050f9c` on
+  the app-dev pod (`claude-haiku-5-5`) stopped at `exceeded max_iterations=20`:
+  - 20 model calls, 25 tool calls (cap 40), 117 415 of 2 000 000 counted tokens, 77 s;
+  - its write came at round 14 and its last edit at round 19;
+  - the lint, types and tests its prompt required never ran, and its patch was empty.
+- *A retry skips the failed step (reproduced 2026-11-02 with the e2e harness).* Setup: pipeline
+  `lead → implementer → reviewer`, `AGENT_LOOP_MAX_ITERATIONS=3`, the Implementer writes `app.txt`
+  and stops. Expected after `docket task retry` and `docket run`: the Implementer runs again.
+  Actual:
+  - the Implementer is never called;
+  - the Reviewer runs, and its diff probe commits the Implementer's unverified tree under the
+    Reviewer's hop;
+  - the task settles `done`.
+- *A token-budget landing passes as success.* Requirements 51-53 of `agent-loop.spec.md` return the
+  finalization answer as `ok=True, final_message`, so an unfinished hop reaches its gate.
+
+[ADR 0038](docs/adr/0038-a-step-budget-is-a-checkpoint-not-a-cliff.md) holds the decisions, the
+measurements and the real cases. The local analysis is in
+`internal-docs/audits/hop-iteration-limit-2026-11-02.md`.
+
+**Not in this phase:**
+- docket continuing a hop on its own (ADR 0038 decision 6);
+- a stall detector beyond identical calls;
+- default budgets per built-in role;
+- the 300 s default hop clock;
+- parallel-group resume.
+
+Each waits under "Phase 59" in the follow-ups.
+
+**Waves, by file contention:**
+
+| Wave | Cards | Why this order |
+|---|---|---|
+| 1 | P59-1 ∥ P59-5 | P59-1 is the correctness fix (`tasks/application/record.py` replay, `hops/application/runner.py`, `pod-dispatch.spec.md`, `operator-api.spec.md`); P59-5 touches only `agent/tools/builtins/toolbox.py`, the Implementer's identity prompt and `agent-loop.spec.md` req. 86 |
+| 2 | P59-4 | `agent-loop.spec.md` again (after P59-5); `agent/ports.py`, `driver_support.py`, `runner.py` ~118 (after P59-1), the step, plan and archetype schemas, `teams/settings.py`, `kernel/home.py`, the HTTP dispatch sites |
+| 3 | P59-2 | `record.py` after P59-1; `ports.py`, `driver_support.py` and `agent-loop.spec.md` after P59-4; the loop's stop sites |
+| 4 | P59-3 | the loop's finalization, `record.py` and `agent-loop.spec.md` again, after P59-2's `budget_exhausted` |
+
+**Phase close (integrator).** Real runs, against `claude-haiku-5-5`:
+- the live `app-dev` task `task-0a050f9c`, retried: it continues its step and runs the checks;
+- a throwaway-home run with a step `maxIterations: 6`: a notice, a landing report, `failureKind: budget`
+  with a patch, then a retry that finishes;
+- one multi-file task long enough to pass 40 rounds under a declared budget.
+
+Record rounds per hop before and after P59-5, on the same task.
+
+### P59-1 — A retry re-runs the step that failed, and continues it
+
+**Status:** IN-PROGRESS (@sonnet-p59-1) · **Size:** M · **Model:** Sonnet · **Kind:** fix (wrong outcome) + spec
+
+- **Trigger:** the reproduction in the phase trigger. `replay_pipeline_position`
+  (`tasks/application/record.py` ~101-197) ends every non-parked hop with `pi = idx + 1` (~184),
+  ok or not. The only exception is a parallel group (`_group_complete` ~87-98 checks `ok`).
+  `retry_task` (`tasks/application/lifecycle.py` ~173-189) keeps the hops, so the failed step is
+  skipped. Separately, `_run_hop_turn` (`hops/application/runner.py` ~102-210) resends the original
+  `message` on an in-place retry, on top of rounds the failed attempt already persisted to the
+  step's session (`kernel/ids.py::step_session_key`).
+- **Goal:**
+  - Replay treats a failed hop (`ok` false, not parked) like a parked one: `pi = idx`, keeping the
+    `rework_hop` and the counts that led to it. A failed hop consumed no cycle.
+  - A step that runs again while its last hop in this cycle failed, and whose session holds rounds,
+    gets a continuation message instead of its prompt. So does an in-place transient retry whose
+    failed attempt made the session grow (count the messages before and after the attempt). The
+    message is one fixed paragraph built by a pure function in a new `hops/domain/continuation.py`:
+    - that the previous turn on this step stopped before it finished, and the error;
+    - the hop's summary when it has one (P59-3 makes that the landing report);
+    - up to 20 changed paths, from `platform/git.py::git_changed_files` in the step's cwd;
+    - "Continue from where you stopped; do not start over; finish as the step asks."
+  - Feature name `retryContinues` (`interfaces/http/routes/health.py` `FEATURES`).
+- **Non-goals:**
+  - No retry mode. Starting over is a new task (`operator-api.spec.md` ~159-164 already says so).
+  - No change to `retry_task`'s status move, to the parallel-group resume limit, or to parked hops
+    (they keep their consult note path).
+- **Change:**
+  - `record.py::replay_pipeline_position`, its docstring and the docstring of `retry_task`.
+  - `runner.py::_run_hop_turn`: choose the message per attempt. Read the session length through
+    `agent.session` (`load_messages`).
+  - New `hops/domain/continuation.py`: pure, text only.
+  - Specs:
+    - `pod-dispatch.spec.md` "Per-hop incremental persistence and crash recovery" (~195): a failed
+      hop re-runs its index;
+    - `pod-dispatch.spec.md` "Retries and the failure-kind taxonomy" (~551): an in-place retry over
+      persisted rounds continues;
+    - `operator-api.spec.md` `POST .../retry` (~159): the failed step runs again and continues its
+      session.
+- **Acceptance (RED first):**
+  - `tests/unit/tasks/application/test_record.py`:
+    - `[lead ok, implementer failed]` replays to the implementer's index;
+    - `[lead ok, implementer ok, reviewer REQUEST-CHANGES (rework to implementer), implementer
+      failed]` replays to the implementer's index with `rework_hop` the reviewer's hop and the
+      reviewer's count at 1;
+    - Oracle: before the change both return the next index.
+  - New `tests/e2e/test_retry_continues_the_failed_step.py`, the reproduction made a test.
+    - Setup: `AGENT_LOOP_MAX_ITERATIONS=3`; the implementer script is `write_file app.txt`, two
+      `bash cat`s, then `say("Done")`.
+    - First run: the task is `failed`.
+    - Then `docket task retry` and `docket run`. The fourth implementer request happens.
+    - Its last user message holds "stopped before it finished" and `app.txt`.
+    - Exactly one user message in it carries the task description.
+    - The Reviewer runs after it, and the hops read lead ok, implementer failed, implementer ok,
+      reviewer ok.
+    - The task branch holds `app.txt` as `fixed`, and the Reviewer hop lists no `filesChanged`.
+      Before the change the Reviewer's diff probe committed it.
+    - Oracle: before the change there is no fourth request and the task is `done`.
+  - `tests/integration/tasks/test_retries_and_timeouts.py`: a fake driver whose first attempt
+    appends two messages to the step session and returns `daemon_error`. Its second attempt receives
+    the continuation. An attempt that fails before persisting anything is retried with the original
+    message.
+- **Gate:**
+  - the three files above, under `timeout 120`;
+  - `tests/architecture` (3 s);
+  - `tests/e2e -n auto` (42 s: the CLI and HTTP outcome of a retry change).
+
+### P59-2 — Running out of budget is its own outcome, and the work is kept
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-1, P59-4
+
+- **Trigger:** in the incident the hop was reported as `invalid_output`, and its three changed
+  files were not in the task's patch.
+  - Rounds and tool calls stop with `invalid_output` (`agent/loop_budget.py` ~127-158,
+    `loop_steps.py` ~107-118).
+  - The wall clock stops with `timeout`, which `runner.py::_RETRYABLE_FAILURE_KINDS` retries in
+    place.
+  - `hop_diff_probe` runs only `if hop_ok` (`tasks/application/record.py` ~348).
+  - The task kind `budget` exists only for a `maxTokens` stop (`record.py::_turn_failure_kind`
+    ~447-457).
+- **Goal (ADR 0038 decisions 1-2):**
+  - `agent/ports.py` `FailureKind` gains `budget_exhausted`. The four budget stops
+    (`max_iterations`, `max_tool_calls`, the loop's wall clock `timeout`, `token_budget`) carry it.
+  - `AgentLoopResult` and `TurnResult` carry a typed `budget_stop` (`bound`: `rounds | toolCalls |
+    tokens | time`, `limit`, `used`), copied by `driver_support.py` ~470.
+  - The task's `failureKind` is `budget` for any of them. The hop record gains `budget: {bound,
+    limit, used, source, treeChanged}`, `source` from P59-4's resolver. The stop message names the
+    key that raises the limit (`maxIterations` on step `build`, or `AGENT_LOOP_MAX_ITERATIONS`).
+  - A failed Implementer hop with a dirty tree is pinned as an ok one is: commit, `filesChanged`,
+    evidence. `treeChanged` says whether the pin made a new commit. The hop stays `ok: false`.
+  - Feature name `budgetOutcome`.
+- **Non-goals:**
+  - `no_progress`, `tool_denials`, `context_fit`, cancellation and approvals keep their kinds.
+  - The transport `timeout` (`models/adapters/openai_http.py` ~206-218) stays retryable.
+  - No landing yet (P59-3). No pinning for non-Implementer hops beyond what they do today.
+- **Change:**
+  - `ports.py`, `loop_types.py`, `loop_budget.py`, `loop_steps.py`, `driver_support.py`;
+  - `record.py` (`_turn_failure_kind`, the probe gate ~348) and `tasks/domain/task.py` (`HopResult`);
+  - specs: `agent-loop.spec.md` "Stop conditions" 7-10 and the interface block (~813);
+    `pod-dispatch.spec.md` "Retries and the failure-kind taxonomy" 1-2 (`timeout` is transport
+    only); "Implementer diff producer" (~1690); `operator-api.spec.md`, the task shape (`budget` on
+    a hop, and what `failureKind: budget` means).
+- **Acceptance (RED first):**
+  - `tests/unit/agent/test_loop_budget.py`: each of the four bounds, reached with a fake backend,
+    returns `failure_kind == "budget_exhausted"` with the bound, the limit and the used figure.
+  - `tests/integration/tasks/test_retries_and_timeouts.py`: a loop wall-clock stop is tried once
+    (`attempts == 1`); a transport `timeout` is still retried.
+  - A new e2e file, `tests/e2e/test_budget_keeps_the_work.py`:
+    - `AGENT_LOOP_MAX_ITERATIONS=3`, and the Implementer writes `app.txt` and keeps asking for tools;
+    - the task is `failed` with `failureKind: "budget"`;
+    - the hop has `budget == {bound: rounds, limit: 3, used: 3, source: default, treeChanged: true}` and
+      `artifact.filesChanged == ["app.txt"]`;
+    - `docket task diff` shows `fixed`;
+    - Oracle: before the change `failureKind` is `hop_failed` and the diff is empty.
+  - `tests/fixtures/task-records/` load unchanged.
+- **Gate:**
+  - the touched unit and integration files, under `timeout 120`;
+  - `tests/architecture` (3 s);
+  - `tests/e2e -n auto` (42 s).
+
+### P59-3 — One landing for every budget bound, and a notice before it
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-2
+
+- **Trigger:**
+  - In the incident the model never learned its budget. It explored for 13 rounds and spent the
+    last one reading a test.
+  - The landing that exists (requirements 51-54, `agent/loop.py::prepare_request_or_finalize`
+    ~328-420, `loop_request.py::_finalization_messages` ~146) covers tokens only, and it returns
+    `ok=True`.
+- **Goal (ADR 0038 decision 3):**
+  - **One landing.** When any budget bound would stop the turn, the loop makes the finalization
+    request once instead. That is: the next round would pass `max_iterations`; a batch would pass
+    `max_tool_calls` (that batch is refused and not persisted, as today); the wall clock is spent;
+    or the token rule of requirement 51 selects it.
+    - The request is the trailing request-only instruction with no tools, and it names the bound.
+    - It gets one grace request past the rounds and wall-clock limits, with its own timeout
+      `min(request_timeout_s, 60)`.
+    - It must still pass the window check (else `context_fit`) and the token budget (else a hard
+      `budget_exhausted` stop).
+    - Its answer is persisted and returned as `output` with `ok=False`, the bound's stop reason and
+      `failure_kind="budget_exhausted"`, never `final_message`.
+  - **A notice.** The first time any bound has a quarter or less left (rounds, tool calls, measured
+    tokens, wall clock), the loop appends one line to that round's last tool result:
+    `[docket] This step's budget is running out: <what is left>. Finish the current change, run the
+    checks, leave the tree consistent; when it ends you will be asked for a report.` It also traces
+    `budget_warning` with `action: "notice"`. It appears once per turn.
+  - `record.py`: a `budget` hop's `artifact.summary` is the report. Its verdict is never parsed and
+    no gate runs. P59-1's continuation then carries the report.
+- **Non-goals:**
+  - No forced `handoff` call (a tool-free report works on every wire and profile).
+  - The `forced-on-close` profile path is unchanged.
+  - Requirement 56's compaction convergence is unchanged.
+- **Change:**
+  - `loop.py` (the finalization entry and its triggers), `loop_budget.py` (`check_iteration_bounds`
+    returns "land" before "stop"), `loop_steps.py` (the refused batch, the notice),
+    `loop_request.py` (the instruction names the bound), `loop_trace.py` (the `notice` action);
+  - `record.py` (the summary of a `budget` hop);
+  - specs: `agent-loop.spec.md` "Terminal response reservation" 51-54 (all four bounds, the new
+    outcome) and "Stop conditions" 7-9.
+- **Acceptance (RED first):**
+  - `tests/unit/agent/test_loop.py`, with `max_iterations=3` and a backend that always asks for a
+    tool:
+    - three tool rounds, then a fourth request with no tools whose last message names "rounds";
+    - the result is `ok=False`, `stop_reason="max_iterations"`, `failure_kind="budget_exhausted"`,
+      and `output` is the backend's text;
+    - the session holds that text but not the instruction.
+  - The same file, with `max_iterations=8`: the notice line is in round 6's last tool result and in
+    no other.
+  - `tests/integration/agent/loop/test_terminal_reservation.py`: the token finalization's tool-free
+    answer is now `ok=False, budget_exhausted`. This amends requirement 53 first; the existing
+    assertions change because the spec changed.
+  - Wall clock: a hop `timeout` of 2 s and a `bash sleep 5`. The bash is clamped, one landing
+    request follows, and the hop fails with `budget.bound == "time"`.
+  - `tests/e2e/test_verdict_contract.py` (or a new e2e file): a verdict-gated Reviewer that runs
+    out and answers "APPROVE" in its report. The task fails with `budget`, and the gate is not
+    applied.
+- **Gate:**
+  - `tests/unit/agent/test_loop*.py` and the touched integration files, under `timeout 120`;
+  - `tests/architecture` (3 s);
+  - `tests/e2e -n auto` (42 s: the tool output and the hop outcome change);
+  - `scripts/maint/context_replay.py tests/fixtures/context-replay` (the landing must fit the 32k
+    replay).
+
+### P59-4 — Budgets are declared where the work is declared, and the machine only defaults
+
+**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-5 (spec file)
+
+- **Trigger:** each per-hop bound is declared somewhere else, under rules that disagree (ADR 0038,
+  "What the code and a run say today"):
+  - `max_iterations` has no step or role override (`kernel/home.py:135`, `:246`). At 20 it sits
+    below the tool-call cap of 40, so it always fires first: in the incident it stopped the hop at
+    6 % of its tokens. Measured over 90 real hops, every successful hop used at most 14 rounds,
+    all on short tasks. Long work has no way to declare more.
+  - Under `docket start`, `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S` beat the pod's own
+    `turnTimeoutS` (`pod-dispatch.spec.md` "Timeouts" 2-3; `interfaces/http/routes/dispatch.py`
+    ~58, `sweeps.py` ~66, `server.py` ~102).
+  - `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` is never read on the hop path (`driver_support.py::_loop_config`
+    always passes the hop's timeout; the live default is the `teams/settings.py::DEFAULT_TIMEOUT`
+    constant), while `docs/troubleshooting.md` ~146-154 tells the operator to raise it.
+  - No stop says where its limit came from.
+- **Goal (ADR 0038 decision 5):**
+  - The work declares the size of one attempt on its pipeline step: `maxIterations` (new),
+    `maxToolCalls`, `timeout`. A role archetype may declare `maxIterations` and `maxToolCalls`.
+    The pod's `turnTimeoutS` stays the pod-wide time default.
+  - One pure resolver, `hops/domain/budget.py::resolve_hop_budget`, returns rounds, tool calls and
+    seconds, each with its `source` (`step | role | pod | default`). The chain is step > role >
+    pod (time only) > machine. The runner (time) and the driver (rounds, tool calls) both use it,
+    replacing `_hop_max_tool_calls` and the `node.timeout` branch of `runner.py` ~118. The sources
+    reach `LoopConfig`, where P59-2 copies them onto the hop's `budget`.
+  - The machine only fills a gap:
+    - `DISPATCH_TURN_TIMEOUT_S` and `DISPATCH_VERIFY_TIMEOUT_S` are deleted (no compatibility,
+      rg-proven);
+    - `resolve_timeout` falls back to `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, and `DEFAULT_TIMEOUT` is
+      deleted;
+    - `AGENT_LOOP_MAX_ITERATIONS` defaults to 60.
+  - The claim is refreshed every model round, not only when a process starts (`driver_support.py`
+    ~446), so a long declared budget is never swept as a stale claim.
+  - What a pod's YAML looks like after the card, on the app's own pipeline:
+
+    ```yaml
+    # .docket/teams/app-dev/pod.yaml
+    settings: {turnTimeoutS: 600}        # its lint + tsc + tests take minutes
+    # .docket/teams/app-dev/pipelines/app-dev-review.yaml
+    steps:
+      - build: implementer
+        maxIterations: 80                # the long step says so itself
+        timeout: 1200
+      - review: reviewer
+        maxIterations: 20
+    ```
+- **Non-goals:**
+  - No per-role defaults in the built-in archetypes (a follow-up).
+  - Tokens stay the spender's: the task's `maxTokens`, never a step key.
+  - No pod-level `maxIterations`/`maxToolCalls`, no pipeline-wide defaults block, no machine
+    ceiling (a follow-up).
+  - `verifyTimeoutS` and `verify:` gates keep their own clock; only the `DISPATCH_VERIFY_TIMEOUT_S`
+    override goes.
+- **Change:**
+  - `pipeline/domain/step.py` ~140-166, `plan.py` ~80 and ~203, `short_form.py` ~9-22 and ~252
+    (each `maxToolCalls` site gets a `maxIterations` twin);
+  - `hops/application/compose.py` ~651; `agent/ports.py` ~126 (`DOCKET_HOP_MAX_ITERATIONS`);
+  - new `hops/domain/budget.py`; `hops/application/driver_support.py` ~330-385 and ~446;
+    `hops/application/runner.py` ~118; `hops/application/executor.py` ~490-532;
+  - `teams/role_schema.py` ~88-127, ~159, ~222; `teams/settings.py` ~13 and ~96-103;
+    `tasks/application/lifecycle.py` ~86 (docstring);
+  - `kernel/home.py` ~135, ~203-204, ~246, ~282-283;
+  - `interfaces/http/routes/dispatch.py` ~58, `interfaces/http/sweeps.py` ~66,
+    `interfaces/http/server.py` ~102;
+  - `scripts/gen_cli_docs.py` ~505-516, then `docs/commands.md` regenerated;
+  - docs: `docs/CONFIGURATION.md` ~323-324 (a short "Budgets" table: the three owners and the
+    chain), `docs/troubleshooting.md` ~146-154;
+  - specs:
+    - `pipeline-format.spec.md` "Steps" (requirement 11's neighbour);
+    - `role-archetypes.spec.md` "Tools and calls per hop" 1 and 3;
+    - `pod-dispatch.spec.md` "Timeouts" 1-3 and ~224;
+    - `agent-loop.spec.md` 104-105, "Tunables" (~912) and the example at ~947.
+- **Acceptance (RED first):**
+  - `tests/unit/hops/domain/test_budget.py` (new): a table over the chain. Step 5 beats role 9
+    (`source: step`). Role 9 with no step value gives `source: role`. Pod `turnTimeoutS` 600 with
+    no step `timeout` gives 600 (`source: pod`). Nothing declared gives the machine values,
+    60/40/`AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` (`source: default`).
+  - `tests/unit/pipeline/domain/test_step__spec.py`: `maxIterations: 0` and `"x"` are refused, 5 is
+    kept. `tests/unit/teams/test_role_schema.py`: the same for an archetype.
+  - `tests/integration/hops/driver/test_hop_tools.py`, with a model that asks for a tool every
+    round:
+    - a step with `maxIterations: 2` makes exactly two backend requests, then stops on rounds;
+    - with no step value and an archetype value of 4, it makes four;
+    - with neither, the stop names `default` as the source.
+  - `tests/integration/tasks/test_retries_and_timeouts.py`:
+    - with `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S=45` and nothing declared, a hop resolves 45 (oracle:
+      300 today);
+    - a service-triggered dispatch of a pod with `turnTimeoutS: 900` resolves 900 whatever the
+      environment holds;
+    - `rg DISPATCH_TURN_TIMEOUT_S src scripts docs specs` is empty.
+  - A hop that makes rounds, with no process, for longer than `max(CLAIM_STALE_TIMEOUT, lease)` on a
+    fake clock is not failed `stale_claim` by `sweep_stale_claims`. Oracle: today it is. If the
+    oracle does not reproduce, record that on the card and drop the refresh.
+  - `uv run python scripts/gen_cli_docs.py --check` passes after regeneration.
+- **Gate:**
+  - the files above, under `timeout 120`;
+  - `tests/architecture` (3 s);
+  - `tests/e2e -n auto` (42 s: the pipeline format changes).
+
+---
+### P59-5 — Fewer wasted rounds: `edit` prints the relative path, the Implementer batches its reads
+
+**Status:** IN-PROGRESS (@sonnet-p59-5) · **Size:** S · **Model:** Sonnet · **Kind:** fix + prompt
+
+- **Trigger:** in the incident, `write` answered `wrote src/lib/safety/bot-check.ts`, but `edit`
+  answered `replaced 1 occurrence(s) in /…/.docket/state/workspaces/…/guard.ts`
+  (`agent/tools/builtins/toolbox.py` ~220 formats `{target}`, while `write` uses `_display_path`
+  ~167). The model spent round 15 checking its checkout. It also read `guard.ts` seven times in
+  `sed -n` windows and made 25 tool calls in 20 rounds, although the identity prompt says to
+  inspect with `read`.
+- **Goal:**
+  - `edit` answers `replaced N occurrence(s) in <path>` with the workspace-relative path that
+    `write` prints.
+  - `templates/prompts/identity/implementer.md` gains two lines under "Role — Implementer": read a
+    file whole with `read` (it pages a long file itself) instead of many small windows; and when
+    several reads or searches do not depend on each other, ask for them in one reply. Its `version`
+    goes to `1.1.0`.
+- **Non-goals:** no change to `read`'s window, or to any other role's prompt.
+- **Change:** `toolbox.py` ~187-220; the identity prompt; `agent-loop.spec.md` requirement 86
+  (extend it to `edit`).
+- **Acceptance (RED first):**
+  - the unit file that mirrors `toolbox.py` (find it with `rg -l "_display_path|occurrence" tests/`):
+    an edit under a root answers the relative path, never the root's absolute prefix;
+  - `tests/unit/teams/test_prompts.py` passes with the new version (update a pinned hash only for
+    this prompt, never another).
+  - The effect on rounds is measured at the phase close, not in this card.
+- **Gate:**
+  - the two files above, under `timeout 120`;
+  - `tests/architecture` (3 s);
+  - `tests/e2e -n auto` (42 s: a tool's output changes).
 
 ## ◇ FOLLOW-UPS WITH TRIGGERS (not cards; triage when a trigger fires)
 
@@ -158,6 +524,25 @@ that already own the files.
   credential the model never sees. Raised by the maintainer 2026-10-30. Analysis, seven open questions and a suggested
   path (ADR first, then `docket setup secret set`, then a per-site grant like the network grant, then a real run with a
   throwaway account) are in `internal-docs/design/site-credentials-for-a-pod.md`. No card yet.
+- *Phase 59 planning (2026-11-02).* Left out of the phase by ADR 0038; each waits on its trigger.
+  - docket continuing a budget-stopped hop on its own (ADR 0038 decision 6). Trigger: the same task
+    retried after a `budget` stop with `treeChanged: true` three times in a week (audit `task.retry`
+    plus the hop's `budget`).
+  - A stall detector beyond identical calls (rounds that only re-read what the session already
+    holds). Trigger: three Implementer `budget` stops with `treeChanged: false` in real runs.
+  - Default `maxIterations` per built-in role. Trigger: the `budget` stops of at least 20 real hops
+    show one role reaching the default and another never near it.
+  - The 300 s default hop clock (`AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` after P59-4). Trigger: a `time` budget stop
+    whose last `bash` the clamp killed (requirement 98's marker).
+  - A per-step budget sent with one task by the plan of record (`task.budget`, for one large task on
+    a pipeline shared with short ones). Trigger: Tack's runner asks for it, in an issue or an ADR of
+    its own.
+  - A machine ceiling over budgets a repository declares (`pod update` shows them and the operator
+    accepts; `maxTokens` and `budgetUsd` already cap spend). Trigger: a pod applied from a
+    repository its operator does not own.
+  - Parallel-group resume re-runs a group's ok children with their original prompt over their
+    sessions (`pod-dispatch.spec.md` "Parallel step groups" item 6). Trigger: a group child re-run
+    observed in a real retry.
 - *Phase 58 planning (2026-11-01).* Asks from the manager audit that Tack would not read today.
   - `actor` on `POST /tasks/<pod>` and on retry. Enqueue audits no actor (`tasks/application/queue.py`
     ~237), and retry audits neither channel nor actor (`lifecycle.py` ~188). Tack sends `actor: "tack"`
