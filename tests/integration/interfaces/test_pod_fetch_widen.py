@@ -53,7 +53,7 @@ def test_widen_asks_and_a_no_writes_nothing(
         monkeypatch.setattr("builtins.input", lambda _prompt="": "n")
         before = _meta()
         result = invoke_pod(["set", "fetchDomains", "*", "--widen", "--pod", "proj"])
-        assert result.exit_code == 1 and "any host" in result.output
+        assert result.exit_code == 1 and "any public host" in result.output
         assert _meta() == before and _actions() == []
 
 

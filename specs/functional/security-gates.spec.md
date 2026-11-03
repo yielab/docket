@@ -1138,7 +1138,7 @@ material, may be read as saying otherwise.
    - **A pod's hosts.** The pod setting `fetchDomains` (comma-separated entries as above, `docket
      pod set fetchDomains docs.python.org,*.wikipedia.org`) is that pod's list; it is the pod's
      own, so one pod's research host is not every pod's. `*` is written only by `docket pod set
-     fetchDomains '*' --widen`: it prints what opens ("this pod's `fetch` can read any host"),
+     fetchDomains '*' --widen`: it prints what opens ("this pod's `fetch` can read any public host"),
      asks `[y/N]` through the shared confirm (`--yes` for scripts), and on yes records `fetchGrant:
      {at, by}` in the Lead's settings and audits `pod.fetch_widen`. An answer other than yes writes
      and audits nothing. A `*` entry without that grant is unreadable, so `pod set fetchDomains

@@ -176,7 +176,7 @@ def _reach_block(task: TaskRecord, role: str, project: str, root: str, workdir: 
     if not hosts:
         web = "no web access"
     else:
-        named = "any host" if _pod_settings.FETCH_ANY in hosts else ", ".join(hosts)
+        named = "any public host" if _pod_settings.FETCH_ANY in hosts else ", ".join(hosts)
         web = f"fetch reads {named}, outside the jail"
     records = ", ".join(reach["records"]["write"]) or "none"
     return "\n".join(

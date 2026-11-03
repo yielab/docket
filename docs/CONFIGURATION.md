@@ -669,7 +669,7 @@ creates `approvals/<id>.json`.
 
 **Network.** `fetch` refuses every host until you allow it:
 `FETCH_ALLOWED_DOMAINS=docs.python.org,api.github.com` for every pod, or `docket pod set fetchDomains
-docs.python.org,*.wikipedia.org` for one (`*.host` covers subdomains, never the apex; `*` for any host
+docs.python.org,*.wikipedia.org` for one (`*.host` covers subdomains, never the apex; `*` for any public host
 name only with `--widen`). That makes `fetch` the *inspectable*
 path. With isolation off (the default) it is not the only one, since `bash` runs on the host and
 reaches the network through allowlisted interpreters. Inside the sandbox the network is `none`

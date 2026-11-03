@@ -60,7 +60,7 @@ NETWORK_GRANT_SKIPPED = (
 # only beside the operator's recorded yes, `fetchGrant`, which `grant_fetch_any` writes.
 FETCH_ANY = "*"
 FETCH_GRANT_KEY = "fetchGrant"
-FETCH_GRANT_REACH = "this pod's `fetch` can read any host"
+FETCH_GRANT_REACH = "this pod's `fetch` can read any public host"
 FETCH_DOMAINS_WIDEN_FIRST = (
     "only `docket pod set fetchDomains '*' --widen` writes the any-host entry `*`"
 )
@@ -727,7 +727,7 @@ def effective_fetch_domains(project: str | None) -> tuple[str, ...]:
 
 
 def grant_fetch_any(project: str, *, by: str) -> None:
-    """Record the operator's yes: *project*'s `fetch` may read any host (``fetchDomains`` becomes
+    """Record the operator's yes: *project*'s `fetch` may read any public host (``fetchDomains`` becomes
     ``*``, with the date in ``fetchGrant``), and audit it. Called only by `docket pod set
     fetchDomains '*' --widen`."""
     lead_id = member_id(project, "lead")

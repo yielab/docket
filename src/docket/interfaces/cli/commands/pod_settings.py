@@ -293,7 +293,7 @@ def set_fetch_domains(project: str, value: str, *, widen: bool, yes: bool) -> No
         raise typer.Exit(1)
     _lead_for_settings(project)
     ui.warn(f"This opens pod '{project}' to every host: {_pod_settings.FETCH_GRANT_REACH}.")
-    if not _contract.confirm(f"Let the `fetch` of pod {project} read any host", yes=yes):
+    if not _contract.confirm(f"Let the `fetch` of pod {project} read any public host", yes=yes):
         ui.warn("Aborted.")
         raise typer.Exit(1)
     try:
@@ -301,7 +301,7 @@ def set_fetch_domains(project: str, value: str, *, widen: bool, yes: bool) -> No
     except _pod_settings.PodSettingsError as ex:
         ui.error(str(ex))
         raise typer.Exit(1) from ex
-    ui.success(f"The `fetch` of pod '{project}' may read any host")
+    ui.success(f"The `fetch` of pod '{project}' may read any public host")
 
 
 def unset_setting(project: str, key: str, *, member: str | None = None) -> None:

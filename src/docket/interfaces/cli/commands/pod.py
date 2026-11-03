@@ -339,7 +339,7 @@ def cmd_set(
         "--widen",
         help=(
             "With network open: let this pod reach the network on a machine at none; "
-            "with fetchDomains '*': let its fetch read any host (asks first)"
+            "with fetchDomains '*': let its fetch read any public host (asks first)"
         ),
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the --widen confirmation"),
