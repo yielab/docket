@@ -15,12 +15,14 @@ from docket.agent.tools.registry import (
 from docket.agent.tools.screening import screen_tool_result
 from docket.governance import secrets as _secrets
 from docket.governance.security import SAFE_BINS
+from docket.hops.application import pdf_text as _pdf_text
 from docket.hops.application import process_tools
 from docket.kernel import clock as _clock
 from docket.kernel.gate import CONSULT_TOOL, DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.tool_outcome import ToolOutcome as ToolOutcome
 from docket.kernel.tool_outcome import text_outcome
 from docket.platform import fetch_url
+from docket.platform.fetch import FetchedPdf
 from docket.tasks.application import consult as _consult
 from docket.teams import pod_settings as _pod_settings
 from docket.teams.workspace import skills as _skills
@@ -253,6 +255,22 @@ def _credential_in_url(url: str) -> str:
     return ""
 
 
+def _pdf_outcome(pdf: FetchedPdf, ctx: ToolContext) -> ToolOutcome:
+    """A fetched PDF as text, read in the turn's jail (a refusal when that cannot be)."""
+    read = _pdf_text.pdf_text(
+        pdf.body,
+        sandbox=ctx.sandbox,
+        roots=ctx.roots,
+        cache_dir=ctx.cache_dir,
+        read_only=ctx.read_only,
+        deadline=pdf.deadline,
+    )
+    if not read.ok:
+        return read
+    header = f"HTTP {pdf.status} application/pdf; {len(read.content)} chars of text"
+    return ToolOutcome(True, content=f"{header}\n\n{read.content}")
+
+
 def _fetch_tool(fetch_url: Any, allowed: tuple[str, ...]) -> Tool:
     """The `fetch` built-in over *fetch_url*, reaching the hosts in *allowed* only."""
 
@@ -268,7 +286,8 @@ def _fetch_tool(fetch_url: Any, allowed: tuple[str, ...]) -> Tool:
                 ),
                 refusal="fetch_secret_in_url",
             )
-        outcome: ToolOutcome = fetch_url(url, allowed, _int_arg(args, "timeout"))
+        fetched: ToolOutcome | FetchedPdf = fetch_url(url, allowed, _int_arg(args, "timeout"))
+        outcome = _pdf_outcome(fetched, ctx) if isinstance(fetched, FetchedPdf) else fetched
         host = (urllib.parse.urlsplit(url).hostname or "").lower()
         return screen_tool_result(
             ctx.role,
@@ -285,7 +304,9 @@ def _fetch_tool(fetch_url: Any, allowed: tuple[str, ...]) -> Tool:
         description=(
             "Fetch a URL over HTTP(S). Only the hosts this pod allows "
             "(FETCH_ALLOWED_DOMAINS and the pod's fetchDomains) may be reached; the response is size-capped, time-limited "
-            "and truncated like any tool result when long. Network egress is otherwise open for "
+            "and truncated like any tool result when long. A PDF is returned as the text of its "
+            "pages, extracted inside the jail (isolation must be on; other documents are refused). "
+            "Network egress is otherwise open for "
             "this fleet (see "
             "security-gates.spec.md) -- this tool exists so reaching the network never "
             "has to mean reaching for bash + curl/python3/node instead."
@@ -425,7 +446,7 @@ _COMPACT_DESCRIPTIONS = {
     "grep": "Search file contents for a regular expression; hits are sorted workspace-relative paths.",
     "skill": "Read a discovered skill's SKILL.md, or a file inside its directory given by path.",
     "fetch": (
-        "Fetch an http(s) URL on the fetch allowlist and return the page as text. "
+        "Fetch an http(s) URL on the fetch allowlist and return the page, or a PDF's text, as text. "
         "A long page is kept whole and read back with `read`."
     ),
 }

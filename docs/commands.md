@@ -1072,6 +1072,7 @@ No command emits any other exit code today.
 | `MCP_CLIENT_MAX_TIMEOUT_S` | Hard ceiling every server-specified MCP timeout is clamped to | `60` |
 | `FETCH_ALLOWED_DOMAINS` | Comma-separated hostnames (or `*.domain` for its subdomains) every pod's `fetch` tool may reach, beside a pod's own `fetchDomains` | empty (nothing allowed until opted in) |
 | `FETCH_MAX_RESPONSE_BYTES` | Response-body cap for the `fetch` tool before truncation | `200000` |
+| `FETCH_MAX_DOCUMENT_BYTES` | Size cap on a PDF the `fetch` tool reads through the jail; a larger one is refused whole | `10000000` |
 | `FETCH_TIMEOUT_S` | Default per-call wall-clock bound for the `fetch` tool | `15` |
 | `TELEGRAM_POLL_TIMEOUT_S` | The Telegram-side long-poll wait passed to `getUpdates` | `25` |
 | `TELEGRAM_REQUEST_TIMEOUT_S` | This process's own socket timeout for Telegram calls — must exceed `TELEGRAM_POLL_TIMEOUT_S` | `35` |

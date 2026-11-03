@@ -149,6 +149,19 @@ def _outcome_with(
         return _fetch.fetch_url("http://pages.example.test/page", ("pages.example.test",))
 
 
+def _pdf_with(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, content_type: str, **home_changes: object
+) -> ToolOutcome | _fetch.FetchedPdf:
+    monkeypatch.setattr(
+        _fetch,
+        "build_opener",
+        lambda *_args, **_kwargs: _FakeOpener(_FakeResponse(body, content_type)),
+    )
+    home = dataclasses.replace(current_home(), fetch_allowed_domains=("pages.example.test",))
+    with use_home(dataclasses.replace(home, **home_changes)):  # type: ignore[arg-type]
+        return _fetch.fetch_url("http://pages.example.test/page", ("pages.example.test",))
+
+
 def _fetch_with(
     monkeypatch: pytest.MonkeyPatch, body: bytes, content_type: str, **home_changes: object
 ) -> str:
@@ -182,8 +195,6 @@ class TestOnlyTextArrives:
     @pytest.mark.parametrize(
         "content_type",
         [
-            "application/pdf",
-            "Application/PDF; charset=binary",
             "application/octet-stream",
             "application/zip",
             "application/x-tar",
@@ -204,6 +215,14 @@ class TestOnlyTextArrives:
         assert out.refusal == "fetch_not_allowed"
         assert out.error == f"content type {media!r} is not text; fetch reads text pages"
         assert "secret words" not in out.error
+
+    def test_a_body_that_only_starts_like_a_pdf_is_not_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out = _outcome_with(monkeypatch, b"%PDF\x00 secret words", "image/png")
+        assert not out.ok
+        assert out.content == ""
+        assert out.refusal == "fetch_not_allowed"
 
     def test_a_body_with_no_type_is_text_when_it_has_no_nul_byte(
         self, monkeypatch: pytest.MonkeyPatch
@@ -227,6 +246,80 @@ class TestOnlyTextArrives:
     ) -> None:
         out = _outcome_with(monkeypatch, b"a" * 8192 + b"\x00", "")
         assert out.ok
+
+
+class TestAPdfArrivesAsBytes:
+    """`fetch_url` hands a PDF to its caller as typed bytes; it never reads one as text."""
+
+    @pytest.mark.parametrize("content_type", ["application/pdf", "Application/PDF; charset=binary"])
+    def test_a_pdf_type_comes_back_as_bytes_beside_its_type(
+        self, monkeypatch: pytest.MonkeyPatch, content_type: str
+    ) -> None:
+        body = b"%PDF-1.7 \x00\x01 binary words"
+        got = _pdf_with(monkeypatch, body, content_type)
+        assert isinstance(got, _fetch.FetchedPdf)
+        assert (got.status, got.content_type, got.body) == (200, content_type, body)
+
+    def test_a_body_with_no_type_that_starts_with_the_pdf_marker_is_a_pdf(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\x00 words"
+        got = _pdf_with(monkeypatch, body, "")
+        assert isinstance(got, _fetch.FetchedPdf)
+        assert got.body == body
+        assert got.content_type == ""
+
+    def test_a_declared_text_body_that_starts_with_the_marker_stays_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        got = _pdf_with(monkeypatch, b"%PDF-1.7 about the format", "text/plain")
+        assert isinstance(got, ToolOutcome)
+        assert got.ok
+
+    def test_a_pdf_over_the_response_cap_arrives_whole(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = b"%PDF-1.7 " + b"a" * 300_000
+        got = _pdf_with(monkeypatch, body, "application/pdf", fetch_max_response_bytes=1000)
+        assert isinstance(got, _fetch.FetchedPdf)
+        assert got.body == body
+
+    @pytest.mark.parametrize("content_type", ["application/pdf", ""])
+    def test_a_pdf_over_the_document_cap_is_refused_whole_naming_the_setting(
+        self, monkeypatch: pytest.MonkeyPatch, content_type: str
+    ) -> None:
+        got = _pdf_with(
+            monkeypatch,
+            b"%PDF-1.7 secret words" + b"a" * 100,
+            content_type,
+            fetch_max_document_bytes=100,
+        )
+        assert isinstance(got, ToolOutcome)
+        assert not got.ok
+        assert got.content == ""
+        assert got.refusal == "fetch_not_allowed"
+        assert "FETCH_MAX_DOCUMENT_BYTES" in got.error
+        assert "secret words" not in got.error
+
+    def test_a_pdf_exactly_at_the_document_cap_arrives(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        body = b"%PDF-1.7" + b"a" * 92
+        got = _pdf_with(monkeypatch, body, "application/pdf", fetch_max_document_bytes=100)
+        assert isinstance(got, _fetch.FetchedPdf)
+
+    def test_a_pdf_carries_the_calls_deadline(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        got = _pdf_with(monkeypatch, b"%PDF-1.7", "application/pdf")
+        assert isinstance(got, _fetch.FetchedPdf)
+        assert got.deadline > 0
+
+    def test_an_untyped_text_body_over_the_response_cap_is_still_cut_and_announced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        got = _pdf_with(monkeypatch, b"a" * 50, "", fetch_max_response_bytes=10)
+        assert isinstance(got, ToolOutcome)
+        assert got.ok
+        assert "[truncated: response exceeded 10 bytes]" in got.content
 
 
 class TestHtmlArrivesAsText:

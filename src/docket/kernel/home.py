@@ -174,6 +174,9 @@ class Home:
     # Cap on a `fetch` response body, which goes straight into the model's context;
     # truncation is announced.
     fetch_max_response_bytes: int = 200000
+    # Cap on a PDF `fetch` reads, which goes to the extractor and never to the model; a larger
+    # one is refused whole.
+    fetch_max_document_bytes: int = 10_000_000
     # Default `fetch` timeout; a call may ask for its own.
     fetch_timeout_s: float = 15.0
     fleet_file_override: Path | None = None
@@ -260,6 +263,7 @@ class Home:
             serve_token=env.get("DOCKET_SERVE_TOKEN", ""),
             serve_read_token=env.get("DOCKET_SERVE_READ_TOKEN", ""),
             fetch_max_response_bytes=_int(env, "FETCH_MAX_RESPONSE_BYTES", 200000),
+            fetch_max_document_bytes=_int(env, "FETCH_MAX_DOCUMENT_BYTES", 10_000_000),
             fetch_timeout_s=_float(env, "FETCH_TIMEOUT_S", 15),
             fleet_file_override=_optional_path(env, "FLEET_FILE"),
             telegram_poll_timeout_s=_int(env, "TELEGRAM_POLL_TIMEOUT_S", 25),

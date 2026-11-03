@@ -676,6 +676,14 @@ reaches the network through allowlisted interpreters. Inside the sandbox the net
 by default, leaving `fetch` as the only path; `docket setup sandbox network open` (or a pod's
 `network` setting) grants it.
 
+**PDFs.** `fetch` reads a PDF's text with `pdftotext` (poppler), only inside the jail: isolation
+must be on (`docket setup sandbox on`), because a hostile PDF is never parsed in docket's own
+process. The jail has one private directory, no network and no credential, and the run is killed at
+the fetch deadline. A PDF is read up to `FETCH_MAX_DOCUMENT_BYTES` (default 10,000,000 bytes; a
+larger one is refused whole, never truncated). A `pdftotext` outside the jail's default read roots,
+such as a Homebrew prefix, needs `docket setup sandbox read add <prefix>` (its install prefix); with
+Docker the image (`DOCKET_SANDBOX_IMAGE`) must carry it.
+
 **Isolation (opt-in).** Off by default: tools run on the host. `docket setup sandbox on` jails
 `bash`, stdio MCP servers, verify commands and `run:` steps with Landlock (Linux) or seatbelt
 (macOS), or Docker when chosen with `docket setup sandbox backend docker`, and refuses to record

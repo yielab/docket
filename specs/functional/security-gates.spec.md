@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.10.0
+**Version**: 3.11.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1195,22 +1195,48 @@ material, may be read as saying otherwise.
      unchanged under the header line above. The conversion changes none of the other bullets: the
      allowlist, the deadline, the size cap (applied to the bytes read, before conversion) and the
      redirect guard stand as written.
-   - **Only text arrives.** A body is text when its media type is `text/*`, `application/json`,
-     `application/xml`, `application/javascript`, `application/ecmascript`, or ends in `+json` or
-     `+xml`; the parameters (`; charset=...`) and the case are ignored. Any other declared type
-     (`application/pdf`, an image, `application/octet-stream`) **MUST** be refused as `content type
-     'application/pdf' is not text; fetch reads text pages` (`refusal="fetch_not_allowed"`, empty
+   - **Only text arrives, and a PDF's text.** A body is text when its media type is `text/*`,
+     `application/json`, `application/xml`, `application/javascript`, `application/ecmascript`, or
+     ends in `+json` or `+xml`; the parameters (`; charset=...`) and the case are ignored. Any other
+     declared type (an image, `application/octet-stream`) **MUST** be refused as `content type
+     'image/png' is not text; fetch reads text pages` (`refusal="fetch_not_allowed"`, empty
      content), before the body is read; a failed response of such a type contributes none of its body
      to the error text. With no content type, a body is text when its first 8 KB hold no NUL byte;
-     otherwise it is refused the same way. None of a refused body reaches the model. Extracting text
-     from a PDF or another document is not `fetch`'s job.
+     otherwise it is refused the same way, unless it is a PDF. None of a refused body reaches the
+     model. A **PDF** is a body of type `application/pdf`, or an untyped body that starts with
+     `%PDF-`. `fetch_url` does not turn it into text: it returns a `FetchedPdf` (status, content
+     type, the bytes, and the call's monotonic deadline) in place of a `ToolOutcome`, and the
+     `fetch` handler hands the bytes to `hops/application/pdf_text.py`. A PDF is read up to
+     `FETCH_MAX_DOCUMENT_BYTES` (default 10,000,000); a larger one **MUST** be refused whole, never
+     truncated, naming the setting. A failed response (a 404 of type `application/pdf`) is still an
+     error that contributes none of its body. Extracting text from any other document is not
+     `fetch`'s job.
+   - **A PDF is parsed in the jail, never in docket's process.** The bytes are written to a fresh
+     0700 directory under the jail's temp dir, which is the jail's only root; the network is off;
+     the read-only paths are the operator's grants (`docket setup sandbox read add`); the
+     environment is the jail's temp variables and `PATH`, so no credential passes. The command is
+     `pdftotext -enc UTF-8 -nopgbrk -q -- in.pdf -` (poppler). It runs under what is left of the
+     call's deadline, its process group is killed at the deadline (a docker container is stopped by
+     name), its output is read up to a bound and then cut with the truncation announced, and the
+     directory is removed whatever happens. The run **MUST** fail closed, each refusal
+     (`refusal="fetch_not_allowed"`, no page bytes) naming its fix: isolation off, or no usable
+     backend (`reading a PDF needs the jail`; there is never an unjailed run, on any path); `pdftotext`
+     not on `PATH` (install poppler); the jail cannot execute it because it lies outside the default
+     read roots, as a Homebrew prefix does (`docket setup sandbox read add <prefix>`, the install prefix); with
+     docker, an image without it (the image is named); a non-zero exit (the first line of stderr,
+     bounded); an exception or a timeout. The result reads `HTTP <status> application/pdf; <n>
+     chars of text`, then the text, and passes `pre_input` like every `fetch` result (requirement 6).
    - **Known limits.** `fetch` is still an outbound channel through its URL: a path or query a
      model composes can carry data to an allowed host, whatever the host is (a narrower channel than
      the open paths of requirement 1). Requirement 8 refuses a URL that carries a credential; any
      other data a URL carries is not closed here. The perimeter checks where a request goes, not
      what a public host serves: hostile text from a public host is `pre_input`'s job (requirement 6).
      The port is not restricted, and a host name an operator lists exactly is trusted with whatever
-     address it resolves to.
+     address it resolves to. The text extracted from a PDF is untrusted text, as a page is: the jail
+     contains the parser, not what the document says. The jail is not a proof against a parser bug
+     that escapes the kernel's confinement, and a Landlock or Seatbelt jail reads the operator's
+     grants and the default read roots, so a PDF parser can read those files while it runs (the
+     document's own bytes are its only input, and the network is off).
 3. **Gated like every other built-in, no second execution path.** `fetch` is registered like
    `read`, `write` and `bash`, and every call passes `dispatch_tool` → `evaluate_tool_call`: a
    `pre_tool_call` policy can `block`, `require_approval`, `warn` or `redact` a `fetch` call,
@@ -1811,9 +1837,12 @@ ToolOutcome(ok=False, content='', refusal='fetch_secret_in_url',
 >>> fetch(url="https://user:pw@api.example.com/status")      # error names "userinfo"; same refusal
 >>> fetch(url="https://api.example.com/search?q=ana%40example.org")   # an address is not a credential
 
->>> fetch_url("https://api.example.com/report.pdf", allowed)
+>>> fetch_url("https://api.example.com/logo.png", allowed)
 ToolOutcome(ok=False, content='', refusal='fetch_not_allowed',
-            error="content type 'application/pdf' is not text; fetch reads text pages")
+            error="content type 'image/png' is not text; fetch reads text pages")
+
+>>> fetch_url("https://api.example.com/report.pdf", allowed)   # FETCH_MAX_DOCUMENT_BYTES=10000000
+FetchedPdf(status=200, content_type='application/pdf', body=b'%PDF-1.7 ...', deadline=...)
 ```
 
 The open paths the allowlist does **not** cover, named so this is never read as "network egress

@@ -566,6 +566,11 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "Response-body cap for the `fetch` tool before truncation",
         "`200000`",
     ),
+    (
+        ("FETCH_MAX_DOCUMENT_BYTES",),
+        "Size cap on a PDF the `fetch` tool reads through the jail; a larger one is refused whole",
+        "`10000000`",
+    ),
     (("FETCH_TIMEOUT_S",), "Default per-call wall-clock bound for the `fetch` tool", "`15`"),
     (
         ("TELEGRAM_POLL_TIMEOUT_S",),

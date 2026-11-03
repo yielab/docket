@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.3.0
+**Version**: 4.4.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -770,7 +770,11 @@ This specification does NOT cover:
     non-empty, read when the registry is built: the machine's `FETCH_ALLOWED_DOMAINS` plus the
     `fetchDomains` of the pod *project* names (`security-gates.spec.md` "Network egress and the
     `fetch` tool", requirement 2). The registered tool's handler reaches that set only and passes it
-    to `fetch_url`. With an empty set `fetch` **MUST NOT** appear in `specs()`, so the model is not
+    to `fetch_url`. A page arrives as text, and a PDF as the text of its pages: the handler refuses
+    a URL that carries a credential first, then hands a `FetchedPdf` that `fetch_url` returns to
+    `pdf_text`, which parses it in the turn's jail (isolation on, a usable backend, the turn's
+    `read_only` grants; otherwise a refusal that names the fix) and never in docket's process
+    (`security-gates.spec.md` requirement 2, "A PDF is parsed in the jail"). With an empty set `fetch` **MUST NOT** appear in `specs()`, so the model is not
     offered it, and a call naming it is refused as an unknown tool like any other unregistered
     name -- or, in a hop that serves a task whose pod could hold it, is the `capability_missing`
     stop of requirement 113. `DocketDriver.registry_factory` takes the hop's project (`Callable[[str],

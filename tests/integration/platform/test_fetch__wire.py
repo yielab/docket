@@ -296,12 +296,11 @@ class TestThePerimeterAtAnyHost:
 
 
 class TestOnlyTextReachesTheModel:
-    def test_a_pdf_is_refused_and_its_body_never_arrives(self, counted: _Counted) -> None:
+    def test_a_pdf_arrives_as_bytes_for_the_jail_and_never_as_text(self, counted: _Counted) -> None:
         out = _fetch_in(counted.url("localhost", "/pdf"), "localhost")
-        assert not out.ok
-        assert out.content == ""
-        assert out.refusal == "fetch_not_allowed"
-        assert out.error == "content type 'application/pdf' is not text; fetch reads text pages"
+        assert isinstance(out, _fetch.FetchedPdf)
+        assert (out.status, out.content_type) == (200, "application/pdf")
+        assert out.body == b"%PDF-1.7 secret words"
 
     def test_an_untyped_binary_body_is_refused(self, counted: _Counted) -> None:
         out = _fetch_in(counted.url("localhost", "/untyped-binary"), "localhost")
