@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.2.0
+**Version**: 12.3.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -2180,7 +2180,7 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
     hop's tools start without naming a path: the line `Working directory: the repository root (your
     tools start there; give paths relative to it).`, then a repository map. The message **MUST NOT**
     contain the absolute path of the task's worktree, of the pod's codebase or of any other root,
-    anywhere. The root the tools use is the task's recorded worktree when it has one (for every hop
+    anywhere; the one exception is the working folder of a `workdir`-kind pod (requirement 12). The root the tools use is the task's recorded worktree when it has one (for every hop
     but the Lead's), else the pod's codebase or working directory (the same root the driver gives
     the tools); when no root resolves there is neither the line nor a map. The Lead, which has no
     brief, gets the capped map: `Repository map (tracked files by directory):` followed by
@@ -2217,6 +2217,28 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
     requirement 10 in `## Task`. The Lead's own message keeps its layout of requirement 8 and has no
     section headings. The `## Task` text is derived from the base commit's tree when the task's
     worktree records one, else from the index.
+12. **The hop states the member's reach and folder (ADR 0035).** A hop of a pod (the Lead's
+    included) **MUST** carry, in the `## Hop` section right after the working-directory line (the
+    Lead's message after its working-directory line), a block of up to four lines, each from the
+    reader that already serves the fact to `GET /pods/<pod>`, never re-derived:
+    - `Working folder: <path>`, only on a `workdir`-kind pod: the absolute path of its working
+      directory, the root of requirement 10. A `codebase` pod's message states no path.
+    - `Network: <mode>`: `none, enforced by the jail` when the effective network is `none` and a
+      jail that runs enforces it; `none, not enforced: isolation is off` when it is `none` and no
+      jail enforces it; `open` otherwise. The effective network is the pod's
+      (`teams.pod_settings.effective_network`, worded by `teams.network_posture`) narrowed by the
+      task's `restrictions.network: none`.
+    - `Web: fetch reads <hosts>, outside the jail` when the role holds `fetch` and the pod's
+      `fetchDomains` (`teams.pod_settings.effective_fetch_domains`) are not empty (`any host` for the
+      operator's any-host grant), else `Web: no web access`.
+    - `Records you may write: <sets>`: the record sets whose `add` tool the role holds (the `records`
+      `write` list of `hops.application.capabilities.member_capabilities`), comma-separated, else
+      `Records you may write: none`.
+
+    The block is not shed by the budget compiler: its estimated tokens are reserved with the
+    working-directory line. A hop composed with no pod, or whose root does not resolve (requirement 10), states none of it. The block is part of the
+    hop message only; a continuation message does not repeat it, and the tool list stays the
+    tool declarations' to carry.
 
 ### Task status vocabulary
 

@@ -7,10 +7,12 @@ from typing import Any
 
 from docket.agent import context as _ctx
 from docket.agent import ports as _rd
+from docket.hops.application import capabilities as _capabilities
 from docket.hops.application import manifest as _manifest
 from docket.hops.application import verify_tool as _verify
 from docket.hops.application.base_view import base_commit_view
 from docket.hops.application.handoff_tool import encode_values
+from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates.pre_hop import _apply_task_restrictions, _consult_budget_env, hop_model
 from docket.kernel import brief as _brief
 from docket.kernel import clock as _clock
@@ -39,6 +41,7 @@ from docket.tasks.domain.request import TaskRequest
 from docket.tasks.domain.task import CurrentHop, HopResult, TaskRecord
 from docket.teams import autonomy as _autonomy
 from docket.teams import model_selection as _models
+from docket.teams import network_posture as _network_posture
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import prompts as _prompts
 from docket.teams import role_schema as _role_schema
@@ -139,15 +142,51 @@ _WORKDIR_LINE = (
 )
 
 
-def _root_line(root: str, project: str) -> tuple[str, bool]:
-    """The line that says where the hop's tools start, and whether the pod is ``workdir``-kind
-    (every member of a pod shares its kind, which the Lead's metadata records); ``("", False)``
-    when no root resolves."""
+def _where_block(task: TaskRecord, role: str, project: str, root: str) -> tuple[str, bool]:
+    """The lines that say where the hop's tools start and what they reach (``_reach_block``), and
+    whether the pod is ``workdir``-kind (every member of a pod shares its kind, which the Lead's
+    metadata records); ``("", False)`` when no root resolves."""
     if not root:
         return "", False
-    if project and _pod_settings.workspace_kind(project) == WorkspaceKind.workdir:
-        return _WORKDIR_LINE, True
-    return _repo_map.WORKING_DIRECTORY_LINE, False
+    workdir = bool(project) and _pod_settings.workspace_kind(project) == WorkspaceKind.workdir
+    line = _WORKDIR_LINE if workdir else _repo_map.WORKING_DIRECTORY_LINE
+    reach = _reach_block(task, role, project, root, workdir)
+    return "\n".join(part for part in (line, reach) if part), workdir
+
+
+def _reach_block(task: TaskRecord, role: str, project: str, root: str, workdir: bool) -> str:
+    """The lines that state what *role*'s hop can reach in *project*: its working folder *root* (a
+    ``workdir`` pod only), the network, the web and the record sets it may write. Each fact is the
+    one ``GET /pods/<pod>`` serves, read from the same module; ``""`` for a hop with no pod."""
+    if not project:
+        return ""
+    mode, scope = _pod_settings.effective_network(project)
+    restrictions = task.restrictions
+    mode = _decide.hop_network(mode, restrictions.network if restrictions is not None else None)
+    if mode == "open":
+        network = "open"
+    elif _network_posture.network_posture(
+        mode, scope, jailed=_network_posture.jail_enforces()
+    ).enforced:
+        network = "none, enforced by the jail"
+    else:
+        network = "none, not enforced: isolation is off"
+    reach = _capabilities.member_capabilities(project, role)
+    hosts = reach.get("fetchDomains") or []
+    if not hosts:
+        web = "no web access"
+    else:
+        named = "any host" if _pod_settings.FETCH_ANY in hosts else ", ".join(hosts)
+        web = f"fetch reads {named}, outside the jail"
+    records = ", ".join(reach["records"]["write"]) or "none"
+    return "\n".join(
+        [
+            *([f"Working folder: {root}"] if workdir else []),
+            f"Network: {network}",
+            f"Web: {web}",
+            f"Records you may write: {records}",
+        ]
+    )
 
 
 def _lead_instruction_is_shipped(project: str) -> bool:
@@ -330,7 +369,7 @@ def _hop_message(
     desc = task.description.strip()
     worktree = "" if role == "lead" else claimed_worktree_dir(task)
     root = _repo_map.resolve_root(worktree, project, role)
-    root_line, workdir = _root_line(root, project)
+    root_line, workdir = _where_block(task, role, project, root)
     if role == "lead":
         lead_prompt = _role_prompt("lead", project, None, step_instructions, workdir=workdir)
         lead_instruction = lead_prompt.text if lead_prompt is not None else ""

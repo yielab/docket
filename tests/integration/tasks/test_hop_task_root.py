@@ -208,7 +208,7 @@ class TestWorkdirPod:
             assert _WORKDIR_LINE in message
             assert "repository root" not in message and "Repository map" not in message
             assert "src/util.py" not in message and "README.md" not in message
-            assert str(work_dir) not in message
+            assert f"Working folder: {work_dir}" in message
 
     def test_a_routine_pods_reviewer_message_names_no_diff_or_code(self, tmp_path: Path) -> None:
         work_dir = _repo_with_files(tmp_path / "work")

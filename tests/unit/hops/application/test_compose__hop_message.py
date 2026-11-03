@@ -9,11 +9,21 @@ specs/functional/pipeline-format.spec.md ("Variables").
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+from tests.support.pods import build_pod, seed_empty_home
+
 from docket.hops.application import compose as _compose
 from docket.kernel import brief as _brief
 from docket.kernel import handoff as _handoff
 from docket.kernel.home import current_home
+from docket.platform import store as _store
 from docket.tasks.domain.task import HopResult, TaskRecord
+from docket.teams import network_posture as _network_posture
+from docket.teams import pod as _pod
+from docket.teams import pod_settings as _pod_settings
+from docket.teams import records as _records
 from docket.teams import roles as _arch
 
 SUBJECT = "docket.hops.application.compose"
@@ -330,3 +340,129 @@ class TestStructuredTask:
         reviewer, _ = _compose._hop_message(task, "reviewer", [])
 
         assert _task_section(implementer) == _task_section(reviewer)
+
+
+_PROPOSALS = """\
+kind: records
+name: tack_proposals
+key: ref
+scope: task
+columns:
+  - {name: ref, type: string, required: true}
+"""
+
+
+def _pod_meta(project: str, **fields: object) -> None:
+    path = current_home().meta_path(_pod.member_id(project, "lead"))
+    _store.write_json(path, {**_store.read_json(path), **fields})
+
+
+def _jail(monkeypatch: pytest.MonkeyPatch, *, enforces: bool) -> None:
+    monkeypatch.setattr(_network_posture, "jail_enforces", lambda cfg=None: enforces)
+
+
+def _reach(message: str) -> list[str]:
+    """The lines of the hop message that state the member's reach, in order."""
+    prefixes = ("Working folder:", "Network:", "Web:", "Records you may write:")
+    return [line for line in message.splitlines() if line.startswith(prefixes)]
+
+
+class TestHopStatesReachAndFolder:
+    """A pod hop says where the member works, what network it has, its web and its records."""
+
+    def test_a_workdir_pod_reads_its_folder_network_web_and_records(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        work_dir = tmp_path / "team"
+        work_dir.mkdir()
+        _jail(monkeypatch, enforces=True)
+        with seed_empty_home(tmp_path):
+            build_pod(
+                "demo",
+                ("lead", "writer", "reviewer"),
+                work_dir=str(work_dir),
+                blueprint_name="routine",
+            )
+            _pod_meta("demo", network="none", fetchDomains="docs.python.org")
+            records = _records.pod_records_dir("demo")
+            records.mkdir(parents=True, exist_ok=True)
+            (records / "tack_proposals.yaml").write_text(_PROPOSALS, encoding="utf-8")
+
+            message, _ = _compose._hop_message(_TASK, "reviewer", [_lead_hop()], project="demo")
+
+        assert _reach(message) == [
+            f"Working folder: {work_dir}",
+            "Network: none, enforced by the jail",
+            "Web: fetch reads docs.python.org, outside the jail",
+            "Records you may write: tack_proposals",
+        ]
+        hop = message.split("\n\n## Hop\n", 1)[1]
+        assert hop.index("Working directory:") < hop.index("Working folder:")
+        assert hop.index("Records you may write:") < hop.index("--- lead output ---")
+
+    def test_the_lead_reads_the_same_facts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        work_dir = tmp_path / "team"
+        work_dir.mkdir()
+        _jail(monkeypatch, enforces=True)
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "writer"), work_dir=str(work_dir), blueprint_name="routine")
+            _pod_meta("demo", network="none")
+
+            message, _ = _compose._hop_message(_TASK, "lead", [], project="demo")
+
+        assert _reach(message)[:2] == [
+            f"Working folder: {work_dir}",
+            "Network: none, enforced by the jail",
+        ]
+
+    def test_a_codebase_pod_with_nothing_reads_none_no_web_and_no_records(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        codebase = tmp_path / "code"
+        codebase.mkdir()
+        _jail(monkeypatch, enforces=False)
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase=str(codebase))
+            _pod_meta("demo", network="none")
+
+            message, _ = _compose._hop_message(_TASK, "implementer", [], project="demo")
+
+        assert _reach(message) == [
+            "Network: none, not enforced: isolation is off",
+            "Web: no web access",
+            "Records you may write: none",
+        ]
+        assert str(codebase) not in message
+
+    def test_an_open_network_reads_open(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _jail(monkeypatch, enforces=True)
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase=str(tmp_path))
+            _pod_settings.grant_network("demo", by="operator")
+
+            message, _ = _compose._hop_message(_TASK, "implementer", [], project="demo")
+
+        assert "Network: open" in _reach(message)
+
+    def test_a_task_that_narrows_the_network_reads_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _jail(monkeypatch, enforces=True)
+        task = TaskRecord.model_validate(
+            {"description": "ship the feature", "restrictions": {"network": "none"}}
+        )
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase=str(tmp_path))
+
+            message, _ = _compose._hop_message(task, "implementer", [], project="demo")
+
+        assert "Network: none, enforced by the jail" in _reach(message)
+
+    def test_a_hop_with_no_pod_states_nothing(self) -> None:
+        message, _ = _compose._hop_message(_TASK, "implementer", [])
+
+        assert _reach(message) == []
