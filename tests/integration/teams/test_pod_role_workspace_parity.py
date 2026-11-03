@@ -50,6 +50,10 @@ def _legacy_member_soul(
             "working directory. Read a file before changing it.\n"
             "- Create or change files with `write`/`edit`, not `cat >`, heredocs or `sed -i`; "
             "inspect with `read`/`grep`/`glob`; use `bash` to run things.\n"
+            "- Read a file whole with `read` (it pages a long file itself) instead of many "
+            "small windows with `sed -n` or `head`.\n"
+            "- When several reads or searches do not depend on each other, ask for them in one "
+            "reply instead of one per round.\n"
             "- Never push to main/master without HITL approval; never delete files "
             "without explicit instruction.\n"
         )
