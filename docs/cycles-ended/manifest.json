@@ -910,5 +910,21 @@
     "heading": "▶ Phase 59: a step's budget is a checkpoint, not a cliff (D-81) · CLOSED 2026-11-03 (decision 5 amended before the push: a budget, a clock and guards, no dollars)",
     "bytes": 42181,
     "sha256": "55d0daa610b773a45f4a77f0af8c5e9948af4f67864a8f751721d891d0747851"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 60 ACTIVE — WAVE 60-61 · a transient failure costs a request, not a step (D-82) · accepted 2026-11-03",
+    "bytes": 11138,
+    "sha256": "ae7ea4ca5d90895db7c35a04976a8ec420d340e5d047250c0e51218d80b9c1a7"
+  },
+  {
+    "source": "TODO.md",
+    "dest": "docs/cycles-ended/todo-waves.md",
+    "level": 2,
+    "heading": "▶ PHASE 61 ACTIVE — WAVE 60-61 · a pod says what it can reach (D-83) · accepted 2026-11-03",
+    "bytes": 30633,
+    "sha256": "0629babb0f8efedf3ba1d201817983db4a40c2a00bc9b2413a0a7dcb694e1157"
   }
 ]
