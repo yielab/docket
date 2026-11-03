@@ -93,59 +93,27 @@ from `main`.
 > dedup is persisted (`operator/notify.py`), the `kind:`-less canonical-document advisory is gone, and
 > `_create_workspace` no longer exists. Decisions that belong to the maintainer are in ROADMAP §7.1.
 
-**Phases 60-61 (planned 2026-11-03).** Left out of the cards on purpose:
-- *PDF reading in `setup check`.* After P61-8, `docket setup check` could report whether a PDF is
-  readable: whether `pdftotext` is found, whether the jail can execute it, and whether isolation is
-  on. Trigger: an operator's first PDF refusal for a missing grant.
-- *The `web-research` recipe after P61-2.* Its README (`templates/recipes/web-research/README.md`)
-  still tells the operator to list exact hosts in `FETCH_ALLOWED_DOMAINS` and to declare search as an
-  MCP server. Once P61-2 and P61-6 are merged, the README teaches `pod set fetchDomains` and a search
-  site as a host (ADR 0036 decision 17). Trigger: P61-6 merged.
-- *Dead retry plumbing after P60-1.* `UnitContext.do_sleep`/`on_retry` (`tasks/application/record.py`
-  ~261-263), `executor.dispatch_task`'s `on_retry`/`sleep` (~475-580) and `sweep._touch` (~161) have no
-  reader. Delete with P61-3, which owns `record.py` next.
+**Phases 60-62 (2026-11-03).** Left out of the cards on purpose, or found while merging:
 - *`NOT_ENFORCED` wording.* "isolation off" is also what a machine with isolation on and no backend prints
   (`teams/network_posture.py`); changing it moves a golden and security-gates requirement 14. `pod_summary`
   probes the backend per row. Trigger: an operator misreads the line, or a pod list slower than 50 ms.
-- *Is `capability_missing` pinned?* Whether P61-3's kind joins `_PINNED_FAILURE_KINDS` (`record.py`).
-- *`fetch` text extraction and its byte cap.* The live Chile page was cut at the infobox by the 200,000-byte cap
-  (`platform/fetch.py`), before the first sentence: the cap counts HTML, not text. Trigger: a research task that
-  reports a page it could not read. P61-6 changes the body rules; decide there or after it.
-- *A pod.yaml `fetchDomains` is not a run item.* `teams/apply/review.py` `_NOT_ADDED_SETTINGS`: should adding
-  hosts need `accept`? Also `_export_manifest` exports a pod's `*` as `fetchDomains: '*'`, which `pod update`
-  refuses. Trigger: the first repo that ships `fetchDomains`. Tack: `pod-reach.json` gained `fetchDomains`.
 - *The fetch refusal for a host off the pod's list does not name the pod command.* `platform/fetch.py` ~279 says
   "add it to FETCH_ALLOWED_DOMAINS, or to the pod's fetchDomains"; P61-3's card wanted the exact `docket pod set`
   command. `platform` does not know the pod. Trigger: a hop that stops on this refusal and a person asks how.
 - *`capability_missing` for a tool is "a name the role could hold".* P61-3 chose that over "a tool another member
   holds" so a deliberate `deniedTools` is not a gap. A Reviewer calling a record write it may not use now fails
   the task `capability_missing` (`tests/e2e/test_workdir_pod.py` follows).
-- *Sibling consult parts and expiry.* P61-4: if one part expires (`onExpiry: block`) the others become unanswerable
-  (`tasks/application/escalation_sweep.py`); `operator/inbox.py` `_pending_id` shows only the newest pending part
-  while `/escalations` lists all (live: `docket inbox` printed one question for a two-part consult); if the parked
-  token's question is lost, parts 1..n-1 stay orphaned on a failed task. Trigger: a two-part consult that expires,
-  or a person who cannot find the first question in the inbox.
-- *A refused `fetch` URL still sits in the trace.* P61-7 refuses the call and keeps the key out of the result and the
-  audit row, but the trace's `tool_call` event records the model's arguments as written (seen in a live trace), and
-  `governance/gate.py` `render_tool_call` renders `fetch url=...` for `pre_tool_call` policies. Trigger: the first
-  export at a privacy level that sends tool arguments (`full`) of a run that had a refusal; then redact call
-  arguments with the same `secrets.redact` before the trace writes them. Also unmatched: a double-encoded key, a
-  stored secret of 8 characters or fewer, and the keyring backend (the spec lists them under `unlisted-secret-shape`).
-- *`run_jailed` lives in `platform/fetch.py`.* P61-8 put the jailed Popen, process-group kill and bounded read there
-  because `tests/guards/test_no_subprocess_in_core.py` forbids `subprocess` in `hops/`. Move it to its own
-  `platform` module. Also stale: the `ToolContext.read_only` comment ("only a jailed bash reads them",
-  `agent/tools/registry.py` ~94), and a `setup check` line for `pdftotext`. The `header n chars` of a PDF result counts
-  the returned text, not the full extraction.
-- *PDF reading, after P62-1.* `setup check` still has no line for the PDF reader (TODO's older mentions of a
-  `pdftotext` check are stale: the extractor is docket's own `pypdf`); an encrypted PDF is refused (only the empty
+- *PDF reading, after P62-1.* `setup check` has no line for the PDF reader (whether isolation is on is the
+  only fact it needs; the recipe readiness block already says it); an encrypted PDF is refused (only the empty
   password is tried and AES needs `cryptography`); `pypdf` decodes about 30 MB/s, so a real stream bomb ends by the
   1 GiB memory limit or the deadline after ~30 s of CPU. The jail runs a copy of `pdf_extract.py` beside `in.pdf`
   because `-m docket...` fails when docket is editable. Trigger: a PDF a user needs that these refuse.
-- *The PDF reader on Seatbelt and Docker was never run.* `sandbox/pdf_extract.py` treats `RLIMIT_AS` as best effort
-  (macOS does not enforce it) and `RLIMIT_CPU` as mandatory, proven only with a fake `resource` module. Trigger:
-  before the next release tag (or earlier, a user on a Mac): run `hola.pdf` and the bomb fixture through
-  `tests/integration/hops/test_pdf_text__jail.py` on a Seatbelt host with the macOS probe-branch technique, and
-  once through the Docker backend.
+- *The PDF reader on Seatbelt was never run.* `sandbox/pdf_extract.py` treats `RLIMIT_AS` as best effort
+  (macOS does not enforce it) and `RLIMIT_CPU` as mandatory, proven only with a fake `resource` module. The Docker
+  path was run on 2026-11-03: the default `alpine:3.20` is refused naming `DOCKET_SANDBOX_IMAGE`, and an image with
+  `poppler-utils` returned the fixture's text, with no container left. Trigger: before the next release tag (or
+  earlier, a user on a Mac): run `tests/integration/hops/test_pdf_text__jail.py` on a Seatbelt host with the macOS
+  probe-branch technique.
 - *`pod export` drops a recipe's `needs`* (`teams/apply/write.py` ~191, the manifest built there), by design: `needs` is
   a recipe declaration, not pod state. The "search service" check is a heuristic (a declared service whose name or an
   operation name contains "search"), and the known search hosts are a constant in `teams/apply/needs.py`. Trigger: a
