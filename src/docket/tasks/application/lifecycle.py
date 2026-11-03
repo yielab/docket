@@ -84,7 +84,7 @@ def finalize_task(project: str, task_id: str, res: TaskResult) -> None:
 
 def _claim_lease_s(project: str) -> int:
     """The longest a live claim goes without moving: the pod's ``turnTimeoutS`` plus its
-    ``verifyTimeoutS``, each falling back to ``DEFAULT_TIMEOUT``."""
+    ``verifyTimeoutS``, each falling back to ``AGENT_LOOP_WALL_CLOCK_TIMEOUT_S``."""
     return resolve_timeout(None, pod_turn_timeout(project)) + resolve_timeout(
         None, pod_verify_timeout(project)
     )

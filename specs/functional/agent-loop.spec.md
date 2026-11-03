@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.12.0
+**Version**: 3.13.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -800,13 +800,22 @@ This specification does NOT cover:
     the request byte-identical to a profile-less one. A call that names a `rec__*` tool the hop is not offered is refused
     `invalid_call` like any unknown tool, and its reason adds what to declare: the set (`rec__<set>`) or `rec` in the
     `tools` of the step or of the role.
-104. `DocketDriver` **MUST** set `LoopConfig.max_tool_calls` from the hop's step `maxToolCalls`
-    (`DOCKET_HOP_MAX_TOOL_CALLS`, a positive integer as text; any other value is ignored), else
-    from the role archetype's `maxToolCalls`, else leaves the loop's default.
-105. A turn whose `max_tool_calls` is reached **MUST** end by requirement 8 with `stop_reason=
-    "max_tool_calls"`, `ok=False`, the fixed error `exceeded max_tool_calls=<N>` and no further
-    backend call: with `maxToolCalls: 3` and a model that asks for a tool each round, three calls
-    run and the hop ends before a fourth request.
+104. `DocketDriver` **MUST** set `LoopConfig.max_iterations` and `LoopConfig.max_tool_calls` through
+    `hops/domain/budget.py::resolve_hop_budget` (`pod-dispatch.spec.md`, "Timeout configuration"):
+    the hop's step value (`DOCKET_HOP_MAX_ITERATIONS`, `DOCKET_HOP_MAX_TOOL_CALLS`, each a positive
+    integer as text; any other value is ignored), else the role archetype's `maxIterations` or
+    `maxToolCalls`, else the machine default (`AGENT_LOOP_MAX_ITERATIONS`, 60;
+    `AGENT_LOOP_MAX_TOOL_CALLS`, 40). It **MUST** also set `LoopConfig.max_iterations_source`,
+    `max_tool_calls_source` and `wall_clock_source` to the owner of each limit (`step`, `role`,
+    `pod` or `default`; the pod only for time). A `LoopConfig` built by a caller that names no
+    source keeps the empty string.
+105. A turn whose `max_iterations`, `max_tool_calls` or `wall_clock_timeout_s` is reached **MUST** end
+    by requirement 7, 8 or 9 with `ok=False`, no further backend call and the error
+    `exceeded <bound>=<N>`. When the source is known the error continues
+    `(source: <source>; raise <key>)`, naming the key that raises that limit (`maxIterations` or
+    `maxToolCalls` on the step; `timeout` on the step or `turnTimeoutS` on the pod; the
+    `AGENT_LOOP_*` variable when the source is `default`). With `maxToolCalls: 3` and a model that
+    asks for a tool each round, three calls run and the hop ends before a fourth request.
 106. A repeated identical call is the no_progress stop of requirements 77-79 and nothing else:
     its limit is `LoopConfig.no_progress_rounds`, and no second repeat detector exists.
 
@@ -831,6 +840,9 @@ class LoopConfig:                              # frozen
     max_consecutive_tool_denials: int # default AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS
     no_progress_rounds: int     # default AGENT_LOOP_NO_PROGRESS_ROUNDS; 0 disables
     wall_clock_timeout_s: float # default AGENT_LOOP_WALL_CLOCK_TIMEOUT_S
+    max_iterations_source: str = ""  # step | role | default, set by the driver (104)
+    max_tool_calls_source: str = ""  # step | role | default
+    wall_clock_source: str = ""      # step | pod | default
     token_budget: int           # default AGENT_LOOP_TOKEN_BUDGET
     request_timeout_s: int      # default AGENT_LOOP_REQUEST_TIMEOUT_S
     max_tokens: int | None = None
@@ -911,7 +923,7 @@ def default_driver() -> DocketDriver: ...
 ### Tunables
 
 ```text
-AGENT_LOOP_MAX_ITERATIONS                default 20
+AGENT_LOOP_MAX_ITERATIONS                default 60
 AGENT_LOOP_MAX_TOOL_CALLS                default 40
 AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS  default 3
 AGENT_LOOP_NO_PROGRESS_ROUNDS            default 3
@@ -925,7 +937,9 @@ POD_MEMORY_RENDER_MAX_BYTES              3000 (constant)
 
 The seven `AGENT_LOOP_*` values are environment-overridable under the same names.
 `DocketDriver.run_turn`'s own `timeout` argument overrides `wall_clock_timeout_s` directly — it is
-the per-hop budget the dispatcher resolves, not a second, independently tuned number.
+the per-hop budget the dispatcher resolves (the step's `timeout`, then the pod's `turnTimeoutS`,
+then `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`), not a second, independently tuned number. A machine value
+only fills a gap: it never overrides a step, role or pod declaration.
 
 ### Return values
 
@@ -946,7 +960,7 @@ result = run_agent_turn(backend, builtin_registry(), ctx, "agent:demo:default", 
 ### A confused model that never stops requesting tools
 
 Given a backend that always replies with another tool call, `run_agent_turn` with
-`LoopConfig(max_iterations=20)` (the default) makes at most 20 model calls total, then returns
+`LoopConfig(max_iterations=60)` (the default) makes at most 60 model calls total, then returns
 `AgentLoopResult(ok=False, stop_reason="max_iterations", failure_kind="invalid_output")` — never an
 unbounded loop.
 

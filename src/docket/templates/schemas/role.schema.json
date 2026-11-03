@@ -209,6 +209,18 @@
       ],
       "default": null,
       "title": "Maxtoolcalls"
+    },
+    "maxIterations": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Maxiterations"
     }
   },
   "required": [

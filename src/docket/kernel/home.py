@@ -132,7 +132,7 @@ class Home:
     # model, not a throughput knob: model round-trips, then tool calls however they are
     # batched, then denials in a row (one lets the model correct course), then rounds that
     # only repeat earlier call/result pairs (0 disables).
-    agent_loop_max_iterations: int = 20
+    agent_loop_max_iterations: int = 60
     agent_loop_max_tool_calls: int = 40
     agent_loop_max_consecutive_tool_denials: int = 3
     agent_loop_no_progress_rounds: int = 3
@@ -197,11 +197,6 @@ class Home:
     # Per-role retry budgets set in the environment (DISPATCH_RETRIES_<ROLE>); a role not
     # listed uses dispatch_retries_default. A tuple, not a dict, so Home stays hashable.
     dispatch_retries_by_role: tuple[tuple[str, int], ...] = ()
-    # Serve-wide timeouts for a hop's turn and verify step, read only by interfaces/http/server.py. A set
-    # value overrides the pod's Lead meta for the dispatches `docket start` runs; None
-    # leaves teams/settings.py::_resolve_timeout to decide.
-    dispatch_turn_timeout_s: int | None = None
-    dispatch_verify_timeout_s: int | None = None
     # Exact hostnames `fetch` may reach (comma-separated in the environment, lowercased).
     # Empty by default: an operator opts a domain in, so `fetch` is never a second
     # unattended way out to the network.
@@ -243,7 +238,7 @@ class Home:
             dispatch_sweep_workers=_int(env, "DISPATCH_SWEEP_WORKERS", 4),
             template_version=_int(env, "TEMPLATE_VERSION", 5),
             sessions_dir_override=_optional_path(env, "SESSIONS_DIR"),
-            agent_loop_max_iterations=_int(env, "AGENT_LOOP_MAX_ITERATIONS", 20),
+            agent_loop_max_iterations=_int(env, "AGENT_LOOP_MAX_ITERATIONS", 60),
             agent_loop_max_tool_calls=_int(env, "AGENT_LOOP_MAX_TOOL_CALLS", 40),
             agent_loop_max_consecutive_tool_denials=_int(
                 env, "AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS", 3
@@ -279,8 +274,6 @@ class Home:
                 for role in _RETRY_ROLES
                 if (n := _optional_int(env, f"DISPATCH_RETRIES_{role.upper()}")) is not None
             ),
-            dispatch_turn_timeout_s=_optional_int(env, "DISPATCH_TURN_TIMEOUT_S"),
-            dispatch_verify_timeout_s=_optional_int(env, "DISPATCH_VERIFY_TIMEOUT_S"),
             fetch_allowed_domains=tuple(
                 d.strip().lower()
                 for d in env.get("FETCH_ALLOWED_DOMAINS", "").split(",")

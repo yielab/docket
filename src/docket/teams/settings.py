@@ -10,8 +10,6 @@ from docket.teams import pod as _pod
 from docket.teams import pod_settings as _teams_pod_settings
 from docket.teams import roles as _roles
 
-DEFAULT_TIMEOUT = 300
-
 
 def builtin_tool_names() -> frozenset[str]:
     """The built-in tool names a task restriction may deny."""
@@ -93,11 +91,13 @@ def pod_approval_mode(
     return caller_default
 
 
+def declared_timeout(explicit: int | None, pod_value: int | None) -> int | None:
+    """The timeout a caller or the pod declared, the caller's winning; ``None`` when neither did."""
+    return explicit if explicit is not None else pod_value
+
+
 def resolve_timeout(explicit: int | None, pod_value: int | None) -> int:
-    """Timeout precedence: an explicit per-call override, else the pod's Lead-meta
-    config, else ``DEFAULT_TIMEOUT`` (the fallback of last resort)."""
-    if explicit is not None:
-        return explicit
-    if pod_value is not None:
-        return pod_value
-    return DEFAULT_TIMEOUT
+    """Timeout precedence: an explicit per-call override, else the pod's Lead-meta config, else
+    the machine default, ``AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`` (the fallback of last resort)."""
+    declared = declared_timeout(explicit, pod_value)
+    return declared if declared is not None else int(current_home().agent_loop_wall_clock_timeout_s)

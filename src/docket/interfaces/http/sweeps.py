@@ -56,17 +56,9 @@ def check_schedules(now_ts: float) -> None:
         record = _runs.create_run("schedule", project)
 
         def _run(proj: str = project, run_id: str = record["id"]) -> None:
-            # Process-wide timeout knobs (unset = no override) run inside the
-            # run record, so a scheduled dispatch is both configurable and
-            # observable rather than fire-and-forget.
-            _runs.execute(
-                run_id,
-                lambda: _sweep.dispatch_pod(
-                    proj,
-                    turn_timeout=current_home().dispatch_turn_timeout_s,
-                    verify_timeout=current_home().dispatch_verify_timeout_s,
-                ),
-            )
+            # Run inside the run record, so a scheduled dispatch is observable
+            # rather than fire-and-forget.
+            _runs.execute(run_id, lambda: _sweep.dispatch_pod(proj))
 
         _threads.start_thread(_run)
 

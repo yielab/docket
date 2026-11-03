@@ -98,6 +98,31 @@ class TestCheckIterationBounds:
         assert stop.stop_reason == "max_iterations"
         assert stop.error == "exceeded max_iterations=1"
 
+    def test_a_known_source_names_the_owner_and_the_key_that_raises_the_limit(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(LoopConfig(max_iterations=1, max_iterations_source="step"))
+        budget = TurnBudget(state)
+        budget.check_iteration_bounds()
+        _timeout, stop = budget.check_iteration_bounds()
+        assert stop is not None
+        assert stop.error == "exceeded max_iterations=1 (source: step; raise maxIterations)"
+
+    def test_a_wall_clock_from_the_pod_names_turn_timeout(self, make_turn_state: MakeState) -> None:
+        cfg = LoopConfig(wall_clock_timeout_s=10, wall_clock_source="pod")
+        _timeout, stop = TurnBudget(
+            make_turn_state(cfg, clock=lambda: 11.0)
+        ).check_iteration_bounds()
+        assert stop is not None
+        assert "(source: pod; raise turnTimeoutS)" in stop.error
+
+    def test_a_default_source_names_the_machine_variable(self, make_turn_state: MakeState) -> None:
+        cfg = LoopConfig(max_tool_calls=3, max_tool_calls_source="default")
+        state = make_turn_state(cfg, tool_calls_executed=3)
+        _timeout, stop = TurnBudget(state).check_iteration_bounds()
+        assert stop is not None
+        assert "(source: default; raise AGENT_LOOP_MAX_TOOL_CALLS)" in stop.error
+
     def test_the_wall_clock_ceiling_stops_the_turn(self, make_turn_state: MakeState) -> None:
         state = make_turn_state(LoopConfig(wall_clock_timeout_s=10), clock=lambda: 11.0)
         _timeout, stop = TurnBudget(state).check_iteration_bounds()

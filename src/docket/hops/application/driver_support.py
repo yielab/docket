@@ -3,7 +3,6 @@ policy scope, loop config and the trace callback. Moved out of ``driver.py`` unc
 
 from __future__ import annotations
 
-import dataclasses
 import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -12,7 +11,9 @@ from typing import Any, Literal
 
 from docket.agent import loop as _loop
 from docket.agent.ports import (
+    DOCKET_HOP_MAX_ITERATIONS,
     DOCKET_HOP_MAX_TOOL_CALLS,
+    DOCKET_HOP_TIMEOUT_SOURCE,
     DOCKET_HOP_TOOLS,
     DOCKET_TASK_DENIED_TOOLS,
     DOCKET_TASK_NETWORK,
@@ -29,6 +30,7 @@ from docket.agent.tools import service_tools as _service_tools
 from docket.agent.tools.registry import Pregrant, ToolContext, ToolRegistry
 from docket.governance import policy as _policy
 from docket.hops.application.base_view import base_commit_view
+from docket.hops.domain.budget import resolve_hop_budget
 from docket.kernel.errors import DispatchError
 from docket.kernel.gate import DEFAULT_MAX_CONSULTATIONS
 from docket.kernel.home import current_home
@@ -327,17 +329,13 @@ def _hop_tool_allow(raw: str | None) -> tuple[str, ...] | None:
     return tuple(str(name) for name in names)
 
 
-def _hop_max_tool_calls(raw: str | None, role: str, project: str) -> int | None:
-    """The hop's tool-call cap: the step's coordinate when it is a positive integer, else the role
-    archetype's ``maxToolCalls``, else ``None`` (the loop's default applies)."""
+def _positive_int(raw: str | None) -> int | None:
+    """*raw* as a positive integer, or ``None`` (a step coordinate that is anything else is ignored)."""
     try:
         value = int(raw or "")
     except ValueError:
-        value = 0
-    if value > 0:
-        return value
-    archetype = _archetypes.load_registry(project).get(role)
-    return archetype.max_tool_calls if archetype is not None else None
+        return None
+    return value if value > 0 else None
 
 
 def _loop_config(
@@ -350,16 +348,36 @@ def _loop_config(
 ) -> _loop.LoopConfig:
     """The turn loop's bounds: wall clock, measured-token budget and the endpoint's own windows,
     with the sampling, tool choice and tool surface the model's profile declares, and the step's
-    allow-list and tool-call cap, popped from *ctx*'s environment (so no tool sees them), where
-    the step sets them."""
+    allow-list, popped from *ctx*'s environment (so no tool sees them), where the step sets it.
+    Rounds, tool calls and seconds come from ``resolve_hop_budget``: the step's coordinates, then
+    the role archetype's, then the machine defaults; *timeout* is already resolved by the runner,
+    and its owner arrives as ``DOCKET_HOP_TIMEOUT_SOURCE``. Each owner is kept on the config."""
     tool_allow = _hop_tool_allow(ctx.env.pop(DOCKET_HOP_TOOLS, None))
-    max_tool_calls = _hop_max_tool_calls(
-        ctx.env.pop(DOCKET_HOP_MAX_TOOL_CALLS, None), ctx.role, ctx.project
+    step_rounds = _positive_int(ctx.env.pop(DOCKET_HOP_MAX_ITERATIONS, None))
+    step_calls = _positive_int(ctx.env.pop(DOCKET_HOP_MAX_TOOL_CALLS, None))
+    time_source = ctx.env.pop(DOCKET_HOP_TIMEOUT_SOURCE, "")
+    archetype = _archetypes.load_registry(ctx.project).get(ctx.role)
+    home = current_home()
+    budget = resolve_hop_budget(
+        step_rounds=step_rounds,
+        step_tool_calls=step_calls,
+        step_seconds=timeout if time_source == "step" else None,
+        role_rounds=archetype.max_iterations if archetype is not None else None,
+        role_tool_calls=archetype.max_tool_calls if archetype is not None else None,
+        pod_seconds=timeout if time_source == "pod" else None,
+        default_rounds=home.agent_loop_max_iterations,
+        default_tool_calls=home.agent_loop_max_tool_calls,
+        default_seconds=timeout,
     )
     context_window = getattr(backend, "context_window_tokens", None)
     max_output_tokens = getattr(backend, "max_output_tokens", None)
-    config = _loop.LoopConfig(
-        wall_clock_timeout_s=float(timeout),
+    return _loop.LoopConfig(
+        max_iterations=budget.rounds.value,
+        max_tool_calls=budget.tool_calls.value,
+        max_iterations_source=budget.rounds.source,
+        max_tool_calls_source=budget.tool_calls.source,
+        wall_clock_timeout_s=float(budget.seconds.value),
+        wall_clock_source=budget.seconds.source,
         token_budget=token_budget,
         context_window_tokens=(
             context_window if isinstance(context_window, int) and context_window > 0 else None
@@ -376,11 +394,6 @@ def _loop_config(
         tool_surface=profile.tool_surface,
         tool_allow=tool_allow,
         profile=profile.name,
-    )
-    return (
-        config
-        if max_tool_calls is None
-        else dataclasses.replace(config, max_tool_calls=max_tool_calls)
     )
 
 
@@ -452,6 +465,32 @@ def _build_on_process(
         _trace.trace_event(project, session_key, role, f"process_{kind}", json.dumps(data))
 
     return _on_process
+
+
+class _ClaimRefreshingBackend:
+    """A chat backend that refreshes the serving task's claim before every model round, so a hop
+    that keeps making rounds is never swept as a stale claim, however long its declared budget.
+    Every other attribute (windows, caps) is the wrapped backend's own."""
+
+    def __init__(self, inner: ChatBackend, project: str, task_id: str) -> None:
+        self._inner = inner
+        self._project = project
+        self._task_id = task_id
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def complete(self, *args: Any, **kwargs: Any) -> Any:
+        touch_claim(self._project, self._task_id)
+        return self._inner.complete(*args, **kwargs)
+
+
+def refresh_claim_each_round(backend: ChatBackend, project: str, task_id: str) -> ChatBackend:
+    """*backend*, wrapped so each round refreshes *task_id*'s claim; unchanged for a turn that
+    serves no task."""
+    if not task_id:
+        return backend
+    return _ClaimRefreshingBackend(backend, project, task_id)
 
 
 def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:

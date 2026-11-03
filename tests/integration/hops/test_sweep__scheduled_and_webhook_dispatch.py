@@ -26,6 +26,28 @@ schedule_file = _support_home.schedule_file
 _post = _support_http.post
 
 
+class TestAServerDispatchPassesNoTimeoutOverride:
+    def test_a_due_schedule_hands_dispatch_nothing_to_override_the_pod(
+        self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        schedule_file.write_text(json.dumps({"schedules": {"projA": "@every 1s"}}), "utf-8")
+        seen: list[dict[str, object]] = []
+
+        def _record(proj: str, **kw: object) -> list[object]:
+            seen.append(kw)
+            return []
+
+        monkeypatch.setattr("docket.hops.application.sweep.dispatch_pod", _record)
+        _sweeps.check_schedules(time.time())
+        deadline = time.time() + 2
+        while not seen and time.time() < deadline:
+            time.sleep(0.05)
+
+        assert seen
+        assert seen[0].get("turn_timeout") is None
+        assert seen[0].get("verify_timeout") is None
+
+
 class TestCheckSchedules:
     def test_due_project_triggers_dispatch(
         self, schedule_file: Path, monkeypatch: pytest.MonkeyPatch

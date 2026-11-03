@@ -99,8 +99,6 @@ def _sweep_one_pod(project: str) -> None:
             record["id"],
             lambda: _sweep.dispatch_pod(
                 project,
-                turn_timeout=current_home().dispatch_turn_timeout_s,
-                verify_timeout=current_home().dispatch_verify_timeout_s,
                 approval_default="park",
                 resume=True,
                 stop=sweep_stop.is_set,

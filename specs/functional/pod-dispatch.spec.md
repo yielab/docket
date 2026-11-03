@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.14.0
+**Version**: 11.15.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -200,7 +200,8 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
    finishes. A crash between hop *N* finishing and hop *N+1* starting therefore loses at most the
    in-flight attempt, never a completed hop.
 2. Every hop-completion persist, every retry attempt (see "Retries") and every `started`
-   process event of a turn that serves the task **MUST** refresh the task's `claimedAt` timestamp
+   process event of a turn that serves the task, and every model round of such a turn, **MUST**
+   refresh the task's `claimedAt` timestamp
    -- each is forward progress, not staleness, and this is what stops a legitimately long-running
    hop (especially one retrying, or one running one command after another) from being mistaken
    for a crashed claim by a *concurrent* dispatcher's stale-claim sweep.
@@ -221,7 +222,7 @@ changes trust. The detail names no description text. `POST /dispatch/<project>` 
 4a. A `running` task is **stale** when either condition holds: (i) the dispatcher process that
    claimed it is gone -- the claim records `claimPid`, and a process-liveness check reports that
    pid dead -- or (ii) its `claimedAt` is older than the pod's `turnTimeoutS` plus
-   `verifyTimeoutS` (each falling back to `DEFAULT_TIMEOUT` when unset). Under `--resume`,
+   `verifyTimeoutS` (each falling back to `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` when unset). Under `--resume`,
    `dispatch_pod` **MUST** reclaim a stale `running` task immediately, with no wait for
    `CLAIM_STALE_TIMEOUT` (`reclaim_stale_running`): it is settled to `failed`/`stale_claim`, its
    `hops[]` kept, claimed again and continued from its last persisted hop, a `task.reclaimed`
@@ -605,15 +606,24 @@ wired agent's conversation current with the task it is working.
 2. Resolution order for a given dispatch invocation, highest precedence first: (a) an explicit
    override passed to that invocation -- `docket run --timeout <seconds>` for a CLI-triggered run
    or the MCP dispatch tool's `timeout` (each overrides **both** the turn and verify timeout for that
-   run), or the process-wide `DISPATCH_TURN_TIMEOUT_S`/`DISPATCH_VERIFY_TIMEOUT_S` environment
-   config for a run `docket start` triggers (webhook, due schedule, or the sweep); (b) the pod
-   Lead's own `turnTimeoutS`/`verifyTimeoutS`; (c) `DEFAULT_TIMEOUT` (300 seconds) as the fallback
-   of last resort.
-3. When `docket start`'s process-wide timeout variables are set, they take the "explicit override"
-   slot for every pod that server instance dispatches (webhook, schedule, sweep) -- for those runs
-   they are resolved *before* that pod's own setting is consulted, not layered beneath it. A
-   CLI-triggered `docket run` (no `--timeout`) is unaffected by the server-wide variables; it
-   resolves straight to the pod's setting, then `DEFAULT_TIMEOUT`.
+   run); (b) the pod Lead's own `turnTimeoutS`/`verifyTimeoutS`; (c) `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`
+   (300 seconds unless set) as the machine default, the fallback of last resort. A run `docket start`
+   triggers (webhook, due schedule, or the sweep) passes no override, so it resolves to (b) then (c):
+   no process-wide environment variable beats a pod's own setting.
+3. A hop's turn time, rounds and tool calls are one budget declared where the work is declared
+   (`hops/domain/budget.py::resolve_hop_budget`), each with the owner that supplied it
+   (`source`: `step | role | pod | default`):
+   - time: the step's `timeout`, then the pod's `turnTimeoutS` (or the invocation's explicit
+     override, which takes the pod's slot), then `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`;
+   - rounds: the step's `maxIterations`, then the role archetype's `maxIterations`, then
+     `AGENT_LOOP_MAX_ITERATIONS` (60);
+   - tool calls: the step's `maxToolCalls`, then the archetype's, then `AGENT_LOOP_MAX_TOOL_CALLS`
+     (40).
+   The runner (time, through `resolve_seconds`) and the driver (rounds and tool calls) both use
+   that module. The sources
+   reach `LoopConfig` and a stop that a limit caused names its source and the key that raises it.
+   Tokens are the task's `maxTokens`, never a step key. `verifyTimeoutS` and `verify:` gates keep
+   their own clock.
 
 ### Pod dispatch settings (`PodSettings`)
 
@@ -2640,7 +2650,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `resolve_waiting_approval_detail`
 - `src/docket/tasks/domain/task.py`: `DispatchError`, `TaskRestrictionError`, `TaskRunRefusal`,
   `TaskNotFoundError`, `HopResult`, `TaskResult`, `TaskRecord`
-- `src/docket/teams/settings.py`: `pod_task_list_path`, `DEFAULT_TIMEOUT`, `pod_budget`,
+- `src/docket/teams/settings.py`: `pod_task_list_path`, `pod_budget`,
   `pod_max_rework_cycles`, `pod_turn_timeout`, `pod_verify_timeout`, `pod_approval_mode`,
   `pod_approval_mode_is_set`, `pod_recorded_cost`
 - `src/docket/hops/application/steps.py`: `PIPELINE_ORDER`, `TASK_PIPELINE_NAME`,
@@ -2650,6 +2660,7 @@ The dispatch state machine, by module (public names first, then private ones for
   `_run_group_node`, `_step_skipped`, `_route_outcome`
 - `src/docket/hops/application/runner.py`: `step_session_key`; the hop's `_run_hop_turn`,
   and the step loop's `execute_unit`
+- `src/docket/hops/domain/budget.py`: `resolve_hop_budget`, `resolve_seconds`, `Limit`, `HopBudget`
 - `src/docket/hops/application/compose.py`: the hop's `_compose_hop`, `_hop_message`,
   `_gate_failed_section`
 - `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,

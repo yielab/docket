@@ -1058,16 +1058,14 @@ No command emits any other exit code today.
 | `DISPATCH_RETRIES_LEAD`, `DISPATCH_RETRIES_IMPLEMENTER`, `DISPATCH_RETRIES_REVIEWER` | Per-role override of `DISPATCH_RETRIES_DEFAULT` | same as `DISPATCH_RETRIES_DEFAULT` |
 | `DISPATCH_RETRY_BACKOFF_S` | Linear backoff base between retries — attempt N waits N times this many seconds | `2` |
 | `DISPATCH_RETRY_MAX_WAIT_S` | Ceiling on a retry's sleep, whichever of the linear backoff or the endpoint's own `Retry-After` asked for longer | `60` |
-| `DISPATCH_TURN_TIMEOUT_S` | `docket start`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches | unset (no serve-wide override) |
 | `DISPATCH_SWEEP_WORKERS` | `docket start --dispatch`: how many pods one sweep tick runs at once (`1` is serial) | `4` |
-| `DISPATCH_VERIFY_TIMEOUT_S` | Same as `DISPATCH_TURN_TIMEOUT_S`, for the verify step | unset (no serve-wide override) |
-| `AGENT_LOOP_MAX_ITERATIONS` | Hard cap on model round-trips within one turn | `20` |
-| `AGENT_LOOP_MAX_TOOL_CALLS` | Hard cap on total tool calls dispatched across one turn | `40` |
+| `AGENT_LOOP_MAX_ITERATIONS` | Machine default cap on model round-trips within one hop, used when neither the step nor the role declares `maxIterations` | `60` |
+| `AGENT_LOOP_MAX_TOOL_CALLS` | Machine default cap on tool calls within one hop, used when neither the step nor the role declares `maxToolCalls` | `40` |
 | `AGENT_LOOP_NO_PROGRESS_ROUNDS` | Stops a turn after this many consecutive tool rounds that only repeat earlier results; `0` disables | `3` |
 | `AGENT_LOOP_MAX_CONSECUTIVE_TOOL_DENIALS` | Stops a denial-only loop before it consumes the iteration/tool/token limits | `3` |
 | `DOCKET_TOOL_MAX_OUTPUT_CHARS` | Ceiling on one tool result's text before it is visibly truncated — tune down for a small-context endpoint | `30000` |
 | `DOCKET_CLOCK_OFFSET_S` | Shifts the wall clock by this many seconds so a test can expire a deadline without waiting; unset or invalid is `0` | `0` |
-| `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` | Default overall wall-clock budget for one turn with no explicit `LoopConfig` | `300` |
+| `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S` | Machine default wall-clock budget for one hop, used when neither the step's `timeout` nor the pod's `turnTimeoutS` is set | `300` |
 | `AGENT_LOOP_TOKEN_BUDGET` | Hard cap on one turn's cumulative measured token usage | `100000` |
 | `AGENT_LOOP_REQUEST_TIMEOUT_S` | Per-HTTP-call timeout passed to the chat backend | `120` |
 | `MCP_CLIENT_TIMEOUT_S` | Default per-call bound for an MCP server with no timeout of its own | `10` |

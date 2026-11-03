@@ -12,7 +12,7 @@ import math
 from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_request_fit
-from docket.agent.loop_types import AgentLoopResult
+from docket.agent.loop_types import AgentLoopResult, limit_origin
 from docket.agent.ports import ChatMessage, ToolSpec
 
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
@@ -128,7 +128,10 @@ class TurnBudget:
             return 0, self.state.done(
                 ok=False,
                 stop_reason="max_iterations",
-                error=f"exceeded max_iterations={self.state.cfg.max_iterations}",
+                error=(
+                    f"exceeded max_iterations={self.state.cfg.max_iterations}"
+                    + limit_origin("max_iterations", self.state.cfg.max_iterations_source)
+                ),
                 failure_kind="invalid_output",
             )
         elapsed = self.state.clock() - self.state.started
@@ -136,7 +139,10 @@ class TurnBudget:
             return 0, self.state.done(
                 ok=False,
                 stop_reason="timeout",
-                error=f"exceeded wall_clock_timeout_s={self.state.cfg.wall_clock_timeout_s}",
+                error=(
+                    f"exceeded wall_clock_timeout_s={self.state.cfg.wall_clock_timeout_s}"
+                    + limit_origin("wall_clock", self.state.cfg.wall_clock_source)
+                ),
                 failure_kind="timeout",
             )
         if self.state.total_usage.counted_tokens > self.state.cfg.token_budget:
@@ -153,7 +159,10 @@ class TurnBudget:
             return 0, self.state.done(
                 ok=False,
                 stop_reason="max_tool_calls",
-                error=f"exceeded max_tool_calls={self.state.cfg.max_tool_calls}",
+                error=(
+                    f"exceeded max_tool_calls={self.state.cfg.max_tool_calls}"
+                    + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source)
+                ),
                 failure_kind="invalid_output",
             )
         remaining = max(1, int(self.state.cfg.wall_clock_timeout_s - elapsed))

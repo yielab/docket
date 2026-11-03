@@ -70,8 +70,8 @@ class AgentMeta(BaseModel):
 
     # Pod-wide dispatch timeout overrides, set on the Lead alongside
     # budgetUsd (teams/settings.py reads them the same way it reads the Lead's
-    # budgetUsd for pod_budget()). None = no pod-level override; falls back to
-    # DEFAULT_TIMEOUT (or a serve-wide config knob) at dispatch time.
+    # budgetUsd for pod_budget()). None = no pod-level override; falls back to the machine
+    # default, AGENT_LOOP_WALL_CLOCK_TIMEOUT_S, at dispatch time.
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS")
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS")
 

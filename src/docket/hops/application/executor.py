@@ -50,6 +50,7 @@ from docket.teams import autonomy as _autonomy
 from docket.teams import roles as _archetypes
 from docket.teams.pod import pod_full_roster, pod_pipeline
 from docket.teams.settings import (
+    declared_timeout,
     pod_budget,
     pod_turn_timeout,
     pod_verify_timeout,
@@ -487,9 +488,9 @@ def dispatch_task(
     zero-migration pipeline; *resume_from* seeds hops completed before a crash or a settled
     refusal (skipped, not re-invoked) -- including a hop that parked mid-turn, replayed by its
     own exact index (ADR 0016 SS2, see ``replay_pipeline_position``); *turn_timeout*/
-    *verify_timeout* override the pod Lead's meta then ``DEFAULT_TIMEOUT``, unless a step
-    declares its own. *on_retry* fires before each retry so the caller can refresh the task's
-    claim before it goes stale. *variables* is this run's already-resolved pipeline variable
+    *verify_timeout* override the pod Lead's meta then ``AGENT_LOOP_WALL_CLOCK_TIMEOUT_S``,
+    unless a step declares its own. *on_retry* fires before each retry so the caller can refresh
+    the task's claim before it goes stale. *variables* is this run's already-resolved pipeline variable
     namespace (``dispatch_pod`` validates and resolves it before calling here) -- used only to
     interpolate any step's own ``instructions`` text (pipeline-format.spec.md); a direct caller
     that skips ``dispatch_pod`` gets no unresolved-reference refusal, only best-effort
@@ -529,7 +530,7 @@ def dispatch_task(
     try:
         pod_pipeline(project)  # validates pod/lead up front (raises DispatchError otherwise)
         cap = pod_budget(project)
-        resolved_turn_timeout = resolve_timeout(turn_timeout, pod_turn_timeout(project))
+        declared_turn = declared_timeout(turn_timeout, pod_turn_timeout(project))
         resolved_verify_timeout = resolve_timeout(verify_timeout, pod_verify_timeout(project))
 
         task_gate = _task_gate(task)
@@ -566,7 +567,8 @@ def dispatch_task(
             task_id=task_id,
             session_id=session_id,
             cap=cap,
-            resolved_turn_timeout=resolved_turn_timeout,
+            resolved_turn_timeout=resolve_timeout(None, declared_turn),
+            declared_turn_timeout=declared_turn,
             resolved_verify_timeout=resolved_verify_timeout,
             id_to_index=id_to_index,
             rework_counts=rework_counts,

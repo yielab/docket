@@ -45,6 +45,7 @@ class RoleDocument(BaseModel):
     floor: list[str] | None = None
     tools: list[str] | None = None
     maxToolCalls: int | None = None
+    maxIterations: int | None = None
 
 
 class PipelineDocument(BaseModel):
