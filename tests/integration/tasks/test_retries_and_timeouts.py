@@ -35,8 +35,10 @@ from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop_c
 from docket.interfaces.cli.commands import pod as _pod
 from docket.kernel import clock as _clock
-from docket.kernel.home import current_home, use_home
+from docket.kernel.home import Home, current_home, use_home
 from docket.kernel.ports import jail as _jail
+from docket.pipeline.domain import spec as _pipeline
+from docket.pipeline.domain import step as _step
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -121,6 +123,24 @@ class TestRetryPolicy:
 
 
 # ── dispatch_task: the retry loop itself (direct call, no persisted queue) ────────
+
+
+class _TimeoutSpy:
+    """A runner that records the timeout each turn is given and always succeeds."""
+
+    def __init__(self) -> None:
+        self.values: list[int] = []
+
+    def runner(
+        self,
+        agent_id: str,
+        session_key: str,
+        message: str,
+        timeout: int,
+        env: dict[str, str] | None = None,
+    ) -> _rd.TurnResult:
+        self.values.append(timeout)
+        return _rd.TurnResult(True, "done", 0.0, {})
 
 
 class _ScriptedRunner:
@@ -434,10 +454,52 @@ class TestAnInPlaceRetryContinuesPersistedRounds:
 
 
 class TestTimeoutResolution:
-    def test_defaults_to_default_timeout_when_nothing_set(self) -> None:
+    def test_defaults_to_the_machine_timeout_when_nothing_set(self) -> None:
         _write_meta("myapp-lead")
-        assert _settings.resolve_timeout(None, _settings.pod_turn_timeout("myapp")) == (
-            _settings.DEFAULT_TIMEOUT
+        assert _settings.resolve_timeout(None, _settings.pod_turn_timeout("myapp")) == 300
+
+    def test_the_machine_timeout_is_the_wall_clock_variable(self) -> None:
+        _write_meta("myapp-lead")
+        with use_home(dataclasses.replace(current_home(), agent_loop_wall_clock_timeout_s=45.0)):
+            assert _settings.resolve_timeout(None, _settings.pod_turn_timeout("myapp")) == 45
+            assert _settings.resolve_timeout(None, 7) == 7
+
+    def test_a_hop_with_nothing_declared_gets_the_wall_clock_variable(self) -> None:
+        _write_meta("myapp-lead")
+        _write_meta("myapp-implementer")
+        seen = _TimeoutSpy()
+        with use_home(dataclasses.replace(current_home(), agent_loop_wall_clock_timeout_s=45.0)):
+            task = TaskRecord(id="t45", description="work")
+            res = _executor.dispatch_task("myapp", task, runner=seen.runner, sleep=_no_sleep)
+        assert res.status == "done"
+        assert seen.values and set(seen.values) == {45}
+
+    def test_a_pod_turn_timeout_wins_whatever_the_environment_holds(self) -> None:
+        _write_meta("myapp-lead", {"turnTimeoutS": 900})
+        _write_meta("myapp-implementer")
+        seen = _TimeoutSpy()
+        with use_home(dataclasses.replace(current_home(), agent_loop_wall_clock_timeout_s=45.0)):
+            _queue.enqueue_task_once("myapp", "work", channel="http")
+            results = _sweep.dispatch_pod("myapp", runner=seen.runner, sleep=_no_sleep)
+        assert [r.status for r in results] == ["done"]
+        assert seen.values and set(seen.values) == {900}
+
+    def test_a_step_timeout_wins_over_the_pod(self) -> None:
+        _write_meta("myapp-lead", {"turnTimeoutS": 900})
+        _write_meta("myapp-implementer")
+        seen = _TimeoutSpy()
+        spec = _pipeline.PipelineSpec(
+            name="solo", steps=[_step.Step(id="build", role="implementer", timeout=1200)]
+        )
+        task = TaskRecord(id="t12", description="work")
+        _executor.dispatch_task("myapp", task, runner=seen.runner, sleep=_no_sleep, spec=spec)
+        assert seen.values == [1200]
+
+    def test_the_server_wide_variables_are_gone(self) -> None:
+        home = Home.from_environ({"DISPATCH_TURN_TIMEOUT_S": "5", "DISPATCH_VERIFY_TIMEOUT_S": "6"})
+        assert not any(
+            "dispatch_turn" in f.name or "dispatch_verify" in f.name
+            for f in dataclasses.fields(home)
         )
 
     def test_lead_meta_turn_timeout_used_when_set(self) -> None:

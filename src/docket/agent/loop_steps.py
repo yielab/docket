@@ -14,7 +14,7 @@ from typing import Any
 
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_tool_call, _trace_tool_result
-from docket.agent.loop_types import AgentLoopResult
+from docket.agent.loop_types import AgentLoopResult, limit_origin
 from docket.agent.ports import ChatMessage, TokenUsage, ToolCall, tool_result
 from docket.agent.session import append_messages
 from docket.agent.tools.registry import ToolResult, dispatch_tool
@@ -115,6 +115,7 @@ class ToolStep:
                     f"model requested {len(assistant_msg.tool_calls)} tool call(s), which would "
                     f"exceed max_tool_calls={self.state.cfg.max_tool_calls} (already used "
                     f"{self.state.tool_calls_executed}); none of this batch was executed"
+                    + limit_origin("max_tool_calls", self.state.cfg.max_tool_calls_source)
                 ),
                 failure_kind="invalid_output",
             )

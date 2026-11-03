@@ -123,10 +123,15 @@ DOCKET_VERDICT_VALUES = "DOCKET_VERDICT_VALUES"
 DOCKET_HANDOFF = "DOCKET_HANDOFF"
 
 # Same route again, set only on a hop whose step declares them: the JSON list of tool names the step
-# allows (``tools``) and the positive integer, as text, that bounds its tool calls (``maxToolCalls``).
-# Popped by DocketDriver into ``LoopConfig.tool_allow`` and ``LoopConfig.max_tool_calls``.
+# allows (``tools``) and the positive integers, as text, that bound its tool calls (``maxToolCalls``)
+# and its model rounds (``maxIterations``). Popped by DocketDriver into ``LoopConfig.tool_allow``,
+# ``LoopConfig.max_tool_calls`` and ``LoopConfig.max_iterations``.
 DOCKET_HOP_TOOLS = "DOCKET_HOP_TOOLS"
 DOCKET_HOP_MAX_TOOL_CALLS = "DOCKET_HOP_MAX_TOOL_CALLS"
+DOCKET_HOP_MAX_ITERATIONS = "DOCKET_HOP_MAX_ITERATIONS"
+# Which owner the hop's wall-clock figure came from (``step``, ``pod`` or ``default``), set on
+# every pipeline hop; popped into ``LoopConfig.wall_clock_source``.
+DOCKET_HOP_TIMEOUT_SOURCE = "DOCKET_HOP_TIMEOUT_SOURCE"
 # The id of the pipeline step the hop runs; popped by DocketDriver into ``ToolContext.step_id``,
 # where a service tool reads it for its idempotency key.
 DOCKET_HOP_STEP = "DOCKET_HOP_STEP"

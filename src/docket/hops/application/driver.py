@@ -68,6 +68,7 @@ from docket.hops.application.driver_support import (
     _turn_result_from,
     _turn_token_budget,
     _validated_pipeline_worktree,
+    refresh_claim_each_round,
 )
 from docket.hops.application.handoff_tool import parse_values, register_closing_tool
 from docket.kernel.handoff import HANDOFF_TOOL
@@ -301,6 +302,7 @@ class DocketDriver:
         _load_records_tools(registry, ctx.project)
         if verify_plan is not None:
             registry.register(_verify.verify_tool(verify_plan, ctx.project))
+        backend = refresh_claim_each_round(backend, resolved_project, trace_task_id or "")
         loop_config = _loop_config(
             backend, timeout, token_budget, profile, HANDOFF_TOOL if verdict_gate else "", ctx
         )

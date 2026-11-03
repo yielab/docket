@@ -85,9 +85,10 @@ class RoleArchetype:
     floor: tuple[str, ...] = ()
     # An allow-list of tool names this role is offered, and a bound on its tool calls per hop
     # (role-archetypes.spec.md, "Tools and calls per hop"); `None` declares nothing. A step's own
-    # `tools`/`maxToolCalls` override them for one hop.
+    # `tools`/`maxToolCalls`/`maxIterations` override them for one hop.
     tools: tuple[str, ...] | None = None
     max_tool_calls: int | None = None
+    max_iterations: int | None = None
 
     def __post_init__(self) -> None:
         if not self.name or not _NAME_RE.match(self.name):
@@ -126,6 +127,14 @@ class RoleArchetype:
             raise ArchetypeError(
                 f"archetype {self.name!r}: maxToolCalls must be a positive integer"
             )
+        if self.max_iterations is not None and (
+            not isinstance(self.max_iterations, int)
+            or isinstance(self.max_iterations, bool)
+            or self.max_iterations <= 0
+        ):
+            raise ArchetypeError(
+                f"archetype {self.name!r}: maxIterations must be a positive integer"
+            )
         for ref in self.floor:
             if not _FLOOR_RE.match(ref):
                 raise ArchetypeError(
@@ -158,6 +167,8 @@ class RoleArchetype:
             doc["tools"] = list(self.tools)
         if self.max_tool_calls is not None:
             doc["maxToolCalls"] = self.max_tool_calls
+        if self.max_iterations is not None:
+            doc["maxIterations"] = self.max_iterations
         return doc
 
 
@@ -220,6 +231,7 @@ def from_wire(name: str, doc: dict[str, Any]) -> RoleArchetype:
         floor=tuple(str(ref) for ref in doc.get("floor", [])),
         tools=None if tools_doc is None else tuple(str(t) for t in tools_doc),
         max_tool_calls=doc.get("maxToolCalls"),
+        max_iterations=doc.get("maxIterations"),
     )
 
 

@@ -320,10 +320,37 @@ member it gates.
 | Prepare | `prepare` in the Lead's meta, or top-level `prepare:` in `pod.yaml` | `docket pod set prepare "npm ci"` (`none` = off) | Runs once in each new task worktree before the first hop; unset, the lockfile at the worktree root picks the command (`npm ci`, `uv sync --frozen`, ...). A task's own `prepare` wins. `node_modules` is cached per codebase and lockfile. A failure fails the task (`prepare`) with no hop. A `respond`, `operate` or `routine` pod has no task worktree: it derives no command, refuses one in `pod.yaml` or `pod set`, and fails a task that asks for one. |
 | Budget cap (USD, estimated) | `budgetUsd` in the Lead's meta | `docket pod set budgetUsd 5` (`0` = none) | Checked before each hop. Over the cap, the task is blocked and the Lead paused until `docket run --resume`. The figure is an estimate, not your bill. |
 | Rework cycles | `maxReworkCycles` in the Lead's meta | `docket pod set maxReworkCycles 2` | How many times a Reviewer `REQUEST-CHANGES` sends work back (default `1`, `0` = none). Refused (exit 2) while a pipeline is bound, and in a `pod.yaml` that binds one: the pipeline carries its own bound, `on: {REQUEST-CHANGES: {goto: build, max: 2}}`. `docket pod show` then reports it with source `pipeline`. |
-| Hop timeout | `turnTimeoutS` in the Lead's meta | `docket pod set turnTimeoutS 900` | Per-hop wall clock (default 300 s). `--timeout` on `docket run` overrides it for one run. Under `docket start`, `DISPATCH_TURN_TIMEOUT_S` overrides it. |
-| Verify timeout | `verifyTimeoutS` in the Lead's meta | `docket pod set verifyTimeoutS 300` | Same precedence, `DISPATCH_VERIFY_TIMEOUT_S` under `docket start`. |
+| Hop timeout | `turnTimeoutS` in the Lead's meta | `docket pod set turnTimeoutS 900` | The pod-wide wall clock of one hop (default: `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, 300 s). A step's `timeout` wins over it; `--timeout` on `docket run` takes its place for one run. `docket start` has no override of its own. |
+| Verify timeout | `verifyTimeoutS` in the Lead's meta | `docket pod set verifyTimeoutS 300` | The clock of `verify:` gates and the `verifyCmd`, with the same fallback. |
 | Retries | environment only | `DISPATCH_RETRIES_DEFAULT`, `DISPATCH_RETRIES_<ROLE>`, `DISPATCH_RETRY_BACKOFF_S` | Timeouts and transport errors only. A failed verify or a bad verdict is never retried. |
 | Pod roster | members' workspaces | `docket pod add <role> [--count N]` / `docket pod remove <id>` | Dispatch only runs the roles the pod has. |
+
+#### Budgets
+
+A hop's size is declared where the work is declared, and the machine only fills a gap. Each
+resolved limit says where it came from (`source`: `step`, `role`, `pod` or `default`), and a stop
+names the key that raises it.
+
+| Bound | Step (pipeline YAML) | Role archetype | Pod | Machine default |
+|---|---|---|---|---|
+| Rounds per hop | `maxIterations` | `maxIterations` | none | `AGENT_LOOP_MAX_ITERATIONS`, 60 |
+| Tool calls per hop | `maxToolCalls` | `maxToolCalls` | none | `AGENT_LOOP_MAX_TOOL_CALLS`, 40 |
+| Seconds per hop | `timeout` | none | `turnTimeoutS` | `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, 300 |
+| Tokens | none: the task's `maxTokens` | none | `budgetUsd` (estimated) | `AGENT_LOOP_TOKEN_BUDGET` |
+
+The chain is step, then role, then pod (time only), then machine. A long step says so itself:
+
+```yaml
+# .docket/teams/<pod>/pod.yaml
+settings: {turnTimeoutS: 600}
+# .docket/teams/<pod>/pipelines/<pipeline>.yaml
+steps:
+  - build: implementer
+    maxIterations: 80
+    timeout: 1200
+  - review: reviewer
+    maxIterations: 20
+```
 
 `docket pod set <key> <value>` validates before writing and is audited as
 `pod.config`; `docket pod unset <key>` restores the default. A hand-edited value that fails validation is

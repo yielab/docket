@@ -415,6 +415,7 @@ def normalize_role(short: dict[str, Any], base_dir: Path) -> dict[str, Any]:
         "floor",
         "tools",
         "maxToolCalls",
+        "maxIterations",
     ):
         if key in doc:
             canonical[key] = doc.pop(key)
@@ -465,6 +466,8 @@ def to_short_role(arch: RoleArchetype) -> tuple[dict[str, Any], str]:
         doc["tools"] = list(arch.tools)
     if arch.max_tool_calls is not None:
         doc["maxToolCalls"] = arch.max_tool_calls
+    if arch.max_iterations is not None:
+        doc["maxIterations"] = arch.max_iterations
 
     soul = arch.soul_template.rstrip("\n") + "\n"
     if arch.agents_template == _STARTER_AGENTS_TEMPLATE:

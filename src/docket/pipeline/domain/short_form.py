@@ -28,6 +28,7 @@ _STEP_SUGAR_KEYS = frozenset(
         "when",
         "tools",
         "maxToolCalls",
+        "maxIterations",
     }
 )
 _NO_ON = object()
@@ -255,6 +256,7 @@ def _normalize_short_step(
         "when",
         "tools",
         "maxToolCalls",
+        "maxIterations",
     ):
         if key in entry:
             step[key] = entry[key]

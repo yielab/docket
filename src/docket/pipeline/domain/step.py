@@ -138,6 +138,8 @@ class Step(BaseModel):
     # (pipeline-format.spec.md "Steps" Req. 11); each overrides the archetype's own for this hop.
     tools: list[str] | None = None
     max_tool_calls: int | None = Field(None, alias="maxToolCalls", gt=0)
+    # Bounds the model rounds of one attempt at this step (pipeline-format.spec.md "Steps" Req. 11).
+    max_iterations: int | None = Field(None, alias="maxIterations", gt=0)
     # Skips this step on a closed predicate vocabulary (see `When`) -- applies to any
     # step kind, including a `run` command step. `None` means "always run".
     when: When | None = None
@@ -163,10 +165,10 @@ class Step(BaseModel):
 
     def _check_hop_limits(self) -> None:
         """``tools`` names at least one tool, and only a step that runs an agent turn (a unit
-        step or a child of a group) carries ``tools`` or ``maxToolCalls``."""
+        step or a child of a group) carries ``tools``, ``maxToolCalls`` or ``maxIterations``."""
         if self.tools is not None and not [t for t in self.tools if t.strip()]:
             raise InvalidInput(f"step {self.id!r}: 'tools' must name at least one tool")
-        if self.tools is None and self.max_tool_calls is None:
+        if self.tools is None and self.max_tool_calls is None and self.max_iterations is None:
             return
         for kind, present in (
             ("parallel' group", self.parallel is not None),
@@ -175,7 +177,9 @@ class Step(BaseModel):
             ("wait' step", self.wait is not None),
         ):
             if present:
-                raise InvalidInput(f"step {self.id!r}: a '{kind} carries no 'tools'/'maxToolCalls'")
+                raise InvalidInput(
+                    f"step {self.id!r}: a '{kind} carries no 'tools'/'maxToolCalls'/'maxIterations'"
+                )
 
     def _check_wait(self) -> Step:
         """A wait step: a duration, an optional probe, ``when`` and a ``timeout`` route only."""

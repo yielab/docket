@@ -1,9 +1,9 @@
 # Role Archetypes Specification
 
-**Version**: 5.6.0
+**Version**: 5.7.0
 **Status**: Implemented. Three built-in and six starter archetypes ship; a pod overlay
 adds or overrides roles; `deniedTools` is enforced by name and by capability on every turn.
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -67,8 +67,8 @@ This specification does NOT cover:
    "Hop instructions") **MAY** be present; empty or absent is valid for all three. `tokenBudget`
    **MAY** be absent from a wire document and defaults to `6000`, never a parse error.
    `deniedTools` absent or empty defaults to `()`: no narrower than the registry the caller hands
-   in. `tools` (a non-empty list of tool names) and `maxToolCalls` (a positive integer) **MAY** be present and
-   default to unset; see "Tools and calls per hop". `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
+   in. `tools` (a non-empty list of tool names), `maxToolCalls` and `maxIterations` (each a positive
+   integer) **MAY** be present and default to unset; see "Tools and calls per hop". `floor` (a list of prompt references `<layer>/<name>`; see `model-profiles.spec.md`, "Prompt
    variants and the floor") **MAY** be present and defaults to `()`; an entry that is not a
    `<layer>/<name>` with `layer` one of `identity`, `task`, `hop` is refused naming the field. `hopInstruction` absent or empty means "no declared instruction", not "no instruction at
    all". `from_wire` reads only the fields above; it refuses a `kind:` other than `role` and a
@@ -506,10 +506,11 @@ docket pod validate <file.yaml>
 ### Tools and calls per hop
 
 1. An archetype **MAY** declare `tools` (`RoleArchetype.tools`, `tuple[str, ...] | None`, an
-   allow-list of tool names) and `maxToolCalls` (`RoleArchetype.max_tool_calls`, `int | None`).
-   Both default to `None`, "declares nothing". An empty `tools` list and a `maxToolCalls` that is
-   not a positive integer **MUST** be refused naming the field (`ArchetypeError`). `to_wire`
-   writes each only when set.
+   allow-list of tool names), `maxToolCalls` (`RoleArchetype.max_tool_calls`, `int | None`) and
+   `maxIterations` (`RoleArchetype.max_iterations`, `int | None`, the model rounds per hop). All
+   default to `None`, "declares nothing". An empty `tools` list and a `maxToolCalls` or
+   `maxIterations` that is not a positive integer **MUST** be refused naming the field
+   (`ArchetypeError`). `to_wire` writes each only when set.
 2. `registry_for_role(base, role, project="", *, surface="full", allow=None)` is the one place
    that decides what a hop sees, in this order: (a) the model profile's *surface* (`full` keeps
    every tool; `minimal` keeps `bash`, `read`, `glob`, `edit`, `write`, `verify`, any tool that ends the turn, so
@@ -522,9 +523,12 @@ docket pod validate <file.yaml>
    `deniedTools: [bash]` is offered `read` alone. A name in an allow-list that no registry holds is
    a no-op at run time, as in `deniedTools`; `pod validate` is where it is refused (requirement 4
    of "Template rendering").
-3. A step's `maxToolCalls` wins over the archetype's, which wins over the loop's default
-   (`AGENT_LOOP_MAX_TOOL_CALLS`); `agent-loop.spec.md` ("Tools and calls per hop") says how the
-   cap ends a hop.
+3. A step's `maxToolCalls` and `maxIterations` win over the archetype's, which win over the
+   machine default (`AGENT_LOOP_MAX_TOOL_CALLS`, `AGENT_LOOP_MAX_ITERATIONS`). The one pure
+   resolver is `hops/domain/budget.py::resolve_hop_budget`; it also reports which owner
+   (`step | role | pod | default`) each limit came from, and `pod-dispatch.spec.md` ("Timeouts")
+   adds the time chain. `agent-loop.spec.md` ("Tools and calls per hop") says how the cap ends a
+   hop. The built-in archetypes declare neither key.
 4. The surface is the model profile's (`model-profiles.spec.md`, "Model profiles"); no caller
    **MUST** branch on a role's or a model's name to decide it.
 5. **A `send` tool is opt-in.** An MCP tool of kind `send` (a tool that acts outside the machine,

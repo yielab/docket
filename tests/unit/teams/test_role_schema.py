@@ -343,3 +343,24 @@ class TestToolsAndCalls:
 
         with pytest.raises(ArchetypeError, match="maxToolCalls"):
             RoleArchetype(**{**arch.__dict__, "max_tool_calls": calls})
+
+
+class TestMaxIterations:
+    def test_it_round_trips_the_wire_and_the_short_form(self, tmp_path: Path) -> None:
+        arch = _archetype(GateContract(kind="none"))
+        assert arch.max_iterations is None and "maxIterations" not in arch.to_wire()
+        arch = RoleArchetype(**{**arch.__dict__, "max_iterations": 80})
+
+        assert from_wire("custom-role", arch.to_wire()).max_iterations == 80
+        (tmp_path / "r.md").write_text("You are a role.\n")
+        short = {"name": "r", "model": "cheap", "instructions": "r.md", "maxIterations": 30}
+        canonical = normalize_role(short, tmp_path)
+        assert canonical["maxIterations"] == 30
+        assert to_short_role(from_wire("r", canonical))[0]["maxIterations"] == 30
+
+    @pytest.mark.parametrize("rounds", [0, -1, True, "x"])
+    def test_a_value_that_is_not_a_positive_integer_is_refused(self, rounds: object) -> None:
+        arch = _archetype(GateContract(kind="none"))
+
+        with pytest.raises(ArchetypeError, match="maxIterations"):
+            RoleArchetype(**{**arch.__dict__, "max_iterations": rounds})

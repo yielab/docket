@@ -8,6 +8,7 @@ from docket.agent import ports as _rd
 from docket.agent import session as _session
 from docket.hops.application import driver as _dr
 from docket.hops.application.compose import _compose_hop
+from docket.hops.domain.budget import resolve_seconds
 from docket.hops.domain.continuation import continuation_message
 from docket.hops.gates.post_hop import _apply_output_guardrails, _evaluate_hop_gates
 from docket.hops.gates.pre_hop import (
@@ -146,7 +147,11 @@ def _run_hop_turn(
     and passed to the production driver only, for this hop alone -- see "Per-hop execution".
     A re-run over persisted rounds sends a continuation, not *message* (requirement 6 there)."""
     retry_budget = node.retries if node.retries is not None else retries_for_role(role)
-    hop_timeout = node.timeout if node.timeout is not None else ctx.resolved_turn_timeout
+    budget_time = resolve_seconds(
+        step=node.timeout, pod=ctx.declared_turn_timeout, default=ctx.resolved_turn_timeout
+    )
+    hop_timeout = budget_time.value
+    env = {**(env or {}), _rd.DOCKET_HOP_TIMEOUT_SOURCE: budget_time.source}
     resolved_model: str | None = None
     if node.model:
         try:

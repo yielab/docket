@@ -266,6 +266,10 @@ class UnitContext:
     # every existing direct `UnitContext(...)` construction (tests included)
     # is unaffected.
     step_instructions: dict[str, str] = field(default_factory=dict)
+    # The turn timeout a caller or the pod declared (``docket run --timeout``, ``turnTimeoutS``),
+    # or ``None`` when only the machine default fills ``resolved_turn_timeout``: the "pod" owner
+    # of a hop's time (``hops/domain/budget.py``). Defaulted like the fields below.
+    declared_turn_timeout: int | None = None
     # This run's resolved pipeline variables, stringified -- the `var`/`is` half of a
     # step's `when` predicate compares against these. Defaulted for the same reason
     # as `step_instructions` above.

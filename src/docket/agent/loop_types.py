@@ -30,6 +30,27 @@ StopReason = Literal[
 ]
 
 
+# The key that raises each bound, by the owner that supplied it (a ``default`` is the machine's).
+_RAISE_KEY: dict[str, dict[str, str]] = {
+    "max_iterations": {"": "maxIterations", "default": "AGENT_LOOP_MAX_ITERATIONS"},
+    "max_tool_calls": {"": "maxToolCalls", "default": "AGENT_LOOP_MAX_TOOL_CALLS"},
+    "wall_clock": {
+        "step": "timeout",
+        "pod": "turnTimeoutS",
+        "default": "AGENT_LOOP_WALL_CLOCK_TIMEOUT_S",
+    },
+}
+
+
+def limit_origin(bound: str, source: str) -> str:
+    """The tail of a stop message that says who set the bound and what raises it, or ``""`` when
+    the caller named no source (a config built outside the hop path)."""
+    if not source:
+        return ""
+    keys = _RAISE_KEY[bound]
+    return f" (source: {source}; raise {keys.get(source) or keys.get('') or keys['default']})"
+
+
 @dataclass(frozen=True)
 class LoopConfig:
     """Bounds for one ``run_agent_turn`` call. See the module docstring for
@@ -73,6 +94,11 @@ class LoopConfig:
     tool_surface: Literal["full", "minimal"] = "full"
     tool_allow: tuple[str, ...] | None = None
     profile: str = ""
+    # Who declared each bound (``step``, ``role``, ``pod`` or ``default``), set by the driver from
+    # the hop's budget; empty when the caller built the config itself. A stop names it.
+    max_iterations_source: str = ""
+    max_tool_calls_source: str = ""
+    wall_clock_source: str = ""
     history_budget_tokens: int | None = None
     summary_input_budget_tokens: int | None = None
     context_window_tokens: int | None = None

@@ -502,24 +502,18 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
         "`60`",
     ),
     (
-        ("DISPATCH_TURN_TIMEOUT_S",),
-        "`docket start`-only ceiling on a dispatch hop's turn timeout, overriding a pod's own Lead-meta value for serve-triggered dispatches",
-        "unset (no serve-wide override)",
-    ),
-    (
         ("DISPATCH_SWEEP_WORKERS",),
         "`docket start --dispatch`: how many pods one sweep tick runs at once (`1` is serial)",
         "`4`",
     ),
     (
-        ("DISPATCH_VERIFY_TIMEOUT_S",),
-        "Same as `DISPATCH_TURN_TIMEOUT_S`, for the verify step",
-        "unset (no serve-wide override)",
+        ("AGENT_LOOP_MAX_ITERATIONS",),
+        "Machine default cap on model round-trips within one hop, used when neither the step nor the role declares `maxIterations`",
+        "`60`",
     ),
-    (("AGENT_LOOP_MAX_ITERATIONS",), "Hard cap on model round-trips within one turn", "`20`"),
     (
         ("AGENT_LOOP_MAX_TOOL_CALLS",),
-        "Hard cap on total tool calls dispatched across one turn",
+        "Machine default cap on tool calls within one hop, used when neither the step nor the role declares `maxToolCalls`",
         "`40`",
     ),
     (
@@ -544,7 +538,7 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("AGENT_LOOP_WALL_CLOCK_TIMEOUT_S",),
-        "Default overall wall-clock budget for one turn with no explicit `LoopConfig`",
+        "Machine default wall-clock budget for one hop, used when neither the step's `timeout` nor the pod's `turnTimeoutS` is set",
         "`300`",
     ),
     (

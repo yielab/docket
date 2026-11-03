@@ -162,14 +162,34 @@ class TestStepToolsAndCalls:
         with pytest.raises(ValidationError):
             Step(id="s1", role="reviewer", max_tool_calls=calls)
 
-    @pytest.mark.parametrize("field", [{"tools": ["read"]}, {"max_tool_calls": 3}])
+    def test_max_iterations_defaults_to_none_and_a_positive_value_is_kept(self) -> None:
+        assert Step(id="s1", role="implementer").max_iterations is None
+        assert Step(id="s1", role="implementer", maxIterations=5).max_iterations == 5
+
+    def test_short_form_carries_max_iterations_through(self) -> None:
+        doc = {"name": "p", "steps": [{"build": "implementer", "maxIterations": 80}]}
+        spec = PipelineSpec.model_validate(normalize_pipeline(doc, ROLE_NAMES))
+        assert spec.steps[0].max_iterations == 80
+
+    @pytest.mark.parametrize("rounds", [0, -1, "x"])
+    def test_a_max_iterations_that_is_not_a_positive_integer_is_refused(
+        self, rounds: object
+    ) -> None:
+        with pytest.raises(ValidationError, match="maxIterations"):
+            Step(id="s1", role="implementer", maxIterations=rounds)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        "field", [{"tools": ["read"]}, {"max_tool_calls": 3}, {"maxIterations": 3}]
+    )
     def test_a_command_step_and_an_input_step_carry_neither(self, field: dict[str, object]) -> None:
         with pytest.raises(ValidationError):
             Step(id="check", run="true", **field)  # type: ignore[arg-type]
         with pytest.raises(ValidationError):
             Step(id="ask", input={"from": "operator", "message": "q"}, **field)  # type: ignore[arg-type]
 
-    @pytest.mark.parametrize("field", [{"tools": ["read"]}, {"max_tool_calls": 3}])
+    @pytest.mark.parametrize(
+        "field", [{"tools": ["read"]}, {"max_tool_calls": 3}, {"maxIterations": 3}]
+    )
     def test_a_group_carries_neither_but_its_children_may(self, field: dict[str, object]) -> None:
         child = Step(id="a", role="implementer", **field)  # type: ignore[arg-type]
         assert Step(id="fanout", parallel=[child]).parallel == [child]
