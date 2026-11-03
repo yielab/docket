@@ -255,7 +255,7 @@ Record rounds per hop before and after P59-5, on the same task.
 
 ### P59-3 — One landing for every budget bound, and a notice before it
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-2
+**Status:** IN-PROGRESS (@sonnet-p59-3) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P59-2
 
 - **Trigger:**
   - In the incident the model never learned its budget. It explored for 13 rounds and spent the
