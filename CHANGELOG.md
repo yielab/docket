@@ -14,21 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     that names why it stopped, its report and the paths it changed. Before, the retry skipped that
     step, the next hop committed the unfinished tree and the task settled `done`. `features` gains
     `retryContinues`.
-  - Running out of rounds, tool calls, tokens or wall clock is one outcome: the turn fails with
+  - Running out of tokens, wall clock, rounds or tool calls is one outcome: the turn fails with
     `budget_exhausted`, the task with `failureKind: budget`, and the hop carries
-    `budget: {bound, limit, used, source, treeChanged}`. It is never retried in place. An
-    Implementer hop that ran out is pinned like a finished one, so the task's patch shows its work.
-    `features` gains `budgetOutcome`.
+    `budget: {bound, limit, used, source, raise, treeChanged}`. `raise` is the one key or machine
+    variable that lifts the bound that stopped it, so a client never parses the message. It is never
+    retried in place. An Implementer hop that ran out is pinned like a finished one, so the task's
+    patch shows its work. `features` gains `budgetOutcome`.
   - One tool-free landing request for every bound asks what is done, what is left and whether the
     checks ran; its answer is the hop's report and never a success, so a Reviewer that runs out
     cannot approve. One notice reaches the model when a quarter of any bound is left.
-  - A step declares `maxIterations`, `maxToolCalls` and `timeout`; a role may declare
-    `maxIterations` and `maxToolCalls`; the pod's `turnTimeoutS` is the time default. Every stop
-    names its limit, where it came from (`step`, `role`, `pod` or `default`) and the key that raises
-    it. The rounds default is 60, up from 20.
+  - A run has a budget, a clock and guards. The budget is tokens: a task's `maxTokens` and a pod's
+    `budgetTokens` (a stop names `task` or `pod_budget`). The clock is seconds: a step's `timeout`,
+    then the pod's `turnTimeoutS`, then the machine default. The guards are 200 rounds and 400 tool
+    calls, set only by `AGENT_LOOP_MAX_ITERATIONS` and `AGENT_LOOP_MAX_TOOL_CALLS`. Every stop names
+    its limit, its source (`task`, `step`, `pod` or `default`) and what raises it.
+    `docket pod plan` prints each agent step's clock, the guards and the pod's cap with their
+    sources, and `docket pod plan --json` is new.
   - A claim is refreshed every model round, so a long declared budget is not swept as a stale claim.
   - `edit` answers with the workspace-relative path, and the Implementer prompt (1.1.0) asks for
     whole-file reads and batched calls.
+- **docket keeps no dollars.** Tokens are measured and dollars were a catalog rate times tokens, stale
+  by the snapshot date and absent for an unlisted model. `docket status`, `docket run`, `task list`,
+  `task show`, `GET /status.json`, the MCP `cost` tool (now `usage`), the trace and `/metrics` report
+  tokens only. Additive on API 6 except the removals under Removed.
 
 - **What a plan of record needs to follow a team it does not run (D-80, Phase 58).** Additive on API 6,
   each probed through `features`:
@@ -109,6 +117,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`DISPATCH_TURN_TIMEOUT_S`, `DISPATCH_VERIFY_TIMEOUT_S` and the 300 s `DEFAULT_TIMEOUT` constant.**
   A machine value beat the pod's own `turnTimeoutS`. With nothing declared a hop's time is now
   `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`.
+- **`maxIterations` and `maxToolCalls` on a step and a role, and `budgetUsd` on a pod.** Rounds and
+  tool calls are machine guards, not declared limits; a pod's cap is `budgetTokens`. A document,
+  command or request that still carries a removed key is refused naming it.
+- **Every dollar figure:** the provider catalog's prices, `costUsd` on tasks, hops, `status` and
+  `/status.json`, the `cost_charged` trace event, the `docket_agent_cost_usd` and
+  `docket_cost_usd_total` gauges, the `PRICE` and `COST` columns, and the "unpriced model" warning.
 
 - **The adoption benchmark and its report.** `benchmarks/`, `docs/ADOPTION-EVIDENCE.md`, its spec
   and its four tests are deleted: a driver wrote the records it counted, no policy hook or agent
