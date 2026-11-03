@@ -127,8 +127,10 @@ models are all handled by one structure?
      above every measured hop (short hops at most 14 rounds; the long one 42 rounds and about 38
      calls), so tokens and time stop a costly hop first. A guard stop is still `budget_exhausted`
      with a landing and a report, and its `source` is always `default`.
-   - **Every resolved limit says where it came from**: `source: task | step | pod | default`. It
-     appears on the hop's `budget`, the stop message names the key that raises it, and
+   - **Every resolved limit says where it came from and what raises it**: `source: task | step |
+     pod | default` and `raise`, the one key or machine variable that raises it. Both are typed
+     fields of the hop's `budget` (`{bound, limit, used, source, raise, treeChanged}`), so a plan of
+     record never parses the stop message, which is built from the same values; and
      `docket pod plan` prints each step's resolved clock and the token budget with their sources.
    - **No other levels.** No per-task budget object, no per-step map of budgets, no
      pipeline-wide defaults block, no machine ceiling over what a repository declares.
