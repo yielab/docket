@@ -410,9 +410,13 @@ def build_hop_result(
     )
 
 
+_PINNED_FAILURE_KINDS = frozenset({"budget_exhausted", "timeout", "daemon_error"})
+
+
 def _keeps_its_work(role: str, run_res: _rd.TurnResult) -> bool:
-    """True for an Implementer hop that ran out of budget: its tree is pinned though it failed."""
-    return role == "implementer" and run_res.failure_kind == "budget_exhausted"
+    """True for an Implementer hop that ran out of budget or lost its transport: its tree is pinned
+    though it failed."""
+    return role == "implementer" and run_res.failure_kind in _PINNED_FAILURE_KINDS
 
 
 def _budget_outcome(run_res: _rd.TurnResult, *, tree_changed: bool) -> BudgetOutcome | None:

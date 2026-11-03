@@ -1716,8 +1716,8 @@ parsing for any verdict-gated step (`parse_verdict`).
 
 ### Implementer diff producer
 
-1. After a **successful** hop, and after an Implementer hop that ended `budget_exhausted` (requirement
-   10), dispatch **MUST** attempt to populate that hop's artifact
+1. After a **successful** hop, and after an Implementer hop that ended `budget_exhausted`, `timeout`
+   or `daemon_error` (requirement 10), dispatch **MUST** attempt to populate that hop's artifact
    `files_changed`/`diff_ref`/`diff` before the artifact is constructed. `diff_ref` and the
    `evidence` of "Hop evidence" are Implementer-only (`None` for every other role); `files_changed`
    and `diff` are filled for any role whose hop left the working tree changed (requirements 6-8).
@@ -1759,10 +1759,12 @@ parsing for any verdict-gated step (`parse_verdict`).
    team) leaves its work on the branch. Its `diff_ref` and `evidence` stay `None`; in place, nothing
    is committed for it.
 
-10. An Implementer hop that ended `budget_exhausted` is probed and pinned exactly as a successful one
-    is (requirements 2-6 and the pin of "Hop evidence"): a dirty tree is committed on the task
-    branch, and the artifact carries `files_changed`, `diff_ref`, `diff` and the `evidence`. The hop
-    stays `ok: false`, so no gate reads it as finished, and its record carries `budget`:
+10. An Implementer hop that ended `budget_exhausted`, `timeout` or `daemon_error` (the last attempt,
+    when retries ran out) is probed and pinned exactly as a successful one is (requirements 2-6 and
+    the pin of "Hop evidence"): a dirty tree is committed on the task branch, and the artifact
+    carries `files_changed`, `diff_ref`, `diff` and the `evidence`. The hop stays `ok: false`, so no
+    gate reads it as finished. A `timeout` or `daemon_error` stop is a transport stop and its record
+    carries no `budget` (`null`); a `budget_exhausted` stop carries `budget`:
     `{bound, limit, used, source, raise, treeChanged}` (operator-api.spec.md "Task answers"). `source`
     is the owner of the limit that stopped it (`step`, `pod`, `default`; for tokens `task` under a
     task `maxTokens` and `pod_budget` under a pod `budgetTokens`), as agent-loop.spec.md
@@ -1770,7 +1772,8 @@ parsing for any verdict-gated step (`parse_verdict`).
     or machine variable that raises that limit, built from the same value as the tail of the stop
     message (agent-loop.spec.md requirement 105). `treeChanged` is `true`
     when the pin found a dirty tree and so made a new commit. No other failed hop is probed or
-    pinned, a non-Implementer hop that ran out of budget included.
+    pinned: a non-Implementer hop that ended in any of these included, and so is an Implementer hop
+    that ended `invalid_output`, `no_progress`, `nonzero_exit`, cancelled or parked on an approval.
     A hop that ran out of budget carries the report it was asked for (agent-loop.spec.md requirement
     53) as its `output` and its artifact `summary`, whatever its role. No verdict is parsed from that
     text and no gate runs on the hop, so a verdict-gated Reviewer that ran out cannot approve.
