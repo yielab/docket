@@ -232,6 +232,10 @@ from `main`.
   password is tried and AES needs `cryptography`); `pypdf` decodes about 30 MB/s, so a real stream bomb ends by the
   1 GiB memory limit or the deadline after ~30 s of CPU. The jail runs a copy of `pdf_extract.py` beside `in.pdf`
   because `-m docket...` fails when docket is editable. Trigger: a PDF a user needs that these refuse.
+- *The PDF reader on Seatbelt and Docker was never run.* `sandbox/pdf_extract.py` treats `RLIMIT_AS` as best effort
+  (macOS does not enforce it) and `RLIMIT_CPU` as mandatory, proven only with a fake `resource` module. Trigger:
+  the next macOS CI probe branch, or a user on a Mac: run `hola.pdf` and the bomb fixture through
+  `tests/integration/hops/test_pdf_text__jail.py` there.
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
