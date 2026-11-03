@@ -8,13 +8,25 @@ The full turn is still `tests/integration/test_agent_loop.py`'s job.
 from __future__ import annotations
 
 import dataclasses
+import json
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.support import llm as _support_llm
+from tests.support.loop_harness import ScriptedBackend, _final, _tool_call_response
 
 from docket.agent import loop as _loop
-from docket.agent.ports import ChatResponse
+from docket.agent.ports import (
+    BudgetStop,
+    ChatMessage,
+    ChatResponse,
+    TokenUsage,
+    ToolCall,
+    assistant,
+)
+from docket.agent.session import load_session
 from docket.agent.tools.builtins.toolbox import ToolOutcome
 from docket.agent.tools.registry import Tool as _Tool
 from docket.agent.tools.registry import ToolContext, ToolRegistry, ToolResult
@@ -219,3 +231,162 @@ def test_the_loop_bounds_default_to_the_current_home(tmp_path: Path) -> None:
         config.request_timeout_s,
     ) == (7, 8, 9, 10, 11.5, 12, 13)
     assert _loop.LoopConfig().max_iterations == current_home().agent_loop_max_iterations
+
+
+# ── the landing and the notice ───────────────────────────────────────────────
+
+_NOTICE = "[docket] This step's budget is running out:"
+
+
+class _TimedBackend(ScriptedBackend):
+    """A scripted backend that advances a fake clock per call and records each request timeout."""
+
+    def __init__(self, responses: list[ChatResponse], clock: list[float], step: float) -> None:
+        super().__init__(responses)
+        self.clock, self.step = clock, step
+        self.timeouts: list[int] = []
+
+    def complete(self, messages: Sequence[ChatMessage], **kwargs: Any) -> ChatResponse:
+        self.timeouts.append(kwargs["timeout"])
+        self.clock[0] += self.step
+        return super().complete(messages, **kwargs)
+
+
+def _echo_rounds(count: int) -> list[ChatResponse]:
+    return [
+        _tool_call_response(f"c{n}", "echo", json.dumps({"text": f"round {n}"}))
+        for n in range(count)
+    ]
+
+
+def _stored(session_key: str) -> list[ChatMessage]:
+    return load_session(session_key).messages
+
+
+class TestTheLanding:
+    """A bound that would stop the turn makes one tool-free report request instead."""
+
+    def test_the_round_bound_lands_with_a_report_that_is_never_a_success(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """Three rounds, then one tool-free request that names the rounds; its text is the output."""
+        backend = ScriptedBackend([*_echo_rounds(3), _final("done: A; left: B; checks not run")])
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:land-rounds:default", "go",
+            config=_loop.LoopConfig(max_iterations=3, max_tool_calls=100),
+        )  # fmt: skip
+        assert len(backend.calls) == 4
+        assert backend.tool_specs[3] == []
+        assert backend.calls[3][-1].role == "user" and "rounds" in backend.calls[3][-1].content
+        assert (result.ok, result.stop_reason, result.failure_kind) == (
+            False,
+            "max_iterations",
+            "budget_exhausted",
+        )
+        assert result.output == "done: A; left: B; checks not run"
+        assert result.budget_stop == BudgetStop("rounds", 3, 3, "default")
+        stored = _stored("agent:land-rounds:default")
+        assert stored[-1].role == "assistant" and stored[-1].content == result.output
+        assert not any("rounds" in m.content and m.role == "user" for m in stored[1:])
+
+    def test_a_refused_batch_lands_without_persisting_the_batch(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """A batch over the call cap is refused whole; the next request is the tool-free landing."""
+        over = ChatResponse(
+            ok=True,
+            message=assistant(
+                "",
+                tool_calls=[ToolCall(id=f"b{n}", name="echo", arguments='{"text":"x"}') for n in range(3)],
+            ),
+            finish_reason="tool_calls",
+            usage=TokenUsage(input_tokens=10, output_tokens=5),
+        )  # fmt: skip
+        backend = ScriptedBackend([_echo_rounds(1)[0], over, _final("kept one call")])
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:land-calls:default", "go",
+            config=_loop.LoopConfig(max_tool_calls=2),
+        )  # fmt: skip
+        assert backend.tool_specs[2] == [] and "tool calls" in backend.calls[2][-1].content
+        assert (result.ok, result.stop_reason, result.output) == (
+            False,
+            "max_tool_calls",
+            "kept one call",
+        )
+        assert result.tool_calls_executed == 1
+        roles = [m.role for m in _stored("agent:land-calls:default")]
+        assert roles == ["user", "assistant", "tool", "assistant"]
+
+    def test_the_spent_clock_lands_with_a_grace_request_of_its_own_timeout(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """When the wall clock has run out, the landing is a tool-free request capped at 60 s."""
+        clock = [0.0]
+        backend = _TimedBackend([*_echo_rounds(2), _final("out of time")], clock, 60.0)
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:land-time:default", "go",
+            config=_loop.LoopConfig(wall_clock_timeout_s=100, request_timeout_s=300),
+            clock=lambda: clock[0],
+        )  # fmt: skip
+        assert backend.tool_specs[2] == [] and "time" in backend.calls[2][-1].content
+        assert backend.timeouts[2] == 60
+        assert (result.ok, result.stop_reason, result.output) == (False, "timeout", "out of time")
+        assert result.budget_stop is not None and result.budget_stop.bound == "time"
+
+    def test_a_landing_that_asks_for_a_tool_is_a_hard_stop(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """Tools in the landing answer are never dispatched or persisted; the bound stays the reason."""
+        backend = ScriptedBackend(_echo_rounds(3))
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:land-tools:default", "go",
+            config=_loop.LoopConfig(max_iterations=2),
+        )  # fmt: skip
+        assert (result.ok, result.stop_reason, result.failure_kind) == (
+            False,
+            "max_iterations",
+            "budget_exhausted",
+        )
+        assert result.tool_calls_executed == 2 and len(backend.calls) == 3
+
+
+class TestTheNotice:
+    """One line reaches the model the first time a bound has a quarter or less left."""
+
+    def test_it_is_in_round_six_of_eight_and_in_no_other(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """The line ends round 6's last tool result; the rest of the history has none."""
+        backend = ScriptedBackend([*_echo_rounds(8), _final("report")])
+        _loop.run_agent_turn(
+            backend, registry, ctx, "agent:notice:default", "go",
+            config=_loop.LoopConfig(max_iterations=8, max_tool_calls=100),
+        )  # fmt: skip
+        tools = [m for m in _stored("agent:notice:default") if m.role == "tool"]
+        marked = [i for i, m in enumerate(tools) if _NOTICE in m.content]
+        assert marked == [5]
+        assert (
+            tools[5].content.endswith("when it ends you will be asked for a report.")
+            and "2 of 8 rounds" in tools[5].content
+        )
+        assert _NOTICE not in "".join(m.content for m in backend.calls[5][:-1] if m.role != "tool")
+
+    def test_it_is_traced_once_as_a_budget_warning_notice(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """The trace holds one budget_warning with action notice and the figures, no content."""
+        backend = ScriptedBackend([*_echo_rounds(8), _final("report")])
+        _loop.run_agent_turn(
+            backend, registry, ctx, "agent:notice-trace:default", "go",
+            config=_loop.LoopConfig(max_iterations=8, max_tool_calls=100),
+            trace_project="notice-audit", trace_session_key="notice-trace",
+        )  # fmt: skip
+        trace = current_home().traces_dir / "notice-audit" / "notice-trace.jsonl"
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        notices = [
+            e["payload"]
+            for e in events
+            if e["event_type"] == "budget_warning" and e["payload"].get("action") == "notice"
+        ]
+        assert len(notices) == 1
+        assert notices[0]["bounds"] == [{"bound": "rounds", "left": 2, "limit": 8}]

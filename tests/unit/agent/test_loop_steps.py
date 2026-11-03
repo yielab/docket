@@ -62,7 +62,7 @@ class TestProgressDetector:
 class TestDispatchToolBatch:
     """A batch is either wholly dispatched and persisted once, or not dispatched at all."""
 
-    def test_a_batch_over_the_tool_call_ceiling_dispatches_nothing(
+    def test_a_batch_over_the_tool_call_ceiling_dispatches_nothing_and_selects_the_landing(
         self, make_turn_state: MakeState, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         appended: list[Any] = []
@@ -72,9 +72,9 @@ class TestDispatchToolBatch:
         )
         calls = [ToolCall(id=f"c{i}", name="echo", arguments="{}") for i in range(2)]
         stop = ToolStep(state).dispatch_tool_batch([], assistant("", calls), TokenUsage())
-        assert stop is not None
-        assert stop.stop_reason == "max_tool_calls"
-        assert "none of this batch was executed" in stop.error
+        assert stop is None
+        assert state.landing == "max_tool_calls"
+        assert "none of this batch was executed" in state.landing_error
         assert state.tool_calls_executed == 1
         assert appended == []
 

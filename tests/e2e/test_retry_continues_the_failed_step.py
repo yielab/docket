@@ -34,7 +34,8 @@ def test_a_retry_continues_the_failed_step_and_the_reviewer_sees_finished_work(
                 write_file("app.txt", "fixed\n"),
                 call("bash", "c1", command="cat app.txt"),
                 call("bash", "c2", command="cat app.txt"),
-                say("Done"),
+                say("Wrote app.txt and read it back; the review is still to do."),
+                say("Finished"),
             ],
             "reviewer": [say("APPROVE")],
         }
@@ -45,14 +46,15 @@ def test_a_retry_continues_the_failed_step_and_the_reviewer_sees_finished_work(
 
     w.docket("run", "--pipeline", str(w.pipeline), "--timeout", "30", check=False)
     assert w.task(task_id)["task"]["status"] == "failed"
-    assert len(model.by_role("implementer")) == 3
+    assert len(model.by_role("implementer")) == 4  # three rounds and the report request
 
     w.docket("task", "retry", task_id, "--pod", w.pod)
     w.docket("run", "--pipeline", str(w.pipeline), "--timeout", "30")
 
-    fourth = model.by_role("implementer")[3]
+    fourth = model.by_role("implementer")[4]
     assert "stopped before it finished" in fourth.last_user_text
     assert "app.txt" in fourth.last_user_text
+    assert "the review is still to do" in fourth.last_user_text
     carrying_the_task = [
         m
         for m in fourth.messages

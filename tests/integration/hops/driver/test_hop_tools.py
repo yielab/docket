@@ -156,7 +156,7 @@ class TestMaxIterations:
 
         assert result.stop_reason == "max_iterations"
         assert "exceeded max_iterations=2 (source: step;" in result.error
-        assert len(server.requests) == 2
+        assert len(server.requests) == 3  # two rounds and the landing
 
     def test_a_role_value_applies_when_the_step_sets_none(
         self, fake_model: Callable[..., FakeModel], workspace: Path
@@ -168,7 +168,7 @@ class TestMaxIterations:
 
         result = self._role_turn(None)
 
-        assert len(server.requests) == 4
+        assert len(server.requests) == 5
         assert "exceeded max_iterations=4 (source: role;" in result.error
 
     def test_the_step_value_wins_over_the_roles(
@@ -181,7 +181,7 @@ class TestMaxIterations:
 
         self._role_turn({DOCKET_HOP_MAX_ITERATIONS: "3"})
 
-        assert len(server.requests) == 3
+        assert len(server.requests) == 4
 
     def test_with_neither_the_stop_names_the_machine_default(
         self, fake_model: Callable[..., FakeModel], workspace: Path
@@ -194,7 +194,7 @@ class TestMaxIterations:
 
         assert "exceeded max_iterations=3 (source: default;" in result.error
         assert "AGENT_LOOP_MAX_ITERATIONS" in result.error
-        assert len(server.requests) == 3
+        assert len(server.requests) == 4
 
     def test_a_value_that_is_not_a_positive_integer_is_ignored(
         self, fake_model: Callable[..., FakeModel], workspace: Path
@@ -228,7 +228,7 @@ class TestMaxToolCalls:
         assert not result.ok
         assert result.stop_reason == "max_tool_calls"
         assert "exceeded max_tool_calls=3 (source: step;" in result.error
-        assert len(server.requests) == 3
+        assert len(server.requests) == 4  # three rounds and the landing
 
     def test_a_role_cap_applies_when_the_step_sets_none(
         self, fake_model: Callable[..., FakeModel], workspace: Path

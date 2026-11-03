@@ -46,6 +46,27 @@ class TurnState:
     last_provider: str = ""
     summary_usage: TokenUsage = field(default_factory=TokenUsage)
     accounted_summary_usage: TokenUsage = field(default_factory=TokenUsage)
+    # The budget bound the turn lands on (stop reason and its message) and whether the one
+    # notice before it has been sent (agent-loop.spec.md requirements 51-54, 108).
+    landing: StopReason | None = None
+    landing_error: str = ""
+    notice_sent: bool = False
+
+    def land(self, stop_reason: StopReason, error: str) -> None:
+        """Select *stop_reason* as the bound the turn lands on; the first bound reached wins."""
+        if self.landing is None:
+            self.landing, self.landing_error = stop_reason, error
+
+    def landed(self, *, output: str = "", error: str = "") -> AgentLoopResult:
+        """The turn's result once its landing is over: the bound's stop, never a success. *output*
+        is the landing's report, kept as the hop's summary."""
+        assert self.landing is not None
+        return self.done(
+            ok=False,
+            stop_reason=self.landing,
+            output=output,
+            error=error or self.landing_error,
+        )
 
     def done(
         self,
