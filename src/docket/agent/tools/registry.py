@@ -91,7 +91,7 @@ class ToolContext:
     approval_timeout: int | None = None
     # The pod's cache dir: a jailed bash gets it as its home and an extra read-write root.
     cache_dir: Path | None = None
-    # The operator's read-only jail grants (the toolchain); only a jailed bash reads them.
+    # The operator's read-only jail grants (the toolchain); the jailed bash and PDF reader read them.
     read_only: tuple[Path, ...] = ()
     on_process: Callable[[str, dict[str, Any]], None] | None = None
     # The turn's tool-output cap and `read` window in characters (agent-loop requirement 102);

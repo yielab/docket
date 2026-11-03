@@ -7,7 +7,7 @@ fetch deadline. On Landlock and Seatbelt the parser is docket's own interpreter 
 `sandbox/pdf_extract.py` (with `pypdf`), which the jail already reads; with Docker it is the
 image's `pdftotext`, the one external extractor. It fails closed (`security-gates.spec.md`,
 `fetch`): without isolation or a usable backend there is a refusal naming the fix, never an
-unjailed run. The process mechanics are `platform/fetch.py`'s `run_jailed`; this module decides
+unjailed run. The process mechanics are `platform/jailed_run.py`'s `run_jailed`; this module decides
 whether to run and what the outcome means.
 """
 
@@ -27,7 +27,7 @@ from docket.kernel.errors import Refused
 from docket.kernel.home import current_home
 from docket.kernel.ports import jail as _jail
 from docket.kernel.tool_outcome import ToolOutcome, bounded_text
-from docket.platform import fetch as _fetch
+from docket.platform import jailed_run as _jailed_run
 
 _INPUT = "in.pdf"
 _SCRIPT = "extract.py"
@@ -46,7 +46,7 @@ _NEEDS_JAIL = (
 )
 _NO_TEXT = "[the PDF holds no text; a scanned page needs OCR, which fetch does not do]"
 
-Runner = Callable[[_fetch.JailedRun], _fetch.Ran]
+Runner = Callable[[_jailed_run.JailedRun], _jailed_run.Ran]
 Workdir = Callable[[bytes, tuple[Path, ...], Path | None], AbstractContextManager[Path]]
 
 
@@ -78,7 +78,7 @@ def _first_line(stderr: bytes) -> str:
     return text.splitlines()[0][:_ERROR_CHARS] if text else ""
 
 
-def _outcome(ran: _fetch.Ran, backend: str) -> ToolOutcome:
+def _outcome(ran: _jailed_run.Ran, backend: str) -> ToolOutcome:
     if ran.timed_out:
         return _refused(
             "timed out reading the PDF's text; the extractor was killed at the deadline"
@@ -111,7 +111,7 @@ def pdf_text(
     cache_dir: Path | None,
     read_only: tuple[Path, ...],
     deadline: float,
-    run: Runner = _fetch.run_jailed,
+    run: Runner = _jailed_run.run_jailed,
     workdir: Workdir = fresh_workdir,
 ) -> ToolOutcome:
     """The text of the PDF *body*, or a refusal (``fetch_not_allowed``) naming its fix. *deadline*
@@ -130,7 +130,7 @@ def pdf_text(
             # Only the docker CLI is found through PATH; the other backends run an absolute path.
             path = os.environ.get("PATH", _SAFE_PATH) if backend == "docker" else _SAFE_PATH
             env = {"PATH": path, **_jail.tmp_environment(root)}
-            job = _fetch.JailedRun(
+            job = _jailed_run.JailedRun(
                 backend=backend,
                 root=root,
                 command=_DOCKER_COMMAND if backend == "docker" else _OWN_COMMAND,

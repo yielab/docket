@@ -16,7 +16,7 @@ from docket.kernel import clock as _clock
 from docket.kernel.home import current_home, use_home
 from docket.kernel.ports import SandboxAvailability
 from docket.kernel.tool_outcome import ToolOutcome
-from docket.platform import fetch as _fetch
+from docket.platform import jailed_run as _jailed_run
 
 SUBJECT = "docket.hops.application.pdf_text"
 
@@ -28,12 +28,12 @@ _OWN = (sys.executable, "-I", "extract.py", "in.pdf")
 class _Runner:
     """A runner that records what it was given and answers with *ran* (or raises *raises*)."""
 
-    def __init__(self, ran: _fetch.Ran | None = None, raises: Exception | None = None) -> None:
-        self.ran = ran or _fetch.Ran(0, b"Hola docket\n", b"")
+    def __init__(self, ran: _jailed_run.Ran | None = None, raises: Exception | None = None) -> None:
+        self.ran = ran or _jailed_run.Ran(0, b"Hola docket\n", b"")
         self.raises = raises
-        self.runs: list[_fetch.JailedRun] = []
+        self.runs: list[_jailed_run.JailedRun] = []
 
-    def __call__(self, run: _fetch.JailedRun) -> _fetch.Ran:
+    def __call__(self, run: _jailed_run.JailedRun) -> _jailed_run.Ran:
         self.runs.append(run)
         if self.raises:
             raise self.raises
@@ -124,7 +124,7 @@ class TestFailsClosed:
         assert (spy.opened, spy.closed) == (1, 1)
 
     def test_a_timeout_is_a_refusal_naming_the_deadline(self, fake_jail: FakeJail) -> None:
-        runner = _Runner(_fetch.Ran(None, b"", b"", timed_out=True))
+        runner = _Runner(_jailed_run.Ran(None, b"", b"", timed_out=True))
         out, spy = _read(_backend(fake_jail, "landlock"), runner)
 
         assert not out.ok
@@ -155,7 +155,7 @@ class TestTheExtractor:
     def test_a_jail_that_cannot_start_the_interpreter_gives_its_reason_and_no_poppler_advice(
         self, fake_jail: FakeJail
     ) -> None:
-        denied = _fetch.Ran(127, b"", b"jail: cannot run /x/python: Permission denied\n")
+        denied = _jailed_run.Ran(127, b"", b"jail: cannot run /x/python: Permission denied\n")
         out, _ = _read(_backend(fake_jail, "landlock"), _Runner(denied))
 
         assert not out.ok
@@ -172,7 +172,7 @@ class TestTheExtractor:
         )  # fmt: skip
 
     def test_docker_without_it_names_the_image(self, fake_jail: FakeJail) -> None:
-        runner = _Runner(_fetch.Ran(127, b"", b"exec: not found\n"))
+        runner = _Runner(_jailed_run.Ran(127, b"", b"exec: not found\n"))
         out, _ = _read(_backend(fake_jail, "docker"), runner)
 
         assert not out.ok
@@ -183,7 +183,7 @@ class TestTheExtractor:
         self, fake_jail: FakeJail
     ) -> None:
         err = b"PdfReadError: " + b"x" * 1000 + b"\nsecond line\n"
-        out, _ = _read(_backend(fake_jail, "landlock"), _Runner(_fetch.Ran(1, b"", err)))
+        out, _ = _read(_backend(fake_jail, "landlock"), _Runner(_jailed_run.Ran(1, b"", err)))
 
         assert not out.ok
         assert out.error.startswith("the PDF reader exited 1: PdfReadError: ")
@@ -225,7 +225,7 @@ class TestTheText:
         assert out.content == "Hola docket\n"
 
     def test_output_over_the_cap_announces_its_truncation(self, fake_jail: FakeJail) -> None:
-        runner = _Runner(_fetch.Ran(0, ("palabra " * 100).encode(), b""))
+        runner = _Runner(_jailed_run.Ran(0, ("palabra " * 100).encode(), b""))
         with use_home(dataclasses.replace(current_home(), tool_max_output_chars=100)):
             out, _ = _read(_backend(fake_jail, "landlock"), runner)
 
@@ -233,7 +233,7 @@ class TestTheText:
         assert "[truncated:" in out.content
 
     def test_an_extractor_cut_short_by_the_byte_bound_says_so(self, fake_jail: FakeJail) -> None:
-        runner = _Runner(_fetch.Ran(0, b"cut here", b"", cut=True))
+        runner = _Runner(_jailed_run.Ran(0, b"cut here", b"", cut=True))
         out, _ = _read(_backend(fake_jail, "landlock"), runner)
 
         assert out.ok
@@ -241,7 +241,7 @@ class TestTheText:
         assert "[truncated: the extractor's output exceeded" in out.content
 
     def test_a_pdf_with_no_text_layer_says_so(self, fake_jail: FakeJail) -> None:
-        out, _ = _read(_backend(fake_jail, "landlock"), _Runner(_fetch.Ran(0, b"\n", b"")))
+        out, _ = _read(_backend(fake_jail, "landlock"), _Runner(_jailed_run.Ran(0, b"\n", b"")))
 
         assert out.ok
         assert "no text" in out.content
