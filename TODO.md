@@ -158,7 +158,7 @@ from `main`.
 
 ### P60-2 — The hosted profile sizes the kept history from the model's window
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P60-1
+**Status:** DONE 2026-11-03 (hosted history 25k tokens; live: in a 5-hop research task every request after the first of a hop read the previous request's prefix from cache (4 of 4 pairs), no rewrite; too short a task to measure the 20 % bound) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P60-1
 (`loop_types.py`, `loop_compaction.py`, `driver_support.py`)
 
 - **Trigger (live home, 152 Anthropic requests):**
@@ -272,7 +272,7 @@ from `main`.
 
 ### P61-2 — A pod declares the hosts its `fetch` reads
 
-**Status:** TODO · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-1
+**Status:** DONE 2026-11-03 (live: web-research with `*.wikipedia.org` fetched es.wikipedia.org (allowed) and example.com was refused naming the pod's list) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P61-1
 (`report.py`, `health.py`)
 
 - **Trigger:** the maintainer's request (Tack's report): `web-research` could read the web only
@@ -641,6 +641,12 @@ P61-2 (the facts it states)
   (`teams/network_posture.py`); changing it moves a golden and security-gates requirement 14. `pod_summary`
   probes the backend per row. Trigger: an operator misreads the line, or a pod list slower than 50 ms.
 - *Is `capability_missing` pinned?* Whether P61-3's kind joins `_PINNED_FAILURE_KINDS` (`record.py`).
+- *`fetch` text extraction and its byte cap.* The live Chile page was cut at the infobox by the 200,000-byte cap
+  (`platform/fetch.py`), before the first sentence: the cap counts HTML, not text. Trigger: a research task that
+  reports a page it could not read. P61-6 changes the body rules; decide there or after it.
+- *A pod.yaml `fetchDomains` is not a run item.* `teams/apply/review.py` `_NOT_ADDED_SETTINGS`: should adding
+  hosts need `accept`? Also `_export_manifest` exports a pod's `*` as `fetchDomains: '*'`, which `pod update`
+  refuses. Trigger: the first repo that ships `fetchDomains`. Tack: `pod-reach.json` gained `fetchDomains`.
 - *Streaming with an idle timeout.* A stall is only seen after `AGENT_LOOP_REQUEST_TIMEOUT_S`
   because a non-streamed reply sends nothing until it ends. Trigger: after P60-1, more than one
   `request_retry` per 50 requests over a week of the live home, or a turn that ends `timeout` after
