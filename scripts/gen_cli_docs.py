@@ -563,12 +563,12 @@ _ENV_VAR_ROWS: list[tuple[tuple[str, ...], str, str]] = [
     ),
     (
         ("FETCH_MAX_RESPONSE_BYTES",),
-        "Response-body cap for the `fetch` tool before truncation",
+        "What the `fetch` tool returns before truncation: bytes of a text body, characters of a page's text",
         "`200000`",
     ),
     (
         ("FETCH_MAX_DOCUMENT_BYTES",),
-        "Size cap on a PDF the `fetch` tool reads through the jail; a larger one is refused whole",
+        "Size cap on a PDF (refused whole if larger) or an HTML page (cut) the `fetch` tool reads",
         "`10000000`",
     ),
     (("FETCH_TIMEOUT_S",), "Default per-call wall-clock bound for the `fetch` tool", "`15`"),

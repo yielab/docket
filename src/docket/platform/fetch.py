@@ -53,6 +53,7 @@ _REFUSED = "fetch_not_allowed"
 _SNIFF_BYTES = 8192
 _PDF_MAGIC = b"%PDF-"
 _PDF_TYPE = "application/pdf"
+_HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _TEXT_TYPES = frozenset(
     {"application/json", "application/xml", "application/javascript", "application/ecmascript"}
 )
@@ -246,7 +247,8 @@ class FetchedPdf:
 
 def fetch_url(url: str, allowed: Iterable[str], timeout: int = 0) -> ToolOutcome | FetchedPdf:
     """Fetch *url* over HTTP(S), refusing anything outside *allowed* (``host_allowed`` entries).
-    A PDF comes back as a :class:`FetchedPdf` (the bytes, up to ``FETCH_MAX_DOCUMENT_BYTES``).
+    A PDF comes back as a :class:`FetchedPdf` (the bytes, up to ``FETCH_MAX_DOCUMENT_BYTES``). An
+    HTML page is read up to the same bound and its text is cut at ``FETCH_MAX_RESPONSE_BYTES``.
 
     Refuses before ever opening a socket when the host is not allowed —
     same "fail before any side effect" shape `dispatch_tool` already uses for
@@ -292,8 +294,9 @@ def fetch_url(url: str, allowed: Iterable[str], timeout: int = 0) -> ToolOutcome
             media = _media(content_type)
             if media != _PDF_TYPE and (why := _declared_non_text(content_type)):
                 return _refused_type(why)
-            # A PDF, and a body with no type that may be one, is read as far as a PDF may go.
-            wide = media == _PDF_TYPE or not media
+            # A PDF, an HTML page and a body with no type (which may be either) are read as far as
+            # a document may go: the page is converted, and the text is what the response cap cuts.
+            wide = media == _PDF_TYPE or media in _HTML_TYPES or not media
             cap = current_home().fetch_max_document_bytes if wide else response_cap
             read = read_until_deadline(resp, cap, deadline)
             if read is None:
@@ -332,14 +335,19 @@ def fetch_url(url: str, allowed: Iterable[str], timeout: int = 0) -> ToolOutcome
         return FetchedPdf(status, content_type, raw, deadline)
     if not content_type.strip() and b"\x00" in raw[:_SNIFF_BYTES]:
         return _refused_type("the body has no content type and holds binary data")
-    truncated = len(raw) > response_cap
-    body = raw[:response_cap]
-    text = body.decode("utf-8", errors="replace")
+    as_html = media in _HTML_TYPES or _looks_like_html(
+        content_type, raw[:_SNIFF_BYTES].decode("utf-8", errors="replace")
+    )
+    byte_cap = current_home().fetch_max_document_bytes if as_html and wide else response_cap
+    text = raw[:byte_cap].decode("utf-8", errors="replace")
+    notes = [f"response exceeded {byte_cap} bytes"] if len(raw) > byte_cap else []
     header = f"HTTP {status} {content_type}".rstrip()
-    converted = _looks_like_html(content_type, text)
-    if converted:
+    if as_html:
         text = _html_to_text(text)
+        if len(text) > response_cap:
+            text = text[:response_cap]
+            notes.append(f"text exceeded {response_cap} characters")
         header = f"{header}; {len(text)} chars of text"
-    if truncated:
-        text += f"\n\n[truncated: response exceeded {response_cap} bytes]"
-    return text_outcome(f"{header}\n\n{text}" if content_type or converted else text)
+    for note in notes:
+        text += f"\n\n[truncated: {note}]"
+    return text_outcome(f"{header}\n\n{text}" if content_type or as_html else text)

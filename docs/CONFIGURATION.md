@@ -676,6 +676,11 @@ reaches the network through allowlisted interpreters. Inside the sandbox the net
 by default, leaving `fetch` as the only path; `docket setup sandbox network open` (or a pod's
 `network` setting) grants it.
 
+**Size limits.** `FETCH_MAX_RESPONSE_BYTES` (default 200,000) bounds what the model reads from a
+page: bytes for plain text, JSON or XML, characters of text for an HTML page, whose markup is read
+up to `FETCH_MAX_DOCUMENT_BYTES` (default 10,000,000) and converted first. A cut is announced in
+the returned text.
+
 **PDFs.** `fetch` reads a PDF's text only inside the jail: isolation must be on
 (`docket setup sandbox on`), because a hostile PDF is never parsed in docket's own process. On
 Landlock and Seatbelt the reader is docket's own Python and `pypdf`, installed with docket, so a

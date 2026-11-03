@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.12.1
+**Version**: 3.13.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1149,9 +1149,13 @@ material, may be read as saying otherwise.
      fetchDomains` to a list without `*`, or `pod unset fetchDomains`, removes the grant and audits
      `pod.fetch_narrow` (only when a grant existed). Unreadable pod settings leave a member the
      machine's list alone.
-   - **A response size cap** (`FETCH_MAX_RESPONSE_BYTES`, default 200,000 bytes). A response over
-     the cap **MUST** be truncated with the truncation announced in the returned text, the
-     announced-truncation contract every other built-in has.
+   - **A response size cap** (`FETCH_MAX_RESPONSE_BYTES`, default 200,000). It bounds what the
+     model reads: the bytes of a text body, or the characters of a page's text once converted
+     (the markup of an HTML page does not count against it; the next bullet and "A page arrives as
+     text" give the page's own bound). A response over the cap **MUST** be truncated with the
+     truncation announced in the returned text, the announced-truncation contract every other
+     built-in has: `[truncated: response exceeded <n> bytes]` for bytes, `[truncated: text exceeded
+     <n> characters]` for a page's text.
    - **A wall-clock deadline** (`FETCH_TIMEOUT_S`, default 15 s). The deadline bounds the whole
      call, not each socket operation: the body is read in chunks and the call fails as timed out
      once the monotonic deadline passes, so a server dripping bytes cannot hold the call open. The
@@ -1192,9 +1196,14 @@ material, may be read as saying otherwise.
      `code` are kept verbatim; a link is `text (href)` when the text differs from the href;
      whitespace is collapsed to at most one blank line. The header line of a converted page reads
      `HTTP <status> <content-type>; <n> chars of text`. Any other text content type is returned
-     unchanged under the header line above. The conversion changes none of the other bullets: the
-     allowlist, the deadline, the size cap (applied to the bytes read, before conversion) and the
-     redirect guard stand as written.
+     unchanged under the header line above. A page is read whole before it is converted, so the
+     cap cannot cut it inside its markup: a body declared `text/html` or `application/xhtml+xml`,
+     and an untyped body that starts like HTML, is read up to `FETCH_MAX_DOCUMENT_BYTES` (as a PDF
+     is), converted, and the text cut at `FETCH_MAX_RESPONSE_BYTES` characters; the header's
+     `<n> chars of text` counts the text kept. A page over `FETCH_MAX_DOCUMENT_BYTES` is cut there
+     and announced in bytes. Any other body, including a `text/plain` one that starts like HTML, is
+     read and cut at `FETCH_MAX_RESPONSE_BYTES` bytes. The conversion changes none of the other
+     bullets: the allowlist, the deadline and the redirect guard stand as written.
    - **Only text arrives, and a PDF's text.** A body is text when its media type is `text/*`,
      `application/json`, `application/xml`, `application/javascript`, `application/ecmascript`, or
      ends in `+json` or `+xml`; the parameters (`; charset=...`) and the case are ignored. Any other

@@ -352,13 +352,48 @@ class TestHtmlArrivesAsText:
             == "HTTP 200 text/plain\n\na  b\n\n\nc"
         )
 
-    def test_a_truncated_page_is_converted_and_the_truncation_still_announced(
+    def test_a_long_page_is_read_whole_and_the_text_is_cut_with_the_text_limit_named(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         html = b"<html><body><p>" + b"word " * 100 + b"</p></body></html>"
         content = _fetch_with(monkeypatch, html, "text/html", fetch_max_response_bytes=40)
+        _, _, text = content.partition("\n\n")
         assert "<" not in content
-        assert content.endswith("[truncated: response exceeded 40 bytes]")
+        assert text.startswith("word word word")
+        assert text.endswith("\n\n[truncated: text exceeded 40 characters]")
+        assert len(text) == 40 + len("\n\n[truncated: text exceeded 40 characters]")
+
+    def test_a_paragraph_after_300kb_of_markup_is_read(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        markup = b'<div class="infobox" data-x="y">' * 10_000 + b"</div>" * 10_000
+        html = b"<html><body>" + markup + b"<p>The first real sentence.</p></body></html>"
+        html += b"<!-- " + b"x" * 300_000 + b" -->"
+        assert len(html) > 600_000
+        content = _fetch_with(monkeypatch, html, "application/xhtml+xml")
+        assert "The first real sentence." in content
+        assert "truncated" not in content
+
+    def test_an_untyped_page_is_read_whole_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        html = b"<!doctype html><div>" * 20_000 + b"<p>late words</p>"
+        assert len(html) > 200_000
+        content = _fetch_with(monkeypatch, html, "")
+        assert content.endswith("late words")
+
+    def test_a_page_over_the_document_cap_is_cut_and_announced_in_bytes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        html = b"<html><body><p>" + b"word " * 100 + b"</p></body></html>"
+        content = _fetch_with(monkeypatch, html, "text/html", fetch_max_document_bytes=100)
+        assert content.endswith("[truncated: response exceeded 100 bytes]")
+
+    def test_plain_text_over_the_response_limit_is_cut_in_bytes_as_before(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        content = _fetch_with(monkeypatch, b"a" * 300, "text/plain", fetch_max_response_bytes=100)
+        assert content == "HTTP 200 text/plain\n\n" + "a" * 100 + (
+            "\n\n[truncated: response exceeded 100 bytes]"
+        )
 
 
 class TestGatedExactlyLikeABuiltin:
