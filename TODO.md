@@ -178,6 +178,11 @@ that already own the files.
   - The CLI cannot see why a task stopped: `docket task show` and `task list --json` print neither
     `failureKind` nor the hop's `budget`; they are in the HTTP task and `TASK_LIST.json`. Trigger: an
     operator asks for the limit that stopped a task from the terminal.
+  - Tack's live run (2026-11-03) never reached a clean `time` stop: its request clock ran out first, as a
+    transport timeout, while the loop was in its own landing. Unverified on docket's side (the landing's share of
+    the clock, and whether a client's request timeout should exceed the step `timeout`). Trigger: a plan of record
+    reports a `time` stop that arrived as a transport timeout, or a real run where the landing outlives its step
+    clock.
   - A second implementation of a port can sit outside `src/` (the `docket-runtime` package's `Tracer`).
     Trigger: the next port-signature change sweeps `packages/` too (`rg` the method name there).
   - A policy `ask` on `.env.local.example` (a template, no secret) stopped the retried app-dev task. Trigger:
