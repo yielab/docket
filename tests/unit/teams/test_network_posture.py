@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
-import pytest
-
 from docket.kernel.home import Home, use_home
+from docket.sandbox.launch import Launcher
 from docket.teams import fleet as _fleet
 from docket.teams import network_posture as _np
 
@@ -56,13 +56,18 @@ def test_global_posture_reads_the_fleet_record(tmp_path: Path) -> None:
 
 
 def _posture(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, mode: str, isolation: bool, backend: str
+    tmp_path: Path,
+    bind_launcher: Callable[..., Launcher],
+    *,
+    mode: str,
+    isolation: bool,
+    backend: str,
 ) -> _np.NetworkPosture:
     """The fleet posture of a home that records *mode* and *isolation* on a machine whose only
     sandbox backend is *backend*."""
     home = tmp_path / ".docket"
     home.mkdir()
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", backend)
+    bind_launcher(landlock=backend == "landlock", seatbelt=False, docker=False)
     with use_home(Home(home)):
         _fleet.set_network_mode(mode)
         if isolation:
@@ -73,29 +78,29 @@ def _posture(
 
 
 def test_none_is_enforced_with_isolation_on_and_a_backend(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
 ) -> None:
-    posture = _posture(tmp_path, monkeypatch, mode="none", isolation=True, backend="landlock")
+    posture = _posture(tmp_path, bind_launcher, mode="none", isolation=True, backend="landlock")
     assert posture.enforced is True
 
 
 def test_none_is_not_enforced_with_isolation_off(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
 ) -> None:
-    posture = _posture(tmp_path, monkeypatch, mode="none", isolation=False, backend="landlock")
+    posture = _posture(tmp_path, bind_launcher, mode="none", isolation=False, backend="landlock")
     assert posture.enforced is False
 
 
 def test_none_is_not_enforced_when_isolation_is_on_but_no_backend_exists(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
 ) -> None:
-    posture = _posture(tmp_path, monkeypatch, mode="none", isolation=True, backend="none")
+    posture = _posture(tmp_path, bind_launcher, mode="none", isolation=True, backend="none")
     assert posture.enforced is False
     assert "no network" not in posture.line
 
 
 def test_open_is_not_enforced_with_isolation_on_and_a_backend(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, bind_launcher: Callable[..., Launcher]
 ) -> None:
-    posture = _posture(tmp_path, monkeypatch, mode="open", isolation=True, backend="landlock")
+    posture = _posture(tmp_path, bind_launcher, mode="open", isolation=True, backend="landlock")
     assert posture.enforced is False

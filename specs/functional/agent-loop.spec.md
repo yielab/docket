@@ -1180,7 +1180,7 @@ result = run_agent_turn(backend, registry, ctx, session_key, "hello")
 - `src/docket/models/catalog.py`: `resolve_limits`
 - `src/docket/tasks/application/runs.py`: `RunCancellationSignal`, `current_cancellation_signal`
 - `src/docket/tasks/domain/task.py`: `DispatchError`
-- `src/docket/hops/application/runner.py`: the hop retry classification
+- `src/docket/agent/loop_request.py`: `send_request`, the per-request retry and its classification
 - `src/docket/agent/tools/mcp_tools.py`: `load_mcp_tools`
 - `src/docket/observability/trace.py`: `trace_event`
 - `src/docket/observability/telemetry.py`: `start`, `flush`, `health`, `capture_classes`

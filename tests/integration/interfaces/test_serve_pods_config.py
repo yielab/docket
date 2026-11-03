@@ -7,6 +7,7 @@ import os
 import threading
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from docket.hops.application import report as _pod_report
 from docket.interfaces.http.server import _DocketHandler
 from docket.kernel.home import Home, use_home
 from docket.kernel.threads import ContextHTTPServer
+from docket.sandbox.launch import Launcher
 from docket.teams import fleet as _fleet
 from docket.teams import roles as _arch
 
@@ -26,7 +28,16 @@ _TOKEN = "test-serve-token-pods-config"
 
 
 @pytest.fixture()
-def server(tmp_path: Path):  # type: ignore[no-untyped-def]
+def jail_probes() -> dict[str, bool]:
+    """The sandbox backends the machine answers to; a test overrides it by parametrizing."""
+    return {"landlock": True}
+
+
+@pytest.fixture()
+def server(  # type: ignore[no-untyped-def]
+    tmp_path: Path, bind_launcher: Callable[..., Launcher], jail_probes: dict[str, bool]
+):
+    bind_launcher(**jail_probes)
     home = tmp_path / ".docket"
     (home / "state" / "workspaces" / "projects").mkdir(parents=True)
     (home / "state" / "fleet.json").write_text(json.dumps({"agents": [], "bindings": []}))
@@ -199,18 +210,15 @@ def _with_home_placeholder(value: Any, home: Path) -> Any:
     return value
 
 
-def _folder_pod(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A ``respond`` pod on a machine that records isolation on and has a sandbox backend."""
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "landlock")
+def _folder_pod(url: str) -> None:
+    """A ``respond`` pod on a machine that records isolation on."""
     _fleet.set_sandbox_isolation()
     status, _ = _post(f"{url}/pods", {"name": "research", "blueprint": "respond"})
     assert status == 201
 
 
-def test_a_folder_pod_reports_its_network_and_its_folder(
-    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _folder_pod(server, monkeypatch)
+def test_a_folder_pod_reports_its_network_and_its_folder(server: str, tmp_path: Path) -> None:
+    _folder_pod(server)
     folder = str(Home(tmp_path / ".docket").pod_work_dir("research"))
 
     status, detail = _get(f"{server}/pods/research")
@@ -229,10 +237,8 @@ def test_a_folder_pod_reports_its_network_and_its_folder(
     assert {"networkEnforced", "podWorkDir"} <= set(features)
 
 
-def test_the_pod_reach_answers_are_the_recorded_fixture(
-    server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _folder_pod(server, monkeypatch)
+def test_the_pod_reach_answers_are_the_recorded_fixture(server: str, tmp_path: Path) -> None:
+    _folder_pod(server)
     row = next(r for r in _get(f"{server}/pods")[1]["pods"] if r["name"] == "research")
     actual = _with_home_placeholder(
         {"row": row, "detail": _get(f"{server}/pods/research")[1]}, tmp_path / ".docket"
@@ -244,11 +250,9 @@ def test_the_pod_reach_answers_are_the_recorded_fixture(
     assert actual == recorded
 
 
-def test_network_is_not_enforced_without_a_backend(
-    server: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _folder_pod(server, monkeypatch)
-    monkeypatch.setenv("DOCKET_SANDBOX_BACKEND", "none")
+@pytest.mark.parametrize("jail_probes", [{"landlock": False, "seatbelt": False, "docker": False}])
+def test_network_is_not_enforced_without_a_backend(server: str) -> None:
+    _folder_pod(server)
     detail = _get(f"{server}/pods/research")[1]
     assert detail["network"]["enforced"] is False
     assert _pod_report.member_report("research-lead")["network"]["enforced"] is False
