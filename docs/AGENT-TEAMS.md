@@ -126,7 +126,7 @@ next section.
 
 `docket init` doesn't have to produce a Lead+Implementer pod against a codebase. A **pod blueprint**
 (`teams/blueprints.py`) is a named, versioned pod shape: a roster of archetypes, a default
-pipeline, a workspace kind, and an optional default budget cap — provisioned in one command.
+pipeline, a workspace kind — provisioned in one command.
 
 ```bash
 docket init my-market-scan --blueprint respond

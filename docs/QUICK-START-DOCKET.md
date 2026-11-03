@@ -352,7 +352,7 @@ that fail a task whose tests prove nothing, and a tool pack. `docket pod update 
 `docket pod update tdd` swaps the route for a test-first one. Apply what you need, then
 `docket pod export --force` writes the merged team back to `.docket/` for the commit.
 
-Pod-level knobs are one command each: `docket pod set budgetUsd 5`,
+Pod-level knobs are one command each: `docket pod set budgetTokens 500000`,
 `docket pod set allowCommands uv,tox`, `approvalMode refuse`, `maxReworkCycles 2`. Your own
 words for one agent go in its operator-owned `INSTRUCTIONS.md`, in the workspace path
 `docket pod show myapp-implementer` prints; docket never regenerates it. The file-by-file reference, with what reads each file on the live path, is
@@ -417,7 +417,7 @@ Start with the lean pod and add a reviewer or vetter once a concrete quality gat
 justifies the extra turns. Give the Implementer an objective check with `docket pod set verify`, so
 advancement blocks on an exit code rather than on how confident the prose sounds. Keep `docket run`
 explicit before enabling schedules or `start --dispatch`, and set a budget cap first
-(`docket pod set budgetUsd 5`; over it, the task is left blocked and the Lead
+(`docket pod set budgetTokens 500000`; over it, the task is left blocked and the Lead
 paused). Read the run, the trace and the audit chain before accepting a consequential change.
 Keep docket behind your own boundary: `docket start` binds loopback and does not terminate TLS.
 

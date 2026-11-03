@@ -1,8 +1,8 @@
 # MCP Server Contract Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented
-**Last Updated**: 2026-10-25
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -295,7 +295,7 @@ identical to `GET /escalations`.
 **Purpose**: **Recorded** USD spend — one agent or the whole fleet.
 **Arguments**: `agent_id` (string, optional) — one agent's totals; omitted for the whole fleet.
 **Output**: `{"agents": [...], "totalUsd": ...}` when `agent_id` is omitted, where each agent row is
-`{"id", "model", "input", "output", "costUsd", "pricingKnown", "turns", "budgetUsd"}`; a single
+`{"id", "model", "input", "output", "costUsd", "pricingKnown", "turns", "budgetTokens"}`; a single
 agent's row when given. Rows cover project agents (pod members) only.
 **Failure modes**: raises ("Project '<id>' not found.") if `agent_id` is given but is not a known
 project agent.

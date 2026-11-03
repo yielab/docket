@@ -145,7 +145,10 @@ TABLE: list[tuple[re.Pattern[str], str]] = [
     (_pod("(?:list|info|members|roster)"), "docket pod show"),
     # profile, maintain
     (_c("profile", rf"[ \t]+{_ANY}[ \t]+--resume"), "docket run --resume"),
-    (_c("profile", rf"[ \t]+{_ANY}[ \t]+--budget[ \t]+({_ANY})"), r"docket pod set budgetUsd \1"),
+    (
+        _c("profile", rf"[ \t]+{_ANY}[ \t]+--budget[ \t]+({_ANY})"),
+        r"docket pod set budgetTokens \1",
+    ),
     (_c("maintain", rf"[ \t]+{_ANY}[ \t]+check"), "docket setup --fix"),
     # pipeline, validate, config
     (_c("pipeline[ \t]+run"), "docket run --pipeline"),

@@ -150,14 +150,14 @@ class TestPodSetUnset:
 
     def test_member_flag_on_another_key_is_refused(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            code, _out = _invoke("set", "budgetUsd", "5", "--member", "demo-implementer")
+            code, _out = _invoke("set", "budgetTokens", "5000", "--member", "demo-implementer")
 
             assert code == 1
-            assert "budgetUsd" not in _meta("demo-lead")
+            assert "budgetTokens" not in _meta("demo-lead")
 
     def test_a_flag_the_leaf_does_not_declare_is_a_usage_error(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            code, _out = _invoke("set", "budgetUsd", "5", "--clear")
+            code, _out = _invoke("set", "budgetTokens", "5000", "--clear")
 
             assert code == 2
 

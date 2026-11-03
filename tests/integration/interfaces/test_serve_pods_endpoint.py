@@ -121,14 +121,29 @@ class TestBadRequests:
         assert status == 400
         assert _ids() == []
 
-    def test_non_numeric_budget_returns_400(self, live_server: tuple[str, str]) -> None:
+    @pytest.mark.parametrize("bad", ["lots", 0, -5, 1.5, True])
+    def test_a_bad_budget_tokens_returns_400(
+        self, live_server: tuple[str, str], bad: object
+    ) -> None:
         url, token = live_server
         status, _body = _post(
             f"{url}/pods",
-            {"name": "demo", "location": "/src/demo", "budget": "lots"},
+            {"name": "demo", "location": "/src/demo", "budgetTokens": bad},
             token,
         )
         assert status == 400
+        assert _ids() == []
+
+    @pytest.mark.parametrize("key", ["budgetUsd", "budget"])
+    def test_a_dollar_budget_returns_400_naming_budget_tokens(
+        self, live_server: tuple[str, str], key: str
+    ) -> None:
+        url, token = live_server
+        status, body = _post(
+            f"{url}/pods", {"name": "demo", "location": "/src/demo", key: 5}, token
+        )
+        assert status == 400
+        assert "budgetTokens" in json.dumps(body)
         assert _ids() == []
 
     def test_invalid_verify_cmd_returns_400(self, live_server: tuple[str, str]) -> None:
@@ -434,14 +449,16 @@ class TestOverridesThreaded:
             "reviewer",
         ]
 
-    def test_budget_overrides_blueprint_default(self, live_server: tuple[str, str]) -> None:
+    def test_budget_tokens_lands_on_the_lead(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         status, _body = _post(
-            f"{url}/pods", {"name": "myresearch", "blueprint": "respond", "budget": 42}, token
+            f"{url}/pods",
+            {"name": "myresearch", "blueprint": "respond", "budgetTokens": 42000},
+            token,
         )
         assert status == 201
         raw = json.loads((_ws("myresearch-lead") / ".docket-meta.json").read_text())
-        assert float(raw["budgetUsd"]) == 42.0
+        assert raw["budgetTokens"] == 42000
 
     def test_verify_cmd_applied_to_implementer_only(self, live_server: tuple[str, str]) -> None:
         url, token = live_server

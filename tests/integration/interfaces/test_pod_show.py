@@ -100,7 +100,7 @@ class TestPodShowMatchesRealDispatch:
             _fleet.set_model_both(implementer, "anthropic/claude-opus-4-6")
 
             lead = pod.member_id("demo", "lead")
-            _fleet.meta_set(lead, "budgetUsd", 5.0)
+            _fleet.meta_set(lead, "budgetTokens", 500000)
             _fleet.meta_set(lead, "maxReworkCycles", 2)
             _fleet.meta_set(lead, "turnTimeoutS", 111)
             _fleet.meta_set(lead, "verifyTimeoutS", 42)
@@ -126,7 +126,7 @@ class TestPodShowMatchesRealDispatch:
             assert report["role"] == "implementer"
             assert report["pod"] == "demo"
             assert report["model"] == {"value": "anthropic/claude-opus-4-6", "source": "policy"}
-            assert report["podSettings"]["budgetUsd"] == {"value": 5.0, "source": "set"}
+            assert report["podSettings"]["budgetTokens"] == {"value": 500000, "source": "set"}
             assert report["podSettings"]["maxReworkCycles"] == {"value": 2, "source": "set"}
             assert report["podSettings"]["turnTimeoutS"] == {"value": 111, "source": "set"}
             assert report["podSettings"]["verifyTimeoutS"] == {"value": 42, "source": "set"}
@@ -496,9 +496,9 @@ class TestPodShowPod:
 
     def test_settings_carry_their_source(self, tmp_path: Path) -> None:
         with _seed(tmp_path):
-            _fleet.meta_set(pod.member_id("demo", "lead"), "budgetUsd", 7.0)
+            _fleet.meta_set(pod.member_id("demo", "lead"), "budgetTokens", 700000)
             report = json.loads(_show("--json")[1])
-            assert report["settings"]["budgetUsd"] == {"value": 7.0, "source": "set"}
+            assert report["settings"]["budgetTokens"] == {"value": 700000, "source": "set"}
             assert report["settings"]["maxReworkCycles"]["source"] == "default"
 
     def test_rework_bound_comes_from_the_bound_pipeline(self, tmp_path: Path) -> None:

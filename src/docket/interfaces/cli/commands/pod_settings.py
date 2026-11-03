@@ -212,7 +212,7 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     _fleet.meta_set(lead_id, key, coerced)
     audit_log("pod.config", f"project={project} action=set key={key} value={coerced!r}")
     ui.success(f"Set {key}={coerced} for pod '{project}'")
-    if key == "budgetUsd":
+    if key == "budgetTokens":
         _budget_changed(project, lead_id)
 
 
@@ -275,6 +275,9 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
         _unset_member_verify(project, member)
         return
     lead_id = _lead_for_settings(project)
+    if key == _pod_settings.BUDGET_USD_KEY:
+        ui.error(_pod_settings.BUDGET_USD_REFUSAL)
+        raise typer.Exit(1)
     if key not in _pod_settings.PodSettings.KEYS:
         ui.error(
             f"unknown pod setting {key!r}",
@@ -293,5 +296,5 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
         _sched.unset_schedule(current_home().schedule_file, project)
     audit_log("pod.config", f"project={project} action=unset key={key}")
     ui.success(f"Unset {key} for pod '{project}'; it falls back to its default")
-    if key == "budgetUsd":
+    if key == "budgetTokens":
         _budget_changed(project, lead_id)

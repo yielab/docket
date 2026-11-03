@@ -34,9 +34,9 @@ def load_pod_settings(project: str) -> _teams_pod_settings.PodSettings:
         raise DispatchError(str(exc)) from exc
 
 
-def pod_budget(project: str) -> float:
-    """The pod's USD budget cap (Lead's ``budgetUsd``), 0.0 = unlimited."""
-    return load_pod_settings(project).budget_usd
+def pod_budget(project: str) -> int | None:
+    """The pod's cap on counted tokens (the Lead's ``budgetTokens``), ``None`` = no cap."""
+    return load_pod_settings(project).budget_tokens
 
 
 def pod_max_rework_cycles(project: str) -> int:

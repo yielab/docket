@@ -32,7 +32,7 @@ META: dict[str, Any] = {
     "name": "Api Test Agent",
     "scope": "project",
     "model": "anthropic/claude-haiku-4-5-20251001",
-    "budgetUsd": "5.0",
+    "budgetTokens": 500000,
 }
 
 FLEET_CONFIG: dict[str, Any] = {
@@ -65,7 +65,7 @@ class TestApiContract:
             "bindings",
             "lastActivity",
             "costUsd",
-            "budgetUsd",
+            "budgetTokens",
         }
     )
 
@@ -107,9 +107,9 @@ class TestApiContract:
     def test_agent_budget_field(self, api_home: Path) -> None:
         agents = health.build_status()["agents"]
         for agent in agents:
-            budget = agent["budgetUsd"]
-            assert budget is None or isinstance(budget, (int, float)), (
-                f"budgetUsd must be float or null, got {type(budget)}"
+            budget = agent["budgetTokens"]
+            assert budget is None or isinstance(budget, int), (
+                f"budgetTokens must be int or null, got {type(budget)}"
             )
 
     def test_agent_kind_field(self, api_home: Path) -> None:
@@ -163,13 +163,13 @@ class TestBudgetInStatusJson:
     def test_budget_read_from_meta(self, api_home: Path) -> None:
         agents = health.build_status()["agents"]
         assert len(agents) == 1
-        # META has budgetUsd = "5.0" → should appear as float 5.0
-        assert agents[0]["budgetUsd"] == 5.0
+        # META has budgetTokens = 500000 → should appear as the integer
+        assert agents[0]["budgetTokens"] == 500000
 
     def test_no_budget_returns_null(self, api_home: Path, tmp_path: Path) -> None:
-        # Overwrite meta without budgetUsd
+        # Overwrite meta without budgetTokens
         ws = api_home / "state" / "workspaces" / "projects" / "apitest"
-        meta_no_budget = {k: v for k, v in META.items() if k != "budgetUsd"}
+        meta_no_budget = {k: v for k, v in META.items() if k != "budgetTokens"}
         (ws / ".docket-meta.json").write_text(json.dumps(meta_no_budget))
         agents = health.build_status()["agents"]
-        assert agents[0]["budgetUsd"] is None
+        assert agents[0]["budgetTokens"] is None

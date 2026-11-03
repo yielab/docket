@@ -12,8 +12,6 @@ from docket.governance import policy as _policy
 from docket.governance import quota as _quota
 from docket.governance import review as _reviewed
 from docket.hops.application import report as _pod_report
-from docket.hops.application import steps as _steps
-from docket.hops.application.report import unpriced_text
 from docket.hops.application.usage import aggregate_cost, cost_history, gating_cost, last_activity
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands import contract as _contract
@@ -26,7 +24,6 @@ from docket.interfaces.cli.commands.setup_sandbox import (
 from docket.interfaces.cli.commands.target import pod_option
 from docket.interfaces.cli.render import ui
 from docket.kernel import clock as _clock
-from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models.application.endpoint import resolve_profile
 from docket.observability import trace as _trace
@@ -184,7 +181,6 @@ def _project_summary(project: str) -> dict[str, Any]:
             if _profile.effective_profile(project) == _profile.LIGHTS_OUT
             else {}
         ),
-        **({"budgetUnpriced": u} if (u := _unpriced_models(project)) else {}),
         **(
             {"quotas": rows}
             if (rows := _quota.quota_rows(project, _policy.limits_for(None, project)))
@@ -196,13 +192,6 @@ def _project_summary(project: str) -> dict[str, Any]:
             else {}
         ),
     }
-
-
-def _unpriced_models(project: str) -> list[str]:
-    try:
-        return _steps.unpriced_budget_models(project)
-    except DispatchError:
-        return []
 
 
 def _inventory() -> dict[str, Any]:
@@ -246,7 +235,7 @@ def cost_snapshot() -> dict[str, Any]:
     for pid in project_ids():
         raw = read_json(current_home().meta_path(pid))
         totals = aggregate_cost(pid)
-        budget = raw.get("budgetUsd")
+        budget = raw.get("budgetTokens")
         total += totals.cost_usd
         rows.append(
             {
@@ -257,7 +246,7 @@ def cost_snapshot() -> dict[str, Any]:
                 "costUsd": round(totals.cost_usd, 6),
                 "pricingKnown": True,
                 "turns": totals.turns,
-                "budgetUsd": float(budget) if budget and str(budget) not in ("", "0") else None,
+                "budgetTokens": int(budget) if budget else None,
             }
         )
     return {"agents": rows, "totalUsd": round(total, 6)}
@@ -347,11 +336,6 @@ def _render_current(summary: dict[str, Any]) -> None:
         ),
         ("Approved, ready", str(tasks["approvedReady"])),
         ("Tokens", tokens),
-        *(
-            [("Budget", unpriced_text(summary["budgetUnpriced"]))]
-            if summary.get("budgetUnpriced")
-            else []
-        ),
         (
             "Done / failed / aborted",
             f"{out['success']} / {out['failure']} / {out['aborted']}"

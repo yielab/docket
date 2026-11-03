@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.18.0
+**Version**: 7.19.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-03
 
@@ -282,8 +282,8 @@ probes for it with the `budgetOutcome` feature.
 `pod_budget`. The kinds docket itself writes are closed: `stale_claim`, `dispatch_refused`, `base_ref`,
 `prepare`, `pipeline`, `budget`, `needs_human`, `approval_denied`, `approval_expired`,
 `check_changed`, `rejected`, the gate kinds `gate_failed`, `gate_needs_human` and `gate_error`,
-`pod_budget` (status `blocked`: the pod's `budgetUsd` was spent before a hop; the reason text
-keeps the dollar figure, the field never does), and `hop_failed`, the default of a failed task
+`pod_budget` (status `blocked`: the pod's `budgetTokens` was spent before a hop; the reason text
+keeps the token counts, the field never does), and `hop_failed`, the default of a failed task
 whose hop or step carried no more specific kind. The default is applied once, where the task
 settles `failed`, never by a producer. A claim clears the key, and so does a retry; an unblock
 keeps it until the next claim, so a `pending` task can still carry the kind of the block it left.
@@ -393,7 +393,7 @@ fields are read from the Lead's meta on each request, so they follow the pause a
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
 `pod`, `blueprint`, `members`, `settings`, `approvalMode`, `pipeline` with its `steps`, `network`,
-`budgetUnpriced`, `configSource`, `configDigest`, `drift`) plus the five keys below, where `profile` here is the
+`configSource`, `configDigest`, `drift`) plus the five keys below, where `profile` here is the
 verdict object (a row of `GET /pods` carries the profile name as a string):
 
 ```json

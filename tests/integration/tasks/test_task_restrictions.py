@@ -260,3 +260,62 @@ def test_each_hop_runs_with_what_the_cap_has_left(tmp_path: Path, stub: Any) -> 
 
         assert result.status == "done", result.reason
         assert seen == ["960"]
+
+
+def _spend_pod_tokens(agent_id: str, *, input_tokens: int, output_tokens: int) -> None:
+    """Seed one session of *agent_id* so the pod has already counted these tokens."""
+    from urllib.parse import quote
+
+    from docket.kernel.home import current_home
+
+    key = f"agent:{agent_id}:default"
+    sdir = current_home().sessions_dir / quote(key, safe="")
+    sdir.mkdir(parents=True, exist_ok=True)
+    usage = {
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "cachedTokens": 0,
+        "turns": 1,
+    }
+    record = {"sessionKey": key, "messages": [], "usage": usage}
+    (sdir / "session.json").write_text(json.dumps(record))
+
+
+def test_a_hop_the_pod_budget_stops_names_budget_tokens_as_its_raise(
+    tmp_path: Path, stub: Any
+) -> None:
+    """The turn runs under what the pod's budgetTokens has left, and its stop says so."""
+    server = stub([say("this answer costs 60 tokens")])
+    with _seed_pod(tmp_path, server.base_url):
+        lead = _pod.pod.member_id("demo", "lead")
+        _fleet.meta_set(lead, "budgetTokens", 320)
+        _spend_pod_tokens(lead, input_tokens=200, output_tokens=100)
+        _queue_task()
+
+        result = _run_one()
+
+        assert result.status == "failed", result.reason
+        (task,) = TaskRepository.for_pod("demo").list()
+        budget = task.model_dump(by_alias=True, mode="json")["hops"][-1]["budget"]
+        assert budget["bound"] == "tokens"
+        assert (budget["limit"], budget["source"], budget["raise"]) == (
+            20,
+            "pod_budget",
+            "budgetTokens",
+        )
+
+
+def test_a_task_cap_below_the_pods_leftover_still_owns_the_stop(tmp_path: Path, stub: Any) -> None:
+    """When the task's maxTokens is the tighter ceiling, the stop names maxTokens."""
+    server = stub([say("this answer costs 60 tokens")])
+    with _seed_pod(tmp_path, server.base_url):
+        lead = _pod.pod.member_id("demo", "lead")
+        _fleet.meta_set(lead, "budgetTokens", 100_000)
+        _queue_task(max_tokens=10)
+
+        result = _run_one()
+
+        assert result.status == "failed", result.reason
+        (task,) = TaskRepository.for_pod("demo").list()
+        budget = task.model_dump(by_alias=True, mode="json")["hops"][-1]["budget"]
+        assert (budget["source"], budget["raise"]) == ("task", "maxTokens")

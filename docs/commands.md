@@ -250,7 +250,7 @@ Example: docket pod records leads --sql "SELECT email FROM leads" --limit 20
 
 Set a pod setting; with --member, set an implementer's verify command.
 
-Example: docket pod set budgetUsd 5
+Example: docket pod set budgetTokens 500000
 
 ### pod unset
 

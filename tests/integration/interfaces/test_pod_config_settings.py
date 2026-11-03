@@ -58,7 +58,7 @@ class TestPodShowSettings:
             assert code == 0, out
             data = json.loads(out)["settings"]
             assert data["maxReworkCycles"] == {"value": 1, "source": "default"}
-            assert data["budgetUsd"] == {"value": 0.0, "source": "default"}
+            assert data["budgetTokens"] == {"value": None, "source": "default"}
 
     def test_invalid_stored_value_refuses_instead_of_showing_a_default(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -297,25 +297,46 @@ class TestConfigSetSchedule:
 
 
 class TestBudgetSet:
-    """`pod set budgetUsd` is the one budget writer; a new cap lifts the pause the old one set."""
+    """`pod set budgetTokens` is the one budget writer; a new cap lifts the pause the old one set."""
 
-    def test_budget_is_stored_on_the_lead(self, tmp_path: Path) -> None:
+    def test_budget_is_stored_on_the_lead_as_an_integer(self, tmp_path: Path) -> None:
         with _build(tmp_path):
-            _pod_settings.set_setting("proj", "budgetUsd", "5")
-            assert _lead_meta("proj")["budgetUsd"] == 5.0
+            _pod_settings.set_setting("proj", "budgetTokens", "500000")
+            stored = _lead_meta("proj")["budgetTokens"]
+            assert stored == 500000 and isinstance(stored, int)
 
-    def test_zero_removes_the_cap(self, tmp_path: Path) -> None:
+    def test_pod_show_lists_the_cap_with_source_set(self, tmp_path: Path) -> None:
         with _build(tmp_path):
-            _pod_settings.set_setting("proj", "budgetUsd", "5")
-            _pod_settings.set_setting("proj", "budgetUsd", "0")
-            assert _settings.pod_budget("proj") == 0.0
+            result = invoke_pod(["set", "budgetTokens", "500000", "--pod", "proj"])
+            assert result.exit_code == 0, result.output
+            code, out = _show()
+            assert code == 0, out
+            assert json.loads(out)["settings"]["budgetTokens"] == {
+                "value": 500000,
+                "source": "set",
+            }
 
-    @pytest.mark.parametrize("bad", ["abc", "-1"])
+    def test_unset_removes_the_cap(self, tmp_path: Path) -> None:
+        with _build(tmp_path):
+            _pod_settings.set_setting("proj", "budgetTokens", "5000")
+            _pod_settings.unset_setting("proj", "budgetTokens")
+            assert _settings.pod_budget("proj") is None
+
+    @pytest.mark.parametrize("bad", ["abc", "-1", "0", "1.5"])
     def test_a_bad_budget_exits_1_and_changes_nothing(self, tmp_path: Path, bad: str) -> None:
         with _build(tmp_path):
             with pytest.raises(typer.Exit) as exc:
-                _pod_settings.set_setting("proj", "budgetUsd", bad)
+                _pod_settings.set_setting("proj", "budgetTokens", bad)
             assert exc.value.exit_code == 1
+            assert "budgetTokens" not in _lead_meta("proj")
+
+    @pytest.mark.parametrize("verb", ["set", "unset"])
+    def test_budget_usd_is_refused_naming_budget_tokens(self, tmp_path: Path, verb: str) -> None:
+        with _build(tmp_path):
+            args = [verb, "budgetUsd", *(["5"] if verb == "set" else []), "--pod", "proj"]
+            result = invoke_pod(args)
+            assert result.exit_code == 1
+            assert "budgetTokens" in result.output
             assert "budgetUsd" not in _lead_meta("proj")
 
     def test_a_new_cap_lifts_the_budget_pause(self, tmp_path: Path) -> None:
@@ -325,13 +346,12 @@ class TestBudgetSet:
             meta.update({"paused": True, "pausedReason": "budget"})
             current_home().meta_path(lead).write_text(json.dumps(meta))
 
-            _pod_settings.set_setting("proj", "budgetUsd", "10")
+            _pod_settings.set_setting("proj", "budgetTokens", "10000")
 
             assert _lead_meta("proj")["paused"] is False
             assert _lead_meta("proj")["pausedReason"] == ""
 
-    @pytest.mark.parametrize("how", ["set-zero", "unset"])
-    def test_removing_the_cap_lifts_the_budget_pause(self, tmp_path: Path, how: str) -> None:
+    def test_removing_the_cap_lifts_the_budget_pause(self, tmp_path: Path) -> None:
         with _build(tmp_path):
             lead = pod.member_id("proj", "lead")
             meta = _lead_meta("proj")
@@ -339,10 +359,7 @@ class TestBudgetSet:
             current_home().meta_path(lead).write_text(json.dumps(meta))
             _queue.enqueue_task_once("proj", "held", channel="cli")
 
-            if how == "set-zero":
-                _pod_settings.set_setting("proj", "budgetUsd", "0")
-            else:
-                _pod_settings.unset_setting("proj", "budgetUsd")
+            _pod_settings.unset_setting("proj", "budgetTokens")
 
             assert _lead_meta("proj")["paused"] is False
             assert _lead_meta("proj")["pausedReason"] == ""
@@ -365,7 +382,7 @@ class TestBudgetSet:
             _store.write_json(path, doc)
             capsys.readouterr()
 
-            _pod_settings.set_setting("proj", "budgetUsd", "5")
+            _pod_settings.set_setting("proj", "budgetTokens", "5000")
 
             out = capsys.readouterr().out
             assert "Unblocked 2 blocked task(s)" in out

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from docket.hops.application.report import network_text, unpriced_text
+from docket.hops.application.report import network_text
 from docket.interfaces.cli.render import ui
 
 
@@ -38,8 +38,6 @@ def render_pod(report: dict[str, Any]) -> None:
     _kv("Approval mode:", f"{approval['effective']} ({note})")
     _kv("Pipeline:", report["pipeline"]["source"])
     _kv("Network:", network_text(report["network"]))
-    if report["budgetUnpriced"]:
-        ui.warn(f"budgetUsd {unpriced_text(report['budgetUnpriced'])}")
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         _kv(

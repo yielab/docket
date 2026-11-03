@@ -5,7 +5,7 @@
       "blueprint": "build",
       "codebase": "~/Sites/webapp",
       "description": "Customer-facing web app.",
-      "budgetUsd": 20
+      "budgetTokens": 2000000
     },
     {
       "id": "research",

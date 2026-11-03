@@ -97,13 +97,11 @@ The surface is `docket pod reset <member>`.
 - [ ] `docket status --json` is machine-readable (`test_json_carries_tasks_usage_last_run_and_the_start_flag`)
 - [ ] `docket status --history [--days N]` returns an empty history, because sessions store one
       running total and no per-turn timestamp (`test_history_with_no_dated_data_is_an_empty_list`)
-- [ ] A budget cap (`docket pod set budgetUsd <USD>`) is checked before each hop against the same
-      estimate; `docket setup --fix` warns at 80% or more of the cap and flags 100% or more, with
-      the `estimated — no cost recorded` label
-      (`test_budget_warns_at_80_percent_from_estimate`,
-      `test_budget_over_cap_from_estimate_when_nothing_recorded`)
-- [ ] A budgeted pod running a model with no catalog price is named by `docket status` and
-      `docket pod show`, not counted as zero (`test_status_json_and_text_name_the_unpriced_model`)
+- [ ] A budget cap (`docket pod set budgetTokens <N>`) is checked before each hop against the
+      pod's counted tokens, so it holds for a model with no catalog price too;
+      `docket setup --fix` warns at 80% or more of the cap and flags 100% or more
+      (`test_counted_tokens_over_the_cap_block_the_next_task_on_an_unpriced_model`,
+      `test_budget_warns_at_80_percent_of_budget_tokens`)
 
 **Definition of Done:**
 - Token totals come from docket's own durable session records
@@ -160,12 +158,12 @@ The surface is `docket pod reset <member>`.
       default (`maxReworkCycles`); a second one fails the task
       (`test_request_changes_triggers_one_rework_then_approves`,
       `test_second_request_changes_fails_the_task`)
-- [ ] Each hop is budget-gated against the pod's `budgetUsd` using the labelled estimate. Over the
+- [ ] Each hop is budget-gated against the pod's `budgetTokens` and its counted tokens. Over the
       cap the task is set to `blocked` (never rewritten to `pending`) and the pod is paused
       (`test_cap_breach_pauses_lead_and_blocks_task`,
-      `test_dispatch_pauses_pod_using_estimate_when_nothing_recorded_a_cost`)
+      `test_counted_tokens_over_the_cap_block_the_next_task_on_an_unpriced_model`)
 - [ ] A blocked task re-enters the queue only through `docket run --resume`,
-      `docket pod set budgetUsd <USD>` or `docket task retry <task-id>`
+      `docket pod set budgetTokens <N>` or `docket task retry <task-id>`
       (`test_resume_clears_the_budget_pause_and_unblocks_tasks`,
       `test_retry_task_unblocks_a_single_task`, `test_unblock_pod_unblocks_every_blocked_task`)
 - [ ] Each hop emits trace events readable with `docket task trace <task> [--tail]`
@@ -388,7 +386,7 @@ Exercised by: `test_status_labels_the_dollar_figure_an_estimate`,
 
 ```gherkin
 Given a pod with a task queued
-And the pod's budgetUsd cap is already reached by the token estimate
+And the pod's budgetTokens cap is already reached by its counted tokens
 
 When I run "docket run"
 Then the task should be set to "blocked"

@@ -111,35 +111,15 @@ class TestBuiltinBlueprintsProvision:
                     assert "workDir" not in meta
                     assert "## Your codebase" in (ws / "WORKFLOW_AUTO.md").read_text()
 
-    @pytest.mark.parametrize(
-        "blueprint_name,expected_budget",
-        [
-            ("build", None),
-            ("respond", 20.0),
-            ("operate", 30.0),
-            ("routine", 15.0),
-        ],
-    )
-    def test_default_budget_applies_to_lead_only(
-        self,
-        tmp_path: Path,
-        blueprint_name: str,
-        expected_budget: float | None,
-    ) -> None:
+    @pytest.mark.parametrize("blueprint_name", ["build", "respond", "operate", "routine"])
+    def test_no_blueprint_sets_a_pod_budget(self, tmp_path: Path, blueprint_name: str) -> None:
         with _seed(tmp_path) as oc_dir:
             blueprint = _bp.get_blueprint(blueprint_name)
             location = "/src/demo" if blueprint.workspace_kind == "codebase" else ""
             created = _pod.build_pod_from_blueprint("demo", blueprint_name, location=location)
 
-            lead_meta = _meta(oc_dir, "demo-lead")
-            if expected_budget is None:
-                assert "budgetUsd" not in lead_meta
-            else:
-                assert float(lead_meta["budgetUsd"]) == expected_budget
-
             for mid in created:
-                if mid != "demo-lead":
-                    assert "budgetUsd" not in _meta(oc_dir, mid)
+                assert "budgetTokens" not in _meta(oc_dir, mid)
 
     def test_workdir_auto_provisioned_when_location_omitted(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:
@@ -252,7 +232,7 @@ class TestBuildParity:
 
     def test_no_default_budget_cap(self, tmp_path: Path) -> None:
         with self._provision(tmp_path / "b", via_blueprint=True) as oc_b:
-            assert "budgetUsd" not in _meta(oc_b, "demo-lead")
+            assert "budgetTokens" not in _meta(oc_b, "demo-lead")
 
 
 # ── docket setup accepts a workdir blueprint pod ───────────────────────────
@@ -334,7 +314,7 @@ class TestFromSpecBlueprint:
                     "blueprint": "respond",
                     "workDir": str(tmp_path / "research-work"),
                     "description": "look into X",
-                    "budgetUsd": "5",
+                    "budgetTokens": 2000000,
                 }
             ]
             spec_file = tmp_path / "spec.json"
@@ -351,8 +331,28 @@ class TestFromSpecBlueprint:
             assert meta["blueprint"] == "respond"
             assert meta["workspaceKind"] == "workdir"
             assert meta["workDir"] == str(tmp_path / "research-work")
-            # Explicit spec budgetUsd overrides the blueprint's own default (20.0).
-            assert float(meta["budgetUsd"]) == 5.0
+            assert meta["budgetTokens"] == 2000000
+            assert "budgetTokens" not in _meta(oc_dir, "myresearch-writer")
+
+    def test_a_spec_entry_with_budget_usd_is_refused_naming_budget_tokens(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with _seed(tmp_path) as oc_dir:
+            spec = [
+                {
+                    "id": "myresearch",
+                    "blueprint": "respond",
+                    "workDir": str(tmp_path / "research-work"),
+                    "budgetUsd": "5",
+                }
+            ]
+            spec_file = tmp_path / "spec.json"
+            spec_file.write_text(json.dumps(spec))
+
+            _agents.run_init(_agents.InitRequest(from_file=str(spec_file)))
+
+            assert "budgetTokens" in capsys.readouterr().out
+            assert not any(i.startswith("myresearch") for i in _ids(oc_dir))
 
     def test_from_spec_build_blueprint_matches_codebase_field(self, tmp_path: Path) -> None:
         with _seed(tmp_path) as oc_dir:

@@ -1,9 +1,9 @@
 # CLI Interface Contract Specification
 
-**Version**: 5.10.0
+**Version**: 5.11.0
 **Status**: Complete. Every command, verb and flag below is in the live command tree (`docket
 --help`, generated `docs/commands.md`).
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -473,7 +473,7 @@ Each state-changing verb ends with one `Next:` line on stderr.
   ledger; no model call, and `MEMORY.md`, `memory/` and the pod's memory are left alone
   (agent-lifecycle.spec.md "Member Reset").
 - `set KEY VALUE [--member ID]` / `unset KEY [--member ID]`: the one writer of every
-  `PodSettings` key (`budgetUsd` included); `verify` with `--member` writes or clears an
+  `PodSettings` key (`budgetTokens` included); `verify` with `--member` writes or clears an
   implementer's `verifyCmd` (pod-blueprints.spec.md "Pod settings: set and unset").
 - `delete [--confirm NAME]`: destroy the pod. The name is typed on a terminal; off one,
   `--confirm NAME` is required. A member id is refused; there is no picker.
@@ -958,7 +958,7 @@ There is no `{success, data, error, version}` outer object. Each command's actua
 is documented in [specs/data/cli-json-shapes.spec.md](../data/cli-json-shapes.spec.md).
 
 Key naming: the keys docket builds for CLI output are camelCase (`costUsd`, `totalUsd`,
-`budgetUsd`, `sessionKey`), with one exception, `mcp_servers` in `pod recipes --json`. Records
+`budgetTokens`, `sessionKey`), with one exception, `mcp_servers` in `pod recipes --json`. Records
 passed through as stored keep their stored keys: trace events in `task trace --json` (`event_type`,
 `agent_role`, `cost_usd`) and the raw JSONL of `log --json`.
 
@@ -1031,7 +1031,7 @@ the contract-level summary follows.
   like any other (see input-validation.spec.md)
 
 ### Numeric Validation
-- Budget values: non-negative USD (`pod set budgetUsd N`)
+- Budget values: a whole number of counted tokens above 0 (`pod set budgetTokens N`)
 - History window: non-negative days (`status --history --days N`)
 - `run --timeout`: at least 1 second; no upper bound
 

@@ -1,10 +1,10 @@
 # Agent Lifecycle Specification
 
-**Version**: 4.0.1
+**Version**: 4.1.0
 **Status**: Complete. Pods and their members are created, shown, added to, reset, removed and
 deleted as described below; `docket init --from` provisions pods from a spec file (see
 Declarative Provisioning).
-**Last Updated**: 2026-10-23
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -92,7 +92,7 @@ This specification does NOT cover:
 6. **MAY** carry a `telegram` field on any entry, binding the pod's Lead to that Telegram group
 7. **MUST** carry a `blueprint` field on every entry; the entry provisions a pod (see
    pod-blueprints.spec.md) with its `codebase` (or `workDir` for a `workdir`-kind blueprint),
-   `stack`, `description`, `projectKey` and `budgetUsd`. An entry with no `blueprint` is refused
+   `stack`, `description`, `projectKey` and `budgetTokens` (an entry carrying `budgetUsd` is refused naming `budgetTokens`). An entry with no `blueprint` is refused
    and nothing is created for it, and a location that is not usable is refused the same way; the
    command exits 2 once every entry has been processed
 

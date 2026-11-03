@@ -16,6 +16,7 @@ from docket.agent.ports import (
     DOCKET_TASK_DENIED_TOOLS,
     DOCKET_TASK_NETWORK,
     DOCKET_TASK_POLICIES,
+    DOCKET_TURN_TOKEN_BUDGET_SOURCE,
     PIPELINE_WORKTREE_ENV,
     ChatBackend,
     TurnResult,
@@ -338,9 +339,11 @@ def _loop_config(
     allow-list, popped from *ctx*'s environment (so no tool sees them), where the step sets it.
     Rounds and tool calls are the machine's guards, read from ``Home`` with source ``default``;
     *timeout* is already resolved by the runner, and its owner arrives as
-    ``DOCKET_HOP_TIMEOUT_SOURCE``. Each owner is kept on the config."""
+    ``DOCKET_HOP_TIMEOUT_SOURCE``; the token ceiling's owner arrives as
+    ``DOCKET_TURN_TOKEN_BUDGET_SOURCE``. Each owner is kept on the config."""
     tool_allow = _hop_tool_allow(ctx.env.pop(DOCKET_HOP_TOOLS, None))
     time_source = ctx.env.pop(DOCKET_HOP_TIMEOUT_SOURCE, "")
+    token_source = ctx.env.pop(DOCKET_TURN_TOKEN_BUDGET_SOURCE, "")
     home = current_home()
     context_window = getattr(backend, "context_window_tokens", None)
     max_output_tokens = getattr(backend, "max_output_tokens", None)
@@ -352,6 +355,7 @@ def _loop_config(
         wall_clock_timeout_s=float(timeout),
         wall_clock_source=time_source or "default",
         token_budget=token_budget,
+        token_budget_source=token_source or "default",
         context_window_tokens=(
             context_window if isinstance(context_window, int) and context_window > 0 else None
         ),

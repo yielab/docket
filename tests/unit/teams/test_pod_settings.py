@@ -31,7 +31,7 @@ class TestPodSettings:
     def test_defaults_when_nothing_stored(self) -> None:
         _write_lead_meta("shop")
         settings = pod_settings.PodSettings.load_for("shop")
-        assert settings.budget_usd == 0.0
+        assert settings.budget_tokens is None
         assert settings.max_rework_cycles == 1
         assert settings.turn_timeout_s is None
         assert settings.verify_timeout_s is None
@@ -49,9 +49,26 @@ class TestPodSettings:
 
     def test_coerce_names_a_rejected_value_not_a_stored_one(self) -> None:
         with pytest.raises(pod_settings.PodSettingsError) as err:
-            pod_settings.PodSettings.coerce("budgetUsd", "notanumber")
-        assert str(err.value).startswith("budgetUsd: invalid value 'notanumber'")
+            pod_settings.PodSettings.coerce("turnTimeoutS", "notanumber")
+        assert str(err.value).startswith("turnTimeoutS: invalid value 'notanumber'")
         assert "stored" not in str(err.value)
+
+    @pytest.mark.parametrize("bad", ["0", "-1", "x", "1.5", ""])
+    def test_budget_tokens_refuses_what_is_not_a_positive_whole_number(self, bad: str) -> None:
+        with pytest.raises(pod_settings.PodSettingsError, match="budgetTokens"):
+            pod_settings.PodSettings.coerce("budgetTokens", bad)
+
+    def test_budget_tokens_persists_the_validated_integer(self) -> None:
+        assert pod_settings.PodSettings.coerce("budgetTokens", "500000") == 500000
+
+    def test_budget_usd_is_refused_naming_budget_tokens(self) -> None:
+        with pytest.raises(pod_settings.PodSettingsError, match="budgetTokens"):
+            pod_settings.PodSettings.coerce("budgetUsd", "5")
+
+    def test_a_stored_zero_budget_is_unreadable_not_silently_unlimited(self) -> None:
+        _write_lead_meta("shop", {"budgetTokens": 0})
+        with pytest.raises(pod_settings.PodSettingsError, match="budgetTokens"):
+            pod_settings.PodSettings.load_for("shop")
 
     def test_coerce_accepts_approval_mode(self) -> None:
         assert pod_settings.PodSettings.coerce("approvalMode", "refuse") == "refuse"
@@ -64,14 +81,14 @@ class TestPodSettings:
         _write_lead_meta(
             "shop",
             {
-                "budgetUsd": "5",
+                "budgetTokens": "5000",
                 "maxReworkCycles": "2",
                 "turnTimeoutS": "45",
                 "verifyTimeoutS": "600",
             },
         )
         settings = pod_settings.PodSettings.load_for("shop")
-        assert (settings.budget_usd, settings.max_rework_cycles) == (5.0, 2)
+        assert (settings.budget_tokens, settings.max_rework_cycles) == (5000, 2)
         assert (settings.turn_timeout_s, settings.verify_timeout_s) == (45, 600)
 
     def test_invalid_stored_value_names_the_key(self) -> None:
@@ -99,7 +116,7 @@ class TestPodSettings:
         _write_lead_meta("shop", {"maxReworkCycles": "3"})
         settings = pod_settings.PodSettings.load_for("shop")
         assert settings.value_and_source("maxReworkCycles", "shop") == (3, "set")
-        assert settings.value_and_source("budgetUsd", "shop") == (0.0, "default")
+        assert settings.value_and_source("budgetTokens", "shop") == (None, "default")
 
     def test_value_and_source_reports_approval_mode(self) -> None:
         _write_lead_meta("shop", {"approvalMode": "refuse"})

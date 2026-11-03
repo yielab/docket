@@ -41,8 +41,8 @@ This specification does NOT cover:
   `tool_call`, `tool_result`, `prompt_composed`, `session_compaction`, `request_fit` and the
   meaning of `llm_call`; `pod-dispatch.spec.md` owns the verdict/rework/approval/run-cancellation
   and hop event family, `cost_charged` and `budget_exceeded`; `security-gates.spec.md` owns
-  `guardrail_check`/`guardrail_block`; `cost-tracking.spec.md` owns `budget_warning`'s unpriced
-  action; `operator-loop.spec.md` owns the `escalation_*` family
+  `guardrail_check`/`guardrail_block`; `cost-tracking.spec.md` owns `budget_exceeded`'s counted-token
+  payload; `operator-loop.spec.md` owns the `escalation_*` family
 - The read API surface over this store (`docket task trace`, `GET` routes) — see
   `serve-read-api.spec.md`
 - How a trace record is projected into an exported span — see `observability-export.spec.md`

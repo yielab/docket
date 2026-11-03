@@ -29,7 +29,6 @@ from docket.agent import session as _session
 from docket.hops.application import driver_support as _driver_support
 from docket.hops.application import executor as _executor
 from docket.hops.application import runner as _application_runner
-from docket.hops.application import steps as _steps_c
 from docket.hops.application import sweep as _sweep
 from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop_c
@@ -745,11 +744,10 @@ class TestExistingStateMachineBehaviourUnaffected:
     ) -> None:
         _seed_pod(tmp_path)
         _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
-        monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
-        monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
-        monkeypatch.setattr(_pre_hop_c, "pod_recorded_cost", lambda _p: 5.0)
+        monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1)
+        monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1)
+        monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p: 5)
+        monkeypatch.setattr(_pre_hop_c, "pod_counted_tokens", lambda _p: 5)
 
         def _runner(
             agent_id: str,

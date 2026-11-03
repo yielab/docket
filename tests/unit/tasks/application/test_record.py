@@ -13,7 +13,6 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 from docket.agent.ports import BudgetStop, TurnResult
@@ -113,21 +112,24 @@ class TestBudgetOutcomeRaise:
     """A hop's ``budget.raise`` names what raises the limit that stopped it, task tokens included."""
 
     @staticmethod
-    def _outcome(stop: BudgetStop, max_tokens: int | None) -> dict[str, Any]:
-        ctx: Any = SimpleNamespace(task=SimpleNamespace(max_tokens=max_tokens))
+    def _outcome(stop: BudgetStop) -> dict[str, Any]:
         run = TurnResult(False, "", 0.0, {}, budget_stop=stop)
-        outcome = _record._budget_outcome(ctx, run, tree_changed=False)
+        outcome = _record._budget_outcome(run, tree_changed=False)
         assert outcome is not None
         return outcome.model_dump(by_alias=True)
 
     def test_a_task_max_tokens_stop_reads_max_tokens(self) -> None:
-        got = self._outcome(BudgetStop("tokens", 500, 501, "default"), max_tokens=500)
+        got = self._outcome(BudgetStop("tokens", 500, 501, "task"))
         assert (got["source"], got["raise"]) == ("task", "maxTokens")
 
+    def test_a_pod_budget_stop_reads_budget_tokens(self) -> None:
+        got = self._outcome(BudgetStop("tokens", 500, 501, "pod_budget"))
+        assert (got["source"], got["raise"]) == ("pod_budget", "budgetTokens")
+
     def test_a_machine_token_stop_reads_the_machine_variable(self) -> None:
-        got = self._outcome(BudgetStop("tokens", 100000, 100001, "default"), max_tokens=None)
+        got = self._outcome(BudgetStop("tokens", 100000, 100001, "default"))
         assert (got["source"], got["raise"]) == ("default", "AGENT_LOOP_TOKEN_BUDGET")
 
     def test_a_step_clock_stop_reads_timeout(self) -> None:
-        got = self._outcome(BudgetStop("time", 30, 31, "step"), max_tokens=None)
+        got = self._outcome(BudgetStop("time", 30, 31, "step"))
         assert got["raise"] == "timeout"

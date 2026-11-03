@@ -342,48 +342,53 @@ def test_only_a_conversation_that_answered_ends_on_the_token_budget(
 
 
 @pytest.mark.parametrize(
-    ("cap", "spent", "estimated", "kind", "reason"),
+    ("cap", "spent", "kind", "reason"),
     [
-        (0.0, 99.0, False, "advance", ""),
-        (5.0, 1.0, False, "advance", ""),
-        (5.0, 4.99, True, "advance", ""),
-        (5.0, 10.0, False, "blocked", "pod budget reached ($10.00 ≥ $5.00) before implementer"),
+        (None, 99_000, "advance", ""),
+        (5000, 1000, "advance", ""),
+        (5000, 4999, "advance", ""),
         (
-            5.0,
-            5.0,
-            True,
+            5000,
+            5000,
             "blocked",
-            "pod budget reached (~$5.00 (estimated — no cost recorded) ≥ $5.00) before implementer",
+            "pod budget reached (5000 of 5000 tokens counted) before implementer",
+        ),
+        (
+            5000,
+            6200,
+            "blocked",
+            "pod budget reached (6200 of 5000 tokens counted) before implementer",
         ),
     ],
 )
-def test_pod_budget_decision(
-    cap: float, spent: float, estimated: bool, kind: str, reason: str
-) -> None:
-    decision = _d.decide_pod_budget(cap=cap, spent=spent, estimated=estimated, role="implementer")
+def test_pod_budget_decision(cap: int | None, spent: int, kind: str, reason: str) -> None:
+    decision = _d.decide_pod_budget(cap=cap, spent=spent, role="implementer")
 
     assert (decision.kind, decision.reason) == (kind, reason)
     if kind == "blocked":
         assert decision.failure_kind == "pod_budget"
         assert decision.event == "budget_exceeded"
-        assert dict(decision.detail) == {
-            "spent": spent,
-            "cap": cap,
-            "role": "implementer",
-            "estimated": estimated,
-        }
+        assert dict(decision.detail) == {"spent": spent, "cap": cap, "role": "implementer"}
 
 
 @pytest.mark.parametrize(
-    ("cap", "unpriced", "warns"),
-    [(0.0, True, False), (5.0, False, False), (5.0, True, True)],
+    ("task_left", "pod_left", "default", "expected"),
+    [
+        (None, None, 100_000, None),
+        (None, 500_000, 100_000, None),
+        (None, 20_000, 100_000, (20_000, "pod_budget")),
+        (400_000, None, 100_000, (400_000, "task")),
+        (400_000, 500_000, 100_000, (400_000, "task")),
+        (400_000, 400_000, 100_000, (400_000, "task")),
+        (400_000, 150_000, 100_000, (150_000, "pod_budget")),
+    ],
 )
-def test_unpriced_model_warns_only_under_a_budget(cap: float, unpriced: bool, warns: bool) -> None:
-    got = _d.unpriced_budget_warning(cap=cap, model="acme/m1", unpriced=unpriced)
+def test_turn_token_ceiling_names_the_tighter_owner(
+    task_left: int | None, pod_left: int | None, default: int, expected: tuple[int, str] | None
+) -> None:
+    got = _d.turn_token_ceiling(task_left=task_left, pod_left=pod_left, default=default)
 
-    assert (got is not None) is warns
-    if warns:
-        assert got == "pod budget $5.00 cannot stop this hop: acme/m1 has no price"
+    assert got == expected
 
 
 @pytest.mark.parametrize(

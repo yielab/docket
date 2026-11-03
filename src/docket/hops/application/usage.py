@@ -21,7 +21,7 @@ def aggregate_cost(agent_id: str) -> UsageTotals:
 
     Resolves ``agent.driver.default_driver()``
     (``DocketDriver``) -- load-bearing for ``hops/gates/pre_hop.py``'s own
-    pod-budget gate (``pod_gating_cost`` calls this for every hop's member),
+    pod-budget gate (``pod_counted_tokens`` calls this for every hop's member),
     which must see the same driver hops actually execute through or the
     budget cap silently stops tripping.
     """
@@ -57,6 +57,18 @@ def cost_history(agent_id: str) -> list[UsageDay]:
     a way to produce.
     """
     return _dr.default_driver().usage(agent_id).by_day
+
+
+def pod_counted_tokens(project: str) -> int:
+    """The pod's counted tokens: each member's input minus cache reads, plus output, summed over
+    the pod's members and all their sessions. The measure a task's ``maxTokens`` uses, and what the
+    pod's ``budgetTokens`` is compared with; it needs no price."""
+    all_ids = [a.id for a in _fleet.list_agents()]
+    total = 0
+    for mid, _role, _idx in _pod.members_of(all_ids, project):
+        totals = aggregate_cost(mid)
+        total += max(0, totals.input_tokens - totals.cache_read) + totals.output_tokens
+    return total
 
 
 def pod_recorded_cost(project: str) -> float:

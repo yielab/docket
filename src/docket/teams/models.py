@@ -16,7 +16,12 @@ def unknown_keys_text(exc: ValidationError) -> str:
         for e in exc.errors()
         if e["type"] == "extra_forbidden"
     ]
-    return f"unknown key {', '.join(keys)}" if keys else ""
+    if not keys:
+        return ""
+    text = f"unknown key {', '.join(keys)}"
+    if "budgetUsd" in keys:
+        text += " (budgetUsd was replaced by budgetTokens, a whole number of counted tokens)"
+    return text
 
 
 class AgentKind(StrEnum):
@@ -64,13 +69,13 @@ class AgentMeta(BaseModel):
     created: str = ""
     session_key: str = Field("", alias="sessionKey")
     project_key: str = Field("", alias="projectKey")
-    budget_usd: float | None = Field(None, alias="budgetUsd", ge=0)
+    budget_tokens: int | None = Field(None, alias="budgetTokens", gt=0)
     paused: bool = False
     paused_reason: str = Field("", alias="pausedReason")
 
     # Pod-wide dispatch timeout overrides, set on the Lead alongside
-    # budgetUsd (teams/settings.py reads them the same way it reads the Lead's
-    # budgetUsd for pod_budget()). None = no pod-level override; falls back to the machine
+    # budgetTokens (teams/settings.py reads them the same way it reads the Lead's
+    # budgetTokens for pod_budget()). None = no pod-level override; falls back to the machine
     # default, AGENT_LOOP_WALL_CLOCK_TIMEOUT_S, at dispatch time.
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS")
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS")

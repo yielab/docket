@@ -55,10 +55,18 @@ NETWORK_GRANT_SKIPPED = (
 )
 
 
+# The dollar cap this key was: refused wherever it still arrives, naming its replacement.
+BUDGET_USD_KEY = "budgetUsd"
+BUDGET_USD_REFUSAL = (
+    "budgetUsd was replaced by budgetTokens, a whole number of counted tokens above 0 "
+    "(docket pod set budgetTokens <n>)"
+)
+
+
 # alias -> attribute, so the CLI and dispatch never hardcode a second copy of
 # this mapping next to PodSettings.KEYS.
 _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
-    "budgetUsd": "budget_usd",
+    "budgetTokens": "budget_tokens",
     "maxReworkCycles": "max_rework_cycles",
     "turnTimeoutS": "turn_timeout_s",
     "verifyTimeoutS": "verify_timeout_s",
@@ -101,7 +109,7 @@ REWORK_BOUND_BY_PIPELINE = (
 
 
 # Typed, validated view over the pod Lead's dispatch-configuration meta keys
-# (budgetUsd/maxReworkCycles/turnTimeoutS/verifyTimeoutS -- see
+# (budgetTokens/maxReworkCycles/turnTimeoutS/verifyTimeoutS -- see
 # specs/data/docket-meta.spec.md). A missing/blank meta key uses the field
 # default below, but a *present, malformed* stored value is never silently
 # replaced by it: ``load_for``/``coerce`` raise ``PodSettingsError`` naming the
@@ -114,7 +122,8 @@ class PodSettings(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    budget_usd: float = Field(0.0, alias="budgetUsd", ge=0)
+    # The pod's cap on counted tokens (input minus cache reads, plus output); ``None`` = no cap.
+    budget_tokens: int | None = Field(None, alias="budgetTokens", gt=0)
     max_rework_cycles: int = Field(1, alias="maxReworkCycles", ge=0)
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS", gt=0)
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS", gt=0)
@@ -235,7 +244,7 @@ class PodSettings(BaseModel):
     # Declaration order the CLI's ``config`` subcommand, ``load_for`` and
     # ``coerce`` all iterate, instead of a second hardcoded key list.
     KEYS: ClassVar[tuple[str, ...]] = (
-        "budgetUsd",
+        "budgetTokens",
         "maxReworkCycles",
         "turnTimeoutS",
         "verifyTimeoutS",
@@ -525,6 +534,8 @@ class PodSettings(BaseModel):
     ) -> float | int | str:
         """Validate *value* for *key*; return the form to persist via ``teams.fleet.meta_set``.
         Never writes. *project*/*mcp_extra* widen ``mcpServers`` to that pod's own servers."""
+        if key == BUDGET_USD_KEY:
+            raise PodSettingsError(BUDGET_USD_REFUSAL)
         if key not in cls.KEYS:
             raise PodSettingsError(
                 f"unknown pod setting {key!r}; valid keys: {', '.join(cls.KEYS)}"

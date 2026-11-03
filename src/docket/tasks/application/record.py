@@ -250,7 +250,7 @@ class UnitContext:
     task: TaskRecord
     task_id: str
     session_id: str
-    cap: float
+    cap: int | None
     resolved_turn_timeout: int
     resolved_verify_timeout: int
     id_to_index: dict[str, int]
@@ -407,7 +407,7 @@ def build_hop_result(
         prompt_manifest=manifest or {},
         started_at=started_at,
         cycle=cycle,
-        budget=_budget_outcome(ctx, run_res, tree_changed=kept and bool(files_changed)),
+        budget=_budget_outcome(run_res, tree_changed=kept and bool(files_changed)),
     )
 
 
@@ -416,21 +416,19 @@ def _keeps_its_work(role: str, run_res: _rd.TurnResult) -> bool:
     return role == "implementer" and run_res.failure_kind == "budget_exhausted"
 
 
-def _budget_outcome(
-    ctx: UnitContext, run_res: _rd.TurnResult, *, tree_changed: bool
-) -> BudgetOutcome | None:
+def _budget_outcome(run_res: _rd.TurnResult, *, tree_changed: bool) -> BudgetOutcome | None:
     """The hop's ``budget`` record from the turn's stop, or ``None`` for a turn that was not one.
-    Tokens set by a task's ``maxTokens`` are owned by the task."""
+    The stop already names its owner (the hop's token ceiling comes with the task or the pod that
+    set it), and ``raise_key`` is built from that same value."""
     stop = run_res.budget_stop
     if stop is None:
         return None
-    source = "task" if stop.bound == "tokens" and ctx.task.max_tokens is not None else stop.source
     return BudgetOutcome(
         bound=stop.bound,
         limit=stop.limit,
         used=stop.used,
-        source=source,
-        raise_key=_rd.raise_key(stop.bound, source),
+        source=stop.source,
+        raise_key=stop.raise_key,
         tree_changed=tree_changed,
     )
 

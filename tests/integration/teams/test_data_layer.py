@@ -69,13 +69,13 @@ class TestAgentMeta:
             "model": "anthropic/claude-haiku-4-5",
             "sessionKey": "agent:x:y",
             "projectKey": "y",
-            "budgetUsd": 10.0,
+            "budgetTokens": 500000,
         }
         meta = AgentMeta.model_validate(raw)
         assert meta.kind == AgentKind.project
         assert "model_source" not in AgentMeta.model_fields
         assert meta.session_key == "agent:x:y"
-        assert meta.budget_usd == 10.0
+        assert meta.budget_tokens == 500000
         # Round-trip: dump with aliases produces camelCase keys
         dumped = meta.model_dump(by_alias=True)
         assert "sessionKey" in dumped

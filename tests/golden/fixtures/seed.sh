@@ -94,7 +94,7 @@ cat >"$STATE_DIR/workspaces/projects/content/.docket-meta.json" <<JSON
   "created": "$FIXED_TS",
   "sessionKey": "agent:content:blog",
   "projectKey": "blog",
-  "budgetUsd": 10,
+  "budgetTokens": 500000,
   "templateVersion": "3"
 }
 JSON

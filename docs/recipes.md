@@ -26,7 +26,7 @@ over a shipped recipe of the same name. Composition: apply as many recipes as yo
 | [`code-intel`](#code-intel) | 2 MCP servers | Structural search (ast-grep) and read-only language intelligence (pyright) as pod-scoped MCP servers. |
 | [`cross-family-review`](#cross-family-review) | 1 member, pipeline `cross-family-review` | Cross-provider review as a pipeline: the Implementer builds on Anthropic and the Reviewer judges on OpenAI. Needs both providers' credentials (ANTHROPIC_API_KEY and OPENAI_API_KEY). |
 | [`explore-then-edit`](#explore-then-edit) | 3 members, pipeline `explore-then-edit` | Researcher, Implementer and Reviewer as a pipeline, with the Researcher on a cheap model and one bounded rework cycle back to the Implementer. |
-| [`frugal`](#frugal) | 1 member, 2 settings, pipeline `frugal` | A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
+| [`frugal`](#frugal) | 1 member, 2 settings, pipeline `frugal` | A token cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping. |
 | [`git-safety`](#git-safety) | 2 policies | Block unattended-unsafe git commands and ask before a push that touches a protected branch. |
 | [`hacker-news`](#hacker-news) | 1 named pipeline, 1 record set, 1 routine | A service for the public Hacker News search API, a set of the most commented stories with a summary and the discussion of each, a digest pipeline and a weekly report routine, for a routine pod. |
 | [`intake`](#intake) | 1 member, pipeline `intake` | The Lead reasons about a task before any code changes: a typed brief, a deterministic resource check, and an operator question when something only a human can answer. |
@@ -260,7 +260,7 @@ docket pod remove <project>-reviewer
 
 ## frugal
 
-A spend cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping.
+A token cap and cheap-tier planning/review as a pipeline: an ordinary build stays inexpensive by policy, not by hoping.
 
 **Brings:** 1 member, 2 settings, pipeline `frugal`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline frugal · plugins 0 · skills 0 · settings 2`
 
@@ -269,14 +269,14 @@ docket init --recipe frugal
 docket pod update frugal
 ```
 
-**Practice:** cost-bounded dispatch — a spend cap plus cheap-tier planning and review.
+**Practice:** cost-bounded dispatch — a token cap plus cheap-tier planning and review.
 
 **Source idea:** most planning and review turns don't need the strongest, most expensive model —
 reserve spend for the step that actually needs it (the Implementer) and cap the rest, the
 right-size-the-model-to-the-role practice model-routing setups use.
 
-**What docket's gates make structural:** `budgetUsd: 2` is enforced by dispatch's own budget
-gate — a task that would exceed it pauses rather than silently overspending. The pipeline's own
+**What docket's gates make structural:** `budgetTokens: 1000000` is enforced by dispatch's own budget
+gate — once the pod has counted that many tokens, the next task blocks and the pod pauses rather than silently overspending. The pipeline's own
 `on: {REQUEST-CHANGES: {goto: build, max: 1}}` bounds the Reviewer's rework edge. `model: cheap` on `plan` and `review` resolves
 against the live rank anchors for that hop only; it is never persisted to the Lead's or
 Reviewer's own model, so removing this pipeline restores their ordinary resolution.
@@ -291,14 +291,14 @@ docket pod update frugal    # onto an existing pod
 ```
 
 `pod.yaml` names the one member this recipe adds (`reviewer`) and the two settings it writes
-(`budgetUsd`, `turnTimeoutS`); `apply` validates the roster, the settings and
+(`budgetTokens`, `turnTimeoutS`); `apply` validates the roster, the settings and
 `pipeline.yaml` before writing anything, and is safe to run again (a second run plans every item
 `skip`). `--dry-run` prints the plan without writing.
 
 ### Files
 
 - `pod.yaml` — what `apply` reads: `kind: pod`, `name: frugal`, `members: [reviewer]`,
-  `settings: {budgetUsd: 2, turnTimeoutS: 600}`.
+  `settings: {budgetTokens: 1000000, turnTimeoutS: 600}`.
 - `pipeline.yaml` — `plan` (Lead, `model: cheap`) -> `build` (Implementer, gated on its own
   verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES verdict, rework
   -> build, maxCycles 1).
@@ -307,7 +307,7 @@ docket pod update frugal    # onto an existing pod
 
 ```bash
 docket pod unset pipeline
-docket pod unset budgetUsd
+docket pod unset budgetTokens
 docket pod unset turnTimeoutS
 docket pod remove <project>-reviewer
 ```
@@ -1012,8 +1012,9 @@ roster it names (`analyst`, `reviewer`, and a writer for the report) is the `rou
 - `pipelines/capture.yaml` - `docket task add "<entries>" --pipeline capture`. The Analyst adds a
   row for each entry in the task's input with `rec__entries__add`; a repeated `ref` returns the row
   that exists, so a resumed hop that repeats its call writes once. The Reviewer counts the rows this
-  task added with `rec__query` against the input and answers APPROVE or REQUEST-CHANGES. The Reviewer
-  denies `write`, which covers every record write, so it can check the set and never change it.
+  task added with `rec__query` against the input and answers APPROVE or REQUEST-CHANGES. The Reviewer's
+  step lists only `read`, `glob`, `grep` and `rec__query`, so it can check the set and never change it
+  (denying `write` would not do it: a row is a `record` tool, not a `write` one).
 - `routines/weekly-report.yaml` - on Mondays at 08:00 UTC (set `tz` for another zone) the service enqueues a task on the blueprint's
   own pipeline. The Writer exports the set into `report.md` with `rec__export`, without the rows
   passing through the model. Change `schedule` or the description to suit; the service must be running

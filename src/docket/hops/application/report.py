@@ -416,14 +416,8 @@ def pod_report(project: str) -> dict[str, Any]:
         "network": dict(
             zip(("mode", "scope"), _pod_settings.effective_network(project), strict=True)
         ),
-        "budgetUnpriced": _steps.unpriced_budget_models(project),
         **record,
     }
-
-
-def unpriced_text(models: list[str]) -> str:
-    """What a budget cannot do about *models*, for ``pod show`` and ``status``."""
-    return f"cannot stop spend on {', '.join(models)}: no price in the provider catalog"
 
 
 def _blueprint(project: str) -> str:

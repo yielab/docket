@@ -15,7 +15,7 @@ from docket.governance import security as _sec
 from docket.hops.application.compose import _brief_from_step, _brief_questions_schema, _gate_report
 from docket.hops.application.runner import when_cwd
 from docket.hops.gates.post_hop import _match_on_route, _run_in_envelope, _task_command_env
-from docket.hops.gates.pre_hop import _gate_pre_hop_approval, _unpriced
+from docket.hops.gates.pre_hop import _gate_pre_hop_approval
 from docket.kernel import clock as _clock
 from docket.kernel import operator_contract as _oc
 from docket.kernel.errors import DispatchError, InvalidInput
@@ -30,14 +30,12 @@ from docket.tasks.domain.task import HopResult, TaskRecord, TaskRunRefusal
 from docket.teams import autonomy as _autonomy
 from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
-from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams import roles as _roles
 from docket.teams.pod import TASK_PIPELINE_NAME
 from docket.teams.settings import (
     load_pod_settings,
     pod_approval_mode,
-    pod_budget,
     pod_max_rework_cycles,
 )
 
@@ -217,28 +215,6 @@ def _task_gate_step_id(nodes: tuple[_orch.PlannedNode, ...]) -> str | None:
     turns = [u for u in units if u.run is None and u.input is None and u.wait is None]
     chosen = [u for u in turns if u.role == "implementer"] or turns
     return chosen[-1].step_id if chosen else None
-
-
-def unpriced_budget_models(project: str) -> list[str]:
-    """The models a budgeted pod runs that its cap cannot price: its members' models and its
-    pipeline's step models. Empty when the pod has no budget."""
-    if pod_budget(project) <= 0.0:
-        return []
-    ids = [a.id for a in _fleet.list_agents()]
-    models = {
-        str(_fleet.meta_get(mid, "model", "") or current_home().default_model)
-        for mid, _role, _idx in _pod.members_of(ids, project)
-    }
-    steps = list(effective_pipeline(project, None).steps)
-    while steps:
-        step = steps.pop()
-        steps.extend(step.parallel or [])
-        if step.model:
-            try:
-                models.add(_models_policy.resolve_step_model(step.model))
-            except ValueError:
-                models.add(step.model)
-    return sorted(m for m in models if _unpriced(m))
 
 
 def _guard_command(

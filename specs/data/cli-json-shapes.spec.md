@@ -1,8 +1,8 @@
 # CLI JSON Output Shapes
 
-**Version**: 4.7.0
+**Version**: 4.8.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -74,7 +74,7 @@ JSON.
     "fleet":       "{ ok: true, path, agents, bindings } | { ok: false, path, error }",
     "agents":      "array of { id, ok, tg (the bound Telegram peer or \"\"), issues: array of strings }",
     "dispatchLedger": "array of { project, ok, missingFromLedger, staleInLedger } (task ids)",
-    "budget":      "array of { id, costUsd, budgetUsd: number | null, pct (only with a budget), ok }",
+    "budget":      "array of { id, costUsd, tokens, budgetTokens: number | null, pct (only with a budget), ok }",
     "runaway":     "array of { id, turns, costUsd, ok }",
     "keyHygiene":  {
       "keys": "array of { name, state, detail }",
@@ -145,8 +145,7 @@ project agent; and the problem count of each of `modelRegistry`, `schedules`,
   "lastRun":     "{ id, state, finishedAt } | null",
   "running":     "boolean (docket start is running)",
   "commands":    "{ allowed, date, code, changed } (only when the operator allowed the repository's commands)",
-  "profile":     "{ name: 'lights-out', violations: array of { requirement, fix } } (only when the pod's effective profile is lights-out)",
-  "budgetUnpriced": "[string] (only when the pod has budgetUsd and runs a model with no price)"
+  "profile":     "{ name: 'lights-out', violations: array of { requirement, fix } } (only when the pod's effective profile is lights-out)"
 }
 ```
 
@@ -323,7 +322,6 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
   },
   "pipeline":     { "source": "string", "steps": ["step, below (absent when the pipeline does not resolve)"] },
   "network":      { "mode": "open | none", "scope": "default | global | pod" },
-  "budgetUnpriced": ["string (a model the budget cannot price; empty without budgetUsd)"],
   "configSource": "string (absolute directory the pod was last applied from; empty when never applied)",
   "configDigest": "string (sha256 hex of that directory's applied files; empty when never applied)",
   "drift":        "yes | no | \"\" (empty when there is no recorded source or the directory is gone)"
@@ -351,7 +349,7 @@ maxReworkCycles` reports for a bound pipeline. A step's model is its own `model:
 else its member's. A pipeline that does not resolve (a `DispatchError`) leaves `steps` out; the
 report does not fail.
 
-`settings` has one entry per pod setting: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
+`settings` has one entry per pod setting: `budgetTokens`, `maxReworkCycles`, `turnTimeoutS`,
 `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
 `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
 `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare` and `protects`.
@@ -583,7 +581,7 @@ The keys docket builds are **camelCase**:
 
 - `costUsd` (not `cost_usd`)
 - `totalCostUsd` (not `total_cost_usd`)
-- `budgetUsd` (not `budget_usd`)
+- `budgetTokens` (not `budget_tokens`)
 - `lastActivity` (not `last_activity`)
 - `waitingApproval` (not `waiting_approval`)
 

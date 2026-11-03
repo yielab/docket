@@ -26,7 +26,6 @@ from docket.governance.policy import install_policies
 from docket.hops.application import driver as _dr
 from docket.hops.application import sweep as _sweep
 from docket.hops.application.driver import DocketDriver
-from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands import pod as _pod
@@ -321,22 +320,22 @@ class TestRun:
             assert "1 done" in result.output and "0 failed" in result.output
             assert "Next: docket status" in result.output
 
-    def test_the_cap_header_shows_the_labelled_estimate_never_spend(
+    def test_the_cap_header_shows_the_cap_and_the_counted_tokens(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         with _seed_pod(tmp_path):
             _endpoint(monkeypatch, ok=True)
-            _fleet.meta_set("demo-lead", "budgetUsd", "5")
+            _fleet.meta_set("demo-lead", "budgetTokens", 500000)
             put_task("demo", task(description="a task"))
-            monkeypatch.setattr(_pre_hop, "pod_gating_cost", lambda project: (0.12, True))
+            monkeypatch.setattr(_run, "pod_counted_tokens", lambda project: 1200)
             monkeypatch.setattr(_sweep, "dispatch_pod", lambda *a, **k: [_fake_task_result()])
 
             result = runner.invoke(_app, ["run", "--pod", "demo"])
 
             assert result.exit_code == 0, result.output
             line = next(ln for ln in result.output.splitlines() if "Pod budget cap" in ln)
-            assert "$5.00" in line and "~$0.12" in line and "estimate" in line
-            assert "spent" not in line
+            assert "500000 tokens" in line and "1200 counted" in line
+            assert "$" not in line
 
     def test_pipeline_file_is_forwarded_to_the_executor(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

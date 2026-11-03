@@ -1,9 +1,9 @@
 # Agent Metadata (.docket-meta.json) Specification
 
-**Version**: 5.6.0
+**Version**: 5.7.0
 **Status**: Complete. Every field below is written by a live path and read by one; the Lead's file
 also carries the pod's settings (see "Pod settings on the Lead"), which Phase 46 moves out.
-**Last Updated**: 2026-10-30
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -70,8 +70,8 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 | `created` | string | ISO-8601 UTC | pod members | provisioning | Creation timestamp |
 | `sessionKey` | string | `agent:<pod>:<projectKey>` | Yes (written always) | provisioning | Base session scope key. Pod dispatch derives its per-turn session keys itself and does not read this value |
 | `projectKey` | string | none | Yes (written always) | provisioning | Last component of `sessionKey` (default `default`) |
-| `budgetUsd` | number | at least 0 | No | `docket pod set` / `unset` (Lead), provisioning (Lead, when a budget was requested) | Per-pod spend cap in USD, read from the Lead only. `pod set` and provisioning (a blueprint default, a flat `--from` spec, `POST /pods`) both write a JSON number (`20.0`); `AgentMeta` refuses a negative one. `pod unset` stores `null`, which reads as the default (`0`, unlimited). See "Pod settings on the Lead" |
-| `paused` | bool | none | No | dispatch budget gate (sets `true`); `docket pod set budgetUsd <n>` and `docket run --resume` (set `false`) | Whether the pod is paused. Set on the Lead when the pod's usage-derived cost estimate reaches `budgetUsd`; dispatch then refuses every further claim for that pod and traces `paused_refused`. Read through `AgentMeta.coerce_paused` (a real `bool`, tolerant of a stringified `"true"`/`"false"`), never a raw string compare |
+| `budgetTokens` | integer | above 0 | No | `docket pod set` / `unset` (Lead), provisioning (Lead, when a budget was requested) | Per-pod cap on counted tokens, read from the Lead only. `pod set` and provisioning (a flat `--from` spec, `POST /pods`) both write a JSON integer (`500000`); `AgentMeta` refuses `0` and a negative one. `pod unset` stores `null`, which reads as no cap. A file that still holds `budgetUsd` is refused as an unknown key, naming `budgetTokens`. See "Pod settings on the Lead" |
+| `paused` | bool | none | No | dispatch budget gate (sets `true`); `docket pod set budgetTokens <n>` and `docket run --resume` (set `false`) | Whether the pod is paused. Set on the Lead when the pod's counted tokens reach `budgetTokens`; dispatch then refuses every further claim for that pod and traces `paused_refused`. Read through `AgentMeta.coerce_paused` (a real `bool`, tolerant of a stringified `"true"`/`"false"`), never a raw string compare |
 | `pausedReason` | string | none | No | same as `paused` | Human-readable pause reason. The only writer sets the literal `"budget"`; the clearing writers set `""` |
 | `portRangeStart` | number | integer at least 0 | No (implementer only) | provisioning | First port of the pod's reserved range. Absent on non-implementers. A shared locked allocation gives concurrently created pods distinct ranges |
 | `portRangeCount` | number | integer above 0 | No (implementer only) | provisioning | Number of ports in the same allocation as `portRangeStart` |
@@ -79,7 +79,7 @@ The tables below are the authoritative source for the field set. `AgentMeta` val
 | `verifyCmd` | string | shell command, at most 2000 characters, no NUL or newline | No (implementer only) | `docket pod add --verify`, `docket pod set verify <cmd> --member <id>`, `docket pod unset verify --member <id>` (removes the key), `POST /pods` | Shell command run mechanically after each Implementer hop. A non-zero exit blocks done and emits a `verification_failed` trace event. Absent or empty means skip, unless the pod's `requireVerify` is true (the task then fails). Per member, not a pod setting |
 | `templateVersion` | string | none | Yes (written always) | provisioning | Template schema version the member was created with (`6`); `docket pod reset` restamps it when it rebuilds the member's files |
 
-The pod-wide settings that live on the Lead (`budgetUsd`, `turnTimeoutS`, `verifyTimeoutS`,
+The pod-wide settings that live on the Lead (`budgetTokens`, `turnTimeoutS`, `verifyTimeoutS`,
 `maxReworkCycles`, and the rest) are listed in their own table below.
 
 ### Pod settings on the Lead
@@ -97,7 +97,7 @@ listed. Each write is audited (`pod.config`).
 
 | Key | Stored as | Default | Constraints and meaning |
 |-----|-----------|---------|-------------------------|
-| `budgetUsd` | number | `0` (no cap) | At least 0. A positive cap pauses the pod when the estimate reaches it (`paused`). Setting or unsetting it re-queues the pod's blocked tasks and clears `paused` and `pausedReason` |
+| `budgetTokens` | integer | none (no cap) | Above 0; `0` is refused, and `unset` removes the cap. The pod pauses when its counted tokens (input minus cache reads, plus output) reach the cap (`paused`). Setting or unsetting it re-queues the pod's blocked tasks and clears `paused` and `pausedReason` |
 | `maxReworkCycles` | integer | `1` | At least 0. Bounded rework for a Reviewer's REQUEST-CHANGES verdict: `1` allows exactly one rework cycle before a second REQUEST-CHANGES fails the task, `0` disables rework. Has no effect on a bound pipeline, which bounds its own rework with `on:`; `docket pod set` and `pod.yaml` refuse it beside one |
 | `turnTimeoutS` | integer | none | Above 0. Pod-wide agent-turn timeout in seconds. Unset falls back to the global default (or a serve-wide knob); `docket run --timeout` overrides it |
 | `verifyTimeoutS` | integer | none | Above 0. Pod-wide `verifyCmd` timeout in seconds, independent of `turnTimeoutS`; same fallback and override rules |
@@ -150,11 +150,11 @@ and only then writes (atomically, under a lock):
 - **Unknown field (80)**: refused (`extra="forbid"`), nothing written. The error names the key and
   the file, so a typo in a key name is never written silently. A file that already holds an
   undeclared key is refused the same way by the next `meta_set`.
-- **Type mismatch on a declared field**: for example `budgetUsd` given a non-numeric string,
+- **Type mismatch on a declared field**: for example `budgetTokens` given a non-numeric string,
   `paused` given a non-boolean string, or `verifyCmd` given a number. A validation error is
   raised and nothing is written.
 - **Enum violation**: `kind`, `scope` or `workspaceKind` outside its enum raises a validation error.
-- `AgentMeta` range-checks `budgetUsd` (at least 0), as `PodSettings` does for `docket pod set` and
+- `AgentMeta` range-checks `budgetTokens` (above 0), as `PodSettings` does for `docket pod set` and
   every dispatch read.
 
 `meta_get` on a missing file returns the caller's default. `meta_set` on an agent
@@ -170,7 +170,7 @@ object.
 - `model` is written as a provider-qualified id (for example `anthropic/claude-sonnet-4-6`).
 - `sessionKey` is written as `agent:<pod>:<projectKey>`, so its last component equals `projectKey`;
   provisioning writes both in this one file.
-- `budgetUsd`, when written through `docket pod set`, MUST be a non-negative number.
+- `budgetTokens`, when written through `docket pod set`, MUST be a whole number above 0.
 
 ## Examples
 
@@ -196,7 +196,7 @@ kind, so `workspaceKind` and `workDir` are absent):
 }
 ```
 
-The same Lead after `docket pod set budgetUsd 5`, `docket pod set allowCommands foo` and
+The same Lead after `docket pod set budgetTokens 500000`, `docket pod set allowCommands foo` and
 `docket pod set maxReworkCycles 2` (the budget write also clears the pause fields), and then once
 the budget gate has paused the pod (`paused` and `pausedReason` change):
 
@@ -216,7 +216,7 @@ the budget gate has paused the pod (`paused` and `pausedReason` change):
   "projectKey": "default",
   "templateVersion": "6",
   "blueprint": "build",
-  "budgetUsd": 5.0,
+  "budgetTokens": 500000,
   "paused": true,
   "pausedReason": "budget",
   "allowCommands": "foo",
@@ -272,7 +272,7 @@ a string:
   "blueprint": "respond",
   "workspaceKind": "workdir",
   "workDir": "/home/user/work/scan",
-  "budgetUsd": 20.0
+  "budgetTokens": 2000000
 }
 ```
 
@@ -284,7 +284,7 @@ stand as written; these change when the cards land.
 - **P46-11** (pod settings move to `pods/<pod>/settings.json`): the whole "Pod settings on the Lead"
   section (every key of the table, the "only the Lead's value is consulted" rule, the
   absent/`null`/malformed read rules, `unset` writing `null`, the recorded keys `configSource`,
-  `configDigest`, `exporters`), and the pod-level rows `budgetUsd`, `paused`
+  `configDigest`, `exporters`), and the pod-level rows `budgetTokens`, `paused`
   and `pausedReason` of the agent table (the budget pause is stored on the Lead). `verifyCmd` is a
   per-member field and is not part of `PodSettings`; whether it moves is that card's decision.
 - **P46-1** (module layout): the "Implementation" section below is rewritten by the codemod; no
@@ -295,7 +295,7 @@ stand as written; these change when the cards land.
 - `src/docket/teams/models.py`: `AgentMeta` (`coerce_paused`), `AgentKind`, `AgentScope`, `WorkspaceKind`
 - `src/docket/teams/fleet.py`: `meta_get`, `meta_set`, `set_model_both`
 - `src/docket/teams/pod.py`: `PodSettings` (`KEYS`, `RECORDED_KEYS`, `load_for`, `coerce`, `value_and_source`), `PodSettingsError`, `pod_of`, `member_id`, `bound_pipeline_path`
-- `src/docket/teams/pod_provisioning.py`: pod-member provisioning, `POD_TEMPLATE_VERSION`, `validate_verify_cmd`, `parse_budget_usd`
+- `src/docket/teams/pod_provisioning.py`: pod-member provisioning, `POD_TEMPLATE_VERSION`, `validate_verify_cmd`, `parse_budget_tokens`
 - `src/docket/interfaces/cli/commands/agents.py`: `docket init`, `docket init --from`
 - `src/docket/interfaces/cli/commands/pod.py`: `docket pod set` / `unset` / `add`, `verifyCmd` setters
 - `src/docket/interfaces/cli/commands/run.py`: `docket run --resume` (clears the pause)

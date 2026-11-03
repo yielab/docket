@@ -19,7 +19,7 @@ from docket.hops.application import report as _pod_report
 from docket.hops.gates import profile as _profile
 from docket.interfaces.cli.commands.setup_check_budget import (
     _batch_cost,
-    _batch_gating_cost,
+    _batch_tokens,
     _check_budget,
     _check_dispatch_ledger,
     _check_runaway,
@@ -244,28 +244,25 @@ def _check_json_budget_runaway(
     `_check_runaway`."""
     issues = 0
     cost = _batch_cost(ids)
+    tokens = _batch_tokens(ids)
     budget_results: list[dict[str, Any]] = []
     runaway_results: list[dict[str, Any]] = []
     for aid in ids:
-        budget_s, cost_f, turns = cost[aid]
-        budget_f = float(budget_s) if budget_s and budget_s != "0" else None
-        if budget_f:
-            pct = int(cost_f / budget_f * 100)
+        _budget_s, cost_f, turns = cost[aid]
+        budget_s, used = tokens[aid]
+        row: dict[str, Any] = {
+            "id": aid,
+            "costUsd": round(cost_f, 6),
+            "tokens": used,
+            "budgetTokens": int(budget_s) if budget_s else None,
+        }
+        if budget_s:
+            pct = int(used / int(budget_s) * 100)
             if pct >= 100:
                 issues += 1
-            budget_results.append(
-                {
-                    "id": aid,
-                    "costUsd": round(cost_f, 6),
-                    "budgetUsd": budget_f,
-                    "pct": pct,
-                    "ok": pct < 100,
-                }
-            )
+            budget_results.append({**row, "pct": pct, "ok": pct < 100})
         else:
-            budget_results.append(
-                {"id": aid, "costUsd": round(cost_f, 6), "budgetUsd": None, "ok": True}
-            )
+            budget_results.append({**row, "ok": True})
         runaway = (
             turns > current_home().runaway_turns_threshold
             or cost_f >= current_home().runaway_cost_threshold
@@ -480,7 +477,7 @@ def run_check(json_out: bool = False, do_fix: bool = False) -> int:
     _check_model_registry_entries()
     _check_schedule_config()
     _check_dispatch_ledger(do_fix)
-    _check_budget(ids, _batch_gating_cost(ids))
+    _check_budget(ids, _batch_tokens(ids))
     _check_runaway(ids, cost)
     _check_key_hygiene()
     _check_provider_coverage(ids)

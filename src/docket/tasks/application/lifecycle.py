@@ -385,7 +385,7 @@ def task_diff(project: str, task_id: str) -> dict[str, Any]:
 
 def unblock_pod(project: str) -> int:
     """Un-block every ``blocked`` task in *project*'s queue. Wired to ``docket pod set
-    budgetUsd`` and ``docket run --resume`` -- the sanctioned re-entry paths besides ``retry_task``.
+    budgetTokens`` and ``docket run --resume`` -- the sanctioned re-entry paths besides ``retry_task``.
     Returns the number of tasks unblocked."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():

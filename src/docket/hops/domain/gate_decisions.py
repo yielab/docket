@@ -291,32 +291,34 @@ def conversation_ends_on_budget(*, failure_kind: str, conversation: bool, turns_
     return conversation and failure_kind == "budget" and turns_done > 0
 
 
-def decide_pod_budget(*, cap: float, spent: float, estimated: bool, role: str) -> GateDecision:
-    """The pod's spend against its *cap* before a hop. No cap, or spend under it, advances; a
-    tripped cap blocks the task (and the shell pauses the Lead)."""
-    if cap <= 0.0 or spent < cap:
+def decide_pod_budget(*, cap: int | None, spent: int, role: str) -> GateDecision:
+    """The pod's counted tokens (*spent*) against its *cap* before a hop. No cap, or spend under it,
+    advances; a tripped cap blocks the task (and the shell pauses the Lead)."""
+    if cap is None or spent < cap:
         return GateDecision("advance")
-    spent_label = f"~${spent:.2f} (estimated — no cost recorded)" if estimated else f"${spent:.2f}"
     return GateDecision(
         "blocked",
-        reason=f"pod budget reached ({spent_label} ≥ ${cap:.2f}) before {role}",
+        reason=f"pod budget reached ({spent} of {cap} tokens counted) before {role}",
         failure_kind="pod_budget",
         event="budget_exceeded",
-        detail={
-            "spent": round(spent, 6),
-            "cap": round(cap, 6),
-            "role": role,
-            "estimated": estimated,
-        },
+        detail={"spent": spent, "cap": cap, "role": role},
     )
 
 
-def unpriced_budget_warning(*, cap: float, model: str, unpriced: bool) -> str | None:
-    """Under a budget, a model the estimate cannot price leaves the cap unable to stop its spend:
-    the warning text, else ``None``."""
-    if cap <= 0.0 or not unpriced:
-        return None
-    return f"pod budget ${cap:.2f} cannot stop this hop: {model} has no price"
+def turn_token_ceiling(
+    *, task_left: int | None, pod_left: int | None, default: int
+) -> tuple[int, str] | None:
+    """The turn's token ceiling a budget sets, with the owner that set it: ``task`` for the
+    task's ``maxTokens`` leftover, ``pod_budget`` for the pod's ``budgetTokens`` leftover.
+
+    The tighter wins and a tie goes to the task. A task's leftover replaces the per-turn *default*;
+    a pod's lowers it, so it counts only when it is below the *default* or below the task's.
+    ``None`` leaves the turn on the *default*."""
+    if task_left is not None and (pod_left is None or task_left <= pod_left):
+        return task_left, "task"
+    if pod_left is not None and (task_left is not None or pod_left < default):
+        return pod_left, "pod_budget"
+    return None
 
 
 # -- approval, resources, profile, protected paths -------------------------------------------

@@ -36,12 +36,16 @@ class TestPodSettingReaders:
     dispatch instead of silently substituting the field's default."""
 
     def test_pod_budget_reads_through(self, pod_home: Path) -> None:
-        _write_meta("myapp-lead", {"budgetUsd": "12.5"})
-        assert _settings.pod_budget("myapp") == 12.5
+        _write_meta("myapp-lead", {"budgetTokens": "500000"})
+        assert _settings.pod_budget("myapp") == 500000
+
+    def test_pod_budget_is_none_without_a_cap(self, pod_home: Path) -> None:
+        _write_meta("myapp-lead", {})
+        assert _settings.pod_budget("myapp") is None
 
     def test_pod_budget_invalid_value_refuses(self, pod_home: Path) -> None:
-        _write_meta("myapp-lead", {"budgetUsd": "not-a-number"})
-        with pytest.raises(_task.DispatchError, match="budgetUsd"):
+        _write_meta("myapp-lead", {"budgetTokens": "not-a-number"})
+        with pytest.raises(_task.DispatchError, match="budgetTokens"):
             _settings.pod_budget("myapp")
 
     def test_pod_verify_timeout_invalid_value_refuses(self, pod_home: Path) -> None:

@@ -103,9 +103,9 @@ class TestWiden:
 
     def test_widen_belongs_to_network(self, tmp_path: Path) -> None:
         with _machine(tmp_path):
-            result = invoke_pod(["set", "budgetUsd", "5", "--widen", "--pod", "proj"])
+            result = invoke_pod(["set", "budgetTokens", "5000", "--widen", "--pod", "proj"])
             assert result.exit_code == 1
-            assert _meta("proj").get("budgetUsd") != 5
+            assert _meta("proj").get("budgetTokens") != 5000
 
     def test_the_grant_key_is_not_settable_by_hand(self, tmp_path: Path) -> None:
         with _machine(tmp_path):

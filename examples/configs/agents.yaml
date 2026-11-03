@@ -12,7 +12,7 @@
 #   workDir      the working directory of a respond, operate or routine pod;
 #                created when missing, the pod's own directory when omitted
 #   stack        auto-detected from the codebase when omitted
-#   description, telegram, budgetUsd, projectKey  all optional
+#   description, telegram, budgetTokens, projectKey  all optional
 #
 # Every member follows the normal role->model policy (docket setup model).
 #
@@ -23,7 +23,7 @@ agents:
     blueprint: build
     codebase: ~/Sites/webapp
     description: Customer-facing web app.
-    budgetUsd: 20
+    budgetTokens: 2000000
 
   - id: research
     blueprint: respond

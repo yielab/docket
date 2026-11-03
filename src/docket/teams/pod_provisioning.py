@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import shutil
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote as _url_unquote
@@ -28,6 +28,7 @@ from docket.teams import blueprints as _bp
 from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _mp
 from docket.teams import pod
+from docket.teams import pod_settings as _pod_settings
 from docket.teams import provisioning as _prov
 from docket.teams import resources as _res
 from docket.teams.member_workspace import provision_member
@@ -48,6 +49,10 @@ _MAX_VERIFY_CMD_LEN = 2000
 
 class VerifyCmdError(InvalidInput):
     """A verify command failed validation before being stored."""
+
+
+class BudgetTokensError(InvalidInput):
+    """A ``budgetTokens`` value, or a dollar cap that no longer exists, was refused."""
 
 
 class PodAlreadyExistsError(Conflict):
@@ -101,23 +106,35 @@ def validate_verify_cmd(cmd: str) -> str:
     return cmd
 
 
-def parse_budget_usd(raw: object) -> float | None:
-    """Parse a ``budgetUsd``/``budget`` override from spec or HTTP input.
+def parse_budget_tokens(raw: object) -> int | None:
+    """Parse a ``budgetTokens`` value from spec or HTTP input: ``None`` is no cap; anything else
+    must be a whole number above 0 (a numeric string from YAML included).
 
-    Non-positive, ``None``, empty, or non-numeric input all mean "no override"."""
-    if raw is None or isinstance(raw, bool):
+    Raises ``BudgetTokensError`` naming ``budgetTokens`` for a boolean, a fraction, a non-number
+    or a value of 0 or less -- nothing is rounded or ignored."""
+    if raw is None:
         return None
-    if isinstance(raw, (int, float)):
-        value = float(raw)
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        value = raw
+    elif isinstance(raw, str) and raw.strip().isdecimal():
+        value = int(raw.strip())
     else:
-        text = str(raw).strip()
-        if not text or text == "0":
-            return None
-        try:
-            value = float(text)
-        except ValueError:
-            return None
-    return value if value > 0 else None
+        value = 0
+    if value <= 0:
+        raise BudgetTokensError("budgetTokens must be a whole number of counted tokens above 0")
+    return value
+
+
+def budget_tokens_from(
+    doc: Mapping[str, object], *, dollar_keys: tuple[str, ...] = (_pod_settings.BUDGET_USD_KEY,)
+) -> int | None:
+    """The pod cap a spec entry or request body declares in ``budgetTokens``.
+
+    A document that still carries a dollar key (``dollar_keys``) is refused naming
+    ``budgetTokens``, whatever else it holds; see ``parse_budget_tokens`` for the value."""
+    if any(key in doc for key in dollar_keys):
+        raise BudgetTokensError(_pod_settings.BUDGET_USD_REFUSAL)
+    return parse_budget_tokens(doc.get("budgetTokens"))
 
 
 def pod_member_ids(project: str) -> list[str]:
@@ -296,7 +313,7 @@ def provision_members(
     project_key: str = "default",
     work_dir: str = "",
     blueprint_name: str = "",
-    budget_usd: float | None = None,
+    budget_tokens: int | None = None,
     verify_cmd: str = "",
     work_dir_created: bool = False,
 ) -> list[ProvisionedMember]:
@@ -337,7 +354,7 @@ def provision_members(
                 verify_cmd=member_verify_cmd,
                 work_dir=work_dir,
                 blueprint_name=blueprint_name,
-                budget_usd=budget_usd,
+                budget_tokens=budget_tokens,
             )
             if not ok:
                 raise PodProvisionError(f"{m.member_id}: {msg}")
@@ -379,7 +396,7 @@ def provision_pod(
     description: str = "",
     project_key: str = "default",
     roles: tuple[str, ...] | None = None,
-    budget_usd: float | None = None,
+    budget_tokens: int | None = None,
     verify_cmd: str = "",
     source: str = "declarative",
 ) -> PodProvisionResult:
@@ -387,7 +404,7 @@ def provision_pod(
 
     The one code path `docket init` and `POST /pods` both call. See
     specs/data/serve-read-api.spec.md (POST /pods) for the full
-    ``location``/``roles``/``budget_usd``/``verify_cmd``/``source`` contract.
+    ``location``/``roles``/``budget_tokens``/``verify_cmd``/``source`` contract.
 
     Raises:
       ``PodAlreadyExistsError`` -- pod already exists; checked before anything
@@ -423,8 +440,6 @@ def provision_pod(
                 with contextlib.suppress(OSError):
                     Path(work_dir).chmod(0o700)
 
-        effective_budget = budget_usd if budget_usd is not None else blueprint.default_budget_usd
-
         created = provision_members(
             project,
             roster,
@@ -434,7 +449,7 @@ def provision_pod(
             project_key=project_key,
             work_dir=work_dir,
             blueprint_name=blueprint.name,
-            budget_usd=effective_budget,
+            budget_tokens=budget_tokens,
             verify_cmd=verify_cmd,
             work_dir_created=work_dir_created,
         )

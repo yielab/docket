@@ -116,7 +116,7 @@ def test_recipe_applies_cleanly_to_a_fixture_pod(name: str, tmp_path: Path) -> N
         if name == "frugal":
             setting_items = [i for i in plan.items if i.kind == "setting"]
             assert len(setting_items) == 2, "frugal's plan should carry two setting items"
-            assert {i.name for i in setting_items} == {"budgetUsd", "turnTimeoutS"}
+            assert {i.name for i in setting_items} == {"budgetTokens", "turnTimeoutS"}
 
 
 # ── frugal: the named shape, checked without `plan_apply` ────────────────────────
@@ -132,7 +132,7 @@ def test_frugal_plan_carries_two_setting_items(tmp_path: Path) -> None:
 
         items, _writes = _pod_apply._plan_settings(project, settings)
         assert len(items) == 2
-        assert {i.name for i in items} == {"budgetUsd", "turnTimeoutS"}
+        assert {i.name for i in items} == {"budgetTokens", "turnTimeoutS"}
 
 
 # ── reflexion: one full dispatch on the fake driver, rework counted ─────────────

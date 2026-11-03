@@ -144,6 +144,9 @@ DOCKET_APPROVAL_EXPIRES_AT = "DOCKET_APPROVAL_EXPIRES_AT"
 # integer, as text). Popped by DocketDriver into LoopConfig.token_budget, so an
 # unset value keeps the configured AGENT_LOOP_TOKEN_BUDGET default.
 DOCKET_TURN_TOKEN_BUDGET = "DOCKET_TURN_TOKEN_BUDGET"
+# Who set that ceiling (``task`` for a task's ``maxTokens``, ``pod_budget`` for a pod's
+# ``budgetTokens``); popped into ``LoopConfig.token_budget_source``, absent = ``default``.
+DOCKET_TURN_TOKEN_BUDGET_SOURCE = "DOCKET_TURN_TOKEN_BUDGET_SOURCE"
 
 # Same route again: the JSON plan of the `verify` tool (command, directory, timeout) a hop whose
 # step has a verify command is offered. Popped by DocketDriver, which registers the tool from it.

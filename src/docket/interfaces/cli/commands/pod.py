@@ -76,7 +76,7 @@ def build_pod_from_blueprint(
     description: str = "",
     project_key: str = "default",
     roles: tuple[str, ...] | None = None,
-    budget_usd: float | None = None,
+    budget_tokens: int | None = None,
     verify_cmd: str = "",
     source: str = "declarative",
 ) -> list[str]:
@@ -91,7 +91,7 @@ def build_pod_from_blueprint(
             description=description,
             project_key=project_key,
             roles=roles,
-            budget_usd=budget_usd,
+            budget_tokens=budget_tokens,
             verify_cmd=verify_cmd,
             source=source,
         )
@@ -339,7 +339,7 @@ def cmd_set(
 ) -> None:
     """Set a pod setting; with --member, set an implementer's verify command.
 
-    Example: docket pod set budgetUsd 5"""
+    Example: docket pod set budgetTokens 500000"""
     project = _contract.require_pod(pod_name)
     if key == "network":
         set_network(project, value, widen=widen, yes=yes)

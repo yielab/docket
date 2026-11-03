@@ -693,16 +693,16 @@ class TestKeysAudit:
 class TestPodSettingsAudit:
     def test_budget_set_writes_one_config_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _pod_settings.set_setting("demo", "budgetUsd", "5")
+            _pod_settings.set_setting("demo", "budgetTokens", "5000")
             entries = _entries("pod.config")
             assert len(entries) == 1
-            assert entries[0]["detail"] == "project=demo action=set key=budgetUsd value=5.0"
+            assert entries[0]["detail"] == "project=demo action=set key=budgetTokens value=5000"
 
     def test_unset_writes_one_config_entry(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _pod_settings.unset_setting("demo", "budgetUsd")
+            _pod_settings.unset_setting("demo", "budgetTokens")
             entries = _entries("pod.config")
-            assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetUsd"]
+            assert [e["detail"] for e in entries] == ["project=demo action=unset key=budgetTokens"]
 
 
 class TestAgentAddDeleteAudit:

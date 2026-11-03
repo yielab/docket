@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 3.16.0
+**Version**: 3.17.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -846,7 +846,8 @@ This specification does NOT cover:
     **MUST** carry `failure_kind="budget_exhausted"` and a typed `budget_stop`:
     `bound` (`rounds`, `toolCalls`, `time` or `tokens`), `limit`, `used` (rounds and tool calls as
     counted, time in whole seconds, tokens as counted tokens) and `source` (the `LoopConfig`
-    `*_source` of that bound, `default` when it names none) and `raise_key` (requirement 105; for
+    `*_source` of that bound, `default` when it names none; for tokens `token_budget_source`, set
+    from the hop's `DOCKET_TURN_TOKEN_BUDGET_SOURCE` coordinate) and `raise_key` (requirement 105; for
     tokens `AGENT_LOOP_TOKEN_BUDGET` when the source is `default`, `maxTokens` for `task` and
     `budgetTokens` for `pod_budget`). `no_progress`, `tool_denials`,
     `context_fit`, `run_cancelled` and the approval stops keep their kinds and carry no

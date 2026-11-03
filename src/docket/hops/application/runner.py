@@ -15,7 +15,6 @@ from docket.hops.gates.pre_hop import (
     _gate_budget,
     _gate_pre_hop_approval,
     _refuse_failed_floor,
-    _warn_unpriced_hop,
     hop_model,
 )
 from docket.kernel import clock as _clock
@@ -289,7 +288,6 @@ def execute_unit(
     budget_outcome = _gate_budget(ctx, role)
     if budget_outcome is not None:
         return budget_outcome
-    _warn_unpriced_hop(ctx, role, planned_model)
 
     approval_outcome = _gate_pre_hop_approval(
         ctx, role, node, check_approval=check_approval, index_for_context=index_for_context

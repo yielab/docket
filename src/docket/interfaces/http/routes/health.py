@@ -53,10 +53,8 @@ def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str
     meta_path = current_home().meta_path(agent_id)
     meta: dict[str, Any] = read_json(meta_path) if meta_path.exists() else {}
     cost = round(usage.aggregate_cost(agent_id).cost_usd, 6)
-    budget_raw = meta.get("budgetUsd")
-    budget: float | None = (
-        float(budget_raw) if budget_raw and str(budget_raw) not in ("", "0") else None
-    )
+    budget_raw = meta.get("budgetTokens")
+    budget: int | None = int(budget_raw) if budget_raw else None
     return {
         "id": agent_id,
         "name": str(meta.get("name", agent_id)),
@@ -67,7 +65,7 @@ def _agent_record(agent_id: str, *, kind: str, registered: set[str]) -> dict[str
         "bindings": [{"channel": b["channel"]} for b in fleet.agent_bindings(agent_id)],
         "lastActivity": _last_activity_or_never(agent_id),
         "costUsd": cost,
-        "budgetUsd": budget,
+        "budgetTokens": budget,
     }
 
 

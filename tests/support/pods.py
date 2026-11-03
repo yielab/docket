@@ -47,7 +47,7 @@ def build_pod(
     project_key: str = "default",
     work_dir: str = "",
     blueprint_name: str = "",
-    budget_usd: float | None = None,
+    budget_tokens: int | None = None,
 ) -> list[str]:
     """Provision a pod's members and return their ids; a provisioning failure warns and
     returns ``[]``."""
@@ -61,7 +61,7 @@ def build_pod(
             project_key=project_key,
             work_dir=work_dir,
             blueprint_name=blueprint_name,
-            budget_usd=budget_usd,
+            budget_tokens=budget_tokens,
         )
     except _pp.PodProvisionError as exc:
         ui.warn(f"  pod provisioning failed: {exc}")
@@ -431,7 +431,7 @@ def unit_context(
     *,
     project: str = "myapp",
     task_id: str = "task-1",
-    cap: float = 0.0,
+    cap: int | None = None,
     override_index: int | None = None,
     run: Any = None,
     on_hop: Any = None,
@@ -486,7 +486,7 @@ def seed_setup_check_home(
     monkeypatch: pytest.MonkeyPatch,
     *,
     full_workspace: bool = True,
-    budget: str | None = None,
+    budget: int | None = None,
     register: bool = True,
     meta_model: str = "anthropic/claude-sonnet-4-6",
     secrets: dict[str, str] | None = None,
@@ -500,7 +500,7 @@ def seed_setup_check_home(
 
     meta = {**_FULL_META, "model": meta_model}
     if budget is not None:
-        meta["budgetUsd"] = budget
+        meta["budgetTokens"] = budget
     (ws / ".docket-meta.json").write_text(json.dumps(meta))
 
     files = ("SOUL.md", "AGENTS.md", "TOOLS.md", "HEARTBEAT.md") if full_workspace else ("SOUL.md",)

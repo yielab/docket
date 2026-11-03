@@ -126,7 +126,10 @@ class TurnState:
             )
         if stop_reason == "token_budget":
             return BudgetStop(
-                "tokens", cfg.token_budget, self.total_usage.counted_tokens, "default"
+                "tokens",
+                cfg.token_budget,
+                self.total_usage.counted_tokens,
+                cfg.token_budget_source or "default",
             )
         return None
 

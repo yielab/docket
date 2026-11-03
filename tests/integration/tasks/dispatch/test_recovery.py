@@ -24,7 +24,6 @@ from docket.agent.ports import ChatResponse, TokenUsage, ToolCall, assistant
 from docket.governance import audit as _audit
 from docket.hops.application import driver as _dr
 from docket.hops.application import executor as _executor
-from docket.hops.application import steps as _steps_c
 from docket.hops.application import sweep as _sweep
 from docket.hops.application import usage as _usage
 from docket.hops.application.driver import DocketDriver
@@ -421,11 +420,10 @@ class TestBlockedStaysBlocked:
     ) -> None:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
-            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
-            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1)
+            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1)
+            monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p: 5)
+            monkeypatch.setattr(_pre_hop, "pod_counted_tokens", lambda _p: 5)
             runner = FakeDriver()
 
             first = _sweep.dispatch_pod("demo", runner=runner)
@@ -443,11 +441,10 @@ class TestBlockedStaysBlocked:
     ) -> None:
         with _seed_pod(tmp_path):
             task = _queue.enqueue_task_once("demo", "Too expensive", channel="cli")[0]
-            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
-            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1)
+            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1)
+            monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p: 5)
+            monkeypatch.setattr(_pre_hop, "pod_counted_tokens", lambda _p: 5)
             _sweep.dispatch_pod("demo", runner=FakeDriver())
             assert TaskRepository.for_pod("demo").list()[0].status == "blocked"
 
@@ -463,11 +460,10 @@ class TestBlockedStaysBlocked:
         with _seed_pod(tmp_path):
             _queue.enqueue_task_once("demo", "One", channel="cli")
             _queue.enqueue_task_once("demo", "Two", channel="cli")
-            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_steps_c, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1.0)
-            monkeypatch.setattr(_usage, "pod_recorded_cost", lambda _p: 5.0)
-            monkeypatch.setattr(_pre_hop, "pod_recorded_cost", lambda _p: 5.0)
+            monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1)
+            monkeypatch.setattr(_executor, "pod_budget", lambda _p: 1)
+            monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p: 5)
+            monkeypatch.setattr(_pre_hop, "pod_counted_tokens", lambda _p: 5)
             lead_id = _pod.pod.member_id("demo", "lead")
 
             _sweep.dispatch_pod("demo", runner=FakeDriver())

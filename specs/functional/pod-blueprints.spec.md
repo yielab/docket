@@ -1,14 +1,14 @@
 # Pod Blueprints Specification
 
-**Version**: 4.2.0
+**Version**: 4.3.0
 **Status**: Implemented
-**Last Updated**: 2026-10-31
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
 This specification defines the **pod blueprint**: a named, versioned pod shape composing an
 archetype roster (`role-archetypes.spec.md`), a default pipeline (`pipeline-format.spec.md`), a
-workspace kind, and an optional default budget cap. A blueprint generalizes pod *composition* the
+workspace kind. A blueprint generalizes pod *composition* the
 way `role-archetypes.spec.md` generalizes individual *roles*: a pod that builds, one that responds,
 one that operates and one that runs a routine are one `docket init` away.
 
@@ -21,7 +21,7 @@ the recipe library, the per-pod settings writers and the operator's review.
 This specification covers:
 
 - The blueprint schema: `name`, `version`, `workspaceKind`, `roles`, `defaultPipeline`,
-  `defaultBudgetUsd`, and `description`, and which fields are closed enums and which are open. A
+  and `description`, and which fields are closed enums and which are open. A
   blueprint has no file or wire form; these are its attribute names
 - The four built-in blueprints (`build`, `respond`, `operate`, `routine`), one per pipeline shape
 - The `workspaceKind` (`codebase` | `workdir`) distinction and how a `workdir` blueprint's shared
@@ -62,8 +62,8 @@ This specification does NOT cover:
 
 1. A pod blueprint **MUST** carry: `name` (string), `version` (positive integer), `workspaceKind`,
    `roles` (an ordered, non-empty list of archetype names), and `defaultPipeline` (a valid
-   pipeline, see `pipeline-format.spec.md`). `defaultBudgetUsd` and `description` **MAY** be
-   present (absent/empty is valid for both).
+   pipeline, see `pipeline-format.spec.md`). `description` **MAY** be present (absent/empty is
+   valid).
 2. `workspaceKind` **MUST** be one of exactly `"codebase"` | `"workdir"`, a closed enum, matching
    the "closed typed sets docket can reason about" discipline `role-archetypes.spec.md` applies to
    `scope`/`modelClass`/`gateContract.kind`.
@@ -72,9 +72,9 @@ This specification does NOT cover:
    starter-library, or user-defined archetype registered in `role-archetypes.spec.md`'s registry
    is valid roster material. The schema does not re-validate role names itself; pod planning does,
    the first time a blueprint's roster is provisioned.
-4. `defaultBudgetUsd`, when present, **MUST** be a non-negative number. It is applied to the pod's
-   **Lead only** at provisioning time (the same `budgetUsd` that `docket pod set budgetUsd` sets),
-   never to any other member.
+4. A blueprint **MUST NOT** carry a pod budget: a pod cap (`budgetTokens`) is opt-in, set by
+   `docket pod set budgetTokens`, a flat `--from` entry or `POST /pods`, and a task's `maxTokens`
+   and the per-turn token budget already bound spend.
 5. `name` **MUST** match `^[a-z][a-z0-9-]*$`. `version` **MUST** be a positive integer. An invalid
    definition **MUST** be rejected with a clear error naming the offending field
    (`BlueprintError`), never silently coerced.
@@ -87,11 +87,10 @@ This specification does NOT cover:
 ### Built-in blueprints
 
 1. Four blueprints **MUST** ship, one per pipeline shape, and nothing else is in the registry:
-   `build`, `respond`, `operate`, `routine` (see Interface Contracts for their exact rosters, kinds
-   and budgets). A name the registry does not hold, including every name an earlier registry used (`software` and
+   `build`, `respond`, `operate`, `routine` (see Interface Contracts for their exact rosters and kinds). A name the registry does not hold, including every name an earlier registry used (`software` and
    `content` among them), is an unknown blueprint, and the error names the four.
 2. `build` **MUST** be the default pod: `workspaceKind` `codebase`, roster `lead`, `implementer`,
-   `reviewer`, no default budget cap, and a `defaultPipeline` that is exactly the built-in default
+   `reviewer`, and a `defaultPipeline` that is exactly the built-in default
    pipeline (`pipeline-format.spec.md`), not a second, independently hand-rolled copy. `docket init`
    and `POST /pods` provision the lean subset `lead`, `implementer` unless `--pod full`, `--with` or
    `pod: full` widens it, so the Reviewer step is reached only on a pod that has the role; an
@@ -179,8 +178,9 @@ This specification does NOT cover:
    valid blueprints (`agent-lifecycle.spec.md`'s declarative-provisioning contract).
 4. A `blueprint`-bearing spec entry **MUST** accept `codebase` (for a `codebase`-kind blueprint) or
    `workDir` (for a `workdir`-kind blueprint) as its location field, plus `stack`, `description`,
-   `telegram` (a group bound to the pod's Lead), `projectKey`, and `budgetUsd`. `budgetUsd`, when
-   present, **MUST** override the blueprint's own `defaultBudgetUsd` for that pod's Lead.
+   `telegram` (a group bound to the pod's Lead), `projectKey`, and `budgetTokens`. `budgetTokens`,
+   when present, **MUST** be a whole number above 0 and is written to that pod's Lead; an entry
+   that carries `budgetUsd` **MUST** be refused, naming `budgetTokens`.
 5. A pod-shaped spec entry whose pod already exists **MUST** be skipped (warned, not recreated,
    not aborting the rest of the spec file): the same idempotence the single-agent declarative
    path has.
@@ -218,7 +218,7 @@ This specification does NOT cover:
    validated bound pipeline copy; the `docket-schedules.json` entry); the recorded keys
    (`configSource`, `configDigest`, `exporters`) are refused, naming `docket pod update` as their
    writer; an unknown key exits 1 listing the valid ones.
-2. `budgetUsd` is a setting like the rest: setting a cap, `0` or `unset` included, clears
+2. `budgetTokens` is a setting like the rest: setting a cap, or `unset`, clears
    the Lead's `paused`/`pausedReason` and re-queues the pod's blocked tasks.
 3. `verify` is the one key that belongs to a member, not the pod: `docket pod set verify "<cmd>"
    --member <id>` writes that Implementer's `verifyCmd` (validated: no NUL or newline, at most
@@ -573,7 +573,7 @@ requirement 1). The shipped library groups by what a directory contains, not by 
 | Methodology | `tdd` | no added members; skills (`test-first`); a pipeline: `red` (Implementer writes one failing test) -> `check-red` (a `run` command step routed `on: {pass: fail, fail: green}`, so an unexpectedly passing test fails the task outright) -> `green` (Implementer, its own verify command) |
 | Methodology | `spec-first` | members (`writer`, `reviewer`); skills (`writing-a-spec`); a pipeline: `spec` (Writer) -> `approve-spec` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `spec`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
 | Methodology | `reflexion` | members (`reviewer`); a pipeline: `build` (Implementer, its own verify command) -> `critique` (Reviewer, APPROVE/REQUEST-CHANGES, bounded rework to `build`, two cycles) |
-| Methodology | `frugal` | members (`reviewer`); `settings` (`budgetUsd`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build` by its own `on:` bound) |
+| Methodology | `frugal` | members (`reviewer`); `settings` (`budgetTokens`, `turnTimeoutS`); a pipeline: `plan` (Lead, `model: cheap`) -> `build` (Implementer, its own verify command) -> `review` (Reviewer, `model: cheap`, APPROVE/REQUEST-CHANGES, bounded rework to `build` by its own `on:` bound) |
 | Methodology | `spec-writer` | no added members; a pipeline: `write-tests` (Implementer, `model: openai/gpt-4.1-mini`, custom instructions for test writing) -> `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, its own verify command) |
 | Methodology | `cross-family-review` | members (`reviewer`); a pipeline: `build` (Implementer, `model: anthropic/claude-sonnet-4-6`, its own verify command) -> `review` (Reviewer, `model: openai/gpt-4.1-mini`, APPROVE/REQUEST-CHANGES, bounded rework to `build`) |
 | Methodology | `anti-tautology` | no added members; a pipeline: `plan` (Lead) -> `build` (Implementer, its own verify command) -> `check-tests-fail-on-base` (a `run` command step that runs the test files added or changed since `DOCKET_BASE_COMMIT` in a disposable worktree of that commit and fails the task if they pass there; overridable through the step's `env:` entries `ANTI_TAUTOLOGY_GLOB`/`ANTI_TAUTOLOGY_RUNNER`) |
@@ -627,7 +627,7 @@ directory.
 
 ### Pod settings keys
 
-The settable keys of `docket pod set` / `unset` are: `budgetUsd`, `maxReworkCycles`,
+The settable keys of `docket pod set` / `unset` are: `budgetTokens`, `maxReworkCycles`,
 `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`,
 `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`,
 `requireVerify`, `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`,
@@ -636,12 +636,12 @@ The settable keys of `docket pod set` / `unset` are: `budgetUsd`, `maxReworkCycl
 
 ### Built-in blueprints
 
-| Name | workspaceKind | Roles | defaultBudgetUsd | Gated step(s) |
-| --- | --- | --- | --- | --- |
-| `build` | codebase | lead, implementer, reviewer | (none) | implementer: mechanical (own `verifyCmd`); reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> implementer |
-| `respond` | workdir | lead, researcher, writer, reviewer, actor | 20.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> draft |
-| `operate` | workdir | lead, monitor, operator, reviewer | 30.0 | monitor: approval; operator: mechanical (own `verifyCmd`); reviewer: verdict, no rework |
-| `routine` | workdir | lead, analyst, writer, reviewer | 15.0 | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> draft |
+| Name | workspaceKind | Roles | Gated step(s) |
+| --- | --- | --- | --- |
+| `build` | codebase | lead, implementer, reviewer | implementer: mechanical (own `verifyCmd`); reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> implementer |
+| `respond` | workdir | lead, researcher, writer, reviewer, actor | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> draft |
+| `operate` | workdir | lead, monitor, operator, reviewer | monitor: approval; operator: mechanical (own `verifyCmd`); reviewer: verdict, no rework |
+| `routine` | workdir | lead, analyst, writer, reviewer | reviewer: verdict (APPROVE\|REQUEST-CHANGES), rework -> draft |
 
 `build`'s `defaultPipeline` declares a `reviewer` step (inherited verbatim from the built-in default
 pipeline) that a lean `build` pod, the one `docket init` provisions, never reaches at dispatch time;
@@ -683,7 +683,7 @@ agents:
     blueprint: routine
     workDir: /home/user/work/launch-brief
     description: product launch one-pager
-    budgetUsd: "10"
+    budgetTokens: 2000000
 ```
 
 ```bash
@@ -747,7 +747,7 @@ Where the names above live today. This is the only section that names paths.
   `RECORDED_KEYS`, `coerce`, `load_for`, `value_and_source`), `plan_pod`, `normalize_role`,
   `bound_pipeline_path`, `member_id`
 - `src/docket/teams/pod_provisioning.py`: `provision_pod`, `provision_members`,
-  `validate_verify_cmd`, `parse_budget_usd`
+  `validate_verify_cmd`, `parse_budget_tokens`
 - `src/docket/teams/apply/plan.py`: `plan_apply`, `apply`, `apply_directory`, `export_pod`,
   `resolve_recipe`, `summarize_recipe`, `RecipeSummary`, `list_recipes`, `RecipeInfo`,
   `directory_digest`, `classify_directory`, `review_decision`, `repo_changes`, `runs_changed`,

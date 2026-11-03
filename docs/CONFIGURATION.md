@@ -179,7 +179,7 @@ global) — the same three `docket pod show <member> --json` labels per value.
 | How does each *kind* of agent behave, and which tools is it structurally denied? | **Role archetype** | built-in \| pod | built-ins + the operator's `config/roles/` + this pod's own `config/pods/<pod>/roles/` files | `docket pod roles [--pod <p>]`, `docket pod add <role>` |
 | What does *this* agent know about *this* project? | **Workspace instructions** | pod (per-agent) | `SOUL.md`, `TOOLS.md`, `MEMORY.md`; operator-owned `INSTRUCTIONS.md` (never regenerated); the codebase root's `AGENTS.md` by default, or the files `projectInstructions` names | edit `INSTRUCTIONS.md` directly; `docket pod set projectInstructions CONTRIBUTING.md` |
 | What is forbidden or human-gated, across everything? | **Policies + command classifier** | global \| pod | `~/.docket/config/policies/*.yaml|json` + this pod's own `config/pods/<pod>/policies/*.yaml|json` (+ fixed `SAFE_BINS`) | `docket pod policies [--pod <p>]` |
-| What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod show`, `pod set`, `pod unset` (`budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `pod set verify "<cmd>" --member <id>` |
+| What budget, timeouts, approval posture, extra allowed commands, tool/MCP-server denials and verify gate bound this pod? | **Pod settings** | pod | the Lead's / member's `.docket-meta.json` | `docket pod show`, `pod set`, `pod unset` (`budgetTokens`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `requireVerify`, `maxConsultationsPerTask`, `network`, `allowCommands`, `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`); `pod set verify "<cmd>" --member <id>` |
 
 Authored files resolve through four scopes, nearest first, and the first one that holds a name wins:
 the repository's `.docket/` (prompts and skills only, read from the task's base commit, never from
@@ -234,7 +234,7 @@ never a fork. Find what you want to change, then read its section:
 | Your own words in front of an agent | Instructions | `INSTRUCTIONS.md`, which docket never writes; your repo's `AGENTS.md` is read by default, screened as untrusted; `docket pod set projectInstructions` names other files ([3.2](#32-change-what-an-agent-is-told), [3.12](#312-agentsmd-the-instructions-your-repository-already-keeps)) |
 | Reusable instructions an agent pulls on demand | Skills | `skills/<name>/SKILL.md` in `.docket/`, a recipe or `~/.docket/config/skills/`; the prompt lists them, the `skill` tool reads one through the chokepoint, deniable per role ([3.13](#313-skills-instructions-an-agent-pulls-on-demand)) |
 | What is forbidden or needs a human, everywhere | Policies | a `kind: policy` YAML (`when`/`then`), live on the next call; `docket pod check`/`validate`; hashed predicate plugins for the rare complex rule ([3.6](#36-govern-what-agents-may-do)) |
-| What one pod may run unattended | Pod settings | `docket pod set allowCommands uv,tox` · `approvalMode refuse` · `budgetUsd` · timeouts · `schedule` ([3.3](#33-configure-a-pod-verify-gate-budget-rework-timeouts), [3.8](#38-run-unattended)) |
+| What one pod may run unattended | Pod settings | `docket pod set allowCommands uv,tox` · `approvalMode refuse` · `budgetTokens` · timeouts · `schedule` ([3.3](#33-configure-a-pod-verify-gate-budget-rework-timeouts), [3.8](#38-run-unattended)) |
 | Which model each role uses | Model policy | `docket setup model set <role> <provider/model>`; a role file or a pipeline step's `model:` overrides it for one role or one hop ([3.1](#31-choose-which-model-each-agent-runs-on)) |
 | What a provider is: URL, dialect, model limits, credential by name | Provider catalog | `docket setup provider add <name> [url]`; `docket setup provider export <name>` prints the `kind: provider` document, and the key is stored by name with `--credential` ([3.1](#31-choose-which-model-each-agent-runs-on)) |
 
@@ -318,7 +318,7 @@ member it gates.
 |---|---|---|---|
 | Verify gate | `verifyCmd` in the Implementer's meta | `docket pod set verify "pytest -q" --member <p>-implementer`, or `--verify` on `docket init`/`pod add` | Runs after every Implementer hop in its worktree. A non-zero exit **fails** the task (`verification_failed`). |
 | Prepare | `prepare` in the Lead's meta, or top-level `prepare:` in `pod.yaml` | `docket pod set prepare "npm ci"` (`none` = off) | Runs once in each new task worktree before the first hop; unset, the lockfile at the worktree root picks the command (`npm ci`, `uv sync --frozen`, ...). A task's own `prepare` wins. `node_modules` is cached per codebase and lockfile. A failure fails the task (`prepare`) with no hop. A `respond`, `operate` or `routine` pod has no task worktree: it derives no command, refuses one in `pod.yaml` or `pod set`, and fails a task that asks for one. |
-| Budget cap (USD, estimated) | `budgetUsd` in the Lead's meta | `docket pod set budgetUsd 5` (`0` = none) | Checked before each hop. Over the cap, the task is blocked and the Lead paused until `docket run --resume`. The figure is an estimate, not your bill. |
+| Budget cap (counted tokens) | `budgetTokens` in the Lead's meta | `docket pod set budgetTokens 500000` (`pod unset budgetTokens` removes it) | Checked before each hop against the pod's counted tokens (input minus cache reads, plus output). Over the cap, the task is blocked and the Lead paused until `docket run --resume`. Absent means no pod cap, and no blueprint sets one. `budgetUsd` is refused naming `budgetTokens`. |
 | Rework cycles | `maxReworkCycles` in the Lead's meta | `docket pod set maxReworkCycles 2` | How many times a Reviewer `REQUEST-CHANGES` sends work back (default `1`, `0` = none). Refused (exit 2) while a pipeline is bound, and in a `pod.yaml` that binds one: the pipeline carries its own bound, `on: {REQUEST-CHANGES: {goto: build, max: 2}}`. `docket pod show` then reports it with source `pipeline`. |
 | Hop timeout | `turnTimeoutS` in the Lead's meta | `docket pod set turnTimeoutS 900` | The pod-wide wall clock of one hop (default: `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, 300 s). A step's `timeout` wins over it; `--timeout` on `docket run` takes its place for one run. `docket start` has no override of its own. |
 | Verify timeout | `verifyTimeoutS` in the Lead's meta | `docket pod set verifyTimeoutS 300` | The clock of `verify:` gates and the `verifyCmd`, with the same fallback. |
@@ -333,7 +333,7 @@ same key as a field, `raise`, so a plan of record never parses the message.
 
 | Question | Owner | Declared by | Raised by |
 |---|---|---|---|
-| Budget: how much may a task spend | the spender | the task's `maxTokens` (`docket task add --max-tokens`); the pod's `budgetUsd` (estimated) | `maxTokens`, else `AGENT_LOOP_TOKEN_BUDGET`, 100,000 |
+| Budget: how much may a task spend | the spender | the task's `maxTokens` (`docket task add --max-tokens`); the pod's `budgetTokens` (counted tokens across tasks) | `maxTokens`, else `AGENT_LOOP_TOKEN_BUDGET`, 100,000 |
 | Clock: how long may a hop take | the work | the step's `timeout`, then the pod's `turnTimeoutS` | `timeout`, `turnTimeoutS`, else `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`, 300 |
 | Guards: has a loop run away | the machine | nobody: no step, role or task declares them | `AGENT_LOOP_MAX_ITERATIONS`, 200 rounds; `AGENT_LOOP_MAX_TOOL_CALLS`, 400 calls |
 
@@ -359,7 +359,7 @@ not ignored: `pod show` and `docket run` both refuse, naming the key. Confirm wi
 ```json
 {
   "role": "lead",
-  "budgetUsd": "5",
+  "budgetTokens": 500000,
   "maxReworkCycles": 2,
   "turnTimeoutS": 900,
   "verifyTimeoutS": 300
@@ -867,7 +867,7 @@ kind: pod
 name: myapp
 members: [security-vetter]
 settings:
-  budgetUsd: 5
+  budgetTokens: 500000
   allowCommands: uv,tox
   approvalMode: refuse
 ```
@@ -1320,7 +1320,7 @@ what you changed on top of one.
 | `role`, `pod`, `blueprint` | tool narrowing, gate, pipeline choice (Lead) | provisioning |
 | `codebase`, `workDir` | the directories tools may touch; verify cwd (a dispatched task uses its own worktree) | provisioning |
 | `verifyCmd` | the mechanical gate after this member's hop | `pod set verify`, `--verify` |
-| `budgetUsd`, `paused`, `pausedReason` | pod budget and auto-pause, **Lead only** | `pod set budgetUsd`, `run --resume` |
+| `budgetTokens`, `paused`, `pausedReason` | pod budget and auto-pause, **Lead only** | `pod set budgetTokens`, `run --resume` |
 | `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS` | pod dispatch, **Lead only** | `pod set` (§3.3) |
 | `approvalMode`, `approvalExpiryHours` | unattended posture for a gated call (`wait`/`park`/`refuse`); how long a parked approval stays open before it expires and denies, **Lead only** | `pod set approvalMode/approvalExpiryHours` (§3.15) |
 | `inputExpiryHours` | how long a parked *question* (`waiting_input`) stays open before it expires to `blocked`, **Lead only** — a separate knob from `approvalExpiryHours`, default 72 | `pod set inputExpiryHours` (§3.15) |

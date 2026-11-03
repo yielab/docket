@@ -8,6 +8,7 @@ archetype `gateContract.kind` exactly.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import ClassVar
 
 import pytest
@@ -161,13 +162,10 @@ class TestEachShapesPipeline:
 
 
 class TestBudgets:
-    def test_build_has_no_default_budget_cap(self) -> None:
-        assert bp.get_blueprint("build").default_budget_usd is None
-
-    @pytest.mark.parametrize("name", ["respond", "operate", "routine"])
-    def test_task_shaped_workdir_blueprints_carry_a_cap(self, name: str) -> None:
-        cap = bp.get_blueprint(name).default_budget_usd
-        assert cap is not None and cap > 0
+    @pytest.mark.parametrize("name", ["build", "respond", "operate", "routine"])
+    def test_no_blueprint_carries_a_pod_budget(self, name: str) -> None:
+        carried = [f.name for f in dataclasses.fields(bp.get_blueprint(name)) if "budget" in f.name]
+        assert carried == []
 
 
 class TestValidation:
@@ -216,12 +214,6 @@ class TestValidation:
         kwargs = self._valid_kwargs()
         kwargs["roles"] = ("lead", "lead", "writer")
         with pytest.raises(bp.BlueprintError, match="only one lead"):
-            bp.PodBlueprint(**kwargs)  # type: ignore[arg-type]
-
-    def test_negative_budget_rejected(self) -> None:
-        kwargs = self._valid_kwargs()
-        kwargs["default_budget_usd"] = -5.0
-        with pytest.raises(bp.BlueprintError, match="default_budget_usd must be >= 0"):
             bp.PodBlueprint(**kwargs)  # type: ignore[arg-type]
 
     def test_valid_blueprint_constructs(self) -> None:

@@ -81,7 +81,6 @@ class PodBlueprint:
     workspace_kind: str  # closed: "codebase" | "workdir"
     roles: tuple[str, ...]
     default_pipeline: _pipeline.PipelineSpec
-    default_budget_usd: float | None = None
     description: str = ""
 
     def __post_init__(self) -> None:
@@ -106,8 +105,6 @@ class PodBlueprint:
             )
         if self.roles.count("lead") > 1:
             raise BlueprintError(f"blueprint {self.name!r}: a pod may have only one lead")
-        if self.default_budget_usd is not None and self.default_budget_usd < 0:
-            raise BlueprintError(f"blueprint {self.name!r}: default_budget_usd must be >= 0")
 
 
 _VERDICT = r"^\s*(APPROVE|REQUEST-CHANGES)\b"
@@ -244,7 +241,6 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         workspace_kind="codebase",
         roles=_pod.FULL_POD_ROLES,
         default_pipeline=_pipeline.default_pipeline(),
-        default_budget_usd=None,
         description="Lead, Implementer and Reviewer against a codebase (the default pod)",
     ),
     "respond": PodBlueprint(
@@ -253,7 +249,6 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         workspace_kind="workdir",
         roles=("lead", "researcher", "writer", "reviewer", "actor"),
         default_pipeline=_respond_pipeline(),
-        default_budget_usd=20.0,
         description="researches, drafts and vets a message, then acts on it outside the machine",
     ),
     "operate": PodBlueprint(
@@ -262,7 +257,6 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         workspace_kind="workdir",
         roles=("lead", "monitor", "operator", "reviewer"),
         default_pipeline=_operate_pipeline(),
-        default_budget_usd=30.0,
         description="watches signals, proposes an action a person approves, acts, and reviews it",
     ),
     "routine": PodBlueprint(
@@ -271,7 +265,6 @@ BUILTIN_BLUEPRINTS: dict[str, PodBlueprint] = {
         workspace_kind="workdir",
         roles=("lead", "analyst", "writer", "reviewer"),
         default_pipeline=_routine_pipeline(),
-        default_budget_usd=15.0,
         description="compiles, drafts and reviews a recurring deliverable",
     ),
 }

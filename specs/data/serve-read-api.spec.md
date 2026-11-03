@@ -1,6 +1,6 @@
 # serve read API — contract spec
 
-**Version**: 5.9.0
+**Version**: 5.10.0
 **Status**: Stable
 **Last Updated**: 2026-11-03
 
@@ -101,7 +101,7 @@ added in minor versions.
       "bindings":     [{"channel": "telegram"}],
       "lastActivity": "2026-06-25",
       "costUsd":      0.0,
-      "budgetUsd":    10.0
+      "budgetTokens": 500000
     }
   ],
   "totalCostUsd": 0.0
@@ -117,7 +117,7 @@ added in minor versions.
 | `channels` | string[] | Distinct channel names present in `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here**: a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |
-| `agents[*].budgetUsd` | float \| null | `null` when no budget cap is set for the agent. |
+| `agents[*].budgetTokens` | integer \| null | The pod's token cap, `null` when no budget cap is set for the agent. |
 | `agents[*].lastActivity` | date string \| `"never"` | Date (`YYYY-MM-DD`) of the agent's most recently updated session, or `"never"`. |
 | `agents[*].costUsd` | float | The runtime driver's reported dollar cost for the agent. The shipped driver measures tokens and records no dollar spend, so this is `0.0`. |
 | `totalCostUsd` | float | Sum of `agents[*].costUsd`. |
@@ -586,7 +586,7 @@ Request body:
 | `location` | string | No | The blueprint's `codebase` (a `codebase`-kind blueprint, e.g. `build`) or `workDir` (a `workdir`-kind blueprint, e.g. `respond`/`operate`/`routine`) — `provision_pod` picks which one it means from the blueprint's own workspace kind. Defaults to `""`: a `workdir`-kind blueprint then auto-provisions `workspaces/pods/<name>/workdir` under `DOCKET_HOME`, exactly as `docket init` with no path does. A non-string is `400`. |
 | `blueprint` | string | No | A blueprint registry name. Defaults to `"build"` (`DEFAULT_BLUEPRINT`, `docket init`'s own default). An empty or non-string value is `400`; an unknown name is `400` naming the invalid blueprint. |
 | `pod` | `"full"` | No | Mirrors `docket init --pod full` (case-insensitive) — the CLI's roster override, itself restricted to the `build` blueprint (a non-`build` blueprint provisions its own fixed roster; `pod` is ignored for one, as the CLI warns and ignores rather than erroring). Any other value is `400`. |
-| `budget` | number \| numeric string | No | Overrides the blueprint's own default budget cap (applied to the Lead member only). `0`, omitted, or a non-positive value means no override (falls back to the blueprint default). A boolean or non-numeric value is `400`. |
+| `budgetTokens` | integer | No | The pod's token cap, written to the Lead member only. Omitted means no cap. A boolean, a non-integer or a value of 0 or less is `400`; a body that carries `budgetUsd` or the old `budget` is `400` naming `budgetTokens`. |
 | `verifyCmd` | string | No | Applied to Implementer member(s) only, at creation time — the same verify command `docket pod add --verify` and `docket pod set verify --member` set after creation. Validated the same way (no NUL byte, no newline, length-capped); a non-string or failing value is `400`. |
 | `ensure` | boolean | No | Default `false`. On an existing pod the request **MUST** answer `200` `{"ok": true, "created": false, "project": p}` and change nothing; without `ensure` an existing pod is `409`. A non-boolean is `400`. |
 
@@ -633,7 +633,7 @@ Success response (`201`) — the created pod roster:
 
 - `apiVersion` MUST be a string equal to `SERVE_API_VERSION`.
 - `agents[*].scope` MUST be `"project"`; `agents[*].kind` MUST be `"project"`.
-- `agents[*].budgetUsd` MUST be a float or `null`.
+- `agents[*].budgetTokens` MUST be an integer or `null`.
 - `agents[*].lastActivity` MUST be an ISO date string (`YYYY-MM-DD`) or `"never"`.
 - `/metrics` MUST conform to Prometheus text format 0.0.4: each metric family appears once, its
   `# HELP` then `# TYPE` line before its first sample, and all of its samples together, with
@@ -682,7 +682,7 @@ Success response (`201`) — the created pod roster:
   `require_approval` verdict, never a response implying the task is queued to run.
 - `POST /pods` MUST reject a request with no (or an invalid) Bearer token with `401` before touching
   any project state; MUST reject a malformed/non-object body, a missing/empty `name`, a `pod`
-  value other than `"full"`, a non-numeric `budget`, or a wrongly typed `blueprint`, `location`,
+  value other than `"full"`, a non-integer `budgetTokens`, a `budgetUsd` or `budget` key, or a wrongly typed `blueprint`, `location`,
   `verifyCmd` or `ensure` with `400` before `provision_pod` is called, and a `name` failing
   `validate_project_id`, an unknown `blueprint`, or an invalid `verifyCmd` with `400` from
   `provision_pod`'s own validation (id check first, before its exists-check, before any side

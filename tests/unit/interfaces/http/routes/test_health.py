@@ -87,7 +87,7 @@ class TestBuildStatus:
             "bindings",
             "lastActivity",
             "costUsd",
-            "budgetUsd",
+            "budgetTokens",
         }
         assert a["id"] == "myshop"
         assert a["name"] == "My Shop"

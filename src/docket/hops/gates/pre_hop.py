@@ -9,7 +9,7 @@ from docket.governance import audit as _audit
 from docket.governance import policy as _policy
 from docket.governance import secrets as _secrets
 from docket.hops.application import usage as _usage
-from docket.hops.application.usage import pod_recorded_cost
+from docket.hops.application.usage import pod_counted_tokens, pod_recorded_cost
 from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates import profile as _profile
 from docket.kernel import brief as _brief
@@ -38,9 +38,10 @@ from docket.teams.settings import load_pod_settings
 
 
 def pod_gating_cost(project: str) -> tuple[float, bool]:
-    """The pod's spend for budget-**gating**: recorded, or a token x pricing-table estimate
-    (the driver always reports ``cost_usd = 0.0``). Returns ``(amount, estimated)`` -- never
-    present the estimate as, or mix it into, recorded spend. See cost-tracking.spec.md."""
+    """The pod's dollar figure for the ``docket run`` summary: recorded, or a token x pricing-table
+    estimate (the driver always reports ``cost_usd = 0.0``). Returns ``(amount, estimated)`` --
+    never present the estimate as, or mix it into, recorded spend. The budget gate does not read
+    it; it counts tokens (``pod_counted_tokens``)."""
     recorded = pod_recorded_cost(project)
     if recorded > 0.0:
         return recorded, False
@@ -121,23 +122,30 @@ def _apply_task_restrictions(ctx: UnitContext, env: dict[str, str] | None) -> di
             except ValueError as exc:
                 raise DispatchError(f"task restrictions refused: {exc}") from exc
             extra[_rd.DOCKET_TASK_POLICIES] = _json.dumps(documents)
-    left = _token_budget_left(_current_task(ctx))
-    if left is not None:
-        extra[_rd.DOCKET_TURN_TOKEN_BUDGET] = str(left)
+    ceiling = _decide.turn_token_ceiling(
+        task_left=_token_budget_left(_current_task(ctx)),
+        pod_left=None if ctx.cap is None else ctx.cap - pod_counted_tokens(ctx.project),
+        default=current_home().agent_loop_token_budget,
+    )
+    if ceiling is not None:
+        extra[_rd.DOCKET_TURN_TOKEN_BUDGET] = str(ceiling[0])
+        extra[_rd.DOCKET_TURN_TOKEN_BUDGET_SOURCE] = ceiling[1]
     return {**(env or {}), **extra} if extra else env
 
 
 def _gate_budget(ctx: UnitContext, role: str) -> UnitOutcome | None:
-    """Budget gate before the hop (see ``pod_gating_cost``); on trip, marks the Lead paused
+    """Budget gate before the hop: the pod's counted tokens against its ``budgetTokens``. On trip,
+    marks the Lead paused
     so future dispatch attempts are refused at claim time instead of re-running this check.
     Returns ``None`` when the hop may proceed."""
     task_outcome = _gate_task_tokens(ctx, role)
     if task_outcome is not None:
         return task_outcome
-    if ctx.cap <= 0.0:
-        return None
-    spent, estimated = pod_gating_cost(ctx.project)
-    decision = _decide.decide_pod_budget(cap=ctx.cap, spent=spent, estimated=estimated, role=role)
+    decision = _decide.decide_pod_budget(
+        cap=ctx.cap,
+        spent=0 if ctx.cap is None else pod_counted_tokens(ctx.project),
+        role=role,
+    )
     if decision.kind == "advance":
         return None
     trace_locked(
@@ -162,29 +170,6 @@ def _refuse_failed_floor(project: str, role: str, model: str) -> None:
     reason = _models_policy.floor_refusal(role, project, model)
     if reason is not None:
         raise DispatchError(reason)
-
-
-def _unpriced(model: str) -> bool:
-    """A model the budget estimate cannot price; a local provider costs nothing, so never."""
-    provider = model.split("/", 1)[0]
-    return (
-        not _models_policy.is_local_provider(provider) and _models_policy.price_for(model) is None
-    )
-
-
-def _warn_unpriced_hop(ctx: UnitContext, role: str, model: str) -> None:
-    """Under a budget, an unpriced model adds nothing to the estimate, so the cap cannot stop
-    this hop's spend: trace a ``budget_warning`` and let the hop run (cost-tracking.spec.md)."""
-    reason = _decide.unpriced_budget_warning(cap=ctx.cap, model=model, unpriced=_unpriced(model))
-    if reason is None:
-        return
-    trace_locked(
-        ctx.project,
-        ctx.session_id,
-        role,
-        "budget_warning",
-        _json.dumps({"action": "unpriced_model", "status": "unenforced", "reason": reason}),
-    )
 
 
 def _gate_pre_hop_approval(

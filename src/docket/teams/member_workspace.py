@@ -145,7 +145,7 @@ def write_member_workspace(
     verify_cmd: str = "",
     work_dir: str = "",
     blueprint_name: str = "",
-    budget_usd: float | None = None,
+    budget_tokens: int | None = None,
 ) -> None:
     ws = current_home().projects_dir / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
@@ -211,8 +211,8 @@ def write_member_workspace(
     if work_dir:
         meta["workspaceKind"] = "workdir"
         meta["workDir"] = work_dir
-    if budget_usd is not None and member.role == "lead":
-        meta["budgetUsd"] = float(budget_usd)
+    if budget_tokens is not None and member.role == "lead":
+        meta["budgetTokens"] = int(budget_tokens)
     meta_file = ws / current_home().meta_file
     write_json(meta_file, meta)
 
@@ -249,14 +249,14 @@ def provision_member(
     verify_cmd: str = "",
     work_dir: str = "",
     blueprint_name: str = "",
-    budget_usd: float | None = None,
+    budget_tokens: int | None = None,
 ) -> tuple[bool, str]:
     """Create one pod member's workspace + meta and register it in the fleet registry.
 
     Returns ``(ok, message)``. Does not restart the gateway -- the caller batches one restart
     per command. No worktree is made here: dispatch creates one per task at claim.
 
-    ``work_dir``/``blueprint_name``/``budget_usd`` are all no-ops (no new meta
+    ``work_dir``/``blueprint_name``/``budget_tokens`` are all no-ops (no new meta
     keys) when unset, which is every non-blueprint caller."""
     write_member_workspace(
         member,
@@ -271,7 +271,7 @@ def provision_member(
         verify_cmd=verify_cmd,
         work_dir=work_dir,
         blueprint_name=blueprint_name,
-        budget_usd=budget_usd,
+        budget_tokens=budget_tokens,
     )
     # Registration is fleet.json only -- there is no daemon to register with
     # (see ``interfaces/cli/commands/pod_members.py``'s ``add_members``).

@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 11.18.0
+**Version**: 11.19.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -54,7 +54,7 @@ This specification does NOT cover:
 - The CLI surface for queuing, inspecting and dispatching tasks (`docket task add|list|show|diff|trace|prune`,
   `docket pod add`, `docket pod set`, `docket run`, `docket task cancel`, and their flags) beyond the
   behaviour stated here: see `cli-interface.spec.md`
-- Budget-cap accounting in general and the `docket pod set budgetUsd` contract: see
+- Budget-cap accounting in general and the `docket pod set budgetTokens` contract: see
   `cost-tracking.spec.md`. This spec covers the pre-hop budget check and the auto-pause it drives
 - The persisted dispatch-run registry (`GET /runs`, `docket log`) that records each invocation of
   this pipeline, including its `pids` and cancellation fields: see `serve-read-api.spec.md` and
@@ -366,7 +366,7 @@ wired agent's conversation current with the task it is working.
      neither `blocked` nor `failed` (requirement 2).
    - `unblock_pod`, which flips **every** `blocked` task in the pod's queue back to `pending`
      whatever its `blockedReason`, and clears that reason. It runs on every
-     `docket pod set budgetUsd <n>` and `docket pod unset budgetUsd`, and on `docket run --resume`
+     `docket pod set budgetTokens <n>` and `docket pod unset budgetTokens`, and on `docket run --resume`
      (see `cost-tracking.spec.md`).
 2. A plain `failed` task (a real graded gate or hop outcome -- not a `RESUMABLE_FAILURE_KINDS`
    settlement) is terminal for that dispatch attempt and **MUST NOT** be automatically retried by a
@@ -524,6 +524,11 @@ wired agent's conversation current with the task it is working.
    cap (`task token budget reached (maxTokens=<n>) before <role>`). A hop the turn loop stops on its
    `token_budget` (`stop_reason == "token_budget"`) under a task `maxTokens` **MUST** fail the task
    with the same `failureKind`. An unset `maxTokens` leaves the turn loop's configured default.
+   A pod `budgetTokens` lowers that ceiling to what the pod has left
+   (`budgetTokens - pod_counted_tokens`) when that is the tighter one, and the hop's
+   `DOCKET_TURN_TOKEN_BUDGET_SOURCE` coordinate names the owner (`task` or `pod_budget`) so the
+   turn's `budget_stop.source` is the owner that set it (`cost-tracking.spec.md` "Enforcement"
+   requirement 4).
 
 ### Step-scoped durable runtime history
 
@@ -625,13 +630,13 @@ wired agent's conversation current with the task it is working.
 
 ### Pod dispatch settings (`PodSettings`)
 
-1. Every pod setting (`PodSettings.KEYS`: `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`,
+1. Every pod setting (`PodSettings.KEYS`: `budgetTokens`, `maxReworkCycles`, `turnTimeoutS`,
    `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
    `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
    `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`, `protects`) **MUST** be
    read through one typed, validated model (`PodSettings.load_for`), not independent ad hoc
-   parsers. A missing or blank stored key resolves to that field's declared default (e.g. `0.0`,
-   `1`, `None`, `None` for `budgetUsd`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`); a
+   parsers. A missing or blank stored key resolves to that field's declared default (e.g. `None`,
+   `1`, `None`, `None` for `budgetTokens`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`); a
    *present but malformed* stored value (e.g. a hand-edited `.docket-meta.json` with
    `"turnTimeoutS": "abc"`) **MUST** raise, naming the key and the reason, and **MUST NOT** be
    silently replaced by the default. Every dispatch reader of a pod setting (`pod_budget`,
@@ -644,8 +649,9 @@ wired agent's conversation current with the task it is working.
    stored settings untouched, and a recorded key (`configSource`, `configDigest`, `exporters`) is
    refused as written by `docket pod update`, not by `set`. `unset` clears an override by writing
    `null` (read back as absent), falling back to the field's default. Every write is audit-logged as
-   `pod.config`. `docket pod set budgetUsd <usd>` persists `budgetUsd` as the validated number, not
-   the raw CLI argument string; any `set` or `unset` of `budgetUsd`, whatever the value, re-queues
+   `pod.config`. `docket pod set budgetTokens <n>` persists `budgetTokens` as the validated integer,
+   not the raw CLI argument string, and refuses `0`, a negative or a non-integer value; `budgetUsd`
+   is refused naming `budgetTokens`. Any `set` or `unset` of `budgetTokens`, whatever the value, re-queues
    the pod's blocked tasks (`unblock_pod`) and clears the Lead's `paused`/`pausedReason`. The line
    it prints counts every task `unblock_pod` re-queued, whatever its `blockedReason`:
    `Unblocked <n> blocked task(s)`. `docket pod set maxReworkCycles` on a pod with a bound pipeline
@@ -1146,26 +1152,23 @@ turn. A turn is one hop of that step, with its own `hop_finished` and `usage`.
 ### Budget gate and auto-pause
 
 1. Before **every** hop (not just the first, and including a rework hop), dispatch **MUST** check
-   the pod's accumulated spend (summed across all pod members) against the pod's budget cap (the
-   Lead's `budgetUsd`, `0` = unlimited). A task's own `maxTokens` is checked first ("Per-hop
+   the pod's counted tokens (input minus cache reads, plus output, summed across all pod members
+   and all their sessions, the measure `maxTokens` uses) against the pod's budget cap (the Lead's
+   `budgetTokens`; absent = no cap). A task's own `maxTokens` is checked first ("Per-hop
    execution" requirement 8).
-2. Spend for this check **MUST** prefer recorded cost; when recorded cost is exactly `0` across the
-   pod (always true under `DocketDriver`, which reports `cost_usd = 0.0` -- see "Runtime driver
-   resolution" and `cost-tracking.spec.md`), dispatch **MUST** fall back to a labelled token-based
-   estimate (`pod_gating_cost`) so a real cap can still trip. This estimate is for gating only and
-   is rendered distinctly labelled wherever it appears (never mixed into `docket status`'s recorded
-   figures). Under a cap, a hop whose model has no price emits a `budget_warning` and runs.
+2. The count is measured tokens only (`pod_counted_tokens`): no catalog price, estimate or model
+   name enters the gate, so a model with no catalog price is gated like any other.
 3. If the cap is met or exceeded, the task **MUST** transition to `blocked` (see "blocked and
-   terminal-failure re-entry"; `blockedReason` persisted as the reason, `pod budget reached (<spent>
-   ≥ $<cap>) before <role>`, the spent figure labelled `(estimated — no cost recorded)` when
-   estimated) and the pipeline **MUST NOT** attempt the gated hop or any later one for this task. A
-   `budget_exceeded` trace event **MUST** be emitted naming the role the budget was checked before,
-   the spend, the cap, and whether the spend figure was estimated.
+   terminal-failure re-entry"; `blockedReason` persisted as the reason, `pod budget reached
+   (<spent> of <cap> tokens counted) before <role>`) and the pipeline **MUST NOT** attempt the
+   gated hop or any later one for this task. A `budget_exceeded` trace event **MUST** be emitted
+   naming the role the budget was checked before, the counted tokens (`spent`) and the cap, both
+   integers.
 4. The same check that blocks the task **MUST** also mark the pod's Lead paused (`paused = true`,
    `pausedReason = "budget"`, through `meta_set`). From that point on, **every** further claim
    attempt against this pod -- for this task or any other in its queue -- **MUST** be refused
    outright at claim time (see "Claiming", item 5), not merely re-blocked hop by hop, until an
-   operator clears the pause (`docket run --resume`, or a new positive `budgetUsd`; see
+   operator clears the pause (`docket run --resume`, or a new `budgetTokens`; see
    `cost-tracking.spec.md`). After a task ends `blocked` on the budget, `dispatch_pod` claims no
    further task in that run; a task blocked on its brief's missing resources ("Task brief"
    requirement 3) does not stop the run, because the pause is what makes the budget pod-wide.
@@ -1594,8 +1597,8 @@ parsing for any verdict-gated step (`parse_verdict`).
 2. A driver-backed hop's `cost_usd` **MUST** stay `0.0` when the resolved driver's
    `capabilities().reports_cost_usd` is `False` (true for `DocketDriver`, always) -- real measured
    token counts are still recorded (`MeasuredUsage`, surfaced through `aggregate_cost`), but a token
-   count **MUST NOT** be converted into a dollar figure at this boundary. The budget gate's
-   estimate fallback (`pod_gating_cost`) accounts for a driver that records tokens but not cost.
+   count **MUST NOT** be converted into a dollar figure at this boundary. The budget gate reads
+   the tokens (`pod_counted_tokens`) and needs no cost.
 
 ### Cancellation
 
@@ -1761,8 +1764,9 @@ parsing for any verdict-gated step (`parse_verdict`).
     branch, and the artifact carries `files_changed`, `diff_ref`, `diff` and the `evidence`. The hop
     stays `ok: false`, so no gate reads it as finished, and its record carries `budget`:
     `{bound, limit, used, source, raise, treeChanged}` (operator-api.spec.md "Task answers"). `source`
-    is the owner of the limit that stopped it (`step`, `pod`, `default`; `task` for tokens under a
-    task `maxTokens`), as agent-loop.spec.md requirement 104 resolves it, and `raise` is the one key
+    is the owner of the limit that stopped it (`step`, `pod`, `default`; for tokens `task` under a
+    task `maxTokens` and `pod_budget` under a pod `budgetTokens`), as agent-loop.spec.md
+    requirement 104 resolves it, and `raise` is the one key
     or machine variable that raises that limit, built from the same value as the tail of the stop
     message (agent-loop.spec.md requirement 105). `treeChanged` is `true`
     when the pin found a dirty tree and so made a new commit. No other failed hop is probed or
@@ -2431,8 +2435,6 @@ hop_finished                 # after the hop's closing events, before the hop is
 guardrail_check              # a pre_output policy verdict other than allow on a hop's output
 guardrail_block              # a pre_output block failed the hop
 budget_exceeded              # the budget gate blocked a hop (task -> blocked)
-budget_warning               # action "unpriced_model": the hop's model has no price, so the cap
-                             #   cannot stop it; the hop runs (cost-tracking.spec.md)
 verification_failed          # a mechanical or external gate did not pass (any role); an external
                              #   gate's payload carries its label and `source: "task"` for a task gate
 rework_started               # a Reviewer REQUEST-CHANGES triggered a bounded rework cycle
@@ -2512,14 +2514,14 @@ and Reviewer once each.)
 ```text
 $ docket run
 -> Running 2 pending task(s) through: lead → implementer
-  Pod budget cap: $5.00 (estimate so far ~$0.00, no cost recorded)
-!   [task-c410e91a-...] blocked — pod budget reached (~$5.12 (estimated — no cost recorded) ≥ $5.00) before implementer
+  Pod budget cap: 500000 tokens (0 counted so far)
+!   [task-c410e91a-...] blocked — pod budget reached (512340 of 500000 tokens counted) before implementer
 ok 0 done · 0 failed · 1 blocked · 2.3k tokens (~$0.04 est.)
 -> Next: docket inbox
 
-$ docket pod set budgetUsd 10
+$ docket pod set budgetTokens 1000000
 -> Unblocked 1 blocked task(s)
-ok Set budgetUsd=10.0 for pod 'myapp'
+ok Set budgetTokens=1000000 for pod 'myapp'
 -> Next: docket pod show
 ```
 
@@ -2668,9 +2670,9 @@ The dispatch state machine, by module (public names first, then private ones for
   `TaskNotFoundError`, `HopResult`, `TaskResult`, `TaskRecord`
 - `src/docket/teams/settings.py`: `pod_task_list_path`, `pod_budget`,
   `pod_max_rework_cycles`, `pod_turn_timeout`, `pod_verify_timeout`, `pod_approval_mode`,
-  `pod_approval_mode_is_set`, `pod_recorded_cost`
+  `pod_approval_mode_is_set`
 - `src/docket/hops/application/steps.py`: `PIPELINE_ORDER`, `TASK_PIPELINE_NAME`,
-  `pod_pipeline`, `effective_pipeline`, `effective_pipeline_source`, `unpriced_budget_models`;
+  `pod_pipeline`, `effective_pipeline`, `effective_pipeline_source`;
   the step loop's `_run_command_step`, `_run_input_step`
 - `src/docket/hops/application/executor.py`: `dispatch_task`; the step loop's `_run_pipeline`,
   `_run_group_node`, `_step_skipped`, `_route_outcome`
@@ -2682,7 +2684,7 @@ The dispatch state machine, by module (public names first, then private ones for
 - `src/docket/tasks/application/record.py`: `hop_env`; `persist_hop_and_trace`, `persist_hop`,
   `verdict_event_names`, resume (`replay_pipeline_position`,
   `_group_complete`)
-- `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost`; gates (`_gate_budget`,
+- `src/docket/hops/gates/pre_hop.py`: `pod_gating_cost` (the `docket run` summary's estimate, P59-8 deletes it); gates (`_gate_budget`,
   `_gate_pre_hop_approval`, `_pipeline_step_requires_approval`, `_check_brief_resources`,
   `_park_if_check_changed`)
 - `src/docket/hops/gates/post_hop.py`: gates (`_evaluate_mechanical_gate`,

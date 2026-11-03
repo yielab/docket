@@ -14,7 +14,7 @@ from docket.governance.audit import audit_log
 from docket.hops.application import report as _report
 from docket.hops.application import steps as _steps
 from docket.hops.application import sweep as _sweep
-from docket.hops.application.usage import aggregate_cost
+from docket.hops.application.usage import aggregate_cost, pod_counted_tokens
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.commands.setup import readiness
@@ -216,15 +216,6 @@ def _summary(results: list[Any], tokens: int, cost: float) -> None:
     _contract.next_step("docket inbox" if (failed or waiting or blocked) else "docket status")
 
 
-def _cap_progress(project: str) -> str:
-    """How far the pod is toward its cap, as the gate counts it: the labelled estimate, since
-    the driver records no cost; a recorded figure only if one ever exists."""
-    amount, estimated = _pre_hop.pod_gating_cost(project)
-    if amount > 0 and not estimated:
-        return f"recorded ${amount:.2f}"
-    return f"estimate so far ~${amount:.2f}, no cost recorded"
-
-
 def _pod_dispatch(
     project: str,
     *,
@@ -268,8 +259,8 @@ def _pod_dispatch(
         if running:
             count += f", {len(running)} running (reclaimed only if the claim is stale)"
     ui.info(f"Running {count} task(s) through: {_plan_roles(plan)}")
-    if cap:
-        ui.dim(f"  Pod budget cap: ${cap:.2f} ({_cap_progress(project)})")
+    if cap is not None:
+        ui.dim(f"  Pod budget cap: {cap} tokens ({pod_counted_tokens(project)} counted so far)")
 
     record = _runs.create_run("cli", project)
     tokens_before, cost_before = _pod_tokens(project)

@@ -456,7 +456,11 @@ def _provision_pod_from_spec(
     stack = str(spec.get("stack", ""))
     description = str(spec.get("description", ""))
     project_key = str(spec.get("projectKey", "default"))
-    budget_usd = _pp.parse_budget_usd(spec.get("budgetUsd"))
+    try:
+        budget_tokens = _pp.budget_tokens_from(spec)
+    except _pp.BudgetTokensError as exc:
+        ui.warn(f"'{aid}': {exc} — skipping.")
+        return None
 
     created = _pod.build_pod_from_blueprint(
         aid,
@@ -465,7 +469,7 @@ def _provision_pod_from_spec(
         stack=stack,
         description=description,
         project_key=project_key,
-        budget_usd=budget_usd,
+        budget_tokens=budget_tokens,
         source="declarative",
     )
     if not created:

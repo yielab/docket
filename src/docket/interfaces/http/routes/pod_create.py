@@ -52,18 +52,11 @@ def post_pod(h: HttpExchange, _arg: str) -> None:
     if blueprint_name == _bp.DEFAULT_BLUEPRINT:
         roles = FULL_POD_ROLES if full else DEFAULT_POD_ROLES
 
-    budget_raw = body.get("budget")
-    budget_usd: float | None = None
-    if budget_raw is not None:
-        if isinstance(budget_raw, bool) or not isinstance(budget_raw, (int, float, str)):
-            h._send_json_error("budget must be a number", 400)
-            return
-        try:
-            budget_val = float(budget_raw)
-        except (TypeError, ValueError):
-            h._send_json_error("budget must be numeric", 400)
-            return
-        budget_usd = budget_val if budget_val > 0 else None
+    try:
+        budget_tokens = _pp.budget_tokens_from(body, dollar_keys=("budgetUsd", "budget"))
+    except _pp.BudgetTokensError as exc:
+        h._send_json_error(str(exc), 400)
+        return
 
     verify_cmd = body.get("verifyCmd", "")
     if not isinstance(verify_cmd, str):
@@ -81,7 +74,7 @@ def post_pod(h: HttpExchange, _arg: str) -> None:
             blueprint_name,
             location=path_value,
             roles=roles,
-            budget_usd=budget_usd,
+            budget_tokens=budget_tokens,
             verify_cmd=verify_cmd,
             source="http",
         )

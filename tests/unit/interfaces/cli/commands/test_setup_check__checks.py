@@ -184,64 +184,55 @@ class TestChecks:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         with _seed(tmp_path, monkeypatch):
-            cost = {"myshop": ("", 0.0, False)}
-            assert _setup_check_budget._check_budget(["myshop"], cost) == 0
+            tokens = {"myshop": ("", 0)}
+            assert _setup_check_budget._check_budget(["myshop"], tokens) == 0
             assert "no cap" in capsys.readouterr().out
 
     def test_budget_over_cap_flagged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Recorded (non-estimated) spend over cap: flagged with a plain `$` figure, no
-        estimate label."""
         with _seed(tmp_path, monkeypatch):
-            cost = {"myshop": ("10", 12.0, False)}
-            issues = _setup_check_budget._check_budget(["myshop"], cost)
+            tokens = {"myshop": ("1000", 1200)}
+            issues = _setup_check_budget._check_budget(["myshop"], tokens)
             out = capsys.readouterr().out
             assert issues == 1
             assert "over budget" in out
-            assert "estimated" not in out
+            assert "120% of 1000 tokens (1200 counted)" in out
 
-    def test_budget_over_cap_from_estimate_when_nothing_recorded(
+    def test_budget_counts_tokens_from_the_sessions(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Unit coverage of `_check_budget` reading an already-computed gating tuple -- see
-        `test_doctor_run_flags_over_budget_from_estimate` below for the behavioural case that
-        drives this through the real `run_check()` entry point."""
-        with _seed(tmp_path, monkeypatch, budget="0.01") as home:
+        """Unit coverage of `_check_budget` reading the figures `_batch_tokens` measures."""
+        with _seed(tmp_path, monkeypatch, budget=3000) as home:
             _write_session(home, "agent:myshop:default", input_tokens=4000)
 
-            gating = _setup_check_budget._batch_gating_cost(["myshop"])
-            issues = _setup_check_budget._check_budget(["myshop"], gating)
+            tokens = _setup_check_budget._batch_tokens(["myshop"])
+            issues = _setup_check_budget._check_budget(["myshop"], tokens)
             out = capsys.readouterr().out
 
+            assert tokens == {"myshop": ("3000", 4000)}
             assert issues == 1
             assert "over budget" in out
-            assert "estimated — no cost recorded" in out
 
-    def test_budget_warns_at_80_percent_from_estimate(
+    def test_budget_warns_at_80_percent_of_budget_tokens(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Unit coverage mirroring the over-cap case at the >=80% threshold; see
-        `test_doctor_run_warns_at_80_percent_from_estimate` below for the behavioural case."""
-        with _seed(tmp_path, monkeypatch, budget="0.01") as home:
-            _write_session(home, "agent:myshop:default", input_tokens=2833)
+        with _seed(tmp_path, monkeypatch, budget=3000) as home:
+            _write_session(home, "agent:myshop:default", input_tokens=2500)
 
-            gating = _setup_check_budget._batch_gating_cost(["myshop"])
-            issues = _setup_check_budget._check_budget(["myshop"], gating)
+            tokens = _setup_check_budget._batch_tokens(["myshop"])
+            issues = _setup_check_budget._check_budget(["myshop"], tokens)
             out = capsys.readouterr().out
 
             assert issues == 0
-            assert "84%" in out
-            assert "estimated — no cost recorded" in out
+            assert "83% of 3000 tokens (2500 counted)" in out
 
-    def test_doctor_run_flags_over_budget_from_estimate(
+    def test_doctor_run_flags_over_budget_in_tokens(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Behavioural, through the real `run_check()` entry point: `DocketDriver` always
-        records `cost_usd = 0.0`, so 4000 input tokens (~$0.012 at $3.00/1M) against a
-        $0.01 cap must still be flagged, via the estimate, not raw recorded spend."""
+        """Behavioural, through the real `run_check()` entry point."""
         with _seed(
-            tmp_path, monkeypatch, budget="0.01", secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}
+            tmp_path, monkeypatch, budget=3000, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}
         ) as home:
             _write_session(home, "agent:myshop:default", input_tokens=4000)
 
@@ -249,25 +240,28 @@ class TestChecks:
             out = capsys.readouterr().out
 
             assert "over budget" in out
-            assert "estimated — no cost recorded" in out
             assert rc == 1
 
-    def test_doctor_run_warns_at_80_percent_from_estimate(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    def test_doctor_json_budget_rows_carry_tokens_and_the_cap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Behavioural mirror at the >=80% warning threshold, through `run_check()`: 2833
-        input tokens estimate to ~$0.0085, 84% of a $0.01 cap."""
         with _seed(
-            tmp_path, monkeypatch, budget="0.01", secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}
+            tmp_path, monkeypatch, budget=3000, secrets={"ANTHROPIC_API_KEY": "sk-ant-x"}
         ) as home:
-            _write_session(home, "agent:myshop:default", input_tokens=2833)
+            _write_session(home, "agent:myshop:default", input_tokens=2500)
 
-            _setup_check.run_check(json_out=False)
-            out = capsys.readouterr().out
+            _issues, rows, _runaway = _setup_check._check_json_budget_runaway(["myshop"])
 
-            assert "84%" in out
-            assert "estimated — no cost recorded" in out
-            assert "over budget" not in out
+            assert rows == [
+                {
+                    "id": "myshop",
+                    "costUsd": 0.0,
+                    "tokens": 2500,
+                    "budgetTokens": 3000,
+                    "pct": 83,
+                    "ok": True,
+                }
+            ]
 
     def test_runaway_flagged_by_turns(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

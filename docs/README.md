@@ -189,7 +189,7 @@ Read these before trusting docket with anything consequential.
 **Costs and counters**
 
 - **Tokens are measured; dollars are not.** `docket status` reports measured tokens and never a
-  dollar figure it did not record. The budget gate (`budgetUsd`) works on a labelled estimate.
+  dollar figure it did not record. The pod's budget gate (`budgetTokens`) counts measured tokens, so it needs no price.
 - **Metrics counters are not monotonic.** They count what current storage holds, so audit rotation
   and trace retention can drop them. Do not alert on `rate()` over them.
 - **Cancellation is cooperative.** `cancel requested` is durable immediately and a running `bash`

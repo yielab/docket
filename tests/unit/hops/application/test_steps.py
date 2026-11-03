@@ -13,7 +13,6 @@ and two extracted phases, called directly with a hand-built
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -21,9 +20,7 @@ from typing import Any
 import pytest
 from tests.support import pods as _support_pods
 from tests.support.pods import bind_one_step_pipeline as _bind_one_step_pipeline
-from tests.support.pods import planned_unit as _planned_unit
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
-from tests.support.pods import unit_context as _unit_context
 from tests.support.pods import write_meta as _write_meta
 from tests.support.tasks import put_task as _put_task
 from tests.support.tasks import put_tasks
@@ -31,10 +28,8 @@ from tests.support.tasks import task as _make_task
 
 from docket.agent import ports as _rd
 from docket.hops.application import compose as _compose
-from docket.hops.application import runner as _runner
 from docket.hops.application import steps as _steps
 from docket.hops.application import sweep as _sweep
-from docket.hops.gates import pre_hop as _pre_hop
 from docket.kernel.home import current_home
 from docket.observability import trace as _trace
 from docket.pipeline.domain import gates as _gates
@@ -42,7 +37,6 @@ from docket.pipeline.domain import plan as _orch
 from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import queue as _queue
-from docket.tasks.application import record as _record
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import state as _state
 from docket.tasks.domain import task as _task
@@ -61,62 +55,6 @@ SUBJECT = "docket.hops.application.steps"
 
 
 # ── execute_unit, lifted out of dispatch_task's closure (W31-C8b) ────────────
-
-
-_UNPRICED = "ai-gateway/acme/model-x"
-
-
-def _budget_warnings() -> list[dict[str, Any]]:
-    tf = current_home().traces_dir / "myapp" / "agent:myapp:task-1.jsonl"
-    events = _trace.read_trace(tf) if tf.exists() else []
-    return [e["payload"] for e in events if e["event_type"] == "budget_warning"]
-
-
-def _run_one_hop(cap: float, node: _orch.PlannedUnit) -> _record.UnitOutcome:
-    ctx = _unit_context(cap=cap, run=lambda *a, **k: _rd.TurnResult(True, "done", 0.0, {}))
-    return _runner.execute_unit(
-        ctx, node, prior_snapshot=[], rework_hop=None, check_approval=True, index_for_context=0
-    )
-
-
-class TestUnpricedModelUnderABudget:
-    """A budget cannot stop spend it cannot price: dispatch warns and runs the hop."""
-
-    @pytest.fixture(autouse=True)
-    def _nothing_spent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(_pre_hop, "pod_gating_cost", lambda project: (0.0, False))
-
-    def test_an_unpriced_member_model_warns_and_still_runs(self, pod_home: Path) -> None:
-        _write_meta("myapp-implementer", {"model": _UNPRICED})
-        outcome = _run_one_hop(5.0, _planned_unit("myapp-implementer"))
-        assert outcome.kind == "advance"
-        [warning] = _budget_warnings()
-        assert warning["action"] == "unpriced_model"
-        assert _UNPRICED in warning["reason"] and "$5.00" in warning["reason"]
-
-    def test_a_step_model_is_the_one_checked(self, pod_home: Path) -> None:
-        _write_meta("myapp-implementer")
-        node = dataclasses.replace(_planned_unit("myapp-implementer"), model=_UNPRICED)
-        _run_one_hop(5.0, node)
-        assert [w["action"] for w in _budget_warnings()] == ["unpriced_model"]
-
-    @pytest.mark.parametrize(
-        ("cap", "model"),
-        [(5.0, "anthropic/claude-haiku-4-5"), (5.0, "local/local-model"), (0.0, _UNPRICED)],
-    )
-    def test_no_warning_when_priced_local_or_uncapped(
-        self, pod_home: Path, cap: float, model: str
-    ) -> None:
-        _write_meta("myapp-implementer", {"model": model})
-        _run_one_hop(cap, _planned_unit("myapp-implementer"))
-        assert _budget_warnings() == []
-
-    def test_the_pod_lists_its_unpriced_models_only_under_a_budget(self, pod_home: Path) -> None:
-        _write_meta("myapp-lead", {"model": "local/local-model"})
-        _write_meta("myapp-implementer", {"model": _UNPRICED})
-        assert _steps.unpriced_budget_models("myapp") == []
-        _write_meta("myapp-lead", {"model": "local/local-model", "budgetUsd": 3})
-        assert _steps.unpriced_budget_models("myapp") == [_UNPRICED]
 
 
 class TestEffectivePipelineBlueprint:

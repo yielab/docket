@@ -313,24 +313,23 @@ docket task list               # check what's pending
 
 ### A dispatched task stays "blocked" (budget cap reached)
 
-Dispatch checks the pod's token-based dollar estimate against the Lead's budget cap before
-*every* hop (docket's own turn loop reports no billed spend, so the gate always runs off this
-estimate). Once the cap is reached, the task is left `blocked` (never silently retried or
+Dispatch compares the pod's counted tokens (input minus cache reads, plus output) with the
+Lead's `budgetTokens` before *every* hop, whatever the model costs. Once the cap is reached, the task is left `blocked` (never silently retried or
 rewritten back to `pending`) **and the pod's Lead is marked paused** — every further claim
 against this pod is refused outright (`paused_refused`) until the pause is explicitly cleared,
 not just re-blocked hop by hop:
 
 ```bash
 $ docket run
-  [task-c410e91a-...] blocked — pod budget reached ($5.12 ≥ $5.00) before implementer
+  [task-c410e91a-...] blocked — pod budget reached (512340 of 500000 tokens counted) before implementer
 ```
 
-Check the estimated spend, then either raise the cap or resume from the pause. Resuming a pod's
+Check the measured tokens, then either raise the cap or resume from the pause. Resuming a pod's
 Lead also un-blocks every `blocked` task in that pod at once:
 
 ```bash
 docket status                    # see measured token usage
-docket pod set budgetUsd <N>    # raise the cap (USD), if the spend is expected
+docket pod set budgetTokens <N> # raise the cap (counted tokens), if the spend is expected
 docket run --resume        # clear the auto-pause + unblock the pod's queue
 # → Unblocked 1 blocked task(s) in pod 'myapp'.
 # ✓ Resumed 'myapp-lead' — auto-pause cleared.

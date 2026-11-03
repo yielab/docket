@@ -29,7 +29,7 @@ META: dict[str, Any] = {
     "name": "Api Test Agent",
     "scope": "project",
     "model": "anthropic/claude-haiku-4-5-20251001",
-    "budgetUsd": "5.0",
+    "budgetTokens": 500000,
 }
 
 FLEET_CONFIG: dict[str, Any] = {
