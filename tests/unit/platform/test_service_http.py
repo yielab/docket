@@ -37,19 +37,6 @@ class TestBuildUrl:
             _svc.build_url(_req(path=path, path_params=params))
 
 
-class TestAddressRefused:
-    @pytest.mark.parametrize(
-        "address",
-        ["127.0.0.1", "10.1.2.3", "192.168.0.9", "169.254.169.254", "::1", "fe80::1", "0.0.0.0"],
-    )
-    def test_refuses_a_non_public_address(self, address: str) -> None:
-        assert _svc.address_refused(address)
-
-    @pytest.mark.parametrize("address", ["93.184.216.34", "2606:2800:220:1::1"])
-    def test_allows_a_public_address(self, address: str) -> None:
-        assert not _svc.address_refused(address)
-
-
 class TestCheckHeaders:
     @pytest.mark.parametrize(
         "headers",

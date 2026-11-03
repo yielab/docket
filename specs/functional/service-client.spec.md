@@ -4,7 +4,7 @@
 **Status**: Implemented in part: the document, its access rule, its registration, its scopes and
 its import from an OpenAPI 3 or 2 (Swagger) document (`kernel/service.py`, `teams/services.py`,
 `teams/services_openapi.py`, `docket setup service`, `docket pod update|export`), the call with its
-perimeter (`platform/service_http.py::call_operation`), the tools (each operation is a tool a role
+perimeter (`platform/service_http.py::call_operation`, `platform/perimeter.py`), the tools (each operation is a tool a role
 names, loaded each turn: `agent/tools/service_tools.py`) and the handling of writes apart (the quota
 per service and the delete approval, `governance/`), and the task identity of a call (the
 `X-Docket-Task` header, the idempotency key of a `send` operation and the service's own `timeout`
@@ -403,9 +403,10 @@ a socket opens; with `hosts=("127.0.0.1",)` it is sent.
 - `src/docket/teams/services_openapi.py`: the OpenAPI import
 - `src/docket/teams/apply/external.py`: the `pod update` planner for `services/`
 - `src/docket/interfaces/cli/commands/setup_service.py`: `setup service`
-- `src/docket/platform/service_http.py`: `call_operation` and the perimeter
+- `src/docket/platform/service_http.py`: `call_operation`; `src/docket/platform/perimeter.py`: the
+  perimeter (address check, checked connector, redirect guard), shared with `fetch`
 - `src/docket/agent/tools/service_tools.py`: the tool per operation; `hops/application/driver_support.py`
   loads it each turn and resolves the secret; `governance/gate.py` audits the method and host
 - `tests/integration/platform/test_service_http.py` drives `call_operation` against a loopback
   `http.server`; `tests/unit/platform/test_service_http.py` covers the pure helpers (URL building,
-  header checks, address classification, redaction)
+  header checks, redaction); `tests/unit/platform/test_perimeter.py` covers address classification

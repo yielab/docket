@@ -1,6 +1,6 @@
 # Security Gates Specification
 
-**Version**: 3.8.0
+**Version**: 3.9.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
@@ -1129,9 +1129,9 @@ material, may be read as saying otherwise.
      depth (`a.example.org`, `b.a.example.org`) and neither the apex (`example.org`) nor a host that
      merely ends in the same letters (`badexample.org`). A wildcard needs a registered domain
      under it: `*.org` is refused. A bare `*` matches any host name and is a pod's recorded grant only (a
-     bare `*` in `FETCH_ALLOWED_DOMAINS` is ignored). A later card will refuse private, loopback and
-     link-local addresses for hosts a wildcard matches. A host not in the set **MUST** be refused
-     before any socket opens; `fetch` does not reach everywhere because egress is otherwise open, an
+     bare `*` in `FETCH_ALLOWED_DOMAINS` is ignored). The entries written as one host name, with no
+     `*`, are the set's **exact** entries; a host a wildcard matches is not an exact one (the
+     address rule below). A host not in the set **MUST** be refused before any socket opens; `fetch` does not reach everywhere because egress is otherwise open, an
      operator opts a domain in. `fetch_url` takes the set as an argument and reads no pod or
      environment itself (`platform` imports nothing above it); one matcher serves the call and the
      redirect guard.
@@ -1160,7 +1160,28 @@ material, may be read as saying otherwise.
    - **A redirect guard.** A redirect off the member's allowed set **MUST** be refused, not followed,
      or the allowlist would be decorative. `urllib`'s redirect-following is intercepted at its
      extension point (`HTTPRedirectHandler.redirect_request`) before a connection to the new host
-     opens.
+     opens. Every hop is held to the same matcher and then to the address rule below, so a redirect
+     from an allowed host to `127.0.0.1` or `169.254.169.254` is refused unless that host is an exact
+     entry. A redirect from `https` to `http`, or to a scheme other than `http` and `https`, **MUST**
+     be refused.
+   - **The address rule.** `fetch` runs in docket's process, outside the jail, so the host name is
+     not the whole perimeter. Every address the host resolves to **MUST** be checked, and the
+     socket **MUST** connect to an address that passed (the name is resolved once, so a second
+     lookup cannot swap it). A private, loopback, link-local, multicast, reserved, unspecified or
+     unparseable address, an IPv4-mapped IPv6 address of such an IPv4 one, and a 6to4, Teredo or
+     NAT64 address that carries one, **MUST** be refused before a byte is sent. An IP-literal URL
+     is checked the same way, and so is every spelling of one (`http://2130706433/`, `0x7f000001`,
+     `127.1`), because the address it resolves to is what is checked. The one exception is a host
+     that is an exact entry of the member's set: `localhost` or `searxng.lan` written in
+     `fetchDomains` (or the machine's list) keeps its private address, which is how a self-hosted
+     search endpoint is reached. A host matched by `*.example.org` or by `*` does not. The refusal
+     is `ToolOutcome(ok=False, refusal="fetch_not_allowed")`, so the audit entry names the host,
+     and its text names the resolved address and the fix ("list the exact host in the pod's
+     fetchDomains"). The check is one module, `platform/perimeter.py`, which a service's operation
+     call (service-client.spec.md "The perimeter") opens through as well; `fetch.py` holds no
+     opener of its own.
+   - **No environment proxy.** `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` **MUST NOT** apply, as
+     for a service call: a proxy would move the connection past the address check.
    - **A page arrives as text.** When the response `Content-Type` is `text/html`, or the body
      starts with `<!doctype html` or `<html`, the body **MUST** be converted to plain text in
      docket's own process with the standard library's `html.parser` before the output cap applies:
@@ -1168,10 +1189,25 @@ material, may be read as saying otherwise.
      `h1` to `h3` are one to three `#` and a space; a list item is a dash and a space; `pre` and
      `code` are kept verbatim; a link is `text (href)` when the text differs from the href;
      whitespace is collapsed to at most one blank line. The header line of a converted page reads
-     `HTTP <status> <content-type>; <n> chars of text`. Any other content type is returned
+     `HTTP <status> <content-type>; <n> chars of text`. Any other text content type is returned
      unchanged under the header line above. The conversion changes none of the other bullets: the
      allowlist, the deadline, the size cap (applied to the bytes read, before conversion) and the
      redirect guard stand as written.
+   - **Only text arrives.** A body is text when its media type is `text/*`, `application/json`,
+     `application/xml`, `application/javascript`, `application/ecmascript`, or ends in `+json` or
+     `+xml`; the parameters (`; charset=...`) and the case are ignored. Any other declared type
+     (`application/pdf`, an image, `application/octet-stream`) **MUST** be refused as `content type
+     'application/pdf' is not text; fetch reads text pages` (`refusal="fetch_not_allowed"`, empty
+     content), before the body is read; a failed response of such a type contributes none of its body
+     to the error text. With no content type, a body is text when its first 8 KB hold no NUL byte;
+     otherwise it is refused the same way. None of a refused body reaches the model. Extracting text
+     from a PDF or another document is not `fetch`'s job.
+   - **Known limits.** `fetch` is still an outbound channel through its URL: a path or query a
+     model composes can carry data to an allowed host, whatever the host is (a narrower channel than
+     the open paths of requirement 1, and not closed here). The perimeter checks where a request goes, not
+     what a public host serves: hostile text from a public host is `pre_input`'s job (requirement 6).
+     The port is not restricted, and a host name an operator lists exactly is trusted with whatever
+     address it resolves to.
 3. **Gated like every other built-in, no second execution path.** `fetch` is registered like
    `read`, `write` and `bash`, and every call passes `dispatch_tool` → `evaluate_tool_call`: a
    `pre_tool_call` policy can `block`, `require_approval`, `warn` or `redact` a `fetch` call,
@@ -1728,9 +1764,21 @@ ToolOutcome(ok=True,
             error='')
 
 >>> fetch_url("https://api.example.com/redirects-offsite", allowed)   # 302 -> http://attacker.example/x
-ToolOutcome(ok=False, content='',
-            error="HTTP 302 from https://api.example.com/redirects-offsite: redirected to "
-                  "'attacker.example', which is not on the fetch domain allowlist")
+ToolOutcome(ok=False, content='', refusal='fetch_not_allowed',
+            error="redirected to 'attacker.example' over http, "
+                  "which is not on the fetch domain allowlist")
+
+>>> fetch_url("http://127.0.0.1:8081/v1/models", ("*",))   # a wildcard keeps the perimeter
+ToolOutcome(ok=False, content='', refusal='fetch_not_allowed',
+            error="'127.0.0.1' resolves to 127.0.0.1, a private, loopback or link-local address; "
+                  "list the exact host in the pod's fetchDomains to permit it")
+
+>>> fetch_url("http://searxng.lan:8080/search?q=docket", ("searxng.lan",))  # exact: kept
+ToolOutcome(ok=True, content='HTTP 200 application/json\n\n{"results": []}', error='')
+
+>>> fetch_url("https://api.example.com/report.pdf", allowed)
+ToolOutcome(ok=False, content='', refusal='fetch_not_allowed',
+            error="content type 'application/pdf' is not text; fetch reads text pages")
 ```
 
 The open paths the allowlist does **not** cover, named so this is never read as "network egress
@@ -1835,6 +1883,11 @@ $ git clone https://anywhere.example/repo.git
   happens before an opener is built, not merely before the content is returned.
 - A redirect `fetch` follows **MUST NOT** land on a host absent from the allowed set: the set
   governs the whole redirect chain, proven against a real HTTP 302 response.
+- `fetch` **MUST NOT** send a byte to a private, loopback or link-local address unless the host is an
+  exact entry of the member's set: under `*`, a request to `127.0.0.1`, `localhost`, `[::1]`, a
+  numeric spelling of either, `169.254.169.254` or a LAN address leaves a loopback server's request
+  count at 0, and a redirect from an exact host to such an address is refused. An environment proxy
+  **MUST NOT** carry the request, and a body that is not text **MUST NOT** reach the model.
 - A `*.example.org` entry **MUST** allow `a.example.org` and `b.a.example.org` and **MUST NOT** allow
   `example.org` or `badexample.org`; a bare `*` **MUST** be unreadable settings unless the pod holds
   its recorded `fetchGrant`.
@@ -1904,7 +1957,8 @@ $ git clone https://anywhere.example/repo.git
 - `src/docket/agent/tools/builtins/toolbox.py`: `run_bash`, `resolve_within`, `PathEscapeError`,
   `ToolOutcome`, `glob_files`, `grep_files`
 - `src/docket/agent/tools/mcp_client.py`: the jailed stdio MCP launch
-- `src/docket/platform/fetch.py`: `fetch_url`, `host_allowed`, the domain-locked redirect handler
+- `src/docket/platform/fetch.py`: `fetch_url`, `host_allowed`
+- `src/docket/platform/perimeter.py`: `address_refused`, `build_opener` (the checked connector and the redirect guard `fetch_url` and `call_operation` share), `read_until_deadline`
 - `src/docket/teams/fleet.py`: `FleetSecurity`, `get_isolation_enabled`, `get_isolation_state`,
   `get_network_mode`, `get_sandbox_backend`, `add_read_only`, `remove_read_only`, `get_profile`,
   `set_profile`
@@ -1953,5 +2007,7 @@ $ git clone https://anywhere.example/repo.git
   `release-journey` CI job), `tests/integration/tasks/test_envelope_commands.py`,
   `tests/integration/sandbox/test_network_lockdown.py`, `tests/integration/governance/test_lights_out_profile.py`,
   `tests/integration/sandbox/test_task_credentials.py`, `tests/integration/platform/test_process_non_dumpable.py`,
-  `tests/unit/platform/test_fetch.py` (`TestDomainAllowlist`, `TestRedirects`),
+  `tests/unit/platform/test_fetch.py` (`TestDomainAllowlist`, `TestOnlyTextArrives`),
+  `tests/unit/platform/test_perimeter.py`, `tests/integration/platform/test_fetch__wire.py`
+  (`TestThePerimeterAtAnyHost`, `TestOnlyTextReachesTheModel`),
   `tests/unit/governance/test_approval.py`

@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
+import threading
 import time
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -94,10 +98,10 @@ class TestTimeout:
             use_home(dataclasses.replace(current_home(), fetch_timeout_s=1.0)),
         ):
             seen: list[float] = []
-            real_build = _fetch.urllib.request.build_opener
+            real_build = _fetch.build_opener
 
-            def _record(*handlers: object) -> object:
-                opener = real_build(*handlers)
+            def _record(*args: object, **kwargs: object) -> object:
+                opener = real_build(*args, **kwargs)  # type: ignore[arg-type]
                 real_open = opener.open
 
                 def _open(req: object, data: object = None, timeout: float = 0) -> object:
@@ -107,7 +111,7 @@ class TestTimeout:
                 opener.open = _open  # type: ignore[method-assign]
                 return opener
 
-            monkeypatch.setattr(_fetch.urllib.request, "build_opener", _record)
+            monkeypatch.setattr(_fetch, "build_opener", _record)
             out = _fetch_url(f"{fetch_server}/ok", timeout=99999999)
             assert out.ok
             assert seen == [4.0]  # FETCH_TIMEOUT_S times the clamp multiple
@@ -148,6 +152,175 @@ class TestHTTPErrors:
             out = _fetch_url(f"{fetch_server}/missing")
             assert not out.ok
             assert "HTTP 404" in out.error
+
+
+class _CountingHandler(BaseHTTPRequestHandler):
+    """Answers a few fixed paths and counts every request the server receives."""
+
+    hits: list[str]
+    port: int
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+    def do_GET(self) -> None:  # BaseHTTPRequestHandler's own naming convention
+        self.hits.append(self.path)
+        body, status, headers = b"served", 200, {"Content-Type": "text/plain"}
+        if self.path == "/to-loopback-ip":
+            status, body, headers = 302, b"", {"Location": f"http://127.0.0.1:{self.port}/ok"}
+        elif self.path == "/to-metadata":
+            status, body = 302, b""
+            headers = {"Location": "http://169.254.169.254/latest/meta-data/"}
+        elif self.path == "/pdf":
+            body, headers = b"%PDF-1.7 secret words", {"Content-Type": "application/pdf"}
+        elif self.path == "/untyped-binary":
+            body, headers = b"%PDF\x00\x01\x02 secret words", {}
+        elif self.path == "/untyped-text":
+            body, headers = "caf\u00e9".encode(), {}
+        elif self.path == "/missing-pdf":
+            status, body, headers = 404, b"%PDF secret words", {"Content-Type": "application/pdf"}
+        self.send_response(status)
+        for name, value in headers.items():
+            self.send_header(name, value)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+class _Counted:
+    def __init__(self, port: int, hits: list[str]) -> None:
+        self.port = port
+        self.hits = hits
+
+    def url(self, host: str, path: str = "/ok") -> str:
+        return f"http://{host}:{self.port}{path}"
+
+
+@pytest.fixture
+def counted() -> Iterator[_Counted]:
+    """A loopback server that records every request path it receives."""
+    hits: list[str] = []
+    handler = type("Handler", (_CountingHandler,), {"hits": hits})
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    handler.port = srv.server_address[1]  # type: ignore[attr-defined]
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield _Counted(srv.server_address[1], hits)
+    finally:
+        srv.shutdown()
+        thread.join(timeout=5)
+
+
+def _fetch_in(url: str, *entries: str) -> ToolOutcome:
+    return _fetch.fetch_url(url, entries, 5)
+
+
+class TestThePerimeterAtAnyHost:
+    @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "[::1]", "[::ffff:127.0.0.1]"])
+    def test_a_wildcard_never_reaches_a_loopback_address(
+        self, counted: _Counted, host: str
+    ) -> None:
+        out = _fetch_in(counted.url(host), "*")
+        assert not out.ok
+        assert out.refusal == "fetch_not_allowed"
+        assert "private, loopback or link-local" in out.error
+        assert "list the exact host in the pod's fetchDomains" in out.error
+        assert counted.hits == []
+
+    @pytest.mark.parametrize("host", ["2130706433", "0x7f000001", "0177.0.0.1", "127.1"])
+    def test_a_numeric_spelling_of_loopback_is_refused_by_the_address_it_resolves_to(
+        self, counted: _Counted, host: str
+    ) -> None:
+        out = _fetch_in(counted.url(host), "*")
+        assert not out.ok
+        assert out.refusal == "fetch_not_allowed"
+        assert counted.hits == []
+
+    @pytest.mark.parametrize(
+        "url",
+        ["http://169.254.169.254/latest/meta-data/", "http://10.0.0.1/", "http://192.168.1.1/"],
+    )
+    def test_a_wildcard_refuses_metadata_and_lan_addresses_before_a_byte_is_sent(
+        self, url: str
+    ) -> None:
+        out = _fetch_in(url, "*")
+        assert not out.ok
+        assert out.refusal == "fetch_not_allowed"
+        assert "private, loopback or link-local" in out.error
+
+    def test_a_wildcard_subdomain_entry_does_not_keep_private_access_either(
+        self, counted: _Counted
+    ) -> None:
+        out = _fetch_in(counted.url("localhost"), "*.localhost", "*")
+        assert not out.ok
+        assert counted.hits == []
+
+    def test_an_exact_entry_keeps_private_access(self, counted: _Counted) -> None:
+        out = _fetch_in(counted.url("localhost"), "localhost")
+        assert out.ok, out.error
+        assert "served" in out.content
+        assert counted.hits == ["/ok"]
+
+    def test_an_exact_entry_among_wildcards_keeps_it_and_the_wildcard_does_not_widen_it(
+        self, counted: _Counted
+    ) -> None:
+        assert _fetch_in(counted.url("localhost"), "*", "localhost").ok
+        out = _fetch_in(counted.url("127.0.0.1"), "*", "localhost")
+        assert not out.ok
+        assert counted.hits == ["/ok"]
+
+    def test_the_environment_proxy_is_ignored(
+        self, counted: _Counted, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY"):
+            monkeypatch.setitem(os.environ, name, "http://127.0.0.1:9")
+        monkeypatch.delitem(os.environ, "NO_PROXY", raising=False)
+        monkeypatch.delitem(os.environ, "no_proxy", raising=False)
+        out = _fetch_in(counted.url("localhost"), "localhost")
+        assert out.ok, out.error
+        assert counted.hits == ["/ok"]
+
+    def test_a_redirect_from_an_exact_host_to_its_ip_is_refused(self, counted: _Counted) -> None:
+        out = _fetch_in(counted.url("localhost", "/to-loopback-ip"), "localhost", "*")
+        assert not out.ok
+        assert out.refusal == "fetch_not_allowed"
+        assert "127.0.0.1" in out.error
+        assert counted.hits == ["/to-loopback-ip"]
+
+    def test_a_redirect_to_the_metadata_address_is_refused(self, counted: _Counted) -> None:
+        out = _fetch_in(counted.url("localhost", "/to-metadata"), "localhost", "*")
+        assert not out.ok
+        assert "169.254.169.254" in out.error
+        assert counted.hits == ["/to-metadata"]
+
+
+class TestOnlyTextReachesTheModel:
+    def test_a_pdf_is_refused_and_its_body_never_arrives(self, counted: _Counted) -> None:
+        out = _fetch_in(counted.url("localhost", "/pdf"), "localhost")
+        assert not out.ok
+        assert out.content == ""
+        assert out.refusal == "fetch_not_allowed"
+        assert out.error == "content type 'application/pdf' is not text; fetch reads text pages"
+
+    def test_an_untyped_binary_body_is_refused(self, counted: _Counted) -> None:
+        out = _fetch_in(counted.url("localhost", "/untyped-binary"), "localhost")
+        assert not out.ok
+        assert out.content == ""
+        assert "secret words" not in out.error
+
+    def test_an_untyped_utf8_body_passes(self, counted: _Counted) -> None:
+        out = _fetch_in(counted.url("localhost", "/untyped-text"), "localhost")
+        assert out.ok, out.error
+        assert out.content == "caf\u00e9"
+
+    def test_the_body_of_a_binary_error_page_does_not_arrive_either(
+        self, counted: _Counted
+    ) -> None:
+        out = _fetch_in(counted.url("localhost", "/missing-pdf"), "localhost")
+        assert not out.ok
+        assert "HTTP 404" in out.error
+        assert "secret words" not in out.error
 
 
 class TestGatedExactlyLikeABuiltin:

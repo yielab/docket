@@ -19,6 +19,7 @@ from docket.agent.ports import ToolCall
 from docket.agent.tools.registry import ToolContext, dispatch_tool
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.home import current_home, use_home
+from docket.kernel.tool_outcome import ToolOutcome
 from docket.platform import fetch as _fetch
 
 SUBJECT = "docket.platform.fetch"
@@ -34,7 +35,7 @@ class TestDomainAllowlist:
         def _must_not_be_called(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("must not open a connection for a disallowed domain")
 
-        monkeypatch.setattr(_fetch.urllib.request, "build_opener", _must_not_be_called)
+        monkeypatch.setattr(_fetch, "build_opener", _must_not_be_called)
         out = _fetch.fetch_url("http://example.test/ok", ())
         assert not out.ok
         assert "not on the fetch domain allowlist" in out.error
@@ -64,35 +65,37 @@ class TestDomainAllowlist:
     ) -> None:
         opened: list[object] = []
 
-        def _opener(*_handlers: object) -> _FakeOpener:
-            opened.append(_handlers)
+        def _opener(*_args: object, **_kwargs: object) -> _FakeOpener:
+            opened.append(_args)
             return _FakeOpener(_FakeResponse(b"ok", "text/plain"))
 
-        monkeypatch.setattr(_fetch.urllib.request, "build_opener", _opener)
+        monkeypatch.setattr(_fetch, "build_opener", _opener)
         out = _fetch.fetch_url(f"http://{host}/page", allowed)
         assert out.ok is reached
         assert bool(opened) is reached
         if not reached:
             assert out.refusal == "fetch_not_allowed"
 
-    def test_a_redirect_is_held_to_the_same_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        handlers: list[object] = []
+    def test_the_perimeter_gets_the_one_matcher_and_only_the_exact_entries(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        given: list[tuple[object, ...]] = []
 
-        def _opener(*given: object) -> _FakeOpener:
-            handlers.extend(given)
+        def _opener(*args: object, **_kwargs: object) -> _FakeOpener:
+            given.append(args)
             return _FakeOpener(_FakeResponse(b"ok", "text/plain"))
 
-        monkeypatch.setattr(_fetch.urllib.request, "build_opener", _opener)
-        _fetch.fetch_url("http://a.example.org/", ("*.example.org",))
-        (guard,) = handlers
-        request = _fetch.urllib.request.Request("http://a.example.org/")
-        followed = guard.redirect_request(  # type: ignore[attr-defined]
-            request, None, 302, "Found", {}, "http://b.a.example.org/next"
-        )
-        assert followed is not None
-        for off in ("http://example.org/next", "http://other.test/next"):
-            with pytest.raises(_fetch.urllib.error.HTTPError, match="not on the fetch domain"):
-                guard.redirect_request(request, None, 302, "Found", {}, off)  # type: ignore[attr-defined]
+        monkeypatch.setattr(_fetch, "build_opener", _opener)
+        allowed = ("*.example.org", "SearXNG.lan", "localhost", "*")
+        _fetch.fetch_url("http://searxng.lan/", allowed)
+        ((permits, exact),) = given
+        assert exact == frozenset({"searxng.lan", "localhost"})  # type: ignore[comparison-overlap]
+        assert permits("anything.test") is True  # type: ignore[operator]  # the `*` entry
+        _fetch.fetch_url("http://a.example.org/", ("*.example.org", "x.test"))
+        permits, exact = given[1]
+        assert permits("b.a.example.org") is True  # type: ignore[operator]
+        assert permits("example.org") is False  # type: ignore[operator]
+        assert exact == frozenset({"x.test"})
 
     def test_unparseable_host_is_refused(self) -> None:
         out = _fetch.fetch_url("http:///no-host", ())
@@ -128,13 +131,13 @@ class _FakeOpener:
         return self._response
 
 
-def _fetch_with(
+def _outcome_with(
     monkeypatch: pytest.MonkeyPatch, body: bytes, content_type: str, **home_changes: object
-) -> str:
+) -> ToolOutcome:
     monkeypatch.setattr(
-        _fetch.urllib.request,
+        _fetch,
         "build_opener",
-        lambda *_handlers: _FakeOpener(_FakeResponse(body, content_type)),
+        lambda *_args, **_kwargs: _FakeOpener(_FakeResponse(body, content_type)),
     )
     home = dataclasses.replace(
         current_home(),
@@ -143,9 +146,87 @@ def _fetch_with(
         **home_changes,
     )
     with use_home(home):
-        out = _fetch.fetch_url("http://pages.example.test/page", ("pages.example.test",))
+        return _fetch.fetch_url("http://pages.example.test/page", ("pages.example.test",))
+
+
+def _fetch_with(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, content_type: str, **home_changes: object
+) -> str:
+    out = _outcome_with(monkeypatch, body, content_type, **home_changes)
     assert out.ok, out.error
     return out.content
+
+
+class TestOnlyTextArrives:
+    @pytest.mark.parametrize(
+        "content_type",
+        [
+            "text/plain",
+            "TEXT/HTML; charset=utf-8",
+            "text/csv",
+            "application/json",
+            "application/ld+json",
+            "application/json; charset=utf-8",
+            "application/xml",
+            "application/atom+xml",
+            "application/xhtml+xml",
+            "application/javascript",
+            "application/vnd.api+json",
+        ],
+    )
+    def test_a_text_type_passes(self, monkeypatch: pytest.MonkeyPatch, content_type: str) -> None:
+        out = _outcome_with(monkeypatch, b"plain words", content_type)
+        assert out.ok, out.error
+        assert "plain words" in out.content
+
+    @pytest.mark.parametrize(
+        "content_type",
+        [
+            "application/pdf",
+            "Application/PDF; charset=binary",
+            "application/octet-stream",
+            "application/zip",
+            "application/x-tar",
+            "image/png",
+            "audio/mpeg",
+            "video/mp4",
+            "font/woff2",
+            "application/msword",
+        ],
+    )
+    def test_a_binary_type_is_refused_and_none_of_the_body_arrives(
+        self, monkeypatch: pytest.MonkeyPatch, content_type: str
+    ) -> None:
+        out = _outcome_with(monkeypatch, b"%PDF-1.7 secret words", content_type)
+        media = content_type.split(";")[0].strip().lower()
+        assert not out.ok
+        assert out.content == ""
+        assert out.refusal == "fetch_not_allowed"
+        assert out.error == f"content type {media!r} is not text; fetch reads text pages"
+        assert "secret words" not in out.error
+
+    def test_a_body_with_no_type_is_text_when_it_has_no_nul_byte(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out = _outcome_with(monkeypatch, "caf\u00e9 au lait".encode(), "")
+        assert out.ok
+        assert out.content == "caf\u00e9 au lait"
+
+    def test_a_body_with_no_type_and_a_nul_byte_in_its_first_8k_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out = _outcome_with(monkeypatch, b"%PDF" + b"\x00" * 10 + b"secret words", "")
+        assert not out.ok
+        assert out.content == ""
+        assert out.refusal == "fetch_not_allowed"
+        assert "binary" in out.error
+        assert "fetch reads text pages" in out.error
+
+    def test_a_nul_byte_past_the_first_8k_does_not_make_an_untyped_body_binary(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out = _outcome_with(monkeypatch, b"a" * 8192 + b"\x00", "")
+        assert out.ok
 
 
 class TestHtmlArrivesAsText:

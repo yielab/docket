@@ -477,7 +477,7 @@ class TestPodFetch:
                 opened.append(request.full_url)  # type: ignore[attr-defined]
                 return _Response()
 
-        monkeypatch.setattr(_fetch.urllib.request, "build_opener", lambda *_h: _Opener())
+        monkeypatch.setattr(_fetch, "build_opener", lambda *_a, **_k: _Opener())
         registry = builtin_registry("docs")
         context = ToolContext(agent_id="t", roots=(Path("/tmp"),), role="reviewer", project="docs")
 

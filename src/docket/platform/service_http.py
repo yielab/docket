@@ -1,10 +1,11 @@
-"""The HTTP call one service operation makes, and the perimeter it stays inside.
+"""The HTTP call one service operation makes, inside the perimeter of `platform/perimeter.py`.
 
-The caller is docket's own process, not the jail (as `fetch` is), so the perimeter is the service's
-host alone: the base URL's host and the hosts the service document lists. Like `fetch`'s allowlist
-it is containment, independent of the gate that decided before this ran, and it holds no policy
-vocabulary. The caller resolves a secret into a header before building the request, so this module
-imports nothing from `governance`; it redacts the credential from what it returns instead.
+The caller is docket's own process, not the jail (as `fetch` is), so the hosts it may reach are the
+service's alone: the base URL's host and the hosts the service document lists. Like `fetch`'s
+allowlist that set is containment, independent of the gate that decided before this ran, and it
+holds no policy vocabulary. The caller resolves a secret into a header before building the request,
+so this module imports nothing from `governance`; it redacts the credential from what it returns
+instead.
 
 Zero new dependencies, as `fetch`: stdlib `urllib` and `http.client`.
 """
@@ -12,28 +13,22 @@ Zero new dependencies, as `fetch`: stdlib `urllib` and `http.client`.
 from __future__ import annotations
 
 import contextlib
-import functools
-import http.client
-import ipaddress
 import json
 import re
-import socket
-import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from urllib.request import HTTPHandler, HTTPSHandler
 
 from docket.kernel import clock as _clock
 from docket.kernel.errors import InvalidInput, Refused
 from docket.kernel.home import current_home
 from docket.kernel.tool_outcome import ToolOutcome, text_outcome
+from docket.platform.perimeter import build_opener, read_until_deadline
 
 _USER_AGENT = "docket-service/1"
 _METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
-_READ_CHUNK = 8192
 _ERROR_HEAD = 500
 _PARAM = re.compile(r"\{([^{}]+)\}")
 _HEADER_NAME = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
@@ -112,17 +107,6 @@ def build_url(request: ServiceRequest) -> str:
     return f"{url}?{urllib.parse.urlencode(pairs)}" if pairs else url
 
 
-def address_refused(address: str) -> bool:
-    """True for an address that is not a public unicast one (or does not parse)."""
-    try:
-        ip = ipaddress.ip_address(address)
-    except ValueError:
-        return True
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return not ip.is_global or ip.is_multicast
-
-
 def check_headers(headers: Mapping[str, str]) -> None:
     """Refuse a header that could split the request or override what the client owns."""
     for name, value in headers.items():
@@ -152,115 +136,6 @@ def redact(text: str, values: tuple[str, ...]) -> str:
         if value:
             text = text.replace(value, _REDACTED)
     return text
-
-
-def _connector(listed: frozenset[str]) -> Callable[..., socket.socket]:
-    """`socket.create_connection` that connects only to an address it has just checked."""
-
-    def connect(
-        address: tuple[str, int],
-        timeout: float | None = None,
-        source_address: tuple[str, int] | None = None,
-    ) -> socket.socket:
-        host, port = address
-        found = [info[4][0] for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)]
-        if host.lower() not in listed:
-            for ip in found:
-                if address_refused(str(ip)):
-                    raise Refused(
-                        f"{host!r} resolves to {ip}, a private, loopback or link-local address; "
-                        "list the host in the service's hosts to permit it",
-                    )
-        error: OSError = OSError(f"{host!r} did not resolve")
-        for ip in found:
-            try:
-                return socket.create_connection((str(ip), port), timeout, source_address)
-            except OSError as ex:
-                error = ex
-        raise error
-
-    return connect
-
-
-class _Conn(http.client.HTTPConnection):
-    def __init__(self, host: str, *, listed: frozenset[str], timeout: float | None = None) -> None:
-        super().__init__(host, timeout=timeout)
-        self._create_connection = _connector(listed)
-
-
-class _SecureConn(http.client.HTTPSConnection):
-    def __init__(
-        self,
-        host: str,
-        *,
-        listed: frozenset[str],
-        context: ssl.SSLContext,
-        timeout: float | None = None,
-    ) -> None:
-        super().__init__(host, timeout=timeout, context=context)
-        self._create_connection = _connector(listed)
-
-
-class _HttpHandler(HTTPHandler):
-    def __init__(self, listed: frozenset[str]) -> None:
-        super().__init__()
-        self._listed = listed
-
-    def http_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
-        return self.do_open(functools.partial(_Conn, listed=self._listed), req)
-
-
-class _HttpsHandler(HTTPSHandler):
-    def __init__(self, listed: frozenset[str]) -> None:
-        context = ssl.create_default_context()
-        super().__init__(context=context)
-        self._listed = listed
-        self._tls = context
-
-    def https_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
-        return self.do_open(
-            functools.partial(_SecureConn, listed=self._listed), req, context=self._tls
-        )
-
-
-class _PerimeterRedirects(urllib.request.HTTPRedirectHandler):
-    """Refuse a redirect off the service's hosts, or from https down to http."""
-
-    def __init__(self, allowed: frozenset[str]) -> None:
-        self._allowed = allowed
-
-    def redirect_request(
-        self,
-        req: urllib.request.Request,
-        fp: object,
-        code: int,
-        msg: str,
-        headers: object,
-        newurl: str,
-    ) -> urllib.request.Request | None:
-        target = urllib.parse.urlsplit(newurl)
-        host = (target.hostname or "").lower()
-        if host not in self._allowed or (
-            req.full_url.startswith("https:") and target.scheme != "https"
-        ):
-            raise Refused(
-                f"redirected to {host or newurl!r} over {target.scheme or '?'}, "
-                "which is outside the service's hosts",
-            )
-        return super().redirect_request(req, fp, code, msg, headers, newurl)  # type: ignore[arg-type]
-
-
-def _read_until_deadline(resp: http.client.HTTPResponse, cap: int, deadline: float) -> bytes | None:
-    """Up to *cap* + 1 bytes; None when the monotonic *deadline* passes first."""
-    buf = bytearray()
-    while len(buf) <= cap:
-        chunk = resp.read1(min(_READ_CHUNK, cap + 1 - len(buf)))
-        if not chunk:
-            break
-        buf += chunk
-        if _clock.monotonic() >= deadline:
-            return None
-    return bytes(buf)
 
 
 def _success(status: int, content_type: str, raw: bytes, cap: int) -> ToolOutcome:
@@ -309,23 +184,19 @@ def _call(request: ServiceRequest, scrub: tuple[str, ...]) -> ToolOutcome:
     cap = home.fetch_max_response_bytes
     timeout = request.timeout or home.fetch_timeout_s
     deadline = _clock.monotonic() + timeout
-    opener = urllib.request.OpenerDirector()
-    for handler in (
-        urllib.request.ProxyHandler({}),
-        _HttpHandler(listed),
-        _HttpsHandler(listed),
-        _PerimeterRedirects(allowed),
-        urllib.request.HTTPDefaultErrorHandler(),
-        urllib.request.HTTPErrorProcessor(),
-    ):
-        opener.add_handler(handler)
+    opener = build_opener(
+        allowed.__contains__,
+        listed,
+        outside="outside the service's hosts",
+        fix="list the host in the service's hosts to permit it",
+    )
 
     try:
         with opener.open(
             urllib.request.Request(url, data=data, headers=headers, method=method), timeout=timeout
         ) as resp:
             content_type = resp.headers.get("Content-Type", "")
-            raw = _read_until_deadline(resp, cap, deadline)
+            raw = read_until_deadline(resp, cap, deadline)
             status = resp.status
     except urllib.error.HTTPError as ex:
         try:

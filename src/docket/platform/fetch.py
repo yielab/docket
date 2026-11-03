@@ -31,6 +31,7 @@ block.
 
 from __future__ import annotations
 
+import contextlib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -38,14 +39,21 @@ from collections.abc import Iterable
 from html.parser import HTMLParser
 
 from docket.kernel import clock as _clock
+from docket.kernel.errors import Refused
 from docket.kernel.home import current_home
 from docket.kernel.text import one_line
 from docket.kernel.tool_outcome import ToolOutcome, text_outcome
+from docket.platform.perimeter import build_opener, read_until_deadline
 
 _USER_AGENT = "docket-fetch/1"
 # A caller's per-call timeout is clamped to this multiple of FETCH_TIMEOUT_S.
 FETCH_CLAMP_MULTIPLE = 4
-_READ_CHUNK = 8192
+_REFUSED = "fetch_not_allowed"
+_SNIFF_BYTES = 8192
+_TEXT_TYPES = frozenset(
+    {"application/json", "application/xml", "application/javascript", "application/ecmascript"}
+)
+_FIX = "list the exact host in the pod's fetchDomains to permit it"
 
 _DROPPED = frozenset({"script", "style", "noscript", "svg"})
 _PARAGRAPHS = frozenset(
@@ -194,42 +202,6 @@ def host_allowed(host: str, allowed: Iterable[str]) -> bool:
     return False
 
 
-class _DomainLockedRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Refuse to follow a redirect off the allowed set.
-
-    Without this, an allowlisted host could redirect anywhere and the
-    allowlist would be decorative — `urllib` follows redirects transparently
-    by default. `redirect_request` is the sanctioned extension point for
-    exactly this (see the stdlib docs: "raising `HTTPError` if the redirect
-    should not happen"), so the refusal surfaces through the same
-    `urllib.error.HTTPError` path every other HTTP failure in this module
-    already handles, rather than needing a parallel error case.
-    """
-
-    def __init__(self, allowed: tuple[str, ...]) -> None:
-        self._allowed = allowed
-
-    def redirect_request(
-        self,
-        req: urllib.request.Request,
-        fp: object,
-        code: int,
-        msg: str,
-        headers: object,
-        newurl: str,
-    ) -> urllib.request.Request | None:
-        new_host = (urllib.parse.urlsplit(newurl).hostname or "").lower()
-        if not host_allowed(new_host, self._allowed):
-            raise urllib.error.HTTPError(
-                newurl,
-                code,
-                f"redirected to {new_host!r}, which is not on the fetch domain allowlist",
-                {},  # type: ignore[arg-type]
-                None,
-            )
-        return super().redirect_request(req, fp, code, msg, headers, newurl)  # type: ignore[arg-type]
-
-
 def _effective_timeout(timeout: int) -> float:
     """The caller's timeout bounded by the clamp; non-positive falls back to the default."""
     if timeout > 0:
@@ -237,18 +209,21 @@ def _effective_timeout(timeout: int) -> float:
     return current_home().fetch_timeout_s
 
 
-def _read_until_deadline(resp: object, cap: int, deadline: float) -> bytes | None:
-    """Read up to *cap* + 1 bytes in chunks; None when the monotonic *deadline* passes first."""
-    read1 = getattr(resp, "read1", None) or resp.read  # type: ignore[attr-defined]
-    buf = bytearray()
-    while len(buf) <= cap:
-        chunk: bytes = read1(min(_READ_CHUNK, cap + 1 - len(buf)))
-        if not chunk:
-            break
-        buf += chunk
-        if _clock.monotonic() >= deadline:
-            return None
-    return bytes(buf)
+def _exact_hosts(allowed: Iterable[str]) -> frozenset[str]:
+    """The entries written as one host name: the only hosts whose private addresses are reachable."""
+    return frozenset(e.lower() for e in allowed if not e.startswith("*"))
+
+
+def _declared_non_text(content_type: str) -> str | None:
+    """Why a declared content type is not text, or None when it is (or none is declared)."""
+    media = content_type.split(";", 1)[0].strip().lower()
+    if not media or media.startswith("text/") or media in _TEXT_TYPES:
+        return None
+    return None if media.endswith(("+json", "+xml")) else f"content type {media!r} is not text"
+
+
+def _refused_type(why: str) -> ToolOutcome:
+    return ToolOutcome(False, error=f"{why}; fetch reads text pages", refusal=_REFUSED)
 
 
 def fetch_url(url: str, allowed: Iterable[str], timeout: int = 0) -> ToolOutcome:
@@ -284,22 +259,31 @@ def fetch_url(url: str, allowed: Iterable[str], timeout: int = 0) -> ToolOutcome
     effective_timeout = _effective_timeout(timeout)
     deadline = _clock.monotonic() + effective_timeout
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    opener = urllib.request.build_opener(_DomainLockedRedirectHandler(allowed))
+    opener = build_opener(
+        lambda name: host_allowed(name, allowed),
+        _exact_hosts(allowed),
+        outside="not on the fetch domain allowlist",
+        fix=_FIX,
+    )
     try:
         with opener.open(request, timeout=effective_timeout) as resp:
             status = resp.status
             content_type = resp.headers.get("Content-Type", "")
-            read = _read_until_deadline(resp, current_home().fetch_max_response_bytes, deadline)
+            if why := _declared_non_text(content_type):
+                return _refused_type(why)
+            read = read_until_deadline(resp, current_home().fetch_max_response_bytes, deadline)
             if read is None:
                 return ToolOutcome(
                     False, error=f"timed out after {effective_timeout}s fetching {url}"
                 )
             raw = read
+    except Refused as ex:
+        return ToolOutcome(False, error=str(ex), refusal=_REFUSED)
     except urllib.error.HTTPError as ex:
-        try:
-            detail = ex.read(2000).decode("utf-8", errors="replace").strip()
-        except OSError:
-            detail = ""
+        detail = ""
+        if not _declared_non_text(ex.headers.get("Content-Type", "") if ex.headers else ""):
+            with contextlib.suppress(OSError):
+                detail = ex.read(2000).decode("utf-8", errors="replace").strip()
         return ToolOutcome(False, error=f"HTTP {ex.code} from {url}: {detail[:500] or ex.reason}")
     except TimeoutError:
         return ToolOutcome(False, error=f"timed out after {effective_timeout}s fetching {url}")
@@ -310,6 +294,8 @@ def fetch_url(url: str, allowed: Iterable[str], timeout: int = 0) -> ToolOutcome
     except OSError as ex:
         return ToolOutcome(False, error=f"cannot reach {url}: {ex}")
 
+    if not content_type.strip() and b"\x00" in raw[:_SNIFF_BYTES]:
+        return _refused_type("the body has no content type and holds binary data")
     truncated = len(raw) > current_home().fetch_max_response_bytes
     body = raw[: current_home().fetch_max_response_bytes]
     text = body.decode("utf-8", errors="replace")
