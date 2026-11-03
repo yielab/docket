@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A step's budget is a checkpoint, not a cliff (D-81, Phase 59, ADR 0038).**
+  - `docket task retry` now re-runs the step that failed and continues its session with a message
+    that names why it stopped, its report and the paths it changed. Before, the retry skipped that
+    step, the next hop committed the unfinished tree and the task settled `done`. `features` gains
+    `retryContinues`.
+  - Running out of rounds, tool calls, tokens or wall clock is one outcome: the turn fails with
+    `budget_exhausted`, the task with `failureKind: budget`, and the hop carries
+    `budget: {bound, limit, used, source, treeChanged}`. It is never retried in place. An
+    Implementer hop that ran out is pinned like a finished one, so the task's patch shows its work.
+    `features` gains `budgetOutcome`.
+  - One tool-free landing request for every bound asks what is done, what is left and whether the
+    checks ran; its answer is the hop's report and never a success, so a Reviewer that runs out
+    cannot approve. One notice reaches the model when a quarter of any bound is left.
+  - A step declares `maxIterations`, `maxToolCalls` and `timeout`; a role may declare
+    `maxIterations` and `maxToolCalls`; the pod's `turnTimeoutS` is the time default. Every stop
+    names its limit, where it came from (`step`, `role`, `pod` or `default`) and the key that raises
+    it. The rounds default is 60, up from 20.
+  - A claim is refreshed every model round, so a long declared budget is not swept as a stale claim.
+  - `edit` answers with the workspace-relative path, and the Implementer prompt (1.1.0) asks for
+    whole-file reads and batched calls.
+
 - **What a plan of record needs to follow a team it does not run (D-80, Phase 58).** Additive on API 6,
   each probed through `features`:
   - `settledCursor`: an escalation that is resolved or expires gets the next `seq`, so
@@ -84,6 +105,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a pod with a codebase`. `docket init` with a `workdir` blueprint reviews the same way.
 
 ### Removed
+
+- **`DISPATCH_TURN_TIMEOUT_S`, `DISPATCH_VERIFY_TIMEOUT_S` and the 300 s `DEFAULT_TIMEOUT` constant.**
+  A machine value beat the pod's own `turnTimeoutS`. With nothing declared a hop's time is now
+  `AGENT_LOOP_WALL_CLOCK_TIMEOUT_S`.
 
 - **The adoption benchmark and its report.** `benchmarks/`, `docs/ADOPTION-EVIDENCE.md`, its spec
   and its four tests are deleted: a driver wrote the records it counted, no policy hook or agent
