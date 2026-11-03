@@ -399,6 +399,15 @@ class TestFileStateIsVisible:
             == "wrote sub/a.txt: 3 bytes, 2 lines, ends with newline: no (overwritten)"
         )
 
+    def test_edit_replies_with_the_root_relative_path_like_write(self, workspace: Path) -> None:
+        (workspace / "sub").mkdir()
+        (workspace / "sub" / "a.txt").write_text("x\nx\n", encoding="utf-8")
+        one = toolbox.edit_file((workspace,), "sub/a.txt", "x\nx", "y\nx")
+        assert one.content == "replaced 1 occurrence(s) in sub/a.txt"
+        every = toolbox.edit_file((workspace,), str(workspace / "sub" / "a.txt"), "x", "z", True)
+        assert every.content == "replaced 1 occurrence(s) in sub/a.txt"
+        assert str(workspace) not in one.content + every.content
+
     def test_write_of_nothing_counts_zero_lines(self, workspace: Path) -> None:
         out = toolbox.write_file((workspace,), "a.txt", "")
         assert out.content == "wrote a.txt: 0 bytes, 0 lines, ends with newline: no (created)"
