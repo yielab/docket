@@ -16,6 +16,7 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.domain.state import Status
 from docket.tasks.domain.task import TaskRecord
+from docket.teams.settings import retries_for_role
 
 pod_home = _support_pods.pod_home_bare
 
@@ -62,6 +63,22 @@ def test_a_step_with_no_timeout_names_where_the_time_came_from(pod_home: Path) -
     seen = _envs(_step.Step(id="lead", role="lead"))
 
     assert seen["lead"][_rd.DOCKET_HOP_TIMEOUT_SOURCE] == "default"
+
+
+def test_a_step_with_retries_hands_the_turn_its_own_count(pod_home: Path) -> None:
+    _seed_lean_pod(_PROJECT)
+
+    seen = _envs(_step.Step(id="lead", role="lead", retries=1))
+
+    assert seen["lead"][_rd.DOCKET_HOP_REQUEST_RETRIES] == "1"
+
+
+def test_a_step_with_no_retries_hands_the_turn_the_roles_count(pod_home: Path) -> None:
+    _seed_lean_pod(_PROJECT)
+
+    seen = _envs(_step.Step(id="lead", role="lead"))
+
+    assert seen["lead"][_rd.DOCKET_HOP_REQUEST_RETRIES] == str(retries_for_role("lead"))
 
 
 def test_a_step_with_no_tools_hands_the_turn_no_allow_list(pod_home: Path) -> None:

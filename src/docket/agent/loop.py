@@ -144,12 +144,18 @@ budget/estimate evidence only, never messages or model/tool content.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
 from docket.agent.loop_budget import MIN_OUTPUT_TOKENS, TurnBudget
 from docket.agent.loop_compaction import TurnCompaction
-from docket.agent.loop_request import _accumulate, _closing_messages, _finalization_messages
+from docket.agent.loop_request import (
+    _accumulate,
+    _closing_messages,
+    _finalization_messages,
+    send_request,
+)
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_steps import ToolStep, approval_parked_error, approval_unavailable_error
 from docket.agent.loop_trace import (
@@ -271,6 +277,7 @@ class _TurnState(TurnState):
         session_key: str,
         cfg: LoopConfig,
         clock: Callable[[], float],
+        sleep: Callable[[float], None],
         trace_project: str | None,
         trace_session_key: str | None,
         trace_task_id: str = "",
@@ -308,6 +315,7 @@ class _TurnState(TurnState):
             session_key=session_key,
             cfg=cfg,
             clock=clock,
+            sleep=sleep,
             started=started,
             project=project,
             trace_key=trace_key,
@@ -439,14 +447,20 @@ class _TurnState(TurnState):
         carried, self.close_forced, self.close_reply = self.close_reply, False, ""
         if forced:
             messages = _closing_messages(messages, carried, forced)
-        response = self.backend.complete(
-            messages,
-            tools=request_tools,
-            max_tokens=self.call_max_tokens,
-            temperature=self.cfg.temperature,
-            top_p=self.cfg.top_p,
-            tool_choice=forced,
-            timeout=request_timeout,
+        response, request_timeout = send_request(
+            self,
+            lambda timeout: self.backend.complete(
+                messages,
+                tools=request_tools,
+                max_tokens=self.call_max_tokens,
+                temperature=self.cfg.temperature,
+                top_p=self.cfg.top_p,
+                tool_choice=forced,
+                timeout=timeout,
+            ),
+            request_timeout,
+            next_timeout=self.budget.request_timeout,
+            clock_cut=self.budget.clock_cut,
         )
         _trace_llm_call(
             self.project,
@@ -468,6 +482,9 @@ class _TurnState(TurnState):
                 append_messages(self.session_key, [], usage=response.usage)
             return None, response.usage, self.cancelled()
         if not response.ok:
+            clock_stop = self.budget.clock_cut_stop(response, request_timeout)
+            if clock_stop is not None:
+                return None, response.usage, clock_stop
             return (
                 None,
                 response.usage,
@@ -595,6 +612,7 @@ def run_agent_turn(
     *,
     config: LoopConfig | None = None,
     clock: Callable[[], float] = _clock.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
     trace_project: str | None = None,
     trace_session_key: str | None = None,
     trace_task_id: str = "",
@@ -618,6 +636,7 @@ def run_agent_turn(
         session_key=session_key,
         cfg=cfg,
         clock=clock,
+        sleep=sleep,
         trace_project=trace_project,
         trace_session_key=trace_session_key,
         trace_task_id=trace_task_id,

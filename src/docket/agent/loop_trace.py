@@ -319,6 +319,35 @@ def _trace_terminal_finalization(
     )
 
 
+def _trace_request_retry(
+    project: str,
+    session_key: str,
+    role: str,
+    *,
+    attempt: int,
+    retries: int,
+    response: ChatResponse,
+    task_id: str = "",
+) -> None:
+    """One transport retry of a request, before its wait: which retry, why, what the endpoint asked."""
+    tracer.trace_event(
+        project,
+        session_key,
+        role,
+        "request_retry",
+        json.dumps(
+            {
+                "attempt": attempt,
+                "retries": retries,
+                "failureKind": response.failure_kind or "daemon_error",
+                "error": response.error,
+                "retryAfterS": response.retry_after_s,
+            }
+        ),
+        task_id=task_id,
+    )
+
+
 def _trace_budget_notice(
     project: str,
     session_key: str,

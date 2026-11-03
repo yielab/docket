@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 # ── run_turn ──────────────────────────────────────────────────────────────────
 
 # Only "timeout"/"daemon_error" are retryable (a transient hiccup talking to the
-# model backend, not a real answer) — see hops/application/runner.py's _RETRYABLE_FAILURE_KINDS.
+# model backend, not a real answer) — see agent/loop_request.py's _RETRYABLE_REQUEST_KINDS.
 # "timeout" is a request or transport timeout; a turn that ran out of rounds, tool calls, tokens
 # or wall-clock time is "budget_exhausted" and carries a ``BudgetStop``.
 FailureKind = Literal[
@@ -178,6 +178,9 @@ DOCKET_HOP_TOOLS = "DOCKET_HOP_TOOLS"
 # Which owner the hop's wall-clock figure came from (``step``, ``pod`` or ``default``), set on
 # every pipeline hop; popped into ``LoopConfig.wall_clock_source``.
 DOCKET_HOP_TIMEOUT_SOURCE = "DOCKET_HOP_TIMEOUT_SOURCE"
+# How many times the turn may send a failed model request again (the step's ``retries``, else the
+# role's budget), set on every pipeline hop; popped into ``LoopConfig.request_retries``.
+DOCKET_HOP_REQUEST_RETRIES = "DOCKET_HOP_REQUEST_RETRIES"
 # The id of the pipeline step the hop runs; popped by DocketDriver into ``ToolContext.step_id``,
 # where a service tool reads it for its idempotency key.
 DOCKET_HOP_STEP = "DOCKET_HOP_STEP"
@@ -218,6 +221,9 @@ class TurnResult:
     closing_args: dict[str, Any] | None = field(default=None, kw_only=True)
     # Set exactly when ``failure_kind == "budget_exhausted"``: the bound, its limit and the figure used.
     budget_stop: BudgetStop | None = field(default=None, kw_only=True)
+    # Model requests the turn sent again after a transient failure (agent-loop.spec.md 111); a
+    # hop's ``attempts`` is ``1 + request_retries``.
+    request_retries: int = field(default=0, kw_only=True)
 
 
 # ── list_sessions ─────────────────────────────────────────────────────────────

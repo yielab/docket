@@ -45,7 +45,7 @@ DEFAULT_EVENTS: frozenset[str] = frozenset(
         "budget_warning",
         "budget_exceeded",
         "error",
-        "hop_retry",
+        "request_retry",
         "verdict_rework_started",
         "verdict_rejected",
         "verdict_unparseable",
@@ -65,7 +65,7 @@ DEFAULT_EVENTS: frozenset[str] = frozenset(
 
 _ROOT_EVENTS = frozenset(
     {
-        "hop_retry",
+        "request_retry",
         "rework_started",
         "verdict_rework_started",
         "verdict_rejected",

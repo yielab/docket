@@ -59,8 +59,8 @@ class HopResult(BaseModel):
     ok: bool = False
     output: str = ""
     error: str = ""
-    # Total agent-turn attempts made for this hop (1 = succeeded or failed on the first try, no
-    # retry). Only retryable failures (see ``_RETRYABLE_FAILURE_KINDS``) ever push this above 1.
+    # 1 plus the model requests this hop's turn sent again (1 = none was retried). Only a transient
+    # request failure (see ``_RETRYABLE_REQUEST_KINDS``) ever pushes this above 1.
     attempts: int = 1
     # The pipeline-spec step id this hop ran for. Empty when constructed without one; the dump
     # writes ``role`` then -- the built-in default pipeline's step ids equal their role names, so

@@ -31,6 +31,18 @@ class _OneReply:
         return self.response
 
 
+class _Replies:
+    """Answers each exchange with the next scripted response."""
+
+    def __init__(self, *responses: ChatResponse) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    def complete(self, messages: list[ChatMessage], **kwargs: Any) -> ChatResponse:
+        self.calls.append({"messages": messages, **kwargs})
+        return self.responses.pop(0)
+
+
 def _compaction(state: TurnState) -> TurnCompaction:
     return TurnCompaction(state, TurnBudget(state))
 
@@ -148,3 +160,38 @@ class TestRequestFitHelpers:
         assert error.endswith("registered context window 1000: no luck")
         unknown = _compaction(make_turn_state(context_window=None))
         assert "registered context window unknown" in unknown.context_fit_convergence_error("x", 1)
+
+
+class TestASummaryRequestIsRetried:
+    """The summary request goes through the same retrying send as the task request."""
+
+    def test_a_timeout_then_a_summary_compacts(self, make_turn_state: MakeState) -> None:
+        backend = _Replies(
+            ChatResponse(ok=False, error="slow", failure_kind="timeout"),
+            ChatResponse(ok=True, message=assistant("the summary")),
+        )
+        sleeps: list[float] = []
+        state = make_turn_state(
+            LoopConfig(request_timeout_s=30, request_retries=1),
+            backend=backend,
+            sleep=sleeps.append,
+        )
+        result = _summarize(_compaction(state))
+        assert result.ok and result.output == "the summary"
+        assert len(backend.calls) == 2 and sleeps == [2.0]
+        assert state.request_retries == 1
+
+    def test_a_summary_cut_to_the_clock_left_that_times_out_ends_the_turn_on_time(
+        self, make_turn_state: MakeState
+    ) -> None:
+        backend = _Replies(ChatResponse(ok=False, error="slow", failure_kind="timeout"))
+        state = make_turn_state(
+            LoopConfig(wall_clock_timeout_s=100, request_timeout_s=30, request_retries=2),
+            backend=backend,
+            clock=lambda: 80.0,
+        )
+        compaction = _compaction(state)
+        result = _summarize(compaction)
+        assert result.failure_kind == "timeout" and len(backend.calls) == 1
+        assert backend.calls[0]["timeout"] == 20
+        assert compaction.compaction_failure_stop_reason == "timeout"

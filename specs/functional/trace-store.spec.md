@@ -75,7 +75,7 @@ This specification does NOT cover:
    `guardrail_check`, `guardrail_block`, `approval_granted`,
    `approval_denied`, `budget_warning`, `budget_exceeded`,
    `verification_failed`, `reviewer_verdict_unparseable`,
-   `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `hop_retry`,
+   `rework_started`, `review_rejected`, `stale_claim`, `dispatch_refused`, `request_retry`,
    `paused_refused`, `approval_required`, `approval_resumed`, `approval_task_denied`, `approval_unused`,
    `run_cancellation_observed`, `run_cancelled`, `verdict_rework_started`, `verdict_rejected`,
    `verdict_unparseable`, `verdict_reasked`, `step_skipped`, `command_step`, `route_taken`,

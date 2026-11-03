@@ -2,18 +2,79 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import asdict
 
 from docket.agent import ports as _ports
+from docket.agent.loop_state import TurnState
+from docket.agent.loop_trace import _trace_request_retry
 from docket.agent.ports import (
     BudgetStop,
     ChatBackend,
     ChatMessage,
+    ChatResponse,
     TokenUsage,
     ToolSpec,
     assistant,
     user,
 )
+from docket.kernel.home import current_home
+
+# Only these failure kinds are a transient hiccup worth sending the same request again; a response
+# that arrived (invalid_output, a refusal) is an answer (agent-loop.spec.md requirement 110).
+_RETRYABLE_REQUEST_KINDS = frozenset({"timeout", "daemon_error"})
+
+
+def _retry_wait(attempt: int, response: ChatResponse) -> float:
+    """The sleep before retry *attempt*: linear backoff or the endpoint's ``Retry-After``, whichever
+    asks for longer, never past ``DISPATCH_RETRY_MAX_WAIT_S``."""
+    home = current_home()
+    return min(
+        max(home.dispatch_retry_backoff_s * attempt, response.retry_after_s or 0.0),
+        home.dispatch_retry_max_wait_s,
+    )
+
+
+def send_request(
+    state: TurnState,
+    complete: Callable[[int], ChatResponse],
+    timeout: int,
+    *,
+    next_timeout: Callable[[], int],
+    clock_cut: Callable[[int], bool],
+) -> tuple[ChatResponse, int]:
+    """Send a request, retrying a transient failure (agent-loop.spec.md requirements 109-111).
+    *timeout* is the first request's, *next_timeout* the retry's. Returns the last response and
+    the timeout it was sent with."""
+    cfg = state.cfg
+    retries = 0
+    while True:
+        response = complete(timeout)
+        kind = response.failure_kind or "daemon_error"
+        if (
+            response.ok
+            or kind not in _RETRYABLE_REQUEST_KINDS
+            or retries >= cfg.request_retries
+            or state.cancellation_requested()
+            or (kind == "timeout" and clock_cut(timeout))
+        ):
+            return response, timeout
+        wait = _retry_wait(retries + 1, response)
+        if wait >= cfg.wall_clock_timeout_s - (state.clock() - state.started):
+            return response, timeout
+        retries += 1
+        state.request_retries += 1
+        _trace_request_retry(
+            state.project,
+            state.trace_key,
+            state.ctx.role,
+            attempt=retries,
+            retries=cfg.request_retries,
+            response=response,
+            task_id=state.trace_task_id,
+        )
+        state.sleep(wait)
+        timeout = next_timeout()
 
 
 def _accumulate(current: TokenUsage, delta: TokenUsage) -> TokenUsage:

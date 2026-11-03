@@ -17,6 +17,7 @@ from docket.agent.loop_request import (
     _segment_revision,
     _selected_estimate,
     _usage_delta,
+    send_request,
 )
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_compaction, _trace_llm_call
@@ -103,13 +104,25 @@ class TurnCompaction:
         if self.state.cancellation_requested():
             self.compaction_failure_stop_reason = "run_cancelled"
             return TurnResult(False, "", {}, "run cancellation requested", "run_cancelled")
-        response = self.state.backend.complete(
-            summary_messages,
-            tools=(),
-            max_tokens=self.state.call_max_tokens,
-            temperature=self.state.cfg.temperature,
-            top_p=self.state.cfg.top_p,
-            timeout=min(timeout, remaining),
+        state = self.state
+
+        def clock_left_timeout() -> int:
+            left = int(state.cfg.wall_clock_timeout_s - (state.clock() - state.started))
+            return min(timeout, max(1, left))
+
+        response, sent_timeout = send_request(
+            state,
+            lambda seconds: state.backend.complete(
+                summary_messages,
+                tools=(),
+                max_tokens=state.call_max_tokens,
+                temperature=state.cfg.temperature,
+                top_p=state.cfg.top_p,
+                timeout=seconds,
+            ),
+            min(timeout, remaining),
+            next_timeout=clock_left_timeout,
+            clock_cut=self.budget.clock_cut,
         )
         _trace_llm_call(
             self.state.project,
@@ -134,7 +147,8 @@ class TurnCompaction:
                 "run_cancelled",
             )
         if not response.ok:
-            self.compaction_failure_stop_reason = "compaction_failed"
+            on_clock = self.budget.timed_out_on_clock(response, sent_timeout)
+            self.compaction_failure_stop_reason = "timeout" if on_clock else "compaction_failed"
             return TurnResult(
                 False,
                 "",

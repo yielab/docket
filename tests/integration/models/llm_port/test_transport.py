@@ -17,13 +17,13 @@ from tests.support.llm_port_harness import (
 )
 
 from docket.agent import ports
+from docket.agent.loop_request import _RETRYABLE_REQUEST_KINDS
 from docket.agent.ports import (
     ChatBackend,
     ChatMessage,
     Endpoint,
     ToolCall,
 )
-from docket.hops.application.runner import _RETRYABLE_FAILURE_KINDS
 from docket.kernel.home import Home, use_home
 from docket.models.adapters import openai_http as adapter
 from docket.models.adapters import openai_wire as _openai_wire
@@ -212,7 +212,7 @@ class TestTransport:
         _raising_urlopen(monkeypatch, urllib.error.URLError(ConnectionRefusedError(111, "refused")))
         res = adapter.OpenAIChatClient(ENDPOINT).complete([ports.user("x")])
         assert res.failure_kind == "daemon_error"
-        assert res.failure_kind in _RETRYABLE_FAILURE_KINDS
+        assert res.failure_kind in _RETRYABLE_REQUEST_KINDS
 
     def test_non_json_body_is_invalid_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, Any] = {}
@@ -286,8 +286,8 @@ class TestRetryVocabularyStaysAlignedWithDispatch:
     failure kinds it emits have to mean the same thing there."""
 
     def test_transport_failures_are_retryable_and_answers_are_not(self) -> None:
-        assert _openai_wire._classify_http_status(429) in _RETRYABLE_FAILURE_KINDS
-        assert _openai_wire._classify_http_status(400) not in _RETRYABLE_FAILURE_KINDS
+        assert _openai_wire._classify_http_status(429) in _RETRYABLE_REQUEST_KINDS
+        assert _openai_wire._classify_http_status(400) not in _RETRYABLE_REQUEST_KINDS
 
     def test_every_status_maps_to_a_known_failure_kind(self) -> None:
         known = {"timeout", "daemon_error", "nonzero_exit", "invalid_output"}

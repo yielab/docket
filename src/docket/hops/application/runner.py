@@ -21,7 +21,6 @@ from docket.kernel import clock as _clock
 from docket.kernel import handoff as _handoff
 from docket.kernel.errors import DispatchError
 from docket.kernel.handoff import HANDOFF_TOOL
-from docket.kernel.home import current_home
 from docket.kernel.ids import step_session_key
 from docket.pipeline.domain import gates as _gates
 from docket.pipeline.domain import plan as _orch
@@ -41,12 +40,6 @@ from docket.teams import fleet as _fleet
 from docket.teams import model_selection as _models_policy
 from docket.teams import pod as _pod
 from docket.teams.settings import retries_for_role
-
-# Only these TurnResult.failure_kind values are worth retrying — a
-# transient hiccup running the turn. A non-zero exit or an unparseable/failing
-# verdict is a real answer and must never be retried (retrying would risk
-# masking a genuine failure as a transient one, and burns budget for nothing).
-_RETRYABLE_FAILURE_KINDS: frozenset[str] = frozenset({"timeout", "daemon_error"})
 
 
 def _declared_verdict(turn: _rd.TurnResult) -> str | None:
@@ -85,6 +78,7 @@ def _reask_unmarked_verdict(
         first,
         output=f"{first.output}\n{second.output}".strip(),
         usage=_sum_usage(first.usage, second.usage),
+        request_retries=first.request_retries + second.request_retries,
         raw=second.raw,
         closing_args=second.closing_args or first.closing_args,
     )
@@ -145,9 +139,9 @@ def _run_hop_turn(
     env: dict[str, str] | None,
     prior: list[HopResult],
 ) -> tuple[_rd.TurnResult, int]:
-    """Run this hop's agent turn, retrying only a retryable failure in place (a non-zero
-    exit or bad verdict is a real answer and stops here) -- see pod-dispatch.spec.md
-    ("Retries and the failure-kind taxonomy"). Returns the total tries made. A step's own
+    """Run this hop's agent turn once; the loop retries a failed model request inside it, up to the
+    count sent as ``DOCKET_HOP_REQUEST_RETRIES`` -- see pod-dispatch.spec.md ("Retries and the
+    failure-kind taxonomy"). Returns the turn and ``1 + request_retries``. A step's own
     ``retries``/``timeout`` override wins over the pod's role-based budget and turn timeout.
     A step's own ``model`` (pipeline-format.spec.md "Steps" Req. 10) is resolved once per call
     and passed to the production driver only, for this hop alone -- see "Per-hop execution".
@@ -157,7 +151,11 @@ def _run_hop_turn(
         step=node.timeout, pod=ctx.declared_turn_timeout, default=ctx.resolved_turn_timeout
     )
     hop_timeout = budget_time.value
-    env = {**(env or {}), _rd.DOCKET_HOP_TIMEOUT_SOURCE: budget_time.source}
+    env = {
+        **(env or {}),
+        _rd.DOCKET_HOP_TIMEOUT_SOURCE: budget_time.source,
+        _rd.DOCKET_HOP_REQUEST_RETRIES: str(retry_budget),
+    }
     resolved_model: str | None = None
     if node.model:
         try:
@@ -209,54 +207,10 @@ def _run_hop_turn(
     if failed_hop is not None:
         pinned = tuple(failed_hop.artifact.files_changed) if failed_hop.artifact else ()
         message = _continuation_text(ctx, prior, failed_hop.error, _summary_of(failed_hop), pinned)
-    attempt = 1
-    while True:
-        rounds_before = len(_session.load_messages(history_session_key))
-        run_res = _call(message)
-        if run_res.ok or run_res.failure_kind not in _RETRYABLE_FAILURE_KINDS:
-            break
-        if attempt > retry_budget:
-            break
-        if len(_session.load_messages(history_session_key)) > rounds_before:
-            message = _continuation_text(ctx, prior, run_res.error, run_res.output)
-        trace_locked(
-            ctx.project,
-            ctx.session_id,
-            role,
-            "hop_retry",
-            _json.dumps(
-                {
-                    "hop": role,
-                    "attempt": attempt,
-                    "retry_budget": retry_budget,
-                    "failure_kind": run_res.failure_kind,
-                    "error": run_res.error,
-                    "retry_after_s": run_res.retry_after_s,
-                }
-            ),
-        )
-        # A retry means the dispatcher is alive and making forward progress,
-        # not crashed — refresh the claim before the backoff sleep so a
-        # concurrent dispatcher's stale-claim sweep never mistakes it for one
-        # (see the module docstring / _touch_claim).
-        if ctx.on_retry is not None:
-            ctx.on_retry()
-        # The endpoint's own Retry-After (when it named one) can push the wait
-        # past the linear backoff; either way it is capped so one large value
-        # never stalls a hop indefinitely (pod-dispatch.spec.md, "Retries and
-        # the failure-kind taxonomy" requirement 3).
-        ctx.do_sleep(
-            min(
-                max(
-                    current_home().dispatch_retry_backoff_s * attempt, run_res.retry_after_s or 0.0
-                ),
-                current_home().dispatch_retry_max_wait_s,
-            )
-        )
-        attempt += 1
+    run_res = _call(message)
     if run_res.ok and isinstance(node.gate, _gates.VerdictGate):
         run_res = _reask_unmarked_verdict(ctx, role, node.gate, run_res, _call)
-    return run_res, attempt
+    return run_res, 1 + run_res.request_retries
 
 
 def execute_unit(

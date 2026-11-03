@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from docket.agent import loop as _loop
 from docket.agent.ports import (
+    DOCKET_HOP_REQUEST_RETRIES,
     DOCKET_HOP_TIMEOUT_SOURCE,
     DOCKET_HOP_TOOLS,
     DOCKET_TASK_DENIED_TOOLS,
@@ -326,6 +327,14 @@ def _hop_tool_allow(raw: str | None) -> tuple[str, ...] | None:
     return tuple(str(name) for name in names)
 
 
+def _request_retries(raw: str | None) -> int:
+    """The hop's transport retry count from its coordinate; ``0`` when absent or malformed."""
+    try:
+        return max(0, int(raw or ""))
+    except ValueError:
+        return 0
+
+
 def _loop_config(
     backend: ChatBackend,
     timeout: int,
@@ -340,9 +349,10 @@ def _loop_config(
     Rounds and tool calls are the machine's guards, read from ``Home`` with source ``default``;
     *timeout* is already resolved by the runner, and its owner arrives as
     ``DOCKET_HOP_TIMEOUT_SOURCE``; the token ceiling's owner arrives as
-    ``DOCKET_TURN_TOKEN_BUDGET_SOURCE``. Each owner is kept on the config."""
+    ``DOCKET_TURN_TOKEN_BUDGET_SOURCE``; the retry count as ``DOCKET_HOP_REQUEST_RETRIES``."""
     tool_allow = _hop_tool_allow(ctx.env.pop(DOCKET_HOP_TOOLS, None))
     time_source = ctx.env.pop(DOCKET_HOP_TIMEOUT_SOURCE, "")
+    request_retries = _request_retries(ctx.env.pop(DOCKET_HOP_REQUEST_RETRIES, None))
     token_source = ctx.env.pop(DOCKET_TURN_TOKEN_BUDGET_SOURCE, "")
     home = current_home()
     context_window = getattr(backend, "context_window_tokens", None)
@@ -354,6 +364,7 @@ def _loop_config(
         max_tool_calls_source="default",
         wall_clock_timeout_s=float(timeout),
         wall_clock_source=time_source or "default",
+        request_retries=request_retries,
         token_budget=token_budget,
         token_budget_source=token_source or "default",
         context_window_tokens=(
@@ -486,4 +497,5 @@ def _turn_result_from(result: _loop.AgentLoopResult) -> TurnResult:
         provider=result.provider,
         closing_args=result.closing_args,
         budget_stop=result.budget_stop,
+        request_retries=result.request_retries,
     )

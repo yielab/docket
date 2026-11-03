@@ -71,7 +71,7 @@ def test_a_provider_failure_that_retrying_cannot_fix_fails_the_task_at_once(
     assert reason in failure_reason(w, task_id)
     assert len(model.by_role("implementer")) == 1
     events = oracles.trace_events(w, w.pod, task_id)
-    assert [e for e in events if e["event_type"] == "hop_retry"] == []
+    assert [e for e in events if e["event_type"] == "request_retry"] == []
     assert [e["payload"]["failureKind"] for e in events if e["event_type"] == "llm_call"] == [kind]
     oracles.assert_log_verifies(w)
 
@@ -100,8 +100,8 @@ def test_a_transient_provider_failure_is_retried_and_the_task_finishes(
     assert w.task(task_id)["task"]["status"] == "done"
     assert len(model.by_role("implementer")) == 2
     events = oracles.trace_events(w, w.pod, task_id)
-    retries = [e["payload"] for e in events if e["event_type"] == "hop_retry"]
-    assert [(r["failure_kind"], r["attempt"], r["retry_after_s"]) for r in retries] == [
+    retries = [e["payload"] for e in events if e["event_type"] == "request_retry"]
+    assert [(r["failureKind"], r["attempt"], r["retryAfterS"]) for r in retries] == [
         (kind, 1, waited)
     ]
     assert oracles.trace_skeleton(w, w.pod, task_id) == [

@@ -13,7 +13,7 @@ from docket.agent.loop_request import _estimate_input_tokens, _usage_delta
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_trace import _trace_budget_notice, _trace_request_fit
 from docket.agent.loop_types import AgentLoopResult, StopReason, limit_origin
-from docket.agent.ports import ChatMessage, ToolSpec
+from docket.agent.ports import ChatMessage, ChatResponse, ToolSpec
 
 _TOKEN_BUDGET_ERROR_PREFIX = "token budget:"
 # The fewest output tokens a budget-clamped request may keep (agent-loop requirement 46).
@@ -200,10 +200,37 @@ class TurnBudget:
         return None
 
     def request_timeout(self) -> int:
-        """This request's timeout: the wall clock left, or the grace of a landing past it."""
+        """This request's timeout: the smaller of ``request_timeout_s`` and the wall clock left, or
+        the grace of a landing past it. ``clock_cut`` says which of the two set it."""
         cfg = self.state.cfg
         remaining = int(cfg.wall_clock_timeout_s - (self.state.clock() - self.state.started))
         past: tuple[StopReason | None, ...] = ("max_iterations", "timeout")
         if self.state.landing in past or (self.state.landing and remaining < 1):
             return min(cfg.request_timeout_s, LANDING_TIMEOUT_S)
         return min(cfg.request_timeout_s, max(1, remaining))
+
+    def clock_cut(self, timeout: int) -> bool:
+        """Whether *timeout* is the wall clock left rather than ``request_timeout_s``: it is the
+        smaller of the two and no landing is under way (requirement 109). A tie is the request's."""
+        return self.state.landing is None and timeout < self.state.cfg.request_timeout_s
+
+    def timed_out_on_clock(self, response: ChatResponse, timeout: int) -> bool:
+        """Whether *response* is the timeout of a request that was cut to the clock left."""
+        return response.failure_kind == "timeout" and self.clock_cut(timeout)
+
+    def clock_cut_stop(self, response: ChatResponse, timeout: int) -> AgentLoopResult | None:
+        """The turn's end when *response* timed out on the clock left: the wall clock is spent, so
+        ``timeout`` as a budget stop (requirement 109), never retried and never followed by a
+        landing; ``None`` for any other failure."""
+        if not self.timed_out_on_clock(response, timeout):
+            return None
+        cfg = self.state.cfg
+        return self.state.done(
+            ok=False,
+            stop_reason="timeout",
+            error=(
+                f"exceeded wall_clock_timeout_s={cfg.wall_clock_timeout_s}"
+                + limit_origin("time", cfg.wall_clock_source)
+                + f"; a request cut to the {timeout} s left timed out"
+            ),
+        )

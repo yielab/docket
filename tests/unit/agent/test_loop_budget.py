@@ -15,7 +15,7 @@ from docket.agent.loop_budget import (
 )
 from docket.agent.loop_state import TurnState
 from docket.agent.loop_types import AgentLoopResult, LoopConfig
-from docket.agent.ports import BudgetStop, TokenUsage
+from docket.agent.ports import BudgetStop, ChatResponse, TokenUsage
 
 SUBJECT = "docket.agent.loop_budget"
 
@@ -305,3 +305,52 @@ class TestBudgetNotice:
         state = make_turn_state(LoopConfig(max_iterations=4), iteration=3)
         assert budget_notice(state) != ""
         assert budget_notice(state) == ""
+
+
+class TestARequestThatTimedOutOnTheClock:
+    """A stall on a timeout the wall clock set is a time budget stop; on the request limit it is not."""
+
+    _TIMED_OUT = ChatResponse(ok=False, error="timed out", failure_kind="timeout")
+
+    def test_the_clock_left_as_the_timeout_ends_the_turn_on_time(
+        self, make_turn_state: MakeState
+    ) -> None:
+        cfg = LoopConfig(wall_clock_timeout_s=10, request_timeout_s=120, wall_clock_source="step")
+        state = make_turn_state(cfg, clock=lambda: 7.0)
+        budget = TurnBudget(state)
+        timeout, _stop = budget.check_iteration_bounds()
+        assert timeout == 3 and budget.clock_cut(timeout)
+        stop = budget.clock_cut_stop(self._TIMED_OUT, timeout)
+        assert stop is not None
+        assert (stop.ok, stop.stop_reason, stop.failure_kind) == (
+            False,
+            "timeout",
+            "budget_exhausted",
+        )
+        assert stop.budget_stop == BudgetStop("time", 10, 7, "step")
+
+    def test_the_request_limit_as_the_timeout_is_a_transport_timeout(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(LoopConfig(wall_clock_timeout_s=10, request_timeout_s=2))
+        budget = TurnBudget(state)
+        timeout, _stop = budget.check_iteration_bounds()
+        assert timeout == 2 and not budget.clock_cut(timeout)
+        assert budget.clock_cut_stop(self._TIMED_OUT, timeout) is None
+
+    def test_a_failure_that_is_not_a_timeout_is_not_the_clock(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(LoopConfig(wall_clock_timeout_s=10), clock=lambda: 7.0)
+        budget = TurnBudget(state)
+        timeout, _stop = budget.check_iteration_bounds()
+        refused = ChatResponse(ok=False, error="503", failure_kind="daemon_error")
+        assert budget.clock_cut_stop(refused, timeout) is None
+
+    def test_a_landing_past_the_clock_keeps_its_own_outcome(
+        self, make_turn_state: MakeState
+    ) -> None:
+        state = make_turn_state(LoopConfig(wall_clock_timeout_s=10), clock=lambda: 11.0)
+        budget = TurnBudget(state)
+        timeout, _stop = budget.check_iteration_bounds()
+        assert state.landing == "timeout" and not budget.clock_cut(timeout)

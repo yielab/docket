@@ -1,12 +1,11 @@
 """Retries + configurable timeouts (turn vs verify decoupled).
 
 Three layers: TestFailureKindClassification covers ``TurnResult``'s backward-compat default for
-callers that construct it positionally without ``failure_kind``; TestHopRetryLoop drives
-``dispatch_task`` directly (no persisted queue) to show a retryable failure (timeout/daemon_error)
-retries up to the role's budget with ``attempts`` persisted and a ``hop_retry`` trace event per
-attempt, while a non-zero exit or an unretryable kind never retries; TestTimeoutResolution /
-TestDispatchPodRetryIntegration show turn vs verify timeouts resolve and apply independently, and
-that a retrying task never trips the stale-claim sweep.
+callers that construct it positionally without ``failure_kind``; TestOneTurnPerHop drives
+``dispatch_task`` directly (no persisted queue) to show a hop runs its turn once whatever its
+failure (a transient request failure is retried inside the turn, so the hop's ``attempts`` is
+``1 + request_retries``), and that a non-zero exit or an unretryable kind never retries;
+TestTimeoutResolution shows turn vs verify timeouts resolve and apply independently.
 """
 
 from __future__ import annotations
@@ -21,14 +20,13 @@ import pytest
 from tests.support import home as _support_home
 from tests.support.fakes import FakeJail
 from tests.support.pods import build_pod
-from tests.support.tasks import claims_gone_stale, stored_task, update_task
+from tests.support.tasks import stored_task, update_task
 from tests.support.trace import trace_events as _trace_events
 
 from docket.agent import ports as _rd
 from docket.agent import session as _session
 from docket.hops.application import driver_support as _driver_support
 from docket.hops.application import executor as _executor
-from docket.hops.application import runner as _application_runner
 from docket.hops.application import sweep as _sweep
 from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop_c
@@ -40,7 +38,6 @@ from docket.pipeline.domain import spec as _pipeline
 from docket.pipeline.domain import step as _step
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
-from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
 from docket.tasks.domain.task import TaskRecord
 from docket.teams import fleet as _fleet
@@ -109,12 +106,6 @@ class TestFailureKindClassification:
 
 
 class TestRetryPolicy:
-    def test_only_timeout_and_daemon_error_are_retryable(self) -> None:
-        assert {"timeout", "daemon_error"} == _application_runner._RETRYABLE_FAILURE_KINDS
-        assert "nonzero_exit" not in _application_runner._RETRYABLE_FAILURE_KINDS
-        assert "invalid_output" not in _application_runner._RETRYABLE_FAILURE_KINDS
-        assert "budget_exhausted" not in _application_runner._RETRYABLE_FAILURE_KINDS
-
     def test_unknown_role_falls_back_to_default_budget(self) -> None:
         assert (
             _settings.retries_for_role("some-future-role")
@@ -168,58 +159,71 @@ class _ScriptedRunner:
         return seq[idx]
 
 
-class TestHopRetryLoop:
-    def test_timeout_then_success_retries_and_succeeds(self, tmp_path: Path) -> None:
+class TestOneTurnPerHop:
+    def test_a_transient_failure_is_not_run_again_by_the_hop(self, tmp_path: Path) -> None:
+        """The driver reports the retries it made inside the turn; the hop runs the turn once and
+        records ``1 + request_retries`` attempts, with no hop-level retry event."""
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
         runner = _ScriptedRunner(
             {
                 "implementer": [
-                    _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout"),
-                    _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout"),
-                    _rd.TurnResult(True, "done", {}),
+                    _rd.TurnResult(
+                        False, "", {}, "boom", failure_kind="daemon_error", request_retries=2
+                    )
                 ]
             }
         )
         task = TaskRecord(id="t1", description="work")
         res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
-        assert res.status == "done"
+        assert res.status == "failed"
         impl_hop = next(h for h in res.hops if h.role == "implementer")
-        assert impl_hop.attempts == 3
-        assert impl_hop.ok is True
-        # 3 real calls were made for the implementer's hop alone.
-        assert len([c for c in runner.calls if c[0] == "implementer"]) == 3
-        implementer_keys = [key for role, key in runner.session_keys if role == "implementer"]
-        lead_key = next(key for role, key in runner.session_keys if role == "lead")
-        assert len(set(implementer_keys)) == 1
-        assert implementer_keys[0] != lead_key
+        assert impl_hop.attempts == 3 and impl_hop.ok is False
+        assert len([c for c in runner.calls if c[0] == "implementer"]) == 1
+        assert [e for e in _trace_events("myapp") if e["event_type"] == "hop_retry"] == []
 
-    def test_retries_exhausted_then_fails_with_attempts_persisted(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setitem(current_home().dispatch_retries_per_role, "implementer", 2)
+    def test_a_turn_that_retried_nothing_records_one_attempt(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead")
         _write_meta("myapp-implementer")
+        task = TaskRecord(id="t1b", description="work")
+        res = _executor.dispatch_task("myapp", task, runner=_ScriptedRunner({}), sleep=_no_sleep)
+        assert res.status == "done"
+        assert all(h.attempts == 1 for h in res.hops)
 
-        def _always_timeout(
+    def test_the_roles_retry_budget_travels_to_the_turn(self, tmp_path: Path) -> None:
+        """The loop reads the count from the hop's environment, as it reads the timeout's owner."""
+        tuned = dataclasses.replace(current_home(), dispatch_retries_by_role=(("implementer", 5),))
+        seen: dict[str, str | None] = {}
+
+        def _runner(
             agent_id: str,
             session_key: str,
             message: str,
             timeout: int,
             env: dict[str, str] | None = None,
         ) -> _rd.TurnResult:
-            role = agent_id.rsplit("-", 1)[-1]
-            if role != "implementer":
-                return _rd.TurnResult(True, "done", {})
-            return _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout")
+            seen[agent_id.rsplit("-", 1)[-1]] = (env or {}).get(_rd.DOCKET_HOP_REQUEST_RETRIES)
+            return _rd.TurnResult(True, "done", {})
 
-        task = TaskRecord(id="t2", description="work")
-        res = _executor.dispatch_task("myapp", task, runner=_always_timeout, sleep=_no_sleep)
+        with use_home(tuned):
+            _write_meta("myapp-lead")
+            _write_meta("myapp-implementer")
+            task = TaskRecord(id="t1c", description="work")
+            _executor.dispatch_task("myapp", task, runner=_runner, sleep=_no_sleep)
+        assert seen["implementer"] == "5"
+        assert seen["lead"] == str(tuned.dispatch_retries_default)
+
+    def test_a_failed_turn_that_grew_the_session_is_not_followed_by_a_continuation(
+        self, tmp_path: Path
+    ) -> None:
+        """A transport retry resends the request; nothing above the loop sends a second turn."""
+        _write_meta("myapp-lead")
+        _write_meta("myapp-implementer")
+        runner = _PersistingRunner(rounds=2)
+        task = TaskRecord(id="t9", description="build the widget")
+        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
         assert res.status == "failed"
-        impl_hop = next(h for h in res.hops if h.role == "implementer")
-        # 2 retries configured => 3 total attempts (1 first try + 2 retries).
-        assert impl_hop.attempts == 3
-        assert impl_hop.ok is False
+        assert len(runner.messages) == 1 and "build the widget" in runner.messages[0]
 
     def test_a_loop_wall_clock_stop_is_tried_once(self, tmp_path: Path) -> None:
         _write_meta("myapp-lead")
@@ -317,125 +321,6 @@ class TestHopRetryLoop:
         assert calls.count("myapp-reviewer") == 2
         assert next(h for h in res.hops if h.role == "reviewer").attempts == 1
 
-    def test_retry_emits_hop_retry_trace_event_with_attempt_history(self, tmp_path: Path) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        runner = _ScriptedRunner(
-            {
-                "implementer": [
-                    _rd.TurnResult(False, "", {}, "boom", failure_kind="daemon_error"),
-                    _rd.TurnResult(True, "done", {}),
-                ]
-            }
-        )
-        task = TaskRecord(id="t5", description="work")
-        _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
-
-        events = _trace_events("myapp")
-        retries = [e for e in events if e["event_type"] == "hop_retry"]
-        assert len(retries) == 1
-        assert retries[0]["payload"]["attempt"] == 1
-        assert retries[0]["payload"]["failure_kind"] == "daemon_error"
-
-    def test_on_retry_callback_fires_once_per_retry(self, tmp_path: Path) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        runner = _ScriptedRunner(
-            {
-                "implementer": [
-                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(True, "done", {}),
-                ]
-            }
-        )
-        touches: list[None] = []
-        task = TaskRecord(id="t6", description="work")
-        _executor.dispatch_task(
-            "myapp",
-            task,
-            runner=runner,
-            sleep=_no_sleep,
-            on_retry=lambda: touches.append(None),
-        )
-        assert len(touches) == 2  # one per retryable failure before the eventual success
-
-    def test_linear_backoff_sleeps_increase_per_attempt(self, tmp_path: Path) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        runner = _ScriptedRunner(
-            {
-                "implementer": [
-                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(False, "", {}, "boom", failure_kind="timeout"),
-                    _rd.TurnResult(True, "done", {}),
-                ]
-            }
-        )
-        sleeps: list[float] = []
-        task = TaskRecord(id="t7", description="work")
-        _executor.dispatch_task("myapp", task, runner=runner, sleep=lambda s: sleeps.append(s))
-        assert sleeps == [
-            current_home().dispatch_retry_backoff_s * 1,
-            current_home().dispatch_retry_backoff_s * 2,
-        ]
-
-    def test_retry_after_wins_over_backoff_when_longer(self, tmp_path: Path) -> None:
-        """A daemon_error carrying retry_after_s=7 (e.g. a 429 with Retry-After: 7) waits
-        the full 7s even though the linear backoff for attempt 1 would only be 2s."""
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        runner = _ScriptedRunner(
-            {
-                "implementer": [
-                    _rd.TurnResult(
-                        False, "", {}, "boom", failure_kind="daemon_error", retry_after_s=7.0
-                    ),
-                    _rd.TurnResult(True, "done", {}),
-                ]
-            }
-        )
-        sleeps: list[float] = []
-        task = TaskRecord(id="t9", description="work")
-        res = _executor.dispatch_task(
-            "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
-        )
-        assert res.status == "done"
-        assert sleeps == [7.0]
-
-        events = _trace_events("myapp")
-        retries = [e for e in events if e["event_type"] == "hop_retry"]
-        assert retries[0]["payload"]["retry_after_s"] == 7.0
-
-    def test_retry_after_is_capped_at_the_max_wait_ceiling(self, tmp_path: Path) -> None:
-        """A retry_after_s far past the ceiling (e.g. a 429 asking for an hour) never
-        stalls a hop past DISPATCH_RETRY_MAX_WAIT_S."""
-        with use_home(dataclasses.replace(current_home(), dispatch_retry_max_wait_s=60.0)):
-            _write_meta("myapp-lead")
-            _write_meta("myapp-implementer")
-            runner = _ScriptedRunner(
-                {
-                    "implementer": [
-                        _rd.TurnResult(
-                            False,
-                            "",
-                            {},
-                            "boom",
-                            failure_kind="daemon_error",
-                            retry_after_s=3600.0,
-                        ),
-                        _rd.TurnResult(True, "done", {}),
-                    ]
-                }
-            )
-            sleeps: list[float] = []
-            task = TaskRecord(id="t10", description="work")
-            res = _executor.dispatch_task(
-                "myapp", task, runner=runner, sleep=lambda s: sleeps.append(s)
-            )
-            assert res.status == "done"
-            assert sleeps == [60.0]
-
 
 # ── timeout resolution: turn vs verify, independently settable and applied ────────
 
@@ -467,32 +352,6 @@ class _PersistingRunner:
             )
             return _rd.TurnResult(False, "", {}, "dropped", failure_kind=self.kind)
         return _rd.TurnResult(True, "done", {})
-
-
-class TestAnInPlaceRetryContinuesPersistedRounds:
-    def test_a_failed_attempt_that_grew_the_session_is_continued(self, tmp_path: Path) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        runner = _PersistingRunner(rounds=2)
-        task = TaskRecord(id="t9", description="build the widget")
-        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
-        assert res.status == "done"
-        assert len(runner.messages) == 2
-        assert "build the widget" in runner.messages[0]
-        assert "stopped before it finished" in runner.messages[1]
-        assert "dropped" in runner.messages[1]
-        assert "build the widget" not in runner.messages[1]
-
-    def test_a_failed_attempt_that_persisted_nothing_is_retried_with_the_original(
-        self, tmp_path: Path
-    ) -> None:
-        _write_meta("myapp-lead")
-        _write_meta("myapp-implementer")
-        runner = _PersistingRunner(rounds=0)
-        task = TaskRecord(id="t10", description="build the widget")
-        res = _executor.dispatch_task("myapp", task, runner=runner, sleep=_no_sleep)
-        assert res.status == "done"
-        assert runner.messages[1] == runner.messages[0]
 
 
 class TestTimeoutResolution:
@@ -604,61 +463,6 @@ class TestTimeoutResolution:
         assert res.status == "done"
         assert all(t == 11 for t in seen_turn_timeouts)
         assert seen_verify_timeouts == [222]
-
-
-# ── interaction with the claim mechanism: a retrying hop must never look like a stale claim ──
-
-
-class TestRetryDoesNotTripStaleClaimSweep:
-    def test_retrying_task_survives_a_concurrent_stale_claim_sweep(self, tmp_path: Path) -> None:
-        """Proves `on_retry` refreshes `claimedAt` mid-hop: without it, stacked backoff sleeps
-        and agent-turn timeouts could push time since the *original* claim past the sweep's
-        floor even though the dispatcher is alive, letting a concurrent `dispatch_pod` call sweep
-        the task out from under a live retry. The first implementer attempt moves the clock
-        past the floor before failing retryably, so only a refreshed `claimedAt` lets the
-        second attempt's simulated concurrent sweep leave the task alone."""
-        oc_dir = _seed_pod(tmp_path)
-        _queue.enqueue_task_once("demo", "Retry me", channel="cli")
-        with claims_gone_stale(hours=0) as clock:
-            calls = {"implementer": 0}
-
-            def _flaky_then_ok(
-                agent_id: str,
-                session_key: str,
-                message: str,
-                timeout: int,
-                env: dict[str, str] | None = None,
-            ) -> _rd.TurnResult:
-                role = agent_id.rsplit("-", 1)[-1]
-                if role != "implementer":
-                    return _rd.TurnResult(True, "done", {})
-                calls["implementer"] += 1
-                if calls["implementer"] == 1:
-                    # This attempt alone outlasts the sweep's floor -- an un-refreshed
-                    # claimedAt would read as stale from this point on.
-                    clock.offset_s += 4 * 3600
-                    return _rd.TurnResult(False, "", {}, "slow", failure_kind="timeout")
-                # Second attempt: simulate a concurrent dispatcher's sweep landing
-                # here, immediately after on_retry refreshed claimedAt for the
-                # failed first attempt and right before this (successful) retry.
-                _lifecycle.sweep_stale_claims("demo")
-                return _rd.TurnResult(True, "done", {})
-
-            results = _sweep.dispatch_pod("demo", runner=_flaky_then_ok, sleep=_no_sleep)
-            assert len(results) == 1
-            assert results[0].status == "done"
-            assert calls["implementer"] == 2
-
-            tasks = TaskRepository.for_pod("demo").list()
-            assert tasks[0].status == "done"
-            assert tasks[0].failure_kind != "stale_claim"
-
-            # No stale_claim trace event should have fired for this task.
-            trace_files = list((oc_dir / "state" / "traces" / "demo").glob("*.jsonl"))
-            events = [
-                json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()
-            ]
-            assert not any(e["event_type"] == "stale_claim" for e in events)
 
 
 def _age_claim(project: str, task_id: str, seconds: int) -> None:

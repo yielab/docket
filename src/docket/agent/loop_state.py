@@ -8,6 +8,7 @@ marker) lives on that collaborator instead.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -51,6 +52,9 @@ class TurnState:
     landing: StopReason | None = None
     landing_error: str = ""
     notice_sent: bool = False
+    # Transport retries made so far over the turn, and the wait before one (requirement 110).
+    request_retries: int = 0
+    sleep: Callable[[float], None] = time.sleep
 
     def land(self, stop_reason: StopReason, error: str) -> None:
         """Select *stop_reason* as the bound the turn lands on; the first bound reached wins."""
@@ -95,6 +99,7 @@ class TurnState:
             failure_kind=failure_kind,
             raw=self.last_raw,
             retry_after_s=retry_after_s,
+            request_retries=self.request_retries,
             model=self.last_model,
             provider=self.last_provider,
             closing_args=closing_args,

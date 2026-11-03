@@ -103,7 +103,7 @@ This specification does NOT cover:
    (`policyId`), `docket.tool.blocked_by`. A `tool_result` whose `callId` matches no open span
    **MUST** become a span of its own, keyed by that `callId`. A record without a `callId` is
    keyed and paired per requirement 108.
-10. `hop_retry`, `rework_started`, `verdict_rework_started`, `verdict_rejected`,
+10. `request_retry`, `rework_started`, `verdict_rework_started`, `verdict_rejected`,
     `verdict_unparseable`, `verdict_reasked`, `route_taken`, `command_step`, `review_rejected`,
     and `verification_failed` **MUST** become a `SpanEvent` on the
     session root (never on a nested span), named for the record's `event_type`, carrying

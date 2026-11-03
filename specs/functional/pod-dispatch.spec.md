@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.1.0
+**Version**: 12.2.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -572,36 +572,38 @@ wired agent's conversation current with the task it is working.
    persisted API vocabulary; it does not imply an external process dependency.
 2. Only `timeout` and `daemon_error` **MUST** be treated as retryable -- a transient hiccup, not a
    real answer. `budget_exhausted`, `nonzero_exit` and `invalid_output` (and, separately, a bad
-   Reviewer verdict -- see that gate) **MUST NEVER** be retried in place: retrying a real failure risks masking it
+   Reviewer verdict -- see that gate) **MUST NEVER** be retried: retrying a real failure risks masking it
    as transient and burns budget for nothing.
-3. A retryable failure **MUST** be retried in place, up to a per-role budget
-   (`DISPATCH_RETRIES_PER_ROLE`, default 2 additional attempts -- 3 total tries -- for each of the
-   four built-in roles, each overridable via `DISPATCH_RETRIES_<ROLE>`; any other role uses
-   `DISPATCH_RETRIES_DEFAULT`, default 2). The sleep before retry attempt N **MUST** be
+3. A retryable failure **MUST** be retried per request, inside the turn, not by running the hop's
+   turn again (agent-loop.spec.md "Transport retries", requirements 109-112). The count is the
+   step's `retries`, else the per-role budget (`DISPATCH_RETRIES_PER_ROLE`, default 2 additional
+   attempts for each of the four built-in roles, each overridable via `DISPATCH_RETRIES_<ROLE>`; any
+   other role uses `DISPATCH_RETRIES_DEFAULT`, default 2), carried to the loop as the
+   `DOCKET_HOP_REQUEST_RETRIES` coordinate. The sleep before retry N of a request **MUST** be
    `min(max(DISPATCH_RETRY_BACKOFF_S * N, retryAfter), DISPATCH_RETRY_MAX_WAIT_S)` seconds
    (`DISPATCH_RETRY_BACKOFF_S` default base 2s, `DISPATCH_RETRY_MAX_WAIT_S` default ceiling 60s),
-   where `retryAfter` is the failing attempt's endpoint-reported `Retry-After` in seconds
-   (`TurnResult.retry_after_s`) when the failure came from a retryable HTTP status, else `0` -- so a
-   linear backoff still applies when the endpoint names no wait, and an endpoint's requested wait
-   still yields to the ceiling rather than sleeping unbounded. Exhausting the retry budget **MUST**
-   fall through to the same failed-hop handling as a non-retryable failure.
-4. The **total number of tries made** for a hop (1 if it succeeded or failed non-retryably on the
-   first attempt; more only for a retried hop) **MUST** be persisted on that hop's record as
-   `attempts`.
-5. Every retry attempt (before its backoff sleep) **MUST** emit a `hop_retry` trace event naming
-   the attempt number, the role, the retry budget, the failure kind that triggered it, the error,
-   and the `retry_after_s` value that failure carried (`null` when the endpoint named none) -- and
-   **MUST** refresh the task's `claimedAt` (see "Per-hop incremental persistence") before sleeping,
-   so a long retry loop is never swept as a stale claim by a concurrent dispatcher.
-6. A step that runs again continues its session when the session holds rounds the failed attempt
-   made: a retried task whose latest hop for the step failed ("Per-hop incremental persistence"
-   requirement 6), and an in-place retry (requirement 3) after an attempt that made the step's
-   session grow. In both cases the turn **MUST** send one continuation message in place of the
-   step's prompt, built by a pure function: that the previous turn on this step stopped before it
-   finished and the error, the hop's summary when it has one, up to 20 changed paths (the failed hop's pinned `files_changed`, "Implementer diff producer"
-   requirement 10, then the step's working tree), and the instruction to continue from where it stopped, not to start over,
-   and to finish as the step asks. An attempt that failed before the session grew is retried with
-   the original message. Starting over is a new task, never a retry mode.
+   where `retryAfter` is the failed response's endpoint-reported `Retry-After` in seconds
+   (`retry_after_s`) when the failure came from a retryable HTTP status, else `0`. A retry whose
+   sleep does not fit in the wall-clock budget left is not made. Exhausting the retries **MUST**
+   end the turn with the failure, which the hop handles like a non-retryable failure. Every
+   attempt of the step shares the one turn's clock and token budget.
+4. A hop's **`attempts`** -- the turn once plus each model request the loop sent again
+   (`1 + TurnResult.request_retries`; `1` when none was retried) -- **MUST** be persisted on that
+   hop's record.
+5. Every retry **MUST** emit a `request_retry` trace event (agent-loop.spec.md requirement 111)
+   naming the retry's number, the retry count, the failure kind that triggered it, the error and
+   the `retryAfterS` that failure carried (`null` when the endpoint named none). The claim of the
+   task is refreshed before every request, a retry's included ("Per-hop incremental persistence"),
+   so a long retry sleep is never swept as a stale claim by a concurrent dispatcher.
+6. A retried task whose latest hop for the step failed ("Per-hop incremental persistence"
+   requirement 6) continues that step's session when it holds rounds the failed attempt made. The
+   turn **MUST** send one continuation message in place of the step's prompt, built by a pure
+   function: that the previous turn on this step stopped before it finished and the error, the
+   hop's summary when it has one, up to 20 changed paths (the failed hop's pinned `files_changed`,
+   "Implementer diff producer" requirement 10, then the step's working tree), and the instruction to
+   continue from where it stopped, not to start over, and to finish as the step asks. A transport
+   retry sends no continuation: it resends the same request. Starting over is a new task, never a
+   retry mode.
 
 ### Timeout configuration
 
@@ -1871,7 +1873,7 @@ counts to attribute usage to.
    `tool_call` hop marker and before the turn. Its payload is exactly these keys: `task` (the task
    id), `step` (the hop's pipeline step id), `role`, `member` (the hop's member id), `model`,
    `provider`, `cycle` (the task's rework cycles consumed so far in this run, summed over every
-   gated step; `0` before any rework) and `attempt` (always `1`: retries are `hop_retry` events, not
+   gated step; `0` before any rework) and `attempt` (always `1`: retries are `request_retry` events, not
    new starts).
 2. Every hop **MUST** write a `hop_finished` trace event after its closing record (`tool_result` or
    `error`) and before the hop is persisted. Its payload is the
@@ -2428,7 +2430,7 @@ session_start                # once, at the start of dispatch_task; carries whet
 context_composed             # before each hop's turn: composed-prompt byte accounting
 tool_call                    # the hop marker, before each hop's run_turn attempt
 hop_started                  # after the hop marker, before the turn: task/step/role/member/model
-hop_retry                    # before each retry attempt of a retryable failure
+request_retry                # the loop, before each transport retry of a request (agent-loop 111)
 tool_result                  # after a successful hop; also {"verification": "passed"|"skipped", ...}
                              #   for a gate command that passed or a mechanical gate with no command
 error                        # after a failed hop (in place of tool_result)
@@ -2604,7 +2606,7 @@ queue.)
   before `dispatch_pod` returns, and **MUST** create the approval record and its escalation before
   the task is persisted as `waiting_approval` (never the reverse -- a persisted `waiting_approval`
   task **MUST NOT** exist without a corresponding approval record and escalation).
-- After a claim, and after every hop-completion persist and retry-attempt claim refresh, the pod
+- After a claim, and after every hop-completion persist and every model request's claim refresh, the pod
   Lead's `HEARTBEAT.md` dispatch ledger **MUST** be re-synced from `TASK_LIST.json`'s `running`
   tasks (see "Mechanical HEARTBEAT ledger"); after a task leaves `running`, that same sync **MUST**
   leave its entry removed.
@@ -2620,8 +2622,9 @@ queue.)
 - A gate (budget, require_approval, `mechanical`, `verdict`, `external`) **MUST NOT** be bypassed by
   an otherwise-`ok` turn -- `ok=True` is necessary but not sufficient for pipeline advancement past a
   gated hop, for any role or archetype, not only the four built-in ones.
-- A hop's failure **MUST NOT** be retried in place unless its `failure_kind` is `timeout` or
-  `daemon_error`. A loop wall-clock stop is `budget_exhausted`, tried once.
+- A model request's failure **MUST NOT** be retried unless its `failure_kind` is `timeout` or
+  `daemon_error`, and the hop's turn is never run again for it. A loop wall-clock stop is
+  `budget_exhausted`, tried once.
   Cooperative run cancellation always surfaces as non-retryable `run_cancelled`; a killed external
   subprocess may surface as a non-retryable `nonzero_exit` or negative-signal exit.
 - A paused pod's queue **MUST NOT** yield any claim until the pause is explicitly cleared.

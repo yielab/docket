@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.0.1
+**Version**: 4.1.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -98,7 +98,8 @@ This specification does NOT cover:
    `failure_kind="budget_exhausted"` (requirement 107).
 9. The loop **MUST** stop with `stop_reason="timeout"` once the configured wall-clock budget for
    the whole turn has elapsed, checked between iterations. Each request's own timeout is the
-   smaller of `request_timeout_s` and the wall-clock budget left. The tool clamp of requirement
+   smaller of `request_timeout_s` and the wall-clock budget left, and a request that times out
+   on the second of the two ends the turn (requirement 109). The tool clamp of requirement
    98 keeps a tool from running past that budget. The request made once it has elapsed is the
    landing of requirements 51-54. The result carries `failure_kind="budget_exhausted"`, never
    `timeout`, which now names only a request or transport timeout (requirement 107).
@@ -110,8 +111,9 @@ This specification does NOT cover:
     response that carries no tool calls is the exception: it is already paid, so it is persisted
     and returned `ok` even when it crosses the budget (requirement 55 refuses only a response with
     tool calls). The result carries `failure_kind="budget_exhausted"` (requirement 107).
-11. A backend failure (`ChatResponse.ok=False`) **MUST** stop the loop with
-    `stop_reason="backend_error"` and the backend's own `failure_kind`, without raising.
+11. A backend failure (`ChatResponse.ok=False`) that the retries of requirement 110 did not clear
+    **MUST** stop the loop with `stop_reason="backend_error"` and the backend's own
+    `failure_kind`, without raising.
 12. `AgentLoopResult.failure_kind` **MUST** be `None` if and only if `ok` is `True`.
 
 ### Durability
@@ -427,6 +429,42 @@ This specification does NOT cover:
     its purpose (`task` or `compaction`), status (`fits`, `failed`, or `unknown_window`), estimated
     input, output reserve, registered window (or null), and an explicit estimate marker. It **MUST
     NOT** contain messages, prompts, tool arguments/results, or measured usage.
+
+### Transport retries
+
+109. A request whose timeout was the wall-clock budget left, not `request_timeout_s`, and that
+     timed out **MUST** end the turn with `stop_reason="timeout"`, `failure_kind="budget_exhausted"`
+     and `budget_stop.bound="time"` (requirement 107), never `failure_kind="timeout"`, and is never
+     retried: the clock it was cut to is spent. No landing request follows it, because the request
+     that would carry the landing is the one that just stalled. When `request_timeout_s` is the
+     smaller limit (or the two are equal) the same timeout is a transport timeout and requirement
+     110 applies. The clock-cut rule covers the task request and the compaction summary request
+     alike; a compaction summary so cut ends the turn with the same `stop_reason`. A landing
+     request (requirement 51) keeps its own fail-closed outcome and is never a clock-cut request.
+110. One function sends every model request of the turn, the task request and the compaction
+     summary request (requirements 45 and 47), and retries a failed response whose
+     `failure_kind` is `timeout` or `daemon_error` (a response that carries none counts as
+     `daemon_error`) up to `LoopConfig.request_retries` times per request. `LoopConfig.request_retries`
+     is `0` for a caller that sets none; the hop path sets it from the step's `retries`, else
+     `DISPATCH_RETRIES_<ROLE>`, else `DISPATCH_RETRIES_DEFAULT` (`pod-dispatch.spec.md` "Retries and
+     the failure-kind taxonomy"), carried to the loop as the `DOCKET_HOP_REQUEST_RETRIES`
+     coordinate. The same messages are sent again: the failed request left nothing in the
+     session. The sleep before retry N of a request **MUST** be
+     `min(max(DISPATCH_RETRY_BACKOFF_S * N, retryAfter), DISPATCH_RETRY_MAX_WAIT_S)` seconds, where
+     `retryAfter` is the failed response's `retry_after_s` or `0`. A retry is not made when its
+     sleep is not less than the wall-clock budget left; the failed response then ends the request
+     as it stands. A response that arrived (`invalid_output`, a truncated reply, a refusal) and a
+     cancelled run are never retried. Each retry's timeout is recomputed from the clock left.
+111. Each retry **MUST** emit one `request_retry` trace event on the resolved trace coordinate,
+     before its sleep, with `attempt` (the retry's number within the request, from 1), `retries`
+     (`LoopConfig.request_retries`), `failureKind`, `error` and `retryAfterS` (`null` when the
+     endpoint named none). Retries made over the turn are summed in
+     `AgentLoopResult.request_retries` (`0` when none) and copied unchanged onto
+     `TurnResult.request_retries`. A failure that outlasts the retries is the turn's
+     `backend_error` stop (requirement 11) with the last response's `failure_kind`.
+112. The turn is one turn: nothing above the loop re-runs it for a transport failure. A hop's
+     `attempts` is `1 + TurnResult.request_retries` (`pod-dispatch.spec.md` "Retries and the
+     failure-kind taxonomy" requirement 4).
 
 ### Terminal response reservation
 
@@ -851,8 +889,9 @@ This specification does NOT cover:
     `budgetTokens` for `pod_budget`). `no_progress`, `tool_denials`,
     `context_fit`, `run_cancelled` and the approval stops keep their kinds and carry no
     `budget_stop`. `DocketDriver` copies `budget_stop` onto the `TurnResult` unchanged. A request or
-    transport timeout of the backend is `failure_kind="timeout"` with `stop_reason="backend_error"`
-    and is not a budget stop.
+    transport timeout of the backend, once the retries of requirement 110 are spent, is
+    `failure_kind="timeout"` with `stop_reason="backend_error"` and is not a budget stop; one whose
+    timeout was the wall clock left is requirement 109's.
 
 108. The first time any bound has a quarter or less left, the loop **MUST** append one line to the
     last tool result of that round, before the round is persisted: `[docket] This step's budget is
@@ -892,6 +931,7 @@ class LoopConfig:                              # frozen
     wall_clock_source: str = ""      # step | pod | default
     token_budget: int           # default AGENT_LOOP_TOKEN_BUDGET
     request_timeout_s: int      # default AGENT_LOOP_REQUEST_TIMEOUT_S
+    request_retries: int = 0         # transport retries per request (110); the hop sets it
     max_tokens: int | None = None
     temperature: float | None = None
     top_p: float | None = None
@@ -923,6 +963,7 @@ class AgentLoopResult:
     budget_stop: BudgetStop | None   # set exactly when failure_kind == "budget_exhausted" (107)
     raw: dict[str, Any]
     retry_after_s: float | None   # from the backend's Retry-After, when it sent one
+    request_retries: int = 0      # transport retries made over the turn (111)
     model: str                    # the last response's resolved model
     provider: str                 # the last response's resolved provider
 
@@ -935,6 +976,7 @@ def run_agent_turn(
     *,
     config: LoopConfig | None = None,
     clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,   # the wait before a request retry (110)
     trace_project: str | None = None,     # defaults to ctx.project, then ctx.agent_id; traces only
     trace_session_key: str | None = None, # defaults to session_key; traces only
     trace_task_id: str = "",              # stamped on every trace event; traces only

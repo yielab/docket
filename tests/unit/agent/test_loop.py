@@ -390,3 +390,145 @@ class TestTheNotice:
         ]
         assert len(notices) == 1
         assert notices[0]["bounds"] == [{"bound": "rounds", "left": 2, "limit": 8}]
+
+
+# ── transport retries ────────────────────────────────────────────────────────
+
+
+def _failed(
+    kind: str, error: str = "endpoint stalled", retry_after_s: float | None = None
+) -> ChatResponse:
+    return ChatResponse(
+        ok=False,
+        error=error,
+        failure_kind=kind,  # type: ignore[arg-type]
+        retry_after_s=retry_after_s,
+    )
+
+
+def _retry_events(project: str, key: str) -> list[dict[str, Any]]:
+    trace = current_home().traces_dir / project / f"{key}.jsonl"
+    events = [json.loads(line) for line in trace.read_text().splitlines()]
+    return [e["payload"] for e in events if e["event_type"] == "request_retry"]
+
+
+class TestTransportRetries:
+    """A transient failure resends the same request inside the turn, up to the config's count."""
+
+    def _turn(
+        self,
+        backend: ScriptedBackend,
+        registry: ToolRegistry,
+        ctx: ToolContext,
+        key: str,
+        sleeps: list[float],
+        **cfg: Any,
+    ) -> _loop.AgentLoopResult:
+        return _loop.run_agent_turn(
+            backend, registry, ctx, f"agent:{key}:default", "go",
+            config=_loop.LoopConfig(**cfg), sleep=sleeps.append,
+            trace_project="retry-audit", trace_session_key=key,
+        )  # fmt: skip
+
+    def test_a_timeout_then_an_answer_finishes_the_turn_with_one_retry(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """The failed request leaves nothing in the session and the same messages are sent again."""
+        backend = ScriptedBackend([_failed("timeout"), _final("all done")])
+        sleeps: list[float] = []
+        result = self._turn(backend, registry, ctx, "retry-ok", sleeps, request_retries=2)
+        assert (result.ok, result.output, result.request_retries) == (True, "all done", 1)
+        assert backend.calls[0] == backend.calls[1] and len(backend.calls) == 2
+        assert [m.role for m in _stored("agent:retry-ok:default")] == ["user", "assistant"]
+        assert sleeps == [2.0]
+        retries = _retry_events("retry-audit", "retry-ok")
+        assert retries == [
+            {
+                "attempt": 1,
+                "retries": 2,
+                "failureKind": "timeout",
+                "error": "endpoint stalled",
+                "retryAfterS": None,
+            }
+        ]
+
+    def test_retries_that_run_out_end_the_turn_with_the_failure_after_a_linear_backoff(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """Three requests, two waits of 2 s and 4 s, then the backend_error stop keeps the kind."""
+        backend = ScriptedBackend([_failed("timeout")] * 3)
+        sleeps: list[float] = []
+        result = self._turn(backend, registry, ctx, "retry-out", sleeps, request_retries=2)
+        assert len(backend.calls) == 3 and sleeps == [2.0, 4.0]
+        assert (result.ok, result.failure_kind, result.stop_reason) == (
+            False,
+            "timeout",
+            "backend_error",
+        )
+        assert result.request_retries == 2
+
+    def test_an_endpoint_retry_after_sets_the_wait_when_it_is_longer(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """A daemon_error naming Retry-After 5 sleeps 5 s, and the event says so."""
+        backend = ScriptedBackend([_failed("daemon_error", retry_after_s=5.0), _final()])
+        sleeps: list[float] = []
+        result = self._turn(backend, registry, ctx, "retry-after", sleeps, request_retries=1)
+        assert result.ok and sleeps == [5.0]
+        assert _retry_events("retry-audit", "retry-after")[0]["retryAfterS"] == 5.0
+
+    def test_a_response_that_arrived_is_never_retried(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """invalid_output is an answer: one request, no wait, no retry event."""
+        backend = ScriptedBackend([_failed("invalid_output"), _final()])
+        sleeps: list[float] = []
+        result = self._turn(backend, registry, ctx, "retry-none", sleeps, request_retries=2)
+        assert (result.ok, result.failure_kind, result.request_retries) == (
+            False,
+            "invalid_output",
+            0,
+        )
+        assert len(backend.calls) == 1 and sleeps == []
+
+    def test_a_turn_with_no_retry_count_sends_each_request_once(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """The config default is zero: a caller that sets nothing keeps the old single try."""
+        backend = ScriptedBackend([_failed("daemon_error"), _final()])
+        sleeps: list[float] = []
+        result = self._turn(backend, registry, ctx, "retry-default", sleeps)
+        assert (result.ok, result.failure_kind) == (False, "daemon_error")
+        assert len(backend.calls) == 1 and sleeps == []
+
+    def test_a_retry_whose_wait_does_not_fit_in_the_clock_left_is_not_made(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """With 3 s of clock, the 2 s wait fits and the 4 s one does not."""
+        backend = ScriptedBackend([_failed("daemon_error")] * 3)
+        sleeps: list[float] = []
+        result = self._turn(
+            backend, registry, ctx, "retry-fit", sleeps, request_retries=2, wall_clock_timeout_s=3
+        )
+        assert len(backend.calls) == 2 and sleeps == [2.0]
+        assert (result.failure_kind, result.request_retries) == ("daemon_error", 1)
+
+    def test_a_request_that_timed_out_on_the_clock_left_ends_the_turn_and_is_not_retried(
+        self, registry: ToolRegistry, ctx: ToolContext
+    ) -> None:
+        """Cut to the 3 s left, the stall is the wall clock: a time budget stop, never a retry."""
+        clock = [7.0]
+        backend = ScriptedBackend([_failed("timeout"), _final()])
+        sleeps: list[float] = []
+        result = _loop.run_agent_turn(
+            backend, registry, ctx, "agent:retry-clock:default", "go",
+            config=_loop.LoopConfig(wall_clock_timeout_s=10, request_retries=2),
+            clock=lambda: clock[0], sleep=sleeps.append,
+        )  # fmt: skip
+        assert len(backend.calls) == 1 and sleeps == []
+        assert (result.ok, result.stop_reason, result.failure_kind) == (
+            False,
+            "timeout",
+            "budget_exhausted",
+        )
+        assert result.budget_stop is not None and result.budget_stop.bound == "time"

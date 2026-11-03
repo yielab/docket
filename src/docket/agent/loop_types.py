@@ -73,6 +73,8 @@ class LoopConfig:
     request_timeout_s: int = field(
         default_factory=lambda: current_home().agent_loop_request_timeout_s
     )
+    # Transport retries per request (agent-loop.spec.md requirement 110); the hop path sets it.
+    request_retries: int = 0
     max_tokens: int | None = None
     temperature: float | None = None
     top_p: float | None = None
@@ -114,6 +116,8 @@ class AgentLoopResult:
     failure_kind: FailureKind | None = None
     raw: dict[str, Any] = field(default_factory=dict)
     retry_after_s: float | None = None
+    #: Transport retries made over the turn (agent-loop.spec.md requirement 111).
+    request_retries: int = 0
     model: str = ""
     provider: str = ""
     #: The arguments of the ``ends_turn`` tool call that closed the turn; ``None`` otherwise.

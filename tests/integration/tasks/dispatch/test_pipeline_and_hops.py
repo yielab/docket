@@ -174,6 +174,7 @@ class TestPipeline:
                 _rd.DOCKET_HANDOFF: "1",
                 _rd.DOCKET_HOP_STEP: "lead",
                 _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
+                _rd.DOCKET_HOP_REQUEST_RETRIES: "2",
             }
             impl_message, impl_env = by_agent["demo-implementer"]
             assert "Working directory: the repository root" in impl_message
@@ -195,6 +196,7 @@ class TestPipeline:
                     _rd.DOCKET_HANDOFF,
                     _rd.DOCKET_HOP_STEP,
                     _rd.DOCKET_HOP_TIMEOUT_SOURCE,
+                    _rd.DOCKET_HOP_REQUEST_RETRIES,
                 }
 
     def test_default_approval_mode_leaves_every_hop_env_unchanged(self, tmp_path: Path) -> None:
@@ -280,6 +282,7 @@ class TestPipeline:
                         _rd.DOCKET_HANDOFF: "1",
                         _rd.DOCKET_HOP_STEP: "lead",
                         _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
+                        _rd.DOCKET_HOP_REQUEST_RETRIES: "2",
                     }
                 else:
                     # The Implementer's port-range env (real DOCKET_PORT_*/
@@ -497,6 +500,7 @@ class TestHopEnvInjection:
                 _rd.DOCKET_HANDOFF: "1",
                 _rd.DOCKET_HOP_STEP: "lead",
                 _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
+                _rd.DOCKET_HOP_REQUEST_RETRIES: "2",
             }
             impl_env = by_role["implementer"]
             assert impl_env is not None
@@ -522,4 +526,5 @@ class TestHopEnvInjection:
                 _rd.DOCKET_HANDOFF: "1",
                 _rd.DOCKET_HOP_STEP: "implementer",
                 _rd.DOCKET_HOP_TIMEOUT_SOURCE: "default",
+                _rd.DOCKET_HOP_REQUEST_RETRIES: "2",
             }
