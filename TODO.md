@@ -626,6 +626,13 @@ from `main`.
   (Phase 67): a folder team under the jail reads any public host (`webRead`); the live `web-research` shows it.
   What remains is search: `fetch` cannot search (P67-3), so a card ships `services/search.yaml` once the
   maintainer picks the provider.
+- *`high-risk-payment` stops a research report that names a payment provider (2026-11-04, found in the P67-5 run).*
+  The policy's free-text clause (`matches: '\bstripe\b|\bpaypal\b|...|\bpayout\b'`,
+  `templates/policies/high-risk-payment.yaml`) is searched in the rendered arguments of every tool, so a `write`
+  of a competitor-pricing report that says "payments through Stripe" parks for approval although nothing moves
+  money. Open: whether a file `write`/`edit` in a folder pod's workdir should be exempt from the free-text clause
+  (the money moves only when something executes, and `exec` keeps its structured rules). Relaxing a gate is the
+  maintainer's call and amends security-gates; not done.
 - *The live home's old memory is invisible to the new build* (entries of kind `command` are dropped at the
   first write, as D-86 said); the installed `hn-live` entries are the two tasks of 2026-11-04.
 
