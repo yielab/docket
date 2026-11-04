@@ -182,6 +182,10 @@
         "value": null,
         "source": "default"
       },
+      "budgetWindow": {
+        "value": "none",
+        "source": "default"
+      },
       "maxReworkCycles": {
         "value": 1,
         "source": "default"
@@ -459,6 +463,12 @@
         "default": false
       }
     ],
+    "budget": {
+      "tokens": null,
+      "used": 0,
+      "window": "none",
+      "windowStart": null
+    },
     "workDir": "<home>/state/workspaces/pods/research/workdir",
     "configSource": "",
     "configDigest": "",

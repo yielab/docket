@@ -1,5 +1,5 @@
 """Reads of the pods: ``GET /pods``, ``GET /pods/<pod>``, ``GET /pods/<pod>/corrections`` and
-``GET /pods/<pod>/memory``."""
+``GET /pods/<pod>/memory``, and ``POST /pods/<pod>/resume``."""
 
 from __future__ import annotations
 
@@ -10,9 +10,12 @@ from docket.hops.application import report as _pod_report
 from docket.interfaces.http.exchange import HttpExchange
 from docket.kernel.errors import DispatchError
 from docket.tasks.application import corrections as _corrections
+from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
 from docket.teams import memory as _pod_memory
 from docket.teams import pod_settings as _pod_settings
+
+_MEMORY_STATUSES = ("accepted", "pending", "refused")
 
 
 def get_pods(h: HttpExchange, _arg: str) -> None:
@@ -36,6 +39,23 @@ def get_pod(h: HttpExchange, project: str) -> None:
     h._send(json.dumps(detail).encode("utf-8"), "application/json")
 
 
+def post_pod_resume(h: HttpExchange, project: str) -> None:
+    """``POST /pods/<pod>/resume``: clear the pod's pause and answer the pod's report with
+    ``resumed`` (operator-api.spec.md)."""
+    if h._reject_bad_project_id(project):
+        return
+    if project not in _queue.dispatchable_pods():
+        h._send_json_error(f"Unknown pod: {project}", 404)
+        return
+    try:
+        resumed = _lifecycle.resume_pod(project, channel="http").was_paused
+        detail = _pod_report.pod_detail(project)
+    except (DispatchError, _pod_settings.PodSettingsError) as exc:
+        h._send_json_error(str(exc), 500)
+        return
+    h._send(json.dumps({**detail, "resumed": resumed}).encode("utf-8"), "application/json")
+
+
 def get_pod_corrections(h: HttpExchange, project: str) -> None:
     if h._reject_bad_project_id(project):
         return
@@ -57,11 +77,17 @@ def get_pod_corrections(h: HttpExchange, project: str) -> None:
 
 
 def get_pod_memory(h: HttpExchange, project: str) -> None:
-    """``GET /pods/<pod>/memory``: the accepted entries, oldest first (operator-api.spec.md)."""
+    """``GET /pods/<pod>/memory``: the entries of one status (``accepted`` by default), oldest
+    first (operator-api.spec.md)."""
     if h._reject_bad_project_id(project):
         return
     if project not in _queue.dispatchable_pods():
         h._send_json_error(f"no pod '{project}'", 404)
         return
-    entries = [e.to_dict() for e in _pod_memory.list_entries(project, status="accepted")]
+    query = _urlparse.parse_qs(_urlparse.urlsplit(h.path).query)
+    status = (query.get("status") or ["accepted"])[0]
+    if status not in _MEMORY_STATUSES:
+        h._send_json_error(f"status must be one of {', '.join(_MEMORY_STATUSES)}", 400)
+        return
+    entries = [e.to_dict() for e in _pod_memory.list_entries(project, status=status)]
     h._send(json.dumps({"entries": entries}).encode("utf-8"), "application/json")

@@ -10,7 +10,6 @@ from rich.markup import escape
 
 from docket import bootstrap as _bootstrap
 from docket.governance import review as _reviewed
-from docket.governance.audit import audit_log
 from docket.hops.application import report as _report
 from docket.hops.application import steps as _steps
 from docket.hops.application import sweep as _sweep
@@ -32,7 +31,6 @@ from docket.tasks.application.repository import TaskRepository, claimable
 from docket.tasks.domain.state import Status
 from docket.teams import config_docs as _config_docs
 from docket.teams import fleet as _fleet
-from docket.teams import models as _models
 from docket.teams import pod as _pod_core
 from docket.teams import roles as _arch
 from docket.teams import settings as _settings
@@ -158,12 +156,7 @@ def _tokens_label(n: int) -> str:
 
 def _clear_pause(project: str) -> None:
     """``--resume``: clear the Lead's auto-pause and un-block the pod's blocked tasks."""
-    lead = _pod_core.member_id(project, "lead")
-    if _models.AgentMeta.coerce_paused(_fleet.meta_get(lead, "paused", "")):
-        _fleet.meta_set(lead, "paused", False)
-        _fleet.meta_set(lead, "pausedReason", "")
-        audit_log("run.resume", f"pod={project}")
-    unblocked = _lifecycle.unblock_pod(project)
+    unblocked = _lifecycle.resume_pod(project).unblocked
     if unblocked:
         ui.info(f"Unblocked {unblocked} blocked task(s) in pod '{project}'")
 

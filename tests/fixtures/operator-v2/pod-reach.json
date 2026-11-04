@@ -21,6 +21,12 @@
       "done": 0,
       "cancelled": 0
     },
+    "budget": {
+      "tokens": null,
+      "used": 0,
+      "window": "none",
+      "windowStart": null
+    },
     "workDir": "<home>/state/workspaces/pods/research/workdir",
     "paused": false
   },
@@ -189,6 +195,10 @@
     "settings": {
       "budgetTokens": {
         "value": null,
+        "source": "default"
+      },
+      "budgetWindow": {
+        "value": "none",
         "source": "default"
       },
       "maxReworkCycles": {
@@ -466,6 +476,12 @@
         "default": false
       }
     ],
+    "budget": {
+      "tokens": null,
+      "used": 0,
+      "window": "none",
+      "windowStart": null
+    },
     "workDir": "<home>/state/workspaces/pods/research/workdir",
     "configSource": "",
     "configDigest": "",

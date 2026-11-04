@@ -91,14 +91,12 @@ def _lead_for_settings(project: str) -> str:
 _BUDGET_KEYS = ("budgetTokens", "budgetWindow")
 
 
-def _budget_changed(project: str, lead_id: str) -> None:
+def _budget_changed(project: str) -> None:
     """A changed budget (its cap or its window) re-queues the pod's blocked tasks and lifts the
     budget auto-pause."""
-    unblocked = _lifecycle.unblock_pod(project)
+    unblocked = _lifecycle.resume_pod(project).unblocked
     if unblocked:
         ui.info(f"Unblocked {unblocked} blocked task(s)")
-    _fleet.meta_set(lead_id, "paused", False)
-    _fleet.meta_set(lead_id, "pausedReason", "")
 
 
 # Persists a docket-owned copy plus its sha256 hash in the Lead's own workspace, never the
@@ -223,7 +221,7 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     audit_log("pod.config", f"project={project} action=set key={key} value={coerced!r}")
     ui.success(f"Set {key}={coerced} for pod '{project}'")
     if key in _BUDGET_KEYS:
-        _budget_changed(project, lead_id)
+        _budget_changed(project)
 
 
 def _narrow(project: str, action: str) -> None:
@@ -341,4 +339,4 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
     audit_log("pod.config", f"project={project} action=unset key={key}")
     ui.success(f"Unset {key} for pod '{project}'; it falls back to its default")
     if key in _BUDGET_KEYS:
-        _budget_changed(project, lead_id)
+        _budget_changed(project)

@@ -20,10 +20,14 @@ import pytest
 from tests.support import pods as _support_pods
 from tests.support.pods import seed_lean_pod as _seed_lean_pod
 from tests.support.tasks import update_task
+from tests.support.trace import audit_entries
 
 from docket.tasks.application import lifecycle as _lifecycle
 from docket.tasks.application import queue as _queue
+from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain import task as _task
+from docket.teams import fleet as _fleet
+from docket.teams import pod as _pod
 
 pod_home = _support_pods.pod_home_bare
 
@@ -181,3 +185,43 @@ class TestCancelTask:
         assert not outcome.cancelled and outcome.status == "done" and outcome.terminal
         with pytest.raises(_task.TaskNotFoundError):
             _lifecycle.cancel_task("myapp", "task-nope", channel="cli")
+
+
+class TestResumePod:
+    def _blocked_task(self) -> str:
+        _seed_lean_pod()
+        task = _queue.enqueue_task_once("myapp", "work", channel="cli")[0]
+        update_task("myapp", task.id, status="blocked")
+        return str(task.id)
+
+    def test_a_paused_pod_is_cleared_unblocked_and_audited_with_its_channel(
+        self, pod_home: Path
+    ) -> None:
+        """The pause fields go, the blocked task is pending and one `run.resume` names the channel."""
+        task_id = self._blocked_task()
+        lead = _pod.member_id("myapp", "lead")
+        _fleet.meta_set(lead, "paused", True)
+        _fleet.meta_set(lead, "pausedReason", "budget")
+
+        outcome = _lifecycle.resume_pod("myapp", channel="http")
+
+        assert outcome.was_paused is True
+        assert outcome.unblocked == 1
+        assert _fleet.meta_get(lead, "paused", "") == "False"
+        assert _fleet.meta_get(lead, "pausedReason", "x") == ""
+        assert TaskRepository.for_pod("myapp").get(task_id).status == "pending"
+        (entry,) = audit_entries("run.resume")
+        assert "pod=myapp" in entry["detail"]
+        assert "channel=http" in entry["detail"]
+
+    def test_a_pod_that_is_not_paused_returns_false_and_audits_nothing(
+        self, pod_home: Path
+    ) -> None:
+        """Nothing was paused, so nothing is audited; the blocked task is still re-queued."""
+        task_id = self._blocked_task()
+
+        outcome = _lifecycle.resume_pod("myapp", channel="cli")
+
+        assert outcome.was_paused is False
+        assert audit_entries("run.resume") == []
+        assert TaskRepository.for_pod("myapp").get(task_id).status == "pending"
