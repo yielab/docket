@@ -381,9 +381,7 @@ def test_pod_budget_decision(cap: int | None, spent: int, kind: str, reason: str
 def test_a_windowed_pod_budget_names_the_window_and_where_it_began() -> None:
     start = datetime(2026, 11, 2, tzinfo=UTC)
 
-    decision = _d.decide_pod_budget(
-        cap=1000, spent=1000, role="lead", window="week", window_start=start
-    )
+    decision = _d.decide_pod_budget(cap=1000, spent=1000, role="lead", window="week", since=start)
 
     assert decision.kind == "blocked"
     assert decision.detail["window"] == "week"

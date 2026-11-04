@@ -40,6 +40,7 @@ from docket.agent.ports import (
     DriverCapabilities,
     SessionSummary,
     TurnResult,
+    UsageDay,
     UsageReport,
     UsageTotals,
 )
@@ -356,17 +357,24 @@ class DocketDriver:
 
     def usage(self, agent_id: str) -> UsageReport:
         """Aggregate this agent's *measured*, non-estimated usage (``agent.ports.TokenUsage``) across
-        its sessions. ``by_day`` is always ``[]`` -- see
-        specs/functional/cost-tracking.spec.md ("Known gap: --history is always empty")."""
+        its sessions. ``by_day`` sums the sessions' ``usageByDay`` buckets, oldest day first; a
+        session written before the buckets existed adds to ``totals`` and to no day."""
         totals = UsageTotals()
+        days: dict[str, UsageDay] = {}
         for summary in self.list_sessions(agent_id):
             record = _session.load_session(summary.session_id)
+            for date, bucket in record.usage_by_day.items():
+                day = days.setdefault(date, UsageDay(date, 0, 0, 0))
+                day.turns += bucket.turns
+                day.input_tokens += bucket.input_tokens
+                day.output_tokens += bucket.output_tokens
+                day.cache_read += bucket.cached_tokens
             totals.input_tokens += record.usage.input_tokens
             totals.output_tokens += record.usage.output_tokens
             totals.cache_read += record.usage.cached_tokens
             totals.cache_write += record.usage.cache_write_tokens
             totals.turns += record.usage.turns
-        return UsageReport(totals=totals, by_day=[])
+        return UsageReport(totals=totals, by_day=[days[date] for date in sorted(days)])
 
     def capabilities(self) -> DriverCapabilities:
         return DriverCapabilities(

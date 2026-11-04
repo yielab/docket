@@ -88,8 +88,12 @@ def _lead_for_settings(project: str) -> str:
     return pod.member_id(project, "lead")
 
 
+_BUDGET_KEYS = ("budgetTokens", "budgetWindow")
+
+
 def _budget_changed(project: str, lead_id: str) -> None:
-    """A changed budget re-queues the pod's blocked tasks and lifts the budget auto-pause."""
+    """A changed budget (its cap or its window) re-queues the pod's blocked tasks and lifts the
+    budget auto-pause."""
     unblocked = _lifecycle.unblock_pod(project)
     if unblocked:
         ui.info(f"Unblocked {unblocked} blocked task(s)")
@@ -218,7 +222,7 @@ def set_setting(project: str, key: str, value: str, *, member: str | None = None
     _fleet.meta_set(lead_id, key, coerced)
     audit_log("pod.config", f"project={project} action=set key={key} value={coerced!r}")
     ui.success(f"Set {key}={coerced} for pod '{project}'")
-    if key == "budgetTokens":
+    if key in _BUDGET_KEYS:
         _budget_changed(project, lead_id)
 
 
@@ -336,5 +340,5 @@ def unset_setting(project: str, key: str, *, member: str | None = None) -> None:
         _sched.unset_schedule(current_home().schedule_file, project)
     audit_log("pod.config", f"project={project} action=unset key={key}")
     ui.success(f"Unset {key} for pod '{project}'; it falls back to its default")
-    if key == "budgetTokens":
+    if key in _BUDGET_KEYS:
         _budget_changed(project, lead_id)

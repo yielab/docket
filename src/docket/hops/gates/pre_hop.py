@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json as _json
+from datetime import datetime
 from pathlib import Path
 
 from docket.agent import ports as _rd
@@ -12,6 +13,7 @@ from docket.hops.application.usage import pod_counted_tokens
 from docket.hops.domain import gate_decisions as _decide
 from docket.hops.gates import profile as _profile
 from docket.kernel import brief as _brief
+from docket.kernel import clock as _clock
 from docket.kernel import protected_paths as _protected
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
@@ -68,6 +70,14 @@ def _token_budget_left(task: TaskRecord) -> int | None:
     return _decide.tokens_left(task.max_tokens, [h.usage for h in task.hops])
 
 
+def _pod_spent(project: str) -> tuple[int, _decide.BudgetWindow, datetime | None]:
+    """The pod's counted tokens over its ``budgetWindow``, with the window and where it began."""
+    window = load_pod_settings(project).budget_window
+    since = _decide.window_start(window, _clock.now())
+    spent = pod_counted_tokens(project) if since is None else pod_counted_tokens(project, since)
+    return spent, window, since
+
+
 def _gate_task_tokens(ctx: UnitContext, role: str) -> UnitOutcome | None:
     """Fail the task with ``failureKind: "budget"`` when its ``maxTokens`` is spent before *role*."""
     decision = _decide.decide_task_tokens(
@@ -101,7 +111,7 @@ def _apply_task_restrictions(ctx: UnitContext, env: dict[str, str] | None) -> di
             extra[_rd.DOCKET_TASK_POLICIES] = _json.dumps(documents)
     ceiling = _decide.turn_token_ceiling(
         task_left=_token_budget_left(_current_task(ctx)),
-        pod_left=None if ctx.cap is None else ctx.cap - pod_counted_tokens(ctx.project),
+        pod_left=None if ctx.cap is None else ctx.cap - _pod_spent(ctx.project)[0],
         default=current_home().agent_loop_token_budget,
     )
     if ceiling is not None:
@@ -118,10 +128,9 @@ def _gate_budget(ctx: UnitContext, role: str) -> UnitOutcome | None:
     task_outcome = _gate_task_tokens(ctx, role)
     if task_outcome is not None:
         return task_outcome
+    spent, window, since = (0, "none", None) if ctx.cap is None else _pod_spent(ctx.project)
     decision = _decide.decide_pod_budget(
-        cap=ctx.cap,
-        spent=0 if ctx.cap is None else pod_counted_tokens(ctx.project),
-        role=role,
+        cap=ctx.cap, spent=spent, role=role, window=window, since=since
     )
     if decision.kind == "advance":
         return None

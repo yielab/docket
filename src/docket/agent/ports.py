@@ -280,6 +280,7 @@ class UsageDay:
     turns: int
     input_tokens: int
     output_tokens: int
+    cache_read: int = 0
 
 
 @dataclass

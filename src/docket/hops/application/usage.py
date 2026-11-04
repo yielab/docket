@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from docket.agent.ports import UsageDay, UsageTotals
 from docket.hops.application import driver as _dr
 from docket.teams import fleet as _fleet
@@ -32,23 +34,24 @@ def usage_history(agent_id: str) -> list[UsageDay]:
 
     Delegates to the RuntimeDriver port's ``usage()`` (see ``aggregate_usage``'s
     docstring) instead of parsing session JSONL directly, resolving
-    ``agent.driver.default_driver()``. Note ``DocketDriver``'s
-    ``usage().by_day`` is always empty (see its docstring: a session's stored
-    usage is one running total, not timestamped per turn), so this always
-    returns ``[]`` against the production driver -- an honest gap: a daily
-    breakdown is real, useful information this driver does not yet have
-    a way to produce.
+    ``agent.driver.default_driver()``.
     """
     return _dr.default_driver().usage(agent_id).by_day
 
 
-def pod_counted_tokens(project: str) -> int:
-    """The pod's counted tokens: each member's input minus cache reads, plus output, summed over
-    the pod's members and all their sessions. The measure a task's ``maxTokens`` uses, and what the
-    pod's ``budgetTokens`` is compared with."""
+def pod_counted_tokens(project: str, since: datetime | None = None) -> int:
+    """The pod's counted tokens (input minus cache reads, plus output) over its members and sessions:
+    what ``maxTokens`` and ``budgetTokens`` measure. With *since*, only the day buckets on or after
+    *since*'s date count (the pod's ``budgetWindow``)."""
     all_ids = [a.id for a in _fleet.list_agents()]
+    first_day = None if since is None else since.date().isoformat()
     total = 0
     for mid, _role, _idx in _pod.members_of(all_ids, project):
-        totals = aggregate_usage(mid)
-        total += max(0, totals.input_tokens - totals.cache_read) + totals.output_tokens
+        if first_day is None:
+            totals = aggregate_usage(mid)
+            total += max(0, totals.input_tokens - totals.cache_read) + totals.output_tokens
+            continue
+        for day in usage_history(mid):
+            if day.date >= first_day:
+                total += max(0, day.input_tokens - day.cache_read) + day.output_tokens
     return total

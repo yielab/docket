@@ -98,6 +98,7 @@ _GRANT_KEYS = (NETWORK_GRANT_KEY, FETCH_GRANT_KEY)
 # this mapping next to PodSettings.KEYS.
 _SETTING_FIELD_BY_ALIAS: dict[str, str] = {
     "budgetTokens": "budget_tokens",
+    "budgetWindow": "budget_window",
     "maxReworkCycles": "max_rework_cycles",
     "turnTimeoutS": "turn_timeout_s",
     "verifyTimeoutS": "verify_timeout_s",
@@ -156,6 +157,9 @@ class PodSettings(BaseModel):
 
     # The pod's cap on counted tokens (input minus cache reads, plus output); ``None`` = no cap.
     budget_tokens: int | None = Field(None, alias="budgetTokens", gt=0)
+    # The span ``budgetTokens`` is counted over: every token the pod ever spent ('none'), or the
+    # UTC days since today's midnight ('day') or this Monday's ('week').
+    budget_window: Literal["none", "day", "week"] = Field("none", alias="budgetWindow")
     max_rework_cycles: int = Field(1, alias="maxReworkCycles", ge=0)
     turn_timeout_s: int | None = Field(None, alias="turnTimeoutS", gt=0)
     verify_timeout_s: int | None = Field(None, alias="verifyTimeoutS", gt=0)
@@ -292,6 +296,7 @@ class PodSettings(BaseModel):
     # ``coerce`` all iterate, instead of a second hardcoded key list.
     KEYS: ClassVar[tuple[str, ...]] = (
         "budgetTokens",
+        "budgetWindow",
         "maxReworkCycles",
         "turnTimeoutS",
         "verifyTimeoutS",
@@ -541,6 +546,15 @@ class PodSettings(BaseModel):
         name = str(value).strip().lower()
         if name not in ("attended", "lights-out"):
             raise InvalidInput("must be 'attended' or 'lights-out'")
+        return name
+
+    @field_validator("budget_window", mode="before")
+    @classmethod
+    def _parse_budget_window(cls, value: Any) -> str:
+        """``day``, ``week`` or ``none``."""
+        name = str(value).strip().lower()
+        if name not in ("day", "week", "none"):
+            raise InvalidInput("must be 'day', 'week' or 'none'")
         return name
 
     @field_validator("consult_mode", mode="before")

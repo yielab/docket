@@ -95,6 +95,7 @@ class AgentMeta(BaseModel):
 
     # The pod's settings, kept on the Lead's file. Declared so a write of one validates; their
     # values are checked by ``PodSettings`` (teams/pod_settings.py), never here.
+    budget_window: Any = Field(None, alias="budgetWindow")
     max_rework_cycles: Any = Field(None, alias="maxReworkCycles")
     approval_mode: Any = Field(None, alias="approvalMode")
     approval_expiry_hours: Any = Field(None, alias="approvalExpiryHours")
