@@ -225,7 +225,14 @@ def test_a_workdir_outside_any_repository_is_not_refused(
     monkeypatch.setattr(_smoke, "_discover_live_model", lambda *_a, **_k: _local_model())
     monkeypatch.setattr(_smoke, "_run", lambda *args, **_kwargs: seen.update(world=args[0]))
 
-    code = _run_main(monkeypatch, "--live-model", "--workdir", str(tmp_path / "plain" / "w"))
+    code = _run_main(
+        monkeypatch,
+        "--live-model",
+        "--sandbox",
+        "off",
+        "--workdir",
+        str(tmp_path / "plain" / "w"),
+    )
 
     assert code == 0 and seen["world"] == (tmp_path / "plain" / "w").resolve()
 
@@ -237,4 +244,4 @@ def test_the_default_temporary_world_is_not_checked(
     monkeypatch.setattr(_smoke, "_discover_live_model", lambda *_a, **_k: _local_model())
     monkeypatch.setattr(_smoke, "_run", lambda *_a, **_k: None)
 
-    assert _run_main(monkeypatch, "--live-model") == 0
+    assert _run_main(monkeypatch, "--live-model", "--sandbox", "off") == 0

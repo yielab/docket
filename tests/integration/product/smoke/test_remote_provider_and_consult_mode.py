@@ -124,7 +124,10 @@ def test_default_run_stays_loopback_and_parks(
     monkeypatch.setattr(_smoke, "_discover_live_model", discover)
     monkeypatch.setattr(_smoke, "_run", run)
 
-    assert _main(monkeypatch, "--live-model", "--workdir", str(tmp_path / "w")) == 0
+    assert (
+        _main(monkeypatch, "--live-model", "--sandbox", "off", "--workdir", str(tmp_path / "w"))
+        == 0
+    )
 
     assert seen["endpoint"] == "http://127.0.0.1:8081/v1"
     assert seen["live"].remote is False
@@ -298,6 +301,8 @@ def test_main_leaves_no_key_in_a_kept_world(
         "claude-haiku-4-5",
         "--consult-mode",
         "decide",
+        "--sandbox",
+        "off",
         "--workdir",
         str(world),
     )
