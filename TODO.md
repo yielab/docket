@@ -387,7 +387,7 @@ from `main`.
 
 ### P63-6 — `POST /pods/<p>/resume` clears a pause, and every pod answer says its budget
 
-**Status:** IN-PROGRESS (@sonnet-p63-6) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-5 (the `window` and `windowStart` it reports; the clearing writer it shares); P64-4 merged (the memory entry's wire shape it lists)
+**Status:** DONE (wave 3, 2026-11-04) · **Size:** L · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P63-5 (the `window` and `windowStart` it reports; the clearing writer it shares); P64-4 merged (the memory entry's wire shape it lists)
 
 - **Trigger:** Tack's D4: the pause clears only from the CLI (`docket run --resume`,
   `interfaces/cli/commands/run.py` ~163; `docket pod set budgetTokens`,
@@ -662,7 +662,7 @@ from `main`.
 
 ### P64-5 — The real run: a folder pod remembers, and the next task reads it
 
-**Status:** TODO (after wave 2) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run + observability fix · **After:** P64-3, P64-4 merged
+**Status:** TODO · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run + observability fix · **After:** P64-3, P64-4 merged
 
 - **Trigger:** 18 live tasks, 0 renders; `prompt_composed` (`agent/loop_trace.py` ~369-384) appears in
   no live trace, so the `podMemory` section report the spec names (req. 6) is unobservable in
