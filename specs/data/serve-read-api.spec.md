@@ -1,8 +1,8 @@
 # serve read API — contract spec
 
-**Version**: 6.4.0
+**Version**: 6.5.0
 **Status**: Stable
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-04
 
 ## Purpose
 
@@ -111,7 +111,7 @@ added in minor versions.
 | Field | Type | Notes |
 |---|---|---|
 | `apiVersion` | string | Always `SERVE_API_VERSION`, currently `"6"`. |
-| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. Currently `["taskCurrent", "taskCursor", "podMemory", "readScope", "conversation", "settledCursor", "failureKinds", "podPause", "hopTimes", "retryContinues", "budgetOutcome", "networkEnforced", "podWorkDir", "podFetch", "capabilityMissing", "consultParts"]`. |
+| `features` | string[] | The feature names this build answers to, a client's probe for a capability. A name joins the list in the commit that makes the feature work, never before. The list is `FEATURES` in `interfaces/http/routes/health.py`, and its exact-list test `tests/unit/interfaces/http/routes/test_health.py` is the one place that pins it; this spec does not repeat it. |
 | `channels` | string[] | Distinct channel names present in `fleet.json` bindings (e.g. `["telegram"]`). |
 | `agents[*].bindings` | `{channel}[]` | The channel names the agent is bound to. **No peer id is published here**: a Telegram `peerId` is the chat id that is the whole Telegram authorization boundary, and this endpoint is unauthenticated. |
 | `agents[*].scope` | `"project"` | Always `project`; `agents` lists pod members only. |

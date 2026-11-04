@@ -44,6 +44,7 @@ from docket.tasks.application.queue import touch_claim
 from docket.tasks.application.repository import TaskRepository
 from docket.teams import fleet as _fleet
 from docket.teams import mcp_servers as _mcp_servers
+from docket.teams import network_posture as _network_posture
 from docket.teams import pod as _pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import records as _records
@@ -170,7 +171,7 @@ def _load_records_tools(registry: ToolRegistry, project: str = "") -> list[str]:
 def pod_offer(registry: ToolRegistry, project: str, role: str, surface: str) -> PodOffer:
     """What *project* offers *role* beyond the tools its registry holds: the names the role would
     hold if its `tools` listed them (the full *registry* narrowed by *surface* and the role's and the
-    pod's denials only), the declared record sets, and whether `fetch` is denied by neither."""
+    pod's denials only), the declared record sets, whether `fetch` is denied by neither, and the command that opens it."""
     holdable = _role_composer.registry_for_role(
         registry, role, project, surface=surface, allow=tuple(registry.names())
     )
@@ -186,6 +187,7 @@ def pod_offer(registry: ToolRegistry, project: str, role: str, surface: str) -> 
         holdable=frozenset(holdable.names()),
         record_sets=frozenset(s.name for s in sets),
         fetch_declarable=FETCH not in denied,
+        fetch_fix=_network_posture.fetch_reach(project).fix,
     )
 
 

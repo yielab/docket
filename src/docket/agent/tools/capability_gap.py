@@ -19,14 +19,15 @@ FETCH = "fetch"
 
 @dataclass(frozen=True)
 class PodOffer:
-    """What the turn's pod offers its role: *holdable* are the tool names the role would hold if its
-    `tools` (or the step's) listed them, *record_sets* the sets the pod declares, and
-    *fetch_declarable* whether neither the role nor the pod denies `fetch`."""
+    """What the turn's pod offers its role: the *holdable* tool names, the declared *record_sets*,
+    whether `fetch` is *fetch_declarable* (neither role nor pod denies it) and the *fetch_fix*
+    that opens it (empty: `pod set fetchDomains`)."""
 
     pod: str
     holdable: frozenset[str]
     record_sets: frozenset[str]
     fetch_declarable: bool
+    fetch_fix: str = ""
 
 
 def _then_update(pod: str) -> str:
@@ -52,9 +53,8 @@ def gap_for(
     if name in offer.holdable:
         return CapabilityGap("tool", name, _list_in_tools(name, role, offer.pod))
     if name == FETCH and offer.fetch_declarable:
-        return CapabilityGap(
-            "fetch", FETCH, f"run `docket pod set fetchDomains <host> --pod {offer.pod}`"
-        )
+        fix = offer.fetch_fix or f"docket pod set fetchDomains <host> --pod {offer.pod}"
+        return CapabilityGap("fetch", FETCH, f"run `{fix}`")
     return None
 
 

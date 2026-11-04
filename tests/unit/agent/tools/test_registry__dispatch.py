@@ -363,6 +363,11 @@ class TestCapabilityGap:
             "fetch", "fetch", "run `docket pod set fetchDomains <host> --pod demo`"
         )
 
+    def test_fetch_missing_names_the_fix_the_offer_carries(self, ctx: ToolContext) -> None:
+        res = self._gap(ctx, "fetch", _pod_offer(fetch_fix="docket setup sandbox on"))
+
+        assert res.gap == CapabilityGap("fetch", "fetch", "run `docket setup sandbox on`")
+
     @pytest.mark.parametrize(
         ("name", "offer"),
         [

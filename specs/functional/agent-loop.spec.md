@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.6.0
+**Version**: 4.7.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -680,7 +680,8 @@ This specification does NOT cover:
     turn's registry (`ToolRegistry.offer`): the pod's name, the tool names the turn's role would
     hold if its `tools` (or the step's) listed them (the registry narrowed by the profile's surface
     and the role's and the pod's denials only), the pod's declared record-set names, and whether
-    the pod could hold `fetch`. `hops/application/driver_support.py` computes it; `agent/` reads no
+    the pod could hold `fetch`, and the command that opens it (`fetch_fix`, from `fetch_reach`).
+    `hops/application/driver_support.py` computes it; `agent/` reads no
     pod, fleet or records module. `dispatch_tool` **MUST** answer a name the narrowed registry
     lacks with a `CapabilityGap` `{kind, name, fix}` and `denial_kind="capability_missing"` in
     exactly these cases, and no other:
@@ -691,7 +692,9 @@ This specification does NOT cover:
       declared set the role may not use (`fix`: add `rec__<set>`, or `rec` for a tool of the pod,
       to its `tools`).
     - `fetch`: `fetch` when no tool of that name is in the offer and neither the role nor the pod
-      denies it; `fix`: `docket pod set fetchDomains <host> --pod <pod>`. A call to `fetch` for a
+      denies it; `fix`: the offer's `fetch_fix`, which for a folder pod whose jail is not running is
+      `docket setup sandbox on` (or `docket setup sandbox backend docker` once isolation is
+      recorded on with no backend) and otherwise `docket pod set fetchDomains <host> --pod <pod>`. A call to `fetch` for a
       host outside the pod's set is an ordinary refusal, never a gap.
 
     A name nothing offers, a verb a declared set lacks, and a tool a role or the pod denies stay
