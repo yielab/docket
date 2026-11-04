@@ -8,11 +8,13 @@ Nothing here reads the task or the store. See specs/functional/workspace-structu
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 from docket.kernel.home import current_home
 
-KINDS: tuple[str, ...] = ("generated", "command", "pitfall", "convention")
+KINDS: tuple[str, ...] = ("generated", "tool", "pitfall", "convention")
+LABEL_MAX_CHARS = 60
 MEMORY_HEADING = "## Memory"
 
 _BULLET = re.compile(r"^-\s+([A-Za-z]+):\s+(.+?)\s+--\s+(.+?)\s*$")
@@ -164,17 +166,37 @@ def _reads_as_instruction(text: str) -> str:
     return ""
 
 
-def _vet(line: ParsedLine) -> tuple[str, str]:
-    """``(subject, refusal)``: the normalised subject and why the line cannot be an entry."""
+def _vet_subject(line: ParsedLine) -> tuple[str, str]:
     subject = line.subject
-    if line.kind != "command":
-        subject = _safe_path(subject)
-        if not subject:
-            return line.subject[:200], "not a repository-relative path"
-    elif not subject or len(subject) > current_home().pod_memory_note_max_chars:
-        return subject[:200], "not a command of a reasonable length"
-    if len(line.note) > current_home().pod_memory_note_max_chars:
-        return subject, f"note over {current_home().pod_memory_note_max_chars} characters"
-    if line.kind == "command" and _URL.search(subject):
+    if line.kind == "generated":
+        path = _safe_path(subject)
+        return (path, "") if path else (subject[:200], "not a repository-relative path")
+    if line.kind == "tool":
+        if not subject or len(subject) > current_home().pod_memory_note_max_chars:
+            return subject[:200], "not an invocation of a reasonable length"
+        return subject, "contains a link" if _URL.search(subject) else ""
+    if not subject:
+        return "", "empty subject"
+    if len(subject) > LABEL_MAX_CHARS:
+        return subject[:200], f"subject over {LABEL_MAX_CHARS} characters"
+    if _URL.search(subject):
         return subject, "contains a link"
-    return subject, _reads_as_instruction(line.note)
+    if any(unicodedata.category(c) == "Cc" for c in subject):
+        return subject[:200], "subject contains a control character"
+    return subject, ""
+
+
+def _vet(line: ParsedLine) -> tuple[str, str]:
+    """``(subject, refusal)``: the subject as stored and why the line cannot be an entry. The
+    note is judged after NFKC normalization."""
+    subject, refusal = _vet_subject(line)
+    if refusal:
+        return subject, refusal
+    note = unicodedata.normalize("NFKC", line.note)
+    if len(note) > current_home().pod_memory_note_max_chars:
+        return subject, f"note over {current_home().pod_memory_note_max_chars} characters"
+    if any(unicodedata.category(c) == "Cf" for c in note) or any(
+        ln.startswith("#") for ln in note.splitlines()
+    ):
+        return subject, "contains formatting characters or a heading"
+    return subject, _reads_as_instruction(note)

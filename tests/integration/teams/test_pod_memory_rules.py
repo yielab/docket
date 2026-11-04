@@ -194,7 +194,7 @@ class TestDecide:
 class TestCommandEntries:
     def _decide(self, repo: tuple[Path, str], events: list[tuple[str, dict[str, Any]]]) -> Any:
         root, commit = repo
-        out = _section("- command: pytest -q -- Runs the unit tests.")
+        out = _section("- tool: pytest -q -- Runs the unit tests.")
         return _record(root, commit, out, trace=_link(events))
 
     def test_a_bash_call_with_an_exit_status_in_the_trace_is_accepted(
@@ -237,7 +237,7 @@ class TestCommandEntries:
     def test_a_verify_gate_run_counts_as_an_exit_status(self, repo: tuple[Path, str]) -> None:
         root, commit = repo
         hop = _Hop(
-            output=_section("- command: pytest -q -- Runs the unit tests."),
+            output=_section("- tool: pytest -q -- Runs the unit tests."),
             evidence={"commit": commit},
             verify={"cmd": "pytest -q", "exitCode": 0},
             trace=_empty_trace(),

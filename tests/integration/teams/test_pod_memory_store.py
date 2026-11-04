@@ -234,7 +234,7 @@ class TestRender:
         _record(
             root,
             commit,
-            _section("- command: pytest -q -- Runs the unit tests."),
+            _section("- tool: pytest -q -- Runs the unit tests."),
             trace=_link(events),
         )
 

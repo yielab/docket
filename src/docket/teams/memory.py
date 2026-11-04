@@ -2,7 +2,7 @@
 
 A step's reply may end with a ``## Memory`` section; when the task ends, ``record_task_memory``
 parses it and decides every entry itself: only a fact docket verified (a generated path present
-at the task's commit, a command with an exit status in the task's trace) is accepted
+at the task's commit, a tool call with an exit status in the task's trace) is accepted
 automatically, anything that reads as an instruction is refused, and the rest waits for the
 operator. Accepted entries reach later prompts through ``render_entries`` behind an untrusted
 frame (``teams/identity.py``). See specs/functional/workspace-structure.spec.md "Pod memory"."""
@@ -33,7 +33,7 @@ class PodMemoryError(Conflict):
 
 @dataclass(frozen=True)
 class MemoryEntry:
-    """One stored entry; ``subject`` is a path or, for a ``command``, the command."""
+    """One stored entry; ``subject`` is a path, a label or, for a ``tool``, the invocation."""
 
     id: str
     kind: str
@@ -48,7 +48,7 @@ class MemoryEntry:
         doc: dict[str, Any] = {
             "id": self.id,
             "kind": self.kind,
-            "command" if self.kind == "command" else "path": self.subject,
+            "tool" if self.kind == "tool" else "path": self.subject,
             "note": self.note,
             "status": self.status,
             "reason": self.reason,
@@ -63,7 +63,7 @@ def _entry_from_dict(doc: Any) -> MemoryEntry | None:
     if not isinstance(doc, dict):
         return None
     kind, status = doc.get("kind"), doc.get("status")
-    subject = doc.get("command") if kind == "command" else doc.get("path")
+    subject = doc.get("tool") if kind == "tool" else doc.get("path")
     if kind not in KINDS or status not in ("accepted", "pending", "refused"):
         return None
     if not isinstance(subject, str) or not isinstance(doc.get("id"), str):
@@ -305,9 +305,9 @@ def reset(project: str, *, actor: str = "operator") -> int:
 
 
 def _line(entry: MemoryEntry) -> str:
-    if entry.kind == "command":
+    if entry.kind == "tool":
         status = f" (exit {entry.exit})" if entry.exit is not None else ""
-        return f"- command `{entry.subject}`{status}: {entry.note}"
+        return f"- tool `{entry.subject}`{status}: {entry.note}"
     return f"- {entry.kind} {entry.subject}: {entry.note}"
 
 
@@ -317,7 +317,7 @@ def render_entries(project: str, root: Path | None, max_bytes: int) -> str:
     not deleted). ``""`` when nothing accepted fits."""
     lines: list[str] = []
     for entry in list_entries(project, "accepted"):
-        if entry.kind != "command":
+        if entry.kind != "tool":
             rel = _safe_path(entry.subject)
             if not rel or (root is not None and not os.path.lexists(os.path.join(root, rel))):
                 continue

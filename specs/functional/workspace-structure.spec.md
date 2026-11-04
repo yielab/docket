@@ -1,13 +1,13 @@
 # Workspace Structure Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Complete. `DOCKET_HOME` is the only root, split into `config/` (authored) and
 `state/` (written while running). Agent workspaces live under `~/.docket/state/workspaces/projects/`;
 a pod's runtime resources and learned memory live under `~/.docket/state/workspaces/pods/<pod>/`
 and its configuration overlay under `~/.docket/config/pods/<pod>/`. `docket init` provisions pods
 and refuses a home that keeps any of those entries at its top level; there is one layout and no
 migration.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -137,43 +137,49 @@ whole pod and every member that reads it.
 1. A pod **MAY** have `memory.json` at `$DOCKET_HOME/state/workspaces/pods/<pod>/memory.json`, shaped
    `{"entries": [...]}`. It is created by the first recorded entry, written only through the
    atomic JSON writer (filelocked, `0600`) and removed with the pod. An entry is
-   `{id, kind, path | command, note, status, reason, provenance}` where `status` is `accepted`,
+   `{id, kind, path | tool, note, status, reason, provenance}` where `status` is `accepted`,
    `pending` or `refused`, `reason` says why in one phrase, and `provenance` is
-   `{task, date, commit}`; a `command` entry carries `command` instead of `path` and also `exit`,
-   the status docket read from the task's trace. The `id` is `mem-` plus ten hex digits derived
+   `{task, date, commit}`; `path` holds the subject (a repository path, or a label for a `pitfall`
+   or `convention`); a `tool` entry carries `tool` instead of `path` and also `exit`, the status
+   docket read from the task's trace. The `id` is `mem-` plus ten hex digits derived
    from `(kind, subject)`, so it is also the deduplication key.
 2. The kinds are closed: `generated` (a repository path not worth reading, with what it is),
-   `command` (a command and what it showed), `pitfall` and `convention` (a repository path, or
-   `.` for the whole repository, and one fact about it). A note is one sentence of at most 200
-   characters.
+   `tool` (a tool invocation as written, bash command or MCP or service call, and what it
+   showed), `pitfall` and `convention` (a free label of at most 60 characters, with no URL and no
+   control character, and one fact about it; `.` names the whole repository). A note is one
+   sentence of at most 200 characters.
 3. **The memory section.** A step's reply **MAY** end with a section opened by a line that is
    exactly `## Memory` (case-insensitive), followed by one line per entry of the form
-   `- <kind>: <path or command> -- <note>`. The last such heading wins; the section ends at the
+   `- <kind>: <subject> -- <note>`. The last such heading wins; the section ends at the
    next line starting with `#`; a line that is not a bullet is ignored; a bullet that does not fit
    the grammar or names another kind is dropped and traced as refused (it is not stored). At most
    8 bullets are read per hop. docket reads the section of every hop that ended ok when the task
    reaches a terminal state. A failure while recording is audited (`pod.memory.error`) and never
    unwinds the finalized task.
 4. **Acceptance is mixed.** docket decides each entry, never the model:
-   - **refused**, with a reason: a subject that is not a repository-relative path (empty, absolute
-     or starting `~`, containing a backslash or a control character, an empty, `.` or `..`
-     segment, or over 200 characters; `.` alone is allowed), or, for a `command`, empty, over 200
-     characters or carrying a URL; a note over 200 characters; a note that carries a URL, starts
-     with an imperative verb from a fixed list, or contains `ignore`, `disregard`, `override`,
-     `forget`, `always`, `never`, `must`, `should`, `you`, `your`, `instruction(s)`, `do not`,
-     `don't`, `from now on` or `system prompt`; a `pre_input` verdict of `block`,
+   - **refused**, with a reason: for a `generated` entry, a subject that is not a
+     repository-relative path (empty, absolute or starting `~`, containing a backslash or a
+     control character, an empty, `.` or `..` segment, or over 200 characters; `.` alone is
+     allowed); for a `tool`, a subject that is empty, over 200 characters or carries a URL; for a
+     `pitfall` or `convention`, a label that is empty, over 60 characters ("subject over 60
+     characters"), carries a URL or holds a control character; a note over 200 characters; a note
+     that, after NFKC normalization, holds a character of Unicode category `Cf` or has a line
+     starting with `#` ("contains formatting characters or a heading"); a note that carries a
+     URL, starts with an imperative verb from a fixed list, or contains `ignore`, `disregard`,
+     `override`, `forget`, `always`, `never`, `must`, `should`, `you`, `your`, `instruction(s)`,
+     `do not`, `don't`, `from now on` or `system prompt`; a `pre_input` verdict of `block`,
      `require_approval` or `redact` on `<subject> <note>` (screened untrusted, the pod's own
      policies included).
    - **pending**: every `pitfall` and `convention`; every entry of a task whose trace holds a
      `fetch` tool call, or whose trace cannot be read; a `pre_input` verdict of `warn`; a
      `generated` entry when the task produced no commit.
    - **accepted**, automatically: a `generated` entry whose path exists at the task's commit
-     (`git cat-file -e <commit>:<path>`), and a `command` entry whose command has an exit status
+     (`git cat-file -e <commit>:<path>`), and a `tool` entry whose invocation has an exit status
      in the task's trace (a `command_step`, the verify gate, or a `bash` call with its
      `process_exited`). The task's commit is the latest hop evidence commit.
    - The checks above apply first; the pending holds apply next; only an entry that survives both
      is checked against the commit or trace, so it is refused when a `generated` path is absent at
-     the commit or a `command` has no exit status in the trace.
+     the commit or a `tool` has no exit status in the trace.
    Text that arrived from the repository, a tool result or the web is therefore never stored as
    an instruction: nothing is accepted from it except a fact docket checked itself.
 5. **Bounds and deduplication.** An entry already present for the same `(kind, subject)` is not
@@ -365,8 +371,10 @@ Where the names above live today; the only section that names source paths.
   `member_sync_status`, `resync_member`, `POD_TEMPLATE_VERSION`, `TASK_WORKTREES_DIRNAME`
 - `src/docket/teams/agent_memory.py`: `seed_contract`, `contract_ok`, `CONTRACT_VERSION`,
   `DISPATCH_BLOCK_BEGIN`, `DISPATCH_BLOCK_END`, `sync_dispatch_tasks`, `heartbeat_seed`
-- `src/docket/teams/memory.py`: `record_task_memory`, `parse_memory_section`, `list_entries`,
-  `approve`, `refuse`, `revert`, `reset`, `render_entries`, `PodMemoryError`, `KINDS`
+- `src/docket/teams/memory.py`: `record_task_memory`, `list_entries`,
+  `approve`, `refuse`, `revert`, `reset`, `render_entries`, `PodMemoryError`
+- `src/docket/teams/memory_parse.py`: `parse_memory_section`, `KINDS`; `memory_decide.py`: the
+  task facts and the verdict on one line
 - `src/docket/teams/identity.py`: `compose_agent_prompt`, `POD_MEMORY_FRAME`, `POD_MEMORY_LABEL`,
   `INSTRUCTIONS_FILE`
 - `src/docket/teams/settings.py`: `pod_task_list_path`

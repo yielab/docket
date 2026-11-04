@@ -189,7 +189,7 @@ def _decide(line: ParsedLine, facts: _TaskFacts, role: str) -> tuple[str, str, s
     )
     if held:
         return subject, "pending", held, None
-    if line.kind == "command":
+    if line.kind == "tool":
         return _decide_command(subject, facts)
     if not facts.commit or not facts.root:
         return subject, "pending", "no task commit to check the path against", None
