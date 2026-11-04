@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     is marked `stale` at the next task end, left out of prompts and evicted first among the accepted;
     `GET /pods/<p>/memory` rows are `{id, kind, subject, note, status, reason, provenance, stale,
     evidence}`.
+- **A plan of record resumes a paused pod and reads its budget (D-85, Phase 63, wave 3).**
+  - `POST /pods/<p>/resume` clears a budget pause and re-queues the blocked tasks: `resumed: true`
+    with the pod answer, or `resumed: false` and nothing written when it was not paused; the audit
+    entry `run.resume` names `channel=http`. `docket run --resume` and `pod set`/`unset` of
+    `budgetTokens` or `budgetWindow` share the one writer, so a clear through `pod set` is audited
+    too. `features` gains `podResume`.
+  - Every `GET /pods` row, `GET /pods/<p>` and `docket pod show --json` carry `budget: {tokens, used,
+    window, windowStart}`, `used` being the count the gate would compare now. A pod whose stored
+    settings fail validation is listed with its `error` instead of failing the list.
+  - `GET /pods/<p>/memory?status=accepted|pending|refused` lists what waits for
+    `docket pod memory approve`; another value is 400. `features` gains `memoryStatus`.
 
 - **A step's budget is a checkpoint, not a cliff (D-81, Phase 59, ADR 0038).**
   - `docket task retry` now re-runs the step that failed and continues its session with a message

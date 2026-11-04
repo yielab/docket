@@ -1,6 +1,6 @@
 # Token Usage and Budget Caps Specification
 
-**Version**: 2.1.0
+**Version**: 2.2.0
 **Status**: Implemented. Token usage is measured and reported in tokens only: docket keeps no
 rate table, no cost and no dollar estimate (ADR 0038 decision 5). Caps and auto-pause act only on pod
 dispatch.

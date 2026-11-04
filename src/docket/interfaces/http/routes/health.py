@@ -38,6 +38,8 @@ FEATURES: tuple[str, ...] = (
     "pipelineChecked",
     "podShape",
     "podContract",
+    "podResume",
+    "memoryStatus",
 )
 
 

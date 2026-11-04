@@ -88,6 +88,8 @@ class TestBuildStatus:
             "pipelineChecked",
             "podShape",
             "podContract",
+            "podResume",
+            "memoryStatus",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:
