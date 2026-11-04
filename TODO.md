@@ -108,12 +108,6 @@ from `main`.
   password is tried and AES needs `cryptography`); `pypdf` decodes about 30 MB/s, so a real stream bomb ends by the
   1 GiB memory limit or the deadline after ~30 s of CPU. The jail runs a copy of `pdf_extract.py` beside `in.pdf`
   because `-m docket...` fails when docket is editable. Trigger: a PDF a user needs that these refuse.
-- *The PDF reader on Seatbelt was never run.* `sandbox/pdf_extract.py` treats `RLIMIT_AS` as best effort
-  (macOS does not enforce it) and `RLIMIT_CPU` as mandatory, proven only with a fake `resource` module. The Docker
-  path was run on 2026-11-03: the default `alpine:3.20` is refused naming `DOCKET_SANDBOX_IMAGE`, and an image with
-  `poppler-utils` returned the fixture's text, with no container left. Trigger: before the next release tag (or
-  earlier, a user on a Mac): run `tests/integration/hops/test_pdf_text__jail.py` on a Seatbelt host with the macOS
-  probe-branch technique.
 - *`pod export` drops a recipe's `needs`* (`teams/apply/write.py` ~191, the manifest built there), by design: `needs` is
   a recipe declaration, not pod state. The "search service" check is a heuristic (a declared service whose name or an
   operation name contains "search"), and the known search hosts are a constant in `teams/apply/needs.py`. Trigger: a
