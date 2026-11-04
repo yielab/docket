@@ -52,7 +52,7 @@ This specification does NOT cover:
    defaults to `default`); the key is metadata, and dispatch derives its per-task history keys
    from it
 5. **MUST** initialize configuration files per member: SOUL.md, AGENTS.md, HEARTBEAT.md,
-   MEMORY.md, WORKFLOW_AUTO.md and a `memory/` directory, plus TOOLS.md for an Implementer with
+   MEMORY.md and WORKFLOW_AUTO.md, plus TOOLS.md for an Implementer with
    allocated resources or a verify command (see workspace-structure.spec.md for the exact
    per-role file set)
 6. **MUST** register every member in docket's fleet registry (`fleet.json`), which holds the bare

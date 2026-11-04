@@ -149,7 +149,6 @@ def write_member_workspace(
 ) -> None:
     ws = current_home().projects_dir / member.member_id
     ws.mkdir(parents=True, exist_ok=True)
-    (ws / "memory").mkdir(exist_ok=True)
     told_root = codebase
     (ws / "SOUL.md").write_text(
         _member_soul(member, project, told_root, stack, description, work_dir=work_dir),
@@ -227,12 +226,6 @@ def write_member_workspace(
             continue
         with contextlib.suppress(OSError):
             path.chmod(0o700 if path.is_dir() else 0o600)
-        if path.name == "memory" and path.is_dir():
-            for memory_path in path.rglob("*"):
-                if memory_path.is_symlink():
-                    continue
-                with contextlib.suppress(OSError):
-                    memory_path.chmod(0o700 if memory_path.is_dir() else 0o600)
 
 
 def provision_member(

@@ -81,7 +81,7 @@ class TestRuntimeWorkspaceContextReporting:
             assert absent not in text
 
     def test_a_memory_file_that_is_only_its_template_composes_nothing(self, tmp_path: Path) -> None:
-        seed = _mem._memory_md_seed(project="demo", stack="Python")
+        seed = _mem._memory_md_seed(project="demo")
         (tmp_path / "MEMORY.md").write_text(seed)
 
         text, sections = I._runtime_workspace_context(tmp_path, "")

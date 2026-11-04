@@ -210,9 +210,8 @@ This specification does NOT cover:
    directory and what the previous step produced, with no repository map; the second finds text
    in the files with `grep` and never lists the whole tree; the third is unchanged. Its text
    contains neither "repository" nor "code". A `codebase`-kind pod renders the block above, byte
-   for byte. The `MEMORY.md` seed makes the same choice: a `workdir` pod's asks for the task and
-   the notes in the working directory and has a `## Layout` section where a codebase's has
-   `## Architecture`. A step prompt adds only its own output
+   for byte. The `MEMORY.md` seed is the same header for both kinds (workspace-structure.spec.md).
+   A step prompt adds only its own output
    contract. Both templates render to the same bytes for two tasks of one member, so the system
    prompt carries no task data. `POD_TEMPLATE_VERSION` is 6.
 

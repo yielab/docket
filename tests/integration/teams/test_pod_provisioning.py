@@ -85,7 +85,7 @@ class TestBuildPod:
             for mid in ("demo-lead", "demo-implementer"):
                 ws = home / "state" / "workspaces" / "projects" / mid
                 assert ws.stat().st_mode & 0o777 == 0o700
-                assert (ws / "memory").stat().st_mode & 0o777 == 0o700
+                assert not (ws / "memory").exists()
                 for path in ws.iterdir():
                     if path.is_file():
                         assert path.stat().st_mode & 0o777 == 0o600, path.name

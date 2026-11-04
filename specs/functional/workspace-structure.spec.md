@@ -1,13 +1,13 @@
 # Workspace Structure Specification
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Status**: Complete. `DOCKET_HOME` is the only root, split into `config/` (authored) and
 `state/` (written while running). Agent workspaces live under `~/.docket/state/workspaces/projects/`;
 a pod's runtime resources and learned memory live under `~/.docket/state/workspaces/pods/<pod>/`
 and its configuration overlay under `~/.docket/config/pods/<pod>/`. `docket init` provisions pods
 and refuses a home that keeps any of those entries at its top level; there is one layout and no
 migration.
-**Last Updated**: 2026-10-28
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -87,7 +87,7 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
      ledger"); everything outside that region, including any hand-written entries elsewhere in
      the same file, is never touched by that sync
    - `WORKFLOW_AUTO.md` — the runtime-forced startup file carrying the versioned
-     resume/durability contract (`docket-contract` marker, `v5`; regenerated, never hand-edited).
+     resume/durability contract (`docket-contract` marker, `v6`; regenerated, never hand-edited).
      Its read order is `HEARTBEAT.md`, `SOUL.md`, `MEMORY.md`; no seed names a daily log. Anchors either the **codebase** path (`## Your codebase`) or, for a `workdir`-kind pod
      (pod-blueprints.spec.md), the shared **working directory** (`## Your working directory`) —
      never both. It opens with a **"Manual-path contract"** header stating that its own
@@ -95,16 +95,15 @@ owning specs document (model-profiles.spec.md, observability-export.spec.md).
      outside docket's turn loop: the live turn loop never sends this raw file to the model and
      composes a small read-only projection instead (agent-loop.spec.md; role-archetypes.spec.md
      "Generated instructions agree with the runtime contract")
-   - `MEMORY.md` — the operator's free notes about the project (seeded; docket never writes it
-     again). The seed names no path: its stack line is the only fact it carries from
-     provisioning. A live turn composes it only when it holds text beyond that template
-     (agent-loop.spec.md). What a pod learns by itself lives in the pod's `memory.json` ("Pod
-     memory" below), not here
+   - `MEMORY.md` — the operator's notes about the project. docket seeds a header only (the
+     title and one italic line saying docket never writes the file; no sections, nothing to
+     fill) and never writes it again, so `docket setup --fix` leaves an edited file
+     byte-identical. A live turn composes it only when it holds text beyond that header
+     (agent-loop.spec.md); when the operator wrote notes there, the manual-path `WORKFLOW_AUTO.md`
+     answers "what is this project about" from it, else from the codebase `README` (or the
+     working directory's notes). What a pod learns by itself lives in the pod's `memory.json`
+     ("Pod memory" below), not here
    - `.docket-meta.json` — docket metadata (see data spec)
-   - `memory/` — an empty directory at provisioning. docket seeds no daily log, distills none
-     and archives none. A `YYYY-MM-DD.md` file or a `.distilled/` archive placed there stays as
-     it is: docket never reads, moves or deletes it, `docket pod reset` included, and `docket
-     setup` never counts one as missing
 2. Every project agent has **either** a codebase path with auto-detected stack
    (`workspaceKind: codebase` — every `build`-blueprint pod)
    **or** a plain working directory with no codebase assumption (`workspaceKind: workdir` — a
@@ -200,7 +199,9 @@ whole pod and every member that reads it.
    is not accepted again) and `reset` (remove every entry; returns the count). Each audits and
    traces like requirement 7. `approve`, `refuse` and `revert` raise `PodMemoryError` for an
    unknown id or an entry in the wrong state.
-9. `docket pod reset <member>` **MUST NOT** read or change `memory.json`, `MEMORY.md` or `memory/`.
+9. `docket pod reset <member>` **MUST NOT** read or change `memory.json` or `MEMORY.md`. A
+   workspace has no `memory/` directory: provisioning creates none and docket reads and writes
+   none.
 10. **The operator's side** is `docket pod memory list|approve|refuse|revert|reset`
     (cli-interface.spec.md); every action calls the requirement 8 API with `actor="cli"`, so the
     entry moves and the audit and trace record are written by the one writer. The inbox lists the
@@ -226,7 +227,7 @@ whole pod and every member that reads it.
    created by dispatch at claim (pod-dispatch.spec.md "Task worktrees"), not a docket prompt/
    metadata file set. Permission healing **MUST NOT** recursively rewrite those checkouts' modes;
    executable bits and repository-owned permissions remain intact. Provisioning and maintenance
-   enforce `700`/`600` on the managed workspace root, prompt/metadata/ledger files, and `memory/`.
+   enforce `700`/`600` on the managed workspace root, prompt/metadata/ledger files.
 4. A pod's directory under `workspaces/pods/`, its overlay under `config/pods/`, `.scratch` and
    `cache` directories, and `memory.json` follow the same `700` (directories) and `600` (files)
    rule. So does `cache/artifacts/`, where a tool result over `DOCKET_TOOL_MAX_OUTPUT_CHARS` is
@@ -305,8 +306,7 @@ docket setup --fix                      # Report missing files, re-seed a missin
 ├── HEARTBEAT.md
 ├── WORKFLOW_AUTO.md          # anchors "## Your codebase"
 ├── MEMORY.md
-├── .docket-meta.json
-└── memory/                   # empty
+└── .docket-meta.json
 ```
 
 ### A provisioned pod member with no TOOLS.md (`workdir`-kind, non-Implementer)
@@ -318,8 +318,7 @@ docket setup --fix                      # Report missing files, re-seed a missin
 ├── HEARTBEAT.md
 ├── WORKFLOW_AUTO.md          # anchors "## Your working directory", not a codebase
 ├── MEMORY.md
-├── .docket-meta.json         # workspaceKind: "workdir", workDir: <path>
-└── memory/                   # empty
+└── .docket-meta.json         # workspaceKind: "workdir", workDir: <path>
 ```
 
 ## Validation
@@ -336,7 +335,7 @@ docket setup --fix                      # Report missing files, re-seed a missin
 - After the first `docket init` in a fresh home, `projects/` holds only the pod's members.
 - After `docket pod reset <member>`, `SOUL.md`, `AGENTS.md` and `TOOLS.md` (when applicable)
   **MUST** be regenerated from metadata and the `HEARTBEAT.md` ledger replaced by a fresh seed;
-  `MEMORY.md`, `memory/` and the pod's `memory.json` are left as they were.
+  `MEMORY.md` and the pod's `memory.json` are left as they were.
 
 ### Invariants
 

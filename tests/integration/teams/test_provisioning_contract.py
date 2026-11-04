@@ -52,7 +52,7 @@ class TestSeedContract:
         text = (tmp_path / _mem.REQUIRED_STARTUP_FILE).read_text()
         assert "/src/demo" in text
         assert "wrong directory" in text.lower()
-        assert "<!-- docket-contract: v5 -->" in text
+        assert "<!-- docket-contract: v6 -->" in text
 
     def test_no_seed_names_a_daily_log_docket_never_reads(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo")
@@ -62,11 +62,6 @@ class TestSeedContract:
             _mem.heartbeat_seed("demo-lead"),
         ]
         assert not [s for s in seeds if re.search(r"memory/(YYYY-MM-DD|\d{4}-\d{2}-\d{2})", s)]
-
-    def test_it_seeds_an_empty_memory_dir_and_no_daily_log(self, tmp_path: Path) -> None:
-        _mem.seed_contract(tmp_path, project="demo", codebase="/src/demo")
-        assert (tmp_path / "memory").is_dir()
-        assert list((tmp_path / "memory").iterdir()) == []
 
     def test_does_not_clobber_existing_daily_or_memory(self, tmp_path: Path) -> None:
         (tmp_path / "memory").mkdir()
@@ -129,7 +124,7 @@ class TestSeedContractWorkdir:
         text = (tmp_path / _mem.MEMORY_FILE).read_text()
         assert "/srv/work/demo" not in text
         assert "## Repo" not in text and "## Working directory" not in text
-        assert "- stack: n/a" in text
+        assert "- stack: n/a" not in text
 
     def test_contract_ok_true_for_workdir_seed(self, tmp_path: Path) -> None:
         _mem.seed_contract(tmp_path, project="demo", work_dir="/home/user/work/demo")

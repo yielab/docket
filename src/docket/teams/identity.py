@@ -82,7 +82,7 @@ _RUNTIME_CONTEXT_NOTE = (
     "The live runtime contract above governs how this material may be used."
 )
 _RUNTIME_CONTEXT_FOOTER = "\n\n# End runtime-loaded Docket workspace state"
-_PRIVATE_FILE_NAMES = "HEARTBEAT.md, AGENTS.md, TOOLS.md, MEMORY.md, memory/, and .docket"
+_PRIVATE_FILE_NAMES = "HEARTBEAT.md, AGENTS.md, TOOLS.md, MEMORY.md, and .docket"
 _TEMPLATE_LINE = re.compile(r"^(#.*|_.*_|-\s*(stack|codebase|path|origin):.*)$", re.IGNORECASE)
 
 

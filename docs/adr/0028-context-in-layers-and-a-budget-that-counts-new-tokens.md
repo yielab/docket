@@ -123,7 +123,8 @@ code (`develop` at `5dda9d37`). Answers recorded in "Decisions taken".
      path no longer exists in the checkout is omitted from the prompt, not deleted.
    - Every change writes a `memory_update` trace event and an audit entry. The operator can
      list, revert one entry and reset the pod's memory under `docket pod`.
-   - MEMORY.md stays as the operator's free notes; its "Fill on first run" template goes.
+   - `MEMORY.md` is the operator's notes; docket seeds a header and never writes it; the
+     `memory/` directory is gone.
 
 8. **Measurable without reconstruction.** Each `llm_call` carries the request's size by part
    (system, tools, history: tool results, assistant text, user) in bytes and estimated tokens.
