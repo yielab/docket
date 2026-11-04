@@ -28,13 +28,15 @@ _runner = CliRunner(env={"DOCKET_NO_HINTS": "1"})
 
 def _entry(path: str, status: str) -> dict[str, Any]:
     return {
-        "id": _pm.entry_id("pitfall", path),
+        "id": _pm.entry_id("pitfall", path, f"Note for {path}."),
         "kind": "pitfall",
-        "path": path,
+        "subject": path,
         "note": f"Note for {path}.",
         "status": status,
         "reason": "ok" if status == "accepted" else "awaits operator approval",
         "provenance": {"task": "t1", "date": "2026-10-18", "commit": ""},
+        "stale": False,
+        "evidence": {},
     }
 
 
@@ -66,6 +68,34 @@ def test_memory_returns_only_the_accepted_entries_as_the_cli_lists_them(
     )
     assert [e for e in cli if e["status"] == "accepted"] == body["entries"]
     assert [e["status"] for e in body["entries"]] == ["accepted"]
+
+
+def test_memory_rows_carry_subject_stale_and_evidence_and_no_old_keys(
+    live_server: tuple[str, str],
+) -> None:
+    """A tool row serves its subject, stale flag and evidence under the documented keys."""
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+    tool = _pm.MemoryEntry(
+        _pm.entry_id("tool", "pytest -q", "Runs tests."),
+        "tool",
+        "pytest -q",
+        "Runs tests.",
+        "accepted",
+        "ok",
+        {"task": "t1"},
+        stale=False,
+        evidence={"exit": 1},
+    )
+    path = current_home().pod_memory_path("demo")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(path, {"entries": [tool.to_dict()]})
+
+    _, body = _get(f"{url}/pods/demo/memory", token)
+
+    (row,) = body["entries"]
+    assert (row["subject"], row["stale"], row["evidence"]) == ("pytest -q", False, {"exit": 1})
+    assert not {"path", "tool", "command", "exit"} & set(row)
 
 
 def test_memory_without_token_returns_401(live_server: tuple[str, str]) -> None:

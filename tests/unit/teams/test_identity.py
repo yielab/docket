@@ -358,7 +358,7 @@ class TestPodMemoryIsTheLastFramedSection:
             {
                 "id": f"mem-{i}",
                 "kind": "generated",
-                "path": name,
+                "subject": name,
                 "note": "Built output.",
                 "status": "accepted",
                 "reason": "",

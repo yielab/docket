@@ -194,7 +194,7 @@ class TestPendingMemory:
             {
                 "id": f"mem-{i}",
                 "kind": kind,
-                "path": subject,
+                "subject": subject,
                 "note": "A fact.",
                 "status": status,
                 "reason": "awaits operator approval",

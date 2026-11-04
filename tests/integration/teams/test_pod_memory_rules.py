@@ -319,7 +319,7 @@ class TestToolEntries:
         (entry,) = self._service_call(repo, events)
 
         assert (entry.status, entry.reason) == ("accepted", "tool call found in the task's trace")
-        assert entry.exit is None
+        assert entry.evidence == {"ok": True}
 
     def test_a_tool_nobody_called_is_refused(self, repo: tuple[Path, str]) -> None:
         events = [
@@ -365,14 +365,14 @@ class TestToolEntries:
         (entry,) = self._decide(repo, events)
 
         assert entry.status == "accepted"
-        assert entry.exit == 1
+        assert entry.evidence == {"exit": 1}
 
     def test_a_command_step_exit_is_read_from_the_trace(self, repo: tuple[Path, str]) -> None:
         events = [("command_step", {"step": "t", "cmd": "pytest -q", "exit": 0})]
 
         (entry,) = self._decide(repo, events)
 
-        assert (entry.status, entry.exit) == ("accepted", 0)
+        assert (entry.status, entry.evidence) == ("accepted", {"exit": 0})
 
     def test_a_command_nobody_ran_is_refused(self, repo: tuple[Path, str]) -> None:
         events = [
@@ -397,7 +397,7 @@ class TestToolEntries:
 
         (entry,) = pm.record_task_memory(_PROJECT, _TASK, _Result([hop]), root=str(root))
 
-        assert (entry.status, entry.exit) == ("accepted", 0)
+        assert (entry.status, entry.evidence) == ("accepted", {"exit": 0})
 
 
 class TestLiveNotesReplay:
