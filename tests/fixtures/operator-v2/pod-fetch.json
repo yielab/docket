@@ -182,6 +182,10 @@
         "value": null,
         "source": "default"
       },
+      "budgetWindow": {
+        "value": "none",
+        "source": "default"
+      },
       "maxReworkCycles": {
         "value": 1,
         "source": "default"

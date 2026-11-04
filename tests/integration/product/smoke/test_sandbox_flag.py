@@ -79,15 +79,16 @@ def test_sandbox_on_runs_setup_sandbox_on_after_init_and_before_the_pipeline(
     assert calls.index(("setup", "sandbox", "on")) < calls.index(_pipeline_run(tmp_path))
 
 
-def test_sandbox_off_is_the_default_and_runs_setup_sandbox_off(
+def test_sandbox_on_is_the_default_and_off_is_the_opt_out(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     default = _drive_run(monkeypatch, tmp_path / "a")
     explicit = _drive_run(monkeypatch, tmp_path / "b", sandbox="off")
 
-    for recorder in (default, explicit):
-        assert ("setup", "sandbox", "off") in recorder.calls
-        assert ("setup", "sandbox", "on") not in recorder.calls
+    assert ("setup", "sandbox", "on") in default.calls
+    assert ("setup", "sandbox", "off") not in default.calls
+    assert ("setup", "sandbox", "off") in explicit.calls
+    assert ("setup", "sandbox", "on") not in explicit.calls
 
 
 @pytest.mark.parametrize("sandbox", ["on", "off"])
@@ -140,7 +141,7 @@ def test_sandbox_on_with_a_backend_reaches_the_run(
     assert code == 0 and seen["sandbox"] == "on"
 
 
-def test_default_run_never_asks_the_machine_for_a_backend(
+def test_default_run_asks_the_machine_for_a_backend_and_runs_jailed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     seen: dict[str, Any] = {}
@@ -151,7 +152,8 @@ def test_default_run_never_asks_the_machine_for_a_backend(
 
     code = _run_main(monkeypatch, "--live-model", "--workdir", str(tmp_path / "w"))
 
-    assert code == 0 and recorder.calls == [] and seen["sandbox"] == "off"
+    assert code == 0 and seen["sandbox"] == "on"
+    assert ("setup", "sandbox", "status") in [call[:3] for call in recorder.calls]
 
 
 def test_sandbox_accepts_only_on_or_off(
