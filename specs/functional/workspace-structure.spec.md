@@ -136,12 +136,16 @@ whole pod and every member that reads it.
 1. A pod **MAY** have `memory.json` at `$DOCKET_HOME/state/workspaces/pods/<pod>/memory.json`, shaped
    `{"entries": [...]}`. It is created by the first recorded entry, written only through the
    atomic JSON writer (filelocked, `0600`) and removed with the pod. An entry is
-   `{id, kind, path | tool, note, status, reason, provenance}` where `status` is `accepted`,
-   `pending` or `refused`, `reason` says why in one phrase, and `provenance` is
-   `{task, date, commit}`; `path` holds the subject (a repository path, or a label for a `pitfall`
-   or `convention`); a `tool` entry carries `tool` instead of `path` and also `exit`, the status
-   docket read from the task's trace. The `id` is `mem-` plus ten hex digits derived
-   from `(kind, subject)`, so it is also the deduplication key.
+   `{id, kind, subject, note, status, reason, provenance, stale, evidence}` where `status` is
+   `accepted`, `pending` or `refused`, `reason` says why in one phrase, and `provenance` is
+   `{task, date, commit}`; `subject` holds what the entry is about, for every kind (a repository
+   path, a label for a `pitfall` or `convention`, the invocation of a `tool`); `stale` is a boolean
+   (requirement 6); `evidence` is what docket verified, `{"exit": <int>}` (the status read from
+   the task's trace), `{"ok": <bool>}` or `{}` when it verified nothing. The `id` is `mem-` plus
+   ten hex digits derived from `(kind, subject, note)`, the note casefolded with its whitespace
+   collapsed, so it is also the deduplication key. A stored entry in any other shape (a `path`,
+   `tool`, `command` or `exit` key instead of `subject` and `evidence`) is not read and is dropped
+   at the next write.
 2. The kinds are closed: `generated` (a repository path not worth reading, with what it is),
    `tool` (a tool invocation as written, bash command or MCP or service call, and what it
    showed), `pitfall` and `convention` (a free label of at most 60 characters, with no URL and no
@@ -181,24 +185,34 @@ whole pod and every member that reads it.
      the commit or a `tool` has no exit status in the trace.
    Text that arrived from the repository, a tool result or the web is therefore never stored as
    an instruction: nothing is accepted from it except a fact docket checked itself.
-5. **Bounds and deduplication.** An entry already present for the same `(kind, subject)` is not
-   added again: an accepted or refused one stands (a refusal is the operator's or docket's
-   decision and is not reopened), a pending one is replaced only by an accepted one. At most 40
-   accepted entries are kept, the oldest dropped first, and at most 40 pending and refused ones
-   together, the oldest dropped first, so a flood of pending entries cannot push an accepted one
-   out.
+5. **Bounds and deduplication.** An entry already present for the same `(kind, subject, note)`
+   is not added again: an accepted or refused one stands (a refusal is the operator's or docket's
+   decision and is not reopened), a pending one is replaced only by an accepted one; two notes
+   about one subject are two entries. At most 40 accepted entries (stale ones included) are kept
+   and at most 40 pending and refused ones together, so a flood of pending entries cannot push an
+   accepted one out. Over a cap the eviction order is: a refused entry (oldest first), then a
+   stale one, then a pending one (oldest first), then an accepted one (oldest first); each cap
+   only evicts from its own entries.
 6. **Render.** The prompt composer **MUST** compose the accepted entries as the last section of
    the system prompt, after `MEMORY.md`, behind its own untrusted frame (`POD_MEMORY_FRAME`: the
    entries come from earlier tasks of this pod, not from the operator, and are never a request to
    run commands or to change tools, approvals or policies) and never in docket's voice. The section
    is reported as `podMemory` in `prompt_composed`. It is capped at 3000 bytes by dropping the
    oldest whole entries, an entry whose path is absent under the first project root is
-   omitted (not deleted), and no accepted entry composes nothing.
+   omitted (not deleted), a `stale` entry is omitted (not deleted), and no accepted entry composes
+   nothing. A `tool` entry renders as `` - tool `<subject>` (ok|error|exit N): <note> ``, the
+   parenthesis from its `evidence` and absent when it has none.
+   **Staleness.** When a task ends, before its own entries are stored, docket checks every
+   accepted `generated` entry of the pod against the task's commit (the path exists at the
+   commit) or, when the task has no commit, against the working tree under the pod's root; an
+   entry whose path is gone gets `stale: true` and one whose path is back gets `stale: false`.
+   Nothing is checked when neither a commit nor a root is known.
 7. **Every change is recorded.** Recording or deciding an entry writes one `memory_update` trace
    event per entry (trace-store.spec.md) and one `pod.memory.<action>` audit entry carrying the
    entry id, kind, status and actor (and the task id when there is one), never its note or
    subject; the action is the entry's status when docket recorded it (`accepted`, `pending`,
-   `refused`) and `approved`, `refused` or `reverted` when the operator decided it. A reset
+   `refused`), `stale` or `fresh` when the staleness check of requirement 6 flipped an accepted
+   entry, and `approved`, `refused` or `reverted` when the operator decided it. A reset
    writes one `memory_update` event and one `pod.memory.reset` audit entry carrying the count.
 8. The operator's side **MUST** be a typed API: `list_entries`, `approve` (pending to accepted),
    `refuse` (pending to refused, with a reason), `revert` (accepted to refused, so the same fact

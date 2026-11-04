@@ -384,7 +384,10 @@ label or `null`; `gate` is the step's gate label or `null`. `hop_started` names 
 
 `GET /pods/<p>/memory` (`200`): `{"entries": [...]}`. Only the `accepted` entries, oldest first;
 each element is exactly an element of `docket pod memory list --json` (the CLI prints a bare
-array; the object wrapper is the one every HTTP route uses). A pod that is not dispatchable is
+array; the object wrapper is the one every HTTP route uses) and is `{id, kind, subject, note,
+status, reason, provenance, stale, evidence}`: `subject` for every kind, `stale` a boolean and
+`evidence` `{"exit": n}`, `{"ok": bool}` or `{}`; there is no `path`, `tool`, `command` or `exit`
+key. A pod that is not dispatchable is
 `404`. Pending and refused entries are not served here.
 
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp",
