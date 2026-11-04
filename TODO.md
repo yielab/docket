@@ -147,7 +147,7 @@ from `main`.
 
 ### P68-1 — A compaction converges on a unit larger than its prompt, and never kills a turn that fits
 
-**Status:** IN PROGRESS 2026-11-04 (D-89 choice 1 accepted; Sonnet worker in an isolated worktree) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-04 (`262f0cc8`; D-89 choice 1; gate green: `test_session_compaction.py`, `test_loop_compaction.py`, tests/integration/agent -k compact, architecture, validate-specs; the real writer session replayed offline converges in 10 rounds, every prompt under 6,000 estimated tokens; session-history 1.13.0, agent-loop 4.6.0) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** decision 1's reproduction (`scratchpad` replay of the writer session: rounds 1-3 reduce, round 4
   summarizes a lone summary, `45650 -> 45650`, `ok=False`).
@@ -206,7 +206,7 @@ from `main`.
 
 ### P68-3 — The writer drafts from the handoff; it does not research again
 
-**Status:** IN PROGRESS 2026-11-04 (D-89 choice 3 accepted; Sonnet worker in an isolated worktree) · **Size:** S · **Model:** Sonnet · **Kind:** data + spec · **After:** —
+**Status:** DONE 2026-11-04 (`b4d62ffb`; D-89 choice 3; role-archetypes 5.10.0; `pod-reach.json` and `pod-fetch.json` re-recorded from a real server; an existing pod keeps its stored role copy, so `web-research` takes the denial only when reapplied) · **Size:** S · **Model:** Sonnet · **Kind:** data + spec · **After:** —
 
 - **Trigger:** decision 3's measurement (writer 23 `fetch`, 246,954 input tokens of 445,209).
 - **Goal:** the `writer` archetype's `denied_tools` becomes `("bash", "fetch")` (`teams/builtin_roles.py` ~180);
@@ -240,7 +240,7 @@ from `main`.
 
 ### P68-5 — The fix docket names for a missing `fetch` is the one that opens it
 
-**Status:** TODO (after P68-1, which owns `agent-loop.spec.md`) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
+**Status:** DONE 2026-11-04 (`1617bd38`; agent-loop 4.7.0, serve-read-api 6.5.0; the `features` list in serve-read-api now points at `FEATURES` and its exact-list test) · **Size:** S · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** P68-1
 
 - **Trigger:** `agent/tools/capability_gap.py` ~56 always says `docket pod set fetchDomains <host>`; for a folder pod
   whose jail is off the fix is `docket setup sandbox on` (`network_posture.fetch_reach`'s `fix`). Found in P67-2.
@@ -255,7 +255,7 @@ from `main`.
 
 ### P68-6 — The research task again, through to a report with sources
 
-**Status:** TODO (after P68-1, P68-2, P68-3; P68-4 if shipped) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+**Status:** TODO (P68-1, P68-2, P68-3 and P68-5 done and installed; needs `web-research` reapplied from the app's `onboard/tack`, so its writer loses `fetch`, and the maintainer's go in Tack's session) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
 
 - **Goal:** P67-5's acceptance, on the installed build (`./install.sh`, service restarted), the user's go given in
   Tack's session: Tack task `4C9BAB` from **Run again**, nobody writing `fetchDomains`.
@@ -791,6 +791,18 @@ from `main`.
 - *Stale `memory/` mentions* in `specs/api/cli-interface.spec.md`, `specs/acceptance/user-stories.md`,
   `specs/functional/agent-lifecycle.spec.md` and `specs/test-framework.md`; `docs/recipes.md` does not mention
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
+
+**Phase 68 (2026-11-04).** Left out of the cards on purpose, or found while merging:
+- *A turn that continues after a refused pre-turn compaction is tested at the unit, not through the model.*
+  `test_loop_compaction.py` asserts `apply_initial_history_compaction() is None` and the `failed` event; an
+  integration test that runs `run_agent_turn` to the model after a refusal is cheap. Trigger: any later
+  edit of `loop_compaction.py` (Phase 66).
+- *Converging on the real writer session takes 10 summarizer rounds* (4 more than the run that failed). A cap on
+  the summary's length would cut it; measure it with the next real run (P68-6) before adding one.
+- *`loop_trace.py` `_trace_compaction` gained a `reason` key* (guard refusals only); Phase 66 cards P66-3 and P66-4
+  that touch that file re-check their locators.
+- *`comment_lint` flags `_resolve_roots` and `_loop_config`* (`hops/application/driver_support.py`) as
+  `long-def-doc`, and six docstrings in `governance/policy.py`; none new.
 
 **Phases 60-62 (2026-11-03).** Left out of the cards on purpose, or found while merging:
 - *`NOT_ENFORCED` wording.* "isolation off" is also what a machine with isolation on and no backend prints

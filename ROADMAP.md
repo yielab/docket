@@ -362,8 +362,8 @@ today:
   (6), `estimateRatio` in `provider-models.json`. P66-7's hosted-model run is not planned; the local
   endpoint is the real run.
 - **Phase 68, D-89 (proposed 2026-11-04):** the four choices in `TODO.md`'s `○ PLANNED` section. (1) the compaction, (2) file content out of the
-  payment and `drop table` patterns and (3) `fetch` taken from the writer were accepted the same day ((2) shipped as
-  P68-2; (1) and (3) are in progress). Open: (4) the search provider, Brave Search API or Tavily.
+  payment and `drop table` patterns and (3) `fetch` taken from the writer were accepted the same day and shipped
+  (P68-1, P68-2, P68-3, P68-5). Open: (4) the search provider, Brave Search API or Tavily, and P68-6, the real run.
 - **Push `develop`.** 148 commits since 2026-11-02 (Phase 58's last waves through Phase 67) are local only
   (`git log origin/develop..develop`); pushing is the maintainer's call.
 - **The implementer's re-sent context** (a fired trigger on `TODO.md`): its measurement spends

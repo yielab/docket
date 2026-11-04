@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A compaction converges on a unit larger than its prompt, and never ends a turn that fits.** A raw unit
+  whose summary prompt does not fit (three or four parallel `fetch` results) is summarized from a projection
+  with each tool result cut and marked, a batch never holds a compaction summary alone, and a pre-turn
+  compaction the guard refuses leaves the history untouched and lets the turn run; a summarizer that fails
+  still ends it. The failure was a research hop dying on `compaction summary did not reduce estimated
+  history size` with a request that fitted the window.
+- **The writer drafts from the handoff.** The `writer` archetype denies `fetch` (it re-read the web every
+  round: 23 calls and 247k of 445k input tokens in one real run) and asks with `consult` for a missing
+  source. A pod keeps the role copy it was made with; reapply to take it.
+- **The fix for a missing `fetch` is the one that opens it.** A folder pod whose jail is not running is told
+  `docket setup sandbox on`, not `docket pod set fetchDomains`.
 - **A file that mentions payments is not a payment.** The free-text clause of the shipped
   `high-risk-payment` and `block-destructive` policies no longer reads what `write` and `edit` put in a
   file, so a report that names Stripe or says "free of charge" no longer waits for approval; running the
