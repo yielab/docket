@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A pod made with a `researcher` (the `respond` blueprint, `docket init`, `POST /pods`,
     `docket pod add researcher`) records the `fetch-hosts` need, so `docket init` and `docket pod
     add` print that the team cannot read the web and the command that changes it, and `needs`
-    serves the not-ready line. No role gets `fetch` and `network` stays as it was.
+    serves the not-ready line. `network` stays as it was.
   - The working-directory line of a `workdir` pod's hop says it is the team's shared folder and
     that the team's output goes there; the `Working folder: <path>` line has been there since
     2026-11-03.
@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A research team reads the web without a host list.** A pod that works in a folder, under an
+  enforced jail, with no `fetchDomains` and no `FETCH_ALLOWED_DOMAINS`, reaches any public host with
+  `fetch`; every other pod keeps its list, `*` stays a `--widen` grant, a private address stays refused
+  and a role with a `send` tool still holds no `fetch`. `GET /pods/<pod>` and `docket pod show --json`
+  carry `webRead` (`{mode, reason, fix}`, `mode` is `open`, `listed` or `none`), every entry of `needs`
+  carries `blocking` (`fetch-hosts` blocks; `search-host` and `isolation` only degrade), a pod with a
+  `researcher` records the three needs, and `features` gains `webRead`. Search is not part of it: search
+  sites turn `fetch` away.
 - **A plan of record decides a pod's pending memory.** `POST /pods/<pod>/memory/<id>` with
   `{"decision": "approve" | "refuse", "reason"?}` does what `docket pod memory approve` and `refuse`
   do and answers the entry in its new status; `refuse` needs a `reason`, as `--reason` does. `404` for

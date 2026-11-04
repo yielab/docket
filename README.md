@@ -80,8 +80,10 @@ docket is not an agent framework you program and not an interactive pair-program
 runs the team your files describe, beside the coding assistant you already use. It has no web UI of
 its own; `/status.json` and `/metrics` feed your own board. Agents use only the tools a role
 allows: read, search and edit files, shell commands (background processes stop when the turn ends)
-and `fetch`, which reads a web page as text from hosts you allow and nowhere else. The
-`web-research` recipe searches through a search site you allow in `fetchDomains` (there is no search tool).
+and `fetch`, which reads a web page as text. A team that works in a folder reads any public host while
+the jail runs; every other team reads only the hosts you allow, and a private address is always refused.
+There is no search tool, and search sites turn bots away, so a research team reads the pages it knows or
+finds linked.
 
 ## What a team can do
 

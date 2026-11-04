@@ -1361,7 +1361,7 @@ docket pod unset pipeline
 
 Implementer as the cheap-tier editor of a strong-tier plan, gated on its verify command with one retry.
 
-**Brings:** 1 member, pipeline `strong-plan-cheap-edit`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline strong-plan-cheap-edit · plugins 0 · skills 0 · settings 0`
+**Brings:** 1 member, pipeline `strong-plan-cheap-edit`. **Summary line:** `roles 0 · policies 0 · members 1 · pipeline strong-plan-cheap-edit · plugins 0 · skills 0 · settings 0 · shape build`
 
 ```bash
 docket init --recipe strong-plan-cheap-edit
@@ -1475,20 +1475,23 @@ Writer are the built-in `analyst` and `writer` roles.
 
 ### Prerequisites
 
-Three things must be in place before the web Researchers can work. All are set by the operator,
+Three things must be in place before the web Researchers can work. A team that works in a folder
+(the `respond` blueprint) needs only the third, isolation: under the jail it reads any public host with
+no list. A team on a repository needs hosts as well. All are set by the operator,
 not by this recipe, and `pod.yaml` declares them as `needs:` so `docket init --recipe` and
 `docket pod update` print which are still missing, each with the one command that fixes it.
 
-1. The hosts whose pages the Researchers may read, and a search site among them (ADR 0036
-   decision 17). `fetchDomains` replaces the pod's list, so give the whole list:
+1. The hosts whose pages the Researchers may read (ADR 0036 decision 17), for a team on a
+   repository or one whose jail does not run. `fetchDomains` replaces the pod's list, so give the whole list:
 
    ```bash
    docket pod set fetchDomains 'html.duckduckgo.com,*.wikipedia.org'
    ```
 
-   `*.wikipedia.org` covers every subdomain but not the apex. A search API with a key is a
-   declared service instead (`kind: service`, added with `docket setup service add`), which also satisfies the
-   search check.
+   `*.wikipedia.org` covers every subdomain but not the apex. A search site is not a search tool:
+   measured on 2026-11-04, DuckDuckGo answered a challenge page to 20 of 20 queries and Bing returned
+   links unrelated to the query. A search API with a key is a declared service instead (`kind:
+   service`, added with `docket setup service add`), which also satisfies the search check.
 
 2. Isolation on, which PDFs need because docket reads them in the jail:
 

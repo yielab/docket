@@ -667,7 +667,13 @@ creates `approvals/<id>.json`.
   tool call is waiting, after `APPROVAL_TIMEOUT` (900 s) at a pipeline approval gate.
 - **Non-interactive runs.** A pod set to `approvalMode refuse` never waits. It returns `approval_unavailable` instead.
 
-**Network.** `fetch` refuses every host until you allow it:
+**Network.** `fetch` refuses every host until you allow it, except for one shape of team. A pod that
+works in a folder (`workspaceKind: workdir`), under an enforced jail (isolation recorded on and a usable
+backend), with no host declared (the machine's list and the pod's `fetchDomains` both empty), reaches any
+public host with no grant; `docket pod show` prints the answer as `Web:`, and `docket setup sandbox on`
+is the one command that opens it on a folder team. A repository pod, a pod whose jail does not run and a
+pod that declares hosts reach the declared hosts only, and a private address stays refused whatever the
+list says. To allow hosts:
 `FETCH_ALLOWED_DOMAINS=docs.python.org,api.github.com` for every pod, or `docket pod set fetchDomains
 docs.python.org,*.wikipedia.org` for one (`*.host` covers subdomains, never the apex; `*` for any public host
 name only with `--widen`). That makes `fetch` the *inspectable*

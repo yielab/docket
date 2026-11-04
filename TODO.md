@@ -570,7 +570,7 @@ from `main`.
 
 ### P67-4 — The prose says what a research team can read
 
-**Status:** TODO (after P67-2) · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** P67-1, P67-2
+**Status:** DONE 2026-11-04 (uncommitted; README names the changed sentence per D-37) · **Size:** S · **Model:** Haiku · **Kind:** docs · **After:** P67-1, P67-2
 
 - **Goal:** every user-facing sentence about `fetch` being off by default gains the open-read case, quoting
   the spec, not paraphrasing it: `README.md` (rg `deny-by-default`), `docs/CONFIGURATION.md`,
@@ -622,8 +622,10 @@ from `main`.
   `specs/functional/agent-lifecycle.spec.md` and `specs/test-framework.md`; `docs/recipes.md` does not mention
   `shape`; the word "adapters" in the `_execution.py` docstring and ADR 0006.
 - *The `web-research` pod's settings fix (2026-11-04).* A pod with a `researcher` records `fetch-hosts` and says it
-  cannot read the web, but no role holds `fetch` until a person names hosts. Superseded the same day by D-88
-  (Phase 67): a folder team under the jail reads any public host; P67-4 rewrites this entry.
+  cannot read the web, but no role holds `fetch` until a person names hosts. Closed the same day by D-88
+  (Phase 67): a folder team under the jail reads any public host (`webRead`); the live `web-research` shows it.
+  What remains is search: `fetch` cannot search (P67-3), so a card ships `services/search.yaml` once the
+  maintainer picks the provider.
 - *The live home's old memory is invisible to the new build* (entries of kind `command` are dropped at the
   first write, as D-86 said); the installed `hn-live` entries are the two tasks of 2026-11-04.
 
