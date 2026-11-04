@@ -139,7 +139,8 @@ from `main`.
 > | --- | --- | --- |
 > | 1 | P68-1 ∥ P68-2 ∥ P68-3 | P68-1 owns `agent/session_compaction.py`, `agent/loop_compaction.py`, `session-history.spec.md`, `agent-loop.spec.md` 37; P68-2 owns `governance/policy.py`, the policy templates, the corpus, `security-gates.spec.md`; P68-3 owns `teams/builtin_roles.py`, `role-archetypes.spec.md` |
 > | 2 | P68-4 (when the provider is chosen) ∥ P68-5 | P68-4 owns the `web-research` recipe and `services/`; P68-5 owns `agent/tools/capability_gap.py`, `hops/application/driver_support.py` `pod_offer`, `serve-read-api.spec.md` |
-> | 3 | P68-6 | the integrator's real run, which also closes P67-5 |
+> | 2b | P68-7 | `agent/session.py`, `session-history.spec.md` requirement 30; before P68-6 |
+| 3 | P68-6 | the integrator's real run, which also closes P67-5 |
 >
 > **Against Phase 66:** P68-1 edits `session_compaction.py`, `loop_compaction.py` and `session-history.spec.md`, which
 > P66-2, P66-3 and P66-4 also edit. Phase 68 wave 1 goes first (a live defect that fails every long research hop);
@@ -228,6 +229,11 @@ from `main`.
 - **Trigger:** P67-3 (`internal-docs/baselines/phase-67/search.md`): DuckDuckGo html and lite answer a challenge to
   20 of 20 queries, Bing returns links unrelated to the query; the P67-5 run's two Bing searches returned
   WhatsApp and Ualá for a question on bedtime-story apps.
+- **Provider constraint (service-client requirements 10-11):** an operation's access is `read` for `GET` and
+  `send` for every other method, and a role that names a `send` tool cannot hold `fetch` (ADR 0036 decision 2).
+  Brave Search's API is a `GET` with a header token, so its operation is `read` and the researcher keeps `fetch`;
+  Tavily's search is a `POST`, so its operation is `send` and the researcher would have to give up `fetch` or the
+  rule would change. This is why the recommendation is Brave.
 - **Goal:** `services/search.yaml` in the `web-research` recipe (`kind: service`, ADR 0036 decision 13), its key in
   the home's secret store set once per machine; the recipe README says how; `needs.SEARCH_HOSTS` stops promising a
   search site, so `search-host` is satisfied by the service only. Then P67-3's 20 queries again, through it.
@@ -237,6 +243,39 @@ from `main`.
   resolves; under open read without the service, `search-host` is not satisfied (today it is, by the `*` reach).
   The measurement: at least 18 of 20 queries with five relevant links, judged by reading, not by counting.
 - **Gate:** the recipe tests; `validate-specs.sh`; the measurement spends the provider's quota, never model tokens.
+
+### P68-7 — A tool result the model has not answered yet is never condensed
+
+**Status:** TODO (D-89 choice 5 proposed; a behaviour change in what the model reads) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** — (before P68-6; owns `agent/session.py`, which P66-3 also edits)
+
+- **Trigger:** the billed runs of 2026-11-04. The P67-5 task's writer made 23 `fetch` calls and the live notes
+  say "the app.com keeps appearing as already seen"; a throwaway two-step run's report lists `the app.com` and
+  `storynory.com` as "no text: response *already seen and omitted*", and its first run made 39 `fetch` calls in 8
+  model calls and died with `cannot start terminal finalization ... within token_budget=100000`. Reproduced
+  offline: `condense_history` on one assistant message with 5 parallel `fetch` calls whose results (25,000
+  characters each) the model has not answered returns 2 whole and 3 `already seen and omitted` notices.
+- **Cause:** `session-history.spec.md` requirement 30 says "the last `keep` **answered** `tool` messages stay
+  whole", but `condense_history` (`agent/session.py` ~370, `_batch_cut` ~322, `HISTORY_KEEP_FULL_RESULTS = 2`,
+  budget 6,000 characters) counts every result, so the results of the round the model is about to read are
+  condensed before it has read them. The notice says "already seen", which is false; the model calls the tool
+  again, fills the turn's token budget and, on the pod with a cap, dies.
+- **Goal:** a result with no assistant message after it (the current round's) stays whole, is not counted toward
+  `keep` or `budget`, and is never replaced by a notice; the rest of requirement 30 (the batches, the low-water
+  mark, the artifact line, the `ERROR:` rule) is unchanged. A request that is then over the window is the request-fit
+  path's job (`reduce_for_fit`), as for any large request.
+- **Non-goals:** the notice text and the `keep`/`budget` constants (P66-3 says what was condensed); the
+  summary compaction (P68-1).
+- **Change:** `agent/session.py` `condense_history`/`_batch_cut`; `session-history.spec.md` requirement 30 (the
+  word "answered" gets its definition); tests `tests/unit/agent/test_session.py` (extend; it already tests
+  `condense_history`).
+- **Acceptance (RED first):**
+  - Unit: one assistant message with 5 parallel `fetch` calls and 5 results of 25,000 characters, then nothing:
+    all 5 whole. Oracle: today 2 whole and 3 notices.
+  - Unit: the same history after an assistant message that follows the results: the results fall under the existing
+    cut (2 whole at most by budget), so the notices appear only once the model has answered.
+  - Unit: determinism and purity as requirement 29 (same input, same bytes; the input is not changed).
+- **Gate:** the unit file; `tests/architecture`; `validate-specs.sh`; `comment_lint.py --check`; the integration
+  files that exercise the request builder (`rg -l condense_history tests`).
 
 ### P68-5 — The fix docket names for a missing `fetch` is the one that opens it
 
@@ -255,7 +294,7 @@ from `main`.
 
 ### P68-6 — The research task again, through to a report with sources
 
-**Status:** TODO (P68-1, P68-2, P68-3 and P68-5 done and installed; needs `web-research` reapplied from the app's `onboard/tack`, so its writer loses `fetch`, and the maintainer's go in Tack's session) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
+**Status:** TODO (P68-1, P68-2, P68-3 and P68-5 done and installed; P68-7 first; needs `web-research` reapplied from the app's `onboard/tack`, so its writer loses `fetch`, and the maintainer's go in Tack's session) · **Size:** M · **Model:** Opus (integrator) · **Kind:** real run
 
 - **Goal:** P67-5's acceptance, on the installed build (`./install.sh`, service restarted), the user's go given in
   Tack's session: Tack task `4C9BAB` from **Run again**, nobody writing `fetchDomains`.
@@ -803,6 +842,20 @@ from `main`.
   that touch that file re-check their locators.
 - *`comment_lint` flags `_resolve_roots` and `_loop_config`* (`hops/application/driver_support.py`) as
   `long-def-doc`, and six docstrings in `governance/policy.py`; none new.
+
+- *A turn that reads many pages can run out of its token budget before its landing fits.* A throwaway run's
+  researcher used 86,021 of `token_budget=100000` in 8 model calls (39 `fetch`) and ended `cannot start terminal
+  finalization ... estimated input 22406 + output reserve 8192, remaining 13979`, losing everything it read
+  (`agent/loop_budget.py` `prospective_budget_error` ~139, `agent/loop.py` `enter_landing` ~373). Probably the
+  re-fetching P68-7 removes; trigger: a researcher turn still ends this way after P68-7, then reserve the
+  landing's input before a tool round starts.
+- *`docket init <pod> --blueprint respond` prints `needs fetch-hosts ... -> docket setup sandbox on` and then
+  records isolation on* (a throwaway home, 2026-11-04): `pod show` says the web is open right after. The line is
+  printed before the jail is recorded; pod-blueprints requirement 16 says it is printed after. Check the order in
+  `interfaces/cli/commands/` init.
+- *A pod made with `docket init <name> --blueprint respond` from inside a repository takes that directory as its
+  folder* (the throwaway run's writer wrote `informe.md` into the working tree). Probably as designed (`location`
+  defaults to the current directory); say so in `init --help`, or refuse a folder inside a git repository.
 
 **Phases 60-62 (2026-11-03).** Left out of the cards on purpose, or found while merging:
 - *`NOT_ENFORCED` wording.* "isolation off" is also what a machine with isolation on and no backend prints
