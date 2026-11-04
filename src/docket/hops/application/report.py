@@ -437,6 +437,7 @@ def pod_report(project: str) -> dict[str, Any]:
         "pipeline": _pipeline_report(project),
         "network": _network_report(project),
         "fetchDomains": list(settings.fetch_domains),
+        "webRead": _web_read(project),
         "needs": [line.wire() for line in _pod_needs(project, settings)],
         "delivers": _delivers(project),
         "methods": _methods(project, settings),
@@ -458,6 +459,12 @@ def _budget_fields(project: str, settings: _pod_settings.PodSettings) -> dict[st
         "window": settings.budget_window,
         "windowStart": None if since is None else since.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+
+def _web_read(project: str) -> dict[str, str]:
+    """How the pod's members read the web: ``{mode, reason, fix}`` from ``fetch_reach``."""
+    reach = _network_posture.fetch_reach(project)
+    return {"mode": reach.mode, "reason": reach.reason, "fix": reach.fix}
 
 
 def _pod_needs(project: str, settings: _pod_settings.PodSettings) -> tuple[_needs.NeedLine, ...]:

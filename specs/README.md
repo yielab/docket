@@ -96,7 +96,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Specification | Version | Status |
 | ------------- | ------- | ------ |
 | Agent Lifecycle | 4.1.0 | Complete |
-| Agent Loop | 4.4.0 | Implemented and live |
+| Agent Loop | 4.5.0 | Implemented and live |
 | API Keys | 2.3.0 | Complete |
 | Audit | 3.4.0 | Implemented |
 | Config Format | 2.11.0 | Implemented |
@@ -104,10 +104,10 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | Model Profiles | 7.1.0 | Complete |
 | Observability Export | 3.3.0 | Implemented and live |
 | Pipeline Format | 4.8.0 | Implemented |
-| Pod Blueprints | 4.8.0 | Implemented |
+| Pod Blueprints | 4.9.0 | Implemented |
 | Pod Dispatch | 12.7.0 | Implemented |
 | Role Archetypes | 5.9.0 | Implemented |
-| Security Gates | 3.14.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
+| Security Gates | 3.15.0 | Implemented (gate always on; init turns isolation on where a backend is detected) |
 | Service Client | 1.4.0 | Implemented in part (the document, the tools, the call, the writes handling and the OpenAPI 3 or 2 import; not proven against a real service) |
 | Pod Records | 1.9.0 | Implemented in part (the store, the document, the CLI, the agent tools and the two HTTP read routes; not proven against a live model) |
 | Session History | 1.12.0 | Implemented and live |
@@ -119,10 +119,10 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | MCP Client | 3.2.0 | Implemented and wired to the live turn path |
 | Runtime Library | 3.0.0 | Implemented (artifact-tested; **not published to any index**) |
 | MCP Server | 3.0.0 | Implemented |
-| CLI JSON Shapes | 5.6.0 | Complete |
+| CLI JSON Shapes | 5.7.0 | Complete |
 | docket-meta schema | 5.10.0 | Complete |
 | Docket Store | 3.5.0 | Implemented |
-| Operator API | 7.28.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.29.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.1 | Implemented |
 | Serve Read API | 6.4.0 | Stable |
 | Adoption Benchmark | 2.3.1 | Implemented |

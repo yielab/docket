@@ -1,0 +1,61 @@
+{
+  "webRead": {
+    "mode": "open",
+    "reason": "a folder team under the jail reads any public host",
+    "fix": ""
+  },
+  "needs": [
+    {
+      "kind": "fetch-hosts",
+      "name": "fetch-hosts",
+      "fix": "",
+      "satisfied": true,
+      "blocking": true
+    },
+    {
+      "kind": "search-host",
+      "name": "search-host",
+      "fix": "",
+      "satisfied": true,
+      "blocking": false
+    },
+    {
+      "kind": "isolation",
+      "name": "isolation",
+      "fix": "",
+      "satisfied": true,
+      "blocking": false
+    }
+  ],
+  "researcherCapabilities": {
+    "kinds": [
+      "exec",
+      "read",
+      "write"
+    ],
+    "tools": [
+      "bash",
+      "consult",
+      "edit",
+      "fetch",
+      "glob",
+      "grep",
+      "process_output",
+      "process_stop",
+      "read",
+      "skill",
+      "write"
+    ],
+    "records": {
+      "write": [],
+      "query": false
+    },
+    "fetchDomains": [
+      "*"
+    ],
+    "notComputed": [
+      "mcp",
+      "service"
+    ]
+  }
+}

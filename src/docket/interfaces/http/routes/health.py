@@ -41,6 +41,7 @@ FEATURES: tuple[str, ...] = (
     "podResume",
     "memoryStatus",
     "memoryDecide",
+    "webRead",
 )
 
 

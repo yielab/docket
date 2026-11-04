@@ -25,23 +25,26 @@ SEARCH_HOSTS = ("html.duckduckgo.com", "lite.duckduckgo.com", "www.bing.com", "w
 
 @dataclass(frozen=True)
 class NeedLine:
-    """One need: whether it is met and, when not, the one command that meets it. ``wire()`` is the
-    shape ``docket pod show --json`` serves; ``render()`` is the line ``init``/``pod update``/
-    ``pod show`` print."""
+    """One need: met or not and, when not, the one command that meets it; *blocking* says an unmet
+    need stops the work (``fetch-hosts``) rather than degrades it. ``wire()`` is the ``pod show
+    --json`` shape, ``render()`` the line ``init``/``pod update``/``pod show`` print."""
 
     kind: str
     name: str
     satisfied: bool
     text: str
     fix: str = ""
+    blocking: bool = False
 
     def wire(self) -> dict[str, Any]:
-        """``{kind, name, fix, satisfied}``: ``name`` equals ``kind`` until a need is named per host."""
+        """``{kind, name, fix, satisfied, blocking}``: ``name`` equals ``kind`` until a need is named
+        per host."""
         return {
             "kind": self.kind,
             "name": self.name,
             "fix": self.fix,
             "satisfied": self.satisfied,
+            "blocking": self.blocking,
         }
 
     def render(self) -> str:
@@ -76,16 +79,21 @@ def _declares_search(project: str) -> bool:
     return False
 
 
-def _fetch_line(project: str, hosts: tuple[str, ...]) -> NeedLine:
-    if hosts:
-        noun = "host" if len(hosts) == 1 else "hosts"
-        return NeedLine(FETCH_HOSTS, FETCH_HOSTS, True, f"ready ({len(hosts)} {noun})")
+def _fetch_line(reach: _network_posture.FetchReach) -> NeedLine:
+    if reach.hosts:
+        if _pod_settings.FETCH_ANY in reach.hosts:
+            ready = "ready (any public host)"
+        else:
+            noun = "host" if len(reach.hosts) == 1 else "hosts"
+            ready = f"ready ({len(reach.hosts)} {noun})"
+        return NeedLine(FETCH_HOSTS, FETCH_HOSTS, True, ready, blocking=True)
     return NeedLine(
         FETCH_HOSTS,
         FETCH_HOSTS,
         False,
         "the researchers cannot read the web",
-        f"docket pod set fetchDomains <hosts> --pod {project}",
+        reach.fix,
+        blocking=True,
     )
 
 
@@ -105,29 +113,22 @@ def _search_line(project: str, hosts: tuple[str, ...]) -> NeedLine:
 def _isolation_line() -> NeedLine:
     if _network_posture.jail_enforces():
         return NeedLine(ISOLATION, ISOLATION, True, "ready")
-    if not _fleet.get_isolation_enabled():
-        return NeedLine(
-            ISOLATION,
-            ISOLATION,
-            False,
-            "PDFs are not read, isolation is off",
-            "docket setup sandbox on",
-        )
+    why = "isolation is off" if not _fleet.get_isolation_enabled() else "no sandbox backend"
     return NeedLine(
         ISOLATION,
         ISOLATION,
         False,
-        "PDFs are not read, no sandbox backend",
-        "docket setup sandbox backend docker",
+        f"PDFs, and the web on a folder team, are not read: {why}",
+        _network_posture.isolation_fix(),
     )
 
 
 def readiness(project: str, needs: tuple[str, ...]) -> tuple[NeedLine, ...]:
     """One line per name in *needs*, in the order given, for pod *project* as it is now."""
-    hosts = _pod_settings.effective_fetch_domains(project)
+    reach = _network_posture.fetch_reach(project)
     builders = {
-        FETCH_HOSTS: lambda: _fetch_line(project, hosts),
-        SEARCH_HOST: lambda: _search_line(project, hosts),
+        FETCH_HOSTS: lambda: _fetch_line(reach),
+        SEARCH_HOST: lambda: _search_line(project, reach.hosts),
         ISOLATION: _isolation_line,
     }
     return tuple(builders[need]() for need in needs)

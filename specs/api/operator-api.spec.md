@@ -1,6 +1,6 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.28.0
+**Version**: 7.29.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
 **Last Updated**: 2026-11-04
 
@@ -437,6 +437,16 @@ once the operator recorded the grant, `security-gates.spec.md` "Network egress a
 tool"); `[]` when it declares none. It does not repeat the machine's `FETCH_ALLOWED_DOMAINS`, which
 is every pod's. A client probes for it with the `podFetch` feature. `POST /pods/<p>/apply` and `docket
 pod update` refuse a `*` entry; only `docket pod set fetchDomains '*' --widen` writes it.
+The same object carries `webRead`, how the pod's members read the web, from the one function that
+decides it (`teams/network_posture.py` `fetch_reach`): `{"mode": "open" | "listed" | "none",
+"reason": string, "fix": string}`. `open` is a folder pod under an enforced jail with no host
+declared (any public host; `security-gates.spec.md` "Network egress and the `fetch` tool"),
+`listed` is a declared list (the machine's plus the pod's, or `*` once the operator recorded the
+grant), and `none` is a pod whose members hold no `fetch`. `reason` is one sentence a person can read
+and `fix` is the one command that opens the web when `mode` is `none` (`docket setup sandbox on` or
+`docket setup sandbox backend docker` for a folder pod whose jail is not running, `docket pod set
+fetchDomains <host> --pod <pod>` for a repository pod); `""` otherwise. A client quotes `reason` and
+`fix` instead of spelling docket's commands. A client probes for it with the `webRead` feature.
 
 Every row of `GET /pods` and the `GET /pods/<p>` object also carry `paused` (boolean, always
 present). A pod is paused while its Lead's meta holds `paused: true`, which a spent budget sets
@@ -483,8 +493,11 @@ when the pod declares record sets). `methods` is every pipeline a task may name 
 claim cannot disagree; `missingRoles` names the roles of its steps the pod's roster cannot fill (a
 task naming that method is refused at claim), `default` marks the method whose file is the pod's
 bound pipeline, and a file that does not load carries an `error` string. `needs` is each need the
-pod's applied recipes recorded as `{kind, name, fix, satisfied}`, recomputed on every call. A client
-probes for the three with the `podContract` feature.
+pod's applied recipes recorded as `{kind, name, fix, satisfied, blocking}`, recomputed on every call;
+`blocking` says whether the need, when unmet, stops the work (`fetch-hosts`: the researchers read
+nothing) or only degrades it (`search-host`: pages the agent knows still read; `isolation`: every
+format but PDF still reads), a fact of the kind, not of the pod. A client probes for the three with
+the `podContract` feature.
 Each entry of `members` also carries `capabilities`, what its role can reach after the role's and the
 pod's denials, computed by `registry_for_role` over the tools docket declares (the built-ins and the
 pod's record tools):
@@ -498,8 +511,10 @@ pod's record tools):
 
 When the member holds `fetch`, the object also carries `fetchDomains`, the hosts that `fetch`
 reaches: the machine's `FETCH_ALLOWED_DOMAINS` plus the pod's own list (same entry forms as above);
-a member whose role denies `fetch`, or a pod with no host at all, holds no `fetch` and carries no
-`fetchDomains` key. `tools` lists `fetch` only in the first case.
+a member whose role denies `fetch`, or a pod with no host at all that is not a folder pod under an
+enforced jail, holds no `fetch` and carries no `fetchDomains` key; a folder pod under the jail with
+no host declared holds `fetch` and carries `fetchDomains: ["*"]` (any public host). `tools` lists
+`fetch` only in the first case.
 
 `kinds` is the distinct tool kinds (`read`, `write`, `exec`, `send`, `record`) of `tools`, the tool names the
 role holds; `records.write` names the sets it can add to and `records.query` says whether it holds

@@ -1,10 +1,10 @@
 # Agent Loop Specification
 
-**Version**: 4.4.0
+**Version**: 4.5.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-04
 
 ## Purpose
 
@@ -767,9 +767,10 @@ This specification does NOT cover:
 95. The trace record of a `tool_result` whose text carries the artifact line of requirement 91
     **MUST** record the path as `artifact` in its payload.
 83. `builtin_registry(project)` **MUST** register `fetch` only while the member's allowed set is
-    non-empty, read when the registry is built: the machine's `FETCH_ALLOWED_DOMAINS` plus the
-    `fetchDomains` of the pod *project* names (`security-gates.spec.md` "Network egress and the
-    `fetch` tool", requirement 2). The registered tool's handler reaches that set only and passes it
+    non-empty, read when the registry is built from `teams.network_posture.fetch_reach`: the
+    machine's `FETCH_ALLOWED_DOMAINS` plus the `fetchDomains` of the pod *project* names, or any
+    public host (`*`) for a pod that works in a folder, under an enforced jail, with neither
+    declared (`security-gates.spec.md` "Network egress and the `fetch` tool", requirement 2). The registered tool's handler reaches that set only and passes it
     to `fetch_url`. A page arrives as text, and a PDF as the text of its pages: the handler refuses
     a URL that carries a credential first, then hands a `FetchedPdf` that `fetch_url` returns to
     `pdf_text`, which parses it in the turn's jail (isolation on, a usable backend, the turn's

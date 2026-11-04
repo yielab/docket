@@ -1,11 +1,11 @@
 # Security Gates Specification
 
-**Version**: 3.14.0
+**Version**: 3.15.0
 **Status**: Implemented. Every tool call a docket turn makes passes one gate (the command
 classifier plus `pre_tool_call` policies); approvals live in one store, each backed by an escalation answered over CLI, HTTP,
 MCP and Telegram. `docket init` turns the exec jail on where a backend is detected; it fails
 closed when on without a usable backend.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-04
 
 ## Purpose
 
@@ -1134,7 +1134,7 @@ material, may be read as saying otherwise.
      bare `*` in `FETCH_ALLOWED_DOMAINS` is ignored). The entries written as one host name, with no
      `*`, are the set's **exact** entries; a host a wildcard matches is not an exact one (the
      address rule below). A host not in the set **MUST** be refused before any socket opens; `fetch` does not reach everywhere because egress is otherwise open, an
-     operator opts a domain in. `fetch_url` takes the set as an argument and reads no pod or
+     operator opts a domain in, except for open read (below). `fetch_url` takes the set as an argument and reads no pod or
      environment itself (`platform` imports nothing above it); one matcher serves the call and the
      redirect guard.
    - **A pod's hosts.** The pod setting `fetchDomains` (comma-separated entries as above, `docket
@@ -1149,6 +1149,22 @@ material, may be read as saying otherwise.
      fetchDomains` to a list without `*`, or `pod unset fetchDomains`, removes the grant and audits
      `pod.fetch_narrow` (only when a grant existed). Unreadable pod settings leave a member the
      machine's list alone.
+   - **Open read, by shape and not by list.** A pod that works in a folder (`workspaceKind:
+     workdir`), under an enforced jail (`jail_enforces()`: isolation recorded on and a usable
+     backend), with no host declared (the machine's list and the pod's `fetchDomains` both empty),
+     reaches any public host with no grant: `teams.network_posture.fetch_reach` answers `open` and
+     its set is `*`. The reason is the rule of two: web content is untrusted and a GET can leak in its
+     URL, so the posture is safe only while no private data is in reach; a folder pod has no
+     repository and the jail keeps `bash` off the rest of the host. The address rule below applies
+     unchanged (`*` is not an exact entry, so a private address stays refused). Every other pod keeps
+     its list: a repository pod, a pod whose jail does not run, or a pod that declares hosts reaches
+     the declared hosts only (a declared list narrows a folder pod: the operator's choice wins), and
+     `*` stays the `--widen` grant. `deniedTools: fetch` removes `fetch` from a pod whatever
+     `fetch_reach` answers, and a role that names a `send` tool cannot hold `fetch` (ADR 0036
+     decision 2: `check.send_conflicts` refuses it at apply, and the registry's allow-list leaves it
+     out at run time), open read changing neither. Residual risk: an injected page can make the
+     agent put the task text, the pod's memory or its folder's files in a GET URL; for a folder pod
+     that is the research itself. This is the risk of the "Known limits" bullet, not a new channel.
    - **A response size cap** (`FETCH_MAX_RESPONSE_BYTES`, default 200,000). It bounds what the
      model reads: the bytes of a text body, or the characters of a page's text once converted
      (the markup of an HTML page does not count against it; the next bullet and "A page arrives as
@@ -1904,7 +1920,9 @@ $ git clone https://anywhere.example/repo.git
   arguments passed through `redact` first.
 - A default install (`FETCH_ALLOWED_DOMAINS` unset and no pod `fetchDomains`) **MUST** leave `fetch`
   unable to reach any host and **MUST NOT** offer it to the model at all: the registry leaves
-  `fetch` out while the member's allowed set is empty (agent-loop.spec.md requirement 83).
+  `fetch` out while the member's allowed set is empty (agent-loop.spec.md requirement 83), except
+  for a pod in a folder under an enforced jail, whose set is any public host (open read,
+  requirement 2).
 - The escape matrix **MUST** pass on every backend the host has (landlock, docker when its daemon
   answers, seatbelt on macOS; a missing backend skips with a reason), on Linux and macOS in CI. It
   builds every jailed command through `jail_launch`, keeps every protected path outside every temp

@@ -30,12 +30,10 @@ SUBJECT = "docket.teams.apply.needs"
 RECIPES_DIR = _templates.RECIPES_DIR
 runner = CliRunner()
 
-FETCH_NOT_READY = "needs fetch-hosts: the researchers cannot read the web -> docket pod set fetchDomains <hosts> --pod demo"
+FETCH_NOT_READY = "needs fetch-hosts: the researchers cannot read the web -> docket pod set fetchDomains <host> --pod demo"
 SEARCH_NOT_READY = "needs search-host: no search site is allowed -> docket pod set fetchDomains 'html.duckduckgo.com' --pod demo"
-ISOLATION_OFF = "needs isolation: PDFs are not read, isolation is off -> docket setup sandbox on"
-NO_BACKEND = (
-    "needs isolation: PDFs are not read, no sandbox backend -> docket setup sandbox backend docker"
-)
+ISOLATION_OFF = "needs isolation: PDFs, and the web on a folder team, are not read: isolation is off -> docket setup sandbox on"
+NO_BACKEND = "needs isolation: PDFs, and the web on a folder team, are not read: no sandbox backend -> docket setup sandbox backend docker"
 
 
 def _needs_lines(output: str) -> list[str]:
@@ -224,20 +222,23 @@ def test_pod_show_json_carries_the_three_needs_the_recipe_declared(
         {
             "kind": "fetch-hosts",
             "name": "fetch-hosts",
-            "fix": "docket pod set fetchDomains <hosts> --pod demo",
+            "fix": "docket pod set fetchDomains <host> --pod demo",
             "satisfied": False,
+            "blocking": True,
         },
         {
             "kind": "search-host",
             "name": "search-host",
             "fix": "docket pod set fetchDomains 'html.duckduckgo.com' --pod demo",
             "satisfied": False,
+            "blocking": False,
         },
         {
             "kind": "isolation",
             "name": "isolation",
             "fix": "docket setup sandbox on",
             "satisfied": False,
+            "blocking": False,
         },
     ]
 

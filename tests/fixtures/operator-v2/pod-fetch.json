@@ -336,12 +336,32 @@
     "fetchDomains": [
       "docs.python.org"
     ],
+    "webRead": {
+      "mode": "listed",
+      "reason": "reads docs.python.org",
+      "fix": ""
+    },
     "needs": [
       {
         "kind": "fetch-hosts",
         "name": "fetch-hosts",
         "fix": "",
-        "satisfied": true
+        "satisfied": true,
+        "blocking": true
+      },
+      {
+        "kind": "search-host",
+        "name": "search-host",
+        "fix": "docket pod set fetchDomains 'docs.python.org,html.duckduckgo.com' --pod research",
+        "satisfied": false,
+        "blocking": false
+      },
+      {
+        "kind": "isolation",
+        "name": "isolation",
+        "fix": "",
+        "satisfied": true,
+        "blocking": false
       }
     ],
     "delivers": [

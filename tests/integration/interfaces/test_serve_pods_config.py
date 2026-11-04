@@ -341,6 +341,23 @@ def test_the_pod_reach_answers_are_the_recorded_fixture(server: str, tmp_path: P
     assert actual == recorded
 
 
+def test_the_web_read_answer_is_the_recorded_fixture(server: str, tmp_path: Path) -> None:
+    _folder_pod(server)
+    detail = _get(f"{server}/pods/research")[1]
+    researcher = next(m for m in detail["members"] if m["role"] == "researcher")
+    actual = {
+        "webRead": detail["webRead"],
+        "needs": detail["needs"],
+        "researcherCapabilities": researcher["capabilities"],
+    }
+    assert "webRead" in _get(f"{server}/status.json")[1]["features"]
+    if record := os.environ.get("OPERATOR_RECORD_DIR"):
+        Path(record, "pod-web-read.json").write_text(json.dumps(actual, indent=2) + "\n", "utf-8")
+        return
+    recorded = json.loads((_FIXTURES / "pod-web-read.json").read_text(encoding="utf-8"))
+    assert actual == recorded
+
+
 @pytest.mark.parametrize("jail_probes", [{"landlock": False, "seatbelt": False, "docker": False}])
 def test_network_is_not_enforced_without_a_backend(server: str) -> None:
     _folder_pod(server)
@@ -375,10 +392,30 @@ def test_a_pod_that_declares_a_host_offers_fetch_to_the_members_that_may_hold_it
     assert "podFetch" in _get(f"{server}/status.json")[1]["features"]
 
 
-def test_a_pod_without_hosts_declares_none_and_holds_no_fetch(server: str) -> None:
+def test_a_folder_pod_under_the_jail_declares_no_host_and_reads_openly(server: str) -> None:
     _folder_pod(server)
     detail = _get(f"{server}/pods/research")[1]
     assert detail["fetchDomains"] == []
+    assert detail["webRead"]["mode"] == "open"
+    held = {
+        m["role"]: m["capabilities"]
+        for m in detail["members"]
+        if "fetch" in m["capabilities"]["tools"]
+    }
+    assert "researcher" in held
+    assert "actor" not in held
+    assert all(caps["fetchDomains"] == ["*"] for caps in held.values())
+    assert "webRead" in _get(f"{server}/status.json")[1]["features"]
+
+
+@pytest.mark.parametrize("jail_probes", [{"landlock": False, "seatbelt": False, "docker": False}])
+def test_a_folder_pod_without_a_backend_holds_no_fetch_and_says_how_to_open_it(
+    server: str,
+) -> None:
+    _folder_pod(server)
+    detail = _get(f"{server}/pods/research")[1]
+    assert detail["webRead"]["mode"] == "none"
+    assert detail["webRead"]["fix"] == "docket setup sandbox backend docker"
     assert all("fetch" not in m["capabilities"]["tools"] for m in detail["members"])
     assert all("fetchDomains" not in m["capabilities"] for m in detail["members"])
 

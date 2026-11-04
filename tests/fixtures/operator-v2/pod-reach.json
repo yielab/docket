@@ -49,6 +49,7 @@
           ],
           "tools": [
             "consult",
+            "fetch",
             "glob",
             "grep",
             "read",
@@ -58,6 +59,9 @@
             "write": [],
             "query": false
           },
+          "fetchDomains": [
+            "*"
+          ],
           "notComputed": [
             "mcp",
             "service"
@@ -79,6 +83,7 @@
           ],
           "tools": [
             "consult",
+            "fetch",
             "glob",
             "grep",
             "read",
@@ -88,6 +93,9 @@
             "write": [],
             "query": false
           },
+          "fetchDomains": [
+            "*"
+          ],
           "notComputed": [
             "mcp",
             "service"
@@ -113,6 +121,7 @@
             "bash",
             "consult",
             "edit",
+            "fetch",
             "glob",
             "grep",
             "process_output",
@@ -125,6 +134,9 @@
             "write": [],
             "query": false
           },
+          "fetchDomains": [
+            "*"
+          ],
           "notComputed": [
             "mcp",
             "service"
@@ -148,6 +160,7 @@
           "tools": [
             "consult",
             "edit",
+            "fetch",
             "glob",
             "grep",
             "read",
@@ -158,6 +171,9 @@
             "write": [],
             "query": false
           },
+          "fetchDomains": [
+            "*"
+          ],
           "notComputed": [
             "mcp",
             "service"
@@ -349,12 +365,32 @@
       "enforced": true
     },
     "fetchDomains": [],
+    "webRead": {
+      "mode": "open",
+      "reason": "a folder team under the jail reads any public host",
+      "fix": ""
+    },
     "needs": [
       {
         "kind": "fetch-hosts",
         "name": "fetch-hosts",
-        "fix": "docket pod set fetchDomains <hosts> --pod research",
-        "satisfied": false
+        "fix": "",
+        "satisfied": true,
+        "blocking": true
+      },
+      {
+        "kind": "search-host",
+        "name": "search-host",
+        "fix": "",
+        "satisfied": true,
+        "blocking": false
+      },
+      {
+        "kind": "isolation",
+        "name": "isolation",
+        "fix": "",
+        "satisfied": true,
+        "blocking": false
       }
     ],
     "delivers": [

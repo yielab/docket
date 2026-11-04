@@ -178,7 +178,7 @@ class TestPodReportNeeds:
 
             assert pod_report.pod_report("demo")["needs"] == []
 
-    def test_each_recorded_need_has_exactly_the_four_wire_keys(self, tmp_path: Path) -> None:
+    def test_each_recorded_need_has_exactly_the_five_wire_keys(self, tmp_path: Path) -> None:
         with seed_empty_home(tmp_path):
             build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
             _fleet.meta_set("demo-lead", "needs", "fetch-hosts,search-host")
@@ -187,8 +187,20 @@ class TestPodReportNeeds:
             needs = pod_report.pod_report("demo")["needs"]
 
         assert needs == [
-            {"kind": "fetch-hosts", "name": "fetch-hosts", "fix": "", "satisfied": True},
-            {"kind": "search-host", "name": "search-host", "fix": "", "satisfied": True},
+            {
+                "kind": "fetch-hosts",
+                "name": "fetch-hosts",
+                "fix": "",
+                "satisfied": True,
+                "blocking": True,
+            },
+            {
+                "kind": "search-host",
+                "name": "search-host",
+                "fix": "",
+                "satisfied": True,
+                "blocking": False,
+            },
         ]
 
 

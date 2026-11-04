@@ -300,9 +300,12 @@ Options weighed:
     `*.`) plus its pod's list; the redirect guard holds to the same set. `*` alone means any host,
     and only `docket pod set fetchDomains '*' --widen` writes it: it says what opens, asks `[y/N]`,
     records and audits the grant, as decision 12 does; `pod update` and the HTTP apply never write
-    it. `fetch` stays a GET with no headers, body or token. A member's `capabilities.tools` lists
-    `fetch` only when that set is not empty and its role does not deny it, and
-    `capabilities.fetchDomains` lists the set. There is no search tool: a search site is a host
+    it. A pod that works in a folder, under an enforced jail, with no host declared reads any
+    public host with no grant (open read, amended by D-88): the rule of two, since a folder pod has
+    no repository and the jail keeps `bash` off the rest of the host; every other pod keeps its
+    list, and `*` stays `--widen` only. `fetch` stays a GET with no headers, body or token. A
+    member's `capabilities.tools` lists `fetch` only when that set is not empty and its role does
+    not deny it, and `capabilities.fetchDomains` lists the set. There is no search tool: a search site is a host
     (`html.duckduckgo.com`), and a search API is a declared service (decision 13).
 
 *Cards:* Phase 61, P61-2 on `TODO.md`.

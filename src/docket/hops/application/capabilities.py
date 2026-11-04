@@ -14,7 +14,7 @@ from docket.agent.tools import records_tools as _records_tools
 from docket.hops.application.builtin_tools import builtin_registry
 from docket.kernel.ports import records as _pod_records
 from docket.kernel.records import RECORDS_QUERY_TOOL, records_tool_name
-from docket.teams import pod_settings as _pod_settings
+from docket.teams import network_posture as _network_posture
 from docket.teams import records as _records
 from docket.teams import role_composer as _role_composer
 
@@ -30,7 +30,7 @@ def member_capabilities(project: str, role: str) -> dict[str, Any]:
     held = _role_composer.registry_for_role(registry, role, project)
     names = set(held.names())
     reach = (
-        {"fetchDomains": list(_pod_settings.effective_fetch_domains(project))}
+        {"fetchDomains": list(_network_posture.fetch_reach(project).hosts)}
         if "fetch" in names
         else {}
     )

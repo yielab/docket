@@ -389,16 +389,16 @@ def provision_members(
 
 
 def record_reading_needs(project: str) -> bool:
-    """Record ``fetch-hosts`` on the Lead's ``needs`` when a ``researcher`` is in the pod, so the
-    pod says from its creation that it cannot read the web until a person names hosts. Writes no
-    ``fetchDomains`` and no network setting; True when the need is recorded after this call."""
+    """Record the three needs ``web-research`` declares on the Lead's ``needs`` when a ``researcher``
+    is in the pod; writes no ``fetchDomains`` or network setting. True when they are recorded."""
     members = pod.members_of([a.id for a in _fleet.list_agents()], project)
     if not any(role == "researcher" for _mid, role, _idx in members):
         return False
     lead_id = pod.member_id(project, "lead")
     recorded = [n for n in (_fleet.meta_get(lead_id, "needs", "") or "").split(",") if n]
-    if _needs.FETCH_HOSTS not in recorded:
-        _fleet.meta_set(lead_id, "needs", ",".join((*recorded, _needs.FETCH_HOSTS)))
+    merged = list(dict.fromkeys((*recorded, *_needs.NEEDS)))
+    if merged != recorded:
+        _fleet.meta_set(lead_id, "needs", ",".join(merged))
     return True
 
 

@@ -1,6 +1,6 @@
 # CLI JSON Output Shapes
 
-**Version**: 5.6.0
+**Version**: 5.7.0
 **Status**: Complete. The shapes were checked against the commands run with `--json` in a throwaway `DOCKET_HOME` and against their code; shapes that need a live run or a hand-built state (run records, pending approvals) were checked against the code alone.
 **Last Updated**: 2026-11-03
 
@@ -320,8 +320,9 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
   "network":      { "mode": "open | none", "scope": "default | global | pod", "enforced": "boolean (true only when mode is none, isolation is on and a sandbox backend exists)" },
   "fetchDomains": ["string (the hosts the pod itself declares for `fetch`: `host`, `*.host` or `*` (any host name); [] when none, the machine's FETCH_ALLOWED_DOMAINS not included)"],
   "needs": [
-    { "kind": "fetch-hosts | search-host | isolation", "name": "string (equal to kind today)", "fix": "string (the one command that meets the need; empty when satisfied)", "satisfied": "boolean (computed as the pod is now)" }
+    { "kind": "fetch-hosts | search-host | isolation", "name": "string (equal to kind today)", "fix": "string (the one command that meets the need; empty when satisfied)", "satisfied": "boolean (computed as the pod is now)", "blocking": "boolean (true when the need, unmet, stops the work: fetch-hosts; false when it only degrades it: search-host, isolation)" }
   ],
+  "webRead":      { "mode": "open | listed | none (open: a folder pod under an enforced jail reads any public host; listed: a declared list; none: no fetch)", "reason": "string (one sentence)", "fix": "string (the one command that opens the web when mode is none; empty otherwise)" },
   "budget":       { "tokens": "integer | null (the Lead's budgetTokens)", "used": "integer (counted tokens over the window)", "window": "none | day | week", "windowStart": "ISO-8601 UTC string | null (null for none)" },
   "delivers": ["branch | report | records (what a task on this pod hands back; a list, so a new kind is additive)"],
   "methods": [
@@ -334,7 +335,8 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
 ```
 
 `needs` lists what the pod's applied recipes said their work needs, in the order first recorded,
-recomputed on every call; `[]` when none is recorded.
+recomputed on every call; `[]` when none is recorded. `docket pod show` prints `Web: <reason>` (and
+`-> <fix>` when `webRead.mode` is `none`) from `webRead`.
 
 `delivers` is `["branch"]` for a pod with a codebase, `["report"]` for a pod with a work folder, and
 ends with `"records"` when the pod declares at least one record set. `methods` lists every pipeline a

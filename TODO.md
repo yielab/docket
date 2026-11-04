@@ -414,7 +414,7 @@ from `main`.
 - **Gate:** the phase-close list; the full suite once at the last merge.
 
 
-## ○ PHASE 67 PLANNED — a research team reads the web without anyone writing it a host list (D-88, accepted 2026-11-04)
+## ▶ PHASE 67 ACTIVE — a research team reads the web without anyone writing it a host list (D-88, accepted 2026-11-04)
 
 > **Trigger (the maintainer's request, with a reproduction).** Tack task `4C9BAB` ("Anliza app similares",
 > team `web-research`) has ended **Not started** eight times: Tack's `NoWeb` gate reads `network: none` and no
@@ -470,7 +470,7 @@ from `main`.
 
 ### P67-1 — A folder pod under an enforced jail reads any public host
 
-**Status:** TODO · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** DONE 2026-11-04 (uncommitted; gate green: `test_fetch_reach.py` 6 tests, `test_network_posture.py`, architecture, e2e lane, `validate-specs.sh`, `comment_lint.py`; security-gates 3.15.0, agent-loop 4.5.0, ADR 0036 decision 17 amended; the machine's own list counts as declared, so open read needs both empty) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** the reproduction above: `web-research` meets every condition of decision 1 and its members
   hold no `fetch`, because `_offered_fetch` (`hops/application/builtin_tools.py` ~550) offers `fetch` only when
@@ -514,7 +514,7 @@ from `main`.
 
 ### P67-2 — The pod says how it reads the web, and which unmet need blocks the work
 
-**Status:** TODO (after P67-1) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + wire · **After:** P67-1 (`fetch_reach`)
+**Status:** DONE 2026-11-04 (uncommitted; gate green: test_researcher_needs_web, test_recipe_needs, test_report, test_health, serve_pods_config/endpoint with fixtures re-recorded from a real server (pod-fetch, pod-reach, pod-contract) and pod-web-read added, architecture, e2e lane, goldens, `validate-specs.sh`, `gen_cli_docs --check`, comment_lint; operator-api 7.29.0, pod-blueprints 4.9.0, cli-json-shapes 5.7.0; `webRead.mode` is `open|listed|none`, a `--widen` grant is `listed`; `search-host` reads satisfied under open read although P67-3 measured search as unusable) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec + wire · **After:** P67-1 (`fetch_reach`)
 
 - **Trigger:** Tack's `team_misfits` (Tack's repository, `crates/tack-protocol/src/execution/capabilities.rs`
   ~490-535) refuses a run on **every** unsatisfied need but `model`, and spells docket's fix itself for
@@ -552,7 +552,7 @@ from `main`.
 
 ### P67-3 — Measure whether a research team can search, before anything ships for it
 
-**Status:** TODO · **Size:** S · **Model:** Sonnet · **Kind:** measurement, then a decision · **After:** —
+**Status:** DONE 2026-11-04, `internal-docs/baselines/phase-67/search.md`. DuckDuckGo html and lite: 20/20 challenge pages (HTTP 202); Bing: 10 links for 20/20 queries but unrelated to the query (mattress shops, Epic Games, "File Explorer" for "Speakaboos pricing"), one URL-parameter fix tried and failed. The 18-of-20 rule counts links, not relevance, so it is not read as a pass: the second branch applies, a follow-up card for `services/search.yaml`, **provider chosen by the maintainer** · **Size:** S · **Model:** Sonnet · **Kind:** measurement, then a decision · **After:** —
 
 - **Trigger:** `needs.SEARCH_HOSTS` (`teams/apply/needs.py` ~23) assumes `html.duckduckgo.com` answers a
   GET from docket's `fetch`; nobody has measured it. Search sites rate-limit and challenge bots.

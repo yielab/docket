@@ -24,7 +24,7 @@ from docket.kernel.tool_outcome import text_outcome
 from docket.platform import fetch_url
 from docket.platform.fetch import FetchedPdf
 from docket.tasks.application import consult as _consult
-from docket.teams import pod_settings as _pod_settings
+from docket.teams import network_posture as _network_posture
 from docket.teams.workspace import skills as _skills
 
 
@@ -548,10 +548,11 @@ def _bash_tool() -> Tool:
 
 
 def _offered_fetch(project: str) -> list[Tool]:
-    """Offer `fetch` only while the member's set is non-empty: the machine's
-    `FETCH_ALLOWED_DOMAINS` plus the pod's `fetchDomains` (agent-loop requirement 83)."""
+    """Offer `fetch` only while the member's reach is non-empty: the machine's
+    `FETCH_ALLOWED_DOMAINS` plus the pod's `fetchDomains`, or any public host for a folder pod under
+    the jail (agent-loop requirement 83)."""
 
-    allowed = _pod_settings.effective_fetch_domains(project or None)
+    allowed = _network_posture.fetch_reach(project or None).hosts
     return [_fetch_tool(fetch_url, allowed)] if allowed else []
 
 

@@ -2248,9 +2248,10 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
       jail enforces it; `open` otherwise. The effective network is the pod's
       (`teams.pod_settings.effective_network`, worded by `teams.network_posture`) narrowed by the
       task's `restrictions.network: none`.
-    - `Web: fetch reads <hosts>, outside the jail` when the role holds `fetch` and the pod's
-      `fetchDomains` (`teams.pod_settings.effective_fetch_domains`) are not empty (`any public host` for the
-      operator's any-host grant), else `Web: no web access`.
+    - `Web: fetch reads <hosts>, outside the jail` when the role holds `fetch` and its hosts
+      (`hops.application.capabilities.member_capabilities`, from `teams.network_posture.fetch_reach`)
+      are not empty (`any public host` for the operator's any-host grant and for open read), else
+      `Web: no web access`.
     - `Records you may write: <sets>`: the record sets whose `add` tool the role holds (the `records`
       `write` list of `hops.application.capabilities.member_capabilities`), comma-separated, else
       `Records you may write: none`.

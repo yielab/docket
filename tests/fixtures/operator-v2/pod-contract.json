@@ -14,14 +14,16 @@
     {
       "kind": "fetch-hosts",
       "name": "fetch-hosts",
-      "fix": "docket pod set fetchDomains <hosts> --pod ops",
-      "satisfied": false
+      "fix": "docket setup sandbox on",
+      "satisfied": false,
+      "blocking": true
     },
     {
       "kind": "search-host",
       "name": "search-host",
       "fix": "docket pod set fetchDomains 'html.duckduckgo.com' --pod ops",
-      "satisfied": false
+      "satisfied": false,
+      "blocking": false
     }
   ]
 }

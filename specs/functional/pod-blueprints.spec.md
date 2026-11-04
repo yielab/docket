@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.8.0
+**Version**: 4.9.0
 **Status**: Implemented
 **Last Updated**: 2026-11-03
 
@@ -509,9 +509,9 @@ overlay, policies, members, pipeline binding, settings) into one command.
     `pod.sync` audit entry per re-rendered member; `--json` with no argument exits 1.
 
 16. **A recipe says what its work still needs (ADR 0036 decision 17).** `pod.yaml`'s optional
-    `needs:` is a list drawn from exactly three names: `fetch-hosts` (the pod's `fetch` has at
-    least one host), `search-host` (a known search site is among those hosts, or a search service
-    is declared) and `isolation` (a jail enforces: isolation is recorded on and a sandbox backend
+    `needs:` is a list drawn from exactly three names: `fetch-hosts` (the pod's `fetch` reaches the
+    web: a declared host, or open read on a folder pod under the jail), `search-host` (a known search
+    site is among the hosts `fetch` reaches, or a search service is declared) and `isolation` (a jail enforces: isolation is recorded on and a sandbox backend
     exists). A value that is not a list, or an entry outside the three names, **MUST** be rejected
     naming `needs` before anything is written. Every apply **MUST** record the Lead's `needs`
     setting: the union, in first-seen order, of the pod's recorded list and the names that
@@ -521,33 +521,40 @@ overlay, policies, members, pipeline binding, settings) into one command.
     plan is applied, `docket pod update <dir>` (after its result line) and `docket init
     --recipe`/a discovered `.docket/` (at the end of its output, after init has recorded isolation
     on where a backend is detected, so the line is never stale) **MUST** print, from one function,
-    one line per declared need and nothing for a recipe that declares none, computed from the effective set (`effective_fetch_domains`: the machine's list
-    plus the pod's `fetchDomains`) and `jail_enforces`, never re-derived:
-    - `needs fetch-hosts: ready (<n> hosts)`, else `needs fetch-hosts: the researchers cannot read
-      the web -> docket pod set fetchDomains <hosts> --pod <pod>`;
+    one line per declared need and nothing for a recipe that declares none, computed from `fetch_reach` (`teams/network_posture.py`: the machine's list plus the
+    pod's `fetchDomains`, else open read) and `jail_enforces`, never re-derived:
+    - `needs fetch-hosts: ready (<n> hosts)` for a declared list, `needs fetch-hosts: ready (any
+      public host)` under open read, else `needs fetch-hosts: the researchers cannot read the web ->
+      <fix>` where `<fix>` is `fetch_reach`'s: `docket pod set fetchDomains <host> --pod <pod>` on a
+      repository pod, `docket setup sandbox on` (or `docket setup sandbox backend docker`) on a
+      folder pod whose jail is not running;
     - `needs search-host: ready`, else `needs search-host: no search site is allowed ->
       docket pod set fetchDomains '<current hosts>,html.duckduckgo.com' --pod <pod>` (the quoted value is the effective hosts, comma-joined, then the search site). A search site
       is one of a short constant list of known search hosts (`html.duckduckgo.com` first) that the
-      effective set allows by `platform/fetch.py` `host_allowed`, the matcher `fetch` itself uses; a
+      hosts `fetch` reaches allow by `platform/fetch.py` `host_allowed`, the matcher `fetch` itself uses; a
       declared `kind: service` (the pod's own or the operator's) whose name or an operation name
       contains `search` also counts;
-    - `needs isolation: ready`, else, when isolation is not recorded on, `needs isolation: PDFs are
-      not read, isolation is off -> docket setup sandbox on`, and when it is on but this machine
-      has no sandbox backend, `needs isolation: PDFs are not read, no sandbox backend ->
-      docket setup sandbox backend docker`.
+    - `needs isolation: ready`, else, when isolation is not recorded on, `needs isolation: PDFs, and
+      the web on a folder team, are not read: isolation is off -> docket setup sandbox on`, and when
+      it is on but this machine has no sandbox backend, `needs isolation: PDFs, and the web on a
+      folder team, are not read: no sandbox backend -> docket setup sandbox backend docker`.
     Each line is also one entry of `needs` in `docket pod show --json` (`kind`, `name`, `fix`,
-    `satisfied`; cli-json-shapes.spec.md), and `docket pod show` prints the same words, one line per
+    `satisfied`, `blocking`; cli-json-shapes.spec.md). `blocking` is a fact of the kind: `fetch-hosts`
+    is blocking (the researchers read nothing without it), `search-host` and `isolation` are not (the
+    agent still reads pages it knows, and every format but PDF), so a plan of record refuses a run
+    only on an unmet blocking need, and `docket pod show` prints the same words, one line per
     recorded need, computed as the pod is now. Each not-ready line names exactly one command. The block is informational: it **MUST NOT**
     change the exit status, refuse or alter the apply, or write any setting, and `--dry-run`
     prints no block.
     **A researcher records the same need (ADR 0036 decision 17).** When a pod is created (a
     blueprint, `docket init`, `POST /pods`) or a member is added (`docket pod add`) and the pod
-    holds a `researcher`, docket **MUST** add `fetch-hosts` to the Lead's recorded `needs` (the
-    union of this requirement, never a duplicate), and `docket init` and `docket pod add` **MUST**
-    print that one line after their own output, so a team made to read sources says at its creation
+    holds a `researcher`, docket **MUST** add `fetch-hosts`, `search-host` and `isolation` to the
+    Lead's recorded `needs` (the union of this requirement, never a duplicate; the same three
+    `web-research` declares), and `docket init` and `docket pod add` **MUST**
+    print the `fetch-hosts` line after their own output, so a team made to read sources says at its creation
     that it cannot read the web and which command changes that. It **MUST NOT** give any role the
     `fetch` tool, write `fetchDomains` or change `network`: `fetch` is bounded by the hosts a person
-    names, and a grant with no host would be a permission that does nothing. A pod without a
+    names or by open read, which `fetch_reach` decides from facts that already exist. A pod without a
     `researcher` records nothing.
 
 ### Pod manifests: export

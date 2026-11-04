@@ -39,6 +39,8 @@ def render_pod(report: dict[str, Any]) -> None:
     _kv("Approval mode:", f"{approval['effective']} ({note})")
     _kv("Pipeline:", report["pipeline"]["source"])
     _kv("Network:", network_text(report["network"]))
+    web = report["webRead"]
+    _kv("Web:", f"{web['reason']} -> {web['fix']}" if web["fix"] else web["reason"])
     if report["configSource"]:
         drift = report["drift"] or "unknown"
         _kv(
