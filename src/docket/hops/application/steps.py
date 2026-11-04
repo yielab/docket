@@ -32,6 +32,7 @@ from docket.teams import blueprints as _blueprints
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams import roles as _roles
+from docket.teams.apply.recipes import unresolvable_pipeline_steps
 from docket.teams.pod import TASK_PIPELINE_NAME
 from docket.teams.settings import (
     load_pod_settings,
@@ -185,6 +186,34 @@ def _task_pipeline(
             f"pipeline {name!r} ({source}) does not validate: {'; '.join(loaded.errors)}"
         )
     return loaded.spec, source
+
+
+def _refuse_unstaffed_pipeline(
+    project: str, name: str, source: str, spec: _pipeline.PipelineSpec
+) -> None:
+    """Raise ``TaskRunRefusal`` when the task-named pipeline *spec* has a step this pod's roster
+    cannot run, naming each missing role once with its steps in step order. A pod's own pipeline
+    skips such a step; a pipeline a task asked for by name must not."""
+    plan = _orch.resolve_plan(
+        spec, _pod.pod_full_roster(project), registry=_roles.load_registry(project)
+    )
+    problems = unresolvable_pipeline_steps(plan, project)
+    if not problems:
+        return
+    missing: dict[str, list[str]] = {}
+    for node in plan.nodes:
+        for unit in node.children if isinstance(node, _orch.PlannedGroup) else (node,):
+            if unit.role is not None and unit.skipped:
+                missing.setdefault(unit.role, []).append(unit.step_id)
+    if missing:
+        listed = ", ".join(
+            f"{role} (step{'s' if len(steps) > 1 else ''} {', '.join(steps)})"
+            for role, steps in missing.items()
+        )
+        detail = f"names roles this pod does not have: {listed}"
+    else:
+        detail = f"cannot run on this pod: {'; '.join(problems)}"
+    raise TaskRunRefusal(f"pipeline {name!r} ({source}) {detail}")
 
 
 def _task_gate(task: TaskRecord) -> _gates.ExternalGate | None:

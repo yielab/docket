@@ -10,6 +10,7 @@ from docket.hops.application import resolutions as _resolutions
 from docket.hops.application import waits as _waits
 from docket.hops.application.runner import execute_unit, when_cwd
 from docket.hops.application.steps import (
+    _refuse_unstaffed_pipeline,
     _run_command_step,
     _run_input_step,
     _task_gate,
@@ -100,6 +101,8 @@ def _resolve_task_run(
 ) -> tuple[_pipeline.PipelineSpec, dict[str, Any], str]:
     """Resolve a claimed task's pipeline, variables and gate, or raise ``TaskRunRefusal``."""
     spec, source = _task_pipeline(project, task, default_spec, default_source)
+    if task.pipeline:
+        _refuse_unstaffed_pipeline(project, task.pipeline, source, spec)
     _task_gate(task)
     _refuse_input_for_level(project, task, spec)
     _refuse_conversation_steps(project, task, spec)
