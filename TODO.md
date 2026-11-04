@@ -116,7 +116,7 @@ from `main`.
 >    `fetch` is offered to every member that does not deny it, and the writer denies only `bash`.
 >
 > **Decisions the plan takes (D-89, `Proposed` until accepted):**
-> 1. A unit too large for a summary prompt is summarized from a projection of its tool results (cut, with a visible
+> 1. **Accepted 2026-11-04 by the maintainer.** A unit too large for a summary prompt is summarized from a projection of its tool results (cut, with a visible
 >    marker, in the summarizer's prompt only); a batch always holds one raw unit; a pre-turn compaction that the
 >    guard refuses (no progress, round cap, irreducible unit) leaves the history unchanged and the turn runs. A
 >    summarizer that fails still aborts the turn (agent-loop 36), and request-fit stays the one stop for a request
@@ -124,7 +124,7 @@ from `main`.
 > 2. **Accepted 2026-11-04 by the maintainer; shipped as P68-2.** The free-text clause of the `ask` templates is not evaluated on the built-in file tools (`write`, `edit`):
 >    a new `when` key `notTool`; and `payment.*charge`-style spans are bounded to one phrase. Relaxing a gate is the
 >    maintainer's call; no corpus row is weakened (the payment rows are all commands).
-> 3. The `writer` archetype denies `fetch`: it drafts from the analyst's handoff and cites the researcher's URLs,
+> 3. **Accepted 2026-11-04 by the maintainer.** The `writer` archetype denies `fetch`: it drafts from the analyst's handoff and cites the researcher's URLs,
 >    and asks with `consult` when a citation is missing.
 > 4. Search ships as a declared service in `web-research` (ADR 0036 decision 13) once the maintainer picks the
 >    provider (Brave Search API or Tavily); P67-3 measured that no search site answers `fetch`.
@@ -147,7 +147,7 @@ from `main`.
 
 ### P68-1 — A compaction converges on a unit larger than its prompt, and never kills a turn that fits
 
-**Status:** TODO (D-89 proposed) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
+**Status:** IN PROGRESS 2026-11-04 (D-89 choice 1 accepted; Sonnet worker in an isolated worktree) · **Size:** M · **Model:** Sonnet · **Kind:** behaviour + spec · **After:** —
 
 - **Trigger:** decision 1's reproduction (`scratchpad` replay of the writer session: rounds 1-3 reduce, round 4
   summarizes a lone summary, `45650 -> 45650`, `ok=False`).
@@ -206,7 +206,7 @@ from `main`.
 
 ### P68-3 — The writer drafts from the handoff; it does not research again
 
-**Status:** TODO (D-89 proposed; a role's shape, the maintainer's call) · **Size:** S · **Model:** Haiku · **Kind:** data + spec · **After:** —
+**Status:** IN PROGRESS 2026-11-04 (D-89 choice 3 accepted; Sonnet worker in an isolated worktree) · **Size:** S · **Model:** Sonnet · **Kind:** data + spec · **After:** —
 
 - **Trigger:** decision 3's measurement (writer 23 `fetch`, 246,954 input tokens of 445,209).
 - **Goal:** the `writer` archetype's `denied_tools` becomes `("bash", "fetch")` (`teams/builtin_roles.py` ~180);
