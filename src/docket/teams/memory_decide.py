@@ -2,12 +2,13 @@
 one memory line from that.
 
 ``_task_facts`` gathers the commit, the trace events and the verify gates of a task's hops;
-``_decide`` turns one parsed line into ``(subject, status, reason, exit)``. See
+``_decide`` turns one parsed line into ``(subject, status, reason, evidence)``. See
 specs/functional/workspace-structure.spec.md "Pod memory"."""
 
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -19,6 +20,11 @@ from docket.observability import trace as _trace
 from docket.teams import fleet as _fleet
 from docket.teams import pod as _pod
 from docket.teams.memory_parse import ParsedLine, _vet
+from docket.teams.models import WorkspaceKind
+from docket.teams.pod_settings import workspace_kind
+
+_INSTRUCTION = "reads as an instruction"
+_APPROVAL = "awaits operator approval"
 
 # -- deciding an entry -----------------------------------------------------------
 
@@ -58,6 +64,12 @@ class _TaskFacts:
     trace_ok: bool
     events: list[dict[str, Any]]
     verified: list[tuple[str, int]]
+    folder: bool = False
+
+    @property
+    def anchor(self) -> dict[str, str]:
+        """What a path was checked against: the work dir of a folder pod, else the commit."""
+        return {"root": self.root} if self.folder else {"commit": self.commit}
 
 
 def _session_events(link: dict[str, str] | None) -> list[dict[str, Any]] | None:
@@ -105,6 +117,23 @@ def _traced_exit(events: list[dict[str, Any]], command: str) -> int | None:
     return found
 
 
+def _traced_ok(events: list[dict[str, Any]], tool: str) -> bool | None:
+    """``ok`` of the last ``tool_result`` for a ``tool_call`` of *tool*, ``None`` when no call of
+    it has a result in *events*."""
+    calls: set[str] = set()
+    found: bool | None = None
+    for event in events:
+        kind, data = event.get("event_type"), _payload(event)
+        if data.get("tool") != tool:
+            continue
+        call_id = str(data.get("callId", ""))
+        if kind == "tool_call":
+            calls.add(call_id)
+        elif kind == "tool_result" and call_id in calls:
+            found = data.get("ok") is True
+    return found
+
+
 def _pod_codebase(project: str) -> str:
     roster: dict[str, str] = {}
     for member_id, role, _index in _pod.members_of(_fleet.all_agent_ids(), project):
@@ -146,14 +175,19 @@ def _task_facts(project: str, hops: list[HopLike], root: str | None) -> _TaskFac
     tainted = any(
         e.get("event_type") == "tool_call" and _payload(e).get("tool") == "fetch" for e in events
     )
+    folder = workspace_kind(project) == WorkspaceKind.workdir
+    if root is None:
+        lead = _pod.member_id(project, "lead")
+        root = str(_fleet.meta_get(lead, "workDir", "") or "") if folder else _pod_codebase(project)
     return _TaskFacts(
         project=project,
-        root=_pod_codebase(project) if root is None else root,
+        root=root,
         commit=commit,
         tainted=tainted,
         trace_ok=trace_ok,
         events=events,
         verified=verified,
+        folder=folder,
     )
 
 
@@ -168,29 +202,49 @@ def _screen(role: str, project: str, text: str) -> tuple[str, str]:
     return "", ""
 
 
-def _decide(line: ParsedLine, facts: _TaskFacts, role: str) -> tuple[str, str, str, int | None]:
-    """``(subject, status, reason, exit)`` for one well-formed line."""
+_Evidence = dict[str, int | bool] | None
+
+
+def _decide(line: ParsedLine, facts: _TaskFacts, role: str) -> tuple[str, str, str, _Evidence]:
+    """``(subject, status, reason, evidence)`` for one well-formed line; *evidence* is
+    ``{"exit": n}`` for a command, ``{"ok": b}`` for a tool call, else ``None``."""
     subject, refusal = _vet(line)
-    if refusal:
+    instruction = refusal == _INSTRUCTION
+    if refusal and not instruction:
         return subject, "refused", refusal, None
     verdict, why = _screen(role, facts.project, f"{subject} {line.note}")
     if verdict == "refused":
         return subject, "refused", why, None
+    approval = line.kind in ("pitfall", "convention")
     held = (
-        "the task called fetch"
+        f"{_INSTRUCTION}; {_APPROVAL}"
+        if instruction and approval
+        else _INSTRUCTION
+        if instruction
+        else "the task called fetch"
         if facts.tainted
         else "the task's trace could not be read"
         if not facts.trace_ok
         else why
         if verdict == "pending"
-        else "awaits operator approval"
-        if line.kind in ("pitfall", "convention")
+        else _APPROVAL
+        if approval
         else ""
     )
     if held:
         return subject, "pending", held, None
     if line.kind == "tool":
-        return _decide_command(subject, facts)
+        return _decide_tool(subject, facts)
+    return _decide_path(subject, facts)
+
+
+def _decide_path(subject: str, facts: _TaskFacts) -> tuple[str, str, str, _Evidence]:
+    if facts.folder:
+        if not facts.root:
+            return subject, "pending", "no work dir to check the path against", None
+        if os.path.lexists(os.path.join(facts.root, subject)):
+            return subject, "accepted", "path present under the work dir", None
+        return subject, "refused", "path not present under the work dir", None
     if not facts.commit or not facts.root:
         return subject, "pending", "no task commit to check the path against", None
     if _git.git_path_exists_at(facts.root, facts.commit, subject):
@@ -198,10 +252,18 @@ def _decide(line: ParsedLine, facts: _TaskFacts, role: str) -> tuple[str, str, s
     return subject, "refused", "path not present at the task commit", None
 
 
-def _decide_command(command: str, facts: _TaskFacts) -> tuple[str, str, str, int | None]:
-    code = next((c for cmd, c in reversed(facts.verified) if cmd == command), None)
-    if code is None:
-        code = _traced_exit(facts.events, command)
-    if code is not None:
-        return command, "accepted", "exit status found in the task's trace", code
-    return command, "refused", "no exit status for this command in the task's trace", None
+def _decide_tool(subject: str, facts: _TaskFacts) -> tuple[str, str, str, _Evidence]:
+    """A tool entry: its first token is the tool, found when the trace holds a call of it with a
+    result; else the subject is a command, found when the trace holds its exit status."""
+    name, _, rest = subject.partition(" ")
+    if name != "bash":
+        ok = _traced_ok(facts.events, name)
+        if ok is not None:
+            return subject, "accepted", "tool call found in the task's trace", {"ok": ok}
+    for command in (subject, rest.strip()) if name == "bash" and rest.strip() else (subject,):
+        code = next((c for cmd, c in reversed(facts.verified) if cmd == command), None)
+        if code is None:
+            code = _traced_exit(facts.events, command)
+        if code is not None:
+            return subject, "accepted", "exit status found in the task's trace", {"exit": code}
+    return subject, "refused", "no call or exit status for this in the task's trace", None

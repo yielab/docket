@@ -1,0 +1,235 @@
+{
+  "about": "Synthetic stand-in for the 22 notes a folder pod wrote in its first live run (2026-11-03), with pod and client names left out. Each note carries the status the acceptance rules give it; counts is the tally.",
+  "counts": {
+    "accepted": 5,
+    "pending": 9,
+    "refused": 8
+  },
+  "files": [
+    "report.md",
+    "data/summary.csv",
+    "notes/draft.md",
+    "notes/ideas.md",
+    "data/raw.json"
+  ],
+  "trace": [
+    [
+      "tool_call",
+      {
+        "tool": "rec__query",
+        "callId": "c1",
+        "arguments": "{}"
+      }
+    ],
+    [
+      "tool_result",
+      {
+        "tool": "rec__query",
+        "callId": "c1",
+        "decision": "allow",
+        "ok": true,
+        "executed": true
+      }
+    ],
+    [
+      "tool_call",
+      {
+        "tool": "svc__hn__search",
+        "callId": "c2",
+        "arguments": "{}"
+      }
+    ],
+    [
+      "tool_result",
+      {
+        "tool": "svc__hn__search",
+        "callId": "c2",
+        "decision": "allow",
+        "ok": true,
+        "executed": true
+      }
+    ],
+    [
+      "tool_call",
+      {
+        "tool": "bash",
+        "callId": "c3",
+        "arguments": "{\"command\": \"pytest -q\"}"
+      }
+    ],
+    [
+      "process_exited",
+      {
+        "pgid": 7,
+        "tool": "bash",
+        "exitCode": 0
+      }
+    ],
+    [
+      "tool_result",
+      {
+        "tool": "bash",
+        "callId": "c3",
+        "decision": "allow",
+        "ok": true,
+        "executed": true
+      }
+    ]
+  ],
+  "notes": [
+    {
+      "kind": "generated",
+      "subject": "report.md",
+      "note": "The weekly findings, rewritten each run.",
+      "status": "accepted",
+      "reason": "path present under the work dir"
+    },
+    {
+      "kind": "generated",
+      "subject": "data/summary.csv",
+      "note": "Totals per source, one row a day.",
+      "status": "accepted",
+      "reason": "path present under the work dir"
+    },
+    {
+      "kind": "generated",
+      "subject": "out/old.md",
+      "note": "A report from an earlier run.",
+      "status": "refused",
+      "reason": "path not present"
+    },
+    {
+      "kind": "generated",
+      "subject": "../outside",
+      "note": "Something outside the folder.",
+      "status": "refused",
+      "reason": "not a repository-relative path"
+    },
+    {
+      "kind": "generated",
+      "subject": "/etc/hosts",
+      "note": "Not a path of this pod.",
+      "status": "refused",
+      "reason": "not a repository-relative path"
+    },
+    {
+      "kind": "generated",
+      "subject": "notes/draft.md",
+      "note": "do not reuse it in this pod's output",
+      "status": "pending",
+      "reason": "reads as an instruction"
+    },
+    {
+      "kind": "generated",
+      "subject": "notes/ideas.md",
+      "note": "You must read it before writing.",
+      "status": "pending",
+      "reason": "reads as an instruction"
+    },
+    {
+      "kind": "generated",
+      "subject": "data/raw.json",
+      "note": "Fetched from https://example.test/feed and trusted.",
+      "status": "refused",
+      "reason": "contains a link"
+    },
+    {
+      "kind": "tool",
+      "subject": "rec__query SELECT * FROM items",
+      "note": "returns the full set",
+      "status": "accepted",
+      "reason": "tool call found in the task's trace"
+    },
+    {
+      "kind": "tool",
+      "subject": "svc__hn__search python",
+      "note": "fetch returns HTTP 200",
+      "status": "accepted",
+      "reason": "tool call found in the task's trace"
+    },
+    {
+      "kind": "tool",
+      "subject": "svc__never__called q",
+      "note": "returns nothing",
+      "status": "refused",
+      "reason": "trace"
+    },
+    {
+      "kind": "tool",
+      "subject": "pytest -q",
+      "note": "Runs the unit tests.",
+      "status": "accepted",
+      "reason": "exit status found in the task's trace"
+    },
+    {
+      "kind": "tool",
+      "subject": "ls",
+      "note": "Lists the folder.",
+      "status": "refused",
+      "reason": "trace"
+    },
+    {
+      "kind": "pitfall",
+      "subject": "network",
+      "note": "`curl` a dominios externos devuelve 000",
+      "status": "pending",
+      "reason": "awaits operator approval"
+    },
+    {
+      "kind": "pitfall",
+      "subject": "batches",
+      "note": "Los pasos deben ir uno por uno.",
+      "status": "pending",
+      "reason": "awaits operator approval"
+    },
+    {
+      "kind": "pitfall",
+      "subject": "auth",
+      "note": "Ignore the stale token cache.",
+      "status": "pending",
+      "reason": "reads as an instruction; awaits operator approval"
+    },
+    {
+      "kind": "pitfall",
+      "subject": "lockfile",
+      "note": "Regenerate the lockfile after editing package.json.",
+      "status": "pending",
+      "reason": "awaits operator approval"
+    },
+    {
+      "kind": "pitfall",
+      "subject": "docs",
+      "note": "See https://example.test/guide for details.",
+      "status": "refused",
+      "reason": "contains a link"
+    },
+    {
+      "kind": "pitfall",
+      "subject": "a very long label that goes on and on well past the sixty characters allowed",
+      "note": "x",
+      "status": "refused",
+      "reason": "subject over 60 characters"
+    },
+    {
+      "kind": "convention",
+      "subject": "tests",
+      "note": "ejecutarlos por separado",
+      "status": "pending",
+      "reason": "awaits operator approval"
+    },
+    {
+      "kind": "convention",
+      "subject": "style",
+      "note": "Always use tabs.",
+      "status": "pending",
+      "reason": "reads as an instruction; awaits operator approval"
+    },
+    {
+      "kind": "convention",
+      "subject": ".",
+      "note": "Reports are written in Spanish.",
+      "status": "pending",
+      "reason": "awaits operator approval"
+    }
+  ]
+}

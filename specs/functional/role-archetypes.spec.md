@@ -203,7 +203,7 @@ This specification does NOT cover:
    re-read what it carries; find code with `grep` for a concrete name and `read` the lines needed,
    never listing the whole tree; and, to leave a note for later tasks, end the reply with
    `## Memory` and lines `- <kind>: <path or command> -- <fact>`, kind one of `generated`,
-   `command`, `pitfall`, `convention`, facts only (workspace-structure.spec.md "Pod memory",
+   `tool`, `pitfall`, `convention`, facts only (workspace-structure.spec.md "Pod memory",
    requirement 3). The block stays under 520 characters. On a `workdir`-kind pod the rendered
    `AGENTS.md` carries the working-directory variant instead (`workspaceKind` chooses it, at
    provisioning and in `pod update`'s re-render alike): the first bullet delivers the working

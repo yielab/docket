@@ -207,6 +207,7 @@ class TestTemplatesCarryNoPathAndNoDeadSignals:
         for name, (_soul, agents) in self._rendered().items():
             assert "`## Memory`" in agents, name
             assert "- <kind>: <path or command> -- <fact>" in agents, name
+            assert "kind: generated, tool, pitfall, convention" in agents, name
 
     def test_the_method_block_is_short(self) -> None:
         agents = self._rendered()["implementer"][1]
