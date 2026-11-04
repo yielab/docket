@@ -633,6 +633,15 @@ from `main`.
   money. Open: whether a file `write`/`edit` in a folder pod's workdir should be exempt from the free-text clause
   (the money moves only when something executes, and `exec` keeps its structured rules). Relaxing a gate is the
   maintainer's call and amends security-gates; not done.
+- *A compaction that gains nothing fails the hop (2026-11-04, found in the P67-5 run).* The writer hop of the
+  research task failed three times with `compaction summary did not reduce estimated history size (45271 ->
+  45272)` (`agent/session_compaction.py` ~278, `failure_kind: invalid_output`, hop `hop_failed`). Its session holds
+  42 messages, about 194k characters, 30 of them tool results of 0.5k to 25k characters from `fetch`. A summary of
+  a batch smaller than its own `[compacted summary of ...]` header cannot shrink the history, and the guard turns
+  "no gain" into a dead hop. Hypothesis, not reproduced: the oldest unit(s) are tiny and the bulk sits in units
+  the plan keeps. Open: a round that gains nothing should stop and let the turn run (as the `rounds and all
+  summaries` break already does), not fail it. Not covered by Phase 66; needs spec (`session-history`), a failing
+  test with a history shaped like this one, then the smallest change.
 - *The live home's old memory is invisible to the new build* (entries of kind `command` are dropped at the
   first write, as D-86 said); the installed `hn-live` entries are the two tasks of 2026-11-04.
 
