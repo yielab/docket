@@ -14,6 +14,7 @@ specs/data/serve-read-api.spec.md "POST /pods".
 from __future__ import annotations
 
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,10 @@ from tests.support import pods as _support_pods
 from tests.support.http import get as _get
 from tests.support.http import post as _post
 from tests.support.http import post_raw as _post_raw
+from tests.support.pods import bind_pipeline as _bind_pipeline
+from tests.support.pods import write_pod_pipeline as _write_pod_pipeline
 
+import docket.kernel.templates as _templates
 from docket.hops.application import report as _pod_report
 from docket.hops.application import steps as _steps
 from docket.interfaces.cli.commands import pod as _pod
@@ -34,6 +38,7 @@ from docket.platform import store as _store
 from docket.teams import fleet as _fleet
 from docket.teams import member_workspace as _member_workspace
 from docket.teams import pod_provisioning as _pp
+from docket.teams import records as _records
 
 live_server = _support_http.live_server
 
@@ -636,3 +641,134 @@ class TestReadPods:
     def test_bad_pod_id_returns_400(self, live_server: tuple[str, str]) -> None:
         url, token = live_server
         assert _get(f"{url}/pods/bad%20id", token)[0] == 400
+
+
+# ── the pod's contract ───────────────────────────────────────────────────────
+
+_PROPOSALS = """\
+kind: records
+name: tack_proposals
+key: ref
+scope: task
+columns:
+  - {name: ref, type: string, required: true}
+"""
+
+_AUDIT = """\
+kind: pipeline
+name: audit
+steps:
+  - look: lead
+  - fix: implementer
+"""
+
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "operator-v2"
+
+
+def _shipped_recipes() -> list[Path]:
+    return sorted(p for p in _templates.RECIPES_DIR.glob("*/pipeline.yaml"))
+
+
+def _detail(url: str, token: str, name: str) -> dict[str, Any]:
+    status, body = _get(f"{url}/pods/{name}", token)
+    assert status == 200
+    return body
+
+
+class TestPodContract:
+    def test_a_build_pod_delivers_a_branch(self, live_server: tuple[str, str]) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        assert _detail(url, token, "demo")["delivers"] == ["branch"]
+
+    def test_a_respond_pod_delivers_a_report_and_its_records(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "ops", "blueprint": "respond"}, token)
+        assert _detail(url, token, "ops")["delivers"] == ["report"]
+        directory = _records.pod_records_dir("ops")
+        directory.mkdir(parents=True)
+        (directory / "tack_proposals.yaml").write_text(_PROPOSALS, encoding="utf-8")
+        assert _detail(url, token, "ops")["delivers"] == ["report", "records"]
+
+    def test_methods_are_the_overlay_then_every_recipe_with_the_roles_the_pod_lacks(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "ops", "blueprint": "respond"}, token)
+        tdd = (_templates.RECIPES_DIR / "tdd" / "pipeline.yaml").read_text(encoding="utf-8")
+        _write_pod_pipeline("tdd", tdd, project="ops")
+
+        methods = _detail(url, token, "ops")["methods"]
+
+        recipes = [p.parent.name for p in _shipped_recipes() if p.parent.name != "tdd"]
+        assert [m["name"] for m in methods] == ["tdd", *recipes]
+        assert methods[0]["source"] == "pod:tdd"
+        assert {m["source"] for m in methods[1:]} == {f"recipe:{n}" for n in recipes}
+        assert all(set(m) == {"name", "source", "missingRoles", "default"} for m in methods)
+        assert methods[0]["missingRoles"] == ["implementer"]
+        by_name = {m["name"]: m for m in methods}
+        for path in _shipped_recipes():
+            text = path.read_text(encoding="utf-8")
+            if "implementer" in text and path.parent.name != "tdd":
+                assert "implementer" in by_name[path.parent.name]["missingRoles"], path.parent.name
+        assert by_name["web-research"]["missingRoles"] == ["analyst"]
+
+    def test_a_method_the_roster_can_fill_reports_no_missing_role(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        tdd = (_templates.RECIPES_DIR / "tdd" / "pipeline.yaml").read_text(encoding="utf-8")
+        _write_pod_pipeline("tdd", tdd, project="demo")
+        methods = {m["name"]: m for m in _detail(url, token, "demo")["methods"]}
+        assert methods["tdd"]["missingRoles"] == []
+
+    def test_only_the_method_whose_file_is_the_bound_pipeline_is_the_default(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        tdd = (_templates.RECIPES_DIR / "tdd" / "pipeline.yaml").read_text(encoding="utf-8")
+        _write_pod_pipeline("tdd", tdd, project="demo")
+        assert not any(m["default"] for m in _detail(url, token, "demo")["methods"])
+
+        _bind_pipeline("demo", tdd)
+
+        defaults = [m["name"] for m in _detail(url, token, "demo")["methods"] if m["default"]]
+        assert defaults == ["tdd"]
+
+    def test_a_file_that_does_not_load_is_listed_with_its_error(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "demo", "location": "/src/demo"}, token)
+        _write_pod_pipeline("broken", "kind: pipeline\nname: broken\nsteps: nope\n", "demo")
+
+        methods = {m["name"]: m for m in _detail(url, token, "demo")["methods"]}
+
+        assert methods["broken"]["missingRoles"] == []
+        assert methods["broken"]["error"]
+        assert "error" not in methods["tdd"]
+
+    def test_the_pod_contract_answer_is_the_recorded_fixture(
+        self, live_server: tuple[str, str]
+    ) -> None:
+        url, token = live_server
+        _post(f"{url}/pods", {"name": "ops", "blueprint": "respond"}, token)
+        _write_pod_pipeline("audit", _AUDIT, project="ops")
+        _fleet.meta_set("ops-lead", "needs", "fetch-hosts,search-host")
+        detail = _detail(url, token, "ops")
+        actual = {
+            "delivers": detail["delivers"],
+            "overlayMethod": next(m for m in detail["methods"] if m["source"] == "pod:audit"),
+            "needs": detail["needs"],
+        }
+        if record := os.environ.get("OPERATOR_RECORD_DIR"):
+            Path(record, "pod-contract.json").write_text(
+                json.dumps(actual, indent=2) + "\n", "utf-8"
+            )
+            return
+        recorded = json.loads((_FIXTURES / "pod-contract.json").read_text(encoding="utf-8"))
+        assert actual == recorded

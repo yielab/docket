@@ -1,0 +1,27 @@
+{
+  "delivers": [
+    "report"
+  ],
+  "overlayMethod": {
+    "name": "audit",
+    "source": "pod:audit",
+    "missingRoles": [
+      "implementer"
+    ],
+    "default": false
+  },
+  "needs": [
+    {
+      "kind": "fetch-hosts",
+      "name": "fetch-hosts",
+      "fix": "docket pod set fetchDomains <hosts> --pod ops",
+      "satisfied": false
+    },
+    {
+      "kind": "search-host",
+      "name": "search-host",
+      "fix": "docket pod set fetchDomains 'html.duckduckgo.com' --pod ops",
+      "satisfied": false
+    }
+  ]
+}
