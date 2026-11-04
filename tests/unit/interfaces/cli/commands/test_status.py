@@ -276,6 +276,37 @@ class TestHistory:
             assert _json("--pod", "demo", "--history", "--days", "2") == {"history": []}
 
 
+class TestHistoryByDay:
+    def test_history_prints_one_row_per_utc_day(self, tmp_path: Path) -> None:
+        from docket.agent import session as _sess
+        from docket.agent.ports import TokenUsage, user
+
+        with _seed(tmp_path):
+            for member, day, tokens in (
+                ("demo-lead", "2026-11-02", 100),
+                ("demo-implementer", "2026-11-02", 50),
+                ("demo-lead", "2026-11-03", 30),
+            ):
+                _sess.append_messages(
+                    f"agent:{member}:default",
+                    [user("hi")],
+                    usage=TokenUsage(input_tokens=tokens, output_tokens=1),
+                    now=f"{day}T12:00:00Z",
+                )
+
+            body = _json("--pod", "demo", "--history")
+            text = runner.invoke(_app, ["status", "--pod", "demo", "--history"]).output
+
+            assert body == {
+                "history": [
+                    {"date": "2026-11-02", "turns": 2, "input": 150, "output": 2},
+                    {"date": "2026-11-03", "turns": 1, "input": 30, "output": 1},
+                ]
+            }
+            assert "2026-11-02" in text and "2026-11-03" in text
+            assert "No dated session data yet" not in text
+
+
 class TestUsageSnapshot:
     def test_lists_every_agent_with_its_measured_tokens_and_no_dollar(self, tmp_path: Path) -> None:
         with _seed(tmp_path):

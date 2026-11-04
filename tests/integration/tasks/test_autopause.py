@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from docket.hops.application import sweep as _sweep
 from docket.hops.application import usage as _usage
 from docket.hops.gates import pre_hop as _pre_hop
 from docket.interfaces.cli.app import app as _app
+from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application import queue as _queue
 from docket.tasks.application.repository import TaskRepository
@@ -97,6 +99,44 @@ def _write_session(
     (sdir / "session.json").write_text(json.dumps(record))
 
 
+def _write_dated_session(agent_id: str, tokens_by_day: dict[str, int]) -> None:
+    """Seeds a session whose output tokens were spent on the given UTC days (``YYYY-MM-DD``)."""
+    from urllib.parse import quote
+
+    session_key = f"agent:{agent_id}:default"
+    sdir = current_home().sessions_dir / quote(session_key, safe="")
+    sdir.mkdir(parents=True, exist_ok=True)
+
+    def usage(tokens: int) -> dict[str, int]:
+        return {
+            "inputTokens": 0,
+            "outputTokens": tokens,
+            "cachedTokens": 0,
+            "cacheWriteTokens": 0,
+            "turns": 1,
+        }
+
+    record = {
+        "sessionKey": session_key,
+        "created": "2026-07-30T00:00:00Z",
+        "updated": "2026-07-30T00:00:00Z",
+        "messages": [],
+        "usage": usage(sum(tokens_by_day.values())),
+        "usageByDay": {day: usage(tokens) for day, tokens in tokens_by_day.items()},
+    }
+    (sdir / "session.json").write_text(json.dumps(record))
+
+
+def _utc_day(days_ago: int = 0) -> str:
+    return (_clock.now() - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+
+
+def _budget_events(home: Path) -> list[dict[str, object]]:
+    trace_files = list((home / "state" / "traces" / "demo").glob("*.jsonl"))
+    events = [json.loads(line) for tf in trace_files for line in tf.read_text().splitlines()]
+    return [e for e in events if e["event_type"] == "budget_exceeded"]
+
+
 # ── AgentMeta.coerce_paused ────────────────────────────────────────────
 
 
@@ -134,8 +174,8 @@ class TestAutoPauseDispatch:
             _queue.enqueue_task_once("demo", "Too expensive", channel="cli")
             monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1)
             monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1)
-            monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p: 5)
-            monkeypatch.setattr(_pre_hop, "pod_counted_tokens", lambda _p: 5)
+            monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p, since=None: 5)
+            monkeypatch.setattr(_pre_hop, "pod_counted_tokens", lambda _p, since=None: 5)
 
             results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
             assert results[0].status == "blocked"
@@ -152,8 +192,8 @@ class TestAutoPauseDispatch:
             _queue.enqueue_task_once("demo", "Two", channel="cli")
             monkeypatch.setattr(_settings, "pod_budget", lambda _p: 1)
             monkeypatch.setattr(_executor_c, "pod_budget", lambda _p: 1)
-            monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p: 5)
-            monkeypatch.setattr(_pre_hop, "pod_counted_tokens", lambda _p: 5)
+            monkeypatch.setattr(_usage, "pod_counted_tokens", lambda _p, since=None: 5)
+            monkeypatch.setattr(_pre_hop, "pod_counted_tokens", lambda _p, since=None: 5)
             _sweep.dispatch_pod("demo", runner=_RecordingRunner())
 
             # Second dispatch: the pod is now paused — nothing should even be
@@ -219,6 +259,126 @@ class TestPodTokenBudget:
             results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
 
             assert results[0].status == "done"
+
+
+class TestBudgetWindow:
+    """A pod's ``budgetWindow`` counts the cap from the day the tokens were spent."""
+
+    def _seed(self, lead_id: str, window: str, today_tokens: int) -> None:
+        _fleet.meta_set(lead_id, "budgetTokens", 1000)
+        if window != "none":
+            _fleet.meta_set(lead_id, "budgetWindow", window)
+        _write_dated_session(lead_id, {_utc_day(1): 2000, _utc_day(): today_tokens})
+        _queue.enqueue_task_once("demo", "Windowed", channel="cli")
+
+    def test_yesterdays_tokens_do_not_pause_a_pod_on_a_daily_window(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            lead_id = _podcore.member_id("demo", "lead")
+            self._seed(lead_id, "day", today_tokens=100)
+
+            results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
+
+            assert results[0].status == "done"
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is False
+
+    def test_the_same_tokens_pause_a_pod_with_no_window(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            lead_id = _podcore.member_id("demo", "lead")
+            self._seed(lead_id, "none", today_tokens=100)
+
+            results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
+
+            assert results[0].status == "blocked"
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
+
+    def test_todays_tokens_at_the_cap_pause_it_and_the_event_names_the_window(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path) as home:
+            lead_id = _podcore.member_id("demo", "lead")
+            self._seed(lead_id, "day", today_tokens=1000)
+
+            results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
+
+            assert results[0].status == "blocked"
+            assert "1000 of 1000" in results[0].reason
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
+            (event,) = _budget_events(home)
+            detail = event.get("payload", event)
+            assert detail["window"] == "day"  # type: ignore[index]
+            assert detail["windowStart"] == f"{_utc_day()}T00:00:00Z"  # type: ignore[index]
+
+    def test_an_unwindowed_event_carries_window_none_and_no_start(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path) as home:
+            lead_id = _podcore.member_id("demo", "lead")
+            self._seed(lead_id, "none", today_tokens=100)
+
+            _sweep.dispatch_pod("demo", runner=_RecordingRunner())
+
+            (event,) = _budget_events(home)
+            detail = event.get("payload", event)
+            assert detail["window"] == "none"  # type: ignore[index]
+            assert detail["windowStart"] is None  # type: ignore[index]
+
+    def test_a_session_without_day_buckets_counts_toward_no_window_only(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path) as home:
+            lead_id = _podcore.member_id("demo", "lead")
+            _fleet.meta_set(lead_id, "budgetTokens", 1000)
+            _fleet.meta_set(lead_id, "budgetWindow", "day")
+            _write_session(home, lead_id, input_tokens=5000, output_tokens=5000)
+            _queue.enqueue_task_once("demo", "Old session", channel="cli")
+
+            results = _sweep.dispatch_pod("demo", runner=_RecordingRunner())
+
+            assert results[0].status == "done"
+
+    def test_setting_the_window_lifts_the_pause_and_requeues_the_blocked_task(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            lead_id = _podcore.member_id("demo", "lead")
+            self._seed(lead_id, "none", today_tokens=100)
+            _sweep.dispatch_pod("demo", runner=_RecordingRunner())
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is True
+
+            result = CliRunner().invoke(
+                _app, ["pod", "set", "budgetWindow", "day", "--pod", "demo"]
+            )
+
+            assert result.exit_code == 0, result.output
+            assert "Unblocked 1 blocked task(s)" in result.output
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is False
+            assert _fleet.meta_get(lead_id, "pausedReason") == ""
+            (task,) = TaskRepository.for_pod("demo").list()
+            assert task.status == "pending"
+            assert _sweep.dispatch_pod("demo", runner=_RecordingRunner())[0].status == "done"
+
+    def test_unsetting_the_window_lifts_the_pause_too(self, tmp_path: Path) -> None:
+        with _seed_pod(tmp_path):
+            lead_id = _podcore.member_id("demo", "lead")
+            self._seed(lead_id, "none", today_tokens=100)
+            _sweep.dispatch_pod("demo", runner=_RecordingRunner())
+
+            result = CliRunner().invoke(_app, ["pod", "unset", "budgetWindow", "--pod", "demo"])
+
+            assert result.exit_code == 0, result.output
+            assert AgentMeta.coerce_paused(_fleet.meta_get(lead_id, "paused", "")) is False
+
+    def test_a_window_other_than_day_week_or_none_is_refused_naming_the_three(
+        self, tmp_path: Path
+    ) -> None:
+        with _seed_pod(tmp_path):
+            lead_id = _podcore.member_id("demo", "lead")
+
+            result = CliRunner().invoke(
+                _app, ["pod", "set", "budgetWindow", "month", "--pod", "demo"]
+            )
+
+            assert result.exit_code == 1
+            assert "day" in result.output and "week" in result.output and "none" in result.output
+            assert _fleet.meta_get(lead_id, "budgetWindow", "") == ""
 
 
 # ── status shows the measured tokens and no dollar figure ──────────────────────────

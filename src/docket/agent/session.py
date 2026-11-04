@@ -135,6 +135,7 @@ class SessionRecord(BaseModel):
     updated: str = ""
     messages: list[StoredMessage] = Field(default_factory=list)
     usage: MeasuredUsage = Field(default_factory=MeasuredUsage)
+    usage_by_day: dict[str, MeasuredUsage] = Field(default_factory=dict, alias="usageByDay")
 
 
 def _encode(msg: ChatMessage) -> StoredMessage:
@@ -222,11 +223,16 @@ def append_messages(
             else SessionRecord(session_key=session_key, created=stamp)
         )
         new_usage = _add_usage(record.usage, usage) if usage is not None else record.usage
+        by_day = dict(record.usage_by_day)
+        if usage is not None:
+            day = stamp[:10]
+            by_day[day] = _add_usage(by_day.get(day, MeasuredUsage()), usage)
         updated = record.model_copy(
             update={
                 "session_key": session_key,
                 "messages": [*record.messages, *(_encode(m) for m in messages)],
                 "usage": new_usage,
+                "usage_by_day": by_day,
                 "updated": stamp,
             }
         )

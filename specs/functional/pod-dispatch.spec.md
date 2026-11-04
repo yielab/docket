@@ -647,7 +647,8 @@ wired agent's conversation current with the task it is working.
 1. Every pod setting (`PodSettings.KEYS`: `budgetTokens`, `maxReworkCycles`, `turnTimeoutS`,
    `verifyTimeoutS`, `approvalMode`, `approvalExpiryHours`, `inputExpiryHours`, `allowCommands`,
    `pipeline`, `schedule`, `projectInstructions`, `mcpServers`, `deniedTools`, `requireVerify`,
-   `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`, `protects`) **MUST** be
+   `maxConsultationsPerTask`, `consultMode`, `network`, `profile`, `readOnly`, `prepare`, `protects`,
+   `fetchDomains`, `budgetWindow`) **MUST** be
    read through one typed, validated model (`PodSettings.load_for`), not independent ad hoc
    parsers. A missing or blank stored key resolves to that field's declared default (e.g. `None`,
    `1`, `None`, `None` for `budgetTokens`, `maxReworkCycles`, `turnTimeoutS`, `verifyTimeoutS`); a
@@ -665,7 +666,9 @@ wired agent's conversation current with the task it is working.
    `null` (read back as absent), falling back to the field's default. Every write is audit-logged as
    `pod.config`. `docket pod set budgetTokens <n>` persists `budgetTokens` as the validated integer,
    not the raw CLI argument string, and refuses `0`, a negative or a non-integer value; `budgetUsd`
-   is refused naming `budgetTokens`. Any `set` or `unset` of `budgetTokens`, whatever the value, re-queues
+   is refused naming `budgetTokens`. `docket pod set budgetWindow <day|week|none>` validates through
+   `coerce` and refuses any other value naming the three (default `none`). Any `set` or `unset` of
+   `budgetTokens` or `budgetWindow`, whatever the value, re-queues
    the pod's blocked tasks (`unblock_pod`) and clears the Lead's `paused`/`pausedReason`. The line
    it prints counts every task `unblock_pod` re-queued, whatever its `blockedReason`:
    `Unblocked <n> blocked task(s)`. `docket pod set maxReworkCycles` on a pod with a bound pipeline
@@ -1168,8 +1171,10 @@ turn. A turn is one hop of that step, with its own `hop_finished` and `usage`.
 1. Before **every** hop (not just the first, and including a rework hop), dispatch **MUST** check
    the pod's counted tokens (input minus cache reads, plus output, summed across all pod members
    and all their sessions, the measure `maxTokens` uses) against the pod's budget cap (the Lead's
-   `budgetTokens`; absent = no cap). A task's own `maxTokens` is checked first ("Per-hop
-   execution" requirement 8).
+   `budgetTokens`; absent = no cap). With the pod's `budgetWindow` set to `day` or `week`, only
+   the tokens spent on or after the window's start count: 00:00 UTC today, or 00:00 UTC on the
+   most recent Monday (`window_start`); `none` (the default) counts everything. A task's own
+   `maxTokens` is checked first ("Per-hop execution" requirement 8).
 2. The count is measured tokens only (`pod_counted_tokens`): no rate, estimate or model
    name enters the gate, so every model is gated alike.
 3. If the cap is met or exceeded, the task **MUST** transition to `blocked` (see "blocked and
@@ -1177,7 +1182,8 @@ turn. A turn is one hop of that step, with its own `hop_finished` and `usage`.
    (<spent> of <cap> tokens counted) before <role>`) and the pipeline **MUST NOT** attempt the
    gated hop or any later one for this task. A `budget_exceeded` trace event **MUST** be emitted
    naming the role the budget was checked before, the counted tokens (`spent`) and the cap, both
-   integers.
+   integers, and the `window` (`none`, `day` or `week`) with its `windowStart` (a UTC stamp, or
+   `null` for `none`).
 4. The same check that blocks the task **MUST** also mark the pod's Lead paused (`paused = true`,
    `pausedReason = "budget"`, through `meta_set`). From that point on, **every** further claim
    attempt against this pod -- for this task or any other in its queue -- **MUST** be refused

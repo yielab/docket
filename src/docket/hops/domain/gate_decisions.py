@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 GATE_FAILURE_KINDS = {
@@ -291,9 +292,29 @@ def conversation_ends_on_budget(*, failure_kind: str, conversation: bool, turns_
     return conversation and failure_kind == "budget" and turns_done > 0
 
 
-def decide_pod_budget(*, cap: int | None, spent: int, role: str) -> GateDecision:
-    """The pod's counted tokens (*spent*) against its *cap* before a hop. No cap, or spend under it,
-    advances; a tripped cap blocks the task (and the shell pauses the Lead)."""
+BudgetWindow = Literal["none", "day", "week"]
+
+
+def window_start(window: BudgetWindow, now: datetime) -> datetime | None:
+    """Where a pod's budget window began as of *now* (UTC): midnight today for ``day``, midnight
+    on the most recent Monday for ``week``, ``None`` for ``none`` (every token counts)."""
+    if window == "none":
+        return None
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight - timedelta(days=midnight.weekday()) if window == "week" else midnight
+
+
+def decide_pod_budget(
+    *,
+    cap: int | None,
+    spent: int,
+    role: str,
+    window: BudgetWindow = "none",
+    since: datetime | None = None,
+) -> GateDecision:
+    """The pod's counted tokens (*spent*, over its *window*) against its *cap* before a hop. No
+    cap, or spend under it, advances; a tripped cap blocks the task (and the shell pauses the
+    Lead)."""
     if cap is None or spent < cap:
         return GateDecision("advance")
     return GateDecision(
@@ -301,7 +322,13 @@ def decide_pod_budget(*, cap: int | None, spent: int, role: str) -> GateDecision
         reason=f"pod budget reached ({spent} of {cap} tokens counted) before {role}",
         failure_kind="pod_budget",
         event="budget_exceeded",
-        detail={"spent": spent, "cap": cap, "role": role},
+        detail={
+            "spent": spent,
+            "cap": cap,
+            "role": role,
+            "window": window,
+            "windowStart": None if since is None else since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        },
     )
 
 

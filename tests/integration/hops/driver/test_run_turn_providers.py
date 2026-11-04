@@ -23,6 +23,7 @@ from docket.governance import secrets as _secrets
 from docket.hops.application import driver as _docket_runtime
 from docket.hops.application.driver import DocketDriver
 from docket.interfaces.cli.commands import setup_model_credentials as _setup_model_credentials
+from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.models.adapters import openai_http as _llm_adapter
 from docket.models.application import probe as _probe
@@ -448,9 +449,12 @@ class TestSessionIntrospection:
         assert sessions[0].turns == 4  # user, assistant(tool_calls), tool, assistant(final)
 
         report = driver.usage("chat-agent")
+        current_day = _clock.now().strftime("%Y-%m-%d")
         assert report.totals.input_tokens == 16
         assert report.totals.output_tokens == 7
-        assert report.by_day == []
+        assert [(d.date, d.input_tokens, d.output_tokens) for d in report.by_day] == [
+            (current_day, 16, 7)
+        ]
 
     def test_list_sessions_is_scoped_to_the_agent_id_prefix(self) -> None:
         _write_meta("agent-a")
