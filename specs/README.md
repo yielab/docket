@@ -122,7 +122,7 @@ This table mirrors each spec's own `**Version**`/`**Status**` header, which wins
 | CLI JSON Shapes | 5.6.0 | Complete |
 | docket-meta schema | 5.10.0 | Complete |
 | Docket Store | 3.5.0 | Implemented |
-| Operator API | 7.27.0 | Implemented (Phase 43, ADR 0027) |
+| Operator API | 7.28.0 | Implemented (Phase 43, ADR 0027) |
 | A2a Binding | 1.3.1 | Implemented |
 | Serve Read API | 6.4.0 | Stable |
 | Adoption Benchmark | 2.3.1 | Implemented |

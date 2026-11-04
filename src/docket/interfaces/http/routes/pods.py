@@ -1,5 +1,5 @@
 """Reads of the pods: ``GET /pods``, ``GET /pods/<pod>``, ``GET /pods/<pod>/corrections`` and
-``GET /pods/<pod>/memory``, and ``POST /pods/<pod>/resume``."""
+``GET /pods/<pod>/memory``, and ``POST /pods/<pod>/resume`` and ``POST /pods/<pod>/memory/<id>``."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from docket.teams import memory as _pod_memory
 from docket.teams import pod_settings as _pod_settings
 
 _MEMORY_STATUSES = ("accepted", "pending", "refused")
+_MEMORY_DECISIONS = ("approve", "refuse")
 
 
 def get_pods(h: HttpExchange, _arg: str) -> None:
@@ -91,3 +92,36 @@ def get_pod_memory(h: HttpExchange, project: str) -> None:
         return
     entries = [e.to_dict() for e in _pod_memory.list_entries(project, status=status)]
     h._send(json.dumps({"entries": entries}).encode("utf-8"), "application/json")
+
+
+def post_pod_memory(h: HttpExchange, capture: str) -> None:
+    """``POST /pods/<pod>/memory/<id>``: approve or refuse a pending entry as ``docket pod memory
+    approve`` and ``refuse`` do, and answer the entry in its new status (operator-api.spec.md)."""
+    project, _, entry_id = capture.partition("/memory/")
+    if h._reject_bad_project_id(project):
+        return
+    if project not in _queue.dispatchable_pods():
+        h._send_json_error(f"no pod '{project}'", 404)
+        return
+    body = h._read_json_object()
+    if body is None:
+        return
+    decision, reason = body.get("decision"), body.get("reason", "")
+    if decision not in _MEMORY_DECISIONS:
+        h._send_json_error("decision must be approve or refuse", 400)
+        return
+    if not isinstance(reason, str):
+        h._send_json_error("reason must be a string", 400)
+        return
+    if decision == "refuse" and not reason.strip():
+        h._send_json_error("refuse needs a reason", 400)
+        return
+    try:
+        if decision == "approve":
+            entry = _pod_memory.approve(project, entry_id, actor="http")
+        else:
+            entry = _pod_memory.refuse(project, entry_id, reason, actor="http")
+    except _pod_memory.PodMemoryError as exc:
+        h._send_refusal(exc)
+        return
+    h._send(json.dumps(entry.to_dict()).encode("utf-8"), "application/json")

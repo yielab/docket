@@ -40,6 +40,7 @@ FEATURES: tuple[str, ...] = (
     "podContract",
     "podResume",
     "memoryStatus",
+    "memoryDecide",
 )
 
 

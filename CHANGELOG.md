@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A plan of record decides a pod's pending memory.** `POST /pods/<pod>/memory/<id>` with
+  `{"decision": "approve" | "refuse", "reason"?}` does what `docket pod memory approve` and `refuse`
+  do and answers the entry in its new status; `refuse` needs a `reason`, as `--reason` does. `404` for
+  an unknown pod or entry, `409` for an entry that is not pending, `400` for a bad body. `features`
+  gains `memoryDecide`.
 - **A plan of record reads a pod's contract (D-85, Phase 63, wave 1).**
   - A pod keeps the `needs` its applied recipes declared; `docket pod show --json` reports
     `needs: [{kind, name, fix, satisfied}]`, recomputed as the pod is now, and `pod show` prints one

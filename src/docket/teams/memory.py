@@ -20,7 +20,7 @@ from typing import Any
 
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
-from docket.kernel.errors import Conflict
+from docket.kernel.errors import Conflict, NotFound
 from docket.kernel.home import current_home
 from docket.kernel.ports import git as _git
 from docket.kernel.text import one_line
@@ -32,6 +32,10 @@ from docket.teams.memory_parse import KINDS, _safe_path, parse_memory_section
 
 class PodMemoryError(Conflict):
     """An operator action named no such entry, or one in the wrong state."""
+
+
+class NoMemoryEntry(NotFound, PodMemoryError):
+    """The pod holds no entry with that id."""
 
 
 @dataclass(frozen=True)
@@ -273,7 +277,7 @@ def _decide_entry(
         entries = _load(doc)
         old = next((e for e in entries if e.id == entry_id_), None)
         if old is None:
-            raise PodMemoryError(f"no memory entry '{entry_id_}'")
+            raise NoMemoryEntry(f"no memory entry '{entry_id_}'")
         if old.status != allowed:
             raise PodMemoryError(f"entry '{entry_id_}' is {old.status}, not {allowed}")
         new = make(old)

@@ -170,3 +170,104 @@ def test_status_and_health_list_pod_memory_feature(live_server: tuple[str, str])
 
     _, health = _get(f"{url}/health")
     assert "podMemory" in health["features"]
+
+
+def _seed_pending() -> str:
+    entry = _entry("dist/pending.js", "pending")
+    path = current_home().pod_memory_path("demo")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(path, {"entries": [entry, _entry("dist/other.js", "pending")]})
+    return str(entry["id"])
+
+
+def test_approve_accepts_a_pending_entry_and_answers_it_as_the_list_serves_it(
+    live_server: tuple[str, str],
+) -> None:
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+    entry_id = _seed_pending()
+
+    status, body = _support_http.post(
+        f"{url}/pods/demo/memory/{entry_id}", {"decision": "approve"}, token
+    )
+
+    assert status == 200
+    assert (body["id"], body["status"]) == (entry_id, "accepted")
+    _, listed = _get(f"{url}/pods/demo/memory", token)
+    assert listed["entries"] == [body]
+    _, pending = _get(f"{url}/pods/demo/memory?status=pending", token)
+    assert [e["subject"] for e in pending["entries"]] == ["dist/other.js"]
+
+
+def test_refuse_records_the_reason_and_needs_one(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+    entry_id = _seed_pending()
+    route = f"{url}/pods/demo/memory/{entry_id}"
+
+    status, body = _support_http.post(route, {"decision": "refuse"}, token)
+    assert status == 400
+    assert "reason" in body["error"]
+
+    status, body = _support_http.post(route, {"decision": "refuse", "reason": "stale"}, token)
+    assert status == 200
+    assert (body["status"], body["reason"]) == ("refused", "stale")
+
+
+def test_a_decided_entry_is_409_and_unchanged(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+    entry_id = _seed_pending()
+    route = f"{url}/pods/demo/memory/{entry_id}"
+    _support_http.post(route, {"decision": "approve"}, token)
+
+    status, body = _support_http.post(route, {"decision": "refuse", "reason": "x"}, token)
+
+    assert status == 409
+    assert body["ok"] is False
+    _, listed = _get(f"{url}/pods/demo/memory", token)
+    assert [e["status"] for e in listed["entries"]] == ["accepted"]
+
+
+def test_an_unknown_pod_or_entry_is_404(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+    _seed_pending()
+
+    assert (
+        _support_http.post(f"{url}/pods/ghost/memory/mem-1", {"decision": "approve"}, token)[0]
+        == 404
+    )
+    assert (
+        _support_http.post(f"{url}/pods/demo/memory/mem-nope", {"decision": "approve"}, token)[0]
+        == 404
+    )
+
+
+def test_a_bad_body_is_400_and_changes_nothing(live_server: tuple[str, str]) -> None:
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+    entry_id = _seed_pending()
+    route = f"{url}/pods/demo/memory/{entry_id}"
+
+    for bad in ({}, {"decision": "revert"}, {"decision": "refuse", "reason": 3}, {"decision": 1}):
+        assert _support_http.post(route, bad, token)[0] == 400
+    assert _support_http.post_raw(route, b"[1]", token)[0] == 400
+    assert _support_http.post_raw(route, b"{", token)[0] == 400
+    _, pending = _get(f"{url}/pods/demo/memory?status=pending", token)
+    assert len(pending["entries"]) == 2
+
+
+def test_the_decision_needs_the_token(live_server: tuple[str, str]) -> None:
+    url, _ = live_server
+
+    status, _ = _support_http.post(f"{url}/pods/demo/memory/mem-1", {"decision": "approve"})
+
+    assert status == 401
+
+
+def test_status_and_health_list_the_memory_decide_feature(live_server: tuple[str, str]) -> None:
+    url, _ = live_server
+
+    assert "memoryDecide" in _get(f"{url}/status.json")[1]["features"]
+    assert "memoryDecide" in _get(f"{url}/health")[1]["features"]

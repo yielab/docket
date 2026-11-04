@@ -90,6 +90,7 @@ class TestBuildStatus:
             "podContract",
             "podResume",
             "memoryStatus",
+            "memoryDecide",
         ]
 
     def test_channels_from_acl(self, fake_home: Path) -> None:

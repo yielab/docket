@@ -1,8 +1,8 @@
 # Operator API (HTTP, version 6) -- contract spec
 
-**Version**: 7.27.0
+**Version**: 7.28.0
 **Status**: Implemented (ADR 0027, ADR 0029). The server reports `apiVersion` `"6"`.
-**Last Updated**: 2026-11-03
+**Last Updated**: 2026-11-04
 
 ## Purpose
 
@@ -27,7 +27,7 @@ This specification covers:
 - `GET /escalations`, the pauses a task waits on, one record each (`operator-loop.spec.md` area 11)
 - `GET /pods`, `GET /pods/<p>`, `POST /pods` with `ensure`, `POST /pods/<p>/apply`,
   `POST /pods/<p>/resume`, `GET /pods/<p>/corrections`, `GET /pods/<p>/memory`,
-  `GET /pods/<p>/records`, `GET /pods/<p>/records/<set>`
+  `POST /pods/<p>/memory/<id>`, `GET /pods/<p>/records`, `GET /pods/<p>/records/<set>`
 - The `dispatch` block of `GET /health` under `--dispatch`
 - Re-attaching a client after a restart, and the `check_changed` approval a consumer sees
 - Status codes and error bodies
@@ -80,6 +80,7 @@ over 1 MiB is `413`.
 | `POST /pods/<p>/resume` | clear a pod's pause and re-queue its blocked tasks |
 | `GET /pods/<p>/corrections?since=` | the corrections ledger, from a cursor |
 | `GET /pods/<p>/memory?status=` | the pod's memory entries in one status (default `accepted`), oldest first |
+| `POST /pods/<p>/memory/<id>` | approve or refuse a pending memory entry, as `docket pod memory approve` and `refuse` do |
 | `GET /pods/<p>/records` | the pod's record sets with their columns and row counts |
 | `GET /pods/<p>/records/<set>?limit=&sql=` | a set's rows, or a read-only `SELECT`'s |
 | `GET /health` (dispatch block) | whether the sweep is on and what is in flight |
@@ -402,6 +403,16 @@ status, reason, provenance, stale, evidence}`: `subject` for every kind, `stale`
 key. A pod that is not dispatchable is
 `404`. A client probes for the `status` query with the `memoryStatus` feature.
 
+`POST /pods/<p>/memory/<id>` (`200`): body `{"decision": "approve" | "refuse", "reason"?: string}`.
+It has the effect of `docket pod memory approve <id>` or `refuse <id> --reason`, with the actor
+`http`: the entry must be `pending`; it becomes `accepted` or `refused`, the change is traced and
+audited as the CLI's is, and the answer is that one entry as `GET /pods/<p>/memory` lists it, in its
+new status (not wrapped in `entries`). `reason` is a string and is required for `refuse`, as the CLI's
+`--reason` is, and is ignored for `approve`. A pod that is not dispatchable and an entry the pod does
+not have are `404`; an entry that is not `pending` is `409` and is left as it was; a body that is not a
+JSON object, a `decision` other than the two, a `reason` that is not a string, or a `refuse` with no
+`reason` is `400`. A client probes for it with the `memoryDecide` feature.
+
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp",
 "workspaceKind": "codebase", "blueprint": "build", "members": 2, "profile": "lights-out", "network": {"mode": "none", "scope": "default", "enforced": true}, "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
 "waitingInput": 0, "blocked": 0, "failed": 0, "done": 4, "cancelled": 0}}]}`; `queue` carries the
@@ -715,13 +726,13 @@ probe; the sweep ends the wait, nobody is asked.
 
 | Code | When |
 |---|---|
-| `200` | a read; an idempotent re-post; cancel/retry/apply/ensure/resume done |
+| `200` | a read; an idempotent re-post; cancel/retry/apply/ensure/resume/memory decision done |
 | `201` | a new task or a new pod |
-| `400` | a `status` of `GET /pods/<p>/memory` that is not `accepted`, `pending` or `refused`, malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` or an `updatedSince` of `GET /tasks/<pod>` (`code: bad_cursor`) that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables`/`conversation` of the wrong shape, a `conversation` on a pipeline of more than one step (`code: conversation_needs_one_step`), a naive `since`, a bad `apply` body |
+| `400` | a `status` of `GET /pods/<p>/memory` that is not `accepted`, `pending` or `refused`, a bad `decision` or `reason` of `POST /pods/<p>/memory/<id>`, malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` or an `updatedSince` of `GET /tasks/<pod>` (`code: bad_cursor`) that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables`/`conversation` of the wrong shape, a `conversation` on a pipeline of more than one step (`code: conversation_needs_one_step`), a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
 | `403` | the read-scoped token (`DOCKET_SERVE_READ_TOKEN`) on a `POST` route (`code: read_scope`) |
-| `404` | no pod (checked before an `apply` body is read; `resume` too), no task, no escalation (`GET` or `POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
-| `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting (the body carries `code: escalation_not_pending`) |
+| `404` | no pod (checked before an `apply` body is read; `resume` too), no task, no escalation (`GET` or `POST /escalations/<id>`), no memory entry (`POST /pods/<p>/memory/<id>`), no such route; a task whose branch is gone (`diff`) |
+| `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; a memory decision on an entry that is not `pending`; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting (the body carries `code: escalation_not_pending`) |
 | `413` | a request body over 1 MiB |
 | `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an `autonomy` above the pod profile's ceiling; an invalid `brief`; `POST /escalations/<id>` with an unknown option, content that fails the schema or content a policy blocks |
 | `500` | `POST /pods` could not provision (the attempt is rolled back); `GET /pods/<p>` and `POST /pods/<p>/resume` for a pod whose stored settings are invalid |
