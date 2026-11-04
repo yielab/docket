@@ -137,8 +137,8 @@ def _role_prompt(
 
 #: The root line of a ``workdir``-kind pod, whose root is not a repository.
 _WORKDIR_LINE = (
-    "Working directory: the pod's working directory (your tools start there; give paths "
-    "relative to it)."
+    "Working directory: the pod's working directory, the team's shared folder (your tools start "
+    "there; give paths relative to it; the team's output goes there)."
 )
 
 

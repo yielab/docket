@@ -8,6 +8,7 @@ import typer
 from docket.governance.audit import audit_log
 from docket.interfaces.cli.commands import contract as _contract
 from docket.interfaces.cli.render import ui
+from docket.interfaces.cli.render.apply import render_reading_need
 from docket.kernel.home import current_home
 from docket.platform import read_json
 from docket.teams import agent_memory as _mem
@@ -123,6 +124,8 @@ def add_members(project: str, role: str, *, count: int = 1, verify_cmd: str = ""
             audit_log("pod.set-verify", f"member={member.member_id} cmd={verify_cmd!r}")
     if created:
         audit_log("pod.add", f"{project} role={canon_role} members={','.join(created)}")
+        if _pp.record_reading_needs(project):
+            render_reading_need(project)
     return created
 
 

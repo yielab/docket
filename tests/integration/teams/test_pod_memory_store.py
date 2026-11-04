@@ -325,6 +325,19 @@ class TestRender:
         assert "dist/bundle.js" in text and "Built output." in text
         assert "schema.proto" not in text
 
+    def test_an_approved_label_entry_renders_though_no_path_carries_its_name(
+        self, repo: tuple[Path, str]
+    ) -> None:
+        root, commit = repo
+        (entry,) = _record(
+            root, commit, _section("- convention: rec query on stories -- Order by id desc.")
+        )
+        pm.approve(_PROJECT, entry.id)
+
+        text = pm.render_entries(_PROJECT, root, 4000)
+
+        assert "rec query on stories" in text and "Order by id desc." in text
+
     def test_an_entry_whose_path_is_gone_is_omitted_but_kept(self, repo: tuple[Path, str]) -> None:
         root, _commit = repo
         self._accept(repo, "dist/bundle.js", "api/schema.proto")

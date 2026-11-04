@@ -31,6 +31,7 @@ from docket.teams import pod
 from docket.teams import pod_settings as _pod_settings
 from docket.teams import provisioning as _prov
 from docket.teams import resources as _res
+from docket.teams.apply import needs as _needs
 from docket.teams.member_workspace import provision_member
 from docket.teams.task_worktrees import (
     TASK_WORKTREES_DIRNAME,
@@ -387,6 +388,20 @@ def provision_members(
     return created
 
 
+def record_reading_needs(project: str) -> bool:
+    """Record ``fetch-hosts`` on the Lead's ``needs`` when a ``researcher`` is in the pod, so the
+    pod says from its creation that it cannot read the web until a person names hosts. Writes no
+    ``fetchDomains`` and no network setting; True when the need is recorded after this call."""
+    members = pod.members_of([a.id for a in _fleet.list_agents()], project)
+    if not any(role == "researcher" for _mid, role, _idx in members):
+        return False
+    lead_id = pod.member_id(project, "lead")
+    recorded = [n for n in (_fleet.meta_get(lead_id, "needs", "") or "").split(",") if n]
+    if _needs.FETCH_HOSTS not in recorded:
+        _fleet.meta_set(lead_id, "needs", ",".join((*recorded, _needs.FETCH_HOSTS)))
+    return True
+
+
 def provision_pod(
     project: str,
     blueprint_name: str,
@@ -454,6 +469,7 @@ def provision_pod(
             work_dir_created=work_dir_created,
         )
 
+        record_reading_needs(project)
         audit_log(
             "agent.add",
             f"{project} blueprint={blueprint.name} "

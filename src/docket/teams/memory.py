@@ -371,7 +371,7 @@ def render_entries(project: str, root: Path | None, max_bytes: int) -> str:
     for entry in list_entries(project, "accepted"):
         if entry.stale:
             continue
-        if entry.kind != "tool":
+        if entry.kind == "generated":
             rel = _safe_path(entry.subject)
             if not rel or (root is not None and not os.path.lexists(os.path.join(root, rel))):
                 continue

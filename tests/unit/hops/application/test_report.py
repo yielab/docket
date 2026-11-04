@@ -144,6 +144,31 @@ class TestPodReportShapeAndSteps:
         assert "steps" not in steps["build"]
 
 
+class TestSettingsNetworkRow:
+    """The `settings.network` row and the top-level `network` read one effective mode."""
+
+    def test_a_pod_with_no_network_set_reports_the_same_mode_in_both(self, tmp_path: Path) -> None:
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+
+            report = pod_report.pod_report("demo")
+
+        assert report["network"]["mode"] == "none"
+        assert report["settings"]["network"] == {"value": "none", "source": "default"}
+
+    def test_a_pod_open_under_a_machine_none_reports_none_with_its_own_source(
+        self, tmp_path: Path
+    ) -> None:
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            _fleet.meta_set("demo-lead", "network", "open")
+
+            report = pod_report.pod_report("demo")
+
+        assert report["network"]["mode"] == "none"
+        assert report["settings"]["network"] == {"value": "none", "source": "set"}
+
+
 class TestPodReportNeeds:
     """The pod report serves the recorded needs as wire entries, recomputed as the pod is now."""
 

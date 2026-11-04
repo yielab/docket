@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Three defects Tack found on a research team.**
+  - `docket pod show` and `GET /pods/<pod>` no longer contradict themselves: the `settings.network`
+    row carries the effective mode (a pod with nothing set reads `none` under a machine at `none`),
+    the same one as the top-level `network`.
+  - A pod made with a `researcher` (the `respond` blueprint, `docket init`, `POST /pods`,
+    `docket pod add researcher`) records the `fetch-hosts` need, so `docket init` and `docket pod
+    add` print that the team cannot read the web and the command that changes it, and `needs`
+    serves the not-ready line. No role gets `fetch` and `network` stays as it was.
+  - The working-directory line of a `workdir` pod's hop says it is the team's shared folder and
+    that the team's output goes there; the `Working folder: <path>` line has been there since
+    2026-11-03.
+- **An approved `pitfall` or `convention` memory entry reaches the next prompt.** Rendering skipped
+  every non-`tool` entry whose subject was not an existing path, which is every label subject.
+
 ### Added
 
 - **A plan of record reads a pod's contract (D-85, Phase 63, wave 1).**

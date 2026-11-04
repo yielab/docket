@@ -163,10 +163,13 @@ def _pod_settings_report(
     settings: _pod_settings.PodSettings, project: str
 ) -> dict[str, dict[str, Any]]:
     """Every ``PodSettings`` key's effective value and source ("set"/"default") --
-    the ``settings`` object of ``docket pod show --json``."""
+    the ``settings`` object of ``docket pod show --json``. ``network`` is the mode a turn gets, so
+    it agrees with the report's own ``network``."""
     report: dict[str, dict[str, Any]] = {}
     for key in _pod_settings.PodSettings.KEYS:
         value, source = settings.value_and_source(key, project)
+        if key == "network":
+            value = _pod_settings.effective_network(project)[0]
         report[key] = {"value": value, "source": source}
     if settings.pipeline:
         report["maxReworkCycles"] = {

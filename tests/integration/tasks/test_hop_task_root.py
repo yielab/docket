@@ -41,8 +41,8 @@ _LINE = (
 
 
 _WORKDIR_LINE = (
-    "Working directory: the pod's working directory (your tools start there; give paths "
-    "relative to it)."
+    "Working directory: the pod's working directory, the team's shared folder (your tools start "
+    "there; give paths relative to it; the team's output goes there)."
 )
 
 

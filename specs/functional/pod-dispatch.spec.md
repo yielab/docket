@@ -1,6 +1,6 @@
 # Pod Dispatch Pipeline Specification
 
-**Version**: 12.6.0
+**Version**: 12.7.0
 **Status**: Implemented and live. `docket run` and the `docket start --dispatch` sweep claim a pod's
 queued tasks and drive each through its pipeline, one real agent turn per hop, with locked claims,
 crash resume, gates, parked approvals and questions, task worktrees and per-hop evidence.
@@ -744,7 +744,9 @@ wired agent's conversation current with the task it is working.
    at `set`). `none` cuts the network of this pod's jailed tool calls; it only narrows the global
    `docket setup sandbox network` mode (a pod `open` under a global `none` stays `none`), via
    `effective_network`, which `DocketDriver` reads each turn; unreadable pod settings fail closed to
-   `none`. See `security-gates.spec.md` "Network egress".
+   `none`. The `settings.network` row of the pod report (and so of `docket pod show`) carries that
+   effective mode, never the stored value, and keeps `set`/`default` as its source, so it never
+   contradicts the report's top-level `network`. See `security-gates.spec.md` "Network egress".
 10. `PodSettings` also carries `prepare` (`str`, `""` by default, at most 1,000 characters, no NUL
     or newline): the install command a pod's tasks run in a fresh worktree, or `none` to turn
     preparation off (see "Task preparation"). Written by `pod.yaml`'s top-level `prepare:` (never
@@ -2208,7 +2210,8 @@ protected-path rules (defaults, `protects`, command-named files) are `security-g
     are reserved before the carryover budget is computed. A pod's system prompt carries neither the
     root nor the map, so it is identical between tasks. On a `workdir`-kind pod
     (`pod-blueprints.spec.md` "Workspace kind and the working directory") the line reads `Working
-    directory: the pod's working directory (your tools start there; give paths relative to it).`
+    directory: the pod's working directory, the team's shared folder (your tools start there; give
+    paths relative to it; the team's output goes there).`
     and the message carries no map, for the Lead and every other role: a working directory is not a
     repository, so the words "repository root" and "Repository map" never reach a model that has
     none.

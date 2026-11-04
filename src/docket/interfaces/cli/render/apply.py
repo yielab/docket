@@ -7,6 +7,7 @@ from rich.markup import escape
 from docket.governance import review as _governance_review
 from docket.interfaces.cli.render import ui
 from docket.observability import exporter as _exporter
+from docket.teams import pod_settings as _pod_settings
 from docket.teams.apply import model as _model
 from docket.teams.apply import needs as _needs
 from docket.teams.apply import recipes as _recipes
@@ -98,4 +99,13 @@ def render_recipe_needs(project: str, directory: Path) -> None:
     """Print one line per need *directory*'s ``pod.yaml`` declares, as *project* is now, and
     nothing for a recipe that declares none. The one block ``init`` and ``pod update`` share."""
     for line in _needs.readiness(project, _recipes.recipe_needs(directory)):
+        ui.console.print(f"  {escape(line.render())}")
+
+
+def render_reading_need(project: str) -> None:
+    """Print the ``fetch-hosts`` line when *project* records that need (a researcher is in the
+    pod), as the pod is now; nothing otherwise. The line ``init`` and ``pod add`` share."""
+    if _needs.FETCH_HOSTS not in _pod_settings.PodSettings.load_for(project).needs:
+        return
+    for line in _needs.readiness(project, (_needs.FETCH_HOSTS,)):
         ui.console.print(f"  {escape(line.render())}")

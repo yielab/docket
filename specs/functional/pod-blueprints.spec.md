@@ -1,6 +1,6 @@
 # Pod Blueprints Specification
 
-**Version**: 4.7.0
+**Version**: 4.8.0
 **Status**: Implemented
 **Last Updated**: 2026-11-03
 
@@ -540,6 +540,15 @@ overlay, policies, members, pipeline binding, settings) into one command.
     recorded need, computed as the pod is now. Each not-ready line names exactly one command. The block is informational: it **MUST NOT**
     change the exit status, refuse or alter the apply, or write any setting, and `--dry-run`
     prints no block.
+    **A researcher records the same need (ADR 0036 decision 17).** When a pod is created (a
+    blueprint, `docket init`, `POST /pods`) or a member is added (`docket pod add`) and the pod
+    holds a `researcher`, docket **MUST** add `fetch-hosts` to the Lead's recorded `needs` (the
+    union of this requirement, never a duplicate), and `docket init` and `docket pod add` **MUST**
+    print that one line after their own output, so a team made to read sources says at its creation
+    that it cannot read the web and which command changes that. It **MUST NOT** give any role the
+    `fetch` tool, write `fetchDomains` or change `network`: `fetch` is bounded by the hosts a person
+    names, and a grant with no host would be a permission that does nothing. A pod without a
+    `researcher` records nothing.
 
 ### Pod manifests: export
 

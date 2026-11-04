@@ -247,7 +247,7 @@
         "source": "default"
       },
       "network": {
-        "value": "open",
+        "value": "none",
         "source": "default"
       },
       "profile": {
@@ -336,7 +336,14 @@
     "fetchDomains": [
       "docs.python.org"
     ],
-    "needs": [],
+    "needs": [
+      {
+        "kind": "fetch-hosts",
+        "name": "fetch-hosts",
+        "fix": "",
+        "satisfied": true
+      }
+    ],
     "delivers": [
       "report"
     ],

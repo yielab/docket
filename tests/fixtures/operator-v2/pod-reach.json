@@ -262,7 +262,7 @@
         "source": "default"
       },
       "network": {
-        "value": "open",
+        "value": "none",
         "source": "default"
       },
       "profile": {
@@ -349,7 +349,14 @@
       "enforced": true
     },
     "fetchDomains": [],
-    "needs": [],
+    "needs": [
+      {
+        "kind": "fetch-hosts",
+        "name": "fetch-hosts",
+        "fix": "docket pod set fetchDomains <hosts> --pod research",
+        "satisfied": false
+      }
+    ],
     "delivers": [
       "report"
     ],
