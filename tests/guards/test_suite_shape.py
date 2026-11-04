@@ -98,12 +98,11 @@ _SERVER_AND_PROCESS_CALLS = {
     "create_server",
     "start_server",
 }
-# The registry tests drive the CLI package's own __init__, and the fixture contract names a
-# fixture module, so neither can name a module file of docket.
+# The registry tests drive the CLI package's own __init__, so they cannot name a module file of
+# docket.
 _STRUCTURAL_SUBJECTS = {
     "interfaces/cli/test_app.py",
     "interfaces/cli/test_registry.py",
-    "test_runtime_adapter_fixture_contract.py",
 }
 # Tests of the module that reads the environment may set it.
 _ENVIRONMENT_PARSERS = {"unit/kernel/test_clock.py", "unit/kernel/test_home.py"}

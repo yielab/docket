@@ -1,8 +1,8 @@
 # Runtime Library (`docket-runtime`) Contract Specification
 
-**Version**: 2.3.0
-**Status**: Implemented. The facade, the governed-execution envelope and two configuration-scoped adapters (OpenHands SDK, PydanticAI) ship in `docket-runtime` 0.3.0. The package is built and installed from artifacts but not published to an index.
-**Last Updated**: 2026-10-23
+**Version**: 3.0.0
+**Status**: Implemented. The facade and the governed-execution envelope ship in `docket-runtime` 0.3.0; the package ships no framework adapter. The package is built and installed from artifacts but not published to an index.
+**Last Updated**: 2026-11-03
 
 ## Purpose
 
@@ -16,7 +16,7 @@ or reach into runtime internals.
 
 This contract covers package ownership, the small facade, release artifacts,
 the embedding call path, and the synchronous governed-execution envelope used
-by external-runtime adapters. It does not add a plugin framework, server,
+by an embedding product's own adapter. It does not add a plugin framework, server,
 tenant model, alternate driver, public agent loop, or a public internal-module
 API.
 
@@ -128,57 +128,6 @@ empty summary. After any terminal result, `record_response`, `dispatch`, and a
 second `finish` raise `RuntimeError` without trace, audit, approval, or handler
 side effects.
 
-## Optional adapters
-
-Two adapter modules ship inside the runtime wheel, outside the facade and
-outside its dependencies. Importing either requires the host to install its
-framework; importing `docket_runtime` does not.
-
-`docket_runtime.adapters.openhands.OpenHandsAdapter(runtime=, context=,
-limits=)` runs one OpenHands agent through `run(llm=, prompt=, workspace=,
-persistence_dir=)`. It registers only the runtime's tool specs, with default
-tools, skills, plugins, MCP and security-policy files disabled, one tool call
-at a time. Calls to names the runtime did not advertise are not admitted. A
-terminal budget result replaces the model message with the result's error text
-and drops its tool calls. The run returns the terminal result, or finishes with
-the last assistant text that carried no tool call.
-
-`docket_runtime.adapters.pydantic_ai.DocketToolset(runtime=, context=,
-limits=)` is one sequential PydanticAI toolset over the runtime's tool specs
-with no retries. Each tool call reports the usage added since the previous
-report, then dispatches the exact call. After a terminal result a later call
-returns that result's error text without dispatch. Its
-`finish(summary, *, usage=None)` accepts the completed run's cumulative
-`RunUsage`. When supplied for an active execution, the adapter converts only
-the usage since its last tool call into a final response with no tool calls
-before terminalizing. That final response can therefore stop on Docket's token
-budget. When a tool response already produced a terminal budget result,
-`finish` returns that same result without recording later framework activity.
-Omitting `usage` preserves the original embedding contract for callers that
-cannot report completion usage.
-
-## Tested adapter configurations
-
-The installed-artifact proof covers exactly these standard configurations:
-
-| Adapter | Pinned package | Python | Governed integration |
-| --- | --- | --- | --- |
-| OpenHands SDK | `openhands-sdk==1.44.1` | 3.12 | `OpenHandsAdapter` with defaults, skills, plugins, MCP, and native tools disabled |
-| PydanticAI | `pydantic-ai==2.37.0` | 3.11 | One sequential `DocketToolset`, with no native or additional toolsets |
-
-The matrix builds the `docket-runtime` wheel and sdist once, installs each
-outside the checkout with both pinned fixtures, and compares normalized state,
-usage, tool-call count, terminal result, handoff, trace, and audit outcomes. The
-claim applies only when relevant tools are exclusively Docket-backed. ACP,
-native/provider tools, plugins/MCP added beside an adapter, and arbitrary
-framework configurations are outside the proof. This is not framework-neutral
-compatibility.
-
-A2A is not used because both tested adapters call the synchronous facade in
-process. OTLP is not used because the existing JSONL trace preserves project,
-session, role, call, and decision identity required by this proof. Neither
-absence is a claim that those protocols are unsupported future work.
-
 ### Example
 
 ```python
@@ -255,19 +204,10 @@ malformed and unknown calls through the real chokepoint, typed terminal
 handoff, concurrent approval-stub isolation, exact public exports, and
 unchanged base dependencies.
 
-The adapter-parity release test installs the same wheel and rebuilt sdist into
-the pinned OpenHands SDK and PydanticAI fixture environments and compares their
-normalized governed outcomes. It also proves that the base artifact imports
-without either optional framework dependency. The adapter public-truth release
-test checks the support boundary, protocol non-claims, and the machine-readable
-compact example.
-
 ## Implementation
 
 - `packages/docket-runtime/src/docket_runtime/__init__.py`: `Runtime`, the facade exports, `__version__`
 - `packages/docket-runtime/src/docket_runtime/_execution.py`: `ExecutionLimits`, `ExecutionResult`, `GovernedExecution`
-- `packages/docket-runtime/src/docket_runtime/adapters/openhands.py`: `OpenHandsAdapter`
-- `packages/docket-runtime/src/docket_runtime/adapters/pydantic_ai.py`: `DocketToolset`
 - `packages/docket-runtime/hatch_build.py`: the build hook and the closure it computes from the facade's import-time imports (`runtime_closure`), `DOCKET_RUNTIME_BUILD_TMPDIR`
 - `packages/docket-runtime/pyproject.toml`: package version, dependency floors, sdist `runtime-source/` force-include
 - `src/docket/agent/tools/registry.py`: `dispatch_tool`, `Tool`, `ToolContext`, `ToolResult`, `ToolRegistry.specs`
@@ -278,6 +218,4 @@ compact example.
 - `src/docket/kernel/handoff.py`: `HandoffArtifact`
 - `src/docket/agent/tools/builtins/toolbox.py`: `ToolOutcome`
 - `tests/agent/release/test_runtime_package_boundary.py`: artifact boundary oracle
-- `tests/agent/release/test_runtime_adapter_parity.py`, `tests/agent/release/test_runtime_openhands_adapter.py`: adapter parity
-- `tests/agent/release/test_runtime_adapter_public_truth.py`: support boundary and protocol non-claims
 - `tests/integration/product/test_runtime_execution_envelope.py`: envelope behaviour

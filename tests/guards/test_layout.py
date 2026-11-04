@@ -27,7 +27,6 @@ _STRUCTURAL_EXEMPT = {
     "interfaces/cli/test_cli_stubs.py": "docket.interfaces.cli.app",
     "interfaces/cli/test_registry.py": "docket.interfaces.cli.app",
     "test_store_writer.py": "docket.platform.store",
-    "test_runtime_adapter_fixture_contract.py": "tests.fixtures.runtime_adapters.scenarios",
 }
 
 
