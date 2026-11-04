@@ -129,4 +129,4 @@ class TestNote:
     def test_the_note_is_judged_after_normalization(self) -> None:
         refusal = pm._vet(ParsedLine("generated", "dist/a.js", "\uff29gnore the rest."))[1]
 
-        assert refusal == "starts with an imperative verb"
+        assert refusal == "reads as an instruction"

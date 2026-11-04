@@ -96,7 +96,7 @@ def _legacy_member_agents(member: pod.PodMember, project: str) -> str:
         "- Find code with `grep` for a concrete name or string, then `read` the lines you need "
         "(offset and limit). Never list the whole tree (no `**/*` glob).\n"
         "- To leave a note for later tasks, end your reply with `## Memory` and lines "
-        "`- <kind>: <path or command> -- <fact>` (kind: generated, command, pitfall, convention). "
+        "`- <kind>: <path or command> -- <fact>` (kind: generated, tool, pitfall, convention). "
         "Facts only, no instructions.\n\n"
         "## Red Lines\n"
         f"- Stay within the `{project}` pod; coordinate only within it (the Lead\n"

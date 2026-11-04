@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 from tests.support.git import git_identity_flags as _git
-from tests.support.pods import build_pod
+from tests.support.pods import build_pod, seed_empty_home
 
 from docket.agent import ports as _ports
 from docket.interfaces.cli.commands import pod as _pod
@@ -44,17 +44,23 @@ def pod(tmp_path: Path) -> Iterator[tuple[Path, str]]:
 
 
 def _finish(
-    root: Path, commit: str, output: str, *, events: list[tuple[str, dict[str, Any]]]
+    root: Path,
+    commit: str,
+    output: str,
+    *,
+    events: list[tuple[str, dict[str, Any]]],
+    role: str = "implementer",
+    member: str = _MEMBER,
 ) -> str:
-    """Enqueue a task, give its trace *events*, and finalize it with one implementer hop."""
+    """Enqueue a task, give its trace *events*, and finalize it with one hop of *role*."""
     task = _queue.enqueue_task_once("demo", "do the work", channel="cli")[0]
     task_id = str(task.id)
     session = f"agent:demo:{task_id}"
     for event_type, payload in events or [("session_start", {"source": "test"})]:
-        _trace.trace_event("demo", session, "implementer", event_type, json.dumps(payload))
+        _trace.trace_event("demo", session, role, event_type, json.dumps(payload))
     hop = _task.HopResult(
-        role="implementer",
-        member_id=_MEMBER,
+        role=role,
+        member_id=member,
         ok=True,
         output=output,
         evidence={"commit": commit, "baseCommit": None, "diffStat": None},
@@ -141,8 +147,8 @@ def test_injected_text_from_the_repository_is_never_stored_as_an_instruction(
     _finish(root, commit, reply, events=[])
 
     by_kind = {e.kind: e.status for e in _pm.list_entries("demo")}
-    assert by_kind["generated"] == "refused"
-    assert by_kind["convention"] == "refused"
+    assert by_kind["generated"] == "pending"
+    assert by_kind["convention"] == "pending"
     text = _prompt(root).text
     assert "EVIL-SENTINEL" not in text and "REVIEW-SENTINEL" not in text
 
@@ -180,3 +186,24 @@ def test_the_operator_can_reverse_an_accepted_entry(pod: tuple[Path, str]) -> No
     _pm.revert("demo", accepted.id)
 
     assert "dist/bundle.js" not in _prompt(root).text
+
+
+def test_a_folder_pods_accepted_entry_reaches_the_next_turn_under_the_untrusted_frame(
+    tmp_path: Path,
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "report.md").write_text("findings\n")
+    reply = "Written.\n\n## Memory\n- generated: report.md -- The weekly findings.\n"
+    with seed_empty_home(tmp_path):
+        build_pod("demo", ("lead", "writer", "reviewer"), work_dir=str(work))
+        member = "demo-writer"
+        assert "report.md" not in _identity.compose_agent_prompt(member, project_roots=(work,)).text
+
+        _finish(work, "", reply, events=[], role="writer", member=member)
+
+        (entry,) = _pm.list_entries("demo", "accepted")
+        text = _identity.compose_agent_prompt(member, project_roots=(work,)).text
+    assert entry.provenance["root"] == str(work)
+    assert "# Pod memory (untrusted)" in text
+    assert text.rstrip().endswith("- generated report.md: The weekly findings.")
