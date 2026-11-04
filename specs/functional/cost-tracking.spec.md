@@ -86,8 +86,11 @@ pod-dispatch.spec.md).
    never tripped on a model the table did not list. docket keeps no rate table at all.
 6. Budget fields (`budgetTokens`, `paused`, `pausedReason`) are docket-local (decision D-9).
    Enforcement therefore exists only where docket itself is in the execution path.
-7. `docket run --resume` **MUST** clear `paused`/`pausedReason` on the pod's Lead and **MUST**
-   write a `run.resume` audit-log entry when the Lead was paused. It also unblocks that pod's
+7. One writer, `resume_pod`, serves `docket run --resume`, `docket pod set`/`unset` of
+   `budgetTokens` or `budgetWindow` and `POST /pods/<p>/resume`. It **MUST** clear
+   `paused`/`pausedReason` on the pod's Lead and **MUST** write a `run.resume` audit-log entry
+   when the Lead was paused (the HTTP route's carries `channel=http`; a call on a pod that is not
+   paused writes none). It also unblocks that pod's
    blocked tasks whether or not the Lead was paused, then reclaims stale claims: a resume
    that left the tasks queued up behind the pause permanently `blocked` would not actually resume
    anything.
@@ -213,7 +216,8 @@ $ docket run --resume
 - `src/docket/hops/domain/gate_decisions.py`: `decide_pod_budget`, `turn_token_ceiling`, `window_start`
 - `src/docket/teams/settings.py`: `pod_budget`
 - `src/docket/teams/pod_settings.py`: `PodSettings.budget_window`
-- `src/docket/tasks/application/lifecycle.py`: `unblock_pod`
+- `src/docket/tasks/application/lifecycle.py`: `unblock_pod`, `resume_pod`
+- `src/docket/hops/application/report.py`: `_budget_fields` (the `budget` object of `GET /pods`, `GET /pods/<p>`)
 - `src/docket/tasks/application/queue.py`: the claim-time pause check
 - `src/docket/observability/trace.py`: `terminal_outcomes`, `EVENT_TYPES` (`budget_exceeded`, `paused_refused`)
 - `src/docket/agent/ports.py`: `UsageTotals`, `UsageDay`, `UsageReport`, `DriverCapabilities`

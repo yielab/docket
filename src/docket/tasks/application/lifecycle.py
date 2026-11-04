@@ -25,6 +25,7 @@ from docket.tasks.domain.task import TaskNotFoundError, TaskRecord, TaskResult
 from docket.teams import fleet as _fleet
 from docket.teams import memory as _pod_memory
 from docket.teams import pod as _pod
+from docket.teams.models import AgentMeta
 from docket.teams.settings import (
     pod_task_list_path,
     pod_turn_timeout,
@@ -383,9 +384,8 @@ def task_diff(project: str, task_id: str) -> dict[str, Any]:
 
 
 def unblock_pod(project: str) -> int:
-    """Un-block every ``blocked`` task in *project*'s queue. Wired to ``docket pod set
-    budgetTokens`` and ``docket run --resume`` -- the sanctioned re-entry paths besides ``retry_task``.
-    Returns the number of tasks unblocked."""
+    """Un-block every ``blocked`` task in *project*'s queue. ``resume_pod`` calls it -- the
+    sanctioned re-entry path besides ``retry_task``. Returns the number of tasks unblocked."""
     path = pod_task_list_path(project)
     if not path.parent.is_dir():
         return 0
@@ -397,3 +397,24 @@ def unblock_pod(project: str) -> int:
         return True
 
     return len(TaskRepository.for_pod(project).update_each(_unblock))
+
+
+@dataclass(frozen=True)
+class Resumed:
+    """What ``resume_pod`` did: whether the Lead was paused, and how many tasks it re-queued."""
+
+    was_paused: bool
+    unblocked: int
+
+
+def resume_pod(project: str, *, channel: str = "cli") -> Resumed:
+    """Clear the Lead's pause and re-queue the pod's blocked tasks; audit ``run.resume`` when
+    the Lead was paused. The one writer behind ``docket run --resume``, a changed budget and
+    ``POST /pods/<pod>/resume``."""
+    lead = _pod.member_id(project, "lead")
+    was_paused = AgentMeta.coerce_paused(_fleet.meta_get(lead, "paused", ""))
+    if was_paused:
+        _fleet.meta_set(lead, "paused", False)
+        _fleet.meta_set(lead, "pausedReason", "")
+        _audit.audit_log("run.resume", f"pod={project} channel={channel}")
+    return Resumed(was_paused, unblock_pod(project))

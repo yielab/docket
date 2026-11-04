@@ -1,0 +1,36 @@
+{
+  "noCap": {
+    "row": {
+      "tokens": null,
+      "used": 0,
+      "window": "none",
+      "windowStart": null
+    },
+    "detail": {
+      "tokens": null,
+      "used": 0,
+      "window": "none",
+      "windowStart": null
+    }
+  },
+  "dayCap": {
+    "row": {
+      "tokens": 100,
+      "used": 150,
+      "window": "day",
+      "windowStart": "<today>T00:00:00Z"
+    },
+    "detail": {
+      "tokens": 100,
+      "used": 150,
+      "window": "day",
+      "windowStart": "<today>T00:00:00Z"
+    },
+    "paused": true,
+    "pausedReason": "budget"
+  },
+  "resume": {
+    "resumed": true,
+    "paused": false
+  }
+}

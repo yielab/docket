@@ -57,6 +57,7 @@ POST_ROUTES: tuple[Route, ...] = (
     Route("POST", "/tasks/<pod>", task_create.post_task, bare=True),
     Route("POST", "/dispatch/<pod>", dispatch.post_dispatch, bare=True),
     Route("POST", "/pods/<pod>/apply", pod_apply.post_pod_apply, overlap=True),
+    Route("POST", "/pods/<pod>/resume", pods.post_pod_resume, overlap=True),
     Route("POST", "/pods", pod_create.post_pod),
 )
 

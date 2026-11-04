@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 from rich.markup import escape
@@ -593,3 +594,24 @@ def write_pod_pipeline(name: str, text: str, project: str = "demo") -> None:
     target = current_home().pod_config_dir(project) / "pipelines"
     target.mkdir(parents=True, exist_ok=True)
     (target / f"{name}.yaml").write_text(text, encoding="utf-8")
+
+
+def spend_tokens(agent_id: str, tokens_by_day: dict[str, int]) -> None:
+    """Seed a docket-native session of *agent_id* whose output tokens were spent on the given UTC
+    days (``YYYY-MM-DD``), as the pod budget counts them."""
+    key = f"agent:{agent_id}:default"
+    session_dir = current_home().sessions_dir / quote(key, safe="")
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    def usage(tokens: int) -> dict[str, int]:
+        return {"inputTokens": 0, "outputTokens": tokens, "cachedTokens": 0, "turns": 1}
+
+    record = {
+        "sessionKey": key,
+        "created": "2026-07-30T00:00:00Z",
+        "updated": "2026-07-30T00:00:00Z",
+        "messages": [],
+        "usage": usage(sum(tokens_by_day.values())),
+        "usageByDay": {day: usage(tokens) for day, tokens in tokens_by_day.items()},
+    }
+    (session_dir / "session.json").write_text(json.dumps(record))

@@ -463,6 +463,12 @@
         "default": false
       }
     ],
+    "budget": {
+      "tokens": null,
+      "used": 0,
+      "window": "none",
+      "windowStart": null
+    },
     "workDir": "<home>/state/workspaces/pods/research/workdir",
     "configSource": "",
     "configDigest": "",

@@ -1,4 +1,4 @@
-"""GET /pods/<p>/memory: the accepted pod memory over HTTP, the same elements as the CLI's list."""
+"""GET /pods/<p>/memory: the pod memory over HTTP, the same elements as the CLI's list."""
 
 from __future__ import annotations
 
@@ -96,6 +96,51 @@ def test_memory_rows_carry_subject_stale_and_evidence_and_no_old_keys(
     (row,) = body["entries"]
     assert (row["subject"], row["stale"], row["evidence"]) == ("pytest -q", False, {"exit": 1})
     assert not {"path", "tool", "command", "exit"} & set(row)
+
+
+def test_memory_status_query_picks_the_entries_of_that_status(
+    live_server: tuple[str, str],
+) -> None:
+    """`status=pending` serves the entries waiting for approval, oldest first, with their why."""
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+    entries = [
+        _entry("dist/accepted.js", "accepted"),
+        _entry("dist/pending-a.js", "pending"),
+        _entry("dist/pending-b.js", "pending"),
+        _entry("dist/refused.js", "refused"),
+    ]
+    path = current_home().pod_memory_path("demo")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _store.write_json(path, {"entries": entries})
+
+    _, default = _get(f"{url}/pods/demo/memory", token)
+    assert [e["subject"] for e in default["entries"]] == ["dist/accepted.js"]
+
+    status, pending = _get(f"{url}/pods/demo/memory?status=pending", token)
+    assert status == 200
+    assert [e["subject"] for e in pending["entries"]] == ["dist/pending-a.js", "dist/pending-b.js"]
+    for row in pending["entries"]:
+        assert row["reason"] == "awaits operator approval"
+        assert row["provenance"]["task"] == "t1"
+
+    _, refused = _get(f"{url}/pods/demo/memory?status=refused", token)
+    assert [e["status"] for e in refused["entries"]] == ["refused"]
+
+
+def test_memory_status_query_refuses_an_unknown_status_naming_the_three(
+    live_server: tuple[str, str],
+) -> None:
+    """Any other `status` is a 400 that names `accepted`, `pending` and `refused`."""
+    url, token = live_server
+    _pp.provision_pod("demo", "build", location="/src/demo")
+
+    status, body = _get(f"{url}/pods/demo/memory?status=stale", token)
+
+    assert status == 400
+    assert body["ok"] is False
+    for name in ("accepted", "pending", "refused"):
+        assert name in body["error"]
 
 
 def test_memory_without_token_returns_401(live_server: tuple[str, str]) -> None:

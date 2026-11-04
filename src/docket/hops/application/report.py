@@ -19,8 +19,11 @@ from docket.hops.application import builtin_tools as _builtin_tools
 from docket.hops.application import capabilities as _capabilities
 from docket.hops.application import executor as _executor
 from docket.hops.application import steps as _steps
+from docket.hops.application.usage import pod_counted_tokens
+from docket.hops.domain.gate_decisions import window_start
 from docket.hops.gates import profile as _profile
 from docket.hops.gates.pre_hop import hop_model
+from docket.kernel import clock as _clock
 from docket.kernel.errors import DispatchError
 from docket.kernel.home import current_home
 from docket.models import catalog as _provider
@@ -434,8 +437,23 @@ def pod_report(project: str) -> dict[str, Any]:
         "needs": [line.wire() for line in _pod_needs(project, settings)],
         "delivers": _delivers(project),
         "methods": _methods(project, settings),
+        "budget": _budget_fields(project, settings),
         **_work_dir_fields(project),
         **record,
+    }
+
+
+def _budget_fields(project: str, settings: _pod_settings.PodSettings) -> dict[str, Any]:
+    """``budget``: the cap, the tokens the gate would count now over the window, and where the
+    window began (operator-api.spec.md, "Pod answers")."""
+    since = window_start(settings.budget_window, _clock.now())
+    return {
+        "tokens": settings.budget_tokens,
+        "used": pod_counted_tokens(project)
+        if since is None
+        else pod_counted_tokens(project, since),
+        "window": settings.budget_window,
+        "windowStart": None if since is None else since.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
 
@@ -578,8 +596,14 @@ def lights_out_report() -> dict[str, list[_profile.Violation]]:
 
 def pod_summary(project: str) -> dict[str, Any]:
     """One row of ``GET /pods``: name, codebase, workspace kind, member count, effective profile,
-    queue."""
+    queue and budget; a pod whose stored settings are invalid carries ``error`` in place of
+    ``budget``."""
     ids = [a.id for a in _fleet.list_agents()]
+    budget: dict[str, Any]
+    try:
+        budget = {"budget": _budget_fields(project, _pod_settings.PodSettings.load_for(project))}
+    except _pod_settings.PodSettingsError as exc:
+        budget = {"error": str(exc)}
     return {
         "name": project,
         "codebase": _codebase(project),
@@ -589,6 +613,7 @@ def pod_summary(project: str) -> dict[str, Any]:
         "profile": _profile.effective_profile(project),
         "network": _network_report(project),
         "queue": task_counts(project),
+        **budget,
         **_work_dir_fields(project),
         **_pause_fields(project),
     }

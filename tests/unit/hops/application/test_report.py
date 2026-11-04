@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 from pathlib import Path
 
-from tests.support.pods import bind_pipeline, build_pod, seed_empty_home
+from tests.support.pods import bind_pipeline, build_pod, seed_empty_home, spend_tokens
 
 from docket.hops.application import report as pod_report
+from docket.kernel import clock as _clock
 from docket.kernel.home import Home, current_home, use_home
 from docket.tasks.application.repository import TaskRepository
 from docket.tasks.domain.state import Status
@@ -163,3 +165,47 @@ class TestPodReportNeeds:
             {"kind": "fetch-hosts", "name": "fetch-hosts", "fix": "", "satisfied": True},
             {"kind": "search-host", "name": "search-host", "fix": "", "satisfied": True},
         ]
+
+
+class TestBudgetFields:
+    """`budget` on the pod report and the summary row: the cap, what the gate would count, the window."""
+
+    def test_a_pod_with_no_cap_reports_every_token_and_no_window(self, tmp_path: Path) -> None:
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            today = _clock.now().strftime("%Y-%m-%d")
+            spend_tokens("demo-lead", {"2026-01-01": 40, today: 2})
+
+            expected = {"tokens": None, "used": 42, "window": "none", "windowStart": None}
+
+            assert pod_report.pod_report("demo")["budget"] == expected
+            assert pod_report.pod_summary("demo")["budget"] == expected
+
+    def test_a_day_window_counts_today_only_from_midnight_utc(self, tmp_path: Path) -> None:
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            today = _clock.now().strftime("%Y-%m-%d")
+            _fleet.meta_set("demo-lead", "budgetTokens", 100)
+            _fleet.meta_set("demo-lead", "budgetWindow", "day")
+            spend_tokens("demo-lead", {"2026-01-01": 40, today: 2})
+
+            budget = pod_report.pod_report("demo")["budget"]
+
+            assert budget == {
+                "tokens": 100,
+                "used": 2,
+                "window": "day",
+                "windowStart": f"{today}T00:00:00Z",
+            }
+
+    def test_a_week_window_starts_on_the_most_recent_monday(self, tmp_path: Path) -> None:
+        with seed_empty_home(tmp_path):
+            build_pod("demo", ("lead", "implementer"), codebase="/src/demo")
+            _fleet.meta_set("demo-lead", "budgetWindow", "week")
+
+            start = pod_report.pod_summary("demo")["budget"]["windowStart"]
+
+            monday = _dt.datetime.strptime(start, "%Y-%m-%dT%H:%M:%SZ")
+            assert monday.weekday() == 0
+            assert (monday.hour, monday.minute) == (0, 0)
+            assert 0 <= (_clock.now().replace(tzinfo=None) - monday).days < 7

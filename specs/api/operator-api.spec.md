@@ -26,8 +26,8 @@ This specification covers:
 - The `hop_started` / `hop_finished` trace events a consumer reads from `GET /traces/<pod>`
 - `GET /escalations`, the pauses a task waits on, one record each (`operator-loop.spec.md` area 11)
 - `GET /pods`, `GET /pods/<p>`, `POST /pods` with `ensure`, `POST /pods/<p>/apply`,
-  `GET /pods/<p>/corrections`, `GET /pods/<p>/memory`, `GET /pods/<p>/records`,
-  `GET /pods/<p>/records/<set>`
+  `POST /pods/<p>/resume`, `GET /pods/<p>/corrections`, `GET /pods/<p>/memory`,
+  `GET /pods/<p>/records`, `GET /pods/<p>/records/<set>`
 - The `dispatch` block of `GET /health` under `--dispatch`
 - Re-attaching a client after a restart, and the `check_changed` approval a consumer sees
 - Status codes and error bodies
@@ -77,8 +77,9 @@ over 1 MiB is `413`.
 | `GET /pods/<p>` | one pod's report |
 | `POST /pods` (`ensure`) | provision a pod, or find it |
 | `POST /pods/<p>/apply` | apply a directory of configuration to a pod |
+| `POST /pods/<p>/resume` | clear a pod's pause and re-queue its blocked tasks |
 | `GET /pods/<p>/corrections?since=` | the corrections ledger, from a cursor |
-| `GET /pods/<p>/memory` | the pod's accepted memory entries, oldest first |
+| `GET /pods/<p>/memory?status=` | the pod's memory entries in one status (default `accepted`), oldest first |
 | `GET /pods/<p>/records` | the pod's record sets with their columns and row counts |
 | `GET /pods/<p>/records/<set>?limit=&sql=` | a set's rows, or a read-only `SELECT`'s |
 | `GET /health` (dispatch block) | whether the sweep is on and what is in flight |
@@ -173,6 +174,15 @@ The body, the `201` answer for a new pod and the `ensure` flag are owned by
 `serve-read-api.spec.md` (POST /pods). With `ensure: true` and an existing pod the answer is `200`
 with `"created": false` and nothing is changed or re-applied; without it an existing pod is `409`.
 
+### `POST /pods/<p>/resume`
+
+No body (a body is ignored). A pod whose Lead is paused has `paused` and `pausedReason` cleared, its
+blocked tasks re-queued (`unblock_pod`) and a `run.resume` audit entry written with `channel=http`;
+the answer is `200` with the `GET /pods/<p>` object plus `resumed: true`. A pod that is not paused
+answers `200` with the same object and `resumed: false`; nothing is written and nothing is audited.
+An unknown pod is `404`. It resumes the pod, never one task (`POST /tasks/<pod>/<id>/retry` does
+that) and changes no budget. A client probes for it with the `podResume` feature.
+
 ### `POST /pods/<p>/apply`
 
 | Field | Type | Rule |
@@ -190,6 +200,7 @@ Query parameters:
 | `GET /tasks/<pod>` | `externalRef` | exact match; both parameters combine |
 | `GET /tasks/<pod>` | `updatedSince` | a non-negative decimal integer cursor (`0` starts from the beginning); the answer is `{"tasks": [...], "next": "<n>"}` and anything that is not such an integer is `400` with `code: bad_cursor`; see "Task cursor" |
 | `GET /tasks/<pod>` | `status` | one of `pending`, `running`, `waiting_input`, `waiting_approval`, `blocked`, `failed`, `done`, `cancelled`; any other value is `400` |
+| `GET /pods/<p>/memory` | `status` | `accepted` (the default), `pending` or `refused`; any other value is `400` naming the three |
 | `GET /pods/<p>/corrections` | `since` | ISO-8601 timestamp with an offset (normalised to UTC; naive is `400`); records with `ts > since`, append order |
 | `GET /pods/<p>/records/<set>` | `limit` | integer 1 to 1000, default 50; anything else is `400` |
 | `GET /pods/<p>/records/<set>` | `sql` | one read-only `SELECT`; absent reads the whole set newest first (`ORDER BY _id DESC`) |
@@ -382,13 +393,14 @@ label or `null`; `gate` is the step's gate label or `null`. `hop_started` names 
 
 ### Pod answers
 
-`GET /pods/<p>/memory` (`200`): `{"entries": [...]}`. Only the `accepted` entries, oldest first;
-each element is exactly an element of `docket pod memory list --json` (the CLI prints a bare
+`GET /pods/<p>/memory` (`200`): `{"entries": [...]}`. The entries in the `status` the query names
+(`accepted` when it names none; `pending` are the ones waiting for `docket pod memory approve`),
+oldest first; each element is exactly an element of `docket pod memory list --json` (the CLI prints a bare
 array; the object wrapper is the one every HTTP route uses) and is `{id, kind, subject, note,
 status, reason, provenance, stale, evidence}`: `subject` for every kind, `stale` a boolean and
 `evidence` `{"exit": n}`, `{"ok": bool}` or `{}`; there is no `path`, `tool`, `command` or `exit`
 key. A pod that is not dispatchable is
-`404`. Pending and refused entries are not served here.
+`404`. A client probes for the `status` query with the `memoryStatus` feature.
 
 `GET /pods` (`200`): `{"pods": [{"name": "web-dev", "codebase": "/srv/webapp",
 "workspaceKind": "codebase", "blueprint": "build", "members": 2, "profile": "lights-out", "network": {"mode": "none", "scope": "default", "enforced": true}, "queue": {"pending": 1, "running": 1, "waitingApproval": 0,
@@ -420,9 +432,18 @@ present). A pod is paused while its Lead's meta holds `paused: true`, which a sp
 (`pausedReason: "budget"`); while it is, every claim is refused and queued work waits. When
 `paused` is `true` the same object carries `pausedReason`, a non-empty string (`"budget"` when the
 meta names no reason); when `paused` is `false` the key is absent, not `null` and not `""`. The
-fields are read from the Lead's meta on each request, so they follow the pause as `docket run
---resume` or a changed budget clears it. There is no route to clear a pause. `docket pod show
---json` does not carry the pair.
+fields are read from the Lead's meta on each request, so they follow the pause as `POST
+/pods/<p>/resume`, `docket run --resume` or a changed budget clears it. `docket pod show --json`
+does not carry the pair.
+
+Every row of `GET /pods` and the `GET /pods/<p>` object also carry `budget`: `{"tokens": 500000,
+"used": 512340, "window": "day", "windowStart": "2026-11-04T00:00:00Z"}`. `tokens` is the Lead's
+`budgetTokens`, `null` without a cap; `used` is the count the budget gate would compare now (the
+pod's counted tokens over the window, `cost-tracking.spec.md` requirement 9); `window` is `none`,
+`day` or `week`; `windowStart` is the ISO-8601 UTC instant the window began, `null` for `none`.
+The object is present with no cap too (`{"tokens": null, "used": n, "window": "none",
+"windowStart": null}`). A row whose stored settings are invalid carries `error` (the sentence
+`GET /pods/<p>` answers `500` with) and no `budget`; `GET /pods` itself stays `200`.
 
 `GET /pods/<p>` (`200`): the object `docket pod show --json` prints (`cli-json-shapes.spec.md`:
 `pod`, `blueprint`, `members`, `settings`, `approvalMode`, `pipeline` with its `steps`, `network`,
@@ -694,16 +715,16 @@ probe; the sweep ends the wait, nobody is asked.
 
 | Code | When |
 |---|---|
-| `200` | a read; an idempotent re-post; cancel/retry/apply/ensure done |
+| `200` | a read; an idempotent re-post; cancel/retry/apply/ensure/resume done |
 | `201` | a new task or a new pod |
-| `400` | malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` or an `updatedSince` of `GET /tasks/<pod>` (`code: bad_cursor`) that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables`/`conversation` of the wrong shape, a `conversation` on a pipeline of more than one step (`code: conversation_needs_one_step`), a naive `since`, a bad `apply` body |
+| `400` | a `status` of `GET /pods/<p>/memory` that is not `accepted`, `pending` or `refused`, malformed JSON or a non-object body, an ill-typed `optionId`, `content` or `actor` of `POST /escalations/<id>`, a `since` of `GET /escalations` or an `updatedSince` of `GET /tasks/<pod>` (`code: bad_cursor`) that is not a non-negative integer, missing `description`, a bad project id, a `task` with an unknown key or a field of the wrong type, an unknown `status` filter, a `baseRef`/`pipeline`/`gate`/`prepare`/`externalRef`/`idempotencyKey`/`maxTokens`/`autonomy`/`variables`/`conversation` of the wrong shape, a `conversation` on a pipeline of more than one step (`code: conversation_needs_one_step`), a naive `since`, a bad `apply` body |
 | `401` | missing or wrong Bearer token, always first |
 | `403` | the read-scoped token (`DOCKET_SERVE_READ_TOKEN`) on a `POST` route (`code: read_scope`) |
-| `404` | no pod (checked before an `apply` body is read), no task, no escalation (`GET` or `POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
+| `404` | no pod (checked before an `apply` body is read; `resume` too), no task, no escalation (`GET` or `POST /escalations/<id>`), no such route; a task whose branch is gone (`diff`) |
 | `409` | pod exists without `ensure`; `retry` on a task that is not `blocked`/`failed`; `cancel` on a terminal task; `diff` on an in-place task; `apply` without the review code or with a refused command; `POST /escalations/<id>` on an escalation that is already settled or whose pause is no longer waiting (the body carries `code: escalation_not_pending`) |
 | `413` | a request body over 1 MiB |
 | `422` | a `restrictions` entry that would widen (`network: open`, a non-`block` policy rule, an unknown tool name); an `autonomy` above the pod profile's ceiling; an invalid `brief`; `POST /escalations/<id>` with an unknown option, content that fails the schema or content a policy blocks |
-| `500` | `POST /pods` could not provision (the attempt is rolled back); `GET /pods/<p>` for a pod whose stored settings are invalid |
+| `500` | `POST /pods` could not provision (the attempt is rolled back); `GET /pods/<p>` and `POST /pods/<p>/resume` for a pod whose stored settings are invalid |
 
 `GET /tasks/<pod>` for a pod with no queue answers `200` with an empty list. Error bodies are
 `{"ok": false, "error": "<sentence>"}`, with the extra keys the examples show. A refusal that
@@ -739,11 +760,11 @@ the wire as `"code"`, whichever route answers it.
 - `src/docket/interfaces/http/exchange.py`: the 1 MiB body cap.
 - `src/docket/tasks/application/queue.py`: `enqueue_task_once`, `dispatchable_pods`,
   the claim-time refusals (`base_ref`, `pipeline`, `prepare`).
-- `src/docket/tasks/application/lifecycle.py`: `cancel_task`, `retry_task`, `task_diff`.
+- `src/docket/tasks/application/lifecycle.py`: `cancel_task`, `retry_task`, `task_diff`, `resume_pod`.
 - `src/docket/tasks/domain/options.py`: addressable-task and `restrictions` validation,
   `TASK_STATUSES`.
 - `src/docket/hops/application/report.py`: the `GET /pods` row (`pod_summary`) and `GET /pods/<p>`
-  (`pod_detail`).
+  (`pod_detail`), the `budget` object (`_budget_fields`).
 - `src/docket/teams/apply/plan.py`: `apply_directory`; `src/docket/governance/review.py`: the
   review code and `repo.allow`.
 - `src/docket/teams/pod_provisioning.py`: `provision_pod`.

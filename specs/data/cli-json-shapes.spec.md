@@ -322,6 +322,7 @@ A bare object: the pod as it will run. Composes existing resolvers only and writ
   "needs": [
     { "kind": "fetch-hosts | search-host | isolation", "name": "string (equal to kind today)", "fix": "string (the one command that meets the need; empty when satisfied)", "satisfied": "boolean (computed as the pod is now)" }
   ],
+  "budget":       { "tokens": "integer | null (the Lead's budgetTokens)", "used": "integer (counted tokens over the window)", "window": "none | day | week", "windowStart": "ISO-8601 UTC string | null (null for none)" },
   "delivers": ["branch | report | records (what a task on this pod hands back; a list, so a new kind is additive)"],
   "methods": [
     { "name": "string (a pipeline a task may name)", "source": "pod:<name> | operator:<name> | shipped:<name> | recipe:<name>", "missingRoles": ["string (roles of its steps this pod's roster cannot fill, in step order, each once)"], "default": "boolean (true on the entry whose file is the pod's bound pipeline)", "error": "string (present only when the file does not load)" }
