@@ -586,3 +586,10 @@ def seed_pod_at_codebase(tmp_path: Path, codebase: Path) -> Iterator[None]:
     with use_home(Home(home)):
         build_pod("demo", pod.DEFAULT_POD_ROLES, codebase=str(codebase))
         yield
+
+
+def write_pod_pipeline(name: str, text: str, project: str = "demo") -> None:
+    """Write a pod-level pipeline file `<name>.yaml` into the pod's config directory."""
+    target = current_home().pod_config_dir(project) / "pipelines"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / f"{name}.yaml").write_text(text, encoding="utf-8")

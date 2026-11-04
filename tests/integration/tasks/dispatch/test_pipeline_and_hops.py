@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from tests.support.fakes import FakeDriver
-from tests.support.pods import build_pod
+from tests.support.pods import build_pod, write_pod_pipeline
 from tests.support.pods import seed_pod_isolation_off as _seed_pod
 
 from docket.agent import ports as _rd
@@ -411,12 +411,6 @@ _FIXTURES = Path(__file__).parents[3] / "fixtures" / "operator-v2"
 _THREE_STEPS = "name: tdd\nsteps:\n  - plan: lead\n  - build: implementer\n  - review: reviewer\n"
 
 
-def _pod_pipeline(name: str, text: str) -> None:
-    target = current_home().pod_config_dir("demo") / "pipelines"
-    target.mkdir(parents=True, exist_ok=True)
-    (target / f"{name}.yaml").write_text(text, encoding="utf-8")
-
-
 def _refusals(task_id: str) -> list[dict[str, object]]:
     trace_file = current_home().traces_dir / "demo" / f"agent:demo:{task_id}.jsonl"
     return [e for e in _trace.read_trace(trace_file) if e["event_type"] == "dispatch_refused"]
@@ -427,7 +421,7 @@ class TestTaskNamedPipelineStaffing:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            _pod_pipeline("tdd", _THREE_STEPS)
+            write_pod_pipeline("tdd", _THREE_STEPS)
             task, _ = _queue.enqueue_task_once("demo", "Ship it", channel="cli", pipeline="tdd")
             runner = FakeDriver()
 
@@ -452,7 +446,7 @@ class TestTaskNamedPipelineStaffing:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            _pod_pipeline("tdd", _THREE_STEPS)
+            write_pod_pipeline("tdd", _THREE_STEPS)
             _queue.enqueue_task_once("demo", "Ship it", channel="cli")
             runner = FakeDriver()
 
@@ -463,7 +457,7 @@ class TestTaskNamedPipelineStaffing:
 
     def test_a_retry_after_the_pod_gains_the_role_runs_every_step(self, tmp_path: Path) -> None:
         with _seed_pod(tmp_path):
-            _pod_pipeline("tdd", _THREE_STEPS)
+            write_pod_pipeline("tdd", _THREE_STEPS)
             task, _ = _queue.enqueue_task_once("demo", "Ship it", channel="cli", pipeline="tdd")
             assert _sweep.dispatch_pod("demo", runner=FakeDriver())[0].status == "failed"
 
@@ -484,7 +478,7 @@ class TestTaskNamedPipelineStaffing:
         self, tmp_path: Path
     ) -> None:
         with _seed_pod(tmp_path):
-            _pod_pipeline("tdd", _THREE_STEPS)
+            write_pod_pipeline("tdd", _THREE_STEPS)
             task, _ = _queue.enqueue_task_once("demo", "Ship it", channel="cli", pipeline="tdd")
             runner = FakeDriver()
 

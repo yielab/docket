@@ -16,7 +16,7 @@ import pytest
 from tests.support.fakes import FakeDriver
 from tests.support.home import record_isolation_off, register_local_provider
 from tests.support.model_server import FakeModel, say
-from tests.support.pods import build_pod
+from tests.support.pods import build_pod, write_pod_pipeline
 
 from docket.hops.application import sweep as _sweep
 from docket.interfaces.cli.commands import pod as _pod
@@ -41,12 +41,6 @@ def home(tmp_path: Path) -> Iterator[Path]:
         build_pod("demo", _pod.pod.DEFAULT_POD_ROLES, codebase=str(tmp_path))
         _fleet.meta_set("demo-implementer", "codebase", str(tmp_path))
         yield root
-
-
-def _pod_pipeline(name: str, text: str) -> None:
-    target = current_home().pod_config_dir("demo") / "pipelines"
-    target.mkdir(parents=True, exist_ok=True)
-    (target / f"{name}.yaml").write_text(text, encoding="utf-8")
 
 
 def _task_events(task_id: str, event_type: str) -> list[dict[str, Any]]:
@@ -79,7 +73,7 @@ class TestPipelineOnTheStubServer:
         for member in ("demo-lead", "demo-implementer"):
             _fleet.meta_set(member, "model", "local/stub")
         _fleet.meta_set("demo-implementer", "verifyCmd", "")
-        _pod_pipeline("two", _TWO)
+        write_pod_pipeline("two", _TWO)
         _queue(pipeline="two")
 
         results = _sweep.dispatch_pod("demo")
@@ -91,7 +85,7 @@ class TestPipelineOnTheStubServer:
 
 
 def _implementer_only(home: Path) -> None:
-    _pod_pipeline("build", "name: build\nsteps:\n  - build: implementer\n")
+    write_pod_pipeline("build", "name: build\nsteps:\n  - build: implementer\n")
 
 
 class TestTaskGateAfterVerifyCmd:
@@ -145,7 +139,7 @@ class TestTaskGateAfterVerifyCmd:
     def test_the_gate_runs_after_the_last_implementer_step_only(self, home: Path) -> None:
         marker = home.parent / "gate-count"
         _fleet.meta_set("demo-implementer", "verifyCmd", "true")
-        _pod_pipeline(
+        write_pod_pipeline(
             "twice",
             "name: twice\nsteps:\n  - first: implementer\n  - second: implementer\n",
         )
@@ -160,7 +154,7 @@ class TestTaskGateAfterVerifyCmd:
 
     def test_a_task_gate_routes_through_the_steps_on_map(self, home: Path) -> None:
         _fleet.meta_set("demo-implementer", "verifyCmd", "true")
-        _pod_pipeline(
+        write_pod_pipeline(
             "routed",
             "name: routed\nsteps:\n  - build: implementer\n    on:\n      fail: stop\n",
         )
