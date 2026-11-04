@@ -156,29 +156,45 @@ whole pod and every member that reads it.
    reaches a terminal state. A failure while recording is audited (`pod.memory.error`) and never
    unwinds the finalized task.
 4. **Acceptance is mixed.** docket decides each entry, never the model:
-   - **refused**, with a reason: for a `generated` entry, a subject that is not a
-     repository-relative path (empty, absolute or starting `~`, containing a backslash or a
-     control character, an empty, `.` or `..` segment, or over 200 characters; `.` alone is
-     allowed); for a `tool`, a subject that is empty, over 200 characters or carries a URL; for a
-     `pitfall` or `convention`, a label that is empty, over 60 characters ("subject over 60
-     characters"), carries a URL or holds a control character; a note over 200 characters; a note
-     that, after NFKC normalization, holds a character of Unicode category `Cf` or has a line
-     starting with `#` ("contains formatting characters or a heading"); a note that carries a
-     URL, starts with an imperative verb from a fixed list, or contains `ignore`, `disregard`,
-     `override`, `forget`, `always`, `never`, `must`, `should`, `you`, `your`, `instruction(s)`,
-     `do not`, `don't`, `from now on` or `system prompt`; a `pre_input` verdict of `block`,
+   - **refused**, with a reason, only what cannot be an entry or what a policy blocks: for a
+     `generated` entry, a subject that is not a repository-relative path (empty, absolute or
+     starting `~`, containing a backslash or a control character, an empty, `.` or `..` segment,
+     or over 200 characters; `.` alone is allowed); for a `tool`, a subject that is empty, over 200
+     characters or carries a URL; for a `pitfall` or `convention`, a label that is empty, over 60
+     characters ("subject over 60 characters"), carries a URL or holds a control character; a note
+     over 200 characters; a note that, after NFKC normalization, holds a character of Unicode
+     category `Cf` or has a line starting with `#` ("contains formatting characters or a
+     heading"); a note that carries a URL ("contains a link"); a `pre_input` verdict of `block`,
      `require_approval` or `redact` on `<subject> <note>` (screened untrusted, the pod's own
      policies included).
-   - **pending**: every `pitfall` and `convention`; every entry of a task whose trace holds a
-     `fetch` tool call, or whose trace cannot be read; a `pre_input` verdict of `warn`; a
-     `generated` entry when the task produced no commit.
-   - **accepted**, automatically: a `generated` entry whose path exists at the task's commit
-     (`git cat-file -e <commit>:<path>`), and a `tool` entry whose invocation has an exit status
-     in the task's trace (a `command_step`, the verify gate, or a `bash` call with its
-     `process_exited`). The task's commit is the latest hop evidence commit.
+   - **pending**: a note that reads as an instruction, that is one that contains `ignore`,
+     `disregard`, `override`, `forget`, `always`, `never`, `must`, `should`, `you`, `your`,
+     `instruction(s)`, `do not`, `don't`, `from now on` or `system prompt`, with the reason
+     "reads as an instruction" (a first word is never judged: a tool name used as the sentence's
+     subject, or a verb in another language, is not an instruction); every `pitfall` and
+     `convention`, "awaits operator approval" (a `convention` is the operator's judgement, not a
+     pattern's, so no rule accepts it), and one that also reads as an instruction carries the single
+     reason "reads as an instruction; awaits operator approval"; every entry of a task whose
+     trace holds a `fetch` tool call, or whose trace cannot be read; a `pre_input` verdict of
+     `warn`; a `generated` entry of a `codebase` pod when the task produced no commit ("no task
+     commit to check the path against"). A held entry is never refused for what it says.
+   - **accepted**, automatically, by one of three verifiers:
+     - a `generated` entry of a `codebase` pod whose path exists at the task's commit
+       (`git cat-file -e <commit>:<path>`; the latest hop evidence commit), with the entry's
+       `provenance` carrying that `commit`;
+     - a `generated` entry of a `workdir` pod (a folder, no commit) whose path exists under the
+       pod's `workDir` when the task ends (`os.path.lexists`; a dangling link counts), reason "path
+       present under the work dir", with the entry's `provenance` carrying that `root` in place
+       of a `commit`;
+     - a `tool` entry, whose subject's first token names the tool, when the task's trace holds a
+       `tool_call` of that tool and a `tool_result` for its `callId`, reason "tool call found in
+       the task's trace"; the evidence is `ok` of the last such result. For `bash`, a command
+       docket can read an exit status for (a `command_step`, the verify gate, or a `bash` call
+       with its `process_exited`) is accepted instead, with that `exit` as evidence. The tool's
+       arguments and its result text are not compared.
    - The checks above apply first; the pending holds apply next; only an entry that survives both
-     is checked against the commit or trace, so it is refused when a `generated` path is absent at
-     the commit or a `tool` has no exit status in the trace.
+     is checked against the commit, the work dir or the trace, so it is refused when a `generated`
+     path is absent there or a `tool` was never called, with no exit status, in the trace.
    Text that arrived from the repository, a tool result or the web is therefore never stored as
    an instruction: nothing is accepted from it except a fact docket checked itself.
 5. **Bounds and deduplication.** An entry already present for the same `(kind, subject)` is not
