@@ -2,7 +2,7 @@
 
 A step's reply may end with a ``## Memory`` section; when the task ends, ``record_task_memory``
 parses it and decides every entry itself: only a fact docket verified (a generated path present
-at the task's commit, a command with an exit status in the task's trace) is accepted
+at the task's commit, a tool call with an exit status in the task's trace) is accepted
 automatically, anything that reads as an instruction is refused, and the rest waits for the
 operator. Accepted entries reach later prompts through ``render_entries`` behind an untrusted
 frame (``teams/identity.py``). See specs/functional/workspace-structure.spec.md "Pod memory"."""
@@ -12,101 +12,19 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-from docket.governance import policy as _policy
 from docket.governance.audit import audit_log
 from docket.kernel import clock as _clock
 from docket.kernel.errors import Conflict
 from docket.kernel.home import current_home
-from docket.kernel.ports import git as _git
 from docket.observability import trace as _trace
 from docket.platform import read_json, read_modify_write
-from docket.teams import fleet as _fleet
-from docket.teams import pod as _pod
-
-KINDS: tuple[str, ...] = ("generated", "command", "pitfall", "convention")
-MEMORY_HEADING = "## Memory"
-
-_BULLET = re.compile(r"^-\s+([A-Za-z]+):\s+(.+?)\s+--\s+(.+?)\s*$")
-_URL = re.compile(r"https?://|\bwww\.", re.IGNORECASE)
-_INSTRUCTION_PHRASES = re.compile(
-    r"\b(ignore|disregard|override|forget|always|never|must|should|you|your|instructions?)\b"
-    r"|\bdo not\b|\bdon'?t\b|\bfrom now on\b|\bsystem prompt\b",
-    re.IGNORECASE,
-)
-_IMPERATIVE_FIRST_WORDS = frozenset(
-    [
-        "run",
-        "use",
-        "call",
-        "execute",
-        "delete",
-        "remove",
-        "write",
-        "read",
-        "send",
-        "fetch",
-        "download",
-        "install",
-        "push",
-        "pull",
-        "curl",
-        "wget",
-        "ignore",
-        "disregard",
-        "override",
-        "always",
-        "never",
-        "do",
-        "don't",
-        "dont",
-        "make",
-        "ensure",
-        "change",
-        "edit",
-        "open",
-        "skip",
-        "avoid",
-        "prefer",
-        "apply",
-        "create",
-        "rename",
-        "replace",
-        "enable",
-        "disable",
-        "allow",
-        "approve",
-        "grant",
-        "reveal",
-        "print",
-        "tell",
-        "paste",
-        "follow",
-        "obey",
-        "treat",
-        "assume",
-        "pretend",
-        "forget",
-        "remember",
-        "try",
-        "merge",
-        "commit",
-        "add",
-        "fix",
-        "keep",
-        "put",
-        "take",
-        "look",
-        "go",
-        "be",
-        "let",
-    ]
-)
+from docket.teams.memory_decide import HopLike, TaskLike, _decide, _task_facts
+from docket.teams.memory_parse import KINDS, _safe_path, parse_memory_section
 
 
 class PodMemoryError(Conflict):
@@ -114,18 +32,8 @@ class PodMemoryError(Conflict):
 
 
 @dataclass(frozen=True)
-class ParsedLine:
-    """One bullet of a reply's memory section; ``refusal`` is set when it fits no entry."""
-
-    kind: str
-    subject: str
-    note: str
-    refusal: str = ""
-
-
-@dataclass(frozen=True)
 class MemoryEntry:
-    """One stored entry; ``subject`` is a path or, for a ``command``, the command."""
+    """One stored entry; ``subject`` is a path, a label or, for a ``tool``, the invocation."""
 
     id: str
     kind: str
@@ -140,7 +48,7 @@ class MemoryEntry:
         doc: dict[str, Any] = {
             "id": self.id,
             "kind": self.kind,
-            "command" if self.kind == "command" else "path": self.subject,
+            "tool" if self.kind == "tool" else "path": self.subject,
             "note": self.note,
             "status": self.status,
             "reason": self.reason,
@@ -155,7 +63,7 @@ def _entry_from_dict(doc: Any) -> MemoryEntry | None:
     if not isinstance(doc, dict):
         return None
     kind, status = doc.get("kind"), doc.get("status")
-    subject = doc.get("command") if kind == "command" else doc.get("path")
+    subject = doc.get("tool") if kind == "tool" else doc.get("path")
     if kind not in KINDS or status not in ("accepted", "pending", "refused"):
         return None
     if not isinstance(subject, str) or not isinstance(doc.get("id"), str):
@@ -177,271 +85,6 @@ def _entry_from_dict(doc: Any) -> MemoryEntry | None:
 def entry_id(kind: str, subject: str) -> str:
     """The deduplication key as an id: stable for one ``(kind, subject)``."""
     return "mem-" + hashlib.sha256(f"{kind}\0{subject}".encode()).hexdigest()[:10]
-
-
-# -- the reply's memory section --------------------------------------------------
-
-
-def parse_memory_section(text: str) -> list[ParsedLine]:
-    """The entries of *text*'s trailing ``## Memory`` section (the last such heading wins; it
-    ends at the next heading). Prose lines are ignored, a bullet outside the grammar or naming
-    another kind is returned with a ``refusal``; at most ``POD_MEMORY_MAX_PER_TASK`` come back."""
-    lines = text.splitlines()
-    starts = [i for i, ln in enumerate(lines) if ln.strip().lower() == MEMORY_HEADING.lower()]
-    if not starts:
-        return []
-    parsed: list[ParsedLine] = []
-    for raw in lines[starts[-1] + 1 :]:
-        line = raw.strip()
-        if line.startswith("#"):
-            break
-        if not line.startswith("- "):
-            continue
-        if len(parsed) >= current_home().pod_memory_max_per_task:
-            break
-        match = _BULLET.match(line)
-        if match is None:
-            parsed.append(
-                ParsedLine("", "", line[:80], "not of the form '- <kind>: <subject> -- <note>'")
-            )
-            continue
-        kind = match.group(1).lower()
-        subject = match.group(2).strip().strip("`").strip()
-        if kind not in KINDS:
-            parsed.append(ParsedLine(kind, subject, match.group(3), f"unknown kind '{kind[:20]}'"))
-            continue
-        parsed.append(ParsedLine(kind, subject, match.group(3).strip()))
-    return parsed
-
-
-# -- deciding an entry -----------------------------------------------------------
-
-
-class HopLike(Protocol):
-    """The part of a dispatch hop result pod memory reads."""
-
-    @property
-    def role(self) -> str: ...
-    @property
-    def ok(self) -> bool: ...
-    @property
-    def output(self) -> str: ...
-    @property
-    def evidence(self) -> dict[str, Any] | None: ...
-    @property
-    def verify(self) -> dict[str, Any] | None: ...
-    @property
-    def trace(self) -> dict[str, str] | None: ...
-
-
-class TaskLike(Protocol):
-    """The part of a dispatch task result pod memory reads."""
-
-    @property
-    def hops(self) -> Any: ...
-
-
-@dataclass
-class _TaskFacts:
-    """What docket itself knows about a finished task, against which entries are checked."""
-
-    project: str
-    root: str
-    commit: str
-    tainted: bool
-    trace_ok: bool
-    events: list[dict[str, Any]]
-    verified: list[tuple[str, int]]
-
-
-def _safe_path(subject: str) -> str:
-    """*subject* as a normalised repository-relative path, or ``""`` when it is not one."""
-    path = subject[:-1] if subject.endswith("/") and len(subject) > 1 else subject
-    if (
-        not path
-        or len(path) > current_home().pod_memory_note_max_chars
-        or any(ord(c) < 32 for c in path)
-    ):
-        return ""
-    if path == ".":
-        return path
-    if path.startswith(("/", "~")) or "\\" in path:
-        return ""
-    return path if all(part not in ("", ".", "..") for part in path.split("/")) else ""
-
-
-def _reads_as_instruction(text: str) -> str:
-    words = re.findall(r"[A-Za-z']+", text.lower())
-    if _URL.search(text):
-        return "contains a link"
-    if words and words[0] in _IMPERATIVE_FIRST_WORDS:
-        return "starts with an imperative verb"
-    if _INSTRUCTION_PHRASES.search(text):
-        return "reads as an instruction"
-    return ""
-
-
-def _session_events(link: dict[str, str] | None) -> list[dict[str, Any]] | None:
-    if not link:
-        return None
-    project, session = link.get("project", ""), link.get("session", "")
-    if not project or not session or Path(project).name != project or Path(session).name != session:
-        return None
-    path = current_home().traces_dir / project / f"{session}.jsonl"
-    return _trace.read_trace(path) if path.is_file() else None
-
-
-def _payload(event: dict[str, Any]) -> dict[str, Any]:
-    payload = event.get("payload")
-    return payload if isinstance(payload, dict) else {}
-
-
-def _bash_command(arguments: Any) -> str:
-    try:
-        parsed = json.loads(arguments) if isinstance(arguments, str) else arguments
-    except json.JSONDecodeError:
-        return ""
-    command = parsed.get("command") if isinstance(parsed, dict) else None
-    return command if isinstance(command, str) else ""
-
-
-def _traced_exit(events: list[dict[str, Any]], command: str) -> int | None:
-    """The exit status of the last run of *command* in *events*: a ``command_step``, or a
-    ``bash`` call whose ``process_exited`` falls between its ``tool_call`` and ``tool_result``."""
-    found: int | None = None
-    call_id, seen = "", None
-    for event in events:
-        kind, data = event.get("event_type"), _payload(event)
-        if kind == "command_step" and data.get("cmd") == command:
-            code = data.get("exit")
-            found = code if isinstance(code, int) and not isinstance(code, bool) else found
-        elif kind == "tool_call" and data.get("tool") == "bash":
-            run = _bash_command(data.get("arguments")) == command
-            call_id, seen = (str(data.get("callId", "")), None) if run else ("", None)
-        elif kind == "process_exited" and call_id and isinstance(data.get("exitCode"), int):
-            seen = data["exitCode"]
-        elif kind == "tool_result" and call_id and str(data.get("callId", "")) == call_id:
-            found = seen if seen is not None else found
-            call_id, seen = "", None
-    return found
-
-
-def _pod_codebase(project: str) -> str:
-    roster: dict[str, str] = {}
-    for member_id, role, _index in _pod.members_of(_fleet.all_agent_ids(), project):
-        roster.setdefault(role, member_id)
-    member = roster.get("implementer") or next(iter(roster.values()), "")
-    return str(_fleet.meta_get(member, "codebase", "") or "") if member else ""
-
-
-def _task_facts(project: str, hops: list[HopLike], root: str | None) -> _TaskFacts:
-    events: list[dict[str, Any]] = []
-    trace_ok = bool(hops)
-    seen: set[tuple[str, str]] = set()
-    for hop in hops:
-        link = hop.trace
-        key = (link.get("project", ""), link.get("session", "")) if link else ("", "")
-        if key in seen:
-            continue
-        loaded = _session_events(link)
-        if loaded is None:
-            trace_ok = False
-            continue
-        seen.add(key)
-        events.extend(loaded)
-    commit = next(
-        (
-            str(h.evidence["commit"])
-            for h in reversed(hops)
-            if isinstance(h.evidence, dict) and h.evidence.get("commit")
-        ),
-        "",
-    )
-    verified = [
-        (str(h.verify["cmd"]), int(h.verify["exitCode"]))
-        for h in hops
-        if isinstance(h.verify, dict)
-        and isinstance(h.verify.get("cmd"), str)
-        and isinstance(h.verify.get("exitCode"), int)
-    ]
-    tainted = any(
-        e.get("event_type") == "tool_call" and _payload(e).get("tool") == "fetch" for e in events
-    )
-    return _TaskFacts(
-        project=project,
-        root=_pod_codebase(project) if root is None else root,
-        commit=commit,
-        tainted=tainted,
-        trace_ok=trace_ok,
-        events=events,
-        verified=verified,
-    )
-
-
-def _screen(role: str, project: str, text: str) -> tuple[str, str]:
-    """The ``pre_input`` verdict on *text* as ``(status, reason)``: ``refused`` for a block,
-    approval or redaction, ``pending`` for a warning, else ``("", "")``."""
-    hit = _policy.policy_eval_detail(role, "pre_input", text, trusted=False, project=project)
-    if hit.action in ("block", "require_approval", "redact"):
-        return "refused", f"policy {hit.policy_id or 'pre_input'}: {hit.action}"
-    if hit.action == "warn":
-        return "pending", f"policy {hit.policy_id or 'pre_input'}: warn"
-    return "", ""
-
-
-def _vet(line: ParsedLine) -> tuple[str, str]:
-    """``(subject, refusal)``: the normalised subject and why the line cannot be an entry."""
-    subject = line.subject
-    if line.kind != "command":
-        subject = _safe_path(subject)
-        if not subject:
-            return line.subject[:200], "not a repository-relative path"
-    elif not subject or len(subject) > current_home().pod_memory_note_max_chars:
-        return subject[:200], "not a command of a reasonable length"
-    if len(line.note) > current_home().pod_memory_note_max_chars:
-        return subject, f"note over {current_home().pod_memory_note_max_chars} characters"
-    if line.kind == "command" and _URL.search(subject):
-        return subject, "contains a link"
-    return subject, _reads_as_instruction(line.note)
-
-
-def _decide(line: ParsedLine, facts: _TaskFacts, role: str) -> tuple[str, str, str, int | None]:
-    """``(subject, status, reason, exit)`` for one well-formed line."""
-    subject, refusal = _vet(line)
-    if refusal:
-        return subject, "refused", refusal, None
-    verdict, why = _screen(role, facts.project, f"{subject} {line.note}")
-    if verdict == "refused":
-        return subject, "refused", why, None
-    held = (
-        "the task called fetch"
-        if facts.tainted
-        else "the task's trace could not be read"
-        if not facts.trace_ok
-        else why
-        if verdict == "pending"
-        else "awaits operator approval"
-        if line.kind in ("pitfall", "convention")
-        else ""
-    )
-    if held:
-        return subject, "pending", held, None
-    if line.kind == "command":
-        return _decide_command(subject, facts)
-    if not facts.commit or not facts.root:
-        return subject, "pending", "no task commit to check the path against", None
-    if _git.git_path_exists_at(facts.root, facts.commit, subject):
-        return subject, "accepted", "path present at the task commit", None
-    return subject, "refused", "path not present at the task commit", None
-
-
-def _decide_command(command: str, facts: _TaskFacts) -> tuple[str, str, str, int | None]:
-    code = next((c for cmd, c in reversed(facts.verified) if cmd == command), None)
-    if code is None:
-        code = _traced_exit(facts.events, command)
-    if code is not None:
-        return command, "accepted", "exit status found in the task's trace", code
-    return command, "refused", "no exit status for this command in the task's trace", None
 
 
 # -- the store -------------------------------------------------------------------
@@ -662,9 +305,9 @@ def reset(project: str, *, actor: str = "operator") -> int:
 
 
 def _line(entry: MemoryEntry) -> str:
-    if entry.kind == "command":
+    if entry.kind == "tool":
         status = f" (exit {entry.exit})" if entry.exit is not None else ""
-        return f"- command `{entry.subject}`{status}: {entry.note}"
+        return f"- tool `{entry.subject}`{status}: {entry.note}"
     return f"- {entry.kind} {entry.subject}: {entry.note}"
 
 
@@ -674,7 +317,7 @@ def render_entries(project: str, root: Path | None, max_bytes: int) -> str:
     not deleted). ``""`` when nothing accepted fits."""
     lines: list[str] = []
     for entry in list_entries(project, "accepted"):
-        if entry.kind != "command":
+        if entry.kind != "tool":
             rel = _safe_path(entry.subject)
             if not rel or (root is not None and not os.path.lexists(os.path.join(root, rel))):
                 continue
