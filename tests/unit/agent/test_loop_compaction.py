@@ -4,6 +4,7 @@ the request-fit helpers around the incoming task message."""
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -20,7 +21,8 @@ from docket.agent.ports import (
     tool_result,
     user,
 )
-from docket.agent.session import append_messages, load_messages
+from docket.agent.session import _session_path, append_messages, load_messages
+from docket.kernel.home import current_home
 
 SUBJECT = "docket.agent.loop_compaction"
 
@@ -261,3 +263,50 @@ class TestTheRequestProjectionUsesTheHistoryBudget:
         for compaction in (narrow, unset):
             kept = [m for m in compaction.messages_for_durable(durable) if m.role == "tool"]
             assert sum(m.content[0] != "[" for m in kept) < 6
+
+
+class TestAPreTurnCompactionTheGuardRefuses:
+    """A compaction that gains nothing leaves the history alone and lets the turn run."""
+
+    @staticmethod
+    def _session(state: TurnState) -> None:
+        for n in range(3):
+            append_messages(state.session_key, [user(f"ask {n} " + "x" * 6_000), assistant("ok")])
+
+    @staticmethod
+    def _events(state: TurnState) -> list[dict[str, Any]]:
+        trace = current_home().traces_dir / state.project / f"{state.trace_key}.jsonl"
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        return [r["payload"] for r in records if r["event_type"] == "session_compaction"]
+
+    def test_a_summary_that_gains_nothing_does_not_end_the_turn(
+        self, make_turn_state: MakeState
+    ) -> None:
+        backend = _OneReply(ChatResponse(ok=True, message=assistant("S" * 40_000)))
+        state = make_turn_state(LoopConfig(history_budget_tokens=1_000), backend=backend)
+        self._session(state)
+        path = _session_path(state.session_key, None)
+        before = path.read_bytes()
+
+        assert _compaction(state).apply_initial_history_compaction() is None
+
+        assert len(backend.calls) == 1
+        assert path.read_bytes() == before
+        [event] = self._events(state)
+        assert event["status"] == "failed"
+        assert "did not reduce" in event["reason"]
+
+    def test_a_summarizer_timeout_still_ends_the_turn(self, make_turn_state: MakeState) -> None:
+        response = ChatResponse(ok=False, error="slow", failure_kind="timeout")
+        state = make_turn_state(
+            LoopConfig(history_budget_tokens=1_000), backend=_OneReply(response)
+        )
+        self._session(state)
+        before = load_messages(state.session_key)
+
+        result = _compaction(state).apply_initial_history_compaction()
+
+        assert result is not None and not result.ok
+        assert result.stop_reason == "compaction_failed"
+        assert load_messages(state.session_key) == before
+        assert self._events(state)[0]["status"] == "failed"

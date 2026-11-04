@@ -1,9 +1,9 @@
 # Session History Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Status**: Implemented and live. The agent loop loads, compacts and appends this durable history
 on the production `DocketDriver` path; every pod-dispatch step has its own history key.
-**Last Updated**: 2026-11-01
+**Last Updated**: 2026-11-04
 
 ## Purpose
 
@@ -139,14 +139,23 @@ This specification does NOT cover:
 24. When all units selected by the compaction plan do not fit one summary prompt, compaction
     **MUST** summarize the largest fitting oldest prefix, preserve every remaining unit, and repeat
     hierarchically until every selected raw old unit has been folded into bounded summaries. No
-    intermediate candidate may be written. A degenerate target smaller than the irreducible summary
-    marker plus the mandatory newest unit **MAY** finish above target rather than repeatedly
-    re-summarizing the same summary without new information.
+    intermediate candidate may be written. A batch **MUST** contain at least one raw unit (one not
+    produced by compaction): a compaction summary **MUST NOT** be summarized alone, because a
+    summary of a summary cannot shrink. When the next raw unit does not fit the input budget, its
+    summary prompt **MUST** be built from a projection of that unit: each `tool` result is cut to
+    its share of the input budget and followed by the visible marker `[... <n> characters of this
+    tool result not shown to the summarizer ...]`. The projection is the prompt only; nothing
+    stored changes and the whole original unit is replaced by its summary. A degenerate target
+    smaller than the irreducible summary marker plus the mandatory newest unit **MAY** finish above
+    target rather than repeatedly re-summarizing the same summary without new information.
 25. A system message produced by compaction **MAY** be summarized again in a later round. Any real
     leading system message that was not produced by compaction **MUST** remain byte-identical.
 26. Every round **MUST** reduce the candidate's estimated size and the operation **MUST** have a
     deterministic round cap. Failure to make progress, exceeding the cap, or finding one atomic
-    unit whose complete summary prompt cannot fit **MUST** fail closed without writing.
+    unit whose projected summary prompt (requirement 24) still cannot fit **MUST** fail closed
+    without writing. The result **MUST** name that case in the typed field `refused_by_guard`,
+    which is false for every other failure (a summarizer error, an empty, truncated or
+    tool-requesting reply, an orphaned tool call or result, an invalid range).
 27. `groups_summarized` **MUST** count every atomic group processed across all rounds. The result
     **MUST** also report the number of summary rounds and the largest estimated summary-prompt size,
     named explicitly as estimates.

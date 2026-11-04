@@ -35,10 +35,17 @@ _COMPACTION_ACTIVE: ContextVar[bool] = ContextVar("docket_session_compaction_act
 # ── compaction (I/O + driver) ──────────────────────────────────────────────────
 
 
-def _summarization_message(label: str, units: Sequence[Sequence[ChatMessage]]) -> str:
+_NOT_SHOWN_MARKER = "[... {n} characters of this tool result not shown to the summarizer ...]"
+
+
+def _summarization_message(
+    label: str,
+    units: Sequence[Sequence[ChatMessage]],
+    tool_result_cap: int | None = None,
+) -> str:
     """Build the compaction summarisation prompt from the units being replaced -- a self-contained
     prompt over chat-message units, mirroring ``agent.memory._distillation_message``'s shape but
-    never re-reading anything from disk."""
+    never re-reading anything from disk. With *tool_result_cap*, each tool result is cut to it."""
     header = (
         f"You are compacting durable turn history for '{label}'. Below are "
         "older turns from this session, oldest first. Write a concise summary "
@@ -52,7 +59,11 @@ def _summarization_message(label: str, units: Sequence[Sequence[ChatMessage]]) -
         lines: list[str] = []
         for m in unit:
             if m.role == "tool":
-                lines.append(f"[tool result for {m.name or m.tool_call_id}]\n{m.content}")
+                content = m.content
+                if tool_result_cap is not None and len(content) > tool_result_cap:
+                    marker = _NOT_SHOWN_MARKER.format(n=len(content) - tool_result_cap)
+                    content = f"{content[:tool_result_cap]}\n{marker}"
+                lines.append(f"[tool result for {m.name or m.tool_call_id}]\n{content}")
             elif m.tool_calls:
                 calls = ", ".join(f"{c.name}({c.arguments})" for c in m.tool_calls)
                 text = f"[assistant] {m.content}".rstrip()
@@ -65,12 +76,51 @@ def _summarization_message(label: str, units: Sequence[Sequence[ChatMessage]]) -
     return f"{header}\n{body}"
 
 
+def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
+    return (
+        len(unit) == 1
+        and unit[0].role == "system"
+        and unit[0].content.startswith(_COMPACTED_SUMMARY_PREFIX)
+    )
+
+
+def _projected_prompt(
+    label: str,
+    summaries: Sequence[Sequence[ChatMessage]],
+    unit: Sequence[ChatMessage],
+    input_budget_tokens: int,
+) -> tuple[str, int] | None:
+    """Prompt for *unit* with each tool result cut to the largest share that still fits, or
+    ``None`` when even cutting every tool result to nothing does not fit."""
+    batch = [*summaries, list(unit)]
+
+    def _fits(cap: int) -> tuple[str, int] | None:
+        prompt = _summarization_message(label, batch, tool_result_cap=cap)
+        estimated = _ports.estimate_tokens(prompt)
+        return (prompt, estimated) if estimated <= input_budget_tokens else None
+
+    low, high = 0, max((len(m.content) for m in unit if m.role == "tool"), default=0)
+    best = _fits(low)
+    if best is None:
+        return None
+    while low < high:
+        mid = (low + high + 1) // 2
+        fitted = _fits(mid)
+        if fitted is None:
+            high = mid - 1
+        else:
+            low, best = mid, fitted
+    return best
+
+
 def _bounded_summary_batch(
     label: str,
     units: Sequence[Sequence[ChatMessage]],
     input_budget_tokens: int,
 ) -> tuple[list[list[ChatMessage]], str, int]:
-    """Largest oldest prefix whose complete summary prompt fits the estimate."""
+    """Largest oldest prefix whose complete summary prompt fits the estimate. A batch holds at
+    least one raw unit: when the first raw unit does not fit behind the summaries, it is
+    projected; a batch of summaries alone is returned empty."""
     selected: list[list[ChatMessage]] = []
     prompt = ""
     estimated = 0
@@ -78,20 +128,19 @@ def _bounded_summary_batch(
         candidate = [*selected, list(unit)]
         candidate_prompt = _summarization_message(label, candidate)
         candidate_estimated = _ports.estimate_tokens(candidate_prompt)
-        if candidate_estimated > input_budget_tokens:
-            break
-        selected = candidate
-        prompt = candidate_prompt
-        estimated = candidate_estimated
+        if candidate_estimated <= input_budget_tokens:
+            selected, prompt, estimated = candidate, candidate_prompt, candidate_estimated
+            continue
+        if not _is_compacted_summary_unit(unit) and all(
+            _is_compacted_summary_unit(u) for u in selected
+        ):
+            projected = _projected_prompt(label, selected, unit, input_budget_tokens)
+            if projected is not None:
+                selected, (prompt, estimated) = candidate, projected
+        break
+    if all(_is_compacted_summary_unit(u) for u in selected):
+        return [], "", 0
     return selected, prompt, estimated
-
-
-def _is_compacted_summary_unit(unit: Sequence[ChatMessage]) -> bool:
-    return (
-        len(unit) == 1
-        and unit[0].role == "system"
-        and unit[0].content.startswith(_COMPACTED_SUMMARY_PREFIX)
-    )
 
 
 @dataclass
@@ -111,6 +160,7 @@ class CompactionResult:
     after_estimated_tokens: int = 0
     error: str = ""
     failure_kind: FailureKind | None = None
+    refused_by_guard: bool = False
 
 
 def _validate_compaction_range(
@@ -157,6 +207,7 @@ class _RoundOutcome:
     max_prompt_estimated: int = 0
     error: str = ""
     failure_kind: FailureKind | None = None
+    refused_by_guard: bool = False
 
 
 def _run_compaction_rounds(
@@ -185,7 +236,7 @@ def _run_compaction_rounds(
         plan = plan_compaction(working, budget, keep_latest_unit=keep_latest_unit)
         if not plan.needed:
             break
-        if rounds and all(_is_compacted_summary_unit(unit) for unit in plan.to_summarize):
+        if all(_is_compacted_summary_unit(unit) for unit in plan.to_summarize):
             # The target can be smaller than the irreducible summary
             # marker + mandatory newest unit (common in tiny tests). All
             # raw old units are already represented, so re-summarizing
@@ -200,6 +251,7 @@ def _run_compaction_rounds(
                 max_prompt_estimated=max_prompt_estimated,
                 error=f"compaction exceeded its deterministic round cap ({round_cap})",
                 failure_kind="invalid_output",
+                refused_by_guard=True,
             )
 
         batch, prompt, prompt_estimated = _bounded_summary_batch(
@@ -208,8 +260,13 @@ def _run_compaction_rounds(
             summary_input_budget,
         )
         if not batch:
-            first_prompt = _summarization_message(display_label, plan.to_summarize[:1])
-            required = _ports.estimate_tokens(first_prompt)
+            blocking = next(
+                (u for u in plan.to_summarize if not _is_compacted_summary_unit(u)),
+                plan.to_summarize[0],
+            )
+            required = _ports.estimate_tokens(
+                _summarization_message(display_label, [blocking], tool_result_cap=0)
+            )
             return _RoundOutcome(
                 ok=False,
                 rounds=rounds,
@@ -217,9 +274,11 @@ def _run_compaction_rounds(
                 max_prompt_estimated=max_prompt_estimated,
                 error=(
                     "one compaction atomic unit exceeds the summary input budget "
-                    f"(estimated {required} tokens > {summary_input_budget})"
+                    f"even with its tool results cut (estimated {required} tokens > "
+                    f"{summary_input_budget})"
                 ),
                 failure_kind="invalid_output",
+                refused_by_guard=True,
             )
 
         max_prompt_estimated = max(max_prompt_estimated, prompt_estimated)
@@ -283,6 +342,7 @@ def _run_compaction_rounds(
                     f"({current_estimated} -> {candidate_estimated})"
                 ),
                 failure_kind="invalid_output",
+                refused_by_guard=True,
             )
 
         working = candidate
@@ -377,6 +437,7 @@ def _plan_and_apply_compaction(
             after_estimated_tokens=before_estimated,
             error=round_result.error,
             failure_kind=round_result.failure_kind,
+            refused_by_guard=round_result.refused_by_guard,
         )
 
     final_messages = [*preserved_prefix, *round_result.working, *preserved_suffix]

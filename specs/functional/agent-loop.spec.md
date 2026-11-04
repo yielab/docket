@@ -1,6 +1,6 @@
 # Agent Loop Specification
 
-**Version**: 4.5.0
+**Version**: 4.6.0
 **Status**: Implemented and live. `DocketDriver` (resolved by `default_driver()`) runs every
 production turn through `run_agent_turn`, which narrows tools by role, composes the system prompt,
 compacts history, and gates every tool call through `dispatch_tool` until a typed stop fires.
@@ -353,6 +353,12 @@ This specification does NOT cover:
     `no_op`, `succeeded`, or `failed`; before/after message counts; before/after estimated tokens;
     and groups summarized. The payload **MUST NOT** contain raw history, prompts, summaries, or
     measured token counts mislabeled as estimates.
+    When the check fails only because `compact_session` refused to make progress
+    (`session-history.spec.md` requirement 26, `refused_by_guard`), the turn **MUST NOT** end: the
+    stored history stays byte-identical, the event keeps status `failed` and carries the reason,
+    and the turn proceeds, with request-fit as the one stop for a request over the window.
+    Requirement 36's summarizer failures, cancellation and the `token_budget` stop still end the
+    turn.
 38. A live compaction **MAY** make multiple bounded summary completions. Every completion **MUST**
     stay on the same non-recursive, tool-free adapter; its endpoint-reported usage **MUST** be
     accumulated into turn/session measured usage, and its timeout **MUST** be capped by the turn's

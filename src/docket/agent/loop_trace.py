@@ -257,23 +257,24 @@ def _trace_compaction(
     task_id: str = "",
 ) -> None:
     status = "failed" if not result.ok else "succeeded" if result.compacted else "no_op"
+    payload: dict[str, object] = {
+        "status": status,
+        "beforeMessageCount": result.before_message_count,
+        "afterMessageCount": result.after_message_count,
+        "beforeEstimatedTokens": result.before_estimated_tokens,
+        "afterEstimatedTokens": result.after_estimated_tokens,
+        "groupsSummarized": result.groups_summarized,
+        "summaryRounds": result.summary_rounds,
+        "maxSummaryPromptEstimatedTokens": (result.max_summary_prompt_estimated_tokens),
+    }
+    if result.refused_by_guard:
+        payload["reason"] = result.error
     tracer.trace_event(
         project,
         session_key,
         role,
         "session_compaction",
-        json.dumps(
-            {
-                "status": status,
-                "beforeMessageCount": result.before_message_count,
-                "afterMessageCount": result.after_message_count,
-                "beforeEstimatedTokens": result.before_estimated_tokens,
-                "afterEstimatedTokens": result.after_estimated_tokens,
-                "groupsSummarized": result.groups_summarized,
-                "summaryRounds": result.summary_rounds,
-                "maxSummaryPromptEstimatedTokens": (result.max_summary_prompt_estimated_tokens),
-            }
-        ),
+        json.dumps(payload),
         task_id=task_id,
     )
 

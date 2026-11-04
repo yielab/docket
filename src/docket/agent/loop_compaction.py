@@ -251,6 +251,9 @@ class TurnCompaction:
             budget_tokens=self.state.cfg.history_budget_tokens
         )
         if not compaction.ok:
+            if compaction.refused_by_guard and compaction_stop_reason is None:
+                # The history is untouched and the request-fit path still guards the window.
+                return None
             return self.state.done(
                 ok=False,
                 stop_reason=compaction_stop_reason or "compaction_failed",
